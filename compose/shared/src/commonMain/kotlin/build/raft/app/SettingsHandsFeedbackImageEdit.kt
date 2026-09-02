@@ -134,6 +134,8 @@ internal class SettingsHandsFeedbackImageEditSessionTracker {
     private val lock = SynchronizedObject()
     /** False means a partial group is still collecting; true means promotion is in flight. */
     private val owned = linkedMapOf<String, Boolean>()
+    /** Keep an in-flight handoff visible to a racing opener after page disposal. */
+    private val closedInFlightSessionIds = linkedSetOf<String>()
 
     /** Once disposed, a late event cannot re-admit a session into this page. */
     private var disposed = false
@@ -169,7 +171,30 @@ internal class SettingsHandsFeedbackImageEditSessionTracker {
     }
 
     fun release(sessionId: String) {
-        synchronized(lock) { owned.remove(sessionId.trim()) }
+        synchronized(lock) {
+            val normalized = sessionId.trim()
+            owned.remove(normalized)
+            closedInFlightSessionIds.remove(normalized)
+        }
+    }
+
+    /**
+     * Atomically revoke every partial session before its registry rows are retired.
+     *
+     * Event handling may already have read [owns] when a picker replacement or submit begins.
+     * Removing the partial witness here makes its later [markHandoffStarted] fail, so the event
+     * cannot cross into the uploader while the caller is deleting its temporary refs.  Sessions
+     * whose handoff has started remain owned until their terminal `finally` path releases them.
+     */
+    fun takePartialSessionIds(): Set<String> = synchronized(lock) {
+        val partial = owned.filterValues { started -> !started }.keys.toSet()
+        partial.forEach(owned::remove)
+        partial
+    }
+
+    fun isHandoffStarted(sessionId: String): Boolean = synchronized(lock) {
+        val normalized = sessionId.trim()
+        owned[normalized] == true || normalized in closedInFlightSessionIds
     }
 
     /** Atomically transfer a complete group into the page-independent promotion handoff. */
@@ -199,6 +224,7 @@ internal class SettingsHandsFeedbackImageEditSessionTracker {
         disposed = true
         val partial = owned.filterValues { started -> !started }.keys.toSet()
         val inFlight = owned.filterValues { started -> started }.keys.toSet()
+        closedInFlightSessionIds += inFlight
         owned.clear()
         SettingsHandsFeedbackImageEditSessionCloseResult(partial, inFlight)
     }

@@ -16,7 +16,6 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.runTest
 
 class SettingsHandsFeedbackImageEditTest {
     @Test
@@ -134,16 +133,35 @@ class SettingsHandsFeedbackImageEditTest {
         assertTrue(closed.abortSessionIds.isEmpty())
         assertEquals(setOf("in-flight"), closed.inFlightSessionIds)
         assertFalse(tracker.owns("in-flight"))
+        assertTrue(tracker.isHandoffStarted("in-flight"))
+        tracker.release("in-flight")
+        assertFalse(tracker.isHandoffStarted("in-flight"))
     }
 
     @Test
-    fun settingsEventJobsCloseAdmissionAndExposeActiveJobsForJoin() = runTest {
+    fun replacingPickerRevokesPartialWitnessBeforeRegistryRetirement() {
+        val tracker = SettingsHandsFeedbackImageEditSessionTracker()
+        assertTrue(tracker.track("partial"))
+        assertEquals(setOf("partial"), tracker.takePartialSessionIds())
+        assertFalse(tracker.owns("partial"))
+        // A callback which raced the revocation cannot promote the session into an in-flight
+        // handoff after its refs have been scheduled for retirement.
+        assertFalse(tracker.markHandoffStarted("partial"))
+
+        assertTrue(tracker.track("in-flight"))
+        assertTrue(tracker.markHandoffStarted("in-flight"))
+        assertTrue(tracker.takePartialSessionIds().isEmpty())
+        assertTrue(tracker.isHandoffStarted("in-flight"))
+    }
+
+    @Test
+    fun settingsEventJobsCloseAdmissionAndExposeActiveJobsForJoin() = runPortableCoroutineTest {
         val tracker = SettingsHandsFeedbackImageEditEventJobTracker()
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val job =
             requireNotNull(
-                tracker.launch(backgroundScope) {
+                tracker.launch(this) {
                     started.complete(Unit)
                     release.await()
                 }
@@ -151,7 +169,7 @@ class SettingsHandsFeedbackImageEditTest {
         started.await()
         val snapshot = tracker.closeAndSnapshot()
         assertTrue(job in snapshot)
-        assertNull(tracker.launch(backgroundScope) {})
+        assertNull(tracker.launch(this) {})
         release.complete(Unit)
         job.join()
         assertTrue(job.isCompleted)

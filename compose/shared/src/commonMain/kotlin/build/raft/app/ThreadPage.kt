@@ -6101,7 +6101,8 @@ internal fun SharedThreadRouteContent(
         }
         if (opened && registeredSessionId.isNotBlank() &&
             composerImageEventSessionTracker.isClosed() &&
-            !composerImageEventSessionTracker.owns(registeredSessionId)
+            !composerImageEventSessionTracker.owns(registeredSessionId) &&
+            !composerImageEventSessionTracker.isHandoffStarted(registeredSessionId)
         ) {
             // Disposal can close the tracker immediately after the opener callback returns but
             // before the router reports success. Do a second ownership check after the boundary

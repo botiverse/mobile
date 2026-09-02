@@ -11330,14 +11330,16 @@ internal fun SharedHandsFeedbackContent(
     }
 
     fun abortAllOwnedImageEditSessions() {
-        val snapshot = imageEditSessionTracker.snapshot()
+        // Revoke partial witnesses atomically before touching the process registry.  Otherwise an
+        // event which already passed `owns()` could mark its session in-flight while this function
+        // was retiring the same temporary refs, deleting a file that the uploader is about to read.
+        val partialSessionIds = imageEditSessionTracker.takePartialSessionIds()
+        val pendingSessionId = pendingImageEditSession?.previewSessionId.orEmpty()
         val sessionIds =
-            snapshot.abortSessionIds +
-                pendingImageEditSession
-                    ?.previewSessionId
-                    .orEmpty()
-                    .takeIf { it.isNotBlank() && it !in snapshot.inFlightSessionIds }
-                    .orEmpty()
+            partialSessionIds +
+                pendingSessionId.takeIf {
+                    it.isNotBlank() && !imageEditSessionTracker.isHandoffStarted(it)
+                }.orEmpty()
         if (sessionIds.isEmpty()) return
         abortOwnedImageEditSessions(sessionIds)
         sessionIds.forEach(imageEditSessionTracker::release)
@@ -11481,7 +11483,10 @@ internal fun SharedHandsFeedbackContent(
                                 pendingImageEditSession = null
                                 error = copy.attachmentPickerFailed
                             } else {
-                                if (!imageEditSessionTracker.owns(previewSessionId)) {
+                                if (
+                                    !imageEditSessionTracker.owns(previewSessionId) &&
+                                        !imageEditSessionTracker.isHandoffStarted(previewSessionId)
+                                ) {
                                     abortOwnedImageEditSessions(listOf(previewSessionId))
                                     pendingImageEditSession = null
                                     error = copy.attachmentPickerFailed

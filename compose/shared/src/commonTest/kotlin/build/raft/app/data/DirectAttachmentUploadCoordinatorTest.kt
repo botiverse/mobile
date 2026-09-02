@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.runPortableCoroutineTest
 import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
@@ -9,7 +10,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -18,7 +18,7 @@ import kotlin.test.assertTrue
 
 class DirectAttachmentUploadCoordinatorTest {
     @Test
-    fun explicitCreateCancellationIsUnknownAndFailsClosed() = runTest {
+    fun explicitCreateCancellationIsUnknownAndFailsClosed() = runPortableCoroutineTest {
         val gateway = FakeGateway().apply { throwCreateCancellation = true }
         val diagnostics = mutableListOf<String>()
         var propagated = false
@@ -33,7 +33,7 @@ class DirectAttachmentUploadCoordinatorTest {
     }
 
     @Test
-    fun createCancellationReplaysSameIdempotencyKeyAndCompensates() = runTest {
+    fun createCancellationReplaysSameIdempotencyKeyAndCompensates() = runPortableCoroutineTest {
         val gateway = FakeGateway().apply { throwCreateCancellationOnce = true }
         var propagated = false
         try {
@@ -55,7 +55,7 @@ class DirectAttachmentUploadCoordinatorTest {
     }
 
     @Test
-    fun cancellationAfterServerAcceptWaitsForCreateThenCompensatesWithoutPutOrComplete() = runTest {
+    fun cancellationAfterServerAcceptWaitsForCreateThenCompensatesWithoutPutOrComplete() = runPortableCoroutineTest {
         val gateway = FakeGateway()
         val accepted = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
