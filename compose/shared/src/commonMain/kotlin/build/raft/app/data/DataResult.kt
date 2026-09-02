@@ -26,7 +26,29 @@ data class ScreenError(
      * real reason instead of a bare code. Humane localized special-cases
      * remain overlays on top of this fallback, never a replacement for it.
      */
-    val serverMessage: String? = null
+    val serverMessage: String? = null,
+    /**
+     * Structured recovery identifiers which a domain operation discovered while rejecting a
+     * malformed response.  These are deliberately kept out of [serverMessage]: callers can use
+     * them for compensating cleanup without leaking opaque/session identifiers into user-facing
+     * copy or ordinary diagnostics.  The field is currently used by direct attachment-session
+     * create, where a response may be malformed after the server has already reserved a session.
+     */
+    val recoverySessionIds: Set<String> = emptySet(),
+    /**
+     * Structured cleanup evidence retained when a multi-step operation fails after creating
+     * server-side reservations.  This is diagnostic/domain data, never user-facing copy: the
+     * primary [code] remains the original upload/projection failure even when compensation is
+     * incomplete or uncertain.
+     */
+    val cleanupEvidence: String? = null,
+    /**
+     * The server's machine-readable error code, when one was present in the response envelope.
+     * Keeping it separate from [code] lets presentation retain the stable local key while direct
+     * upload retry policy can classify an explicit transient/terminal code without guessing from
+     * HTTP status or human text.
+     */
+    val serverCode: String? = null
 )
 
 data class PermissionBlocker(
@@ -40,7 +62,9 @@ data class PermissionBlocker(
      * reason wins (401 always uses localized session copy; a non-blank 403
      * reason wins over the generic localized permission sentence).
      */
-    val serverMessage: String? = null
+    val serverMessage: String? = null,
+    /** Structured cleanup facts retained when a multi-step operation cannot retract all work. */
+    val cleanupEvidence: String? = null,
 )
 
 /** Stable, locale-independent keys emitted by the data/domain layer. */

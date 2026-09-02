@@ -534,7 +534,14 @@ import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.tmm.kmmresource.resource.format
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
@@ -545,6 +552,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -2471,6 +2480,9 @@ private fun SlockAppShellReadyContent(
                 conversationRepository = conversationRepository,
                 messageStore = sharedStores.threadMessageStore,
                 cacheEnvironmentIdProvider = {
+                    sharedStores.apiEnvironmentStore.current().apiBaseUrl
+                },
+                apiEnvironmentIdProvider = {
                     sharedStores.apiEnvironmentStore.current().apiBaseUrl
                 },
                 replyCacheIdentityAuthority = {
@@ -11241,6 +11253,14 @@ internal fun SharedHandsFeedbackContent(
     val copy = settingsHandsFeedbackCopy(attachmentMaxLabel)
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val scope = rememberCoroutineScope()
+    // Keep editor callbacks on the Kuikly dispatcher while detaching their Job from composition
+    // cancellation. Disposal closes admission, waits for these jobs, then sweeps ownership.
+    val imageEditEventScope = remember(eventBus, accountId, pager.pagerId) {
+        CoroutineScope(scope.coroutineContext.minusKey(Job) + SupervisorJob())
+    }
+    // The process send scope is used only for the NonCancellable disposal handoff.
+    val stableCleanupScope =
+        SlockSharedStoreRegistry.currentOrNull()?.threadSendScope ?: imageEditEventScope
     val listState = rememberLazyListState()
     val chatLayoutPreferenceStore =
         remember {
@@ -11286,6 +11306,13 @@ internal fun SharedHandsFeedbackContent(
         remember(accountId, feedbackPageGeneration) {
             SettingsHandsFeedbackImageEditCommitGate()
         }
+    val imageEditSessionTracker = remember(eventBus, accountId, feedbackPageGeneration) {
+        SettingsHandsFeedbackImageEditSessionTracker()
+    }
+    val imageEditEventJobs = remember(eventBus, accountId, feedbackPageGeneration) {
+        SettingsHandsFeedbackImageEditEventJobTracker()
+    }
+    val latestPendingImageEditSession by rememberUpdatedState(pendingImageEditSession)
     val latestFeedbackAccountId by rememberUpdatedState(accountId)
     val latestFeedbackPageGeneration by rememberUpdatedState(feedbackPageGeneration)
     val feedbackDraftResetGenerationState =
@@ -11319,6 +11346,34 @@ internal fun SharedHandsFeedbackContent(
     val attachmentLimit = 9
     val remainingSlots = attachmentLimit - attachments.size
     val normalizedMessage = message.trim()
+
+    fun abortOwnedImageEditSessions(sessionIds: Collection<String>) {
+        abortSettingsHandsFeedbackImageEditSessions(
+            sessionIds = sessionIds,
+            retire = { sessionId, fileRefs ->
+                bridge.retireFilePreviewTemporaryFiles(
+                    sessionId = sessionId,
+                    fileRefs = fileRefs.toList()
+                )
+            }
+        )
+    }
+
+    fun abortAllOwnedImageEditSessions() {
+        // Revoke partial witnesses atomically before touching the process registry.  Otherwise an
+        // event which already passed `owns()` could mark its session in-flight while this function
+        // was retiring the same temporary refs, deleting a file that the uploader is about to read.
+        val partialSessionIds = imageEditSessionTracker.takePartialSessionIds()
+        val pendingSessionId = pendingImageEditSession?.previewSessionId.orEmpty()
+        val sessionIds =
+            partialSessionIds +
+                pendingSessionId.takeIf {
+                    it.isNotBlank() && !imageEditSessionTracker.isHandoffStarted(it)
+                }.orEmpty()
+        if (sessionIds.isEmpty()) return
+        abortOwnedImageEditSessions(sessionIds)
+        sessionIds.forEach(imageEditSessionTracker::release)
+    }
 
     LaunchedEffect(feedbackDraftStore, accountId, draftTextForPersistence, attachments) {
         delay(250L)
@@ -11399,6 +11454,10 @@ internal fun SharedHandsFeedbackContent(
         }
         busy = true
         error = null
+        // A replacement picker supersedes any promotion already in flight. Keep its native
+        // handoff alive until its finally cleanup, but make its draft commit stale immediately.
+        feedbackDraftResetGeneration += 1L
+        abortAllOwnedImageEditSessions()
         pendingImageEditSession = null
         scope.launch {
             when (val result = settingsCapabilities.pickFeedbackAttachment(imageOnly)) {
@@ -11425,15 +11484,43 @@ internal fun SharedHandsFeedbackContent(
                         if (request == null) {
                             error = copy.attachmentPickerFailed
                         } else {
-                            pendingImageEditSession = request.session
+                            var previewSessionId = ""
                             if (
                                 !pager.openSlockFilePreviewPage(
                                     request.previewPayload,
-                                    sourceStoreScope = request.sourceStoreScope
+                                    sourceStoreScope = request.sourceStoreScope,
+                                    onEphemeralSessionRegistered = { registeredId ->
+                                        previewSessionId = registeredId
+                                        imageEditSessionTracker.track(registeredId).also { tracked ->
+                                            // Install the session witness before the preview page is
+                                            // opened. Native editor callbacks may be delivered
+                                            // synchronously during navigation; assigning only after
+                                            // `openSlockFilePreviewPage` returns would make that
+                                            // first event look ownerless and lose the batch.
+                                            if (tracked) {
+                                                pendingImageEditSession =
+                                                    request.session.copy(previewSessionId = registeredId)
+                                            }
+                                        }
+                                    }
                                 )
                             ) {
+                                imageEditSessionTracker.release(previewSessionId)
                                 pendingImageEditSession = null
                                 error = copy.attachmentPickerFailed
+                            } else if (previewSessionId.isBlank()) {
+                                imageEditSessionTracker.release(previewSessionId)
+                                pendingImageEditSession = null
+                                error = copy.attachmentPickerFailed
+                            } else {
+                                if (
+                                    !imageEditSessionTracker.owns(previewSessionId) &&
+                                        !imageEditSessionTracker.isHandoffStarted(previewSessionId)
+                                ) {
+                                    abortOwnedImageEditSessions(listOf(previewSessionId))
+                                    pendingImageEditSession = null
+                                    error = copy.attachmentPickerFailed
+                                }
                             }
                         }
                     } else {
@@ -11476,19 +11563,27 @@ internal fun SharedHandsFeedbackContent(
     }
 
     DisposableEffect(eventBus, accountId, feedbackPageGeneration) {
+        // Native editor callbacks can arrive on separate event-bus turns. Serialize the fold and
+        // terminal registry transition so two members of one N/N group cannot both read the same
+        // stale Compose session and overwrite each other's index.
+        val imageEditEventMutex = Mutex()
         val subscription =
             eventBus.observe(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
                 val eventDataSnapshot = data?.toString() ?: return@observe
-                scope.launch {
-                    val eventData =
-                        runCatching { JSONObject(eventDataSnapshot) }.getOrNull()
-                            ?: return@launch
-                    val session = pendingImageEditSession
+                imageEditEventJobs.launch(imageEditEventScope) {
+                    imageEditEventMutex.withLock {
+                        val eventData =
+                            runCatching { JSONObject(eventDataSnapshot) }.getOrNull()
+                                ?: return@withLock
+                    val session = latestPendingImageEditSession
                     val eventSessionId = eventData.optString("previewSessionId").trim()
                     val eventThreadKey = eventData.optString("threadKey").trim()
-                    if (
-                        (session != null && eventThreadKey != session.threadKey) ||
-                        (session == null && !eventThreadKey.startsWith("feedback-"))
+                    if (!settingsHandsFeedbackImageEditEventMatchesSession(
+                            session = session,
+                            tracker = imageEditSessionTracker,
+                            eventSessionId = eventSessionId,
+                            eventThreadKey = eventThreadKey
+                        )
                     ) {
                         return@launch
                     }
@@ -11502,6 +11597,7 @@ internal fun SharedHandsFeedbackContent(
                                 fileRefs = cleanupRefs.toList()
                             )
                         }
+                        imageEditSessionTracker.release(eventSessionId)
                         if (session != null) {
                             pendingImageEditSession = null
                             error = copy.attachmentPickerFailed
@@ -11520,23 +11616,45 @@ internal fun SharedHandsFeedbackContent(
                                 fileRefs = admission.orphanedTemporaryFileRefs.toList()
                             )
                         }
+                        if (settingsHandsFeedbackRejectedAdmissionIsTerminal(admission)) {
+                            imageEditSessionTracker.release(admission.sessionId)
+                        }
                         return@launch
                     }
                     admission as SlockFilePreviewComposerImageEventAdmission.Accepted
+                    fun eventSessionStillOwned(sessionId: String): Boolean {
+                        val normalized = sessionId.trim()
+                        return normalized.isNotBlank() &&
+                            imageEditSessionTracker.owns(normalized) &&
+                            latestPendingImageEditSession?.previewSessionId?.trim() == normalized
+                    }
                     fun finishEventSession(transferred: Boolean) {
-                        val cleanupRefs =
-                            slockFilePreviewFinishComposerImageEventSession(
-                                sessionId = admission.sessionId,
-                                transferred = transferred
-                            )
-                        if (cleanupRefs.isNotEmpty()) {
-                            bridge.retireFilePreviewTemporaryFiles(
-                                sessionId = admission.sessionId,
-                                fileRefs = cleanupRefs.toList()
-                            )
+                        try {
+                            val cleanupRefs =
+                                slockFilePreviewFinishComposerImageEventSession(
+                                    sessionId = admission.sessionId,
+                                    transferred = transferred
+                                )
+                            if (cleanupRefs.isNotEmpty()) {
+                                bridge.retireFilePreviewTemporaryFiles(
+                                    sessionId = admission.sessionId,
+                                    fileRefs = cleanupRefs.toList()
+                                )
+                            }
+                        } finally {
+                            // A bridge/retirement failure must not leave the page-local witness
+                            // alive forever; the persistent cleanup ledger remains the fallback.
+                            imageEditSessionTracker.release(admission.sessionId)
                         }
                     }
                     if (session == null) {
+                        finishEventSession(transferred = false)
+                        return@launch
+                    }
+                    // Replacement/disposal can revoke the page witness while this callback is
+                    // waiting behind another event. Do not fold or mutate Compose state after the
+                    // session has lost ownership, even if the process registry accepted the row.
+                    if (!eventSessionStillOwned(admission.sessionId)) {
                         finishEventSession(transferred = false)
                         return@launch
                     }
@@ -11550,35 +11668,63 @@ internal fun SharedHandsFeedbackContent(
                             )
                     ) {
                         is SettingsHandsFeedbackImageEditFoldResult.Ignored -> {
-                            pendingImageEditSession = null
+                            if (eventSessionStillOwned(admission.sessionId)) {
+                                pendingImageEditSession = null
+                            }
                             finishEventSession(transferred = false)
                         }
                         is SettingsHandsFeedbackImageEditFoldResult.Pending -> {
                             if (admission.sessionComplete) {
-                                pendingImageEditSession = null
+                                val stillOwned = eventSessionStillOwned(admission.sessionId)
+                                if (stillOwned) {
+                                    pendingImageEditSession = null
+                                }
                                 finishEventSession(transferred = false)
-                                error = copy.attachmentPickerFailed
+                                if (stillOwned) {
+                                    error = copy.attachmentPickerFailed
+                                }
                             } else {
-                                pendingImageEditSession = result.session
+                                if (eventSessionStillOwned(admission.sessionId)) {
+                                    pendingImageEditSession = result.session
+                                } else {
+                                    finishEventSession(transferred = false)
+                                }
                             }
                         }
                         is SettingsHandsFeedbackImageEditFoldResult.Failed -> {
-                            pendingImageEditSession = null
+                            val stillOwned = eventSessionStillOwned(admission.sessionId)
+                            if (stillOwned) {
+                                pendingImageEditSession = null
+                            }
                             finishEventSession(transferred = false)
-                            error = copy.attachmentPickerFailed
+                            if (stillOwned) {
+                                error = copy.attachmentPickerFailed
+                            }
                         }
                         is SettingsHandsFeedbackImageEditFoldResult.Complete -> {
                             if (!admission.sessionComplete) {
-                                pendingImageEditSession = null
+                                val stillOwned = eventSessionStillOwned(admission.sessionId)
+                                if (stillOwned) {
+                                    pendingImageEditSession = null
+                                }
                                 finishEventSession(transferred = false)
-                                error = copy.attachmentPickerFailed
+                                if (stillOwned) {
+                                    error = copy.attachmentPickerFailed
+                                }
                                 return@launch
                             }
                             if (!imageEditCommitGate.tryClaim(session)) {
                                 finishEventSession(transferred = false)
                                 return@launch
                             }
-                            pendingImageEditSession = null
+                            if (!imageEditSessionTracker.markHandoffStarted(admission.sessionId)) {
+                                imageEditCommitGate.release(session)
+                                finishEventSession(transferred = false)
+                                return@launch
+                            }
+                            if (pendingImageEditSession?.previewSessionId?.trim() == admission.sessionId.trim()) {
+                                pendingImageEditSession = null
+                            }
                             val initialDraftResetGeneration = feedbackDraftResetGenerationState.value
                             var transferred = false
                             try {
@@ -11590,11 +11736,13 @@ internal fun SharedHandsFeedbackContent(
                                             attachmentMaxBytes = attachmentMaxBytes,
                                             attachmentLimit = attachmentLimit,
                                             isCurrent = {
-                                                imageEditCommitGate.isCurrent(
+                                                !imageEditSessionTracker.isDisposed() &&
+                                                    imageEditSessionTracker.owns(session.previewSessionId) &&
+                                                    imageEditCommitGate.isCurrent(
                                                     session = session,
                                                     currentAccountId = latestFeedbackAccountId,
                                                     currentPageGeneration = latestFeedbackPageGeneration
-                                                )
+                                                    )
                                             },
                                             currentExisting = { attachmentsState.value },
                                             initialDraftResetGeneration = initialDraftResetGeneration,
@@ -11610,17 +11758,34 @@ internal fun SharedHandsFeedbackContent(
                                                 )
                                             },
                                             persist = { promotedAttachments ->
-                                                val currentDraftText = draftTextForPersistenceState.value
-                                                feedbackDraftStore.save(
-                                                    accountId = accountId,
-                                                    text = currentDraftText,
-                                                    attachments = promotedAttachments
-                                                )
-                                                lastPersistedDraft =
-                                                    SettingsHandsFeedbackDraftSnapshot(
-                                                        text = currentDraftText,
-                                                        attachments = promotedAttachments
-                                                    )
+                                                check(
+                                                    imageEditSessionTracker.runIfOwned(session.previewSessionId) {
+                                                        check(
+                                                            feedbackDraftResetGenerationState.value ==
+                                                                initialDraftResetGeneration &&
+                                                                imageEditCommitGate.isCurrent(
+                                                                    session = session,
+                                                                    currentAccountId = latestFeedbackAccountId,
+                                                                    currentPageGeneration = latestFeedbackPageGeneration
+                                                                )
+                                                        ) {
+                                                            "settings feedback image edit session changed before persistence"
+                                                        }
+                                                        val currentDraftText = draftTextForPersistenceState.value
+                                                        feedbackDraftStore.save(
+                                                            accountId = accountId,
+                                                            text = currentDraftText,
+                                                            attachments = promotedAttachments
+                                                        )
+                                                        lastPersistedDraft =
+                                                            SettingsHandsFeedbackDraftSnapshot(
+                                                                text = currentDraftText,
+                                                                attachments = promotedAttachments
+                                                            )
+                                                    }
+                                                ) {
+                                                    "settings feedback image edit session disposed before persistence"
+                                                }
                                             },
                                             discard = { promotedAttachments ->
                                                 settingsCapabilities.discardFeedbackDraftAttachments(
@@ -11632,14 +11797,21 @@ internal fun SharedHandsFeedbackContent(
                                 ) {
                                     is SettingsHandsFeedbackEditedGroupCommitResult.Committed -> {
                                         val promotion = commit.promotion
-                                        attachments = promotion.attachments
-                                        transferred = true
-                                        error =
-                                            if (promotion.trimmedByLimit) {
-                                                copy.attachmentLimitTrimmed(attachmentLimit)
-                                            } else {
-                                                null
-                                            }
+                                        val published = imageEditSessionTracker.runIfOwned(
+                                            session.previewSessionId
+                                        ) {
+                                            attachments = promotion.attachments
+                                            transferred = true
+                                            error =
+                                                if (promotion.trimmedByLimit) {
+                                                    copy.attachmentLimitTrimmed(attachmentLimit)
+                                                } else {
+                                                    null
+                                                }
+                                        }
+                                        if (!published) {
+                                            error = null
+                                        }
                                     }
                                     is SettingsHandsFeedbackEditedGroupCommitResult.Failed -> {
                                         if ("session_stale" !in commit.code) {
@@ -11660,10 +11832,45 @@ internal fun SharedHandsFeedbackContent(
                             }
                         }
                     }
+                    }
                 }
             }
         onDispose {
             subscription.close()
+            val eventJobs = imageEditEventJobs.closeAndSnapshot()
+            val closeResult = imageEditSessionTracker.closeAndSnapshot()
+            val pendingSessionId = latestPendingImageEditSession?.previewSessionId.orEmpty()
+            val immediateSessionIds =
+                closeResult.abortSessionIds +
+                    pendingSessionId.takeIf { it.isNotBlank() && it !in closeResult.inFlightSessionIds }.orEmpty()
+            abortOwnedImageEditSessions(immediateSessionIds)
+            imageEditCommitGate.clear()
+            // Stop admitting callbacks before joining jobs which may still hold a claimed
+            // session. The commit body has its own NonCancellable finally path; partial work is
+            // swept below after the jobs have stopped.
+            eventJobs.forEach { job -> job.cancel() }
+            val deferredSessionIds = closeResult.allSessionIds
+            if (deferredSessionIds.isNotEmpty() || eventJobs.isNotEmpty()) {
+                stableCleanupScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                    withContext(NonCancellable) {
+                        eventJobs.forEach { job ->
+                            try {
+                                job.cancelAndJoin()
+                            } catch (_: CancellationException) {
+                                // The surrounding NonCancellable handoff remains authoritative.
+                            } catch (_: Throwable) {
+                                // Always perform the final registry/ledger sweep below.
+                            }
+                        }
+                        abortOwnedImageEditSessions(
+                            deferredSessionIds + pendingSessionId.takeIf(String::isNotBlank).orEmpty()
+                        )
+                        imageEditEventScope.cancel()
+                    }
+                }
+            } else {
+                imageEditEventScope.cancel()
+            }
         }
     }
 
@@ -11690,8 +11897,9 @@ internal fun SharedHandsFeedbackContent(
             error = copy.messageRequired
             return
         }
-        pendingImageEditSession = null
         feedbackDraftResetGeneration += 1L
+        abortAllOwnedImageEditSessions()
+        pendingImageEditSession = null
         settingsCapabilities.log("settings_hands_feedback_submit_enter")
         busy = true
         error = null
@@ -11939,6 +12147,11 @@ internal fun SharedHandsFeedbackContent(
                                         file.feedbackComposerAttachmentId() == id
                                     }
                                 if (removed.isNotEmpty()) {
+                                    // Removing any attachment supersedes an editor promotion that
+                                    // may be finishing concurrently. Its native handoff remains
+                                    // alive for terminal cleanup, but its draft generation is no
+                                    // longer allowed to publish into this edited list.
+                                    feedbackDraftResetGeneration += 1L
                                     val remaining = attachments - removed.toSet()
                                     val nextDraft =
                                         SettingsHandsFeedbackDraftSnapshot(
@@ -11954,8 +12167,8 @@ internal fun SharedHandsFeedbackContent(
                                         lastPersistedDraft = nextDraft
                                         attachments = remaining
                                         if (remaining.isEmpty()) {
+                                            abortAllOwnedImageEditSessions()
                                             pendingImageEditSession = null
-                                            feedbackDraftResetGeneration += 1L
                                         }
                                         scope.launch {
                                             try {

@@ -1441,6 +1441,11 @@ internal data class SlockFilePreviewGalleryImage(
     val composerImagePreviewUri: String = "",
     val composerImageSizeBytes: Long? = null,
     val composerImageOwnedTemporary: Boolean = false,
+    /**
+     * Exact existing composer slot targeted by this editor item. Blank means a fresh picker
+     * item, whose consumer should replace its synthetic local admission id.
+     */
+    val composerImageReplaceAttachmentId: String = "",
     /** Explicit process-local finalization state; do not infer this from MIME type. */
     val composerImageEditCompleted: Boolean = false,
     /** True only for a successful composer-image JPEG compression result. */
@@ -3045,7 +3050,11 @@ private fun SlockFilePreviewStandalonePageContent() {
                     compressed = image.composerImageCompressed,
                     source = slockFilePreviewComposerImageEventSource(image.composerImageCompressed),
                     sizeBytes = image.composerImageSizeBytes,
-                    replaceAttachmentId = "",
+                    // Fresh picker galleries use a blank target so Settings/Thread consumers
+                    // receive the legacy `complete` action.  A Thread editor gallery records an
+                    // explicit remote slot in composerImageReplaceAttachmentId; carry that
+                    // witness instead of deriving it from the synthetic local id.
+                    replaceAttachmentId = image.composerImageReplaceAttachmentId,
                     threadKey = eventPayload.composerImageThreadKey,
                     groupId = groupId,
                     groupIndex = index,
@@ -5442,7 +5451,8 @@ private fun SlockFilePreviewPayload.durableRemotePreviewKind(): String =
 
 internal fun Pager.openSlockFilePreviewPage(
     payload: SlockFilePreviewPayload,
-    sourceStoreScope: SlockShellStoreScope? = null
+    sourceStoreScope: SlockShellStoreScope? = null,
+    onEphemeralSessionRegistered: ((String) -> Boolean)? = null
 ): Boolean {
     val sourceScope = resolveSlockFilePreviewSourceStoreScope(pageData.params, sourceStoreScope)
     if (sourceScope == null) {
@@ -5498,15 +5508,8 @@ internal fun Pager.openSlockFilePreviewPage(
             fileRefs = registrationCleanupRefs.toList()
         )
     }
-    val launchPageData = slockFilePreviewLaunchPageData(launch, storeScope, targetServerId)
-    val opened =
-        openSlockPage(
-            SLOCK_FILE_PREVIEW_PAGE,
-            launchPageData,
-            storeScopeOverride = storeScope,
-            authenticatedRouteAuthorityRequired = launch.requiresAuthenticatedRouteAuthority()
-        )
-    if (!opened) {
+
+    fun retireEphemeralRegistration(): Set<String> {
         SlockFilePreviewLaunchPayloadStore.retire(sessionId)
         val cleanupRefs =
             ephemeralActionRegistry.retireActive(sessionId).cleanupFileRefs +
@@ -5517,6 +5520,53 @@ internal fun Pager.openSlockFilePreviewPage(
                 sessionId = sessionId,
                 fileRefs = cleanupRefs.toList()
             )
+        }
+        return cleanupRefs
+    }
+
+    // Notify the caller only after the registry has accepted this exact session.  A callback
+    // before registration could hand a consumer an owner token for a session that was immediately
+    // evicted/replaced by the registry's bounded-session policy.
+    if (ephemeralRegistration != null) {
+        // An ephemeral launch without a live registry row has no authority for a Done callback.
+        // This can happen when the bounded registry evicts the row between registration and this
+        // check (or when a test/configuration uses a zero-capacity registry).  Never open an
+        // ownerless preview: retire the payload, ledger and any remaining refs first.
+        if (!ephemeralActionRegistry.hasSession(sessionId)) {
+            retireEphemeralRegistration()
+            return false
+        }
+        val ownerAccepted =
+            runCatching { onEphemeralSessionRegistered?.invoke(sessionId) ?: true }
+                .getOrDefault(false)
+        if (!ownerAccepted) {
+            // The page-local owner was already disposed (or otherwise rejected this session).
+            // Do not open a preview whose callback can never be consumed; retire every registry,
+            // ledger, and launch-payload entry synchronously before returning to the caller.
+            retireEphemeralRegistration()
+            return false
+        }
+        // A concurrent preview registration may evict this bounded process-local row after the
+        // owner callback returns. Recheck immediately before opening the route so no page is
+        // launched with a session that cannot produce an admissible Done event.
+        if (!ephemeralActionRegistry.hasSession(sessionId)) {
+            retireEphemeralRegistration()
+            return false
+        }
+    }
+    val launchPageData = slockFilePreviewLaunchPageData(launch, storeScope, targetServerId)
+    val opened =
+        openSlockPage(
+            SLOCK_FILE_PREVIEW_PAGE,
+            launchPageData,
+            storeScopeOverride = storeScope,
+            authenticatedRouteAuthorityRequired = launch.requiresAuthenticatedRouteAuthority()
+        )
+    if (!opened) {
+        if (ephemeralRegistration != null) {
+            retireEphemeralRegistration()
+        } else {
+            SlockFilePreviewLaunchPayloadStore.retire(sessionId)
         }
     }
     return opened
@@ -7668,6 +7718,7 @@ private fun SlockFilePreviewGalleryImage.toPreviewPayload(
             externalMimeType = mimeType,
             source = "",
             attachmentId = "",
+            composerImageReplaceAttachmentId = composerImageReplaceAttachmentId,
             composerImageFileRef = composerImageFileRef,
             composerImageFileName = title,
             composerImageMimeType = mimeType,
