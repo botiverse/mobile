@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-09-01 22:07:10 UTC
-Latest run: e17abec9-20260901220040
-Latest commit: e17abec9-20260901220040
-Commit subject: feat(nav): mobile_slack_nav_v0 gate + Slack-aligned tab model (task #94 P0/P1) (#2300)
+Generated: 2026-09-02 22:05:31 UTC
+Latest run: 91cbf42a-20260902220309
+Latest commit: 91cbf42a-20260902220309
+Commit subject: fix(thread): preserve multi-image editor group identity
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 92, same 0, pass 0, basic-pass 0, different 85, missing 7
-AI analysis: ready 85 / total 92, pending 7
+AI analysis: ready 78 / total 92, pending 14
 Visual coverage matrix: active 101 / total 120, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
@@ -116,6 +116,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 91cbf42a-20260902220309: react vs android, total 92, pass 0, basic-pass 0, different 85, matrix runs/91cbf42a-20260902220309/component-matrix.json, page runs/91cbf42a-20260902220309/
 - e17abec9-20260901220040: react vs android, total 92, pass 0, basic-pass 0, different 85, matrix runs/e17abec9-20260901220040/component-matrix.json, page runs/e17abec9-20260901220040/
 - d30188a0-20260831215858: react vs android, total 92, pass 0, basic-pass 0, different 86, matrix runs/d30188a0-20260831215858/component-matrix.json, page runs/d30188a0-20260831215858/
 - 9710520d-20260830215948: react vs android, total 92, pass 0, basic-pass 0, different 86, matrix runs/9710520d-20260830215948/component-matrix.json, page runs/9710520d-20260830215948/

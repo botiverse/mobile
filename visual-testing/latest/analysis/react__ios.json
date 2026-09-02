@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-01T22:07:04.710Z",
+  "generatedAt": "2026-09-02T22:05:26.743Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 92,
-    "ready": 80,
-    "pending": 12
+    "ready": 79,
+    "pending": 13
   },
   "cases": [
     {
@@ -527,7 +527,7 @@
     {
       "id": "components.ui.skeleton.states",
       "status": "ready",
-      "imageHash": "p1:0000200000fc01fe00fc01fe0000000600000006003c007e00003ffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "imageHash": "p1:0000200000fc01fe01fc01fe0000000600000006107c007e00003ffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
       "generatedAt": "2026-08-02T22:43:37.527Z",
       "severity": "low",
       "summary": [
@@ -553,7 +553,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.062095097284670775
+      "metricMismatch": 0.06209779776130486
     },
     {
       "id": "components.ui.spinner.states",
@@ -910,7 +910,7 @@
     {
       "id": "components.thread.composer.empty",
       "status": "ready",
-      "imageHash": "p1:000000000001000203f903b20001000200010002fffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "imageHash": "p1:000000000001000203f903f20001000200010002fffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
       "generatedAt": "2026-08-07T00:06:28.980Z",
       "severity": "low",
       "summary": [
@@ -938,7 +938,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.020991817555798598
+      "metricMismatch": 0.022262054252575547
     },
     {
       "id": "components.thread.composer.states",
@@ -969,12 +969,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.02206086874333324
+      "metricMismatch": 0.02375980610577766
     },
     {
       "id": "components.thread.composer.pending-mention-actions",
       "status": "ready",
-      "imageHash": "p1:01f803fc0001000200090002080966020001701a0001000203f90002078107b200010002fffdfffefffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
+      "imageHash": "p1:01f803fc0001000200090002080966020001701a0001000203f900020781027200010002fffdfffefffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
       "generatedAt": "2026-08-02T22:43:54.296Z",
       "severity": "medium",
       "summary": [
@@ -999,7 +999,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.08182309177569846
+      "metricMismatch": 0.08302919215241489
     },
     {
       "id": "components.thread.composer.as-task-selected",
@@ -1034,12 +1034,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.022499696196378705
+      "metricMismatch": 0.024236102672121618
     },
     {
       "id": "components.thread.composer.member-suggestions",
       "status": "ready",
-      "imageHash": "p1:03f807fc0001fffe0001000200010002800900020009000239f9000211f93ffa00010003104900020f9107b200010002700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
+      "imageHash": "p1:03f807fc0001fffe0001000200010002800900020009000239f9000211f93ffa00010003104900020f91037200010002700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
       "generatedAt": "2026-08-28T22:42:58.308Z",
       "severity": "medium",
       "summary": [
@@ -1067,12 +1067,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11120799071036036
+      "metricMismatch": 0.11282490109504328
     },
     {
       "id": "components.thread.composer.channel-suggestions",
       "status": "ready",
-      "imageHash": "p1:03f807fcfffdfffefffdfffefffdfffe0001fffe0001000207f9000200292ffa00010003300900020f9107b200010002700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
+      "imageHash": "p1:03f807fcfffdfffefffdfffefffdfffe0001fffe0001000207f9000200292ffa00010003300900020f91037200010002700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
       "generatedAt": "2026-08-07T00:06:32.688Z",
       "severity": "medium",
       "summary": [
@@ -1105,43 +1105,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09310602071265583
+      "metricMismatch": 0.09472293109733865
     },
     {
       "id": "components.thread.composer.image-preview",
-      "status": "ready",
-      "imageHash": "p1:03f800000001000200014ffe00010ffa000100020001070200010002fffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
-      "generatedAt": "2026-08-10T22:15:52.039Z",
-      "severity": "medium",
-      "summary": [
-        "React baseline shows an error banner ('The upload size limit could not be checked. Try again in a moment.') above the image preview; iOS rendering is missing this error/banner block entirely.",
-        "iOS image preview thumbnail has a circular close (X) button overlay on its top-right corner; the React version has no close button on the thumbnail.",
-        "iOS image thumbnail is noticeably smaller (appears ~80px square) compared to the React thumbnail (~110px square), and its position is offset upward with more whitespace below.",
-        "The bottom composer row ('Uploading the design crop for review.' with action icons, 'As Task' checkbox, and pink send button) sits lower and with greater vertical separation from the thumbnail on iOS than on React.",
-        "Send button (pink rounded square) on iOS is slightly smaller and has tighter padding relative to its row bounds compared to React."
-      ],
-      "likelyCauses": [
-        "React baseline was captured in an error/upload-size-check failure state, while iOS was rendered without the error banner component mounted.",
-        "iOS implementation includes a thumbnail close affordance that the React web component does not expose.",
-        "Inconsistent sizing/layout constants for the image thumbnail between platforms (different fixed dimensions or aspect-ratio rules).",
-        "Vertical spacing tokens between thumbnail row and composer row differ between React and iOS implementations."
-      ],
-      "suggestedOwner": "mobile-ios",
-      "suggestedFixes": [
-        "Decide whether the upload-size-check error banner should render on iOS too; if yes, mount it above the preview with matching copy, background tint, and padding. If intentionally web-only, align baseline captures to the no-error state to avoid spurious diffs.",
-        "Add or remove the thumbnail close (X) button on the React preview to match iOS (or vice versa) and ensure hit-target spacing is consistent.",
-        "Unify the image thumbnail dimensions and aspect ratio across platforms; verify the same fixed size or max-width token is used.",
-        "Align vertical spacing between the thumbnail row and the composer/upload row using a shared layout token.",
-        "Standardize the send button size and internal padding so both platforms render the pink CTA with identical proportions."
-      ],
-      "intentional": [
-        "iOS-specific thumbnail close (X) affordance for touch dismissal may be an intentional platform UX choice.",
-        "Different default thumbnail size on iOS could reflect HIG guidance for tap targets, though should still be token-driven."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.08088568882407743
+      "status": "pending",
+      "imageHash": "p1:03f800000001000200014ffe00010ffe000100020001001200010002fffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-09-02T22:05:25.750Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.08232706822754221
     },
     {
       "id": "components.thread.files.list",
@@ -1555,7 +1532,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2689364172776495
+      "metricMismatch": 0.2689387801947044
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1588,7 +1565,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26913186427404434
+      "metricMismatch": 0.2691409783826846
     },
     {
       "id": "components.home.saved.results",
@@ -1624,7 +1601,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11115769433304978
+      "metricMismatch": 0.11115431873725712
     },
     {
       "id": "components.home.activity.results",
@@ -1659,7 +1636,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10659051322558433
+      "metricMismatch": 0.10663439597088886
     },
     {
       "id": "components.tasks.panel.states",
@@ -1800,7 +1777,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:07:03.891Z",
+      "generatedAt": "2026-09-02T22:05:26.091Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1813,7 +1790,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:07:03.891Z",
+      "generatedAt": "2026-09-02T22:05:26.091Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1970,7 +1947,7 @@
       "id": "components.channel.members.add-panel",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:07:04.010Z",
+      "generatedAt": "2026-09-02T22:05:26.184Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2148,7 +2125,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1963533438651922
+      "metricMismatch": 0.19635165606729588
     },
     {
       "id": "components.settings.notifications.page",
@@ -2254,7 +2231,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:07:04.244Z",
+      "generatedAt": "2026-09-02T22:05:26.350Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2267,7 +2244,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:07:04.244Z",
+      "generatedAt": "2026-09-02T22:05:26.350Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2280,7 +2257,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:07:04.244Z",
+      "generatedAt": "2026-09-02T22:05:26.350Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2293,7 +2270,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:07:04.244Z",
+      "generatedAt": "2026-09-02T22:05:26.350Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2306,7 +2283,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:07:04.244Z",
+      "generatedAt": "2026-09-02T22:05:26.350Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2482,7 +2459,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19331058181769079
+      "metricMismatch": 0.19329100336209337
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2798,7 +2775,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:07:04.600Z",
+      "generatedAt": "2026-09-02T22:05:26.650Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2811,7 +2788,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:07:04.600Z",
+      "generatedAt": "2026-09-02T22:05:26.650Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2824,7 +2801,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:07:04.600Z",
+      "generatedAt": "2026-09-02T22:05:26.650Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2837,7 +2814,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-01T22:07:04.600Z",
+      "generatedAt": "2026-09-02T22:05:26.650Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
