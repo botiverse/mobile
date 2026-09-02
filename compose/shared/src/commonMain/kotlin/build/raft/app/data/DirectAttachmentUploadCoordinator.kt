@@ -274,37 +274,39 @@ internal class DirectAttachmentUploadCoordinator(
         // fail-closed even when every known id is later retracted.
         val sessionLedger = AttachmentUploadSessionLedger()
         val completed = mutableListOf<DirectAttachmentUpload>()
-        var createCancellationObserved = false
         return try {
             for (file in normalizedFiles) {
-                val createResult =
+                val createRequest =
+                    AttachmentUploadSessionCreateRequest(
+                        channelId = channelId,
+                        filename = file.fileName,
+                        mimeType = file.mimeType.orEmpty().ifBlank { "application/octet-stream" },
+                        // [prepareFiles] guarantees this is a positive, resolver-verified
+                        // value for refs or the exact byte-array length for in-memory files.
+                        sizeBytes = file.sizeBytes
+                            ?: error("prepared direct upload file has no verified size"),
+                        clientRequestId = newAttachmentUploadClientRequestId(),
+                    )
+                val createAttempt =
                     // A server may accept/create the reservation before the caller is canceled.
                     // Keep this one request alive long enough to observe its response and record
                     // the upload id; otherwise cancellation can strand an unaddressable
-                    // reservation.  Once the response is back, the active cancellation is
-                    // re-checked before PUT so a canceled caller performs compensation without
-                    // starting a body transfer.
-                    withContext(NonCancellable) {
-                        try {
-                            safeCall("create") {
-                                gateway.create(
-                                    AttachmentUploadSessionCreateRequest(
-                                        channelId = channelId,
-                                        filename = file.fileName,
-                                        mimeType = file.mimeType.orEmpty().ifBlank { "application/octet-stream" },
-                                        // [prepareFiles] guarantees this is a positive, resolver-verified
-                                        // value for refs or the exact byte-array length for in-memory files.
-                                        sizeBytes = file.sizeBytes
-                                            ?: error("prepared direct upload file has no verified size"),
-                                        clientRequestId = newAttachmentUploadClientRequestId(),
-                                    )
-                                )
-                            }
-                        } catch (cancellation: CancellationException) {
-                            createCancellationObserved = true
-                            throw cancellation
+                    // reservation.  If the transport itself reports cancellation before a
+                    // response is decoded, replay the *same idempotency key* once while still
+                    // non-cancellable.  The server create contract guarantees that replay either
+                    // returns the original reservation or a typed conflict; both outcomes are
+                    // recorded before the caller's cancellation is propagated.
+                    createSessionNonCancellable(
+                        request = createRequest,
+                    )
+                if (createAttempt.unknownReservation) {
+                    sessionLedger.markUnknownReservation()
+                }
+                val createResult =
+                    createAttempt.result
+                        ?: throw requireNotNull(createAttempt.cancellation) {
+                            "create cancellation recovery returned no result"
                         }
-                    }
                 val session =
                     when (createResult) {
                         is DataResult.Content -> {
@@ -332,6 +334,7 @@ internal class DirectAttachmentUploadCoordinator(
                                 value.upload.method != "PUT" ||
                                 !validPutContract
                             ) {
+                                createAttempt.cancellation?.let { throw it }
                                 return failAfterCreated(
                                     sessionLedger,
                                     DataResult.Error(
@@ -352,12 +355,18 @@ internal class DirectAttachmentUploadCoordinator(
                                     ?.recoverySessionIds
                                     .orEmpty()
                             sessionLedger.recordCreateFailure(recoveryIds)
+                            createAttempt.cancellation?.let { throw it }
                             return failAfterCreated(
                                 sessionLedger,
                                 createResult.asBatchFailure("attachment_upload_batch_create_failed")
                             )
                         }
                     }
+
+                // A gateway-level cancellation is terminal for the caller even when the replay
+                // recovered a valid idempotent reservation.  The id is already in the ledger, so
+                // the outer cancellation handler can retract it before rethrowing.
+                createAttempt.cancellation?.let { throw it }
 
                 currentCoroutineContext().ensureActive()
                 val putResult = safeCall("put") { gateway.put(session.result.upload, file) }
@@ -416,14 +425,6 @@ internal class DirectAttachmentUploadCoordinator(
                 )
             }
         } catch (cancellation: CancellationException) {
-            if (createCancellationObserved) {
-                // Explicit cancellation from the create gateway is not made safe by the
-                // NonCancellable wrapper: the server may already have accepted a reservation
-                // while returning no parseable upload id. Keep this sticky unknown evidence so
-                // an empty ledger cannot be mistaken for a safe no-op cleanup.
-                sessionLedger.markUnknownReservation()
-                safeDiagnostics("attachment_upload_compensation_unknown_reservation safe=false phase=create_cancellation")
-            }
             // Gallery callers normally enter this protocol from a NonCancellable
             // handoff, but preserve the same compensation guarantee for direct
             // callers before propagating cancellation.
@@ -440,10 +441,10 @@ internal class DirectAttachmentUploadCoordinator(
             failAfterCreated(
                 sessionLedger,
                 DataResult.Error(
-                ScreenError(
-                    code = "attachment_upload_batch_failed",
+                    ScreenError(
+                        code = "attachment_upload_batch_failed",
                         retryable = true,
-                )
+                    )
                 )
             )
         }
@@ -463,6 +464,64 @@ internal class DirectAttachmentUploadCoordinator(
         safeDiagnostics("attachment_upload_complete_retry serverCode=$serverCode")
         return safeCall("complete") { gateway.complete(uploadId) }
     }
+
+    /**
+     * Resolve a create response even when the first transport reports cancellation.
+     *
+     * The caller's cancellation cannot enter this block because it is [NonCancellable].  A
+     * cancellation thrown by the gateway itself therefore represents an ambiguous network
+     * outcome: the server may have committed the idempotent create before the response was lost.
+     * Replaying the exact request (including [AttachmentUploadSessionCreateRequest.clientRequestId])
+     * gives the server a chance to return the original reservation.  If the replay is also
+     * canceled, the outer ledger marks the reservation unknown and fails closed; it never reports
+     * an empty ledger as a safe cleanup.
+     */
+    private data class CreateSessionAttempt(
+        val result: DataResult<AttachmentUploadSessionCreateResult>?,
+        val cancellation: CancellationException? = null,
+        val unknownReservation: Boolean = false,
+    )
+
+    private suspend fun createSessionNonCancellable(
+        request: AttachmentUploadSessionCreateRequest,
+    ): CreateSessionAttempt =
+        withContext(NonCancellable) {
+            try {
+                CreateSessionAttempt(result = safeCall("create") { gateway.create(request) })
+            } catch (firstCancellation: CancellationException) {
+                safeDiagnostics(
+                    "attachment_upload_direct_create_cancellation_recovery " +
+                        "requestId=${request.clientRequestId.take(8)}"
+                )
+                val replay = try {
+                    // Same idempotency key is intentional; generating a new request id here could
+                    // create a second reservation while the first response is merely delayed.
+                    safeCall("create") { gateway.create(request) }
+                } catch (secondCancellation: CancellationException) {
+                    safeDiagnostics(
+                        "attachment_upload_compensation_unknown_reservation safe=false " +
+                            "phase=create_cancellation_recovery requestId=${request.clientRequestId.take(8)}"
+                    )
+                    // Preserve cancellation semantics for the caller.  The outer catch performs
+                    // the NonCancellable compensation pass before rethrowing this signal.
+                    return@withContext CreateSessionAttempt(
+                        result = null,
+                        cancellation = secondCancellation,
+                        unknownReservation = true,
+                    )
+                }
+                // A non-content replay does not prove that the first request and the replay refer
+                // to the same server reservation. Keep any recoverable UUIDs for best-effort
+                // cancellation, but retain sticky unknown evidence so a successful cancel cannot
+                // be misreported as a globally safe retract without a valid replay body.
+                val replayUnknownReservation = replay !is DataResult.Content
+                CreateSessionAttempt(
+                    result = replay,
+                    cancellation = firstCancellation,
+                    unknownReservation = replayUnknownReservation,
+                )
+            }
+        }
 
     private suspend fun failAfterCreated(
         sessionLedger: AttachmentUploadSessionLedger,
