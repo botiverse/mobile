@@ -4,6 +4,7 @@ import build.raft.app.components.SlockAnchoredMetaChip
 import build.raft.app.components.SlockAttachmentPreviewCard
 import build.raft.app.components.SlockAttachmentPreviewCardWidth
 import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockChipLoadingIndicator
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalSearchField
@@ -109,6 +110,8 @@ import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksDataStoreStatus
 import build.raft.app.data.SharedTasksEvent
 import build.raft.app.data.SharedTasksRouteIntent
+import build.raft.app.data.TasksUnassignedAssigneeFilterId
+import build.raft.app.data.tasksIdentityFilterId
 import build.raft.app.data.SharedTasksProjectionSlice
 import build.raft.app.data.SharedTasksScope
 import build.raft.app.data.SharedTaskReferenceResolution
@@ -177,6 +180,8 @@ import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskStatus
+import build.raft.app.components.SlockAnchorPlacement
+import build.raft.app.model.TaskId
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.formatSlockTimestampEpochMillis
@@ -764,6 +769,7 @@ internal fun threadEventRequiresWriteAccess(action: String): Boolean =
             "removeMember",
             "convertMessageToTask",
             "setTaskStatus",
+            "setTaskAssignee",
             "markTaskDone",
             "reopenTask",
             "joinChannel",
@@ -771,6 +777,47 @@ internal fun threadEventRequiresWriteAccess(action: String): Boolean =
             "cancelLocalSend",
             "deleteLocalFailedSend"
         ) || (action == "settingsAction")
+
+// Task #258: pure selection rules for the inline task chip's combined detail
+// panel, extracted so the fail-closed fallback and the assignee ordering contract
+// (unassigned sentinel first, humans before agents, System excluded, display-name
+// search) are unit-testable without a Composable host.
+internal fun threadTaskDetailPanelUseLegacy(linkedTask: TaskSummary?): Boolean = linkedTask == null
+
+/** artin 2026-09-01/02: task assignee picker scope = current channel, never server.
+ *  Before the channel member slice loads, reuse the synchronous channel roster
+ *  carried by the thread payload (no server-wide flash). */
+internal fun taskAssigneeIdentityOptions(
+    channelMembers: List<MemberProfile>,
+    channelMembersLoaded: Boolean,
+    payloadMembers: List<MemberProfile>
+): List<MemberProfile> = if (channelMembersLoaded) channelMembers else payloadMembers
+
+internal fun threadTaskAssigneeRows(
+    assigneeOptions: List<MemberProfile>,
+    search: String
+): List<MemberProfile?> {
+    val normalized = search.trim()
+    return (listOf<MemberProfile?>(null) + assigneeOptions)
+        .filter { row -> row == null || row.kind != MemberKind.System }
+        .filter { row -> row == null || normalized.isEmpty() || row.displayName.contains(normalized, ignoreCase = true) }
+        .sortedWith(
+            Comparator<MemberProfile?> { a, b ->
+                val aUnassigned = a == null
+                val bUnassigned = b == null
+                when {
+                    aUnassigned != bUnassigned -> if (aUnassigned) -1 else 1
+                    aUnassigned -> 0
+                    (a!!.kind == MemberKind.Human) != (b!!.kind == MemberKind.Human) ->
+                        if (a.kind == MemberKind.Human) -1 else 1
+                    else -> a.displayName.lowercase().compareTo(b.displayName.lowercase())
+                }
+            }
+        )
+}
+
+internal fun threadTaskAssigneeRowId(row: MemberProfile?): String =
+    row?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
 
 internal fun threadComposerEventRequiresWriteAccess(action: String): Boolean =
     action in
@@ -7932,7 +7979,17 @@ internal fun SharedThreadRouteContent(
             resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
             tasksViewModel = tasksViewModel,
             taskChannelId = taskChannelId,
-            taskIdentityOptions = threadServerMembersEntry.members,
+            // artin 2026-09-01/02: the task assignee picker must list CURRENT CHANNEL
+            // members, never the server roster. Channel member slice once loaded;
+            // before that, reuse the channel roster the thread payload already
+            // carries (baseRenderedPayload.members via threadMembersProjection)
+            // — synchronous, so the picker never flashes server-wide names.
+            taskIdentityOptions = taskAssigneeIdentityOptions(
+                channelMembers = threadChannelMembersSlice.members,
+                channelMembersLoaded =
+                    threadChannelMembersSlice.status == SharedServerMembersLoadStatus.Loaded,
+                payloadMembers = threadMembersProjection.members.mapNotNull { it.toMemberProfile() }
+            ),
             linkedTasksProjection = linkedTasksProjection,
             filesViewModel = filesViewModel,
             memberSuggestionsFlow = memberSuggestionsFlow,
@@ -9032,6 +9089,27 @@ internal fun SharedThreadRouteContent(
                         return@ThreadPageContent
                     }
                     val intent = linkedTasksProjection.statusUpdateIntent(itemId, status)
+                    if (tasksViewModel == null || intent == null) {
+                        bridge.toast(unableToUpdateTaskLabel)
+                        return@ThreadPageContent
+                    }
+                    tasksViewModel.dispatch(intent)
+                }
+                // Task #258: inline task detail panel assignee row. tab carries the
+                // assignee filter id ("unassigned" sentinel or member filter id);
+                // resolve through the same server-scoped directory the board uses.
+                action == "setTaskAssignee" && !itemId.isNullOrBlank() && !tab.isNullOrBlank() -> {
+                    val assignee =
+                        if (tab == TasksUnassignedAssigneeFilterId) {
+                            null
+                        } else {
+                            threadServerMembersEntry.members.firstOrNull { it.tasksIdentityFilterId() == tab }
+                        }
+                    if (assignee == null && tab != TasksUnassignedAssigneeFilterId) {
+                        bridge.toast(unableToUpdateTaskLabel)
+                        return@ThreadPageContent
+                    }
+                    val intent = linkedTasksProjection.assignUpdateIntent(itemId, assignee)
                     if (tasksViewModel == null || intent == null) {
                         bridge.toast(unableToUpdateTaskLabel)
                         return@ThreadPageContent
@@ -11742,6 +11820,7 @@ private fun ThreadPageContent(
                         composerDraftPersistSlice = composerDraftPersistSlice,
                         composerKeyboardInsetDp = composerKeyboardInsetDp,
                         linkedTasksProjection = linkedTasksProjection,
+                        taskAssigneeOptions = taskIdentityOptions,
                         highlightedMentions = highlightedMentions,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
@@ -13053,6 +13132,8 @@ private fun ThreadChatTab(
     composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     composerKeyboardInsetDp: Float,
     linkedTasksProjection: ThreadLinkedTasksProjection,
+    // Task #258: pass-through to ThreadMessagesList's task detail panel.
+    taskAssigneeOptions: List<MemberProfile> = emptyList(),
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
@@ -13148,6 +13229,7 @@ private fun ThreadChatTab(
                     activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
                     linkedTasksProjection = linkedTasksProjection,
+                    taskAssigneeOptions = taskAssigneeOptions,
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
@@ -13228,6 +13310,7 @@ private fun ThreadChatTab(
                     activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
                     linkedTasksProjection = linkedTasksProjection,
+                    taskAssigneeOptions = taskAssigneeOptions,
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
@@ -13299,6 +13382,7 @@ private fun ThreadChatTab(
                 activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
                 composerKeyboardInsetDp = composerKeyboardInsetDp,
                 linkedTasksProjection = linkedTasksProjection,
+                taskAssigneeOptions = taskAssigneeOptions,
                 highlightedMentions = highlightedMentions,
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
@@ -13613,6 +13697,9 @@ private fun ThreadMessagesList(
     activeReplyDraftParentMessageIds: Set<String>,
     composerKeyboardInsetDp: Float,
     linkedTasksProjection: ThreadLinkedTasksProjection,
+    // Task #258: server-scoped identity directory for the inline task detail
+    // panel's assignee row (same pool the thread Tasks tab filters use).
+    taskAssigneeOptions: List<MemberProfile> = emptyList(),
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
@@ -16792,20 +16879,54 @@ private fun ThreadMessagesList(
                     ?: return@let
             renderPayload.threadActionMessage(messageId, linkedTasksProjection)?.let { message ->
                 val selectedStatus = message.taskStatus.threadTaskStatusOption()
-                SlockTaskStatusMenuOverlay(
-                    anchor = resolvedTaskStatusAnchor,
-                    items = ThreadTaskStatusMenuItems,
-                    selectedId = selectedStatus.key,
-                    onDismiss = { taskStatusMenuMessageId = null },
-                    onSelect = { selectedId ->
-                        taskStatusMenuMessageId = null
-                        val taskId = message.taskId?.takeIf { it.isNotBlank() }
-                        val status = selectedId.toSharedThreadTaskStatus()
-                        if (taskId != null && status != null && status.name != selectedStatus.key) {
-                            onThreadEvent("setTaskStatus", taskId, null, selectedId)
+                // Task #258 (artin msg=bd6a3a0b): the inline task chip opens the
+                // combined task detail panel — description + status + assignee —
+                // instead of the status-only menu. Fail closed to the legacy status
+                // menu when the linked task summary (title/description) isn't loaded.
+                val linkedTask = message.taskId?.let { linkedTasksProjection.taskById(it) }
+                if (linkedTask == null || threadTaskDetailPanelUseLegacy(linkedTask)) {
+                    SlockTaskStatusMenuOverlay(
+                        anchor = resolvedTaskStatusAnchor,
+                        items = ThreadTaskStatusMenuItems,
+                        selectedId = selectedStatus.key,
+                        onDismiss = { taskStatusMenuMessageId = null },
+                        onSelect = { selectedId ->
+                            taskStatusMenuMessageId = null
+                            val taskId = message.taskId?.takeIf { it.isNotBlank() }
+                            val status = selectedId.toSharedThreadTaskStatus()
+                            if (taskId != null && status != null && status.name != selectedStatus.key) {
+                                onThreadEvent("setTaskStatus", taskId, null, selectedId)
+                            }
                         }
-                    }
-                )
+                    )
+                } else {
+                    ThreadTaskDetailDialog(
+                        task = linkedTask,
+                        assigneeOptions = taskAssigneeOptions,
+                        agentStatusResolver = agentStatusResolver,
+                        onDismiss = { taskStatusMenuMessageId = null },
+                        onStatusSelect = { selectedId ->
+                            taskStatusMenuMessageId = null
+                            val taskId = linkedTask.id.value
+                            val status = selectedId.toSharedThreadTaskStatus()
+                            if (taskId.isNotBlank() && status != null && status.name != selectedStatus.key) {
+                                onThreadEvent("setTaskStatus", taskId, null, selectedId)
+                            }
+                        },
+                        onAssigneeSelect = { assignee ->
+                            taskStatusMenuMessageId = null
+                            val taskId = linkedTask.id.value
+                            if (taskId.isNotBlank()) {
+                                onThreadEvent(
+                                    "setTaskAssignee",
+                                    taskId,
+                                    null,
+                                    assignee?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
+                                )
+                            }
+                        }
+                    )
+                }
             }
         }
     }
@@ -25958,7 +26079,7 @@ private fun ThreadAddMemberModal(
     }
 }
 
-private fun threadMemberListHeight(agentCount: Int, humanCount: Int, maxHeight: Int = 288): Int {
+internal fun threadMemberListHeight(agentCount: Int, humanCount: Int, maxHeight: Int = 288): Int {
     val sectionCount = listOf(agentCount, humanCount).count { it > 0 }
     val rowCount = agentCount + humanCount
     return (sectionCount * 30 + rowCount * 58 + 8).coerceIn(108, maxHeight)
@@ -26687,3 +26808,213 @@ private fun ThreadStateActionMessage(
         }
     }
 }
+
+// Task #258 (artin msg=bd6a3a0b): the channel/thread inline task chip opens this
+// combined panel — task description + status switcher + assignee switcher — so
+// assignee editing is reachable from conversation context, not only the board.
+// Status rows mirror TasksStatusDialog (#250); the assignee list mirrors the
+// board assignee pill's rules (task #244 / web ruling stdrc msg=4c357cb1):
+// "unassigned" sentinel always first and never filtered, humans before agents,
+// search matches the visible display name.
+@Composable
+@OptIn(com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi::class)
+private fun ThreadTaskDetailDialog(
+    task: TaskSummary,
+    assigneeOptions: List<MemberProfile>,
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    onDismiss: () -> Unit,
+    onStatusSelect: (String) -> Unit,
+    onAssigneeSelect: (MemberProfile?) -> Unit
+) {
+    val statusLabel = stringResource(MR.strings.tasks_label_status)
+    val assigneeLabel = stringResource(MR.strings.tasks_chip_assignee)
+    val creatorLabel = stringResource(MR.strings.tasks_chip_creator)
+    val unassignedLabel = stringResource(MR.strings.tasks_assignee_unassigned)
+    val searchPlaceholder = stringResource(MR.strings.tasks_search_assignees)
+    // Task #258 (artin msg=6f430fed/9c943070/909777d9): status and assignee pills
+    // reuse the task-card SlockAnchoredMetaChip (i18n, vertical centering) and are
+    // tap-to-open-menu controls — the status pill opens the exact same menu as the
+    // thread inline chip (SlockTaskStatusMenuOverlay). Creator shows read-only.
+    // Task #258 successor (artin "修窄一点", Mahua/Nathan ruling msg=a2232561/ed8b7d79):
+    // the assignee pill toggles an IN-DIALOG expanding section instead of the
+    // Tasks-page SlockFilterPopover. The popover opens a second Kuikly native Modal
+    // window stacked on the dialog window, and its plain-`clickable` rows are
+    // swallowed by the outer dismiss barrier (row taps dismissed the whole stack
+    // without selecting; the Tasks page main window is unaffected). Keeping the
+    // picker inside the dialog's own window avoids nested-Modal dispatch entirely;
+    // the status menu stays on the shared overlay because its Button rows win
+    // native dispatch (SlockMenu.kt contract) and already work.
+    var statusMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    // Task #258 successor (artin msg=f65282d2): assignee picker is a standalone
+    // centered modal, so the flag only tracks open/closed (no popover anchor).
+    var assigneeMenuOpen by remember { mutableStateOf<Boolean?>(null) }
+    var assigneeMenuSearch by remember { mutableStateOf(TextFieldValue("")) }
+    val assigneeRows = threadTaskAssigneeRows(assigneeOptions, assigneeMenuSearch.text)
+    val selectedAssigneeId = task.assignee?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
+    val statusMeta = task.status.sharedTaskStatusChipMeta()
+    // Task #258 successor (artin msg=478e8978, web ref): the header shows only
+    // the channel identifier (small muted line) and the localized task number —
+    // never the task title, which can be too long for the header. The task title
+    // and description render inside the body instead.
+    val taskNumberLabel = task.taskNumber?.let { number ->
+        stringResource(MR.strings.tasks_detail_task_identifier, number)
+    }
+    val headerOverline = task.taskNumber?.let { task.channelName?.takeIf { name -> name.isNotBlank() }?.let { "#$it" } }
+    SlockUnifiedDialog(
+        title = taskNumberLabel ?: task.channelName.orEmpty(),
+        overline = headerOverline,
+        titleFontSize = 14,
+        titleLineHeight = 18,
+        titleMaxLines = 1,
+        onDismiss = onDismiss,
+        contentSpacing = SlockSpacing.Sm
+    ) {
+        // Task title now lives in the body (header is identifier-only).
+        Text(
+            text = task.tasksMeaningfulDisplayTitle(),
+            style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis
+        )
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            // Task #258 (artin msg=9c943070/909777d9): reuse the exact task-card
+            // status/assignee chips (SlockAnchoredMetaChip, i18n labels) with the
+            // label outside the pill, each pair as one wrap unit so labels stay
+            // vertically centered with their chip.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = statusLabel,
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextMutedGray
+                )
+                SlockAnchoredMetaChip(
+                    label = task.status.localizedLabel(),
+                    iconName = null,
+                    color = task.status.sharedTaskStatusChipMeta().color,
+                    onClick = { anchor -> statusMenuAnchor = anchor },
+                    anchorOwnerIdentity = threadTaskDetailMenuOwnerIdentity(task.id, "status"),
+                    modifier = Modifier.padding(start = 6.dp),
+                    trailingIconName = SlockLucideIconName.Pencil,
+                    minHeight = 24.dp,
+                    horizontalPadding = 8.dp,
+                    labelFontSize = 12.sp,
+                    labelLineHeight = 16.sp,
+                    borderWidth = SlockStroke.Default,
+                    anchorPlacement = SlockAnchorPlacement.BottomEnd
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = assigneeLabel,
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextMutedGray
+                )
+                SlockAnchoredMetaChip(
+                    label = task.assignee?.displayName?.let { "@$it" }
+                        ?: unassignedLabel,
+                    iconName = null,
+                    color = SlockColor.SurfaceWhite,
+                    onClick = { _ -> assigneeMenuOpen = true },
+                    anchorOwnerIdentity = threadTaskDetailMenuOwnerIdentity(task.id, "assignee"),
+                    modifier = Modifier
+                        .padding(start = 6.dp)
+                        .widthIn(max = 160.dp),
+                    trailingIconName = SlockLucideIconName.Pencil,
+                    minHeight = 24.dp,
+                    horizontalPadding = 8.dp,
+                    labelFontSize = 12.sp,
+                    labelLineHeight = 16.sp,
+                    borderWidth = SlockStroke.Default,
+                    anchorPlacement = SlockAnchorPlacement.BottomEnd
+                )
+            }
+            task.creator?.let { creator ->
+                // Same 24dp chip height as the status/assignee rows above so all
+                // three wrap units center-align on a shared FlowRow line.
+                Row(
+                    modifier = Modifier.height(24.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = creatorLabel,
+                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextMutedGray
+                    )
+                    Text(
+                        text = creator.displayName,
+                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
+                            .withSlockFontWeight(FontWeight.Bold),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 6.dp)
+                    )
+                }
+            }
+        }
+        task.description?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
+            Text(
+                text = description,
+                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = SlockColor.TextBlack.copy(alpha = 0.65f),
+                maxLines = 6,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+    statusMenuAnchor?.let { anchor ->
+        SlockTaskStatusMenuOverlay(
+            anchor = anchor,
+            items = ThreadTaskStatusMenuItems,
+            selectedId = statusMeta.key,
+            onDismiss = { statusMenuAnchor = null },
+            onSelect = { selectedId ->
+                statusMenuAnchor = null
+                onStatusSelect(selectedId)
+            }
+        )
+    }
+    assigneeMenuOpen?.let { open ->
+        // Task #258 successor (artin msg=ed597ee6/f65282d2): standalone centered
+        // assignee modal reusing the channel add-member interaction code. Row
+        // shaping (unassigned sentinel first, then agents/humans sections) stays
+        // here; search value resets when the modal closes or a row applies.
+        SlockTaskAssigneeMenuOverlay(
+            open = open,
+            onDismiss = { assigneeMenuOpen = null },
+            rows = assigneeRows,
+            selectedId = selectedAssigneeId,
+            agentStatusResolver = agentStatusResolver,
+            searchValue = assigneeMenuSearch,
+            onSearchValueChange = { assigneeMenuSearch = it },
+            searchPlaceholder = searchPlaceholder,
+            modalTitle = stringResource(MR.strings.tasks_assignee_picker_title),
+            unassignedLabel = unassignedLabel,
+            humansHeaderLabel = stringResource(MR.strings.thread_members_humans),
+            agentsHeaderLabel = stringResource(MR.strings.thread_members_agents),
+            onSelect = { selectedId ->
+                assigneeMenuOpen = null
+                assigneeMenuSearch = TextFieldValue("")
+                if (selectedId != selectedAssigneeId) {
+                    // No member matches the unassigned sentinel → onAssigneeSelect(null).
+                    onAssigneeSelect(
+                        assigneeOptions.firstOrNull { it.tasksIdentityFilterId() == selectedId }
+                    )
+                }
+            }
+        )
+    }
+}
+
+internal fun threadTaskDetailMenuOwnerIdentity(taskId: TaskId, slot: String): String =
+    "thread_task_detail:${taskId.value}:$slot"
+
+/**
+ * Stable anchor-owner identity for the task detail dialog's status/assignee
+ * popover anchors, so multiple concurrent overlays stay scoped per task slot.
+ */

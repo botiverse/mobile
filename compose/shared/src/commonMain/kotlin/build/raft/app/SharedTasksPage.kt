@@ -848,13 +848,22 @@ private fun SharedTasksLoadedBodyContent(
 
         statusMenuTask?.let { task ->
             val updating = state.statusUpdatingTaskId == task.id.value
-            TasksStatusDialog(
-                task = task,
-                updating = updating,
-                errorCode = state.statusUpdateErrorCode,
-                onDismiss = { if (!updating) statusMenuTask = null },
-                onSelect = { next ->
-                    if (!updating && next != task.status) {
+            val resolvedStatusAnchor =
+                statusMenuAnchor?.takeIf { it.belongsTo(tasksStatusMenuOwnerIdentity(task.id.value)) }
+                    ?: return@let
+            // artin msg=2736fb22: task-tab status click keeps the OLD anchored
+            // menu interaction (Todo / In progress / …) — no modal.
+            SlockTaskStatusMenuOverlay(
+                anchor = resolvedStatusAnchor,
+                items = TaskStatus.values().map { status ->
+                    SlockBaseMenuItem(id = status.name, label = status.localizedLabel())
+                },
+                selectedId = task.status.name,
+                onDismiss = { statusMenuTask = null },
+                onSelect = { selectedId ->
+                    statusMenuTask = null
+                    val next = TaskStatus.values().firstOrNull { it.name == selectedId }
+                    if (!updating && next != null && next != task.status) {
                         onIntent(SharedTasksRouteIntent.UpdateStatus(task, next))
                     }
                 }
@@ -1660,7 +1669,7 @@ private fun TaskStatus.nextStatus(): TaskStatus =
         TaskStatus.Closed -> TaskStatus.Todo
     }
 
-private fun TaskSummary.tasksMeaningfulDisplayTitle(): String {
+internal fun TaskSummary.tasksMeaningfulDisplayTitle(): String {
     val raw = tasksDisplayTitle()
     val numberLabel = taskNumber?.let { "#$it" } ?: return raw
     return raw.removePrefix(numberLabel).trim().takeIf { it.isNotBlank() } ?: raw
