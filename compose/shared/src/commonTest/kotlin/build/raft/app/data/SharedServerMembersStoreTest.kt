@@ -2939,16 +2939,12 @@ class SharedServerMembersStoreTest {
 
     @Test
     fun memberStatusFlowPassesSeedProvenanceIntoThePolicy() = runBlocking {
-        // Pins the WIRING, not the pure function: with the shipped PublishAsOffline policy a
-        // seed and an authoritative Offline publish identical values, so nothing could catch
-        // this edge passing the wrong `seedOnly`. Injecting a policy that distinguishes them
-        // is what keeps that mistake red-able before the product choice lands.
+        // Pins the WIRING, not the pure function: that this edge passes the right `seedOnly`.
+        // Under the shipped PublishNothing policy a seed and an authoritative Offline publish
+        // different results, so the two cases below are distinguishable without injecting
+        // anything — mislabelling the seed cache as authoritative turns this red.
         val serverId = ServerId("server-1")
-        val seedOnlyStore =
-            SharedServerMembersStore(
-                FakeMemberRepository(),
-                seedOnlyOfflinePolicy = SeedOnlyOfflinePolicy.PublishNothing
-            )
+        val seedOnlyStore = SharedServerMembersStore(FakeMemberRepository())
         seedOnlyStore.seedThreadAuthorProfiles(
             serverId,
             listOf(
@@ -2963,11 +2959,7 @@ class SharedServerMembersStoreTest {
         )
         assertNull(seedOnlyStore.memberStatusFlow(serverId, "agent-1").first())
 
-        val rosterStore =
-            SharedServerMembersStore(
-                FakeMemberRepository(),
-                seedOnlyOfflinePolicy = SeedOnlyOfflinePolicy.PublishNothing
-            )
+        val rosterStore = SharedServerMembersStore(FakeMemberRepository())
         rosterStore.seed(
             MemberSnapshot(
                 server(serverId.value),
@@ -2984,6 +2976,48 @@ class SharedServerMembersStoreTest {
             SharedServerMemberStatus(status = null, presence = Presence.Offline),
             rosterStore.memberStatusFlow(serverId, "agent-1").first(),
             "a roster member is authoritative: its Offline is an observation and must survive"
+        )
+    }
+
+    @Test
+    fun snapshotMemberStatusAppliesTheSamePolicyAsMemberStatusFlow() {
+        // memberStatus() has no production callers today, but it falls back to the same seed
+        // profile cache and sits under a comment that offers it as the sibling of
+        // memberStatusFlow. Left unpolicied it would hand the forced-Offline artefact back to
+        // whoever takes that invitation, silently restoring task #253 (@LiBai, review #254).
+        val serverId = ServerId("server-1")
+        val seedOnlyStore = SharedServerMembersStore(FakeMemberRepository())
+        seedOnlyStore.seedThreadAuthorProfiles(
+            serverId,
+            listOf(
+                KuiklyThreadMessageItem(
+                    id = "cold-start-message",
+                    authorId = "agent-1",
+                    authorName = "Argus",
+                    authorKind = "agent"
+                )
+            ),
+            source = "cold_start"
+        )
+        assertNull(seedOnlyStore.state.value.memberStatus(serverId, "agent-1"))
+
+        val rosterStore = SharedServerMembersStore(FakeMemberRepository())
+        rosterStore.seed(
+            MemberSnapshot(
+                server(serverId.value),
+                listOf(
+                    member("agent-1", "Argus").copy(
+                        kind = MemberKind.Agent,
+                        agentStatus = null,
+                        presence = Presence.Offline
+                    )
+                )
+            )
+        )
+        assertEquals(
+            SharedServerMemberStatus(status = null, presence = Presence.Offline),
+            rosterStore.state.value.memberStatus(serverId, "agent-1"),
+            "a roster member's Offline is an observation and must survive here too"
         )
     }
 
