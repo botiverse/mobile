@@ -50,6 +50,10 @@ internal class RealtimeAuthorityProvider(
     private val registry: RealtimeAuthorityRegistry,
     private val authStore: SlockAuthSessionStore,
     private val authEvents: SlockAuthSessionEventSource,
+    // Environment half of the session identity (task #1109). Read together with the session on every
+    // reconcile; the API base url of the selected environment is the app-wide environment id
+    // (same normalization as the presence binding and the pending-send journal owner key).
+    private val currentEnvironmentId: () -> String,
     private val diagnosticsLogger: (String) -> Unit = {},
     private val canonicalFinalIntegration: RealtimeCanonicalFinalSinkIntegrationSeam? = null,
     // D.18 fault-injection seam: tests override the canonical-final
@@ -297,16 +301,7 @@ internal class RealtimeAuthorityProvider(
         block: suspend (CurrentMessageCommitContext) -> Unit,
     ): Boolean =
         registry.runIfCurrentGrant(capturedGrant) {
-            block(
-                CurrentMessageCommitContext(
-                    partition =
-                        DurablePartitionKey(
-                            serverId = capturedGrant.serverId,
-                            principalId = capturedGrant.principalId,
-                            consumerId = SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID,
-                        ),
-                ),
-            )
+            block(capturedGrant.currentMessageCommitContext())
         }
 
     /**
@@ -497,7 +492,7 @@ internal class RealtimeAuthorityProvider(
                 val grantsBeforeMutation = if (fullPublish) emptySet() else currentGrantSet()
                 currentSession = authStore.readSession()
                 registry.advanceAuthFromCurrentSession(
-                    session = currentSession.toRealtimeAuthoritySession(),
+                    session = currentSession.toRealtimeAuthoritySession(currentEnvironmentId()),
                     force = false,
                 )
                 if (!runBindingHookLocked()) return@withLock false
@@ -570,7 +565,7 @@ internal class RealtimeAuthorityProvider(
             val grantsBeforeMutation = if (fullPublish) emptySet() else currentGrantSet()
             currentSession = authStore.readSession()
             registry.advanceAuthFromCurrentSession(
-                session = currentSession.toRealtimeAuthoritySession(),
+                session = currentSession.toRealtimeAuthoritySession(currentEnvironmentId()),
                 force = true,
             )
             // Revision-derived state (presence binding) becomes ready HERE —
@@ -636,7 +631,7 @@ internal class RealtimeAuthorityProvider(
         if (!pendingAuthReconciliation.value) return true
         currentSession = authStore.readSession()
         registry.advanceAuthFromCurrentSession(
-            session = currentSession.toRealtimeAuthoritySession(),
+            session = currentSession.toRealtimeAuthoritySession(currentEnvironmentId()),
             force = true,
         )
         if (!runBindingHookLocked()) return false
@@ -661,7 +656,7 @@ internal class RealtimeAuthorityProvider(
         // Duplicate-safe on retry: the durable revision already matches, so
         // the registry advance is a no-op while leases stay intact.
         registry.advanceAuthFromCurrentSession(
-            session = currentSession.toRealtimeAuthoritySession(),
+            session = currentSession.toRealtimeAuthoritySession(currentEnvironmentId()),
             force = false,
         )
         // Initial-session readiness: the binding for the durable/current
@@ -685,7 +680,7 @@ internal class RealtimeAuthorityProvider(
     ) {
         val snapshot = registry.snapshot.value
         val session = currentSession
-        val sessionIdentity = session.toRealtimeAuthoritySession()
+        val sessionIdentity = session.toRealtimeAuthoritySession(currentEnvironmentId())
         val credentialsMatch = session != null && sessionIdentity == snapshot.authRevision.session
         val activeByKey = snapshot.activeLeases.values.associateBy { it.scopeKey }
         val knownKeys = synchronized(authorityFlowsLock) { authorityFlows.keys.toSet() } + activeByKey.keys
@@ -798,14 +793,7 @@ internal class RealtimeAuthorityProvider(
 }
 
 private fun RealtimeGrantRecord.currentMessageCommitContext(): CurrentMessageCommitContext =
-    CurrentMessageCommitContext(
-        partition =
-            DurablePartitionKey(
-                serverId = serverId,
-                principalId = principalId,
-                consumerId = SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID,
-            ),
-    )
+    CurrentMessageCommitContext(partition = durablePartition(SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID))
 
 private fun String.normalizedScopeKey(): String =
     trim().takeIf { it.isNotEmpty() } ?: error("realtime scope key must not be blank")
@@ -813,9 +801,15 @@ private fun String.normalizedScopeKey(): String =
 private fun String.normalizedRegistrationId(): String =
     trim().takeIf { it.isNotEmpty() } ?: error("realtime registration id must not be blank")
 
-private fun StoredAuthSession?.toRealtimeAuthoritySession(): RealtimeAuthoritySession? =
+/**
+ * Session identity = principal + servers + environment. A blank environment yields NO identity (null), never a
+ * placeholder: without a real environment no grant can be minted, so nothing can be written under a partition
+ * that would collide across environments.
+ */
+private fun StoredAuthSession?.toRealtimeAuthoritySession(environmentId: String): RealtimeAuthoritySession? =
     this?.let { session ->
         val principalId = session.user.id.trim().takeIf { it.isNotEmpty() } ?: return null
+        val normalizedEnvironmentId = environmentId.normalizedEnvironmentId().takeIf { it.isNotEmpty() } ?: return null
         RealtimeAuthoritySession(
             principalId = principalId,
             serverIds =
@@ -823,6 +817,7 @@ private fun StoredAuthSession?.toRealtimeAuthoritySession(): RealtimeAuthoritySe
                     .map { it.id.trim() }
                     .filter { it.isNotEmpty() }
                     .distinct(),
+            environmentId = normalizedEnvironmentId,
         )
     }
 

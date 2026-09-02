@@ -10,7 +10,6 @@ import build.raft.app.network.sync.CanonicalMessageV2SnapshotFrame
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotLoadResult
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotLoader
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotRequest
-import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.PersistedCursor
 import build.raft.app.network.sync.ProductionFace
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
@@ -40,11 +39,7 @@ internal class ProviderBackedCanonicalMessageV2OwnerGateway(
         grant: RealtimeGrantRecord,
         foldInput: CanonicalMessageFoldInput,
     ): CanonicalMessageV2CanaryOutcome {
-        val partition = DurablePartitionKey(
-            serverId = grant.serverId,
-            principalId = grant.principalId,
-            consumerId = SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID,
-        )
+        val partition = grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
         return canary.accept(
             partition = partition,
             foldInput = foldInput,

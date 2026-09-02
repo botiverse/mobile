@@ -14,22 +14,26 @@ class DurablePartitionKeyTest {
     @Test
     fun durableAndScopeSegmentsRejectSurroundingWhitespaceInsteadOfNormalizing() {
         listOf(
-            { DurablePartitionKey(" server", "principal", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID) },
-            { DurablePartitionKey("server ", "principal", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID) },
-            { DurablePartitionKey("server", " principal", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID) },
-            { DurablePartitionKey("server", "principal ", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID) },
-            { DurablePartitionKey("server", "principal", " consumer") },
-            { DurablePartitionKey("server", "principal", "consumer ") },
+            { DurablePartitionKey(" server", "principal", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID, "env-test") },
+            { DurablePartitionKey("server ", "principal", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID, "env-test") },
+            { DurablePartitionKey("server", " principal", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID, "env-test") },
+            { DurablePartitionKey("server", "principal ", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID, "env-test") },
+            { DurablePartitionKey("server", "principal", " consumer", "env-test") },
+            { DurablePartitionKey("server", "principal", "consumer ", "env-test") },
+            { DurablePartitionKey("server", "principal", "consumer", " env-test") },
+            { DurablePartitionKey("server", "principal", "consumer", "env-test ") },
+            { DurablePartitionKey("server", "principal", "consumer", "") },
+            { DurablePartitionKey("server", "principal", "consumer", "   ") },
             {
                 SyncScopeKey(
-                    partition = DurablePartitionKey("server", "principal", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID),
+                    partition = DurablePartitionKey("server", "principal", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID, "env-test"),
                     scopeId = " channel",
                     scopeKind = "channel",
                 )
             },
             {
                 SyncScopeKey(
-                    partition = DurablePartitionKey("server", "principal", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID),
+                    partition = DurablePartitionKey("server", "principal", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID, "env-test"),
                     scopeId = "channel",
                     scopeKind = "channel ",
                 )
@@ -39,8 +43,8 @@ class DurablePartitionKeyTest {
 
     @Test
     fun opaqueIdentityBytesRemainDistinct() {
-        val upper = DurablePartitionKey("Server-A", "Principal-A", "Consumer-A")
-        val lower = DurablePartitionKey("server-a", "principal-a", "consumer-a")
+        val upper = DurablePartitionKey("Server-A", "Principal-A", "Consumer-A", "env-test")
+        val lower = DurablePartitionKey("server-a", "principal-a", "consumer-a", "env-test")
 
         assertEquals("Server-A", upper.serverId)
         assertEquals("Principal-A", upper.principalId)

@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.network.sync.DurablePartitionKey
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -12,17 +13,72 @@ import kotlinx.serialization.json.Json
 
 private const val RealtimeAuthRevisionStorageKey = "realtimeAuthority:authRevision:v1"
 
-@Serializable
+/**
+ * Identity of the credentials behind an auth revision: WHO (principal) is authorized on WHICH servers,
+ * reached through WHICH API environment. The environment is part of the identity, not metadata — the
+ * same principal id on staging and production are two different authorities, so every grant minted from
+ * this session (and every durable partition derived from a grant) carries it.
+ */
 internal data class RealtimeAuthoritySession(
     val principalId: String,
     val serverIds: List<String>,
-)
+    val environmentId: String,
+) {
+    init {
+        require(environmentId.isNotBlank()) { "realtime authority environmentId must not be blank" }
+    }
+}
 
-@Serializable
 internal data class RealtimeAuthRevision(
     val generation: Long,
     val session: RealtimeAuthoritySession?,
 )
+
+/**
+ * Durable wire shape of [RealtimeAuthRevision]. Revisions written before the environment dimension existed
+ * carry no `environmentId`; they decode with a null session (no authority) while KEEPING their generation, so
+ * the next provider reconcile advances to generation+1 with the real environment instead of restarting the
+ * counter from zero and colliding with generation-keyed durable rows.
+ */
+@Serializable
+private data class StoredRealtimeAuthRevision(
+    val generation: Long,
+    val session: StoredRealtimeAuthoritySession?,
+)
+
+@Serializable
+private data class StoredRealtimeAuthoritySession(
+    val principalId: String,
+    val serverIds: List<String>,
+    val environmentId: String? = null,
+)
+
+private fun RealtimeAuthRevision.toStored(): StoredRealtimeAuthRevision =
+    StoredRealtimeAuthRevision(
+        generation = generation,
+        session =
+            session?.let { value ->
+                StoredRealtimeAuthoritySession(
+                    principalId = value.principalId,
+                    serverIds = value.serverIds,
+                    environmentId = value.environmentId,
+                )
+            },
+    )
+
+private fun StoredRealtimeAuthRevision.toDomain(): RealtimeAuthRevision =
+    RealtimeAuthRevision(
+        generation = generation,
+        session =
+            session?.let { value ->
+                val environmentId = value.environmentId?.trim()?.takeIf { it.isNotEmpty() } ?: return@let null
+                RealtimeAuthoritySession(
+                    principalId = value.principalId,
+                    serverIds = value.serverIds,
+                    environmentId = environmentId,
+                )
+            },
+    )
 
 internal data class RealtimeScopeLease(
     val scopeKey: String,
@@ -44,6 +100,7 @@ internal data class RealtimeConnectionWitness(
 internal data class RealtimeGrantRecord(
     val slotKey: RealtimeSlotKey,
     val principalId: String,
+    val environmentId: String,
     val authGeneration: Long,
     val connectionFamilyId: String,
     val connectionEpochId: String,
@@ -54,6 +111,19 @@ internal data class RealtimeGrantRecord(
     val serverId: String
         get() = slotKey.serverId
 }
+
+/**
+ * The ONE derivation from a grant to its durable partition. Every write-path partition must come from
+ * here so the identity dimensions (environment, server, principal) can never be dropped or defaulted at a
+ * construction site; only the consumer id varies per ledger.
+ */
+internal fun RealtimeGrantRecord.durablePartition(consumerId: String): DurablePartitionKey =
+    DurablePartitionKey(
+        environmentId = environmentId,
+        serverId = serverId,
+        principalId = principalId,
+        consumerId = consumerId,
+    )
 
 internal data class RealtimeRegistrySnapshot(
     val authRevision: RealtimeAuthRevision,
@@ -96,10 +166,11 @@ internal class KeyValueRealtimeAuthRevisionStore(
 ) : RealtimeAuthRevisionStore {
     override fun read(): RealtimeAuthRevision? =
         store.getString(RealtimeAuthRevisionStorageKey)
-            ?.let { encoded -> runCatching { json.decodeFromString<RealtimeAuthRevision>(encoded) }.getOrNull() }
+            ?.let { encoded -> runCatching { json.decodeFromString<StoredRealtimeAuthRevision>(encoded) }.getOrNull() }
+            ?.toDomain()
 
     override fun write(revision: RealtimeAuthRevision) {
-        store.putString(RealtimeAuthRevisionStorageKey, json.encodeToString(revision))
+        store.putString(RealtimeAuthRevisionStorageKey, json.encodeToString(revision.toStored()))
     }
 }
 
@@ -365,6 +436,7 @@ internal class RealtimeAuthorityRegistry(
             RealtimeGrantRecord(
                 slotKey = RealtimeSlotKey(scopeLeaseId = scopeLeaseId, serverId = serverId),
                 principalId = session.principalId,
+                environmentId = session.environmentId,
                 authGeneration = revision.generation,
                 connectionFamilyId = familyId,
                 connectionEpochId = nextOpaqueId("epoch", ++nextEpochId),
@@ -423,6 +495,7 @@ private fun RealtimeAuthRevision.normalized(): RealtimeAuthRevision =
                 RealtimeAuthoritySession(
                     principalId = value.principalId.trim(),
                     serverIds = value.serverIds.map { it.trim() }.filter { it.isNotEmpty() }.distinct(),
+                    environmentId = value.environmentId.trim(),
                 )
             },
     )

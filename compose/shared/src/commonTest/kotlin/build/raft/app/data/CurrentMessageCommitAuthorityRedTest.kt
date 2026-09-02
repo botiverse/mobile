@@ -71,9 +71,51 @@ class CurrentMessageCommitAuthorityRedTest {
                 },
             )
             assertEquals(
-                DurablePartitionKey("server-a", "user-1", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID),
+                DurablePartitionKey("server-a", "user-1", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID, "env-test"),
                 partition,
             )
+        } finally {
+            fixture.close()
+        }
+    }
+
+    /**
+     * Task #1109 (offline cache ②): the commit partition carries the REAL environment of the selected API
+     * server, normalized exactly like the pending-send journal owner key (trim + trailing '/'), so staging
+     * and production rows of one principal can never land in the same partition.
+     */
+    @Test
+    fun contextPartitionCarriesTheNormalizedSelectedEnvironment() = runBlocking {
+        val fixture = fixture("context-env", currentEnvironmentId = { " https://api.staging.test/ " })
+        try {
+            fixture.auth.replace(session(), AuthSessionEvent.Authenticated(generation = 1))
+            val authority = assertNotNull(fixture.provider.authorityFlow("shell-a").value)
+            val grant = assertNotNull(authority.grant("server-a"))
+            var partition: DurablePartitionKey? = null
+
+            assertTrue(fixture.provider.runWithCurrentMessageGrant(grant) { context -> partition = context.partition })
+            assertEquals(
+                DurablePartitionKey(
+                    serverId = "server-a",
+                    principalId = "user-1",
+                    consumerId = SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID,
+                    environmentId = "https://api.staging.test",
+                ),
+                partition,
+            )
+        } finally {
+            fixture.close()
+        }
+    }
+
+    /** No environment → no session identity → no grant → nothing can commit under a placeholder partition. */
+    @Test
+    fun blankEnvironmentYieldsNoGrantInsteadOfAPlaceholderPartition() = runBlocking {
+        val fixture = fixture("context-blank-env", currentEnvironmentId = { "   " })
+        try {
+            fixture.auth.replace(session(), AuthSessionEvent.Authenticated(generation = 1))
+            val authority = fixture.provider.authorityFlow("shell-a").value
+            assertNull(authority?.grant("server-a"))
         } finally {
             fixture.close()
         }
@@ -454,6 +496,7 @@ class CurrentMessageCommitAuthorityRedTest {
                     grant.serverId,
                     grant.principalId,
                     SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID,
+                    grant.environmentId,
                 ),
                 scopeId = "channel-1",
                 scopeKind = "channel",
@@ -510,7 +553,7 @@ class CurrentMessageCommitAuthorityRedTest {
 
         fun scope(serverId: String, principalId: String): SyncScopeKey =
             SyncScopeKey(
-                partition = DurablePartitionKey(serverId, principalId, SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID),
+                partition = DurablePartitionKey(serverId, principalId, SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID, "env-test"),
                 scopeId = "channel-1",
                 scopeKind = "channel",
             )
@@ -569,7 +612,11 @@ class CurrentMessageCommitAuthorityRedTest {
             ).also { owner -> owner.installCurrentGrantMessageShadowCommitLane(lane) }
     }
 
-    private suspend fun fixture(process: String, scopes: List<String> = listOf("shell-a")): Fixture {
+    private suspend fun fixture(
+        process: String,
+        scopes: List<String> = listOf("shell-a"),
+        currentEnvironmentId: () -> String = { "env-test" },
+    ): Fixture {
         val auth = FakeTypedAuthSessionStore()
         val registry =
             RealtimeAuthorityRegistry(
@@ -577,7 +624,7 @@ class CurrentMessageCommitAuthorityRedTest {
                 processInstanceId = process,
             )
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val provider = RealtimeAuthorityProvider(registry, auth, auth)
+        val provider = RealtimeAuthorityProvider(registry, auth, auth, currentEnvironmentId)
         provider.start(scope)
         scopes.forEach { key -> provider.registerScope(key, registrationId = "mount-$key") }
         return Fixture(auth, provider, scope)

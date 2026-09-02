@@ -40,7 +40,7 @@ class CanonicalMessageV2GreenStoreTest {
             assertFailsWith<ViewerOverlayVersionConflict> { store.compareAndWrite(key, overlay(4, "heart")) }
             assertEquals(ViewerOverlayWriteResult.Applied(4), store.compareAndWrite(key, overlay(5, "heart")))
             assertEquals(overlay(5, "heart"), store.read(key))
-            assertNull(store.read(key.copy(partition = DurablePartitionKey("server-a", "principal-b", key.partition.consumerId))))
+            assertNull(store.read(key.copy(partition = DurablePartitionKey("server-a", "principal-b", key.partition.consumerId, "env-test"))))
             assertNull(store.read(key.copy(overlayKind = "future-overlay")))
         }
     }
@@ -58,7 +58,7 @@ class CanonicalMessageV2GreenStoreTest {
         runBlocking {
             store.applySnapshot(CanonicalMessageV2SnapshotFrame(scope, listOf(minimal), cursor))
             database.queries.insertCanonicalFactIfAbsent(
-                environmentId = LEGACY_DURABLE_ENVIRONMENT_ID,
+                environmentId = "env-test",
                 serverId = "server-a",
                 principalId = "principal-a",
                 consumerId = SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID,
@@ -248,7 +248,7 @@ class CanonicalMessageV2GreenStoreTest {
         }
     }
 
-    private fun v2Partition() = DurablePartitionKey("server-a", "principal-a", SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+    private fun v2Partition() = DurablePartitionKey("server-a", "principal-a", SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID, "env-test")
     private fun v2Scope() = SyncScopeKey(v2Partition(), "channel-a", "channel")
     private fun overlayKey() = ViewerOverlayKey(v2Partition(), "channel", "channel-a", "message", "message-a", "reactions")
     private fun overlay(version: Long, emoji: String) = VersionedViewerOverlayV1(

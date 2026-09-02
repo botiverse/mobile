@@ -113,6 +113,7 @@ class CanonicalMessageV2ProductionBindingTest {
     private fun grant() = RealtimeGrantRecord(
         slotKey = RealtimeSlotKey("scope-1", "server-1"),
         principalId = "user-1",
+        environmentId = "env-test",
         authGeneration = 1L,
         connectionFamilyId = "family-1",
         connectionEpochId = "epoch-1",

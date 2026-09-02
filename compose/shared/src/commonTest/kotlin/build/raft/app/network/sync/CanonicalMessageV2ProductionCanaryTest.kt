@@ -12,7 +12,7 @@ import kotlin.test.assertIs
 
 class CanonicalMessageV2ProductionCanaryTest {
     private val partition =
-        DurablePartitionKey("server-1", "principal-1", SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+        DurablePartitionKey("server-1", "principal-1", SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID, "env-test")
 
     @Test
     fun flagOffDoesZeroV2Work() = runBlocking {
