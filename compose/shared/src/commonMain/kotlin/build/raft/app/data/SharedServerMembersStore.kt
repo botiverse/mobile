@@ -274,6 +274,69 @@ data class SharedServerMemberStatus(
     val statusLabel: String? = null
 )
 
+/**
+ * The neutral marker `memberStatusFlow` already publishes when a native reconnect retires a
+ * member's pre-connect status. It exists because [Presence] cannot express Unknown.
+ */
+internal const val NeutralAgentStatusLabel = "—"
+
+/** A scoped profile plus whether it came from an authoritative record or a message-author seed. */
+private data class ScopedMemberProfileResolution(
+    val profile: MemberProfile?,
+    val authoritative: Boolean
+)
+
+/**
+ * What a read edge publishes for an agent whose only backing profile is a message-author seed
+ * with its volatile status stripped, before any authoritative status or presence fact exists.
+ *
+ * [Presence] has no Unknown member, so [withoutVolatileStatus] must write `Presence.Offline`;
+ * on cold start that forced value reaches the indicator as a definite "Offline" label for an
+ * agent that is in fact working (task #253).
+ */
+internal enum class SeedOnlyOfflinePolicy {
+    /** The pre-task-#253 behaviour: publish the forced `Presence.Offline` unchanged. */
+    PublishAsOffline,
+
+    /** Rejected candidate: keep the dot, relabel it neutral, matching the reconnect branch. */
+    PublishNeutralLabel,
+
+    /** Publish nothing until an authoritative value exists. */
+    PublishNothing
+}
+
+/**
+ * task #253 — @artin chose "cold start shows no status dot" over a neutral placeholder, so an
+ * agent whose only backing profile is a stripped message-author seed publishes nothing until
+ * an authoritative status or presence fact arrives. The indicator already documents null as
+ * Unknown/not-ready (`SlockAgentStatusIndicator.resolveHomeAgentStatusIndicatorState`).
+ */
+internal val ActiveSeedOnlyOfflinePolicy: SeedOnlyOfflinePolicy = SeedOnlyOfflinePolicy.PublishNothing
+
+/**
+ * Applies [policy] to a status that is a forced-offline seed artefact rather than an
+ * observation. Anything carrying a real status, a real label, or a non-Offline presence is
+ * returned untouched, so a genuinely offline agent from the roster is never rewritten.
+ */
+internal fun applySeedOnlyOfflinePolicy(
+    resolved: SharedServerMemberStatus?,
+    seedOnly: Boolean,
+    policy: SeedOnlyOfflinePolicy = ActiveSeedOnlyOfflinePolicy
+): SharedServerMemberStatus? {
+    val forcedOffline =
+        seedOnly &&
+            resolved != null &&
+            resolved.status == null &&
+            resolved.statusLabel == null &&
+            resolved.presence == Presence.Offline
+    if (!forcedOffline) return resolved
+    return when (policy) {
+        SeedOnlyOfflinePolicy.PublishAsOffline -> resolved
+        SeedOnlyOfflinePolicy.PublishNeutralLabel -> resolved?.copy(statusLabel = NeutralAgentStatusLabel)
+        SeedOnlyOfflinePolicy.PublishNothing -> null
+    }
+}
+
 private fun ServerSummary?.hidesHumanDirectoryFromViewer(): Boolean =
     this?.hidesHumanDirectoryForViewer() == true
 
@@ -354,6 +417,11 @@ class SharedServerMembersStore internal constructor(
     private val presenceOwnerFlow: (ServerId) -> Flow<ProcessServerMembersOwner?> = { serverId ->
         flowOf(presenceOwner(serverId))
     },
+    // task #253: injectable so the provenance wiring stays red-able while the
+    // shipped policy is PublishAsOffline. Without this seam no test could tell
+    // an authoritative Offline from a forced seed artefact, because that policy
+    // makes the two publish identical values.
+    private val seedOnlyOfflinePolicy: SeedOnlyOfflinePolicy = ActiveSeedOnlyOfflinePolicy,
     // Write binding: owner + registry write generation frozen from ONE
     // immutable auth-context snapshot (post-merge audit on PR #1054 — owner
     // and generation must never be torn apart by a concurrent auth clear;
@@ -510,15 +578,36 @@ class SharedServerMembersStore internal constructor(
     private fun currentScopedMemberProfile(
         serverId: ServerId,
         memberId: String
-    ): MemberProfile? =
-        _state.value.entryFor(serverId)
-            ?.members
-            ?.firstOrNull { it.id.value.trim() == memberId }
-            ?: currentOwnerChannelMemberSlices(serverId)
+    ): MemberProfile? = currentScopedMemberProfileResolution(serverId, memberId).profile
+
+    /**
+     * Resolves a scoped profile together with the provenance the caller needs to tell an
+     * authoritative record apart from a message-author seed.
+     *
+     * [seedProfileCandidates] strips volatile status through [withoutVolatileStatus], and
+     * [Presence] has no Unknown member, so a stripped seed is forced to carry
+     * `Presence.Offline`. Read edges that publish agent status must not treat that forced
+     * value as an observation; keeping [ScopedMemberProfileResolution.authoritative] beside
+     * the profile is what makes the two distinguishable without widening the model type.
+     */
+    private fun currentScopedMemberProfileResolution(
+        serverId: ServerId,
+        memberId: String
+    ): ScopedMemberProfileResolution {
+        val rosterMember =
+            _state.value.entryFor(serverId)
+                ?.members
+                ?.firstOrNull { it.id.value.trim() == memberId }
+        if (rosterMember != null) return ScopedMemberProfileResolution(rosterMember, authoritative = true)
+        val channelMember =
+            currentOwnerChannelMemberSlices(serverId)
                 .asSequence()
                 .flatMap { it.members.asSequence() }
                 .firstOrNull { it.id.value.trim() == memberId }
-            ?: _state.value.profileCacheByServerId[serverId.value.trim()]?.get(memberId)
+        if (channelMember != null) return ScopedMemberProfileResolution(channelMember, authoritative = true)
+        val cached = _state.value.profileCacheByServerId[serverId.value.trim()]?.get(memberId)
+        return ScopedMemberProfileResolution(cached, authoritative = false)
+    }
 
     fun currentChannelMembers(
         serverId: ServerId,
@@ -673,9 +762,10 @@ class SharedServerMembersStore internal constructor(
                 }
                 .distinctUntilChanged()
         return combine(
-            scopedMemberProfileFlow(scopedServerId, cleanMemberId),
+            scopedMemberProfileResolutionFlow(scopedServerId, cleanMemberId),
             presenceOwnerSnapshotFlow
-        ) { member, presenceOwnerSnapshot ->
+        ) { resolution, presenceOwnerSnapshot ->
+            val member = resolution.profile
             val presenceFact = presenceOwnerSnapshot.facts[cleanMemberId]
             if (presenceOwnerSnapshot.transport != null && presenceFact == null) {
                 // A native reconnect retired the profile's pre-connect status.
@@ -689,7 +779,11 @@ class SharedServerMembersStore internal constructor(
                     statusLabel = "—"
                 )
             } else {
-                member.toSharedServerMemberStatus(presenceFact)
+                applySeedOnlyOfflinePolicy(
+                    resolved = member.toSharedServerMemberStatus(presenceFact),
+                    seedOnly = !resolution.authoritative && presenceFact == null,
+                    policy = seedOnlyOfflinePolicy
+                )
             }
         }.distinctUntilChanged()
     }
@@ -704,30 +798,38 @@ class SharedServerMembersStore internal constructor(
         return scopedMemberProfileFlow(ServerId(cleanServerId), cleanMemberId)
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     private fun scopedMemberProfileFlow(
         serverId: ServerId,
         memberId: String
     ): Flow<MemberProfile?> =
+        scopedMemberProfileResolutionFlow(serverId, memberId)
+            .map { it.profile }
+            .distinctUntilChanged()
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun scopedMemberProfileResolutionFlow(
+        serverId: ServerId,
+        memberId: String
+    ): Flow<ScopedMemberProfileResolution> =
         flow {
             // `flatMapLatest` starts its inner collection asynchronously. Emit the
             // current cached profile first so a freshly opened Members row never
             // waits a frame (or loses its initial value) before the scoped flow is
             // attached.
-            emit(currentScopedMemberProfile(serverId, memberId))
+            emit(currentScopedMemberProfileResolution(serverId, memberId))
             emitAll(
                 serverMembersEntryFlow(serverId)
                     .flatMapLatest { entry ->
                         val rosterMember = entry.members.firstOrNull { it.id.value.trim() == memberId }
                         if (rosterMember != null) {
-                            flowOf(rosterMember)
+                            flowOf(ScopedMemberProfileResolution(rosterMember, authoritative = true))
                         } else {
                             // Conversation/profile metadata can arrive before the canonical
                             // server directory. Observe that scoped cache without turning it
                             // into directory membership; normal Members rows remain on the
                             // narrow entry flow once the roster contains this member.
                             combine(state, channelMembersOwnerFlow(serverId)) { _, _ ->
-                                currentScopedMemberProfile(serverId, memberId)
+                                currentScopedMemberProfileResolution(serverId, memberId)
                             }.distinctUntilChanged()
                         }
                     }
