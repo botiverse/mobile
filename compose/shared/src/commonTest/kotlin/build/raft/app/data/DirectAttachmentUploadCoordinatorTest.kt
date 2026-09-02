@@ -17,6 +17,21 @@ import kotlin.test.assertTrue
 
 class DirectAttachmentUploadCoordinatorTest {
     @Test
+    fun explicitCreateCancellationIsUnknownAndFailsClosed() = runBlocking {
+        val gateway = FakeGateway().apply { throwCreateCancellation = true }
+        val diagnostics = mutableListOf<String>()
+        var propagated = false
+        try {
+            coordinator(gateway, diagnostics::add).upload(ChannelId("channel-1"), listOf(file("local-1")))
+        } catch (_: CancellationException) {
+            propagated = true
+        }
+        assertTrue(propagated)
+        assertEquals(0, gateway.cancelCalls)
+        assertTrue(diagnostics.any { it.contains("phase=create_cancellation") })
+    }
+
+    @Test
     fun cancellationAfterServerAcceptWaitsForCreateThenCompensatesWithoutPutOrComplete() = runBlocking {
         val gateway = FakeGateway()
         val accepted = CompletableDeferred<Unit>()
@@ -401,10 +416,13 @@ class DirectAttachmentUploadCoordinatorTest {
         }
     }
 
-    private fun coordinator(gateway: FakeGateway): DirectAttachmentUploadCoordinator =
+    private fun coordinator(
+        gateway: FakeGateway,
+        diagnostics: (String) -> Unit = {},
+    ): DirectAttachmentUploadCoordinator =
         DirectAttachmentUploadCoordinator(
             gateway = gateway,
-            diagnosticsLogger = {},
+            diagnosticsLogger = diagnostics,
         )
 
     private fun file(id: String): PlatformFile =
@@ -429,6 +447,7 @@ class DirectAttachmentUploadCoordinatorTest {
         val completeResults = ArrayDeque<DataResult<AttachmentUploadSessionCompleteResult>>()
         var createAccepted: CompletableDeferred<Unit>? = null
         var createRelease: CompletableDeferred<Unit>? = null
+        var throwCreateCancellation: Boolean = false
         val putFailureOrdinals = mutableSetOf<Int>()
         val cancelFailureOrdinals = mutableSetOf<Int>()
         val statusFailureOrdinals = mutableSetOf<Int>()
@@ -446,6 +465,7 @@ class DirectAttachmentUploadCoordinatorTest {
             request: AttachmentUploadSessionCreateRequest
         ): DataResult<AttachmentUploadSessionCreateResult> {
             createRequests += request
+            if (throwCreateCancellation) throw CancellationException("create canceled after server acceptance")
             val queued = createResults.removeFirstOrNull()
             if (queued != null) return queued
             val index = createdIds.size + 1
