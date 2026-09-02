@@ -12,6 +12,7 @@ import build.raft.app.components.SlockBrutalTextField
 import build.raft.app.components.SlockRaftUiBanner
 import build.raft.app.components.SlockRaftUiBannerSize
 import build.raft.app.components.SlockRaftUiBannerStatus
+import build.raft.app.components.SlockRaftUiSuccessBanner
 import build.raft.app.components.SlockRaftUiControlledMenu
 import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.components.SlockSwitchButton
@@ -27091,30 +27092,11 @@ private fun ThreadForwardSuccessBannerView(
                 .padding(start = 12.dp, top = slockTopSafeAreaPadding() + 8.dp, end = 12.dp),
         contentAlignment = Alignment.TopCenter
     ) {
-        SlockRaftUiBanner(
-            status = SlockRaftUiBannerStatus.Success,
+        SlockRaftUiSuccessBanner(
             description = successLabel,
-            size = SlockRaftUiBannerSize.Small,
-            modifier = Modifier.widthIn(max = 760.dp),
-            action = {
-                Row(
-                    modifier = Modifier.clickable(onClick = onViewInChat),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = viewInChatLabel,
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1
-                    )
-                    SlockLucideIcon(
-                        SlockLucideIconName.ChevronRight,
-                        modifier = Modifier.size(16.dp),
-                        color = SlockColor.TextBlackArgb
-                    )
-                }
-            }
+            actionLabel = viewInChatLabel,
+            onAction = onViewInChat,
+            modifier = Modifier.widthIn(max = 760.dp)
         )
     }
 }
