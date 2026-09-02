@@ -161,6 +161,19 @@ class ThreadForwardFlowTest {
     }
 
     @Test
+    fun directMessageBannerFailsClosedWithoutMemberIdentity() {
+        val target = target("dm-target", ForwardMessageTargetKind.RecentDirectMessage, ChannelId("dm-target"))
+            .copy(channelKind = ConversationKind.DirectMessage, channelType = "dm", memberId = null)
+        val banner =
+            ThreadForwardSuccessBanner(
+                target = target,
+                destination = ForwardMessageDestination(sourceServerId, ChannelId("dm-target"), ConversationKind.DirectMessage),
+                messageId = MessageId("forwarded")
+            )
+        assertEquals(null, banner.forwardSuccessConversationIdentity())
+    }
+
+    @Test
     fun returnedDeliveriesPopulateScopedMessageStoreAndRefreshHome() {
         val messageStore = SharedThreadMessageStore()
         var refreshCount = 0

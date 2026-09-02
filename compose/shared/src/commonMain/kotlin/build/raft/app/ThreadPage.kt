@@ -24842,6 +24842,7 @@ internal fun ForwardMessageTarget.forwardSuccessDisplayTitle(): String =
 internal fun ThreadForwardSuccessBanner.forwardSuccessConversationIdentity(): ThreadLaunchConversationIdentity? {
     val resolvedChannelId = destination.channelId.value.trim().takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return null
     val resolvedKind = destination.channelKind.takeUnless { it == ConversationKind.Thread } ?: ConversationKind.Channel
+    if (resolvedKind == ConversationKind.DirectMessage && target.memberId == null) return null
     return buildThreadLaunchConversationIdentity(
         kind = resolvedKind,
         channelId = resolvedChannelId,
