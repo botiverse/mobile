@@ -8992,38 +8992,13 @@ internal fun SharedThreadRouteContent(
         val currentDraftState = composerDraftViewModel.state.value
         composerImageActionCounter += 1
         val actionId = "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${firstFile.id.take(12)}"
-        val previewUri = firstFile.composerLocalPreviewUri().orEmpty()
         openTrackedComposerImagePreview(
-            SlockFilePreviewPayload(
-                kind = "image",
-                title = "Image preview",
-                subtitle = firstFile.fileName,
-                name = firstFile.fileName,
-                path = firstFile.fileName,
-                meta =
-                    listOf(
-                        firstFile.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
-                        firstFile.mimeType.orEmpty()
-                    ).filter { it.isNotBlank() }.joinToString(" · "),
-                imageUrl = previewUri.takeIf { it.isNotBlank() },
-                message = if (previewUri.isBlank()) "Image preview is unavailable." else "",
-                externalFileName = firstFile.fileName,
-                externalMimeType = firstFile.mimeType.orEmpty(),
-                imageGallery = files.map { file -> file.toComposerImageGalleryImage() },
-                composerImageThreadKey = threadInstanceKey,
-                composerImageActionId = actionId,
-                composerImageFileRef = firstFile.fileRef.orEmpty(),
-                composerImageFileName = firstFile.fileName,
-                composerImageMimeType = firstFile.mimeType.orEmpty(),
-                composerImageSizeBytes = firstFile.sizeBytes,
-                composerImagePreviewUri = previewUri,
-                composerImageCompressAfterEdit = !currentDraftState.originalImage,
-                composerImageOwnedTemporaryFileRefs =
-                    files.filter(PlatformFile::isComposerImageOwnedTemporary)
-                        .mapNotNull(PlatformFile::fileRef),
-                composerImageCanComplete = true,
-                composerImageCanEdit = true
-            )
+            threadComposerImageAnnotationPayload(
+                threadInstanceKey = threadInstanceKey,
+                actionId = actionId,
+                files = files,
+                originalImage = currentDraftState.originalImage,
+            ) ?: return
         )
     }
     DisposableEffect(eventBus, threadInstanceKey) {
@@ -25522,6 +25497,56 @@ internal fun KuiklyThreadAttachmentItem.threadAttachmentSummaryLine(): StringDes
 /** UI-bound formatting: raw bytes win; sizeLabel exists only for compatibility snapshots. */
 internal fun KuiklyThreadAttachmentItem.displaySizeLabel(): String =
     sizeBytes.takeIf { it > 0L }?.let(::formatAttachmentSizeLabel) ?: sizeLabel
+
+/** Group identity for the initial Thread image editor's N/N event stream. */
+internal fun threadComposerImageAnnotationGroupId(actionId: String, fileCount: Int): String =
+    actionId.trim().takeIf { it.isNotBlank() && fileCount > 1 }?.let { "$it-group" }.orEmpty()
+
+/**
+ * Builds the production initial-picker preview payload. Keeping this construction
+ * in a pure helper makes the group identity and the gallery cardinality directly
+ * testable without mounting a pager or an event bus.
+ */
+internal fun threadComposerImageAnnotationPayload(
+    threadInstanceKey: String,
+    actionId: String,
+    files: List<PlatformFile>,
+    originalImage: Boolean,
+): SlockFilePreviewPayload? {
+    val firstFile = files.firstOrNull() ?: return null
+    val previewUri = firstFile.composerLocalPreviewUri().orEmpty()
+    return SlockFilePreviewPayload(
+        kind = "image",
+        title = "Image preview",
+        subtitle = firstFile.fileName,
+        name = firstFile.fileName,
+        path = firstFile.fileName,
+        meta =
+            listOf(
+                firstFile.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+                firstFile.mimeType.orEmpty()
+            ).filter { it.isNotBlank() }.joinToString(" · "),
+        imageUrl = previewUri.takeIf { it.isNotBlank() },
+        message = if (previewUri.isBlank()) "Image preview is unavailable." else "",
+        externalFileName = firstFile.fileName,
+        externalMimeType = firstFile.mimeType.orEmpty(),
+        imageGallery = files.map { file -> file.toComposerImageGalleryImage() },
+        composerImageThreadKey = threadInstanceKey,
+        composerImageActionId = actionId,
+        composerImageGroupId = threadComposerImageAnnotationGroupId(actionId, files.size),
+        composerImageFileRef = firstFile.fileRef.orEmpty(),
+        composerImageFileName = firstFile.fileName,
+        composerImageMimeType = firstFile.mimeType.orEmpty(),
+        composerImageSizeBytes = firstFile.sizeBytes,
+        composerImagePreviewUri = previewUri,
+        composerImageCompressAfterEdit = !originalImage,
+        composerImageOwnedTemporaryFileRefs =
+            files.filter(PlatformFile::isComposerImageOwnedTemporary)
+                .mapNotNull(PlatformFile::fileRef),
+        composerImageCanComplete = true,
+        composerImageCanEdit = true
+    )
+}
 
 private fun KuiklyThreadAttachmentItem.toThreadAttachmentPreviewPayload(
     kind: String,
