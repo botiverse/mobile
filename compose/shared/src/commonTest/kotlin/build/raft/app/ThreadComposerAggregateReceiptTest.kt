@@ -308,6 +308,79 @@ class ThreadComposerAggregateReceiptTest {
         )
     }
 
+    @Test
+    fun localAdmissionReceiptRejectsUnexpectedNewUploadedRow() {
+        val store = mountedStore()
+        val local = local("local", "file:///cache/local.png", "platform_picker")
+        val before = store.state.value
+        val admissionIntent =
+            SharedThreadComposerDraftIntent.AddLocalAttachments(
+                attachments = listOf(local),
+                replacementAttachmentIdsByLocalId = mapOf(local.id to local.id)
+            )
+        val admissionReceipt = store.acceptWithState(admissionIntent)
+        assertTrue(admissionReceipt.accepted)
+        val accepted = admissionReceipt.state.uploadedAttachments.single { it.id == local.id }
+        assertEquals("uploading", accepted.status)
+        val malformedAfter =
+            admissionReceipt.state.copy(
+                uploadedAttachments = admissionReceipt.state.uploadedAttachments + ready("forged")
+            )
+        assertFalse(
+            threadComposerAttachmentAdmissionReceiptIsValid(
+                accepted = true,
+                before = before,
+                after = malformedAfter,
+                expectedDraftKey = draftKey,
+                localAttachments = listOf(local),
+                replacementAttachmentIdsByLocalId = mapOf(local.id to local.id)
+            )
+        )
+    }
+
+    @Test
+    fun localAdmissionReceiptRejectsDuplicateReplacementSlotsAndNormalizedAdmissionKeys() {
+        val store = mountedStore()
+        val first = local("first", "file:///cache/first.png", "platform_picker")
+        val second = local("second", "file:///cache/second.png", "platform_picker")
+        val before = store.state.value
+        val receipt =
+            store.acceptWithState(
+                SharedThreadComposerDraftIntent.AddLocalAttachments(
+                    attachments = listOf(first, second),
+                    replacementAttachmentIdsByLocalId = mapOf(first.id to first.id, second.id to second.id)
+                )
+            )
+        assertTrue(receipt.accepted)
+        val duplicateSlots =
+            threadComposerAttachmentAdmissionReceiptIsValid(
+                accepted = true,
+                before = before,
+                after = receipt.state,
+                expectedDraftKey = draftKey,
+                localAttachments = listOf(first, second),
+                replacementAttachmentIdsByLocalId = mapOf(first.id to "slot", second.id to "slot")
+            )
+        assertFalse(duplicateSlots)
+
+        val malformedKeys =
+            receipt.state.copy(
+                attachmentAdmissionsByLocalId =
+                    receipt.state.attachmentAdmissionsByLocalId +
+                        (" ${first.id} " to receipt.state.attachmentAdmissionsByLocalId.getValue(first.id))
+            )
+        assertFalse(
+            threadComposerAttachmentAdmissionReceiptIsValid(
+                accepted = true,
+                before = before,
+                after = malformedKeys,
+                expectedDraftKey = draftKey,
+                localAttachments = listOf(first, second),
+                replacementAttachmentIdsByLocalId = mapOf(first.id to first.id, second.id to second.id)
+            )
+        )
+    }
+
     private fun mountedStore(instanceId: String = "composer"): SharedThreadComposerDraftStore {
         val store = SharedThreadComposerDraftStore()
         store.dispatch(
