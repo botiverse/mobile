@@ -274,6 +274,7 @@ internal class DirectAttachmentUploadCoordinator(
         // fail-closed even when every known id is later retracted.
         val sessionLedger = AttachmentUploadSessionLedger()
         val completed = mutableListOf<DirectAttachmentUpload>()
+        var createCancellationObserved = false
         return try {
             for (file in normalizedFiles) {
                 val createResult =
@@ -284,19 +285,24 @@ internal class DirectAttachmentUploadCoordinator(
                     // re-checked before PUT so a canceled caller performs compensation without
                     // starting a body transfer.
                     withContext(NonCancellable) {
-                        safeCall("create") {
-                            gateway.create(
-                                AttachmentUploadSessionCreateRequest(
-                                    channelId = channelId,
-                                    filename = file.fileName,
-                                    mimeType = file.mimeType.orEmpty().ifBlank { "application/octet-stream" },
-                                    // [prepareFiles] guarantees this is a positive, resolver-verified
-                                    // value for refs or the exact byte-array length for in-memory files.
-                                    sizeBytes = file.sizeBytes
-                                        ?: error("prepared direct upload file has no verified size"),
-                                    clientRequestId = newAttachmentUploadClientRequestId(),
+                        try {
+                            safeCall("create") {
+                                gateway.create(
+                                    AttachmentUploadSessionCreateRequest(
+                                        channelId = channelId,
+                                        filename = file.fileName,
+                                        mimeType = file.mimeType.orEmpty().ifBlank { "application/octet-stream" },
+                                        // [prepareFiles] guarantees this is a positive, resolver-verified
+                                        // value for refs or the exact byte-array length for in-memory files.
+                                        sizeBytes = file.sizeBytes
+                                            ?: error("prepared direct upload file has no verified size"),
+                                        clientRequestId = newAttachmentUploadClientRequestId(),
+                                    )
                                 )
-                            )
+                            }
+                        } catch (cancellation: CancellationException) {
+                            createCancellationObserved = true
+                            throw cancellation
                         }
                     }
                 val session =
@@ -410,6 +416,14 @@ internal class DirectAttachmentUploadCoordinator(
                 )
             }
         } catch (cancellation: CancellationException) {
+            if (createCancellationObserved) {
+                // Explicit cancellation from the create gateway is not made safe by the
+                // NonCancellable wrapper: the server may already have accepted a reservation
+                // while returning no parseable upload id. Keep this sticky unknown evidence so
+                // an empty ledger cannot be mistaken for a safe no-op cleanup.
+                sessionLedger.markUnknownReservation()
+                safeDiagnostics("attachment_upload_compensation_unknown_reservation safe=false phase=create_cancellation")
+            }
             // Gallery callers normally enter this protocol from a NonCancellable
             // handoff, but preserve the same compensation guarantee for direct
             // callers before propagating cancellation.
@@ -753,6 +767,11 @@ internal class AttachmentUploadSessionLedger(
         initialIds.forEach { id ->
             if (!addLegalSessionId(id)) hasUnknownReservation = true
         }
+    }
+
+    /** Mark a reservation outcome as unknowable when create was canceled before an id was parsed. */
+    fun markUnknownReservation() {
+        hasUnknownReservation = true
     }
 
     /** Record the id from a content response; false means the response is ambiguous. */
