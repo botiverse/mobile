@@ -131,7 +131,7 @@ class LocalPreferencesTest {
         assertEquals(true, snapshot.compactConsecutiveMessages)
         assertEquals(false, snapshot.longMessageCollapseEnabled)
         assertEquals(false, snapshot.singleTapOpensThreadEnabled)
-        assertEquals(true, snapshot.threadUnreadJumpEnabled)
+        assertEquals(false, snapshot.threadUnreadJumpEnabled)
         assertEquals(false, snapshot.newMessageMenuEnabled)
         assertEquals(false, snapshot.conversationForwardGestureEnabled)
         assertEquals(false, snapshot.foregroundMessageBannersEnabled)
@@ -153,16 +153,15 @@ class LocalPreferencesTest {
     }
 
     @Test
-    fun threadUnreadJumpDefaultsOnButPreservesExplicitOff() = runBlocking {
+    fun threadUnreadJumpDefaultsOffButPreservesExplicitOn() = runBlocking {
         val store = InMemorySlockKeyValueStore()
         val repository = PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(store))
 
-        // Task #232 frozen contract: the ↓ x new pill is on by default.
-        assertEquals(true, repository.getChatLayoutPreference().threadUnreadJumpEnabled)
-
-        repository.setThreadUnreadJumpEnabled(false)
-
         assertEquals(false, repository.getChatLayoutPreference().threadUnreadJumpEnabled)
+
+        repository.setThreadUnreadJumpEnabled(true)
+
+        assertEquals(true, repository.getChatLayoutPreference().threadUnreadJumpEnabled)
     }
 
     @Test
