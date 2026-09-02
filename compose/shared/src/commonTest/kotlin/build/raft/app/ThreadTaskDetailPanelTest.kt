@@ -117,9 +117,9 @@ class ThreadTaskDetailPanelTest {
         assertNull(projection.assignUpdateIntent("task-unknown", null))
     }
 
-    // artin 2026-09-01: the task assignee picker lists CURRENT CHANNEL members
-    // once the channel roster has loaded, and only falls back to the server
-    // roster while the channel slice is still loading.
+    // artin 2026-09-01/02: the task assignee picker lists CURRENT CHANNEL members
+    // once the channel roster slice has loaded; before that it reuses the
+    // synchronous channel roster from the thread payload — never the server roster.
     @Test
     fun assigneeOptionsUseChannelScopeOnceLoaded() {
         val channelMembers = listOf(member("alex-jc-qa1", MemberKind.Human), member("artin", MemberKind.Human))
@@ -128,19 +128,20 @@ class ThreadTaskDetailPanelTest {
             taskAssigneeIdentityOptions(
                 channelMembers = channelMembers,
                 channelMembersLoaded = true,
-                serverMembers = directory
+                payloadMembers = directory
             )
         )
     }
 
     @Test
-    fun assigneeOptionsFallBackToServerWhileChannelRosterLoading() {
+    fun assigneeOptionsFallBackToPayloadChannelRosterWhileSliceLoading() {
+        val payloadChannelRoster = listOf(member("alex-jc-qa1", MemberKind.Human))
         assertEquals(
-            directory,
+            payloadChannelRoster,
             taskAssigneeIdentityOptions(
                 channelMembers = emptyList(),
                 channelMembersLoaded = false,
-                serverMembers = directory
+                payloadMembers = payloadChannelRoster
             )
         )
     }

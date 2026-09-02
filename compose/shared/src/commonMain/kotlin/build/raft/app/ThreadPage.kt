@@ -784,12 +784,14 @@ internal fun threadEventRequiresWriteAccess(action: String): Boolean =
 // search) are unit-testable without a Composable host.
 internal fun threadTaskDetailPanelUseLegacy(linkedTask: TaskSummary?): Boolean = linkedTask == null
 
-/** artin 2026-09-01: task assignee picker scope = current channel, not server. */
+/** artin 2026-09-01/02: task assignee picker scope = current channel, never server.
+ *  Before the channel member slice loads, reuse the synchronous channel roster
+ *  carried by the thread payload (no server-wide flash). */
 internal fun taskAssigneeIdentityOptions(
     channelMembers: List<MemberProfile>,
     channelMembersLoaded: Boolean,
-    serverMembers: List<MemberProfile>
-): List<MemberProfile> = if (channelMembersLoaded) channelMembers else serverMembers
+    payloadMembers: List<MemberProfile>
+): List<MemberProfile> = if (channelMembersLoaded) channelMembers else payloadMembers
 
 internal fun threadTaskAssigneeRows(
     assigneeOptions: List<MemberProfile>,
@@ -7977,14 +7979,16 @@ internal fun SharedThreadRouteContent(
             resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
             tasksViewModel = tasksViewModel,
             taskChannelId = taskChannelId,
-            // artin 2026-09-01: the task assignee picker must list CURRENT CHANNEL
-            // members, not the whole server. Channel-scoped slice once loaded;
-            // fall back to the server roster only while the slice hasn't loaded.
+            // artin 2026-09-01/02: the task assignee picker must list CURRENT CHANNEL
+            // members, never the server roster. Channel member slice once loaded;
+            // before that, reuse the channel roster the thread payload already
+            // carries (baseRenderedPayload.members via threadMembersProjection)
+            // — synchronous, so the picker never flashes server-wide names.
             taskIdentityOptions = taskAssigneeIdentityOptions(
                 channelMembers = threadChannelMembersSlice.members,
                 channelMembersLoaded =
                     threadChannelMembersSlice.status == SharedServerMembersLoadStatus.Loaded,
-                serverMembers = threadServerMembersEntry.members
+                payloadMembers = threadMembersProjection.members.mapNotNull { it.toMemberProfile() }
             ),
             linkedTasksProjection = linkedTasksProjection,
             filesViewModel = filesViewModel,
