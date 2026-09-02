@@ -255,11 +255,24 @@ val googleServicesConfigFiles =
         file("google-services.json"),
         file("src/debug/google-services.json"),
         file("src/connectedTest/google-services.json"),
-        file("src/release/google-services.json")
+        file("src/release/google-services.json"),
+        file("src/alpha/google-services.json")
     )
+
+val releaseBuildRequested = gradle.startParameter.taskNames.any { taskName ->
+    taskName.substringAfterLast(":").contains("release", ignoreCase = true)
+}
+if (releaseBuildRequested && !file("src/release/google-services.json").isFile) {
+    throw GradleException(
+        "Firebase google-services.json is required for release builds; provide androidApp/src/release/google-services.json"
+    )
+}
 
 if (googleServicesConfigFiles.any { it.isFile }) {
     pluginManager.apply("com.google.gms.google-services")
+    tasks.configureEach {
+        if (name == "processConnectedTestGoogleServices") enabled = false
+    }
 } else {
     logger.lifecycle("Firebase google-services.json not found; skipping Google Services Gradle plugin for this local build.")
 }
@@ -633,13 +646,6 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-        }
-        create("beta") {
-            initWith(getByName("release"))
-            applicationIdSuffix = ".beta"
-            buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "true")
-            buildConfigField("String", "HANDS_CHANNEL", "\"debug\"")
-            matchingFallbacks += listOf("release")
         }
         configureEach {
             val callbackScheme = if (name == "release") "raft" else "raft-${name.lowercase()}"
