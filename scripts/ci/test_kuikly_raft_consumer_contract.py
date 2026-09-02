@@ -98,7 +98,6 @@ require(
 
 workflows = (
     ".github/workflows/android-alpha.yml",
-    ".github/workflows/android-beta.yml",
     ".github/workflows/android-release.yml",
     ".github/workflows/android-testbox.yml",
     ".github/workflows/ios-release.yml",

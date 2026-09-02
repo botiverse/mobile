@@ -270,6 +270,9 @@ if (releaseBuildRequested && !file("src/release/google-services.json").isFile) {
 
 if (googleServicesConfigFiles.any { it.isFile }) {
     pluginManager.apply("com.google.gms.google-services")
+    tasks.configureEach {
+        if (name == "processConnectedTestGoogleServices") enabled = false
+    }
 } else {
     logger.lifecycle("Firebase google-services.json not found; skipping Google Services Gradle plugin for this local build.")
 }
@@ -643,13 +646,6 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-        }
-        create("beta") {
-            initWith(getByName("release"))
-            applicationIdSuffix = ".beta"
-            buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "true")
-            buildConfigField("String", "HANDS_CHANNEL", "\"debug\"")
-            matchingFallbacks += listOf("release")
         }
         configureEach {
             val callbackScheme = if (name == "release") "raft" else "raft-${name.lowercase()}"
