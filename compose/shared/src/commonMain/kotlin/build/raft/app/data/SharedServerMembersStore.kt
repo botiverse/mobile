@@ -197,6 +197,18 @@ data class SharedServerMembersState(
         // memberStatusFlow, so it applies the same policy. Skipping it here would
         // leave the forced-Offline artefact reachable through the sibling API the
         // comment above points readers at.
+        //
+        // ⚠️ The two edges do NOT agree on what counts as authoritative, and this
+        // signature cannot make them agree: memberStatusFlow also treats channel
+        // member slices as authoritative, but reaching those needs the owner
+        // binding the store holds, and this is a state-level read that has no
+        // access to it. So a member present only in a channel slice — never in
+        // the server roster — is authoritative to the flow and seed-only here.
+        // If its status happens to have the forced-offline shape, the flow
+        // publishes Offline while this returns null: over-suppression, the
+        // opposite direction to the defect above, and latent while this API has
+        // no production callers. Giving these edges one provenance source means
+        // moving this read onto the store (@LiBai, review #254).
         return applySeedOnlyOfflinePolicy(
             resolved = member.toSharedServerMemberStatus(null),
             seedOnly = rosterMember == null
