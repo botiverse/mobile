@@ -8166,6 +8166,25 @@ internal fun SharedThreadRouteContent(
                     onHomeRefresh = { sharedHomeStore?.dispatch(SharedHomeIntent.ForegroundRefresh) }
                 )
             },
+            onOpenForwardDestination = { banner ->
+                val conversation = banner.forwardSuccessConversationIdentity()
+                val bannerPayload =
+                    conversation?.let {
+                        buildAppShellThreadPayload(
+                            conversation = it,
+                            timeContext = renderedPayload.toSlockTimeCapabilities().staticContext(),
+                            alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
+                            compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
+                            anchorMessageId = banner.messageId.value,
+                            onWarn = bridge::logWarn
+                        )
+                    }
+                if (bannerPayload == null) {
+                    bridge.logWarn("thread_forward_success_open_rejected reason=identity_unresolved")
+                } else {
+                    onOpenThreadPayload(bannerPayload)
+                }
+            },
             onThreadEvent = ThreadEventHandler(dispatch = ThreadPageContent@{ action, itemId, attachmentId, tab, markdownActionId ->
                 if (handleThreadStoreRetryEvent(action, threadViewModel::dispatch)) {
                     return@ThreadPageContent
@@ -11179,6 +11198,7 @@ private fun ThreadPageContent(
     onUpdateChannelProfile: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
     onClearChannelProfileUpdateStatus: () -> Unit = {},
     onForwardMessagesDelivered: (ForwardMessageBatchResult) -> Unit = {},
+    onOpenForwardDestination: (ThreadForwardSuccessBanner) -> Unit = {},
     onThreadEvent: ThreadEventHandler,
     onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
@@ -11288,6 +11308,7 @@ private fun ThreadPageContent(
     var forwardDirectoryNextCursor by remember(threadInstanceKey) { mutableStateOf<ForwardMessageTargetDirectoryCursor?>(null) }
     var forwardOperationNonce by remember(threadInstanceKey) { mutableStateOf(0) }
     var forwardNote by remember(threadInstanceKey) { mutableStateOf(TextFieldValue()) }
+    var forwardSuccessBanner by remember(threadInstanceKey) { mutableStateOf<ThreadForwardSuccessBanner?>(null) }
     var insertMentionRequestNonce by remember(threadInstanceKey) { mutableStateOf(0) }
     var insertMentionRequest by remember(threadInstanceKey) { mutableStateOf<ThreadComposerInsertMentionRequest?>(null) }
     val shareSelectionActive = selectedShareMessageIds.isNotEmpty() && selectedTab == KuiklyThreadTab.Chat
@@ -12399,7 +12420,21 @@ private fun ThreadPageContent(
                                             )
                                         outcome.result
                                             ?.takeIf { it.deliveries.isNotEmpty() }
-                                            ?.let(onForwardMessagesDelivered)
+                                            ?.let { result ->
+                                                onForwardMessagesDelivered(result)
+                                                if (result.deliveries.size == 1 && result.failures.isEmpty()) {
+                                                    val delivery = result.deliveries.single()
+                                                    val receipt = selectedReceipts.singleOrNull()
+                                                    if (receipt != null) {
+                                                        forwardSuccessBanner =
+                                                            ThreadForwardSuccessBanner(
+                                                                target = receipt.target,
+                                                                destination = delivery.destination,
+                                                                messageId = delivery.message.id
+                                                            )
+                                                    }
+                                                }
+                                            }
                                         if (outcome.failureCode == null && outcome.result != null && outcome.result.failures.isEmpty()) {
                                             activeModal = null
                                             forwardPickerFlow.sessionKey?.let { session ->
@@ -12412,12 +12447,14 @@ private fun ThreadPageContent(
                                             forwardMessageIds = emptySet()
                                             forwardNote = TextFieldValue()
                                             clearShareSelection()
-                                            onThreadEvent(
-                                                "forwardMessagesSent",
-                                                selectedReceipts.joinToString(", ") { it.displayedTitle },
-                                                null,
-                                                activeForwardSelectionMode.wireValue
-                                            )
+                                            if (outcome.result.deliveries.size != 1 || forwardSuccessBanner == null) {
+                                                onThreadEvent(
+                                                    "forwardMessagesSent",
+                                                    selectedReceipts.joinToString(", ") { it.displayedTitle },
+                                                    null,
+                                                    activeForwardSelectionMode.wireValue
+                                                )
+                                            }
                                         } else {
                                             outcome.result?.let { result ->
                                                 if (outcome.failedReceipts.isNotEmpty()) {
@@ -12448,6 +12485,16 @@ private fun ThreadPageContent(
                         }
                     }
                 )
+        }
+        forwardSuccessBanner?.let { banner ->
+            ThreadForwardSuccessBannerView(
+                banner = banner,
+                onViewInChat = {
+                    forwardSuccessBanner = null
+                    onOpenForwardDestination(banner)
+                },
+                onDismiss = { forwardSuccessBanner = null }
+            )
         }
         when (activeModal) {
             "settings" -> {
@@ -24779,6 +24826,40 @@ internal data class ThreadForwardOutcome(
     val failureCode: String? = null
 )
 
+internal data class ThreadForwardSuccessBanner(
+    val target: ForwardMessageTarget,
+    val destination: ForwardMessageDestination,
+    val messageId: MessageId
+)
+
+internal fun ForwardMessageTarget.forwardSuccessDisplayTitle(): String =
+    when (channelKind) {
+        ConversationKind.DirectMessage -> title.trim().ifBlank { "DM" }
+        else -> title.trim().removePrefix("#").takeIf { it.isNotBlank() }?.let { "#$it" } ?: "#channel"
+    }
+
+internal fun ThreadForwardSuccessBanner.forwardSuccessConversationIdentity(): ThreadLaunchConversationIdentity? {
+    val resolvedChannelId = destination.channelId.value.trim().takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return null
+    val resolvedKind = destination.channelKind.takeUnless { it == ConversationKind.Thread } ?: ConversationKind.Channel
+    return buildThreadLaunchConversationIdentity(
+        kind = resolvedKind,
+        channelId = resolvedChannelId,
+        channelType = target.channelType,
+        dmPeerIdentity =
+            target.memberId?.let { member ->
+                MemberDetailIdentity(
+                    memberId = member,
+                    kind =
+                        when (target.kind) {
+                            ForwardMessageTargetKind.AgentDirectMessageCandidate -> MemberKind.Agent
+                            else -> MemberKind.Human
+                        },
+                    sourceServerId = target.serverId
+                )
+            }
+    )
+}
+
 internal data class ThreadForwardBatchOutcome(
     val failureCode: String? = null,
     val result: ForwardMessageBatchResult? = null,
@@ -26986,6 +27067,55 @@ private fun ThreadStateMessage(title: String, detail: String?) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ThreadForwardSuccessBannerView(
+    banner: ThreadForwardSuccessBanner,
+    onViewInChat: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val targetLabel = banner.target.forwardSuccessDisplayTitle()
+    val successLabel = stringResource(MR.strings.thread_forward_success_banner, targetLabel)
+    val viewInChatLabel = stringResource(MR.strings.thread_forward_view_in_chat)
+    LaunchedEffect(banner) {
+        delay(5_000)
+        onDismiss()
+    }
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .zIndex(SlockFloatingOverlayHostZIndex + 20f)
+                .padding(start = 12.dp, top = slockTopSafeAreaPadding() + 8.dp, end = 12.dp),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        SlockRaftUiBanner(
+            status = SlockRaftUiBannerStatus.Success,
+            description = successLabel,
+            size = SlockRaftUiBannerSize.Small,
+            modifier = Modifier.widthIn(max = 760.dp),
+            action = {
+                Row(
+                    modifier = Modifier.clickable(onClick = onViewInChat),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = viewInChatLabel,
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1
+                    )
+                    SlockLucideIcon(
+                        SlockLucideIconName.ChevronRight,
+                        modifier = Modifier.size(16.dp),
+                        color = SlockColor.TextBlackArgb
+                    )
+                }
+            }
+        )
     }
 }
 

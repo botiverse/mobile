@@ -128,6 +128,39 @@ class ThreadForwardFlowTest {
     }
 
     @Test
+    fun singleForwardSuccessUsesTargetLabelAndCanonicalConversationIdentity() {
+        val target = target("wg-forward-message", ForwardMessageTargetKind.RecentChannel, ChannelId("channel-target"))
+            .copy(title = "#wg-forward-message", channelType = "public")
+
+        assertEquals("#wg-forward-message", target.forwardSuccessDisplayTitle())
+        val identity =
+            ThreadForwardSuccessBanner(
+                target = target,
+                destination = ForwardMessageDestination(sourceServerId, ChannelId("channel-target"), ConversationKind.Channel),
+                messageId = MessageId("forwarded")
+            ).forwardSuccessConversationIdentity()
+        assertEquals(ConversationKind.Channel, identity?.kind)
+        assertEquals(ChannelId("channel-target"), identity?.channelId)
+        assertEquals("public", identity?.channelType)
+    }
+
+    @Test
+    fun directMessageForwardSuccessUsesDirectMessageIdentity() {
+        val target = target("dm-target", ForwardMessageTargetKind.RecentDirectMessage, ChannelId("dm-target"))
+            .copy(channelKind = ConversationKind.DirectMessage, channelType = "dm")
+
+        assertEquals("dm-target", target.forwardSuccessDisplayTitle())
+        assertEquals(
+            ConversationKind.DirectMessage,
+            ThreadForwardSuccessBanner(
+                target = target,
+                destination = ForwardMessageDestination(sourceServerId, ChannelId("dm-target"), ConversationKind.DirectMessage),
+                messageId = MessageId("forwarded")
+            ).forwardSuccessConversationIdentity()?.kind
+        )
+    }
+
+    @Test
     fun returnedDeliveriesPopulateScopedMessageStoreAndRefreshHome() {
         val messageStore = SharedThreadMessageStore()
         var refreshCount = 0

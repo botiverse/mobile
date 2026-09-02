@@ -355,6 +355,8 @@
     <string name="thread_feedback_links_copied">链接已复制</string>
     <string name="thread_forward_needs_api">将%1$s消息转发到 %2$s 需要 API 支持</string>
     <string name="thread_forward_completed">已将%1$s消息转发到 %2$s</string>
+    <string name="thread_forward_view_in_chat">在聊天中查看</string>
+    <string name="thread_forward_success_banner">已转发至 %1$s。</string>
     <string name="thread_forward_join_first">请先加入 %1$s 再转发</string>
     <string name="thread_forward_group_unavailable">创建群组后转发尚需 API 支持</string>
     <string name="thread_forward_multi_select_unavailable">多选转发尚需 API 支持</string>
