@@ -361,6 +361,7 @@
     <string name="thread_error_copy_link">无法复制链接</string>
     <string name="thread_error_no_text_select">没有可选择的文本</string>
     <string name="thread_feedback_followed">已关注消息列</string>
+    <string name="thread_row_unfollowed">已取消关注</string>
     <string name="thread_error_follow">无法关注消息列</string>
     <string name="thread_feedback_unfollowed">已取消关注消息列</string>
     <string name="thread_error_unfollow">无法取消关注消息列</string>

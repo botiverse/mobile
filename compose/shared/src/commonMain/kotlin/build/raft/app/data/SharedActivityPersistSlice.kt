@@ -57,8 +57,11 @@ private object SharedActivityPersistSpec :
     ): SharedActivityState {
         if (reduced.snapshot != null) return reduced
         if (snapshot.selectedFilterName != reduced.selectedFilter.name) return reduced
+        val persistedFilter =
+            InboxFilter.entries.firstOrNull { it.name == snapshot.selectedFilterName }
+                ?: InboxFilter.All
         return reduced.copy(
-            snapshot = snapshot.snapshot.dedupeActivitySnapshot(),
+            snapshot = snapshot.snapshot.dedupeActivitySnapshot().projectActivityFilter(persistedFilter),
             senderProfiles = snapshot.senderProfiles,
             loaded = true,
             loading = false,
@@ -85,6 +88,8 @@ private object SharedActivityPersistSpec :
                     intent is SharedActivityIntent.SetFilter ||
                     intent is SharedActivityIntent.MarkAllRead ||
                     intent is SharedActivityIntent.MarkDone ||
+                    intent is SharedActivityIntent.UnfollowThread ||
+                    intent is SharedActivityIntent.FollowThread ||
                     intent is SharedActivityIntent.MarkRead ||
                     intent is SharedActivityIntent.MarkUnread ||
                     intent is SharedActivityIntent.ApplyReadReceiptPrediction ||
@@ -117,4 +122,4 @@ private data class SharedActivityPersistSnapshot(
 )
 
 private fun InboxSnapshot.dedupeActivitySnapshot(): InboxSnapshot =
-    copy(items = items.dedupeActivityItems())
+    copy(items = items.map { item -> item.withActivityFollowStateProjection() }.dedupeActivityItems())

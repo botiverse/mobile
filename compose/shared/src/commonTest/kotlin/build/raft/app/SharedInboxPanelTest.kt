@@ -8,6 +8,7 @@ import build.raft.app.data.ActivityUpdateTrackingState
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
+import build.raft.app.data.withActivityFollowStateProjection
 import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
 import build.raft.app.data.PendingMentionAction
 import build.raft.app.data.SharedActivityState
@@ -1443,6 +1444,49 @@ class SharedInboxPanelTest {
             ),
             item.activityFooterSlots()
         )
+    }
+
+    @Test
+    fun unfollowedThreadGetsExactlyOneStatusSlotAndNoOrdinaryAttentionSlots() {
+        val item =
+            InboxItem(
+                key = "thread:unfollowed",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-unfollowed"),
+                channelName = "thread-stream",
+                isFollowing = false,
+                replyCount = 4,
+                unreadCount = 9,
+                hasMention = true,
+                firstUnreadMessageId = MessageId("should-clear")
+            ).withActivityFollowStateProjection()
+
+        assertEquals(0, item.unreadCount)
+        assertFalse(item.hasMention)
+        assertEquals(null, item.firstUnreadMessageId)
+        assertEquals(listOf(SharedActivityFooterSlot.Replies, SharedActivityFooterSlot.Unfollowed), item.activityFooterSlots())
+        assertEquals(
+            SharedActivityFooterBadgeVisual(SlockBrutalTone.Stone, SlockLucideIconName.BellOff),
+            SharedActivityFooterSlot.Unfollowed.badgeVisual()
+        )
+        assertFalse(item.activityShowsDoneAction())
+        assertTrue(item.copy(isFollowing = true).activityShowsDoneAction())
+    }
+
+    @Test
+    fun activityContextMenuUsesOnlyFollowForUnfollowedAndOnlyUnfollowForFollowed() {
+        val followed =
+            InboxItem(
+                key = "thread:followed",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-followed"),
+                channelName = "thread",
+                isFollowing = true
+            )
+        val unfollowed = followed.copy(key = "thread:unfollowed", isFollowing = false)
+
+        assertEquals(listOf("toggle-read", "done", "unfollow-thread"), activityContextMenuActionIds(followed))
+        assertEquals(listOf("follow-thread"), activityContextMenuActionIds(unfollowed))
     }
 
     @Test

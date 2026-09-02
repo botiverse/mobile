@@ -16,6 +16,8 @@ import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
 import build.raft.app.data.activityVisibleSummaryCounts
 import build.raft.app.data.hasUnopenableInternalJointParentSource
+import build.raft.app.data.isUnfollowedActivityThread
+import build.raft.app.data.isFollowedActivityThread
 import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealInboxRepository
@@ -1221,20 +1223,40 @@ private fun SharedActivityList(
             val resolvedMenuAnchor = menuAnchor ?: return@let
             SlockBaseMenuOverlay(
                 anchor = resolvedMenuAnchor,
-                items =
-                    listOf(
-                        SlockBaseMenuItem(
-                            id = "toggle-read",
-                            label =
-                                if (item.unreadCount > 0) {
-                                    stringResource(MR.strings.home_action_mark_as_read)
-                                } else {
-                                    stringResource(MR.strings.home_action_mark_as_unread)
-                                },
-                            icon = SlockLucideIconName.Mail
-                        ),
-                        SlockBaseMenuItem(id = "done", label = stringResource(MR.strings.common_done), icon = SlockLucideIconName.Check)
-                    ),
+                items = activityContextMenuActionIds(item).map { actionId ->
+                    when (actionId) {
+                        "toggle-read" ->
+                            SlockBaseMenuItem(
+                                id = actionId,
+                                label =
+                                    if (item.unreadCount > 0) {
+                                        stringResource(MR.strings.home_action_mark_as_read)
+                                    } else {
+                                        stringResource(MR.strings.home_action_mark_as_unread)
+                                    },
+                                icon = SlockLucideIconName.Mail
+                            )
+                        "done" ->
+                            SlockBaseMenuItem(
+                                id = actionId,
+                                label = stringResource(MR.strings.common_done),
+                                icon = SlockLucideIconName.Check
+                            )
+                        "follow-thread" ->
+                            SlockBaseMenuItem(
+                                id = actionId,
+                                label = stringResource(MR.strings.thread_action_follow_thread),
+                                icon = SlockLucideIconName.Bell
+                            )
+                        "unfollow-thread" ->
+                            SlockBaseMenuItem(
+                                id = actionId,
+                                label = stringResource(MR.strings.thread_action_unfollow_thread),
+                                icon = SlockLucideIconName.BellOff
+                            )
+                        else -> error("unknown Activity menu action: $actionId")
+                    }
+                },
                 selectedId = "",
                 uppercaseLabels = false,
                 onDismiss = { activeMenuItem = null },
@@ -1247,6 +1269,8 @@ private fun SharedActivityList(
                                 onIntent(SharedActivityIntent.MarkUnread(item))
                             }
                         "done" -> onIntent(SharedActivityIntent.MarkDone(item))
+                        "follow-thread" -> onIntent(SharedActivityIntent.FollowThread(item))
+                        "unfollow-thread" -> onIntent(SharedActivityIntent.UnfollowThread(item))
                     }
                     activeMenuItem = null
                 }
@@ -1304,6 +1328,25 @@ internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? {
     // infer or write read state from its transient presentation snapshot.
     return null
 }
+
+/**
+ * Menu membership is a pure projection of the row's server-owned follow
+ * state. Keeping this list as the production input to the Composable makes
+ * the follow/unfollow and attention gates directly executable in tests.
+ */
+internal fun activityContextMenuActionIds(item: InboxItem): List<String> =
+    buildList {
+        if (item.isUnfollowedActivityThread) {
+            // An unfollowed terminal row is historical context. It has no
+            // read/unread or Done affordance; the only valid action is an
+            // explicit Follow, which clears the server tombstone.
+            if (item.kind == InboxItemKind.Thread) add("follow-thread")
+            return@buildList
+        }
+        add("toggle-read")
+        add("done")
+        if (item.isFollowedActivityThread) add("unfollow-thread")
+    }
 
 internal fun InboxItem.toReplyThreadPrewarmMarker(serverId: String): ActivityReplyThreadPrewarmMarker? {
     if (kind != InboxItemKind.Thread || unreadCount <= 0) return null
@@ -1511,19 +1554,21 @@ private fun SharedActivityRow(
                     activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled
                 )
                 }
-                Row(
-                    modifier = Modifier.padding(top = 12.dp, end = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    SharedActivitySmallIconButton(
-                        iconName = SlockLucideIconName.Check,
-                        clickIdentity =
-                            item.activityDoneClickIdentity(
-                                presentationGeneration = presentationGeneration,
-                                presentationOwnerIdentity = presentationOwnerIdentity,
-                            ),
-                        onClick = onDone
-                    )
+                if (item.activityShowsDoneAction()) {
+                    Row(
+                        modifier = Modifier.padding(top = 12.dp, end = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        SharedActivitySmallIconButton(
+                            iconName = SlockLucideIconName.Check,
+                            clickIdentity =
+                                item.activityDoneClickIdentity(
+                                    presentationGeneration = presentationGeneration,
+                                    presentationOwnerIdentity = presentationOwnerIdentity,
+                                ),
+                            onClick = onDone
+                        )
+                    }
                 }
             }
             // This padding is visually part of the card, so keep it in the
@@ -1669,6 +1714,8 @@ internal fun InboxItem.activityDoneClickIdentity(
     presentationOwnerIdentity: String = "",
 ): String = "activity-done:$key|owner:$presentationOwnerIdentity|presentation:$presentationGeneration"
 
+internal fun InboxItem.activityShowsDoneAction(): Boolean = !isUnfollowedActivityThread
+
 @Composable
 private fun Modifier.activityRowGestures(
     gestureKey: String,
@@ -1783,6 +1830,12 @@ private fun SharedActivityFooter(
                 SharedActivityFooterSlot.New ->
                     SharedActivityFooterBadge(
                         label = stringResource(MR.strings.activity_new_count, item.unreadCount),
+                        slot = slot,
+                        modifier = Modifier.align(Alignment.CenterVertically)
+                    )
+                SharedActivityFooterSlot.Unfollowed ->
+                    SharedActivityFooterBadge(
+                        label = stringResource(MR.strings.thread_row_unfollowed),
                         slot = slot,
                         modifier = Modifier.align(Alignment.CenterVertically)
                     )
@@ -2133,6 +2186,7 @@ internal enum class SharedActivityFooterSlot {
     Replies,
     Mention,
     New,
+    Unfollowed,
     Draft
 }
 
@@ -2164,6 +2218,8 @@ internal fun SharedActivityFooterSlot.badgeVisual(taskStatus: TaskStatus? = null
         SharedActivityFooterSlot.Replies -> SharedActivityFooterBadgeVisual(SlockBrutalTone.White)
         SharedActivityFooterSlot.Mention -> SharedActivityFooterBadgeVisual(SlockBrutalTone.Yellow, SlockLucideIconName.AtSign)
         SharedActivityFooterSlot.New -> SharedActivityFooterBadgeVisual(SlockBrutalTone.Pink)
+        SharedActivityFooterSlot.Unfollowed ->
+            SharedActivityFooterBadgeVisual(SlockBrutalTone.Stone, SlockLucideIconName.BellOff)
         SharedActivityFooterSlot.Draft -> SharedActivityFooterBadgeVisual(SlockBrutalTone.White, SlockLucideIconName.Pencil)
     }
 
@@ -2177,11 +2233,14 @@ internal fun InboxItem.activityFooterSlots(
     if (kind == InboxItemKind.Thread) {
         slots += SharedActivityFooterSlot.Replies
     }
-    if (hasMention && unreadCount > 0) {
+    if (!isUnfollowedActivityThread && hasMention && unreadCount > 0) {
         slots += SharedActivityFooterSlot.Mention
     }
-    if (unreadCount > 0) {
+    if (!isUnfollowedActivityThread && unreadCount > 0) {
         slots += SharedActivityFooterSlot.New
+    }
+    if (isUnfollowedActivityThread) {
+        slots += SharedActivityFooterSlot.Unfollowed
     }
     if (hasDraft) {
         slots += SharedActivityFooterSlot.Draft
