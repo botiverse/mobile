@@ -11374,7 +11374,9 @@ private fun ThreadPageContent(
                 query = query,
                 generation = requestGeneration
             )
-        if (query.isNotBlank() && !append) delay(180)
+        // Debounce search so normal typing does not fire one request per
+        // keystroke; the field itself stays interactive while loading.
+        if (query.isNotBlank() && !append) delay(300)
         if (!requestIdentity.accepts(
                 serverId = forwardServerId?.value.orEmpty(),
                 sessionKey = forwardPickerFlow.sessionKey ?: return@LaunchedEffect,
@@ -12226,12 +12228,18 @@ private fun ThreadPageContent(
             overlays = {
         ThreadComposerSuggestionPortalHost(composerSuggestionPortal)
         val visibleForwardPickerSession = forwardPickerFlow.sessionKey
+        val forwardPickerBottomSafeArea = slockBottomSafeAreaPadding()
         if ((activeModal == "forwardTargets" || activeModal == "forwardNote") && visibleForwardPickerSession != null) {
                 SlockForwardTargetPicker(
                     messageCount = forwardMessageSelection.forwardableMessages.size,
                     skippedCount = forwardMessageSelection.skippedCount,
                     nestedForwardCount = forwardMessageSelection.nestedForwardCount,
                     taskLinkedCount = forwardMessageSelection.taskLinkedCount,
+                    // Keep the search field composed while results load: swapping it
+                    // for the read-only placeholder destroys the focused field and
+                    // closes the IME on every keystroke (verify feedback #255).
+                    searchInputInteractive = forwardPickerFlow.step == SlockForwardPickerStep.Targets,
+                    bottomSafeArea = forwardPickerBottomSafeArea,
                     state =
                         SlockForwardTargetPickerUiState(
                             sessionKey = visibleForwardPickerSession,
@@ -19341,6 +19349,18 @@ internal fun ThreadMessageCard(
                                 onCommit = { onCommitActionCard(message.id) }
                             )
                         } else if (richContentEnabled && forwardBundle != null) {
+                            // Web MessageItem parity: the server stores the forward
+                            // note as the message content; render it above the card
+                            // unless it is the generated placeholder itself.
+                            val forwardNoteBody = threadForwardNoteBody(message.body, forwardBundle.displayCount())
+                            if (forwardNoteBody != null) {
+                                SlockMarkdownBody(
+                                    body = forwardNoteBody,
+                                    textStyle = messageBodyTextStyle,
+                                    onOpenUrl = onOpenMarkdownUrl,
+                                    modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)
+                                )
+                            }
                             ThreadForwardBundleCard(
                                 bundle = forwardBundle,
                                 messageBodyTextStyle = messageBodyTextStyle,
@@ -24701,6 +24721,21 @@ private fun ForwardMessageBundle.localizedForwardTitle(): String =
 
 private fun ForwardMessageBundle.displayCount(): Int =
     totalCount?.takeIf { it > 0 } ?: messages.size
+
+// Mirrors web MessageItem: the server stores the forward note as the message
+// content and falls back to this generated placeholder when no note was given.
+// The placeholder is card chrome, not body text, so it is never rendered as
+// the note above the bundle card.
+private fun threadForwardGeneratedPlaceholder(count: Int): String =
+    "Forwarded $count message${if (count == 1) "" else "s"}"
+
+// Web forwardedBundleBodyContent parity: the note is the bundle message's body
+// unless the body is exactly the generated placeholder.
+internal fun threadForwardNoteBody(body: String, displayCount: Int): String? =
+    body
+        .trim()
+        .takeUnless { it == threadForwardGeneratedPlaceholder(displayCount) }
+        ?.takeIf { it.isNotEmpty() }
 
 private fun ForwardMessageItem.forwardPreviewLine(): String {
     val text = body.trim().ifBlank { forwardAttachmentLabel() }

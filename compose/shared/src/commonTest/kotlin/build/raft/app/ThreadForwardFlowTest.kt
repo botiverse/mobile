@@ -118,6 +118,16 @@ class ThreadForwardFlowTest {
     }
 
     @Test
+    fun forwardNoteBodySuppressesOnlyTheGeneratedPlaceholder() {
+        assertEquals("see this", threadForwardNoteBody(" see this ", 3))
+        assertEquals(null, threadForwardNoteBody("Forwarded 3 messages", 3))
+        assertEquals(null, threadForwardNoteBody("Forwarded 1 message", 1))
+        assertEquals("Forwarded 1 message", threadForwardNoteBody("Forwarded 1 message", 2))
+        assertEquals("Forwarded 3 messages", threadForwardNoteBody("Forwarded 3 messages", 1))
+        assertEquals(null, threadForwardNoteBody("   ", 2))
+    }
+
+    @Test
     fun returnedDeliveriesPopulateScopedMessageStoreAndRefreshHome() {
         val messageStore = SharedThreadMessageStore()
         var refreshCount = 0
