@@ -193,22 +193,10 @@ data class SharedServerMembersState(
         // task #136: presence facts live ONLY in the process registry — the
         // state carries rosters; status reads go through the store's
         // registry-backed APIs (memberStatusFlow / memberStatus).
-        // task #253: this edge falls back to the seed profile cache exactly like
-        // memberStatusFlow, so it applies the same policy. Skipping it here would
-        // leave the forced-Offline artefact reachable through the sibling API the
-        // comment above points readers at.
-        //
-        // ⚠️ The two edges do NOT agree on what counts as authoritative, and this
-        // signature cannot make them agree: memberStatusFlow also treats channel
-        // member slices as authoritative, but reaching those needs the owner
-        // binding the store holds, and this is a state-level read that has no
-        // access to it. So a member present only in a channel slice — never in
-        // the server roster — is authoritative to the flow and seed-only here.
-        // If its status happens to have the forced-offline shape, the flow
-        // publishes Offline while this returns null: over-suppression, the
-        // opposite direction to the defect above, and latent while this API has
-        // no production callers. Giving these edges one provenance source means
-        // moving this read onto the store (@LiBai, review #254).
+        // task #253: same seed-cache fallback as memberStatusFlow, so same policy.
+        // Narrower authority though: the flow also trusts channel slices, which need
+        // the store's owner binding and are unreachable from state. A slice-only
+        // member is therefore suppressed here and published there.
         return applySeedOnlyOfflinePolicy(
             resolved = member.toSharedServerMemberStatus(null),
             seedOnly = rosterMember == null
@@ -308,12 +296,9 @@ private data class ScopedMemberProfileResolution(
 )
 
 /**
- * What a read edge publishes for an agent whose only backing profile is a message-author seed
- * with its volatile status stripped, before any authoritative status or presence fact exists.
- *
- * [Presence] has no Unknown member, so [withoutVolatileStatus] must write `Presence.Offline`;
- * on cold start that forced value reaches the indicator as a definite "Offline" label for an
- * agent that is in fact working (task #253).
+ * What to publish for an agent backed only by a status-stripped message-author seed.
+ * [Presence] has no Unknown, so [withoutVolatileStatus] must write `Presence.Offline`, and on
+ * cold start that forced value reached the indicator as a definite "Offline" (task #253).
  */
 internal enum class SeedOnlyOfflinePolicy {
     /** The pre-task-#253 behaviour: publish the forced `Presence.Offline` unchanged. */
@@ -327,19 +312,9 @@ internal enum class SeedOnlyOfflinePolicy {
 }
 
 /**
- * The shipped policy: [SeedOnlyOfflinePolicy.PublishNothing].
- *
- * task #253 — @artin chose "cold start shows no status dot" over a neutral placeholder, so an
- * agent whose only backing profile is a stripped message-author seed publishes nothing until
- * an authoritative status or presence fact arrives. The indicator already documents null as
- * Unknown/not-ready (`SlockAgentStatusIndicator.resolveHomeAgentStatusIndicatorState`).
- *
- * The other two arms are kept because [applySeedOnlyOfflinePolicy] is a decision this codebase
- * has already changed once and may change again, and its per-arm test is the cheapest way to
- * state what each candidate would publish. They are not a live configuration surface: nothing
- * constructs this store with a different policy, and under the shipped value a seed and an
- * authoritative Offline publish different results (null vs Offline), so the read edges' wiring
- * is red-able directly — no injection needed to catch a wrong provenance.
+ * The shipped policy (task #253): a stripped message-author seed publishes nothing until
+ * something authoritative arrives. The other arms record what the rejected candidates would
+ * publish; nothing constructs a different policy.
  */
 internal val ActiveSeedOnlyOfflinePolicy: SeedOnlyOfflinePolicy = SeedOnlyOfflinePolicy.PublishNothing
 
@@ -606,14 +581,8 @@ class SharedServerMembersStore internal constructor(
     ): MemberProfile? = currentScopedMemberProfileResolution(serverId, memberId).profile
 
     /**
-     * Resolves a scoped profile together with the provenance the caller needs to tell an
-     * authoritative record apart from a message-author seed.
-     *
-     * [seedProfileCandidates] strips volatile status through [withoutVolatileStatus], and
-     * [Presence] has no Unknown member, so a stripped seed is forced to carry
-     * `Presence.Offline`. Read edges that publish agent status must not treat that forced
-     * value as an observation; keeping [ScopedMemberProfileResolution.authoritative] beside
-     * the profile is what makes the two distinguishable without widening the model type.
+     * Resolves a scoped profile plus the provenance that tells an authoritative record apart
+     * from a message-author seed, whose forced `Presence.Offline` is not an observation.
      */
     private fun currentScopedMemberProfileResolution(
         serverId: ServerId,
