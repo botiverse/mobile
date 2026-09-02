@@ -491,6 +491,7 @@ struct iOSApp: App {
         SDImageCodersManager.shared.addCoder(SDImageSVGCoder.shared)
         SlockIosAvatarCacheHost.shared.install()
         SlockIosAppScopeMMKV.install()
+        SlockIosInstallThreadComposerTemporaryFileRetirement()
         let curlCaPath = slockCurlCaBundlePath()
         let curlBootstrap = SlockIosNetworkTransportBootstrapKt
             .installIosSlockNetworkTransportAtStartup(caBundlePath: curlCaPath)

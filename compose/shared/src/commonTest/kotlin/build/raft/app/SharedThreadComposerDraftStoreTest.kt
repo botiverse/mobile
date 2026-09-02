@@ -15,6 +15,82 @@ import kotlin.test.assertTrue
 
 class SharedThreadComposerDraftStoreTest {
     @Test
+    fun originalImageDefaultsToCompressedAndTogglesWithinSession() {
+        val store = SharedThreadComposerDraftStore()
+        val composer = KuiklyThreadComposerPayload(instanceId = "composer-image")
+
+        store.dispatch(SharedThreadComposerDraftIntent.Start(composer = composer, draftKey = "send=channel-image"))
+        assertFalse(store.state.value.originalImage)
+
+        store.dispatch(SharedThreadComposerDraftIntent.SetOriginalImage(true))
+        assertTrue(store.state.value.originalImage)
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = composer.copy(seedText = "remounted"),
+                draftKey = "send=channel-image"
+            )
+        )
+        assertTrue(store.state.value.originalImage)
+    }
+
+    @Test
+    fun originalImageResetsForNewSessionAndAfterCompletedSend() {
+        val store = SharedThreadComposerDraftStore()
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-old"),
+                draftKey = "send=channel-old"
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.SetOriginalImage(true))
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-new"),
+                draftKey = "send=channel-new"
+            )
+        )
+        assertFalse(store.state.value.originalImage)
+
+        store.dispatch(SharedThreadComposerDraftIntent.SetOriginalImage(true))
+        store.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+        store.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
+        assertFalse(store.state.value.originalImage)
+    }
+
+    @Test
+    fun originalImagePreferenceIsNotWrittenToPersistedDraft() {
+        val storage = InMemorySlockKeyValueStore()
+        val persistence = SharedThreadComposerDraftPersistence(storage)
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val key = "send=channel-image|parent=_|mention=channel-image"
+        val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-image"),
+                draftKey = key
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.SetOriginalImage(true))
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "persisted text"))
+        store.dispatch(SharedThreadComposerDraftIntent.Flush)
+
+        val restored = SharedThreadComposerDraftPersistence(storage).read(key)
+        assertEquals("persisted text", restored?.text)
+
+        val restoredStore = SharedThreadComposerDraftStore(persistSlices = listOf(SharedThreadComposerDraftPersistSlice(SharedThreadComposerDraftPersistence(storage))))
+        restoredStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-restored"),
+                draftKey = key
+            )
+        )
+        assertFalse(restoredStore.state.value.originalImage)
+    }
+
+    @Test
     fun localEditorEchoAndChromeNeverCreateAHostEditorCommand() {
         val store = SharedThreadComposerDraftStore()
         store.dispatch(
@@ -1657,6 +1733,169 @@ class SharedThreadComposerDraftStoreTest {
         assertEquals("queued", restored.uploadedAttachments.single().status)
         assertEquals(0L, restored.uploadedAttachments.single().uploadBytesTransferred)
         assertEquals("private://image", restored.uploadedAttachments.single().fileRef)
+    }
+
+    @Test
+    fun interruptedOwnedUploadRestoresAsQueuedAndVideoRemainsDurable() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val draftKey = "send=channel-owned|parent=_|mention=channel-owned"
+        val image =
+            SharedThreadComposerAttachment(
+                id = "picked-image",
+                fileName = "photo.jpg",
+                mimeType = "image/jpeg",
+                status = "uploading",
+                fileRef = "cache/photo.jpg",
+                source = "platform_picker",
+                uploadBytesTransferred = 42L,
+                uploadBytesTotal = 100L
+            )
+        val video =
+            SharedThreadComposerAttachment(
+                id = "picked-video",
+                fileName = "clip.mp4",
+                mimeType = "video/mp4",
+                status = "uploading",
+                fileRef = "cache/clip.mp4",
+                source = "platform_picker",
+                uploadBytesTransferred = 42L,
+                uploadBytesTotal = 100L
+            )
+
+        persistence.save(draftKey, "Body", asTask = false, uploadedAttachments = listOf(image, video))
+
+        val restored = persistence.read(draftKey) ?: error("expected draft")
+        assertEquals(listOf("picked-image", "picked-video"), restored.uploadedAttachments.map { it.id })
+        assertEquals(listOf("queued", "queued"), restored.uploadedAttachments.map { it.status })
+        assertEquals(listOf(0L, 0L), restored.uploadedAttachments.map { it.uploadBytesTransferred })
+    }
+
+    @Test
+    fun draftRetirementCollectsEveryOwnedTemporaryRefIncludingVideoRows() {
+        val retired = mutableListOf<Pair<String, Set<String>>>()
+        val persistence =
+            SharedThreadComposerDraftPersistence(
+                store = InMemorySlockKeyValueStore(),
+                retireTemporaryFileRefs = { key, refs -> retired += key to refs }
+            )
+        val draftKey = "send=channel-retire|parent=_|mention=channel-retire"
+        val image =
+            SharedThreadComposerAttachment(
+                id = "image",
+                fileName = "photo.jpg",
+                mimeType = "image/jpeg",
+                status = "ready",
+                fileRef = "cache/photo.jpg",
+                source = "platform_picker"
+            )
+        val videoMime =
+            SharedThreadComposerAttachment(
+                id = "video-mime",
+                fileName = "movie.jpg",
+                mimeType = "video/mp4",
+                status = "ready",
+                fileRef = "cache/movie.jpg",
+                source = "platform_picker"
+            )
+        val videoSuffix =
+            SharedThreadComposerAttachment(
+                id = "video-suffix",
+                fileName = "movie.jpg",
+                mimeType = "image/jpeg",
+                status = "ready",
+                fileRef = "cache/movie.flv",
+                source = "platform_picker"
+            )
+
+        persistence.save(
+            key = draftKey,
+            text = "Body",
+            asTask = false,
+            uploadedAttachments = listOf(image, videoMime, videoSuffix)
+        )
+        assertEquals(3, persistence.read(draftKey)?.uploadedAttachments?.size)
+
+        // Replacing/clearing a draft retires every process-local owned ref. Image/video
+        // classification is only relevant to compression admission; it must not strand picker
+        // video or ordinary-file handles in generic draft cleanup.
+        persistence.save(key = draftKey, text = "Body", asTask = false)
+
+        assertEquals(
+            listOf(
+                draftKey to
+                    setOf(
+                        "cache/photo.jpg",
+                        "cache/movie.jpg",
+                        "cache/movie.flv"
+                    )
+            ),
+            retired
+        )
+    }
+
+    @Test
+    fun draftRetirementDefersSharedImageRefUntilLastSiblingLeaves() {
+        val retired = mutableListOf<Set<String>>()
+        val persistence =
+            SharedThreadComposerDraftPersistence(
+                store = InMemorySlockKeyValueStore(),
+                retireTemporaryFileRefs = { _, refs -> retired += refs }
+            )
+        val firstKey = "send=channel-one|parent=_|mention=channel-one"
+        val secondKey = "send=channel-two|parent=_|mention=channel-two"
+        val image =
+            SharedThreadComposerAttachment(
+                id = "image",
+                fileName = "photo.jpg",
+                mimeType = "image/jpeg",
+                status = "ready",
+                fileRef = "cache/shared-photo.jpg",
+                source = "composer_image_compressor"
+            )
+
+        persistence.save(firstKey, "one", asTask = false, uploadedAttachments = listOf(image))
+        persistence.save(secondKey, "two", asTask = false, uploadedAttachments = listOf(image))
+        persistence.clear(firstKey)
+        assertEquals(emptyList(), retired)
+
+        persistence.clear(secondKey)
+        assertEquals(listOf(setOf("cache/shared-photo.jpg")), retired)
+    }
+
+    @Test
+    fun externalShareStageDoesNotRetireOrReplaceOwnedAttachment() {
+        val retired = mutableListOf<Set<String>>()
+        val persistence =
+            SharedThreadComposerDraftPersistence(
+                store = InMemorySlockKeyValueStore(),
+                retireTemporaryFileRefs = { _, refs -> retired += refs }
+            )
+        val draftKey = "send=channel-stage|parent=_|mention=channel-stage"
+        val owned =
+            SharedThreadComposerAttachment(
+                id = "owned-image",
+                fileName = "owned.jpg",
+                mimeType = "image/jpeg",
+                status = "ready",
+                fileRef = "cache/owned.jpg",
+                source = "platform_camera"
+            )
+        val source = SharedThreadComposerExternalShareSource("share-token", "account", "server")
+        val incoming =
+            externalShareAttachment(status = "queued").copy(
+                id = "shared-image",
+                fileRef = "external://share-image"
+            )
+
+        persistence.save(draftKey, "Existing", asTask = false, uploadedAttachments = listOf(owned))
+        assertEquals(
+            ExternalShareComposerDraftStageResult.Staged,
+            persistence.stageExternalShare(draftKey, "Incoming", listOf(incoming), source)
+        )
+
+        val restored = persistence.read(draftKey) ?: error("expected staged draft")
+        assertEquals(setOf("owned-image", "shared-image"), restored.uploadedAttachments.map { it.id }.toSet())
+        assertEquals(emptyList(), retired)
     }
 
     @Test

@@ -1,6 +1,7 @@
 package build.raft.app.base
 
 import build.raft.app.AttachmentOwnerLease
+import build.raft.app.ThreadComposerTemporaryFileRetirement
 import build.raft.app.data.SLOCK_SOCKET_BASE_URL
 import build.raft.app.network.AttachmentDownloadCoordinator
 import build.raft.app.slockLogDebug
@@ -42,6 +43,11 @@ internal enum class BridgeLogLevel(
 internal fun BridgeLogLevel.mirrorsToConsole(): Boolean = this != BridgeLogLevel.Debug
 
 private val bridgeAttachmentExportOperationSequence = atomic(0L)
+
+private val bridgeThreadImageCompressionOperationSequence = atomic(0L)
+
+private fun nextBridgeThreadImageCompressionRequestId(): String =
+    "thread-image-compress-${bridgeThreadImageCompressionOperationSequence.incrementAndGet()}"
 
 internal fun nextBridgeAttachmentExportOperationId(owner: AttachmentOwnerLease): String =
     "${owner.principalKey.value}:${owner.scopeId}:${owner.generation}:" +
@@ -642,24 +648,46 @@ internal class BridgeModule : Module() {
         )
 
     /**
-     * Best-effort retirement for cache files owned by an ephemeral File Preview session.
-     * Hosts must independently fence every ref to their app-owned cache roots before deletion.
+     * Linearizes retirement of cache files owned by an ephemeral File Preview session.
+     *
+     * The native side must synchronously quarantine each admitted ref (an atomic same-directory
+     * rename) before this call returns.  Only the tombstone deletion may be asynchronous.  Keeping
+     * the call synchronous is important because shared draft persistence invokes it while holding
+     * the process-wide ownership lock; an asynchronous dispatch would re-open a post-dispatch ABA
+     * window in which a new draft can adopt the old pathname.
      */
     fun retireFilePreviewTemporaryFiles(
         sessionId: String,
         fileRefs: List<String>
-    ) {
+    ): String {
         val cleanSessionId = sessionId.trim()
         val cleanRefs = fileRefs.map(String::trim).filter(String::isNotBlank).distinct()
-        if (cleanRefs.isEmpty()) return
-        callNativeMethod(
-            RETIRE_FILE_PREVIEW_TEMPORARY_FILES,
-            JSONObject().apply {
-                put("sessionId", cleanSessionId)
-                put("fileRefs", JSONArray().apply { cleanRefs.forEach(::put) })
-            },
-            null
-        )
+        if (cleanRefs.isEmpty()) return ""
+        // Retirement is a shared ownership transition, not a renderer operation.  Calling the
+        // Kuikly sync bridge here is unsafe: persistence can invoke this method from its delayed
+        // coroutine worker, while the renderer only accepts synchronous calls on its context
+        // thread.  The app-scope registry provides a bridge-free, synchronous quarantine seam;
+        // platform handlers atomically rename each admitted file to a sibling tombstone before
+        // returning and may delete only those tombstones asynchronously.
+        val result = ThreadComposerTemporaryFileRetirement.retire(cleanSessionId, cleanRefs.toSet())
+        if (!result.succeeded) {
+            slockLogWarn(
+                BRIDGE_LOG_TAG,
+                "thread_composer_temp_retire_fail sessionId=$cleanSessionId " +
+                    "requested=${result.requestedCount} quarantined=${result.quarantinedCount} " +
+                    "failed=${result.failedCount} rejected=${result.rejectedCount} " +
+                    "errorCode=${result.errorCode.orEmpty()}"
+            )
+        }
+        return JSONObject().apply {
+            put("status", if (result.succeeded) "quarantined" else "failed")
+            put("requested", result.requestedCount)
+            put("admitted", result.admittedCount)
+            put("quarantined", result.quarantinedCount)
+            put("rejected", result.rejectedCount)
+            put("failed", result.failedCount)
+            result.errorCode?.let { put("errorCode", it) }
+        }.toString()
     }
 
     suspend fun exportDownloadedAttachment(
@@ -829,14 +857,66 @@ internal class BridgeModule : Module() {
         channelId: String,
         imageOnly: Boolean,
         capture: Boolean = false,
+        compressImages: Boolean = false,
     ): JSONObject? =
         suspendCoroutine { continuation ->
             val methodArgs = JSONObject()
             methodArgs.put("channelId", channelId)
             methodArgs.put("imageOnly", imageOnly)
             methodArgs.put("capture", capture)
+            methodArgs.put("compressImages", compressImages)
             callNativeMethod("threadAttachmentUpload", methodArgs) {
                 continuation.resume(it)
+            }
+        }
+
+    /**
+     * Compresses one app-owned editor output on the host and returns the new temporary file
+     * metadata.  The request id is part of the native cancellation/late-callback fence; it is
+     * intentionally generated in shared code rather than inferred from a file path.
+     */
+    suspend fun compressThreadImage(
+        fileRef: String,
+        fileName: String,
+        mimeType: String,
+        requestId: String = nextBridgeThreadImageCompressionRequestId()
+    ): JSONObject? =
+        suspendCancellableCoroutine { continuation ->
+            val cleanRequestId = requestId.trim().ifBlank { nextBridgeThreadImageCompressionRequestId() }
+            val methodArgs = JSONObject().apply {
+                put("requestId", cleanRequestId)
+                put("fileRef", fileRef)
+                put("fileName", fileName)
+                put("mimeType", mimeType)
+            }
+            var callbackRef: CallbackRef? = null
+            val terminal = atomic(false)
+            fun finish(payload: JSONObject?) {
+                if (!terminal.compareAndSet(false, true)) return
+                callbackRef?.let { removeCallback(it) }
+                if (continuation.isActive) continuation.resume(payload)
+            }
+            val result =
+                toNative(
+                    keepCallbackAlive = false,
+                    methodName = COMPRESS_THREAD_IMAGE,
+                    param = methodArgs.toString(),
+                    callback = { payload -> finish(payload) },
+                    syncCall = false
+                )
+            callbackRef = result.callbackRef
+            // A synchronous native rejection can complete before toNative returns.  Do not leave
+            // that callback registered in the renderer in that race.
+            if (terminal.value) callbackRef?.let { removeCallback(it) }
+            continuation.invokeOnCancellation {
+                if (terminal.compareAndSet(false, true)) {
+                    callNativeMethod(
+                        CANCEL_COMPRESS_THREAD_IMAGE,
+                        JSONObject().apply { put("requestId", cleanRequestId) },
+                        null
+                    )
+                }
+                callbackRef?.let { removeCallback(it) }
             }
         }
 
@@ -1241,6 +1321,8 @@ internal class BridgeModule : Module() {
         const val REMOTE_CONFIG = "loadRemoteConfig"
         const val SIGN_ALERT = "signAlert"
         const val CLOSE_KEYBOARD = "closeKeyboard"
+        const val COMPRESS_THREAD_IMAGE = "compressThreadImage"
+        const val CANCEL_COMPRESS_THREAD_IMAGE = "cancelCompressThreadImage"
         const val URL_ENCODE = "urlEncode"
         const val URL_DECODE = "urlDecode"
         const val SHOW_PHOTO_BROWSER = "showPhotoBrowser"

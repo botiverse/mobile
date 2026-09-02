@@ -35,6 +35,7 @@ internal enum class ThreadUserFacingErrorReason {
     ServerUnavailable,
     ItemNotFound,
     AttachmentTooLarge,
+    AttachmentImageCompressionFailed,
     RateLimited,
     ResponseUnreadable,
     RequestCancelled,
@@ -119,6 +120,8 @@ internal fun threadUserFacingErrorCodeReason(errorCode: String?): ThreadUserFaci
             "no_permission" in normalized -> ThreadUserFacingErrorReason.PermissionDenied
         normalized == "attachment_too_large" ||
             normalized == "upload_too_large" -> ThreadUserFacingErrorReason.AttachmentTooLarge
+        normalized == "attachment_image_compression_failed" ->
+            ThreadUserFacingErrorReason.AttachmentImageCompressionFailed
         "rate" in normalized ||
             "too_many" in normalized -> ThreadUserFacingErrorReason.RateLimited
         "contract" in normalized ||
@@ -138,6 +141,8 @@ internal fun ThreadUserFacingErrorReason.stringDesc(): StringDesc =
         ThreadUserFacingErrorReason.ServerUnavailable -> MR.strings.thread_error_reason_server_unavailable.desc()
         ThreadUserFacingErrorReason.ItemNotFound -> MR.strings.thread_error_reason_not_found.desc()
         ThreadUserFacingErrorReason.AttachmentTooLarge -> MR.strings.thread_error_reason_attachment_too_large.desc()
+        ThreadUserFacingErrorReason.AttachmentImageCompressionFailed ->
+            MR.strings.thread_error_reason_attachment_image_compression_failed.desc()
         ThreadUserFacingErrorReason.RateLimited -> MR.strings.thread_error_reason_rate_limited.desc()
         ThreadUserFacingErrorReason.ResponseUnreadable -> MR.strings.thread_error_reason_response_unreadable.desc()
         ThreadUserFacingErrorReason.RequestCancelled -> MR.strings.thread_error_reason_cancelled.desc()
@@ -179,6 +184,8 @@ internal fun threadUserFacingErrorLabels(): ThreadUserFacingErrorLabels =
                 ThreadUserFacingErrorReason.ItemNotFound.stringDesc().localized(),
             ThreadUserFacingErrorReason.AttachmentTooLarge to
                 ThreadUserFacingErrorReason.AttachmentTooLarge.stringDesc().localized(),
+            ThreadUserFacingErrorReason.AttachmentImageCompressionFailed to
+                ThreadUserFacingErrorReason.AttachmentImageCompressionFailed.stringDesc().localized(),
             ThreadUserFacingErrorReason.RateLimited to
                 ThreadUserFacingErrorReason.RateLimited.stringDesc().localized(),
             ThreadUserFacingErrorReason.ResponseUnreadable to

@@ -286,6 +286,7 @@
     <string name="thread_error_reason_server_unavailable">The server is unavailable right now. Please try again shortly.</string>
     <string name="thread_error_reason_not_found">This item could not be found. It may have been moved or deleted.</string>
     <string name="thread_error_reason_attachment_too_large">The attachment is too large. Choose a smaller file and try again.</string>
+    <string name="thread_error_reason_attachment_image_compression_failed">The image could not be compressed. Choose it again or select Original image.</string>
     <string name="thread_error_reason_rate_limited">Too many attempts. Please wait a moment and try again.</string>
     <string name="thread_error_reason_response_unreadable">The response could not be read. Please try again.</string>
     <string name="thread_error_reason_cancelled">The request was cancelled. Please try again.</string>
@@ -406,6 +407,7 @@
     <string name="thread_composer_placeholder_channel">Message #%1$s</string>
     <string name="thread_composer_placeholder_reply">Reply in thread</string>
     <string name="thread_composer_as_task">As Task</string>
+    <string name="thread_composer_original_image">Original image</string>
     <string name="thread_composer_members_parent_channel">IN PARENT CHANNEL</string>
     <string name="thread_composer_members_this_channel">IN THIS CHANNEL</string>
     <string name="thread_composer_members_this_thread">IN THIS THREAD</string>

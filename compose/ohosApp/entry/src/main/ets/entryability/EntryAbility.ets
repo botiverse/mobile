@@ -7,7 +7,7 @@ import display from '@ohos.display';
 import UIAbility from '@ohos.app.ability.UIAbility';
 import Want from '@ohos.app.ability.Want';
 import window from '@ohos.window';
-import { registerSingleServiceProvider, setup, init } from '@kuiklybase/knoi';
+import { invoke, registerSingleServiceProvider, setup, init } from '@kuiklybase/knoi';
 import { KuiklyRenderAdapterManager } from '@kuikly-open/render';
 import { LogAdapter } from '../kuikly/adapter/LogAdapter';
 import { RouterAdapter } from '../kuikly/adapter/RouterAdapter';
@@ -31,6 +31,10 @@ import {
   SLOCK_OHOS_PLATFORM_FILE_READER_SERVICE,
   SlockOhosPlatformFileReader
 } from './SlockOhosPlatformFileReader';
+import {
+  SLOCK_OHOS_THREAD_COMPOSER_TEMPORARY_FILE_RETIREMENT_SERVICE,
+  SlockOhosThreadComposerTemporaryFileRetirementProvider
+} from './SlockOhosThreadComposerTemporaryFileRetirement';
 import slockOhosProcessNetworkLifecycle from './SlockOhosProcessNetworkLifecycle';
 import BuildProfile from 'BuildProfile';
 
@@ -269,6 +273,23 @@ export default class EntryAbility extends UIAbility {
       SLOCK_NETWORK_APP_IDENTITY_SERVICE,
       new SlockOhosNetworkAppIdentityService()
     );
+    // The shared draft owner may retire picker/editor refs before the first page is loaded.
+    // Register the synchronous, bridge-free physical owner first, then install the common
+    // handler while KNOI is live.  The handler quarantines the exact raw path; only its
+    // tombstone may be deleted asynchronously.
+    registerSingleServiceProvider(
+      SLOCK_OHOS_THREAD_COMPOSER_TEMPORARY_FILE_RETIREMENT_SERVICE,
+      new SlockOhosThreadComposerTemporaryFileRetirementProvider(this.context)
+    );
+    const retirementInstalled = invoke<boolean>('slockInstallOhosThreadComposerTemporaryFileRetirement');
+    if (!retirementInstalled) {
+      hilog.error(
+        0x0000,
+        SLOCK_KNOI_LOG_TAG,
+        '%{public}s',
+        'Unable to install OHOS temporary-file retirement handler'
+      );
+    }
     // KmmResource contract: must complete after KNOI setup()/init() and
     // before any Kuikly/shared page exists — the first shared
     // stringResource() otherwise SIGSEGVs in native string lookup

@@ -306,6 +306,7 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.manager.PagerManager
 import com.tencent.kuikly.core.module.PerformanceModule
 import com.tencent.kuikly.core.module.RouterModule
+import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
@@ -315,6 +316,7 @@ import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -331,8 +333,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -516,6 +521,399 @@ internal fun resolveThreadPickedAttachmentComposerAction(
             ThreadPickedAttachmentComposerAction.OpenImageAnnotation
         else -> ThreadPickedAttachmentComposerAction.UploadToComposer
     }
+}
+
+/**
+ * Decision returned by the composer remove boundary.
+ *
+ * Removing a tile and retiring its native temporary bytes are two different operations.  The
+ * reducer owns the former; this helper only decides whether the request belongs to the currently
+ * mounted draft and, when the row is a cache-owned local image, which ref may be retired.  A
+ * server-owned/remote row is still removable, but its URL/ref is never handed to the native
+ * retirement bridge.
+ */
+internal data class ThreadComposerAttachmentRemoval(
+    val accepted: Boolean,
+    val reason: String = "",
+    val fileRefToRetire: String? = null
+)
+
+private val ThreadComposerImageFileExtensions =
+    setOf("avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "svg", "webp")
+
+/**
+ * Normalize a local file handle for ownership comparisons without turning it into a new source of
+ * truth.  Native retirement performs the final cache-root check; this boundary only admits the
+ * two representations emitted by our hosts (an absolute path or a host-less file URI) and rejects
+ * ambiguous URI/path forms before they can reach that bridge.
+ */
+private fun normalizeThreadComposerOwnedFileRef(fileRef: String): Pair<String, String>? {
+    val raw = fileRef.trim()
+    if (raw.isBlank() || raw.any(Char::isISOControl) || '?' in raw || '#' in raw || '\\' in raw) {
+        return null
+    }
+    val path =
+        when {
+            raw.startsWith("/") -> raw
+            raw.startsWith("file://", ignoreCase = true) -> {
+                val authorityAndPath = raw.substring(7)
+                // `file://host/path` is not local to this app.  A valid file URI has an empty
+                // authority and therefore starts with '/'.
+                if (!authorityAndPath.startsWith("/")) return null
+                authorityAndPath
+            }
+            else -> return null
+        }
+    if (path.length <= 1 || path.endsWith('/')) return null
+    val lower = path.lowercase()
+    // Reject encoded separators/dot segments as well as their literal forms.  Other percent
+    // escapes (for example a space in a user filename) remain valid and are left untouched.
+    if (lower.contains("%2e") || lower.contains("%2f") || lower.contains("%5c")) return null
+    val segments = path.split('/')
+    // An absolute path has exactly one leading empty segment.  Any additional empty segment
+    // would be a doubled separator which native path canonicalization may collapse; reject it so
+    // the ownership comparison cannot be bypassed with an alternate spelling.  Dot segments are
+    // rejected for the same reason (the bridge must receive an already-canonical local handle).
+    if (segments.drop(1).any { it == ".." || it == "." || it.isEmpty() }) return null
+    return raw to path
+}
+
+private fun threadComposerAttachmentExtension(value: String): String {
+    val candidate = value.trim()
+    if (candidate.isBlank()) return ""
+    return candidate.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+}
+
+private fun threadComposerAttachmentNameIsSafe(fileName: String): Boolean =
+    fileName.isNotBlank() &&
+        fileName.none(Char::isISOControl) &&
+        '/' !in fileName &&
+        '\\' !in fileName
+
+internal fun resolveThreadComposerAttachmentRemoval(
+    attachments: List<SharedThreadComposerAttachment>,
+    removedAttachmentIds: Set<String>,
+    attachmentId: String,
+    draftKey: String?
+): ThreadComposerAttachmentRemoval {
+    val normalizedId = attachmentId.trim().takeIf { it.isNotBlank() }
+        ?: return ThreadComposerAttachmentRemoval(accepted = false, reason = "blank_attachment_id")
+    val normalizedDraftKey = normalizeThreadAttachmentUploadDraftKey(draftKey)
+        ?: return ThreadComposerAttachmentRemoval(accepted = false, reason = "missing_draft_key")
+    // Keep the draft identity in the decision even though the current return value does not
+    // expose it.  This explicit read prevents callers from accidentally removing an unscoped row
+    // while migrating to the composite upload identity.
+    if (normalizedDraftKey.isBlank()) {
+        return ThreadComposerAttachmentRemoval(accepted = false, reason = "missing_draft_key")
+    }
+    if (removedAttachmentIds.any { it.trim() == normalizedId }) {
+        return ThreadComposerAttachmentRemoval(accepted = false, reason = "already_removed")
+    }
+    val attachment = attachments.firstOrNull { it.id.trim() == normalizedId }
+        ?: return ThreadComposerAttachmentRemoval(accepted = false, reason = "attachment_not_found")
+
+    val source = attachment.source?.trim().orEmpty()
+    val fileRef = attachment.fileRef?.trim()?.takeIf { it.isNotBlank() }
+    if (source !in ThreadComposerOwnedTemporarySources) {
+        // Removing a visible server/remote/external row is a reducer operation, not a native-file
+        // retirement operation.  Those rows are valid to remove from the mounted draft, but this
+        // helper must never hand their URL/URI to the local retirement bridge because the composer
+        // does not own those bytes.
+        return ThreadComposerAttachmentRemoval(accepted = true)
+    }
+    if (fileRef == null) {
+        return ThreadComposerAttachmentRemoval(accepted = false, reason = "missing_file_ref")
+    }
+    val normalizedRef =
+        normalizeThreadComposerOwnedFileRef(fileRef)
+            ?: return ThreadComposerAttachmentRemoval(accepted = false, reason = "invalid_file_ref")
+    if (!threadComposerAttachmentNameIsSafe(attachment.fileName.trim())) {
+        return ThreadComposerAttachmentRemoval(accepted = false, reason = "invalid_file_name")
+    }
+
+    val normalizedMime = attachment.mimeType.orEmpty().substringBefore(';').trim().lowercase()
+    if (normalizedMime.isBlank()) {
+        return ThreadComposerAttachmentRemoval(accepted = false, reason = "missing_mime_type")
+    }
+    if (normalizedMime.any(Char::isISOControl)) {
+        return ThreadComposerAttachmentRemoval(accepted = false, reason = "invalid_mime_type")
+    }
+    val nameExtension = threadComposerAttachmentExtension(attachment.fileName)
+    val refExtension = threadComposerAttachmentExtension(normalizedRef.second)
+    val extensions = listOf(nameExtension, refExtension).filter(String::isNotBlank)
+    val hasVideoExtension = extensions.any { it in SlockFilePreviewVideoExtensions }
+    val hasImageExtension = extensions.any { it in ThreadComposerImageFileExtensions }
+    val hasKnownNonImageExtension =
+        extensions.any { it !in ThreadComposerImageFileExtensions && it !in SlockFilePreviewVideoExtensions }
+    val isVideoMime = normalizedMime.startsWith("video/")
+    val isImageMime = normalizedMime.startsWith("image/")
+
+    // A tuple that disagrees about its media type is not safe to retire.  In particular, do not
+    // trust an image MIME/name when the actual ref ends in a video suffix (or the reverse).
+    if ((isImageMime && hasVideoExtension) || (isVideoMime && hasImageExtension)) {
+        return ThreadComposerAttachmentRemoval(accepted = false, reason = "media_type_conflict")
+    }
+    if (
+        (isImageMime && hasKnownNonImageExtension) ||
+            (isVideoMime && hasKnownNonImageExtension) ||
+            (!isImageMime && !isVideoMime && (hasImageExtension || hasVideoExtension))
+    ) {
+        return ThreadComposerAttachmentRemoval(accepted = false, reason = "media_type_conflict")
+    }
+
+    // Videos and non-image files may be removed from the draft, but they never qualify for the
+    // image temporary-file retirement bridge.
+    if (isVideoMime || hasVideoExtension || !isImageMime) {
+        return ThreadComposerAttachmentRemoval(accepted = true)
+    }
+
+    // A sibling row can still own the same physical object.  Removing this tile is valid, but
+    // retiring the ref would strand the sibling; compare canonical paths rather than raw URI
+    // spelling so `/cache/x.jpg` and `file:///cache/x.jpg` cannot bypass the fence.
+    val siblingOwnsRef =
+        attachments.any { sibling ->
+            if (sibling.id.trim() == normalizedId) {
+                false
+            } else {
+                val siblingRawRef = sibling.fileRef?.trim()?.takeIf { it.isNotBlank() }
+                // A malformed sibling spelling is conservatively treated as a holder when it is
+                // byte-for-byte the same ref.  Otherwise compare canonical paths; URI/path
+                // aliases cannot evade the shared-physical-file fence.
+                siblingRawRef == normalizedRef.first ||
+                    siblingRawRef?.let(::normalizeThreadComposerOwnedFileRef)?.second == normalizedRef.second
+            }
+        }
+    if (siblingOwnsRef) {
+        return ThreadComposerAttachmentRemoval(accepted = true)
+    }
+    return ThreadComposerAttachmentRemoval(accepted = true, fileRefToRetire = normalizedRef.first)
+}
+
+/** Identity of one cross-process composer-image event batch. */
+internal data class ThreadComposerImageEventBatchKey(
+    val sessionId: String,
+    val threadKey: String,
+    val groupId: String
+)
+
+/** Parsed event retained by the batch accumulator until the whole N/N group is present. */
+internal data class ThreadComposerImageEventBatchItem(
+    val eventData: JSONObject,
+    val payload: SlockFilePreviewComposerImageEventPayload,
+    val replaceAttachmentId: String? = null
+) {
+    val actionId: String
+        get() = payload.actionId
+    val fileRef: String
+        get() = payload.fileRef
+    val groupIndex: Int
+        get() = payload.groupIndex ?: 0
+
+    /** All fields which affect ownership/upload semantics, excluding JSONObject object identity. */
+    internal val contentKey: String
+        get() =
+            listOf(
+                payload.previewSessionId,
+                payload.threadKey,
+                payload.action,
+                payload.fileRef,
+                payload.previewUri,
+                payload.fileName,
+                payload.mimeType,
+                payload.source,
+                payload.compressed.toString(),
+                payload.sizeBytes?.toString().orEmpty(),
+                payload.groupId.orEmpty(),
+                payload.groupIndex?.toString().orEmpty(),
+                payload.groupTotal?.toString().orEmpty(),
+                replaceAttachmentId.orEmpty()
+            ).joinToString("\u0000")
+}
+
+internal sealed interface ThreadComposerImageEventBatchOffer {
+    data object Added : ThreadComposerImageEventBatchOffer
+    data object Duplicate : ThreadComposerImageEventBatchOffer
+    data object Rejected : ThreadComposerImageEventBatchOffer
+    data class Complete(val events: List<ThreadComposerImageEventBatchItem>) : ThreadComposerImageEventBatchOffer
+}
+
+/**
+ * Pure N/N event accumulator used by the Thread consumer.
+ *
+ * It freezes session/thread/group identity and expected count at construction.  No caller may
+ * upload or claim a member until [offer] returns [Complete].  Same-index replays with identical
+ * content are idempotent; index/action/ref conflicts poison the whole accumulator.
+ */
+internal class ThreadComposerImageEventBatchAccumulator(
+    val key: ThreadComposerImageEventBatchKey,
+    val expectedCount: Int
+) {
+    private val itemsByIndex = linkedMapOf<Int, ThreadComposerImageEventBatchItem>()
+    private val actionIds = mutableSetOf<String>()
+    private val fileRefs = mutableSetOf<String>()
+    private var rejected = false
+
+    val isRejected: Boolean
+        get() = rejected
+
+    val isComplete: Boolean
+        get() = !rejected && itemsByIndex.size == expectedCount &&
+            (0 until expectedCount).all(itemsByIndex::containsKey)
+
+    fun offer(item: ThreadComposerImageEventBatchItem): ThreadComposerImageEventBatchOffer {
+        if (rejected || expectedCount <= 0) return ThreadComposerImageEventBatchOffer.Rejected
+        val payload = item.payload
+        val actualKey =
+            ThreadComposerImageEventBatchKey(
+                sessionId = payload.previewSessionId.trim(),
+                threadKey = payload.threadKey.trim(),
+                groupId = payload.groupId.orEmpty().trim()
+            )
+        val actualTotal = payload.groupTotal ?: 1
+        val actualIndex = payload.groupIndex ?: 0
+        if (
+            actualKey != key ||
+                actualTotal != expectedCount ||
+                actualIndex !in 0 until expectedCount ||
+                item.actionId.isBlank() ||
+                item.fileRef.isBlank()
+        ) {
+            rejected = true
+            return ThreadComposerImageEventBatchOffer.Rejected
+        }
+
+        val existing = itemsByIndex[actualIndex]
+        if (existing != null) {
+            return if (existing.contentKey == item.contentKey) {
+                ThreadComposerImageEventBatchOffer.Duplicate
+            } else {
+                rejected = true
+                ThreadComposerImageEventBatchOffer.Rejected
+            }
+        }
+        if (item.actionId in actionIds || item.fileRef in fileRefs) {
+            rejected = true
+            return ThreadComposerImageEventBatchOffer.Rejected
+        }
+        itemsByIndex[actualIndex] = item
+        actionIds += item.actionId
+        fileRefs += item.fileRef
+        return if (isComplete) {
+            ThreadComposerImageEventBatchOffer.Complete(
+                events = (0 until expectedCount).mapNotNull(itemsByIndex::get)
+            )
+        } else {
+            ThreadComposerImageEventBatchOffer.Added
+        }
+    }
+
+    fun eventsInIndexOrder(): List<ThreadComposerImageEventBatchItem> =
+        if (isComplete) (0 until expectedCount).mapNotNull(itemsByIndex::get) else emptyList()
+
+    fun abort() {
+        rejected = true
+        itemsByIndex.clear()
+        actionIds.clear()
+        fileRefs.clear()
+    }
+}
+
+/**
+ * Generic file picks bypass the image annotation editor, so their image members may be
+ * normalized by the native picker before the shared upload-size gate runs.  Image/camera picks
+ * intentionally stay uncompressed here: they enter the editor first and are finalized exactly
+ * once after confirmation.  The policy value is sampled while the picker is opened so a later
+ * draft recomposition cannot change the meaning of an in-flight picker result.
+ */
+internal fun shouldCompressThreadAttachmentPickerImages(
+    action: String,
+    originalImage: Boolean,
+): Boolean = action == "attachFile" && !originalImage
+
+/**
+ * A generic picker can return a readable subset together with a compression error (HTTP-like
+ * `206`).  Compression is an all-or-nothing policy: accepting that subset would silently send
+ * some images compressed and leave the failed image out of the user's selection.  Keep the
+ * response inspection pure so every host envelope (top-level fields or `bodyText`) follows the
+ * same fail-closed rule.
+ */
+internal fun threadAttachmentPickerHasCompressionFailure(response: JSONObject?): Boolean {
+    if (response == null) return false
+
+    fun hasCompressionError(entries: JSONArray?): Boolean {
+        if (entries == null) return false
+        for (index in 0 until entries.length()) {
+            val entry = entries.optJSONObject(index) ?: continue
+            if (entry.optString("errorCode").trim() == SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE) {
+                return true
+            }
+        }
+        return false
+    }
+
+    if (response.optString("errorCode").trim() == SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE ||
+        hasCompressionError(response.optJSONArray("errors"))
+    ) {
+        return true
+    }
+    val body =
+        response.optString("bodyText")
+            .trim()
+            .takeIf { it.isNotBlank() }
+            ?.let { raw -> runCatching { JSONObject(raw) }.getOrNull() }
+            ?: return false
+    return body.optString("errorCode").trim() == SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE ||
+        hasCompressionError(body.optJSONArray("errors"))
+}
+
+/**
+ * Collect every temporary ref a native picker exposed in a failed compression envelope.  Hosts
+ * normally put successful subset refs in `files`; a failed item may also carry a ref in `errors`
+ * or a compatibility `fileRefs` array.  The native retirement bridge performs the cache-root
+ * admission check, so this helper deliberately does not trust the ref's scheme/path here.
+ */
+internal fun threadAttachmentPickerCompressionFailureFileRefs(response: JSONObject?): Set<String> {
+    if (response == null) return emptySet()
+    val refs = linkedSetOf<String>()
+
+    fun collectArray(array: JSONArray?) {
+        if (array == null) return
+        for (index in 0 until array.length()) {
+            val entry = array.optJSONObject(index)
+            if (entry != null) {
+                listOf("fileRef", "temporaryFileRef", "sourceFileRef")
+                    .forEach { key ->
+                        entry.optString(key).trim().takeIf { it.isNotBlank() }?.let(refs::add)
+                    }
+                // A few hosts wrap the actual item under `file`; retain that compatibility shape
+                // without recursively walking arbitrary payload objects.
+                entry.optJSONObject("file")?.optString("fileRef")
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(refs::add)
+            } else {
+                array.optString(index)?.trim()?.takeIf { it.isNotBlank() }?.let(refs::add)
+            }
+        }
+    }
+
+    fun collectEnvelope(envelope: JSONObject) {
+        collectArray(envelope.optJSONArray("files"))
+        collectArray(envelope.optJSONArray("errors"))
+        collectArray(envelope.optJSONArray("fileRefs"))
+        listOf("fileRef", "temporaryFileRef", "sourceFileRef")
+            .forEach { key ->
+                envelope.optString(key).trim().takeIf { it.isNotBlank() }?.let(refs::add)
+            }
+    }
+
+    collectEnvelope(response)
+    response.optString("bodyText")
+        .trim()
+        .takeIf { it.isNotBlank() }
+        ?.let { raw -> runCatching { JSONObject(raw) }.getOrNull() }
+        ?.let(::collectEnvelope)
+    return refs
 }
 
 internal fun slockComposerImagePickerFilesAreStrictImages(files: List<PlatformFile>): Boolean =
@@ -838,6 +1236,7 @@ internal fun threadComposerEventRequiresWriteAccess(action: String): Boolean =
             "inviteMention",
             "notifyMention",
             "attachImage",
+            "toggleOriginalImage",
             "attachFile",
             "removeAttachment",
             "retryAttachments"
@@ -2064,16 +2463,32 @@ internal data class KuiklyThreadPendingSendContext(
     val randomId: String? = null
 )
 
+/**
+ * Process-local files which the composer is allowed to retire after a pending send reaches a
+ * terminal state.  Editor and compressor outputs are included alongside picker/camera results;
+ * remote attachments and external-share handles are intentionally excluded.
+ */
+internal val ThreadComposerOwnedTemporarySources =
+    setOf(
+        "platform_picker",
+        "platform_camera",
+        "composer_image_editor",
+        "composer_image_compressor"
+    )
+
 internal fun threadPendingSendOwnedTemporaryFileRefs(
     attachments: List<SharedThreadComposerAttachment>,
     attachmentIds: Collection<String>
 ): List<String> {
     val acceptedIds = attachmentIds.toSet()
-    val ownedTemporarySources = setOf("platform_picker", "platform_camera")
     return attachments
         .asSequence()
         .filter { attachment -> attachment.id in acceptedIds }
-        .filter { attachment -> attachment.source in ownedTemporarySources }
+        // This is the generic pending-send ownership boundary, not the image-compression
+        // classifier.  Videos and ordinary files also receive process-local picker/camera/editor
+        // handles and must be retired after a terminal send; media-type exclusion belongs only in
+        // image admission helpers such as `isComposerImageOwnedTemporary`.
+        .filter { attachment -> attachment.source in ThreadComposerOwnedTemporarySources }
         .mapNotNull { attachment -> attachment.fileRef?.trim()?.takeIf(String::isNotBlank) }
         .distinct()
         .toList()
@@ -5507,7 +5922,17 @@ internal fun SharedThreadRouteContent(
         ThreadAttachmentUploadOrchestrator(threadSendScope)
     }
     var attachmentUploadFilesByLocalId by remember(threadInstanceKey) {
-        mutableStateOf<Map<String, PlatformFile>>(emptyMap())
+        mutableStateOf<Map<ThreadAttachmentUploadAttemptIdentity, PlatformFile>>(emptyMap())
+    }
+    // Rows restored from the durable draft are tracked separately from files admitted by the
+    // currently mounted composer.  When a reused Thread instance moves to another draft key we
+    // may retire only the previous restoration batch; blindly clearing this map would race an
+    // upload which is still owned by the process-level orchestrator.
+    var restoredAttachmentUploadDraftKey by remember(threadInstanceKey) {
+        mutableStateOf<String?>(null)
+    }
+    var restoredAttachmentUploadFileIds by remember(threadInstanceKey) {
+        mutableStateOf<Set<ThreadAttachmentUploadAttemptIdentity>>(emptySet())
     }
     var externalShareSendRequested by remember(threadInstanceKey) { mutableStateOf(false) }
     val pendingMentionActionBatchRequestGate =
@@ -5519,6 +5944,14 @@ internal fun SharedThreadRouteContent(
         Semaphore(ThreadAttachmentUploadConcurrencyLimit)
     }
     var composerImageActionCounter by remember(threadInstanceKey) { mutableStateOf(0) }
+    // Cross-process editor callbacks may arrive out of order and on separate event-bus turns.
+    // Keep one process-local accumulator per mounted Thread and serialize offers/claims so a
+    // duplicate cannot race the complete N/N handoff.
+    val composerImageEventBatchMutex = remember(threadInstanceKey) { Mutex() }
+    val composerImageEventBatches =
+        remember(threadInstanceKey) {
+            mutableMapOf<ThreadComposerImageEventBatchKey, ThreadComposerImageEventBatchAccumulator>()
+        }
     val chatLayoutPreferenceStore =
         remember(pager) {
             KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
@@ -6145,27 +6578,52 @@ internal fun SharedThreadRouteContent(
     }
     LaunchedEffect(composerDraftViewModel, threadInstanceKey) {
         composerDraftViewModel.state.collect { draftState ->
-            val restoredExternalShareFiles =
+            val draftKey = normalizeThreadAttachmentUploadDraftKey(draftState.draftKey)
+            val previousRestoredKey = restoredAttachmentUploadDraftKey
+            if (draftKey != null && previousRestoredKey != null && draftKey != previousRestoredKey) {
+                // A reused Thread surface may keep the process-owned orchestrator alive while its
+                // composer store moves from draft A to draft B. Retire A before touching restored
+                // file bookkeeping so a late transport callback cannot publish into B.
+                attachmentUploadOrchestrator.retireDraft(previousRestoredKey)
+                // The map key is the complete (draft,id) identity.  Retire every handle owned by
+                // the old draft; a same-named local id admitted by the new draft is a different
+                // key and therefore remains untouched.  This also prevents a late old-job
+                // cleanup from deleting or shadowing the new draft's handle.
+                attachmentUploadFilesByLocalId =
+                    attachmentUploadFilesByLocalId.filterKeys { key -> key.draftKey != previousRestoredKey }
+                restoredAttachmentUploadFileIds =
+                    restoredAttachmentUploadFileIds.filter { key -> key.draftKey != previousRestoredKey }.toSet()
+            }
+
+            // A transient null key can be emitted while a route is being rebound.  Keep the last
+            // non-empty key so the first real key after an initial null does not clear an active
+            // session, while a genuine A -> B transition still retires the old restoration batch.
+            if (draftKey == null) return@collect
+            if (draftKey != previousRestoredKey) {
+                restoredAttachmentUploadDraftKey = draftKey
+            }
+
+            val restoredFiles =
                 draftState.uploadedAttachments
-                    .filter { attachment ->
-                        attachment.source == "external_share" &&
-                            attachment.status in setOf("queued", "uploading", "failed") &&
-                            !attachment.fileRef.isNullOrBlank()
+                    .mapNotNull { attachment ->
+                        attachment.toRestoredThreadComposerPlatformFile()?.let { file ->
+                            attachment.id to file
+                        }
                     }
-                    .associate { attachment ->
-                        attachment.id to
-                            PlatformFile(
-                                id = attachment.id,
-                                fileName = attachment.fileName,
-                                mimeType = attachment.mimeType,
-                                sizeBytes = attachment.sizeBytes.takeIf { it > 0L },
-                                previewUri = attachment.previewUri,
-                                fileRef = attachment.fileRef,
-                                source = "external_share"
-                            )
-                    }
-            if (restoredExternalShareFiles.isNotEmpty()) {
-                attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId + restoredExternalShareFiles
+                    .toMap()
+            if (restoredFiles.isNotEmpty()) {
+                val activeUploadIds = attachmentUploadOrchestrator.activeAttemptIds(draftKey)
+                val safeRestoredFiles = restoredFiles.filterKeys { id -> id !in activeUploadIds }
+                if (safeRestoredFiles.isNotEmpty()) {
+                    val keyedFiles =
+                        safeRestoredFiles.mapNotNull { (id, file) ->
+                            threadAttachmentUploadAttemptIdentity(id, draftKey)?.let { identity ->
+                                identity to file
+                            }
+                        }.toMap()
+                    attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId + keyedFiles
+                    restoredAttachmentUploadFileIds = restoredAttachmentUploadFileIds + keyedFiles.keys
+                }
             }
         }
     }
@@ -6864,7 +7322,9 @@ internal fun SharedThreadRouteContent(
     }
 
     fun openComposerAttachmentPreview(attachmentId: String) {
-        val attachment = currentComposerPayload().pendingAttachments.firstOrNull { it.id == attachmentId } ?: return
+        val composerPayload = currentComposerPayload()
+        val attachment = composerPayload.pendingAttachments.firstOrNull { it.id == attachmentId } ?: return
+        val currentDraftState = composerDraftViewModel.state.value
         val name = attachment.fileName.ifBlank { "Attachment" }
         val meta = attachment.displaySizeLabel()
         if (!attachment.isReadyThreadAttachmentForSend()) {
@@ -6908,28 +7368,106 @@ internal fun SharedThreadRouteContent(
                 sizeBytes = attachment.sizeBytes,
                 thumbnailUrl = attachment.previewUri
         )
-        val composerImageGroup = currentComposerPayload().pendingAttachments.composerPendingImageAttachmentGroup(attachmentId)
+        val composerImageGroup = composerPayload.pendingAttachments.composerPendingImageAttachmentGroup(attachmentId)
+        // KuiklyPendingAttachmentItem is intentionally a render-only projection and therefore
+        // does not carry the platform file handle. Resolve each gallery item back to the
+        // session-owned draft/upload descriptor before opening an editable preview; otherwise
+        // the gallery payload would contain only thumbnails and the Done/session registry could
+        // never admit the resulting events.
+        val draftAttachmentsById = currentDraftState.uploadedAttachments.associateBy { it.id }
+        val currentDraftKey = normalizeThreadAttachmentUploadDraftKey(currentDraftState.draftKey)
+        fun composerImageFileFor(id: String): PlatformFile? =
+            attachmentUploadFilesByLocalId.threadAttachmentUploadFile(id, currentDraftKey)
+                ?.takeIf { file -> !file.fileRef.isNullOrBlank() }
+                ?: draftAttachmentsById[id]
+                    ?.toComposerImagePlatformFile()
+                    ?.takeIf { file -> !file.fileRef.isNullOrBlank() }
         if (composerImageGroup != null && composerImageGroup.images.size > 1) {
+            val galleryFiles =
+                composerImageGroup.images.mapNotNull { image -> composerImageFileFor(image.id) }
+            // A ready tile without a local file ref is not safely editable. Keep it as an
+            // ordinary preview rather than creating a composer session whose Done action can
+            // never produce a deliverable event.
+            if (galleryFiles.size != composerImageGroup.images.size || galleryFiles.isEmpty()) {
+                pager.openSlockFilePreviewPage(
+                    threadAttachment.toThreadAttachmentLazyPreviewPayload(
+                        kind = "image",
+                        imageGallery = composerImageGroup.images,
+                        imageGalleryIndex = composerImageGroup.currentIndex
+                    ).copy(imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() })
+                )
+                return
+            }
+            val selectedIndex = composerImageGroup.currentIndex.coerceIn(0, galleryFiles.lastIndex)
+            val selectedFile = galleryFiles[selectedIndex]
+            composerImageActionCounter += 1
+            val baseActionId =
+                "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${attachmentId.take(12)}"
+            val groupId = "$baseActionId-group"
+            val galleryImages = galleryFiles.map { file -> file.toComposerImageGalleryImage() }
             pager.openSlockFilePreviewPage(
                 threadAttachment.toThreadAttachmentLazyPreviewPayload(
                     kind = "image",
                     imageGallery = composerImageGroup.images,
                     imageGalleryIndex = composerImageGroup.currentIndex
                 ).copy(
-                    imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() }
+                    imageUrl = selectedFile.composerLocalPreviewUri()?.takeIf { it.isNotBlank() },
+                    externalFileName = selectedFile.fileName.ifBlank { name },
+                    externalMimeType = selectedFile.mimeType.orEmpty(),
+                    imageGallery = galleryImages,
+                    composerImageThreadKey = threadInstanceKey,
+                    composerImageActionId = baseActionId,
+                    composerImageGroupId = groupId,
+                    composerImageFileRef = selectedFile.fileRef.orEmpty(),
+                    composerImageFileName = selectedFile.fileName.ifBlank { name },
+                    composerImageMimeType = selectedFile.mimeType.orEmpty(),
+                    composerImageSizeBytes = selectedFile.sizeBytes,
+                    composerImagePreviewUri = selectedFile.composerLocalPreviewUri().orEmpty(),
+                    composerImageOwnedTemporaryFileRefs =
+                        galleryFiles
+                            .filter(PlatformFile::isComposerImageOwnedTemporary)
+                            .mapNotNull(PlatformFile::fileRef),
+                    composerImageCompressAfterEdit = !currentDraftState.originalImage,
+                    composerImageCanComplete = true,
+                    composerImageCanEdit = true
                 )
             )
         } else if (threadAttachment.isImageAttachment()) {
             composerImageActionCounter += 1
             val composerImageActionId = "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${threadAttachment.id.take(12)}"
+            val composerImageFile = composerImageFileFor(attachment.id)
+            // A server-ready tile can still be previewable after its local picker ref has been
+            // retired.  It is not safely editable/compressible in that state, so keep it a plain
+            // read-only preview instead of creating a Done session that can never emit an event.
+            if (composerImageFile == null) {
+                pager.openSlockFilePreviewPage(
+                    threadAttachment.toThreadAttachmentLazyPreviewPayload(
+                        kind = "image"
+                    ).copy(imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() })
+                )
+                return
+            }
             pager.openSlockFilePreviewPage(
                 threadAttachment.toThreadAttachmentLazyPreviewPayload(kind = "image").copy(
-                    imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() },
+                    imageUrl = composerImageFile.composerLocalPreviewUri()?.takeIf { it.isNotBlank() },
+                    externalFileName = composerImageFile.fileName.ifBlank { name },
+                    externalMimeType = composerImageFile.mimeType.orEmpty(),
                     composerImageThreadKey = threadInstanceKey,
                     composerImageActionId = composerImageActionId,
-                    composerImageFileName = name,
-                    composerImageMimeType = attachment.mimeType.orEmpty(),
+                    composerImageFileRef = composerImageFile.fileRef.orEmpty(),
+                    composerImageFileName = composerImageFile.fileName.ifBlank { name },
+                    composerImageMimeType = composerImageFile.mimeType.orEmpty(),
+                    composerImageSizeBytes = composerImageFile.sizeBytes,
+                    composerImagePreviewUri = composerImageFile.composerLocalPreviewUri().orEmpty(),
+                    composerImageOwnedTemporaryFileRefs =
+                        listOfNotNull(
+                            composerImageFile
+                                .takeIf(PlatformFile::isComposerImageOwnedTemporary)
+                                ?.fileRef
+                        ),
                     composerImageReplaceAttachmentId = attachment.id,
+                    composerImageCompressAfterEdit = !currentDraftState.originalImage,
+                    composerImageCanComplete = true,
                     composerImageCanEdit = true
                 )
             )
@@ -7272,8 +7810,15 @@ internal fun SharedThreadRouteContent(
             }
         }
     }
-    fun handleAttachmentUploadFailure(errorCode: String, attachmentIds: Set<String> = emptySet()) {
-        val terminalAttachmentIds = attachmentUploadOrchestrator.failActive(attachmentIds)
+    fun handleAttachmentUploadFailure(
+        errorCode: String,
+        attachmentIds: Set<String> = emptySet(),
+        ownerDraftKey: String? = null,
+    ) {
+        val draftKey =
+            normalizeThreadAttachmentUploadDraftKey(ownerDraftKey)
+                ?: normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
+        val terminalAttachmentIds = attachmentUploadOrchestrator.failActive(draftKey, attachmentIds)
         if (terminalAttachmentIds.isNotEmpty()) {
             composerDraftViewModel.dispatch(
                 SharedThreadComposerDraftIntent.MarkAttachmentsFailed(
@@ -7316,29 +7861,67 @@ internal fun SharedThreadRouteContent(
     }
     suspend fun uploadComposerAttachmentFiles(
         files: List<PlatformFile>,
-        replaceAttachmentId: String? = null
+        replaceAttachmentId: String? = null,
+        requireAllFiles: Boolean = false,
+        replaceAttachmentIdsByLocalId: Map<String, String> = emptyMap(),
+        /**
+         * Called after one admitted file has produced a valid server attachment.  Gallery
+         * delivery uses this to transfer that member's temporary-file ownership immediately;
+         * the enclosing N/N barrier still decides whether the whole session can be committed.
+         */
+        onSuccessfulUpload: ((localAttachmentId: String) -> Boolean)? = null
     ): Boolean {
+        // Upload callbacks must retain the store-owned draft identity they were admitted under.
+        // A route can remain mounted while the composer store transitions to another key; using
+        // the key captured here makes every progress/success/failure publication fail closed.
+        val draftKey = normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
+            ?: return false
         val channelId = composerSurface.sendChannelId
         if (channelId == null) {
             bridge.toast(attachmentPickerUnavailableLabel)
             return false
         }
         val admittedFiles = admittedComposerAttachmentFiles(files)
-        if (admittedFiles.isEmpty()) return false
+        if (admittedFiles.isEmpty() || (requireAllFiles && admittedFiles.size != files.size)) {
+            if (requireAllFiles && admittedFiles.size != files.size) {
+                bridge.logWarn(
+                    "thread_composer_attachment_batch_rejected reason=size_gate " +
+                        "expected=${files.size} admitted=${admittedFiles.size}"
+                )
+            }
+            return false
+        }
+        if (requireAllFiles && admittedFiles.any { file -> file.id.isBlank() }) {
+            bridge.logWarn("thread_composer_attachment_batch_rejected reason=blank_local_id")
+            return false
+        }
         val activeUploadFileRefs =
-            attachmentUploadOrchestrator.activeAttemptIds
-                .filter(attachmentUploadOrchestrator::isActive)
-                .mapNotNull { id -> attachmentUploadFilesByLocalId[id]?.fileRef?.takeIf { it.isNotBlank() } }
+            attachmentUploadOrchestrator.activeAttemptIds(draftKey)
+                .filter { id -> attachmentUploadOrchestrator.isActive(id, draftKey) }
+                .mapNotNull {
+                    id -> attachmentUploadFilesByLocalId.threadAttachmentUploadFile(id, draftKey)?.fileRef?.takeIf { it.isNotBlank() }
+                }
                 .toSet()
+        val activeUploadIds = attachmentUploadOrchestrator.activeAttemptIds(draftKey)
         val acceptedFileRefs = mutableSetOf<String>()
+        val acceptedLocalIds = mutableSetOf<String>()
         val acceptedFiles =
             admittedFiles.filter { file ->
                 val fileRef = file.fileRef?.takeIf { it.isNotBlank() }
                 val isDuplicate =
+                    file.id in activeUploadIds ||
+                        !acceptedLocalIds.add(file.id) ||
                     fileRef != null &&
                         (fileRef in activeUploadFileRefs || !acceptedFileRefs.add(fileRef))
                 !isDuplicate
             }
+        if (requireAllFiles && acceptedFiles.size != admittedFiles.size) {
+            bridge.logWarn(
+                "thread_composer_attachment_batch_rejected reason=duplicate_or_active " +
+                    "expected=${admittedFiles.size} accepted=${acceptedFiles.size}"
+            )
+            return false
+        }
         if (acceptedFiles.size != admittedFiles.size) {
             bridge.log(
                 "thread_composer_attachment_duplicate_skip skipped=${admittedFiles.size - acceptedFiles.size} " +
@@ -7378,11 +7961,17 @@ internal fun SharedThreadRouteContent(
                         )
                 }
         if (localAttachments.isNotEmpty()) {
+            val keyedFiles =
+                acceptedFiles
+                    .filter { file -> file.id.isNotBlank() }
+                    .mapNotNull { file ->
+                        threadAttachmentUploadAttemptIdentity(file.id, draftKey)?.let { identity ->
+                            identity to file
+                        }
+                    }
+                    .toMap()
             attachmentUploadFilesByLocalId =
-                attachmentUploadFilesByLocalId +
-                    acceptedFiles
-                        .filter { file -> file.id.isNotBlank() }
-                        .associateBy { file -> file.id }
+                attachmentUploadFilesByLocalId + keyedFiles
             composerDraftViewModel.dispatch(
                 SharedThreadComposerDraftIntent.AddLocalAttachments(localAttachments)
             )
@@ -7391,9 +7980,52 @@ internal fun SharedThreadRouteContent(
                     "ids=${localAttachments.joinToString(",") { it.id }}"
             )
         }
-        acceptedFiles.forEach { file ->
-            val localAttachmentId = file.id.takeIf { it.isNotBlank() } ?: return@forEach
-            attachmentUploadOrchestrator.launch(localAttachmentId) { uploadAttemptToken ->
+        // `requireAllFiles` is used by the editor gallery handoff.  Keep a completion signal for
+        // every admitted local id so the caller can distinguish a real server result from merely
+        // starting an asynchronous attempt.  Ordinary picker uploads retain their existing
+        // fire-and-observe behavior and therefore allocate no extra synchronization objects.
+        val completionByLocalId =
+            if (requireAllFiles) {
+                acceptedFiles
+                    .map { file -> file.id to CompletableDeferred<Boolean>() }
+                    .toMap()
+            } else {
+                emptyMap()
+            }
+        val launchedLocalIds = mutableSetOf<String>()
+        var attemptAdmissionFailed = false
+        for (file in acceptedFiles) {
+            val localAttachmentId = file.id.takeIf { it.isNotBlank() } ?: continue
+            val attemptToken =
+                attachmentUploadOrchestrator.launch(
+                    localAttachmentId = localAttachmentId,
+                    draftKey = draftKey,
+                    onCompletion =
+                        completionByLocalId[localAttachmentId]?.let { completion ->
+                            // Covers a LAZY attempt cancelled before its body (and therefore its
+                            // block-level finally) starts.  A normal completion races harmlessly
+                            // with the actual result because CompletableDeferred is idempotent.
+                            { completion.complete(false) }
+                        }
+                ) { uploadAttemptToken ->
+                    var uploadSucceeded = false
+                    fun publishTerminalFailure(errorCode: String) {
+                        if (requireAllFiles) {
+                            // The N/N batch owns one terminal barrier.  Recording a member failure
+                            // here would call failActive(), cancel not-yet-started siblings and let
+                            // the caller retire their refs before every transport is terminal.
+                            bridge.logWarn(
+                                "thread_composer_attachment_batch_member_failed " +
+                                    "attachmentId=$localAttachmentId code=$errorCode"
+                            )
+                        } else {
+                            handleAttachmentUploadFailure(
+                                errorCode = errorCode,
+                                attachmentIds = setOf(localAttachmentId),
+                                ownerDraftKey = draftKey
+                            )
+                        }
+                    }
                     try {
                         bridge.log(
                             "thread_composer_attachment_upload_start attachmentId=$localAttachmentId fileName=${file.fileName}"
@@ -7408,6 +8040,7 @@ internal fun SharedThreadRouteContent(
                                             coroutineScope.launch {
                                                 attachmentUploadOrchestrator.publishIfAccepted(
                                                     localAttachmentId,
+                                                    draftKey,
                                                     uploadAttemptToken
                                                 ) {
                                                     composerDraftViewModel.dispatch(
@@ -7424,7 +8057,11 @@ internal fun SharedThreadRouteContent(
                                 }
                             }
                         val published =
-                            attachmentUploadOrchestrator.publishIfAccepted(localAttachmentId, uploadAttemptToken) {
+                            attachmentUploadOrchestrator.publishIfAccepted(
+                                localAttachmentId,
+                                draftKey,
+                                uploadAttemptToken
+                            ) {
                                 when (uploadResult) {
                                     is DataResult.Content -> {
                                         val previewUri = file.composerLocalPreviewUri()
@@ -7444,8 +8081,7 @@ internal fun SharedThreadRouteContent(
                                                     fileRef =
                                                         sourceAttachment
                                                             ?.takeIf { source ->
-                                                                source.source in
-                                                                    setOf("platform_picker", "platform_camera")
+                                                                source.source in ThreadComposerOwnedTemporarySources
                                                             }
                                                             ?.fileRef,
                                                     source = sourceAttachment?.source,
@@ -7465,32 +8101,59 @@ internal fun SharedThreadRouteContent(
                                                 attachment.id.isNotBlank() && !attachment.id.startsWith("picked-")
                                             }
                                         ) {
-                                            handleAttachmentUploadFailure("empty_upload_result", setOf(localAttachmentId))
+                                            publishTerminalFailure("empty_upload_result")
                                         } else {
-                                            val replacementSlotId =
-                                                threadComposerReplacementSlotId(
-                                                    replaceAttachmentId = replaceAttachmentId,
-                                                    localAttachmentId = localAttachmentId
+                                            // Gallery delivery supplies a synchronous ownership
+                                            // receipt for this member.  If the registry has already
+                                            // been retired (or the receipt itself fails), keep the
+                                            // local tile terminal and report this attempt as a
+                                            // failure; the caller will retire only refs without a
+                                            // successful receipt.
+                                            val ownershipRecorded =
+                                                runCatching {
+                                                    onSuccessfulUpload?.invoke(localAttachmentId) ?: true
+                                                }.onFailure { error ->
+                                                    bridge.logWarn(
+                                                        "thread_composer_attachment_success_callback_failed " +
+                                                            "attachmentId=$localAttachmentId " +
+                                                            "error=${error::class.simpleName.orEmpty()}"
+                                                    )
+                                                }.getOrDefault(false)
+                                            if (!ownershipRecorded) {
+                                                publishTerminalFailure("attachment_upload_failed")
+                                            } else {
+                                                val replacementSlotId =
+                                                    threadComposerReplacementSlotId(
+                                                        replaceAttachmentId =
+                                                            replaceAttachmentIdsByLocalId[localAttachmentId]
+                                                                ?: replaceAttachmentId,
+                                                        localAttachmentId = localAttachmentId
+                                                    )
+                                                composerDraftViewModel.dispatch(
+                                                    SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                                                        attachments = uploaded,
+                                                        replacedAttachmentIds = setOf(localAttachmentId),
+                                                        replacedAttachmentIdsByUploadedId =
+                                                            uploaded.associate { attachment -> attachment.id to replacementSlotId }
+                                                    )
                                                 )
-                                            composerDraftViewModel.dispatch(
-                                                SharedThreadComposerDraftIntent.AddUploadedAttachments(
-                                                    attachments = uploaded,
-                                                    replacedAttachmentIds = setOf(localAttachmentId),
-                                                    replacedAttachmentIdsByUploadedId =
-                                                        uploaded.associate { attachment -> attachment.id to replacementSlotId }
-                                                )
-                                            )
-                                            attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId - localAttachmentId
+                                                attachmentUploadFilesByLocalId =
+                                                    attachmentUploadFilesByLocalId.withoutThreadAttachmentUploadFile(
+                                                        localAttachmentId,
+                                                        draftKey
+                                                    )
+                                                uploadSucceeded = true
+                                            }
                                         }
                                     }
                                     is DataResult.Error ->
-                                        handleAttachmentUploadFailure(uploadResult.error.code, setOf(localAttachmentId))
+                                        publishTerminalFailure(uploadResult.error.code)
                                     is DataResult.NoPermission -> {
                                         routeAuthRequired(uploadResult)
-                                        handleAttachmentUploadFailure(uploadResult.blocker.code, setOf(localAttachmentId))
+                                        publishTerminalFailure(uploadResult.blocker.code)
                                     }
                                     is DataResult.Empty ->
-                                        handleAttachmentUploadFailure("empty_upload_result", setOf(localAttachmentId))
+                                        publishTerminalFailure("empty_upload_result")
                                 }
                             }
                         if (!published) {
@@ -7501,10 +8164,81 @@ internal fun SharedThreadRouteContent(
                         }
                     } catch (_: CancellationException) {
                         // The user removed this uploading tile; RemoveAttachment already hid it.
+                        // A gallery caller still receives a false completion below, so its
+                        // session cannot be committed as if cancellation were a transfer.
+                    } catch (error: Throwable) {
+                        // The completion signal below makes this member terminal. Atomic batches
+                        // fence all members only after every signal is observed; ordinary uploads
+                        // retain the existing immediate failure publication.
+                        bridge.logWarn(
+                            "thread_composer_attachment_upload_exception " +
+                                "attachmentId=$localAttachmentId " +
+                                "error=${error::class.simpleName.orEmpty()}"
+                        )
+                        publishTerminalFailure("attachment_upload_failed")
+                    } finally {
+                        completionByLocalId[localAttachmentId]?.complete(uploadSucceeded)
                     }
+                } ?: run {
+                    // All identity checks above make this path unreachable in the atomic mode;
+                    // keep the guard for a concurrent draft retirement so a partial batch cannot
+                    // be reported as accepted.
+                    if (requireAllFiles) {
+                        bridge.logWarn(
+                            "thread_composer_attachment_batch_rejected reason=attempt_admission " +
+                                "attachmentId=$localAttachmentId"
+                        )
+                        attemptAdmissionFailed = true
+                    }
+                    null
                 }
+            if (attemptToken != null) {
+                launchedLocalIds += localAttachmentId
+            } else if (requireAllFiles) {
+                // Do not return while an earlier sibling is still in flight.  The N/N caller must
+                // await every launched attempt before it retires the editor session.
+                break
+            }
         }
-        return acceptedFiles.isNotEmpty()
+        if (!requireAllFiles) {
+            return acceptedFiles.isNotEmpty() && acceptedFiles.size == files.size
+        }
+
+        if (attemptAdmissionFailed) {
+            // A partial admission is a batch failure.  Fence every sibling and publish a
+            // terminal state for the local tiles; the completion signals below still await jobs
+            // which had already started so ownership cannot be retired early.
+            handleAttachmentUploadFailure(
+                errorCode = "attachment_upload_failed",
+                attachmentIds = acceptedFiles.map { it.id }.toSet(),
+                ownerDraftKey = draftKey
+            )
+            completionByLocalId
+                .filterKeys { id -> id !in launchedLocalIds }
+                .values
+                .forEach { completion -> completion.complete(false) }
+        }
+
+        // Await every signal before evaluating the aggregate result.  `Iterable.all { await() }`
+        // would short-circuit on the first false value and leave sibling transports running while
+        // the gallery session is being retired.
+        val completionResults = completionByLocalId.values.map { completion -> completion.await() }
+        val allSucceeded =
+            completionResults.all { it } &&
+                !attemptAdmissionFailed &&
+                launchedLocalIds.size == acceptedFiles.size
+        if (!allSucceeded && !attemptAdmissionFailed) {
+            // One member can fail and cancel its siblings through the normal failure helper.  If
+            // the failure happened before that helper ran (for example an unexpected callback
+            // exception), fence and mark the complete set here before returning to the gallery
+            // consumer.
+            handleAttachmentUploadFailure(
+                errorCode = "attachment_upload_failed",
+                attachmentIds = acceptedFiles.map { it.id }.toSet(),
+                ownerDraftKey = draftKey
+            )
+        }
+        return allSucceeded
     }
     fun performComposerSend(): Boolean {
         val currentComposer = currentComposerPayload()
@@ -7665,7 +8399,10 @@ internal fun SharedThreadRouteContent(
                 if (queuedExternalAttachments.isNotEmpty()) {
                     val files =
                         queuedExternalAttachments.mapNotNull { attachment ->
-                            attachmentUploadFilesByLocalId[attachment.id]
+                            attachmentUploadFilesByLocalId.threadAttachmentUploadFile(
+                                attachment.id,
+                                normalizeThreadAttachmentUploadDraftKey(currentDraftState.draftKey)
+                            )
                         }
                     if (files.size != queuedExternalAttachments.size) {
                         externalShareSendRequested = false
@@ -7734,6 +8471,7 @@ internal fun SharedThreadRouteContent(
     }
     fun openComposerImageAnnotation(files: List<PlatformFile>) {
         val firstFile = files.firstOrNull() ?: return
+        val currentDraftState = composerDraftViewModel.state.value
         composerImageActionCounter += 1
         val actionId = "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${firstFile.id.take(12)}"
         val previewUri = firstFile.composerLocalPreviewUri().orEmpty()
@@ -7761,6 +8499,7 @@ internal fun SharedThreadRouteContent(
                 composerImageMimeType = firstFile.mimeType.orEmpty(),
                 composerImageSizeBytes = firstFile.sizeBytes,
                 composerImagePreviewUri = previewUri,
+                composerImageCompressAfterEdit = !currentDraftState.originalImage,
                 composerImageOwnedTemporaryFileRefs =
                     files.filter(PlatformFile::isComposerImageOwnedTemporary)
                         .mapNotNull(PlatformFile::fileRef),
@@ -7770,99 +8509,302 @@ internal fun SharedThreadRouteContent(
         )
     }
     DisposableEffect(eventBus, threadInstanceKey) {
-        val subscription =
-            eventBus.observe(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
-                val eventDataSnapshot = data?.toString() ?: return@observe
-                coroutineScope.launch {
-                    val eventData = runCatching { JSONObject(eventDataSnapshot) }.getOrNull() ?: return@launch
-                    if (eventData.optString("threadKey").trim() != threadInstanceKey) return@launch
-                    val previewSessionId = eventData.optString("previewSessionId").trim()
-                    val fileRef = eventData.optString("fileRef").takeIf { it.isNotBlank() }
-                    val actionId = eventData.optString("actionId").takeIf { it.isNotBlank() }
-                    if (fileRef == null || actionId == null) {
-                        val cleanupRefs = slockFilePreviewAbortComposerImageEventSession(previewSessionId)
-                        if (cleanupRefs.isNotEmpty()) {
-                            bridge.retireFilePreviewTemporaryFiles(
-                                sessionId = previewSessionId,
-                                fileRefs = cleanupRefs.toList()
+        // Event-bus callbacks can be re-entrant and may be dispatched from different host turns.
+        // Keep the callback side-effect-free: one sequential consumer owns parsing, accumulation,
+        // registry admission, upload handoff and terminal cleanup.  In particular, a malformed
+        // replay queued behind an already admitted gallery cannot abort that in-flight batch.
+        val eventMailbox = Channel<String>(Channel.UNLIMITED)
+
+        /**
+         * Remove every in-flight accumulator for one preview session while the same mutex also
+         * retires the registry session.  A malformed/conflicting member must poison the whole
+         * N/N handoff; leaving a sibling accumulator alive would let a later callback claim an
+         * otherwise orphaned temporary ref.
+         */
+        fun abortBatchSessionLocked(sessionId: String): Set<String> {
+            val normalizedSessionId = sessionId.trim()
+            composerImageEventBatches.keys
+                .filter { key ->
+                    key.sessionId == normalizedSessionId && key.threadKey == threadInstanceKey
+                }
+                .forEach { key ->
+                    composerImageEventBatches.remove(key)?.abort()
+                }
+            return slockFilePreviewAbortComposerImageEventSession(normalizedSessionId)
+        }
+
+        suspend fun abortBatchSession(sessionId: String, reason: String): Set<String> {
+            val cleanupRefs =
+                composerImageEventBatchMutex.withLock {
+                    abortBatchSessionLocked(sessionId)
+                }
+            if (cleanupRefs.isNotEmpty()) {
+                bridge.retireFilePreviewTemporaryFiles(
+                    sessionId = sessionId.trim(),
+                    fileRefs = cleanupRefs.toList()
+                )
+            }
+            bridge.logWarn(
+                "composer_image_event_batch_aborted sessionId=${sessionId.trim()} " +
+                    "reason=$reason cleanupRefs=${cleanupRefs.size}"
+            )
+            return cleanupRefs
+        }
+
+        data class ComposerImageBatchHandoff(
+            val items: List<ThreadComposerImageEventBatchItem> = emptyList(),
+            val admissions: List<SlockFilePreviewComposerImageEventAdmission.Accepted> = emptyList(),
+            val ready: Boolean = false,
+            val cleanupRefs: Set<String> = emptySet()
+        )
+
+        suspend fun processComposerImageEvent(eventDataSnapshot: String) {
+                    val eventData = runCatching { JSONObject(eventDataSnapshot) }.getOrNull() ?: return
+                    // Parse through the shared wire-contract validator before applying this
+                    // ThreadPage's session/ownership policy.  This keeps malformed callbacks
+                    // from reaching the registry and ensures metadata semantics match Settings.
+                    val parsed = parseSlockFilePreviewComposerImageEvent(eventData)
+                    val rawThreadKey = eventData.optString("threadKey").trim()
+                    if (parsed == null) {
+                        // Event-bus delivery is process-wide.  Only retire an invalid event's
+                        // session when its raw thread key identifies this page; an unrelated
+                        // page must not abort a live session before its owner can consume it.
+                        if (rawThreadKey != threadInstanceKey) return
+                        val previewSessionId = eventData.optString("previewSessionId").trim()
+                        abortBatchSession(previewSessionId, reason = "malformed")
+                        return
+                    }
+                    if (parsed.threadKey != threadInstanceKey) return
+                    val previewSessionId = parsed.previewSessionId.trim()
+                    val groupId = parsed.groupId.orEmpty().trim()
+                    val expectedCount = parsed.groupTotal ?: 1
+                    val replaceAttachmentId =
+                        eventData.optString("replaceAttachmentId").trim().takeIf { it.isNotBlank() }
+                    val item =
+                        ThreadComposerImageEventBatchItem(
+                            eventData = eventData,
+                            payload = parsed,
+                            replaceAttachmentId = replaceAttachmentId
+                        )
+                    val handoff =
+                        composerImageEventBatchMutex.withLock {
+                            val key =
+                                ThreadComposerImageEventBatchKey(
+                                    sessionId = previewSessionId,
+                                    threadKey = threadInstanceKey,
+                                    groupId = groupId
+                                )
+                            val accumulator =
+                                composerImageEventBatches.getOrPut(key) {
+                                    ThreadComposerImageEventBatchAccumulator(
+                                        key = key,
+                                        expectedCount = expectedCount
+                                    )
+                                }
+                            when (val offer = accumulator.offer(item)) {
+                                ThreadComposerImageEventBatchOffer.Added,
+                                ThreadComposerImageEventBatchOffer.Duplicate ->
+                                    ComposerImageBatchHandoff()
+
+                                ThreadComposerImageEventBatchOffer.Rejected ->
+                                    ComposerImageBatchHandoff(
+                                        ready = false,
+                                        cleanupRefs = abortBatchSessionLocked(previewSessionId)
+                                    )
+
+                                is ThreadComposerImageEventBatchOffer.Complete -> {
+                                    val items = offer.events
+                                    val files =
+                                        items.map { batchItem ->
+                                            PlatformFile(
+                                                id = "edited-${batchItem.actionId}",
+                                                fileName = batchItem.payload.fileName,
+                                                mimeType = batchItem.payload.mimeType,
+                                                sizeBytes = batchItem.payload.sizeBytes,
+                                                previewUri = batchItem.payload.previewUri,
+                                                fileRef = batchItem.payload.fileRef,
+                                                source = batchItem.payload.source
+                                            )
+                                        }
+                                    val fileIds = files.map(PlatformFile::id)
+                                    val fileRefs = files.mapNotNull(PlatformFile::fileRef)
+                                    val filesValid =
+                                        files.size == expectedCount &&
+                                            files.all { file ->
+                                                file.id.isNotBlank() &&
+                                                    !file.fileRef.isNullOrBlank() &&
+                                                    file.isComposerImageOwnedTemporary()
+                                            } &&
+                                            fileIds.toSet().size == fileIds.size &&
+                                            fileRefs.toSet().size == fileRefs.size
+                                    if (!filesValid) {
+                                        ComposerImageBatchHandoff(
+                                            cleanupRefs = abortBatchSessionLocked(previewSessionId)
+                                        )
+                                    } else {
+                                        val claimedAdmissions =
+                                            items.map { batchItem ->
+                                                slockFilePreviewClaimComposerImageEvent(
+                                                    eventData = batchItem.eventData,
+                                                    expectedThreadKey = threadInstanceKey
+                                                )
+                                            }
+                                        val acceptedAdmissions =
+                                            claimedAdmissions.mapNotNull { admission ->
+                                                admission as? SlockFilePreviewComposerImageEventAdmission.Accepted
+                                            }
+                                        val claimComplete =
+                                            acceptedAdmissions.size == items.size &&
+                                                acceptedAdmissions.lastOrNull()?.sessionComplete == true &&
+                                                acceptedAdmissions.dropLast(1).none { admission ->
+                                                    admission.sessionComplete
+                                                }
+                                        if (!claimComplete) {
+                                            ComposerImageBatchHandoff(
+                                                cleanupRefs = abortBatchSessionLocked(previewSessionId)
+                                            )
+                                        } else {
+                                            ComposerImageBatchHandoff(
+                                                items = items,
+                                                admissions = acceptedAdmissions,
+                                                ready = true
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    if (handoff.cleanupRefs.isNotEmpty()) {
+                        bridge.retireFilePreviewTemporaryFiles(
+                            sessionId = previewSessionId,
+                            fileRefs = handoff.cleanupRefs.toList()
+                        )
+                    }
+                    if (!handoff.ready) return
+
+                    val files =
+                        handoff.items.map { batchItem ->
+                            PlatformFile(
+                                id = "edited-${batchItem.actionId}",
+                                fileName = batchItem.payload.fileName,
+                                mimeType = batchItem.payload.mimeType,
+                                sizeBytes = batchItem.payload.sizeBytes,
+                                previewUri = batchItem.payload.previewUri,
+                                fileRef = batchItem.payload.fileRef,
+                                source = batchItem.payload.source
                             )
                         }
-                        return@launch
-                    }
-                    val file =
-                        PlatformFile(
-                            id = "edited-$actionId",
-                            fileName = eventData.optString("fileName").takeIf { it.isNotBlank() } ?: "image.png",
-                            mimeType = eventData.optString("mimeType").takeIf { it.isNotBlank() } ?: "image/png",
-                            sizeBytes = eventData.optLong("sizeBytes", 0L).takeIf { it > 0L },
-                            previewUri = eventData.optString("previewUri").takeIf { it.isNotBlank() } ?: fileRef,
-                            fileRef = fileRef,
-                            source = "composer_image_editor"
-                        )
-                    val replaceAttachmentId = eventData.optString("replaceAttachmentId").takeIf { it.isNotBlank() }
-                    when (
-                        val admission =
-                            slockFilePreviewClaimComposerImageEvent(
-                                eventData = eventData,
-                                expectedThreadKey = threadInstanceKey
-                            )
-                    ) {
-                        is SlockFilePreviewComposerImageEventAdmission.Rejected -> {
-                            if (admission.orphanedTemporaryFileRefs.isNotEmpty()) {
-                                bridge.retireFilePreviewTemporaryFiles(
-                                    sessionId = admission.sessionId,
-                                    fileRefs = admission.orphanedTemporaryFileRefs.toList()
+                    val replaceAttachmentIdsByLocalId =
+                        handoff.items.mapNotNull { batchItem ->
+                            batchItem.replaceAttachmentId
+                                ?.trim()
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { replacement ->
+                                    "edited-${batchItem.actionId}" to replacement
+                                }
+                        }.toMap()
+                    val admissionsByLocalId =
+                        handoff.admissions.associateBy { admission ->
+                            "edited-${admission.actionId}"
+                        }
+                    var transferred = false
+                    try {
+                        transferred =
+                            // Attempts run on the process send scope, so page teardown must not
+                            // cancel this waiter before those attempts publish their outcomes.
+                            // Otherwise the `finally` below would retire ownership while a real
+                            // network transfer was still in flight.
+                            withContext(NonCancellable) {
+                                uploadComposerAttachmentFiles(
+                                    files = files,
+                                    requireAllFiles = true,
+                                    replaceAttachmentIdsByLocalId = replaceAttachmentIdsByLocalId,
+                                    onSuccessfulUpload = { localAttachmentId ->
+                                        val admission = admissionsByLocalId[localAttachmentId]
+                                            ?: return@uploadComposerAttachmentFiles false
+                                        val recorded =
+                                            slockFilePreviewMarkComposerImageEventTransferred(admission)
+                                        if (!recorded) {
+                                            bridge.logWarn(
+                                                "composer_image_event_transfer_unrecorded " +
+                                                    "actionId=${admission.actionId}"
+                                            )
+                                        }
+                                        recorded
+                                    }
                                 )
                             }
-                            bridge.logWarn(
-                                "composer_image_event_rejected cleanupRefs=${admission.orphanedTemporaryFileRefs.size}"
-                            )
-                        }
-                        is SlockFilePreviewComposerImageEventAdmission.Accepted -> {
-                            val transferred =
-                                uploadComposerAttachmentFiles(
-                                    files = listOf(file),
-                                    replaceAttachmentId = replaceAttachmentId
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Throwable) {
+                        bridge.logWarn(
+                            "composer_image_event_batch_upload_failed " +
+                                "sessionId=$previewSessionId error=${error::class.simpleName.orEmpty()}"
+                        )
+                    } finally {
+                        // Disposal cancels this consumer while the upload handoff is unwinding.
+                        // Mutex.withLock is cancellable, so the terminal registry transition must
+                        // be protected just like the upload itself; otherwise a cancellation can
+                        // strand the pending session and its native temporary refs.
+                        withContext(NonCancellable) {
+                            val cleanupRefs =
+                                composerImageEventBatchMutex.withLock {
+                                // The accumulator remains present during the async upload so
+                                // identical replays are harmless. Remove it only at terminal
+                                // handoff, while finishing the registry under the same lock.
+                                composerImageEventBatches.keys
+                                    .filter { key ->
+                                        key.sessionId == previewSessionId &&
+                                            key.threadKey == threadInstanceKey
+                                    }
+                                    .forEach { key ->
+                                        composerImageEventBatches.remove(key)?.abort()
+                                    }
+                                slockFilePreviewFinishComposerImageEventSession(
+                                    sessionId = previewSessionId,
+                                    transferred = transferred
                                 )
-                            val transferRecorded =
-                                transferred &&
-                                    slockFilePreviewMarkComposerImageEventTransferred(admission)
-                            if (transferred && !transferRecorded) {
-                                bridge.logWarn(
-                                    "composer_image_event_transfer_unrecorded actionId=${admission.actionId}"
+                                }
+                            if (cleanupRefs.isNotEmpty()) {
+                                bridge.retireFilePreviewTemporaryFiles(
+                                    sessionId = previewSessionId,
+                                    fileRefs = cleanupRefs.toList()
                                 )
                             }
                             if (!transferred) {
-                                val cleanupRefs =
-                                    slockFilePreviewFinishComposerImageEventSession(
-                                        sessionId = admission.sessionId,
-                                        transferred = transferred
-                                    )
-                                if (cleanupRefs.isNotEmpty()) {
-                                    bridge.retireFilePreviewTemporaryFiles(
-                                        sessionId = admission.sessionId,
-                                        fileRefs = cleanupRefs.toList()
-                                    )
-                                }
-                            } else if (admission.sessionComplete && transferRecorded) {
-                                val cleanupRefs =
-                                    slockFilePreviewFinishComposerImageEventSession(
-                                        sessionId = admission.sessionId,
-                                        transferred = true
-                                    )
-                                if (cleanupRefs.isNotEmpty()) {
-                                    bridge.retireFilePreviewTemporaryFiles(
-                                        sessionId = admission.sessionId,
-                                        fileRefs = cleanupRefs.toList()
-                                    )
-                                }
+                                bridge.logWarn(
+                                    "composer_image_event_batch_rejected sessionId=$previewSessionId " +
+                                        "reason=upload_handoff_failed cleanupRefs=${cleanupRefs.size}"
+                                )
                             }
                         }
                     }
+        }
+
+        val consumerJob =
+            coroutineScope.launch {
+                for (eventDataSnapshot in eventMailbox) {
+                    try {
+                        processComposerImageEvent(eventDataSnapshot)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Throwable) {
+                        bridge.logWarn(
+                            "composer_image_event_consumer_failed " +
+                                "error=${error::class.simpleName.orEmpty()}"
+                        )
+                    }
                 }
+            }
+        val subscription =
+            eventBus.observe(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
+                val eventDataSnapshot = data?.toString() ?: return@observe
+                eventMailbox.trySend(eventDataSnapshot)
             }
         onDispose {
             subscription.close()
+            eventMailbox.close()
+            consumerJob.cancel()
         }
     }
     suspend fun refreshComposerMemberSuggestions(reason: String) {
@@ -9387,6 +10329,16 @@ internal fun SharedThreadRouteContent(
                         SharedThreadComposerDraftIntent.Change(seedAsTask = asTask)
                     )
                 }
+                "toggleOriginalImage" -> {
+                    val enabled = asTask ?: !currentDraftState.originalImage
+                    bridge.log(
+                        "thread_composer_toggle_original_image instanceId=$composerInstanceId " +
+                            "originalImage=$enabled draftKey=${currentDraftState.draftKey.orEmpty()}"
+                    )
+                    composerDraftViewModel.dispatch(
+                        SharedThreadComposerDraftIntent.SetOriginalImage(enabled)
+                    )
+                }
                 "send" -> {
                     handleComposerSendRequest(
                         ThreadComposerSendRequest(
@@ -9522,6 +10474,14 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 ThreadComposerAttachImageAction, ThreadComposerCaptureImageAction, "attachFile" -> {
+                    // Freeze the session's image policy at picker admission.  The picker may
+                    // complete after a recomposition (or a new toggle event), but its result must
+                    // retain the policy that was visible when the user opened it.
+                    val compressPickerImages =
+                        shouldCompressThreadAttachmentPickerImages(
+                            action = action,
+                            originalImage = currentDraftState.originalImage
+                        )
                     coroutineScope.launch {
                         val channelId = composerSurface.sendChannelId
                         if (channelId == null) {
@@ -9533,6 +10493,13 @@ internal fun SharedThreadRouteContent(
                                 channelId = channelId,
                                 imageOnly = action != "attachFile",
                                 capture = action == ThreadComposerCaptureImageAction,
+                                // Image picker/camera results enter the annotation editor (or
+                                // the shared bypass compressor) first.  Do not encode before
+                                // the editor decision: picker JPEG -> editor PNG -> JPEG would
+                                // incur two lossy generations.  Generic file picks bypass the
+                                // editor, so native hosts compress only their image members when
+                                // the frozen session policy requests it.
+                                compressImages = compressPickerImages,
                             )
                         val files = parseSharedThreadPickedPlatformFiles(response)
                         bridge.log(
@@ -9540,6 +10507,33 @@ internal fun SharedThreadRouteContent(
                                 "files=${files.size} errorCode=${response?.optString("errorCode").orEmpty()} " +
                                 "bodyBytes=${response?.optString("bodyText").orEmpty().encodeToByteArray().size}"
                         )
+                        // Native generic pickers may finish a mixed selection with a readable
+                        // subset and a compression error (code 206).  Never upload that subset:
+                        // doing so would silently drop the failed image while the user believes
+                        // the whole selection was admitted.  Retire every ref exposed by the
+                        // envelope before returning, including refs from successful files and
+                        // any future error/fileRefs compatibility fields.
+                        if (threadAttachmentPickerHasCompressionFailure(response)) {
+                            val cleanupRefs = threadAttachmentPickerCompressionFailureFileRefs(response)
+                            if (cleanupRefs.isNotEmpty()) {
+                                bridge.retireFilePreviewTemporaryFiles(
+                                    sessionId = "thread-picker-compression-$threadInstanceKey",
+                                    fileRefs = cleanupRefs.toList()
+                                )
+                            }
+                            bridge.logWarn(
+                                "thread_attachment_picker_rejected reason=image_compression_failed " +
+                                    "cleanupRefs=${cleanupRefs.size}"
+                            )
+                            bridge.toast(
+                                localizedAttachmentUploadFailedDetail(
+                                    userFacingErrorLabels.forErrorCode(
+                                        SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE
+                                    ) ?: genericThreadErrorLabel
+                                )
+                            )
+                            return@launch
+                        }
                         if (files.isEmpty()) {
                             val errorCode = response?.optString("errorCode")?.takeIf { it.isNotBlank() }
                             when {
@@ -9572,9 +10566,10 @@ internal fun SharedThreadRouteContent(
                             )
                         ) {
                             ThreadPickedAttachmentComposerAction.OpenImageAnnotation ->
-                                admittedComposerAttachmentFiles(files)
-                                    .takeIf { admitted -> admitted.isNotEmpty() }
-                                    ?.let(::openComposerImageAnnotation)
+                                // The picker-reported bytes are the source image, not the final
+                                // editor output.  Defer the server-size gate until the confirmed
+                                // PNG/original or compressor-produced JPEG reaches upload.
+                                openComposerImageAnnotation(files)
                             ThreadPickedAttachmentComposerAction.UploadToComposer -> uploadComposerAttachmentFiles(files)
                             ThreadPickedAttachmentComposerAction.None -> Unit
                         }
@@ -9582,14 +10577,41 @@ internal fun SharedThreadRouteContent(
                 }
                 "removeAttachment" -> {
                     attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
-                        attachmentUploadOrchestrator.remove(id)
-                        attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId - id
+                        val draftKey = normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
+                        val removal =
+                            resolveThreadComposerAttachmentRemoval(
+                                attachments = composerDraftViewModel.state.value.uploadedAttachments,
+                                removedAttachmentIds = composerDraftViewModel.state.value.removedAttachmentIds,
+                                attachmentId = id,
+                                draftKey = draftKey
+                            )
+                        if (!removal.accepted) {
+                            bridge.logWarn(
+                                "thread_composer_attachment_remove_rejected attachmentId=$id reason=${removal.reason}"
+                            )
+                            return@ThreadPageContent
+                        }
+                        attachmentUploadOrchestrator.remove(id, draftKey)
+                        attachmentUploadFilesByLocalId =
+                            attachmentUploadFilesByLocalId.withoutThreadAttachmentUploadFile(id, draftKey)
                         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment(id))
+                        if (removal.fileRefToRetire != null) {
+                            bridge.retireFilePreviewTemporaryFiles(
+                                sessionId = "thread-composer-${draftKey.orEmpty()}",
+                                fileRefs = listOf(removal.fileRefToRetire)
+                            )
+                        }
                     }
                 }
                 "retryAttachments" -> {
                     attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
-                        val file = attachmentUploadFilesByLocalId[id]
+                        val draftKey = normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
+                        if (draftKey == null) {
+                            bridge.log("thread_composer_attachment_retry result=missing_draft_key attachmentId=$id")
+                            bridge.toast(attachmentRetryUnavailableLabel)
+                            return@ThreadPageContent
+                        }
+                        val file = attachmentUploadFilesByLocalId.threadAttachmentUploadFile(id, draftKey)
                         if (file == null) {
                             bridge.log(
                                 "thread_composer_attachment_retry result=missing_file_ref attachmentId=$id"
@@ -9597,7 +10619,7 @@ internal fun SharedThreadRouteContent(
                             bridge.toast(attachmentRetryUnavailableLabel)
                             return@ThreadPageContent
                         }
-                        if (attachmentUploadOrchestrator.isActive(id)) {
+                        if (attachmentUploadOrchestrator.isActive(id, draftKey)) {
                             bridge.log(
                                 "thread_composer_attachment_retry result=already_uploading attachmentId=$id"
                             )
@@ -10955,23 +11977,28 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
     renderedPayload: KuiklyThreadScreenPayload,
     resolvedAuxiliaryThreadId: String?
 ): KuiklyThreadComposerPayload {
+    val projectedPendingAttachments = pendingAttachments.map { attachment ->
+        SharedThreadComposerAttachment(
+            id = attachment.id,
+            fileName = attachment.fileName,
+            sizeLabel = attachment.sizeLabel,
+            sizeBytes = attachment.sizeBytes,
+            mimeType = attachment.mimeType,
+            previewUri = attachment.previewUri,
+            status = attachment.status,
+            errorCode = attachment.errorCode,
+            source = attachment.source,
+            externalShareToken = attachment.externalShareToken,
+            externalShareAccountId = attachment.externalShareAccountId,
+            externalShareServerId = attachment.externalShareServerId
+        )
+    }
+    // The render-only pending item intentionally has no platform file handle.  Prefer the
+    // draft-store row for duplicate ids so a recomposition cannot shadow its real `fileRef`
+    // with a projection that only carries a thumbnail/status.  Route-projected rows that are
+    // not yet in the store are retained after the canonical session rows.
     val pendingAttachments =
-        (pendingAttachments.map { attachment ->
-            SharedThreadComposerAttachment(
-                id = attachment.id,
-                fileName = attachment.fileName,
-                sizeLabel = attachment.sizeLabel,
-                sizeBytes = attachment.sizeBytes,
-                mimeType = attachment.mimeType,
-                previewUri = attachment.previewUri,
-                status = attachment.status,
-                errorCode = attachment.errorCode,
-                source = attachment.source,
-                externalShareToken = attachment.externalShareToken,
-                externalShareAccountId = attachment.externalShareAccountId,
-                externalShareServerId = attachment.externalShareServerId
-            )
-        } + draftState.uploadedAttachments)
+        (draftState.uploadedAttachments + projectedPendingAttachments)
             .distinctBy { attachment -> attachment.id }
             .filterNot { attachment -> attachment.id in draftState.removedAttachmentIds }
     val pendingAttachmentItems =
@@ -10996,6 +12023,7 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
         instanceId = instanceId.ifBlank { renderedPayload.instanceId },
         seedText = draftState.seedText,
         seedAsTask = draftState.seedAsTask,
+        originalImage = draftState.originalImage,
         syncNonce = draftState.syncNonce,
         editorCommand = draftState.editorCommand,
         focusRequestNonce = draftState.focusRequestNonce,
@@ -23876,6 +24904,61 @@ internal fun PlatformFile.composerLocalPreviewUri(): String? =
     previewUri?.takeIf { it.isNotBlank() }
         ?: fileRef?.takeIf { it.isNotBlank() }
 
+/**
+ * Rehydrate a persisted composer attachment into the platform-file descriptor used by the
+ * editable preview.  The preview URI and upload handle are deliberately kept as separate fields:
+ * a remote/local thumbnail must never be promoted to a fileRef merely because it is renderable.
+ */
+internal fun SharedThreadComposerAttachment.toComposerImagePlatformFile(): PlatformFile =
+    PlatformFile(
+        id = id,
+        fileName = fileName,
+        mimeType = mimeType,
+        sizeBytes = sizeBytes.takeIf { it > 0L },
+        previewUri = previewUri?.trim()?.takeIf { it.isNotBlank() }
+            ?: fileRef?.trim()?.takeIf { it.isNotBlank() },
+        fileRef = fileRef?.trim()?.takeIf { it.isNotBlank() },
+        source = source.orEmpty()
+    )
+
+/**
+ * Rehydrate only a still-sendable local draft row into the platform-file descriptor used by the
+ * upload/retry path. Durable draft rows may also contain server-owned ready attachments and
+ * render-only projections; those are deliberately not promoted to a local upload handle.
+ *
+ * `previewUri` is presentation-only. A remote thumbnail must never be copied into
+ * [PlatformFile.fileRef] just because it is non-empty. The original source and fileRef are kept
+ * (apart from surrounding whitespace) so a process-restored retry uses the same provider handle
+ * that was persisted by the owning picker/editor bridge.
+ */
+internal fun SharedThreadComposerAttachment.toRestoredThreadComposerPlatformFile(): PlatformFile? {
+    val normalizedStatus = status.trim().lowercase()
+    if (normalizedStatus !in setOf("queued", "uploading", "failed")) return null
+
+    val normalizedId = id.trim().takeIf { it.isNotBlank() } ?: return null
+    val normalizedRef = fileRef?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val normalizedSource = source?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    if (
+        normalizedSource != "external_share" &&
+            normalizedSource !in ThreadComposerOwnedTemporarySources
+    ) {
+        return null
+    }
+
+    val normalizedName = fileName.trim().takeIf { it.isNotBlank() } ?: return null
+    val normalizedPreview = previewUri?.trim()?.takeIf { it.isNotBlank() }
+    val normalizedMime = mimeType?.trim()?.takeIf { it.isNotBlank() }
+    return PlatformFile(
+        id = normalizedId,
+        fileName = normalizedName,
+        mimeType = normalizedMime,
+        sizeBytes = sizeBytes.takeIf { it > 0L },
+        previewUri = normalizedPreview,
+        fileRef = normalizedRef,
+        source = normalizedSource
+    )
+}
+
 internal fun PlatformFile.toComposerImageGalleryImage(): SlockFilePreviewGalleryImage =
     SlockFilePreviewGalleryImage(
         attachmentId = id,
@@ -23889,8 +24972,21 @@ internal fun PlatformFile.toComposerImageGalleryImage(): SlockFilePreviewGallery
         composerImageOwnedTemporary = isComposerImageOwnedTemporary()
     )
 
-internal fun PlatformFile.isComposerImageOwnedTemporary(): Boolean =
-    !fileRef.isNullOrBlank() && source in setOf("platform_picker", "platform_camera")
+internal fun PlatformFile.isComposerImageOwnedTemporary(): Boolean {
+    if (fileRef.isNullOrBlank() || source !in ThreadComposerOwnedTemporarySources) return false
+    val normalizedMime = mimeType.orEmpty().substringBefore(';').trim().lowercase()
+    val hasVideoExtension =
+        sequenceOf(fileName, fileRef.orEmpty()).any { candidate ->
+            val extension =
+                candidate
+                    .substringBefore('?')
+                    .substringBefore('#')
+                    .substringAfterLast('.', missingDelimiterValue = "")
+                    .lowercase()
+            extension in SlockFilePreviewVideoExtensions
+        }
+    return !normalizedMime.startsWith("video/") && !hasVideoExtension
+}
 
 internal fun KuiklyThreadAttachmentItem.threadAttachmentCommentCountLabel(): String? =
     commentCount

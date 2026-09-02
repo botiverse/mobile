@@ -11,6 +11,7 @@ import build.hands.update.HandsCrash
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
 import build.raft.app.shared.ProcessAndroidAttachmentMediaStoreCleanup
 import build.raft.app.shared.ProcessAndroidAttachmentPublicDownloads
+import build.raft.app.shared.installAndroidThreadComposerTemporaryFileRetirement
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.installAndroidAppScopeEventBus
@@ -79,6 +80,7 @@ class SlockApplication : Application() {
         }
         installAndroidAppScopeSharedKeyValueStores(this)
         installAndroidAppScopePlatformFileResolver(this)
+        installAndroidThreadComposerTemporaryFileRetirement(this)
         installAndroidExternalShareInbox(this)
         installAndroidAppScopeEventBus(this)
         AndroidAppScopeRealtimeOwner.install(this)

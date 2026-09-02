@@ -359,6 +359,8 @@ private val threadComposerContentPayloadKeys =
         "placeholder",
         "enabled",
         "attachmentActionsEnabled",
+        "originalImageOptionEnabled",
+        "originalImage",
         "showAsTaskToggle",
         "composerMode",
         "statusLabel",
@@ -385,6 +387,13 @@ internal data class KuiklyThreadComposerPayload(
     val placeholder: String = "Message",
     val enabled: Boolean = true,
     val attachmentActionsEnabled: Boolean = true,
+    /** Whether this host surface owns the image policy checkbox. */
+    val originalImageOptionEnabled: Boolean = true,
+    /**
+     * Session-only preference for image attachments.  The draft persistence slice deliberately
+     * does not serialize this value; a new composer starts with compressed images by default.
+     */
+    val originalImage: Boolean = false,
     val showAsTaskToggle: Boolean = true,
     val composerMode: String = "idle",
     val statusLabel: String? = null,
@@ -471,6 +480,8 @@ internal data class ThreadComposerUiState(
     val placeholder: String = "Message",
     val enabled: Boolean = true,
     val attachmentActionsEnabled: Boolean = true,
+    val originalImageOptionEnabled: Boolean = true,
+    val originalImage: Boolean = false,
     val composerMode: String = "idle",
     val statusLabel: String? = null,
     val pendingAttachments: List<KuiklyPendingAttachmentItem> = emptyList(),
@@ -1747,6 +1758,8 @@ internal fun KuiklyThreadComposerPayload.toThreadComposerUiState(): ThreadCompos
         placeholder = placeholder,
         enabled = enabled,
         attachmentActionsEnabled = attachmentActionsEnabled,
+        originalImageOptionEnabled = originalImageOptionEnabled,
+        originalImage = originalImage,
         composerMode = composerMode,
         statusLabel = statusLabel,
         pendingAttachments = pendingAttachments,
@@ -2897,6 +2910,36 @@ internal fun ThreadComposerContentLeaf(
                                     Text(
                                         text = stringResource(MR.strings.thread_composer_as_task),
                                         style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(lineHeight = 18.sp, color = labelColor),
+                                        color = labelColor
+                                    )
+                                }
+                            }
+                            if (state.attachmentActionsEnabled && state.originalImageOptionEnabled) {
+                                Row(
+                                    modifier = Modifier.heightIn(min = 18.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    SlockCheckbox(
+                                        checked = state.originalImage,
+                                        onCheckedChange = { checked ->
+                                            onEvent("toggleOriginalImage", null, checked, null)
+                                        },
+                                        enabled = composerEnabled,
+                                        size = 14.dp
+                                    )
+                                    val labelColor =
+                                        if (composerEnabled) {
+                                            SlockColor.TextBlack.copy(alpha = 0.6f)
+                                        } else {
+                                            SlockColor.TextMutedGray
+                                        }
+                                    Text(
+                                        text = stringResource(MR.strings.thread_composer_original_image),
+                                        style =
+                                            SlockType.Caption
+                                                .withSlockFontWeight(FontWeight.Bold)
+                                                .copy(lineHeight = 18.sp, color = labelColor),
                                         color = labelColor
                                     )
                                 }
