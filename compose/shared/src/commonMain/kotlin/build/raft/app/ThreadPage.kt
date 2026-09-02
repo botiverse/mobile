@@ -14037,10 +14037,36 @@ private fun ThreadMessagesList(
     // The durable anchor remains lifecycle-persisted, while the route-local frontier advances on
     // every visible-window change. This makes the pill converge as the user reads and prevents a
     // locally-sent row that is already on screen from being counted as unread.
+    val unreadJumpAtCanonicalBottom =
+        threadUnreadJumpAtCanonicalBottom(
+            canLoadMoreAfter = renderPayload.canLoadMoreAfter,
+            canScrollTowardBottom = listState.canScrollForward,
+            latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex),
+        )
+    val latestCanonicalReadAnchor =
+        renderPayload.messages
+            .asReversed()
+            .firstOrNull { message -> (message.seq ?: 0L) > 0L }
+            ?.let { message -> ThreadReadAnchor(seq = message.seq!!, messageId = message.id) }
     val sessionReadAnchor =
-        remember(frozenReadAnchor, latestVisibleReadAnchor) {
-            advanceThreadReadAnchorFrontier(frozenReadAnchor, latestVisibleReadAnchor)
+        consumeUnreadJumpFrontierAtCanonicalBottom(
+            sessionAnchor =
+                advanceThreadReadAnchorFrontier(frozenReadAnchor, latestVisibleReadAnchor),
+            latestCanonicalMessage = latestCanonicalReadAnchor,
+            atCanonicalBottom = unreadJumpAtCanonicalBottom,
+        )
+    LaunchedEffect(unreadJumpAtCanonicalBottom, latestCanonicalReadAnchor) {
+        if (!unreadJumpAtCanonicalBottom) return@LaunchedEffect
+        val advanced =
+            consumeUnreadJumpFrontierAtCanonicalBottom(
+                sessionAnchor = latestVisibleReadAnchor,
+                latestCanonicalMessage = latestCanonicalReadAnchor,
+                atCanonicalBottom = true,
+            )
+        if (advanced != latestVisibleReadAnchor) {
+            latestVisibleReadAnchor = advanced
         }
+    }
     val unreadJumpProjection =
         remember(sessionReadAnchor, renderPayload.messages, renderPayload.gapRefillMessageIds) {
             projectThreadUnreadJump(
@@ -14846,13 +14872,11 @@ private fun ThreadMessagesList(
     // actual visibility instead of the loaded payload tail.
     LaunchedEffect(threadInstanceKey) {
         snapshotFlow {
-            val visibleItems = listState.layoutInfo.visibleItemsInfo
-            val firstMessageItemIndex = renderPayload.firstMessageListItemIndex()
-            visibleItems
-                .lastOrNull()
-                ?.index
-                ?.minus(firstMessageItemIndex)
-                ?.takeIf { it in renderPayload.messages.indices }
+            threadVisibleReadTailMessageIndex(
+                visibleListItemIndexes = listState.layoutInfo.visibleItemsInfo.map { item -> item.index },
+                firstMessageListItemIndex = renderPayload.firstMessageListItemIndex(),
+                messageCount = renderPayload.messages.size,
+            )
         }
             .distinctUntilChanged()
             .collect { index -> onVisibleReadTailChange(index) }
@@ -16694,6 +16718,7 @@ private fun ThreadMessagesList(
                 unreadCount = unreadJumpProjection.unreadCount,
                 targetMessageId = unreadJumpProjection.targetMessageId,
                 inlineSearchVisible = inlineSearchVisible,
+                atCanonicalBottom = unreadJumpAtCanonicalBottom,
             )
         if (
             !shareSelectionCaptureActive &&
@@ -18674,7 +18699,7 @@ private fun ThreadUnreadJumpButton(
         // artin visual ruling (task #232): neutral white pill, bottom placement.
         backgroundColor = SlockColor.SurfaceWhite,
         minWidth = 0.dp,
-        minHeight = ThreadFloatingPillButtonMinHeight,
+        minHeight = ThreadUnreadJumpPillMinHeight,
         shadowOffset = 4.dp,
         textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
     )
@@ -18687,13 +18712,46 @@ internal fun shouldShowThreadUnreadJumpButton(
     unreadCount: Int,
     targetMessageId: String?,
     inlineSearchVisible: Boolean,
+    atCanonicalBottom: Boolean = false,
 ): Boolean =
     preferenceEnabled &&
         routeActive &&
         hostForeground &&
         unreadCount > 0 &&
         !targetMessageId.isNullOrBlank() &&
-        !inlineSearchVisible
+        !inlineSearchVisible &&
+        !atCanonicalBottom
+
+internal fun threadUnreadJumpAtCanonicalBottom(
+    canLoadMoreAfter: Boolean,
+    canScrollTowardBottom: Boolean,
+    latestItemOffBottom: Boolean,
+): Boolean = !canLoadMoreAfter && !canScrollTowardBottom && !latestItemOffBottom
+
+internal fun threadVisibleReadTailMessageIndex(
+    visibleListItemIndexes: List<Int>,
+    firstMessageListItemIndex: Int,
+    messageCount: Int,
+): Int? {
+    if (messageCount <= 0) return null
+    val lastMessageListItemIndex = firstMessageListItemIndex + messageCount - 1
+    return visibleListItemIndexes
+        .asSequence()
+        .filter { index -> index in firstMessageListItemIndex..lastMessageListItemIndex }
+        .maxOrNull()
+        ?.minus(firstMessageListItemIndex)
+}
+
+internal fun consumeUnreadJumpFrontierAtCanonicalBottom(
+    sessionAnchor: ThreadReadAnchor?,
+    latestCanonicalMessage: ThreadReadAnchor?,
+    atCanonicalBottom: Boolean,
+): ThreadReadAnchor? =
+    if (atCanonicalBottom) {
+        advanceThreadReadAnchorFrontier(sessionAnchor, latestCanonicalMessage)
+    } else {
+        sessionAnchor
+    }
 
 private const val ThreadBackToBottomReleaseGuardMillis = 64L
 private const val ThreadUnreadJumpButtonZIndex = 5f
@@ -18704,6 +18762,8 @@ private const val ThreadUnreadJumpButtonZIndex = 5f
  * the previous 30dp was below standard.
  */
 internal val ThreadFloatingPillButtonMinHeight = 42.dp
+/** Compact unread-jump chip. artin: the 42.dp action-button target was visually too tall. */
+internal val ThreadUnreadJumpPillMinHeight = 28.dp
 private const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 12
