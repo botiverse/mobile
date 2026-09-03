@@ -115,33 +115,24 @@ async function ensureLoggedIn() {
   await drv.text(password);
   rec(`password typed at [${p.x},${p.y}]`);
 
-  // Dismiss keyboard, re-dump, and submit with FRESH button bounds. Tapping
-  // while the keyboard is visible targets the overlay instead of the shifted
-  // app content (r3 evidence).
-  const dismissOut = await drv.key("esc");
-  rec(`keyboard dismiss stdout: ${String(dismissOut || "").replace(/\s+/g, " ").slice(0, 300)}`);
-  await new Promise((r2) => setTimeout(r2, 2500));
-  dump = await drv.dumpUi();
-  if (typeof drv.pressLabel === "function") {
-    rec('submitting via press label="Sign In"');
-    await drv.pressLabel("Sign In");
-  } else {
-    const btnLine = dump.split("\n").filter((l) => /"Sign In"/.test(l));
-    if (btnLine.length) {
-      const last = btnLine[btnLine.length - 1];
-      const p2 = parseBounds(last);
-      rec(`submitting via fresh Sign In bounds [${p2.x},${p2.y}]`);
-      await drv.tap(p2.x, p2.y);
-    }
-  }
+  // On this auth form, agent-device keyboard dismiss taps Return/Go and
+  // already submits. Name that action: keyboard enter. Do not press Sign In
+  // afterwards — the button is gone.
+  const enterOut = await drv.key("enter");
+  rec(`submitting via keyboard enter stdout: ${String(enterOut || "").replace(/\s+/g, " ").slice(0, 300)}`);
   await new Promise((r2) => setTimeout(r2, 8000));
+
+  if (typeof drv.dismissSystemAlerts === "function") {
+    const alerts = await drv.dismissSystemAlerts();
+    rec(`system alerts: present=${Boolean(alerts?.present)} accepted=${Boolean(alerts?.accepted)}`);
+  }
 
   dump = await drv.dumpUi();
   const stillLogin = /"Email"/.test(dump) && /"Password"/.test(dump);
   if (stillLogin) {
     // Do NOT screenshot here: the form holds the typed email (secret hygiene —
     // r3 artifact was flagged for exactly this). Steps carry the failure.
-    writeVerdict("fail", "login did not complete: Sign In page still visible after esc+fresh-bounds submit");
+    writeVerdict("fail", "login did not complete: Sign In page still visible after keyboard enter");
     process.exit(1);
   }
 
