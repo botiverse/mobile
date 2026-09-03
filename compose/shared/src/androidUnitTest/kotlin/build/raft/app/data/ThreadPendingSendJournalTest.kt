@@ -59,7 +59,7 @@ class ThreadPendingSendJournalTest {
     }
 
     @Test
-    fun blankIdentityKeysFailClosedAndEqualZeroGenerationSurvivesColdCleanup() {
+    fun blankIdentityKeysFailClosedAndEqualFirstGenerationSurvivesColdCleanup() {
         withDatabase { path ->
             JdbcSqliteDriver(url(path)).use { driver ->
                 val journal = journal(driver)
@@ -70,6 +70,9 @@ class ThreadPendingSendJournalTest {
                     provenance(principalId = ""),
                     provenance(serverId = ""),
                     provenance(authGeneration = -1L),
+                    // RealtimeAuthorityRegistry's Empty revision is generation 0 with no session;
+                    // every real session starts at 1, so 0 is a sentinel, not a first revision.
+                    provenance(authGeneration = 0L),
                 ).forEach { invalid ->
                     assertFalse(journal.persistSending(invalid, route, pending))
                     assertTrue(journal.restore(invalid, route).isEmpty())
@@ -77,27 +80,27 @@ class ThreadPendingSendJournalTest {
                 assertFalse(journal.clearForAuthRevision("", "principal-a", 0L))
                 assertFalse(journal.clearForAuthRevision("env-a", "", 0L))
 
-                // Generation 0 is a valid first revision, not a sentinel for "unknown".  The
-                // cold-start cleanup is strictly older-than, so an equal generation survives;
-                // only the exact terminal cleanup retires it.
-                val zeroGeneration = provenance(authGeneration = 0L)
-                assertTrue(journal.persistSending(zeroGeneration, route, pending))
+                // Generation 1 is the first real revision.  The cold-start cleanup is strictly
+                // older-than, so an equal generation survives; only the exact terminal cleanup
+                // retires it.
+                val firstGeneration = provenance(authGeneration = 1L)
+                assertTrue(journal.persistSending(firstGeneration, route, pending))
                 assertTrue(
                     journal.clearForPrincipalBeforeAuthRevision(
-                        zeroGeneration.environmentId,
-                        zeroGeneration.principalId,
-                        0L,
+                        firstGeneration.environmentId,
+                        firstGeneration.principalId,
+                        1L,
                     )
                 )
-                assertEquals(1, journal.restore(zeroGeneration, route).size)
+                assertEquals(1, journal.restore(firstGeneration, route).size)
                 assertTrue(
                     journal.clearForAuthRevision(
-                        zeroGeneration.environmentId,
-                        zeroGeneration.principalId,
-                        0L,
+                        firstGeneration.environmentId,
+                        firstGeneration.principalId,
+                        1L,
                     )
                 )
-                assertTrue(journal.restore(zeroGeneration, route).isEmpty())
+                assertTrue(journal.restore(firstGeneration, route).isEmpty())
             }
         }
     }

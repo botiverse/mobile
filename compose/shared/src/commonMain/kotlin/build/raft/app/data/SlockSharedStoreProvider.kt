@@ -1354,18 +1354,14 @@ internal class SlockSharedStoreProvider private constructor(
         return ReadReceiptCoordinator(
             scope = threadSendScope,
             repository = repository,
-            requestRunner = { request, defaultRequest ->
-                if (request.owner == ReadReceiptOwner.Legacy) {
-                    defaultRequest()
-                } else {
-                    val serverId = ServerId(request.owner.serverId)
-                    val ownerRepository = processReadReceiptRepository(request.owner)
-                    when (request) {
-                        is ReadReceiptRequest.ToSeq ->
-                            ownerRepository.markChannelReadToSeq(serverId, request.channelId, request.seq)
-                        is ReadReceiptRequest.All ->
-                            ownerRepository.markChannelReadAll(serverId, request.channelId)
-                    }
+            requestRunner = { request, _ ->
+                val serverId = ServerId(request.owner.serverId)
+                val ownerRepository = processReadReceiptRepository(request.owner)
+                when (request) {
+                    is ReadReceiptRequest.ToSeq ->
+                        ownerRepository.markChannelReadToSeq(serverId, request.channelId, request.seq)
+                    is ReadReceiptRequest.All ->
+                        ownerRepository.markChannelReadAll(serverId, request.channelId)
                 }
             },
             ownerValidator = { owner ->
@@ -1389,7 +1385,7 @@ internal class SlockSharedStoreProvider private constructor(
             },
             onResult = { request, result ->
                 val content = result as? DataResult.Content
-                if (request.owner != ReadReceiptOwner.Legacy && content != null) {
+                if (content != null) {
                     threadSendScope.launch {
                         processReadStateV1Canary.applyMutationAck(
                             owner = request.owner.toReadStateV1ProductionOwner(),
@@ -1410,7 +1406,7 @@ internal class SlockSharedStoreProvider private constructor(
                 )
             },
             onOwnerRevoked = { owner ->
-                if (owner != ReadReceiptOwner.Legacy) processReadStateV1Canary.revoke(owner.toReadStateV1ProductionOwner())
+                processReadStateV1Canary.revoke(owner.toReadStateV1ProductionOwner())
             },
             onFailure = { request, result ->
                 activityUnreadSummaryStore.invalidate(
@@ -1463,7 +1459,7 @@ internal class SlockSharedStoreProvider private constructor(
         }
         if (coordinator != null) {
             coordinator.revoke(owner)
-        } else if (owner != ReadReceiptOwner.Legacy) {
+        } else {
             processReadStateV1Canary.revoke(owner.toReadStateV1ProductionOwner())
         }
     }

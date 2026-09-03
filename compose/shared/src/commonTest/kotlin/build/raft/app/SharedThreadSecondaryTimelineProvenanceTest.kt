@@ -63,6 +63,7 @@ class SharedThreadSecondaryTimelineProvenanceTest {
             SharedThreadDataSource(
                 networkApi = ReplyThreadAccessNetworkApi,
                 sessionStore = authStore,
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 payloadStore = payloadStore,
                 replyCacheIdentityAuthority = {
@@ -120,16 +121,18 @@ class SharedThreadSecondaryTimelineProvenanceTest {
                 payloadStore.get(
                     serverId = ServerIdValue,
                     threadId = ThreadIdValue,
+                    environmentId = accountA.environmentId,
                     principalId = "account-a",
-                    ownerScopeId = accountA.threadPayloadOwnerScopeId.orEmpty(),
+                    ownerScopeId = requireNotNull(accountA.threadPayloadOwnerScopeId),
                 )
             )
             assertNull(
                 payloadStore.get(
                     serverId = ServerIdValue,
                     threadId = ThreadIdValue,
+                    environmentId = accountB.environmentId,
                     principalId = "account-b",
-                    ownerScopeId = accountB.threadPayloadOwnerScopeId.orEmpty(),
+                    ownerScopeId = requireNotNull(accountB.threadPayloadOwnerScopeId),
                 )
             )
         } finally {
@@ -166,6 +169,7 @@ class SharedThreadSecondaryTimelineProvenanceTest {
             SharedThreadDataSource(
                 networkApi = ReplyThreadAccessNetworkApi,
                 sessionStore = authStore,
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 payloadStore = payloadStore,
                 savedStatusRepository = savedRepository,
@@ -228,7 +232,7 @@ class SharedThreadSecondaryTimelineProvenanceTest {
             assertEquals(
                 0,
                 payloadStore
-                    .applyReplyCountFacts(ServerIdValue, ThreadIdValue, "account-a", beforeSummary)
+                    .applyReplyCountFacts(ServerIdValue, ThreadIdValue, "https://prod.example.test", "account-a", beforeSummary)
                     .messages
                     .single()
                     .replyCount,
@@ -236,7 +240,7 @@ class SharedThreadSecondaryTimelineProvenanceTest {
             assertEquals(
                 0,
                 payloadStore
-                    .applyReplyCountFacts(ServerIdValue, ThreadIdValue, "account-b", beforeSummary)
+                    .applyReplyCountFacts(ServerIdValue, ThreadIdValue, "https://prod.example.test", "account-b", beforeSummary)
                     .messages
                     .single()
                     .replyCount,

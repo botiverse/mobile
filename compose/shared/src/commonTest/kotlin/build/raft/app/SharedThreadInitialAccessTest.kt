@@ -68,6 +68,7 @@ class SharedThreadInitialAccessTest {
             SharedThreadDataSource(
                 networkApi = ReplyThreadAccessNetworkApi,
                 sessionStore = sessionStore,
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = channelRepository,
                 homeSnapshotProvider = { requestedServerId ->
                     assertEquals(serverId, requestedServerId)
@@ -119,6 +120,7 @@ class SharedThreadInitialAccessTest {
                     SharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
                                 replyResult = DataResult.Content(replyThreadAccessSnapshot(body = "network reply"))
@@ -173,6 +175,7 @@ class SharedThreadInitialAccessTest {
                     SharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
                                 replyResult = DataResult.Content(replyThreadAccessSnapshot())
@@ -236,6 +239,7 @@ class SharedThreadInitialAccessTest {
                     SharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
                                 replyResult =
@@ -329,6 +333,7 @@ class SharedThreadInitialAccessTest {
                     SharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(owner.value.session),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository = conversationRepository,
                         channelRepository = channelRepository,
                         replyCacheIdentityAuthority = { owner.value },
@@ -395,6 +400,7 @@ class SharedThreadInitialAccessTest {
                     SharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
                                 replyResult = DataResult.Content(replyThreadAccessSnapshot())
@@ -452,6 +458,7 @@ class SharedThreadInitialAccessTest {
                     SharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
                                 replyResult = DataResult.Content(replyThreadAccessSnapshot())
@@ -522,6 +529,7 @@ class SharedThreadInitialAccessTest {
                     SharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
                                 replyResult = DataResult.Content(replyThreadAccessSnapshot())
@@ -598,6 +606,7 @@ class SharedThreadInitialAccessTest {
                     SharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
                                 replyResult = DataResult.Content(replyThreadAccessSnapshot())

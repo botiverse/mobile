@@ -74,6 +74,29 @@ class SlockNetworkTransportControllerTest {
     }
 
     @Test
+    fun blankShellScopeSelectionIsIgnoredInsteadOfSharingOneLegacySlot() {
+        val controller = readyController(curlRequired = false)
+        controller.updateRemoteEnvironment("production")
+
+        // Positive control: a named scope makes server-a the active server, so its variant applies.
+        controller.updateRemoteActiveSelection("shell-a", "server-a")
+        controller.applyRemoteEvaluation("production", 1L, "server-a", true, "curl_h2")
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
+
+        // A blank scope is not a caller identity: it cannot register server-b as active
+        // (which would fail-safe the conflict to KTOR) and cannot clear shell-a's selection.
+        assertEquals(null, controller.updateRemoteActiveSelection("  ", "server-b"))
+        controller.applyRemoteEvaluation("production", 2L, "server-b", true, "ktor")
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
+        assertEquals(null, controller.updateRemoteActiveSelection("", null))
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
+
+        // The same operations under a real scope do mutate state, proving the assertions above bite.
+        controller.updateRemoteActiveSelection("shell-b", "server-b")
+        assertSelection(controller, NetworkTransportEngine.KTOR, http3 = false)
+    }
+
+    @Test
     fun disabledOrInvalidEvaluationKeepsDefaultCurlH3() {
         val controller = readyController(curlRequired = false)
         controller.updateRemoteEnvironment("production")

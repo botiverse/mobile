@@ -292,7 +292,8 @@ internal fun replyThreadAccessIdentityAuthority(
             environmentId = environmentId,
             principalId = session.user.id,
             serverId = session.currentServerId.orEmpty(),
-            authGeneration = 0L,
+            // A live session always carries a registry generation >= 1; 0 means "no session".
+            authGeneration = 1L,
             selectionGeneration = 0L,
         )
     }

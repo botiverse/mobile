@@ -105,7 +105,8 @@ class SharedThreadJumpToLatestTest {
                         refreshToken = "refresh",
                         selectedServerId = "server-1"
                     )
-                )
+                ),
+            cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
         )
 
     private fun message(id: String, seq: Long, body: String): KuiklyThreadMessageItem =

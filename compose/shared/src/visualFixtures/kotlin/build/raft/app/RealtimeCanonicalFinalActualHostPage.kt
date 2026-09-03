@@ -1130,6 +1130,8 @@ private fun createActualThreadHost(
             conversationRepository = null,
             channelRepository = channelRepository,
             messageStore = provider.threadMessageStore,
+            // Same environment source as the production ThreadPage wiring (provider-owned store).
+            cacheEnvironmentIdProvider = { provider.apiEnvironmentStore.current().apiBaseUrl },
             replyCacheIdentityAuthority = {
                 provider.captureThreadReplyCacheIdentity(scope)
             },

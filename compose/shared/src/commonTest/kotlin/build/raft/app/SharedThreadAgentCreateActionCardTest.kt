@@ -127,6 +127,7 @@ class SharedThreadAgentCreateActionCardTest {
         SharedThreadDataSource(
             networkApi = UnusedThreadNetworkApi(),
             sessionStore = InMemorySlockAuthSessionStore(),
+            cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionsApi),
             createAgentCoordinator =
                 SharedCreateAgentCoordinator(
