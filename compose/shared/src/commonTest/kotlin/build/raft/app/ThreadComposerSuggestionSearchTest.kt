@@ -332,6 +332,78 @@ class ThreadComposerSuggestionSearchTest {
     }
 
     @Test
+    fun blankMemberQueryPreservesThreadThenChannelPriorityBeforeOutsideLimit() {
+        val outside =
+            (0 until 35).map { index ->
+                KuiklyComposerMemberItem(
+                    displayName = "Outside $index",
+                    handle = "outside-$index",
+                    inMentionChannel = false,
+                    sourceServerId = "server-local",
+                    isLocalServer = true
+                )
+            }
+        val threadParticipant =
+            KuiklyComposerMemberItem(
+                displayName = "Thread participant",
+                handle = "thread-participant",
+                inMentionChannel = false,
+                inThread = true,
+                kind = MemberKind.Agent,
+                sourceServerId = "server-remote",
+                isLocalServer = false,
+                sourceServerLabel = "Remote Lab"
+            )
+        val channelMember =
+            KuiklyComposerMemberItem(
+                displayName = "Channel agent",
+                handle = "channel-agent",
+                inMentionChannel = true,
+                kind = MemberKind.Agent,
+                sourceServerId = "server-local",
+                isLocalServer = true
+            )
+
+        val result = immediateThreadComposerMemberSuggestions("", outside + channelMember + threadParticipant)
+
+        assertEquals(30, result.size)
+        assertEquals(
+            listOf("thread-participant", "channel-agent"),
+            result.take(2).map { it.handle }
+        )
+        assertTrue(result[0].inThread)
+        assertTrue(result[1].inMentionChannel)
+        assertTrue(result.drop(2).none { it.inThread || it.inMentionChannel })
+    }
+
+    @Test
+    fun blankMemberQueryUsesExclusiveIdentityTiersWhenThreadAndChannelEntriesOverlap() {
+        val outside =
+            (0 until 35).map { index ->
+                KuiklyComposerMemberItem(
+                    displayName = "Outside $index",
+                    handle = "outside-$index",
+                    inMentionChannel = false
+                )
+            }
+        val channelCopy =
+            KuiklyComposerMemberItem(
+                displayName = "Shared agent",
+                handle = "shared-agent",
+                memberId = "agent-1",
+                inMentionChannel = true,
+                kind = MemberKind.Agent
+            )
+        val threadCopy = channelCopy.copy(inThread = true)
+
+        val result = immediateThreadComposerMemberSuggestions("", outside + channelCopy + threadCopy)
+
+        assertEquals(30, result.size)
+        assertEquals(listOf(threadCopy), result.filter { it.memberId == "agent-1" })
+        assertEquals(threadCopy, result.first())
+    }
+
+    @Test
     fun blankMemberQueryKeepsCurrentScopeFirstEvenWhenDirectoryFitsImmediateLimit() {
         val outside =
             KuiklyComposerMemberItem(
@@ -347,10 +419,9 @@ class ThreadComposerSuggestionSearchTest {
                 kind = MemberKind.Agent
             )
 
-        assertEquals(
-            listOf("channel-agent", "outside"),
-            immediateThreadComposerMemberSuggestions("", listOf(outside, agent)).map { it.handle }
-        )
+        val result = immediateThreadComposerMemberSuggestions("", listOf(outside, agent))
+        assertEquals(listOf("channel-agent", "outside"), result.map { it.handle })
+        assertEquals(agent, result.firstComposerMemberSuggestionCandidate())
     }
 
     @Test

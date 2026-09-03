@@ -47,26 +47,38 @@ internal fun immediateThreadComposerMemberSuggestions(
     suggestions: List<KuiklyComposerMemberItem>
 ): List<KuiklyComposerMemberItem> {
     if (query.isNotBlank()) return emptyList()
-    // The panel renders current-scope members before out-of-scope members.  Apply the same
-    // partition before the bounded source-server selection; otherwise a large directory can
-    // spend all 30 immediate slots on people from outside the current channel and the later
-    // panel grouping cannot recover the omitted in-channel agent/member.
-    val (inChannelSuggestions, outsideChannelSuggestions) =
-        suggestions.partition { suggestion -> suggestion.inMentionChannel }
+    // The panel renders the same three exclusive groups: thread participants, current-channel
+    // members not already in the thread group, then everyone else. Reuse the panel's identity-key
+    // exclusion so an item that is both in-thread and in-channel cannot occupy two tiers or make
+    // the bounded selector disagree with what the user sees.
+    val groups = suggestions.composerMemberSuggestionGroups()
+    val inThreadSuggestions = groups.inThread
+    val inChannelSuggestions = groups.inMentionChannel
+    val outsideChannelSuggestions = groups.notInMentionChannel
     if (suggestions.size <= ThreadComposerSuggestionMaxResults) {
-        return inChannelSuggestions + outsideChannelSuggestions
+        return inThreadSuggestions + inChannelSuggestions + outsideChannelSuggestions
     }
 
-    val inScopeResults =
+    val inThreadResults =
         immediateThreadComposerMemberSuggestionsBySource(
-            suggestions = inChannelSuggestions,
+            suggestions = inThreadSuggestions,
             limit = ThreadComposerSuggestionMaxResults
         )
-    if (inScopeResults.size == ThreadComposerSuggestionMaxResults) return inScopeResults
-    return inScopeResults +
+    if (inThreadResults.size == ThreadComposerSuggestionMaxResults) return inThreadResults
+
+    val inChannelResults =
+        immediateThreadComposerMemberSuggestionsBySource(
+            suggestions = inChannelSuggestions,
+            limit = ThreadComposerSuggestionMaxResults - inThreadResults.size
+        )
+    if (inThreadResults.size + inChannelResults.size == ThreadComposerSuggestionMaxResults) {
+        return inThreadResults + inChannelResults
+    }
+
+    return inThreadResults + inChannelResults +
         immediateThreadComposerMemberSuggestionsBySource(
             suggestions = outsideChannelSuggestions,
-            limit = ThreadComposerSuggestionMaxResults - inScopeResults.size
+            limit = ThreadComposerSuggestionMaxResults - inThreadResults.size - inChannelResults.size
         )
 }
 
