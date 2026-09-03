@@ -188,8 +188,10 @@ internal fun parseExternalAgentTimestampOrNull(iso: String?): Long? =
  *
  * Note there are only TWO colour tiers here, deliberately. Web has a third line
  * at 30 minutes, and it is meaningful there *because* web is activity-first: an
- * unlogged-in agent whose last activity is 10-40 minutes old gets cyan on web
- * and gray here. Since this file evaluates `waiting` first, that same input never
+ * unlogged-in agent whose last activity is between 5 and 30 minutes old gets cyan
+ * on web and gray here. Past 30 minutes web falls through to its own setup check
+ * and goes gray too, so the divergence is that bounded window, not "older than 5
+ * minutes". Since this file evaluates `waiting` first, that same input never
  * reaches an age comparison, so a 30-minute constant would be unreachable — it
  * existed and was removed. This is an intentional divergence, not missing parity;
  * re-adding the tier here would reintroduce dead code, and making the two ends
