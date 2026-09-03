@@ -47,29 +47,69 @@ internal fun immediateThreadComposerMemberSuggestions(
     suggestions: List<KuiklyComposerMemberItem>
 ): List<KuiklyComposerMemberItem> {
     if (query.isNotBlank()) return emptyList()
-    if (suggestions.size <= ThreadComposerSuggestionMaxResults) return suggestions
+    // The panel renders the same three exclusive groups: thread participants, current-channel
+    // members not already in the thread group, then everyone else. Reuse the panel's identity-key
+    // exclusion so an item that is both in-thread and in-channel cannot occupy two tiers or make
+    // the bounded selector disagree with what the user sees.
+    val groups = suggestions.composerMemberSuggestionGroups()
+    val inThreadSuggestions = groups.inThread
+    val inChannelSuggestions = groups.inMentionChannel
+    val outsideChannelSuggestions = groups.notInMentionChannel
+    if (suggestions.size <= ThreadComposerSuggestionMaxResults) {
+        return inThreadSuggestions + inChannelSuggestions + outsideChannelSuggestions
+    }
+
+    val inThreadResults =
+        immediateThreadComposerMemberSuggestionsBySource(
+            suggestions = inThreadSuggestions,
+            limit = ThreadComposerSuggestionMaxResults
+        )
+    if (inThreadResults.size == ThreadComposerSuggestionMaxResults) return inThreadResults
+
+    val inChannelResults =
+        immediateThreadComposerMemberSuggestionsBySource(
+            suggestions = inChannelSuggestions,
+            limit = ThreadComposerSuggestionMaxResults - inThreadResults.size
+        )
+    if (inThreadResults.size + inChannelResults.size == ThreadComposerSuggestionMaxResults) {
+        return inThreadResults + inChannelResults
+    }
+
+    return inThreadResults + inChannelResults +
+        immediateThreadComposerMemberSuggestionsBySource(
+            suggestions = outsideChannelSuggestions,
+            limit = ThreadComposerSuggestionMaxResults - inThreadResults.size - inChannelResults.size
+        )
+}
+
+private fun immediateThreadComposerMemberSuggestionsBySource(
+    suggestions: List<KuiklyComposerMemberItem>,
+    limit: Int
+): List<KuiklyComposerMemberItem> {
+    if (suggestions.isEmpty() || limit <= 0) return emptyList()
+    if (suggestions.size <= limit) return suggestions
 
     val groups = LinkedHashMap<String, ArrayDeque<KuiklyComposerMemberItem>>()
     suggestions.forEach { suggestion ->
         groups.getOrPut(suggestion.threadComposerSuggestionSourceKey()) { ArrayDeque() }.addLast(suggestion)
     }
-    if (groups.size <= 1) return suggestions.take(ThreadComposerSuggestionMaxResults)
+    if (groups.size <= 1) return suggestions.take(limit)
 
     val localKey = suggestions.firstOrNull { it.isLocalServer }?.threadComposerSuggestionSourceKey()
         ?: groups.keys.first()
     val local = groups.remove(localKey) ?: ArrayDeque()
     val remoteGroups = groups.values.toList()
     var remoteGroupIndex = 0
-    return buildList(ThreadComposerSuggestionMaxResults) {
-        while (size < ThreadComposerSuggestionMaxResults) {
+    return buildList(limit) {
+        while (size < limit) {
             var added = false
             repeat(2) {
-                if (size < ThreadComposerSuggestionMaxResults && local.isNotEmpty()) {
+                if (size < limit && local.isNotEmpty()) {
                     add(local.removeFirst())
                     added = true
                 }
             }
-            if (size < ThreadComposerSuggestionMaxResults && remoteGroups.any { it.isNotEmpty() }) {
+            if (size < limit && remoteGroups.any { it.isNotEmpty() }) {
                 var attempts = 0
                 while (attempts < remoteGroups.size) {
                     val group = remoteGroups[remoteGroupIndex]
