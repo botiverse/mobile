@@ -100,7 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_artifact_args(screenshot)
     screenshot.add_argument("--device", default=None)
 
-    interact = add(sub, "interact", cmd_interact, "Drive UI actions through the iosAppUITests XCUITest harness")
+    interact = add(sub, "interact", cmd_interact, "Drive UI actions through the persistent QaAcceptanceLoopTests loop")
     add_interaction_args(interact)
     interact.add_argument("--actions", default=None, help="JSON array of ios-use actions")
     interact.add_argument("--actions-file", default=None, help="Path to a JSON action array")

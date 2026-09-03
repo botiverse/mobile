@@ -149,7 +149,7 @@ Arbitrary start/end swipes use the same coordinate-space contract:
 python3 scripts/slock_ios_simctl.py --device booted swipe 200 760 200 320 --coordinate-space window --pretty
 ```
 
-The first interaction builds the `iosAppUITests` scheme into `/tmp/ios-use-derived-data` by default, then runs only `IosUseInteractionTests`. Reusing the same derived-data path makes later interactions incremental. If the app is already running, the harness activates the existing process instead of relaunching it, preserving multi-step state.
+The first interaction builds the `iosAppUITests` scheme into `/tmp/ios-use-derived-data` by default, then starts persistent `QaAcceptanceLoopTests`. Later `ios-use` / `slock_ios_simctl.py` taps reuse that loop over the file protocol instead of launching a new one-shot XCTest process. A one-shot `IosUseInteractionTests` session can locate Kuikly Home rows and still fail to deliver the tap.
 
 ### iOS Caveats
 

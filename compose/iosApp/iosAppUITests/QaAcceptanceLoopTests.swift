@@ -1,13 +1,14 @@
 import XCTest
 
-// QA acceptance loop harness (agent-in-CI, iOS leg).
+// Persistent XCUITest loop for QA acceptance AND ios-use interactions.
 //
-// One xcodebuild `test-without-building` invocation hosts the WHOLE acceptance
-// run: the app launches ONCE and this test then serves actions from the host
-// runner (scripts/qa/acceptance_agent.mjs --platform ios) over a file
-// protocol, so multi-turn flows like login keep their UI state. This is what
-// the per-batch IosUseInteractionTests harness cannot do — XCUIApplication
-// .launch() restarts the app on every batch.
+// One xcodebuild `test-without-building` invocation hosts the WHOLE run: the
+// app launches ONCE and this test then serves actions from the host over a
+// file protocol, so multi-turn flows like login keep their UI state. ios-use
+// tap/tap-text/interact now speak this same loop. The per-batch
+// IosUseInteractionTests harness cannot keep UI state or deliver taps into
+// Kuikly Home — a new XCTest process that only activate()s an already-running
+// app finds the nodes but the taps do not reach Kuikly.
 //
 // Protocol (dir = $QA_LOOP_IO_DIR, a host path — simulator processes share the
 // host filesystem):
@@ -43,6 +44,9 @@ final class QaAcceptanceLoopTests: XCTestCase {
         let velocityPointsPerSecond: Double?
         let holdSeconds: Double?
         let releaseHoldSeconds: Double?
+        // ios-use / slock_ios_simctl may send window-point coordinates; the
+        // historical one-shot IosUseInteractionTests accepted both spaces.
+        let coordinateSpace: String?
     }
 
     override func setUpWithError() throws {
@@ -137,23 +141,22 @@ final class QaAcceptanceLoopTests: XCTestCase {
         case "wait":
             Thread.sleep(forTimeInterval: min(max(action.seconds ?? 1.0, 0.0), 10.0))
         case "tap":
-            let c = try normalized(action, in: app)
+            let c = try coordinate(action, in: app)
             c.tap()
         case "long_press":
-            let c = try normalized(action, in: app)
+            let c = try coordinate(action, in: app)
             c.press(forDuration: 0.8)
+        case "tapText":
+            guard let text = action.text, !text.isEmpty else {
+                throw HarnessError.bad("tapText requires text")
+            }
+            return try tapText(text, in: app)
         case "drag":
-            // Normalized start -> normalized end, with an explicit hold duration.
+            // Start -> end, with an explicit hold duration.
             // A longer duration is a slower drag, which is what distinguishes an
             // interactive-pop edge gesture and a short rebound from a flick.
-            guard let x = action.x, let y = action.y, x >= 0, x <= 1, y >= 0, y <= 1 else {
-                throw HarnessError.bad("drag requires normalized x/y in 0..1")
-            }
-            guard let x2 = action.x2, let y2 = action.y2, x2 >= 0, x2 <= 1, y2 >= 0, y2 <= 1 else {
-                throw HarnessError.bad("drag requires normalized x2/y2 in 0..1")
-            }
-            let from = app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y))
-            let to = app.coordinate(withNormalizedOffset: CGVector(dx: x2, dy: y2))
+            let from = try coordinate(action, in: app)
+            let to = try coordinate(action, in: app, useEnd: true)
             let hold = min(max(action.holdSeconds ?? 0.05, 0.0), 10.0)
             // ⚠️ press(forDuration:thenDragTo:) holds, then drags at XCUITest's
             // DEFAULT speed. Run 33161205106 group 4 asked for a slow 10%-width
@@ -161,16 +164,18 @@ final class QaAcceptanceLoopTests: XCTestCase {
             // page is correct pager physics, so the harness manufactured a
             // product FAIL. @CC-Cata caught it. Speed is the parameter that case
             // turns on, so it has to be expressed, not implied by a hold.
+            let fromXY = [action.x ?? 0, action.y ?? 0]
+            let toXY = [action.x2 ?? 0, action.y2 ?? 0]
             if let velocity = action.velocityPointsPerSecond, velocity > 0 {
                 from.press(forDuration: hold,
                            thenDragTo: to,
                            withVelocity: XCUIGestureVelocity(rawValue: velocity),
                            thenHoldForDuration: min(max(action.releaseHoldSeconds ?? 0.1, 0.0), 5.0))
-                return ["from": [x, y], "to": [x2, y2],
+                return ["from": fromXY, "to": toXY,
                         "holdSeconds": hold, "velocityPointsPerSecond": velocity]
             }
             from.press(forDuration: hold, thenDragTo: to)
-            return ["from": [x, y], "to": [x2, y2], "holdSeconds": hold, "velocity": "default"]
+            return ["from": fromXY, "to": toXY, "holdSeconds": hold, "velocity": "default"]
         case "swipe":
             switch action.direction {
             case "up": app.swipeUp()
@@ -300,11 +305,97 @@ final class QaAcceptanceLoopTests: XCTestCase {
         return tapKey(kb, ["Return", "return", "Go", "Send", "Search", "Done", "Next", "next", "\n"])
     }
 
-    private func normalized(_ action: Action, in app: XCUIApplication) throws -> XCUICoordinate {
-        guard let x = action.x, let y = action.y, x >= 0, x <= 1, y >= 0, y <= 1 else {
-            throw HarnessError.bad("tap/long_press require normalized x/y in 0..1")
+    private func frame4(_ n: [String: Any]) -> [CGFloat] {
+        if let frame = n["frame"] as? [CGFloat], frame.count == 4 { return frame }
+        if let frame = n["frame"] as? [Double], frame.count == 4 { return frame.map { CGFloat($0) } }
+        if let frame = n["frame"] as? [NSNumber], frame.count == 4 { return frame.map { CGFloat(truncating: $0) } }
+        if let frame = n["frame"] as? [Any], frame.count == 4 {
+            return frame.map { value in
+                if let number = value as? NSNumber { return CGFloat(truncating: number) }
+                if let number = value as? Double { return CGFloat(number) }
+                return 0
+            }
         }
-        return app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y))
+        return [0, 0, 0, 0]
+    }
+
+    private func coordinate(_ action: Action, in app: XCUIApplication, useEnd: Bool = false) throws -> XCUICoordinate {
+        guard let x = useEnd ? action.x2 : action.x, let y = useEnd ? action.y2 : action.y else {
+            throw HarnessError.bad("\(action.type) requires \(useEnd ? "x2/y2" : "x/y")")
+        }
+        switch action.coordinateSpace ?? "normalized" {
+        case "normalized":
+            guard (0.0...1.0).contains(x), (0.0...1.0).contains(y) else {
+                throw HarnessError.bad("normalized coordinates must be between 0.0 and 1.0")
+            }
+            return app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y))
+        case "points":
+            let frame = app.frame
+            guard frame.width > 0, frame.height > 0, x >= 0, y >= 0, x <= frame.width, y <= frame.height else {
+                throw HarnessError.bad("point coordinates must fit the app frame \(frame)")
+            }
+            return app.coordinate(withNormalizedOffset: CGVector(dx: x / frame.width, dy: y / frame.height))
+        default:
+            throw HarnessError.bad("coordinateSpace must be normalized or points")
+        }
+    }
+
+    // Find a labelled node and tap its center through app-normalized coordinates.
+    // Do NOT use XCUIElement.tap() or isHittable: Kuikly Home rows exist in the
+    // snapshot but often report isHittable=false, and a one-shot XCTest session
+    // that only activate()s an already-running app does not deliver those taps.
+    // The persistent loop launched this app, so coordinate taps reach Kuikly.
+    private func tapText(_ wanted: String, in app: XCUIApplication) throws -> Any? {
+        let exact = wanted.trimmingCharacters(in: .whitespacesAndNewlines)
+        let needle = exact.lowercased()
+        let deadline = Date().addingTimeInterval(8)
+        var lastCount = 0
+        while Date() < deadline {
+            let nodes = try describeTree(app)
+            lastCount = nodes.count
+            func lab(_ n: [String: Any]) -> String {
+                let label = (n["label"] as? String) ?? ""
+                let identifier = (n["id"] as? String) ?? ""
+                return label.isEmpty ? identifier : label
+            }
+            func val(_ n: [String: Any]) -> String { (n["value"] as? String) ?? "" }
+            func area(_ n: [String: Any]) -> CGFloat {
+                let frame = frame4(n)
+                return max(1, frame[2]) * max(1, frame[3])
+            }
+            var matches = nodes.filter {
+                lab($0).trimmingCharacters(in: .whitespacesAndNewlines) == exact
+                    || val($0).trimmingCharacters(in: .whitespacesAndNewlines) == exact
+            }
+            if matches.isEmpty {
+                matches = nodes.filter { lab($0).lowercased() == needle || val($0).lowercased() == needle }
+            }
+            if matches.isEmpty {
+                matches = nodes.filter {
+                    lab($0).lowercased().contains(needle) || val($0).lowercased().contains(needle)
+                }
+            }
+            if let pick = (matches.filter { ($0["clickable"] as? Bool) == true }.isEmpty
+                           ? matches : matches.filter { ($0["clickable"] as? Bool) == true })
+                .min(by: { area($0) < area($1) }) {
+                let frame = frame4(pick)
+                let appFrame = app.frame
+                guard appFrame.width > 0, appFrame.height > 0 else {
+                    throw HarnessError.bad("tapText: app frame is empty")
+                }
+                let nx = (frame[0] + frame[2] / 2 - appFrame.origin.x) / appFrame.width
+                let ny = (frame[1] + frame[3] / 2 - appFrame.origin.y) / appFrame.height
+                app.coordinate(withNormalizedOffset: CGVector(dx: nx, dy: ny)).tap()
+                return [
+                    "label": lab(pick),
+                    "x": nx,
+                    "y": ny,
+                    "matches": matches.count,
+                ]
+            }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        throw HarnessError.bad("tapText: no on-screen node matches \"\(wanted)\" (\(lastCount) labelled nodes)")
     }
 
     // The host-side dump_ui twin: one snapshot IPC, then a plain walk emitting

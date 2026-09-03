@@ -220,7 +220,8 @@ ios-use open-url buildraft://diagnostics --pretty
 ios-use screenshot --out /tmp/ios-use --pretty
 ```
 
-Drive UI interactions through the checked-in `iosAppUITests` XCUITest harness:
+Drive UI interactions through the persistent `QaAcceptanceLoopTests` XCUITest
+loop (the same file protocol the iOS QA acceptance agent uses):
 
 ```bash
 ios-use tap-text Home --workspace compose/iosApp/iosApp.xcworkspace --pretty
@@ -233,11 +234,14 @@ ios-use interact --workspace compose/iosApp/iosApp.xcworkspace --actions '[{"typ
 an action array with `tapText`, `tap`, `swipe`, `text`, `key`, and `wait` entries; pass
 `--actions-file` for longer sequences. A swipe may use a semantic `direction`,
 or explicit `x/y/x2/y2` endpoints with `coordinateSpace` set to `normalized`
-or `points`. The command builds the UI-test bundle for testing, patches the
-generated `.xctestrun` with the action JSON, then runs only the bounded
-`IosUseInteractionTests` method through `test-without-building`. If the app is
-already running, the test activates that process instead of relaunching it so
-sequential invocations preserve app state. `text` and `key` (`enter`, `del`,
+or `points`. The first interaction builds `iosAppUITests`, starts
+`QaAcceptanceLoopTests` once, and waits for `ready.json`. Later invocations
+reuse that loop over `cmd-<n>.json` / `res-<n>.json` so Kuikly Home taps keep
+working, but only when workspace, scheme, configuration, bundle, and device
+all match the running session; any change stops the old xcodebuild process
+group and starts a new loop. A one-shot `IosUseInteractionTests` process can see Kuikly nodes and
+still fail to deliver the tap. The loop launches the app through XCTest on
+first start (sandbox login state is kept). `text` and `key` (`enter`, `del`,
 or `esc`) tap the software keyboard through XCUITest; there is no host-key
 fallback.
 
