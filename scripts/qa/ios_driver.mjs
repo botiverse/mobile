@@ -490,10 +490,10 @@ function createAgentDeviceDriver({ ioDir, udid, bundle, binary, fixturePage, fix
       runAd(["open", bundle, "--relaunch"], { timeout: 180000 });
       opened = true;
     },
-    async dismissSystemAlerts() {
+    async dismissSystemAlerts({ timeoutMs = 30000 } = {}) {
       let raw = "";
       try {
-        raw = runAd(["alert", "get", "--json"]);
+        raw = runAd(["alert", "get", String(timeoutMs), "--json"], { timeout: timeoutMs + 5000 });
       } catch (error) {
         const detail = String(error);
         if (/alert not found|no (active )?alert|NO_ALERT/i.test(detail)) return { present: false, raw: detail };
@@ -501,7 +501,7 @@ function createAgentDeviceDriver({ ioDir, udid, bundle, binary, fixturePage, fix
       }
       const parsed = parseAlertGet(raw);
       if (!parsed.present) return parsed;
-      const accepted = runAd(["alert", "accept"]);
+      const accepted = runAd(["alert", "accept", String(timeoutMs)], { timeout: timeoutMs + 5000 });
       return { present: true, accepted: true, raw, accept: accepted, parsed: parsed.parsed };
     },
     async pressLabel(text) {
@@ -509,7 +509,6 @@ function createAgentDeviceDriver({ ioDir, udid, bundle, binary, fixturePage, fix
       return runAd(["press", `role="button" label="${escaped}" || label="${escaped}"`, "--settle"]);
     },
     async dumpUi() {
-      await this.dismissSystemAlerts();
       return compactDumpUi(describeNodes(), toPx);
     },
     async tapText(wanted) {

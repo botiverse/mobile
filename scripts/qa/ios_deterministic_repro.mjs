@@ -167,6 +167,10 @@ try {
   // Open #all deterministically: find the channel row whose label (space-
   // stripped) is "#all" and tap it. If we are already inside #all (composer
   // placeholder "Message #all"), skip navigation.
+  if (typeof drv.dismissSystemAlerts === "function") {
+    const alerts = await drv.dismissSystemAlerts({ timeoutMs: 30000 });
+    rec(`system alerts before #all: present=${Boolean(alerts?.present)} accepted=${Boolean(alerts?.accepted)}`);
+  }
   let dump = await drv.dumpUi();
   fs.writeFileSync(path.join(outDir, "home-dump.txt"), redactEditableValues(dump));
   if (!dump.includes('"Message #all"')) {
