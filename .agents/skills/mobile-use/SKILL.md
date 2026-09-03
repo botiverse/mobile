@@ -80,9 +80,15 @@ ios-use build --workspace compose/iosApp/iosApp.xcworkspace --scheme iosApp --pr
 ios-use install --pretty
 ios-use launch --pretty
 ios-use screenshot --out artifacts/ios --pretty
+ios-use tap-text Home --pretty
+ios-use interact --actions '[{"type":"tapText","text":"all"}]' --pretty
 ios-use log --duration 10 --predicate 'process == "iosApp"' --out artifacts/ios --pretty
 ios-use analyze-log artifacts/ios/state-ios-log.txt --pretty
 ```
+
+UI inspect/act defaults to `agent-device` (`AGENT_DEVICE_BIN` or PATH). Use
+`--driver qa-loop --workspace compose/iosApp/iosApp.xcworkspace` only for the
+legacy XCTest file protocol. Product-log verdicts stay outside `ios-use`.
 
 ## Harmony/OHOS Flow
 

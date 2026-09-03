@@ -220,30 +220,24 @@ ios-use open-url buildraft://diagnostics --pretty
 ios-use screenshot --out /tmp/ios-use --pretty
 ```
 
-Drive UI interactions through the persistent `QaAcceptanceLoopTests` XCUITest
-loop (the same file protocol the iOS QA acceptance agent uses):
+Drive UI interactions through `agent-device` by default (no XCTest loop, no
+workspace required). Product-log verdicts stay in the caller:
 
 ```bash
-ios-use tap-text Home --workspace compose/iosApp/iosApp.xcworkspace --pretty
-ios-use tap 0.5 0.9 --workspace compose/iosApp/iosApp.xcworkspace --pretty
-ios-use swipe --direction up --workspace compose/iosApp/iosApp.xcworkspace --pretty
-ios-use interact --workspace compose/iosApp/iosApp.xcworkspace --actions '[{"type":"tapText","text":"Tasks"},{"type":"tapText","text":"Home","waitAfter":1}]' --pretty
+ios-use doctor --pretty
+ios-use tap-text Home --pretty
+ios-use tap 0.5 0.9 --pretty
+ios-use swipe --direction up --pretty
+ios-use interact --actions '[{"type":"tapText","text":"Tasks"},{"type":"tapText","text":"Home","waitAfter":1}]' --pretty
 ```
 
-`tap` uses normalized XCTest coordinates (`0.0` to `1.0`). `interact` accepts
-an action array with `tapText`, `tap`, `swipe`, `text`, `key`, and `wait` entries; pass
-`--actions-file` for longer sequences. A swipe may use a semantic `direction`,
-or explicit `x/y/x2/y2` endpoints with `coordinateSpace` set to `normalized`
-or `points`. The first interaction builds `iosAppUITests`, starts
-`QaAcceptanceLoopTests` once, and waits for `ready.json`. Later invocations
-reuse that loop over `cmd-<n>.json` / `res-<n>.json` so Kuikly Home taps keep
-working, but only when workspace, scheme, configuration, bundle, and device
-all match the running session; any change stops the old xcodebuild process
-group and starts a new loop. A one-shot `IosUseInteractionTests` process can see Kuikly nodes and
-still fail to deliver the tap. The loop launches the app through XCTest on
-first start (sandbox login state is kept). `text` and `key` (`enter`, `del`,
-or `esc`) tap the software keyboard through XCUITest; there is no host-key
-fallback.
+`agent-device` must be on `PATH` (or set `AGENT_DEVICE_BIN`). The old
+`QaAcceptanceLoopTests` file protocol remains as `--driver qa-loop` and still
+needs `--workspace`. `tap` uses normalized coordinates (`0.0` to `1.0`).
+`interact` accepts `tapText`, `tap`, `swipe`, `text`, `key`, and `wait`. A
+swipe may use `direction`, or `x/y/x2/y2` with `coordinateSpace` `normalized`
+or `points`. iOS interactive-pop is a coordinate swipe, not
+`gesture swipe left-edge`.
 
 Capture/analyze logs:
 
