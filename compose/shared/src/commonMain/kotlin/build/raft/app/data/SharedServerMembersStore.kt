@@ -280,7 +280,14 @@ data class SharedServerMembersState(
 data class SharedServerMemberStatus(
     val status: AgentStatus?,
     val presence: Presence,
-    val statusLabel: String? = null
+    val statusLabel: String? = null,
+    /**
+     * External agents carry no managed liveness; the indicator must render them
+     * as external regardless of [status]/[presence]. Required (no default) so a
+     * producer that forgets it fails to compile instead of silently rendering
+     * an external agent with a managed green dot (task #1119).
+     */
+    val external: Boolean
 )
 
 /**
@@ -369,13 +376,17 @@ private fun MemberProfile?.toSharedServerMemberStatus(
         return SharedServerMemberStatus(
             status = presenceFact.agentStatus ?: this?.agentStatus,
             presence = presenceFact.presence,
-            statusLabel = presenceFact.statusLabel
+            statusLabel = presenceFact.statusLabel,
+            // A presence fact never carries external-ness; it comes from the
+            // authoritative profile and must survive every liveness update.
+            external = this?.isExternal == true
         )
     }
     if (this?.kind != MemberKind.Agent) return null
     return SharedServerMemberStatus(
         status = agentStatus,
-        presence = presence
+        presence = presence,
+        external = isExternal
     )
 }
 
@@ -770,7 +781,8 @@ class SharedServerMembersStore internal constructor(
                 SharedServerMemberStatus(
                     status = null,
                     presence = Presence.Offline,
-                    statusLabel = "—"
+                    statusLabel = "—",
+                    external = member?.isExternal == true
                 )
             } else {
                 applySeedOnlyOfflinePolicy(

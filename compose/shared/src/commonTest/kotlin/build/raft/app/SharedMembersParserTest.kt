@@ -1547,7 +1547,8 @@ class SharedMembersParserTest {
                 statusIndicatorState =
                     slockAgentStatusIndicatorState(
                         status = AgentStatus.Working,
-                        presence = Presence.Active
+                        presence = Presence.Active,
+                        external = false
                     )
             )
 

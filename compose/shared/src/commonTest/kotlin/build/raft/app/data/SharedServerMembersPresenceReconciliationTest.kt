@@ -15,6 +15,8 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class SharedServerMembersPresenceReconciliationTest {
     private val serverId = ServerId("server-1")
@@ -257,7 +259,8 @@ class SharedServerMembersPresenceReconciliationTest {
             SharedServerMemberStatus(
                 status = null,
                 presence = Presence.Offline,
-                statusLabel = "—"
+                statusLabel = "—",
+                external = false
             ),
             store.memberStatusFlow(serverId, agentId.value).first()
         )
@@ -622,4 +625,52 @@ class SharedServerMembersPresenceReconciliationTest {
             statusActivity = status,
             statusDetail = status
         )
+
+    // task #1119: external-ness lives on the authoritative profile; a live presence fact
+    // (which never carries it) must not erase it, and a managed agent must not gain it.
+    @Test
+    fun externalFlagSurvivesLivePresenceFactsAndStaysOffForManagedAgents() = runBlocking {
+        val registry = ProcessMemberPresenceRegistry()
+        val store = SharedServerMembersStore(PresenceNoopMemberRepository, presenceRegistry = registry)
+        val externalAgent =
+            MemberProfile(
+                id = agentId,
+                displayName = "Bridge",
+                handle = "bridge",
+                kind = MemberKind.Agent,
+                presence = Presence.Active,
+                agentStatus = AgentStatus.Online,
+                isExternal = true,
+                serverId = serverId
+            )
+        val managedAgent =
+            externalAgent.copy(
+                id = MemberId("agent-2"),
+                displayName = "Claude",
+                handle = "claude",
+                isExternal = false
+            )
+        store.seed(
+            MemberSnapshot(
+                ServerSummary(id = serverId, name = "Workspace", slug = "workspace"),
+                listOf(externalAgent, managedAgent)
+            )
+        )
+
+        val seeded = store.memberStatusFlow(serverId, agentId.value).first()
+        assertEquals(AgentStatus.Online, seeded?.status)
+        assertTrue(seeded?.external == true, "profile external flag reaches the status seam")
+        assertFalse(store.memberStatusFlow(serverId, "agent-2").first()?.external == true)
+
+        registry.apply(
+            owner,
+            presence(AgentStatus.Working, serverSeq = 5L, detail = "Running"),
+            registry.writeGeneration,
+            ProcessPresenceTransportEpoch("family-1", 1L)
+        )
+        val live = store.memberStatusFlow(serverId, agentId.value).first()
+        assertEquals(AgentStatus.Working, live?.status, "liveness still flows")
+        assertEquals("Running", live?.statusLabel)
+        assertTrue(live?.external == true, "presence fact must not erase external")
+    }
 }

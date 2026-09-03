@@ -18,8 +18,13 @@ internal data class SlockAgentStatusIndicatorState(
     val status: AgentStatus?,
     val color: Color,
     val pulsing: Boolean,
-    val label: String
+    val label: String,
+    /** True when the dot renders the external-agent token rather than managed liveness. */
+    val external: Boolean
 )
+
+/** React parity: external agents caption as "External" (agentStore.ts resolveAgentDisplayState). */
+internal const val ExternalAgentStatusLabel = "External"
 
 internal typealias SlockAgentStatusResolver = (String?) -> Flow<SlockAgentStatusIndicatorState?>
 
@@ -65,15 +70,34 @@ internal fun SharedServerMemberStatus.toSlockAgentStatusIndicatorState(): SlockA
     slockAgentStatusIndicatorState(
         status = status,
         presence = presence,
-        statusLabel = statusLabel
+        statusLabel = statusLabel,
+        external = external
     )
 
+/**
+ * [external] is required (no default): every producer must state it, so a
+ * forgotten flag is a compile error rather than an external agent silently
+ * rendering managed green (task #1119).
+ */
 internal fun slockAgentStatusIndicatorState(
     status: AgentStatus?,
     presence: Presence,
-    statusLabel: String? = null
-): SlockAgentStatusIndicatorState =
-    SlockAgentStatusIndicatorState(
+    statusLabel: String? = null,
+    external: Boolean
+): SlockAgentStatusIndicatorState {
+    if (external) {
+        // React StatusDot parity: `external` overrides activity unconditionally
+        // ("no managed liveness green/red"); color, pulse and label move together
+        // so the dot can never disagree with the text beside it.
+        return SlockAgentStatusIndicatorState(
+            status = status,
+            color = SlockColor.AccentCyan,
+            pulsing = false,
+            label = ExternalAgentStatusLabel,
+            external = true
+        )
+    }
+    return SlockAgentStatusIndicatorState(
         status = status,
         color =
             when (status) {
@@ -95,8 +119,10 @@ internal fun slockAgentStatusIndicatorState(
         // Label derives from the same resolved status as color/pulse so a dot
         // can never disagree with the text beside it (React
         // resolveAgentDisplayState parity, #198/#73).
-        label = statusLabel?.takeIf { it.isNotBlank() } ?: status?.label ?: presence.name
+        label = statusLabel?.takeIf { it.isNotBlank() } ?: status?.label ?: presence.name,
+        external = false
     )
+}
 
 /**
  * Home consumers must render an indicator only from the authoritative resolver.

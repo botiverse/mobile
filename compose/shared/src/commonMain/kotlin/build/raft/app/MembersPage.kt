@@ -236,6 +236,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
+import build.raft.app.model.isExternalAgentRuntime
 
 const val MEMBERS_PAGE = "compose_members"
 const val MEMBER_DETAIL_PAGE = "compose_member_detail"
@@ -983,7 +984,8 @@ private fun unknownMembersAgentStatusIndicatorState(): SlockAgentStatusIndicator
     slockAgentStatusIndicatorState(
         status = null,
         presence = Presence.Offline,
-        statusLabel = MembersUnknownAgentStatusLabel
+        statusLabel = MembersUnknownAgentStatusLabel,
+        external = false
     )
 
 internal fun resolveMembersAgentStatusIndicatorState(
@@ -999,7 +1001,8 @@ private fun SlockAgentStatusIndicatorState.toMembersAgentStatusDisplayState(): M
     MembersAgentStatusDisplayState(
         status = status,
         color = color,
-        pulsing = pulsing
+        pulsing = pulsing,
+        external = external
     )
 
 @Page(MEMBERS_SMOKE_PAGE, supportInLocal = true)
@@ -1213,7 +1216,8 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
                 name = "visual-qa",
                 displayName = "Visual QA",
                 runtime = "codex",
-                status = "idle"
+                status = "idle",
+                isExternal = false
             )
         ),
         activity = "working",
@@ -12040,64 +12044,57 @@ private val MemberKind.membersAvatarColor: Color
         MemberKind.System -> SlockColor.AccentCyan
     }
 
-private fun AgentStatus?.membersStatusColor(presence: Presence): Color =
-    slockAgentStatusIndicatorState(this, presence).color
-
-private fun AgentStatus?.membersStatusPulsing(): Boolean =
-    slockAgentStatusIndicatorState(this, this?.presence ?: Presence.Offline).pulsing
-
 internal data class MembersAgentStatusDisplayState(
     val status: AgentStatus?,
     val color: Color,
-    val pulsing: Boolean
+    val pulsing: Boolean,
+    val external: Boolean
 )
 
 private val MembersUnknownAgentStatusDisplayState =
     MembersAgentStatusDisplayState(
         status = null,
         color = SlockColor.StatusNeutralGray,
-        pulsing = false
+        pulsing = false,
+        external = false
     )
 
 internal fun MemberProfile.membersAgentStatusDisplayState(
     summaryStatus: String? = null,
     summaryActivity: String? = null
-): MembersAgentStatusDisplayState {
-    val resolvedStatus = membersResolvedAgentStatus(summaryStatus, summaryActivity)
-    return MembersAgentStatusDisplayState(
-        status = resolvedStatus,
-        color = resolvedStatus.membersStatusColor(presence),
-        pulsing = resolvedStatus.membersStatusPulsing()
-    )
-}
+): MembersAgentStatusDisplayState =
+    toFixtureSlockAgentStatusIndicatorState(
+        summaryStatus = summaryStatus,
+        summaryActivity = summaryActivity
+    ).toMembersAgentStatusDisplayState()
 
+/**
+ * Fixture fallback goes through the single canonical mapping so the external
+ * short-circuit (task #1119) applies here exactly as it does to the live resolver.
+ */
 private fun MemberProfile.toFixtureSlockAgentStatusIndicatorState(
     summaryStatus: String? = null,
     summaryActivity: String? = null
-): SlockAgentStatusIndicatorState {
-    val display = membersAgentStatusDisplayState(
-        summaryStatus = summaryStatus,
-        summaryActivity = summaryActivity
+): SlockAgentStatusIndicatorState =
+    slockAgentStatusIndicatorState(
+        status = membersResolvedAgentStatus(summaryStatus, summaryActivity),
+        presence = presence,
+        external = isExternal
     )
-    return SlockAgentStatusIndicatorState(
-        status = display.status,
-        color = display.color,
-        pulsing = display.pulsing,
-        label = display.status?.label ?: presence.name
-    )
-}
 
 private fun AgentCreatedSummary.toFixtureSlockAgentStatusIndicatorState(): SlockAgentStatusIndicatorState =
     slockAgentStatusIndicatorState(
         status = normalizedAgentRuntimeStatus(activity = null, lifecycleStatus = status),
-        presence = Presence.Offline
+        presence = Presence.Offline,
+        external = isExternal
     )
 
 private fun AgentProfile.toFixtureSlockAgentStatusIndicatorState(): SlockAgentStatusIndicatorState =
     slockAgentStatusIndicatorState(
         status = agentStatus,
         presence = presence,
-        statusLabel = statusLabel
+        statusLabel = statusLabel,
+        external = isExternal
     )
 
 private val MemberProfile.detailHandle: String
@@ -12296,7 +12293,8 @@ private fun AgentCreatedSummary.toStaticMembersProfile(): MemberProfile {
         avatarUrl = avatarWireValue,
         avatar = AvatarReference.fromWireValue(avatarWireValue),
         avatarLabel = display.take(1).uppercase(),
-        roleDescription = runtime
+        roleDescription = runtime,
+        isExternal = isExternal
     )
 }
 
@@ -12433,6 +12431,8 @@ internal fun AgentDetailSnapshot.toStaticMembersProfile(server: ServerSummary): 
         avatarLabel = label.take(1).uppercase(),
         presence = Presence.Offline,
         agentStatus = null,
+        // Detail summaries carry the runtime sentinel only (no projected boolean).
+        isExternal = isExternalAgentRuntime(summary?.runtime),
         permissionBadges = listOfNotNull(
             summary?.runtime?.takeIf { it.isNotBlank() },
             summary?.machineName?.takeIf { it.isNotBlank() }?.let { "computer:$it" },

@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.isExternalAgent
 import build.raft.app.model.MemberId
 import build.raft.app.model.RuntimeProviderConfig
 import kotlinx.coroutines.CancellationException
@@ -719,6 +720,7 @@ private data class AgentCreatedWireDto(
     val displayName: String? = null,
     val avatarUrl: String? = null,
     val runtime: String? = null,
+    val external: Boolean? = null,
     val status: String? = null
 ) {
     fun toDomain(): AgentCreatedSummary? {
@@ -730,7 +732,8 @@ private data class AgentCreatedWireDto(
             displayName = displayName,
             avatarUrl = avatarUrl,
             runtime = runtime,
-            status = status
+            status = status,
+            isExternal = isExternalAgent(external, runtime)
         )
     }
 }

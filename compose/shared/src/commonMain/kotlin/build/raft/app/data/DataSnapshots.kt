@@ -689,7 +689,9 @@ data class AgentCreatedSummary(
     val displayName: String? = null,
     val avatarUrl: String? = null,
     val runtime: String? = null,
-    val status: String? = null
+    val status: String? = null,
+    /** Required: producers must fold both sources via isExternalAgent(external, runtime). */
+    val isExternal: Boolean
 )
 
 data class AgentDmSnapshot(

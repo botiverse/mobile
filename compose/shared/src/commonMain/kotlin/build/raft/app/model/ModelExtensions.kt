@@ -195,6 +195,7 @@ fun AgentProfile.toMemberProfile(): MemberProfile =
         avatarLabel = avatarLabel,
         presence = presence,
         agentStatus = agentStatus,
+        isExternal = isExternal,
         permissionBadges = permissionBadges
     )
 
