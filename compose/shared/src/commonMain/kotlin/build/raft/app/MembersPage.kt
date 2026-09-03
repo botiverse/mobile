@@ -406,14 +406,50 @@ internal fun String?.toMembersAgentServerRoleOrNull(): MembersAgentServerRole? =
         else -> null
     }
 
+/**
+ * What the role chip should show. Three outcomes, deliberately distinct.
+ *
+ * The wire meaning of an absent `serverRole` is **no server-membership row** -- not "role
+ * unknown" and not "member by default". `server_agent_members.role` is NOT NULL with a
+ * default and a (serverId, agentId) primary key, so "is a member with no role set" cannot
+ * exist; `getAgentMemberRole` returns null only when the row is missing, and the server
+ * counts that case as an anomaly (`countActiveAgentsMissingServerMembership`). Verified by
+ * LiBai against slock-source@01d0064d9; task #261.
+ */
+internal sealed interface MembersAgentServerRoleDisplay {
+    /** A role we recognise: render its own label and colour. */
+    data class Known(val role: MembersAgentServerRole) : MembersAgentServerRoleDisplay
+
+    /**
+     * The server sent a role we do not recognise (a future "moderator", say). Show the name
+     * it sent -- claiming "No role" here would deny a role we were explicitly told about
+     * (@artin: "那就展示成角色名").
+     */
+    data class Unrecognized(val rawName: String) : MembersAgentServerRoleDisplay
+
+    /**
+     * No membership row, or the agent is deleted. Render nothing at all (@artin: "隐藏显示").
+     * Two different causes, one outcome -- kept as one case only because both hide. If either
+     * ever needs its own wording they must split again, since a label written for the anomaly
+     * would be wrong on a deleted agent, which is an ordinary state the DELETED block already
+     * explains.
+     */
+    data object Hidden : MembersAgentServerRoleDisplay
+}
+
 internal fun membersAgentDisplayServerRole(
     memberServerRole: String?,
-    summaryServerRole: String?
-): MembersAgentServerRole? {
+    summaryServerRole: String?,
+    deleted: Boolean = false
+): MembersAgentServerRoleDisplay {
     val rawRole = memberServerRole?.trim()?.takeIf { it.isNotBlank() }
         ?: summaryServerRole?.trim()?.takeIf { it.isNotBlank() }
+    // Deleted first: a deleted agent loses its role row, so it would otherwise fall through
+    // to the same branch as the anomaly. Ordering it here keeps the two causes separable.
+    if (deleted || rawRole == null) return MembersAgentServerRoleDisplay.Hidden
     return rawRole.toMembersAgentServerRoleOrNull()
-        ?: if (rawRole == null) MembersAgentServerRole.Member else null
+        ?.let(MembersAgentServerRoleDisplay::Known)
+        ?: MembersAgentServerRoleDisplay.Unrecognized(rawRole)
 }
 
 internal fun membersAgentServerRoleOptions(
@@ -7060,9 +7096,38 @@ private fun MembersServerRoleEditor(
     }
 }
 
+/**
+ * Title-cases a role name we do not recognise so it sits beside "Admin"/"Member" without
+ * looking like a different kind of value. The parser lowercases every role
+ * (`normalizedServerRoleOrNull`), so the server's original casing is already gone by here --
+ * this restores presentation only, it does not recover the wire form.
+ */
+private fun String.membersRoleDisplayName(): String =
+    replace('_', ' ')
+        .replace('-', ' ')
+        .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+
+private fun MembersAgentServerRoleDisplay.rememberKey(): String =
+    when (this) {
+        is MembersAgentServerRoleDisplay.Known -> role.wireValue
+        is MembersAgentServerRoleDisplay.Unrecognized -> "unrecognized:$rawName"
+        MembersAgentServerRoleDisplay.Hidden -> "hidden"
+    }
+
 @Composable
-private fun MembersAgentServerRoleChip(role: MembersAgentServerRole?) {
-    val label = role?.localizedLabel() ?: stringResource(MR.strings.member_role_none)
+private fun MembersAgentServerRoleChip(display: MembersAgentServerRoleDisplay) {
+    // Hidden renders nothing: no membership row, or a deleted agent. Any chip here would
+    // assert a membership that does not exist (#261).
+    if (display is MembersAgentServerRoleDisplay.Hidden) return
+    val role = (display as? MembersAgentServerRoleDisplay.Known)?.role
+    val label =
+        when (display) {
+            is MembersAgentServerRoleDisplay.Known -> display.role.localizedLabel()
+            // Shown as sent, only title-cased to match the recognised chips. We have no
+            // colour for a role we do not know, so it takes the neutral background.
+            is MembersAgentServerRoleDisplay.Unrecognized -> display.rawName.membersRoleDisplayName()
+            MembersAgentServerRoleDisplay.Hidden -> ""
+        }
     val backgroundColor = role?.backgroundColor ?: SlockColor.EmptyStateGray
     Box(
         modifier = Modifier
@@ -7798,16 +7863,22 @@ private fun MembersAgentProfileTab(
         if (storeBackedProfileEdit) profileState.roleSaving else localSavingRole
     val roleError =
         if (storeBackedProfileEdit) profileState.roleError else localRoleError
-    val currentServerRole = membersAgentDisplayServerRole(member.serverRole, summary?.serverRole)
-    val canEditServerRole = canEdit
-    var editingServerRole by remember(member.id.value, currentServerRole?.wireValue) { mutableStateOf(false) }
-    var draftServerRole by remember(member.id.value, currentServerRole?.wireValue) {
+    val serverRoleDisplay =
+        membersAgentDisplayServerRole(member.serverRole, summary?.serverRole, deleted = deleted)
+    val currentServerRole = (serverRoleDisplay as? MembersAgentServerRoleDisplay.Known)?.role
+    // The editor can only express Admin/Member. Offering it while the server holds a role we
+    // do not recognise would let a save silently rewrite that role to one of ours, so the
+    // affordance is withdrawn for Unrecognized -- the chip still shows the real name (#261).
+    val canEditServerRole = canEdit && serverRoleDisplay !is MembersAgentServerRoleDisplay.Unrecognized
+    val serverRoleRememberKey = serverRoleDisplay.rememberKey()
+    var editingServerRole by remember(member.id.value, serverRoleRememberKey) { mutableStateOf(false) }
+    var draftServerRole by remember(member.id.value, serverRoleRememberKey) {
         mutableStateOf(currentServerRole ?: MembersAgentServerRole.Member)
     }
-    var serverRoleMenuExpanded by remember(member.id.value, currentServerRole?.wireValue) { mutableStateOf(false) }
+    var serverRoleMenuExpanded by remember(member.id.value, serverRoleRememberKey) { mutableStateOf(false) }
     var roleHelpOpen by remember(member.id.value) { mutableStateOf(false) }
     var savingServerRole by remember(member.id.value) { mutableStateOf(false) }
-    var serverRoleError by remember(member.id.value, currentServerRole?.wireValue) { mutableStateOf<String?>(null) }
+    var serverRoleError by remember(member.id.value, serverRoleRememberKey) { mutableStateOf<String?>(null) }
     var serverRoleEditorAuthority by remember(member.id.value) {
         mutableStateOf<MembersAgentProfileEditAuthority?>(null)
     }
@@ -8497,7 +8568,7 @@ private fun MembersAgentProfileTab(
                         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        MembersAgentServerRoleChip(currentServerRole)
+                        MembersAgentServerRoleChip(serverRoleDisplay)
                     }
                 }
             }
