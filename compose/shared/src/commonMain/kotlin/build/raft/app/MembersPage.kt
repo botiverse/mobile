@@ -6585,7 +6585,7 @@ private fun MembersHumanProfileSummary(
             ) {
                 Text(
                     text = member.detailHandle,
-                    style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 14.sp, lineHeight = 18.sp),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -6767,7 +6767,7 @@ private fun MembersHumanInfoSection(
             MembersHumanInfoItem(label = stringResource(MR.strings.member_label_email)) {
                 Text(
                     text = email,
-                    style = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 22.sp),
+                    style = SlockType.Input.copy(fontFamily = SlockMonoFamily, fontSize = 16.sp, lineHeight = 22.sp),
                     color = SlockColor.TextBlack,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -6778,7 +6778,7 @@ private fun MembersHumanInfoSection(
             MembersHumanInfoItem(label = stringResource(MR.strings.member_label_joined)) {
                 Text(
                     text = joinedDate,
-                    style = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 22.sp),
+                    style = SlockType.Input.copy(fontFamily = SlockMonoFamily, fontSize = 16.sp, lineHeight = 22.sp),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
