@@ -444,8 +444,19 @@ internal fun membersAgentDisplayServerRole(
 ): MembersAgentServerRoleDisplay {
     val rawRole = memberServerRole?.trim()?.takeIf { it.isNotBlank() }
         ?: summaryServerRole?.trim()?.takeIf { it.isNotBlank() }
-    // Deleted first: a deleted agent loses its role row, so it would otherwise fall through
-    // to the same branch as the anomaly. Ordering it here keeps the two causes separable.
+    // Deleted first, and this branch is NOT dead -- it guards a *client-cache* path, not a
+    // wire one. Reading only the wire says the combination cannot happen: once an agent is
+    // deleted the server stops sending a role (getServerAgentRoleMap filters on
+    // isNull(agents.deletedAt)), so deleted-with-a-role never arrives. But
+    // SharedServerMembersStore.mergeSeedProfile merges `serverRole = serverRole ?: seed`,
+    // fill-only, and mergeAuthoritativeProfile begins by calling it -- so a role cached
+    // before deletion survives every later update, including authoritative ones. Client
+    // state therefore does hold deletedAt != null together with serverRole = "admin", and
+    // without this branch that agent would show an Admin chip (LiBai, task #261).
+    //
+    // Keep the reason attached: verifying reachability at the wire layer alone concludes
+    // this is dead code and deletes it. That merge is separately wrong for a mutable field
+    // -- a demotion never reaches the UI -- tracked apart from this card.
     if (deleted || rawRole == null) return MembersAgentServerRoleDisplay.Hidden
     return rawRole.toMembersAgentServerRoleOrNull()
         ?.let(MembersAgentServerRoleDisplay::Known)
