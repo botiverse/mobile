@@ -237,7 +237,9 @@ or explicit `x/y/x2/y2` endpoints with `coordinateSpace` set to `normalized`
 or `points`. The first interaction builds `iosAppUITests`, starts
 `QaAcceptanceLoopTests` once, and waits for `ready.json`. Later invocations
 reuse that loop over `cmd-<n>.json` / `res-<n>.json` so Kuikly Home taps keep
-working. A one-shot `IosUseInteractionTests` process can see Kuikly nodes and
+working, but only when workspace, scheme, configuration, bundle, and device
+all match the running session; any change stops the old xcodebuild process
+group and starts a new loop. A one-shot `IosUseInteractionTests` process can see Kuikly nodes and
 still fail to deliver the tap. The loop launches the app through XCTest on
 first start (sandbox login state is kept). `text` and `key` (`enter`, `del`,
 or `esc`) tap the software keyboard through XCUITest; there is no host-key

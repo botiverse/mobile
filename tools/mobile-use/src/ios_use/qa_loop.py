@@ -24,6 +24,9 @@ READY_WAIT_SECONDS = 600.0
 ACTION_WAIT_SECONDS = 90.0
 
 
+SESSION_KEYS = ("workspace", "scheme", "configuration", "bundle", "device")
+
+
 def loop_root(derived_data: Path, device: str) -> Path:
     return Path(derived_data) / "ios-use-qa-loop" / device
 
@@ -42,6 +45,51 @@ def log_path_for(root: Path) -> Path:
 
 def lock_path_for(root: Path) -> Path:
     return root / "lock"
+
+
+def session_path_for(root: Path) -> Path:
+    return root / "session.json"
+
+
+def session_identity(
+    *,
+    workspace: Path,
+    scheme: str,
+    configuration: str,
+    bundle: str,
+    device: str,
+) -> dict[str, str]:
+    return {
+        "workspace": str(Path(workspace).expanduser().resolve()),
+        "scheme": scheme,
+        "configuration": configuration,
+        "bundle": bundle,
+        "device": device,
+    }
+
+
+def read_session(root: Path) -> dict[str, Any] | None:
+    path = session_path_for(root)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def write_session(root: Path, identity: dict[str, str], *, pid: int) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    payload = {**identity, "pid": pid}
+    path = session_path_for(root)
+    tmp = Path(str(path) + ".tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    tmp.replace(path)
+
+
+def session_matches(stored: dict[str, Any] | None, wanted: dict[str, str]) -> bool:
+    if not stored:
+        return False
+    return all(str(stored.get(key) or "") == wanted[key] for key in SESSION_KEYS)
 
 
 def pid_alive(pid: int) -> bool:
@@ -146,20 +194,40 @@ def send_action(io_dir: Path, action: dict[str, Any], *, timeout: float = ACTION
 
 
 def stop_pid(pid: int, *, wait_seconds: float = 5.0) -> None:
-    if not pid_alive(pid):
+    stop_process_group(pid, wait_seconds=wait_seconds)
+
+
+def stop_process_group(pid: int, *, wait_seconds: float = 5.0) -> None:
+    """Terminate the xcodebuild session leader and its process group.
+
+    start_xcodebuild_background uses start_new_session=True, so the returned
+    pid is the process-group leader. Killing only that pid can leave the
+    XCTest runner orphaned; killpg is the intended stop.
+    """
+    if pid <= 0:
         return
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except OSError:
-        return
+    _signal_group(pid, signal.SIGTERM)
     deadline = time.time() + wait_seconds
     while time.time() < deadline and pid_alive(pid):
         time.sleep(0.1)
     if pid_alive(pid):
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except OSError:
-            return
+        _signal_group(pid, signal.SIGKILL)
+
+
+def _signal_group(pid: int, sig: int) -> None:
+    try:
+        pgid = os.getpgid(pid)
+    except OSError:
+        pgid = pid
+    try:
+        os.killpg(pgid, sig)
+        return
+    except OSError:
+        pass
+    try:
+        os.kill(pid, sig)
+    except OSError:
+        return
 
 
 def wait_ready(io_dir: Path, *, pid: int, log_path: Path, timeout: float = READY_WAIT_SECONDS) -> None:

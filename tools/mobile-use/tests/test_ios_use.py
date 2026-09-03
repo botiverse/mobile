@@ -6,7 +6,7 @@ import time
 import unittest
 from pathlib import Path
 
-from ios_use.qa_loop import map_ios_use_action, next_seq, send_action
+from ios_use.qa_loop import map_ios_use_action, next_seq, send_action, session_identity, session_matches
 from ios_use.simctl import IosUseError
 
 
@@ -60,6 +60,23 @@ class IosUseQaLoopTest(unittest.TestCase):
             (io_dir / "res-1.json").write_text(json.dumps({"ok": False, "error": "missing node"}), encoding="utf-8")
             with self.assertRaisesRegex(IosUseError, "missing node"):
                 send_action(io_dir, {"type": "tapText", "text": "nope"}, timeout=1)
+
+    def test_session_matches_requires_bundle_and_workspace(self) -> None:
+        wanted = session_identity(
+            workspace=Path("/tmp/iosApp.xcworkspace"),
+            scheme="iosAppUITests",
+            configuration="Debug",
+            bundle="build.raft.app",
+            device="A-UDID",
+        )
+        self.assertTrue(session_matches(wanted, wanted))
+        self.assertFalse(session_matches(None, wanted))
+        mismatch = dict(wanted)
+        mismatch["bundle"] = "build.raft.app.alpha"
+        self.assertFalse(session_matches(mismatch, wanted))
+        mismatch = dict(wanted)
+        mismatch["workspace"] = "/tmp/other.xcworkspace"
+        self.assertFalse(session_matches(mismatch, wanted))
 
     def test_send_action_times_out(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

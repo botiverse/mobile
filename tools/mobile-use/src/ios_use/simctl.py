@@ -202,17 +202,32 @@ class IosSimulator:
         pid_path = qa_loop.pid_path_for(root)
         log_path = qa_loop.log_path_for(root)
         ready = io_dir / "ready.json"
+        wanted = qa_loop.session_identity(
+            workspace=workspace,
+            scheme=interaction_scheme,
+            configuration=configuration,
+            bundle=bundle,
+            device=device,
+        )
         with qa_loop.exclusive_lock(qa_loop.lock_path_for(root)):
+            stored = qa_loop.read_session(root)
             existing = qa_loop.read_pid(pid_path)
+            if existing is None and isinstance(stored, dict):
+                raw_pid = stored.get("pid")
+                if isinstance(raw_pid, int):
+                    existing = raw_pid
+                elif isinstance(raw_pid, str) and raw_pid.isdigit():
+                    existing = int(raw_pid)
             if (
                 existing
                 and qa_loop.pid_alive(existing)
                 and ready.exists()
                 and not qa_loop.loop_sources_newer(workspace, ready)
+                and qa_loop.session_matches(stored, wanted)
             ):
                 return {"root": root, "io_dir": io_dir, "pid": existing}
             if existing:
-                qa_loop.stop_pid(existing)
+                qa_loop.stop_process_group(existing)
             if io_dir.exists():
                 shutil.rmtree(io_dir)
             io_dir.mkdir(parents=True)
@@ -264,10 +279,11 @@ class IosSimulator:
                     env=runner_env,
                 )
                 pid_path.write_text(str(pid), encoding="utf-8")
+                qa_loop.write_session(root, wanted, pid=pid)
                 qa_loop.wait_ready(io_dir, pid=pid, log_path=log_path)
             except Exception:
                 if pid:
-                    qa_loop.stop_pid(pid)
+                    qa_loop.stop_process_group(pid)
                 raise
             return {"root": root, "io_dir": io_dir, "pid": pid}
 
