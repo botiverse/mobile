@@ -344,9 +344,13 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
 - (void)syncChildVisibility {
     BOOL shouldBeRendered = self.childActive && self.childView != nil;
     BOOL shouldBeLifecycleVisible = shouldBeRendered && self.viewDidAppear && self.pageDidAppear;
-    self.contentContainerView.hidden = !shouldBeRendered;
+    // Keep the last rendered child for the inactive app snapshot. Lifecycle and
+    // interaction remain gated by the appearance/active state below.
+    BOOL shouldKeepSnapshotContent = self.childView != nil;
+    NSLog(@"[SlockPager] sync page=%@ rendered=%d snapshotContent=%d lifecycle=%d active=%d viewAppeared=%d pageDidAppear=%d child=%d childVisible=%d", self.pageName, shouldBeRendered, shouldKeepSnapshotContent, shouldBeLifecycleVisible, self.childActive, self.viewDidAppear, self.pageDidAppear, self.childView != nil, self.childVisible);
+    self.contentContainerView.hidden = !shouldKeepSnapshotContent;
     self.userInteractionEnabled = shouldBeRendered;
-    self.childView.hidden = !shouldBeRendered;
+    self.childView.hidden = !shouldKeepSnapshotContent;
     if (self.childVisible == shouldBeLifecycleVisible) {
         return;
     }
