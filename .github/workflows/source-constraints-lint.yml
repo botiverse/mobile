@@ -23,6 +23,9 @@ on:
       - "compose/shared/src/commonMain/resources/MR/base/strings.xml"
       - "compose/shared/src/commonMain/resources/MR/zh-rCN/strings.xml"
       - "compose/shared/src/commonMain/resources/MR/ja/strings.xml"
+      # Same glob as check_string_edge_spaces.py: a fourth locale must trigger
+      # this job on its own PR, not only after it lands (LiBai, #2327 review).
+      - "compose/shared/src/commonMain/resources/MR/*/strings.xml"
       - "third_party/kuikly-compose-markdown/**"
       - "scripts/ci/check_source_constraints.py"
       - "scripts/ci/check_string_edge_spaces.py"

@@ -21,6 +21,10 @@ import sys
 from pathlib import Path
 
 DEFAULT_GLOB = "compose/shared/src/commonMain/resources/MR/*/strings.xml"
+# Only <string> entries: as of 2026-09-03 the three MR files carry no <plurals> /
+# <string-array> <item>s at all (LiBai counted 0), so this is a description of the
+# current resource shape, not a judgement that <item> is exempt. aapt trims those
+# the same way; extend ENTRY if such entries ever appear.
 ENTRY = re.compile(r'(<string name="([^"]+)"[^>]*>)(.*?)(</string>)', re.S)
 NBSP = "&#160;"
 
