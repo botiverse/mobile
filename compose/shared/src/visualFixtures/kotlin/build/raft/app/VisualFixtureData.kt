@@ -77,7 +77,7 @@ object VisualFixtureData {
             const val ID: String = "agent-product-ux"
             const val NAME: String = "Product-UX-Designer"
             const val DISPLAY_NAME: String = "Product UX Designer"
-            const val AVATAR: String = "pixel:paint"
+            const val AVATAR: String = "pixel:robot"
             const val AVATAR_LABEL: String = "PU"
             const val DESCRIPTION: String = "Turns product feedback, screenshots, and release notes into actionable UX specs."
             const val STATUS: String = "active"
