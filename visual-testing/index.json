@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-09-03T22:05:59.820Z",
+  "generatedAt": "2026-09-03T22:13:27.025Z",
   "latestRunId": "2ef048ab-20260903220322",
   "latest": {
     "runId": "2ef048ab-20260903220322",
     "commit": "2ef048ab-20260903220322",
     "commitSubject": "ci(ios-simulator-app): always upload the xcodebuild log (task #247 follow-up)",
-    "generatedAt": "2026-09-03T22:05:59.820Z",
+    "generatedAt": "2026-09-03T22:13:27.025Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 99,
-      "ready": 67,
-      "pending": 32
+      "ready": 89,
+      "pending": 10
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "2ef048ab-20260903220322",
       "commit": "2ef048ab-20260903220322",
       "commitSubject": "ci(ios-simulator-app): always upload the xcodebuild log (task #247 follow-up)",
-      "generatedAt": "2026-09-03T22:05:59.820Z",
+      "generatedAt": "2026-09-03T22:13:27.025Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 99,
-        "ready": 67,
-        "pending": 32
+        "ready": 89,
+        "pending": 10
       },
       "comparisons": [
         "react__android",

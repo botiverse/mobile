@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-03T22:05:59.820Z",
+  "generatedAt": "2026-09-03T22:13:27.025Z",
   "runId": "2ef048ab-20260903220322",
   "commit": "2ef048ab-20260903220322",
   "commitSubject": "ci(ios-simulator-app): always upload the xcodebuild log (task #247 follow-up)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 99,
-        "ready": 67,
-        "pending": 32
+        "ready": 89,
+        "pending": 10
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 99,
-        "ready": 70,
-        "pending": 29
+        "ready": 80,
+        "pending": 19
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 99,
-        "ready": 69,
-        "pending": 30
+        "ready": 81,
+        "pending": 18
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 99,
-    "ready": 67,
-    "pending": 32
+    "ready": 89,
+    "pending": 10
   },
   "componentMatrixSummary": {
     "total": 127,
