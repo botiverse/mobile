@@ -7,7 +7,8 @@
 # This workflow is that producer: dispatch it on any ref, download the
 # artifact, install in a Simulator. The artifact name matches the
 # `ios-simulator-app-<run_id>` convention qa-acceptance-ios.yml pins, so its
-# runs can also consume these directly via `app_run_id`.
+# runs can also consume these directly via `app_run_id` (task #247 added the
+# metadata.json its pinned-app validator requires).
 #
 # Build steps mirror qa-acceptance-ios.yml's proven build phase (KSP hygiene,
 # dummy framework, pod install, build-for-testing) minus simulator boot and
@@ -84,27 +85,56 @@ jobs:
           tail -60 "$log"
           if [ "$status" -ne 0 ]; then
             echo "===== iOS build FAILED (status=$status) — extracted errors ====="
-            grep -nE "e: |: error:|error: |Unresolved|BUILD FAILED|following build commands failed|PhaseScriptExecution" "$log" | tail -100 || true
+            # `e: ` alone also matches every "Using response file: ..." line xcodebuild
+            # prints, and `tail -100` then keeps only those — run 33781925404 failed with
+            # status 65 and this block showed nothing but TEST BUILD FAILED. Anchor the
+            # Kotlin `e: ` pattern and drop the response-file noise so the real errors
+            # survive the tail; the full log is uploaded below for anything else.
+            grep -nE "(^|[[:space:]])e: |: error:|error: |Unresolved|FAILURE:|Execution failed|BUILD FAILED|following build commands failed|PhaseScriptExecution" "$log" \
+              | grep -v "Using response file" | tail -100 || true
           fi
           exit "$status"
 
+      - name: Upload xcodebuild log on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-simulator-app-build-log-${{ github.run_id }}
+          path: xcodebuild-ios.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # task #247: the artifact must carry the metadata.json shape that
+      # qa-acceptance-ios.yml's `app_run_id` consumer validates
+      # (scripts/qa/prepare_pinned_ios_app.sh) — a zip with only a free-form
+      # PROVENANCE.txt fails closed there. One script owns that shape and its
+      # fail-closed identity checks (Simulator slice, real HandsBuildCommit);
+      # PROVENANCE.txt stays as the human-readable twin.
       - name: Package app with source identity
         shell: bash
         run: |
-          products="compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator"
-          app=$(find "$products" -maxdepth 1 -name '*.app' ! -name '*Runner*' | head -1)
-          [ -n "$app" ] || { echo "no .app produced under $products"; exit 1; }
-          echo "app: $app"
+          set -euo pipefail
           staging="$RUNNER_TEMP/ios-simulator-app"
-          mkdir -p "$staging"
-          ditto -c -k --sequesterRsrc --keepParent "$app" "$staging/raft-ios-simulator.app.zip"
-          shasum -a 256 "$staging/raft-ios-simulator.app.zip" | tee "$staging/raft-ios-simulator.app.zip.sha256"
+          bash scripts/qa/export_ios_simulator_app.sh \
+            "compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator" \
+            "$staging" "$GITHUB_SHA" "$GITHUB_RUN_ID"
           {
             echo "source_commit=$GITHUB_SHA"
             echo "ref=$GITHUB_REF_NAME"
             echo "run_id=$GITHUB_RUN_ID"
             echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } | tee "$staging/PROVENANCE.txt"
+          sha=$(awk '{print $1}' "$staging/raft-ios-simulator.app.zip.sha256")
+          {
+            echo "## Installable iOS Simulator carrier"
+            echo '```json'
+            cat "$staging/metadata.json"
+            echo '```'
+            echo "Pin it in qa-acceptance-ios.yml with: app_run_id=${GITHUB_RUN_ID} artifact_sha256=${sha}"
+            echo ""
+            echo "artifact_sha256/artifact_size describe the EXTRACTED raft-ios-simulator.app.zip,"
+            echo "not the outer archive GitHub shows for the artifact."
+          } >> "$GITHUB_STEP_SUMMARY"
           echo "STAGING=$staging" >> "$GITHUB_ENV"
 
       - name: Upload Simulator app artifact
