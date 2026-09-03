@@ -11,13 +11,6 @@ import build.raft.app.network.sync.CanonicalMessageV2CanaryOutcome
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
-import build.raft.app.network.sync.CanonicalMessageV2SnapshotFrame
-import build.raft.app.network.sync.CanonicalMessageV2Store
-import build.raft.app.network.sync.CanonicalMessageV2StoreWriteResult
-import build.raft.app.network.sync.CanonicalMessageV2IncrementalFrame
-import build.raft.app.network.sync.DurablePartitionKey
-import build.raft.app.network.sync.RestoredCanonicalMessageV2Scope
-import build.raft.app.network.sync.SyncScopeKey
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.TopLevelScopeRefV2
 import kotlinx.coroutines.runBlocking
@@ -130,46 +123,5 @@ class CanonicalMessageV2ProductionBindingTest {
     private fun page(includeReplyCount: Boolean): String {
         val replyCount = if (includeReplyCount) ",\"replyCount\":4" else ""
         return """{"messages":[{"id":"message-1","seq":7,"channelId":"channel-1","senderType":"user","senderId":"user-1","content":"hello","messageType":"chat","randomId":null,"threadId":null,"createdAt":"2026-07-17T00:00:00.000Z","senderName":"Alice","senderDescription":null,"senderMembershipStatus":null,"mentions":[],"attachments":[],"reactions":[],"commentRef":null,"actionMetadata":null$replyCount}],"historyLimited":false}"""
-    }
-
-    private class RecordingNetworkClient(
-        private val pageBody: String,
-    ) : SlockNetworkClient {
-        val paths = mutableListOf<String>()
-
-        override suspend fun request(
-            priority: DataRequestPriority,
-            path: String,
-            method: String,
-            query: List<Pair<String, String>>,
-            serverIdOverride: build.raft.app.model.ServerId?,
-            bodyText: String?,
-        ): HomeNetworkResponse {
-            paths += path
-            return when {
-                path == "channels/channel-1" -> HomeNetworkResponse(200, """{"id":"channel-1","type":"channel"}""")
-                path == "messages/channel/channel-1" -> HomeNetworkResponse(200, pageBody)
-                else -> HomeNetworkResponse(404, null)
-            }
-        }
-    }
-
-    private class RecordingStore : CanonicalMessageV2Store {
-        val snapshots = mutableListOf<CanonicalMessageV2SnapshotFrame>()
-
-        override suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame): CanonicalMessageV2StoreWriteResult {
-            snapshots += frame
-            return CanonicalMessageV2StoreWriteResult()
-        }
-
-        override suspend fun applyIncremental(frame: CanonicalMessageV2IncrementalFrame) =
-            CanonicalMessageV2StoreWriteResult()
-
-        override suspend fun restore(scope: SyncScopeKey): RestoredCanonicalMessageV2Scope =
-            RestoredCanonicalMessageV2Scope(emptyList(), null)
-
-        override suspend fun clearScope(scope: SyncScopeKey): Set<SyncScopeKey> = setOf(scope)
-
-        override suspend fun clearPartition(partition: DurablePartitionKey) = Unit
     }
 }

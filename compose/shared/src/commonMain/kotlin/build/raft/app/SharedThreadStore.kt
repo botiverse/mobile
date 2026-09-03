@@ -117,6 +117,7 @@ import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.InlineThreadReplyPreviewLimit
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.ThreadDurableLastKnownReader
+import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
 import build.raft.app.network.sync.ThreadRepliesAcceptedProjection
 import build.raft.app.network.sync.ThreadRepliesAuthoritativeSnapshot
 import build.raft.app.network.sync.ThreadRepliesPageIdentity
@@ -1430,6 +1431,12 @@ internal class SharedThreadDataSource(
      * behaves exactly as before this seam existed. Production wires the V2 reader from the provider.
      */
     private val durableLastKnownReader: ThreadDurableLastKnownReader? = null,
+    /**
+     * Offline cache write entry (task #1124): on entering a channel / DM, its current REST page is
+     * committed to the V2 partition so the reader above has something to show next time. Absent
+     * means "never write"; production wires the V2 loader from the provider.
+     */
+    private val enteredScopeSnapshotLoader: ThreadEnteredScopeSnapshotLoader? = null,
     private val agentsApiClient: SlockAgentsApiClient? = null,
     private val actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
     private val savedStatusRepository: SavedStatusRepository? = null,
@@ -1528,6 +1535,7 @@ internal class SharedThreadDataSource(
             (suspend (ThreadReplyCacheIdentityTransitionAnchor?) -> Boolean)? = null,
         payloadStore: SharedThreadPayloadStore? = null,
         durableLastKnownReader: ThreadDurableLastKnownReader? = null,
+        enteredScopeSnapshotLoader: ThreadEnteredScopeSnapshotLoader? = null,
         agentsApiClient: SlockAgentsApiClient? = null,
         actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
         savedStatusRepository: SavedStatusRepository? = null,
@@ -1557,6 +1565,7 @@ internal class SharedThreadDataSource(
         replyCacheIdentityTransitionWaiter = replyCacheIdentityTransitionWaiter,
         payloadStore = payloadStore,
         durableLastKnownReader = durableLastKnownReader,
+        enteredScopeSnapshotLoader = enteredScopeSnapshotLoader,
         agentsApiClient = agentsApiClient,
         actionCardsApiClient = actionCardsApiClient,
         savedStatusRepository = savedStatusRepository,
@@ -2016,6 +2025,32 @@ internal class SharedThreadDataSource(
      * authority: paging is closed and `durableLastKnown` is set so the first network content slice
      * replaces it wholesale.
      */
+    /**
+     * Offline cache write entry (task #1124): fetch the entered channel's current page into the
+     * current identity's V2 partition. Same admission as [durableLastKnownPayloadIfCurrent]
+     * (top-level surface, resolvable channel id, an owning partition, current provenance); the
+     * loader re-reads `stillCurrent` after its network round trip. Returns whether a load was
+     * requested at all — callers only use this for diagnostics, never for rendering.
+     */
+    internal suspend fun loadEnteredScopeSnapshotIfCurrent(
+        routeIdentity: ThreadRouteIdentity,
+        context: ReplyCacheProducerContext,
+    ): Boolean {
+        val loader = enteredScopeSnapshotLoader ?: return false
+        if (!routeIdentity.canRenderTimelineCandidates) return false
+        when (routeIdentity.surfaceKind) {
+            KuiklyThreadSurfaceKind.Channel, KuiklyThreadSurfaceKind.DirectMessage -> Unit
+            else -> return false
+        }
+        val channelId = routeIdentity.timelineChannelId ?: return false
+        val partition =
+            context.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+                ?: return false
+        if (!isCurrentReplyCacheProvenance(context.provenance)) return false
+        loader.loadOnEnter(partition, channelId) { isCurrentReplyCacheProvenance(context.provenance) }
+        return true
+    }
+
     internal suspend fun durableLastKnownPayloadIfCurrent(
         routePayload: KuiklyThreadScreenPayload,
         routeIdentity: ThreadRouteIdentity,
@@ -5676,6 +5711,7 @@ internal class SharedThreadStore(
             .distinctUntilChanged()
 
     private var loadJob: Job? = null
+    private var enteredScopeSnapshotJob: Job? = null
     private var secondaryTimelineRefreshJob: Job? = null
     private var focusedOriginHydrationJob: Job? = null
     private var initialAccessResolutionJob: Job? = null
@@ -6077,6 +6113,15 @@ internal class SharedThreadStore(
                     )
                 )
             }
+        }
+        // Offline cache write entry (task #1124): every entry of a channel / DM refreshes that one
+        // channel's durable baseline in the background, independent of what the first frame was
+        // (memory cache, durable frame, or loading shell). Fire-and-forget on the store scope: it
+        // never touches the visible payload, and closing the screen cancels it.
+        producerContext?.let { context ->
+            enteredScopeSnapshotJob?.cancel()
+            enteredScopeSnapshotJob =
+                scope.launch { dataSource.loadEnteredScopeSnapshotIfCurrent(routeIdentity, context) }
         }
         delay(SharedThreadFirstFrameDelayMillis)
         if (

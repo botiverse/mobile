@@ -55,6 +55,7 @@ import build.raft.app.network.sync.CanonicalMessageFoldKind
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
 import build.raft.app.network.sync.CanonicalMessageV2CanaryOutcome
 import build.raft.app.network.sync.CanonicalMessageV2DurableLastKnownReader
+import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
@@ -396,6 +397,8 @@ internal class SlockSharedStoreProvider private constructor(
     val threadPayloadStore: SharedThreadPayloadStore,
     /** Offline cache read entry (task #1123): durable V2 last-known frame for thread screens. */
     internal val threadDurableLastKnownReader: ThreadDurableLastKnownReader,
+    /** Offline cache write entry (task #1124): entered channel's REST page → V2 baseline. */
+    internal val threadEnteredScopeSnapshotLoader: ThreadEnteredScopeSnapshotLoader,
     internal val threadPendingSendJournal: ThreadPendingSendJournal,
     val channelSettingsSnapshotCache: ChannelSettingsSnapshotCache,
     val foregroundReconciler: SharedForegroundReconciler,
@@ -2111,6 +2114,26 @@ internal class SlockSharedStoreProvider private constructor(
                     scope = CoroutineScope(SupervisorJob()),
                     diagnosticsLogger = sharedInfoLogger("SlockForegroundReconcile", "shared_foreground_reconcile")
                 )
+            // Write side of the same partition (task #1124): same canary (for "is this scope yours"),
+            // same engine, same per-server flag, the process-level network client the canary's own
+            // snapshot loads use.
+            val threadEnteredScopeSnapshotLoader =
+                CanonicalMessageV2EnteredScopeLoader(
+                    canary = canonicalMessageV2Canary,
+                    generationEngine = canonicalMessageV2GenerationEngine,
+                    fetcher =
+                        CanonicalMessageV2RestSnapshotFetcher(
+                            networkClient = networkClient,
+                            logger = sharedInfoLogger("CanonicalMessageV2EnterSnapshot", "canonical_v2_enter_snapshot"),
+                        ),
+                    isEnabledForServer = { serverId ->
+                        serverFeatureFlags.isEnabled(
+                            ServerId(serverId),
+                            SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
+                        )
+                    },
+                    logger = sharedInfoLogger("CanonicalMessageV2EnterSnapshot", "canonical_v2_enter_snapshot"),
+                )
             provider = SlockSharedStoreProvider(
                 bridge = bridge,
                 sqlDatabase = database,
@@ -2210,6 +2233,7 @@ internal class SlockSharedStoreProvider private constructor(
                 threadMessageStore = SharedThreadMessageStore(),
                 threadPayloadStore = SharedThreadPayloadStore(CoroutineScope(SupervisorJob())),
                 threadDurableLastKnownReader = threadDurableLastKnownReader,
+                threadEnteredScopeSnapshotLoader = threadEnteredScopeSnapshotLoader,
                 threadPendingSendJournal = threadPendingSendJournal,
                 channelSettingsSnapshotCache = ChannelSettingsSnapshotCache(),
                 foregroundReconciler = foregroundReconciler,
