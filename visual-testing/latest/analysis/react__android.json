@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-02T22:09:41.776Z",
+  "generatedAt": "2026-09-03T22:05:48.830Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
   "analysisProvider": "minimax",
   "analysisModel": "MiniMax-M3",
   "summary": {
-    "total": 92,
-    "ready": 85,
-    "pending": 7
+    "total": 99,
+    "ready": 67,
+    "pending": 32
   },
   "cases": [
     {
@@ -460,7 +460,7 @@
     {
       "id": "components.ui.status-dot.states",
       "status": "ready",
-      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe0ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
+      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe9ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
       "generatedAt": "2026-07-10T22:11:45.609Z",
       "severity": "low",
       "summary": [
@@ -526,7 +526,7 @@
     {
       "id": "components.ui.skeleton.states",
       "status": "ready",
-      "imageHash": "p1:000000017ffc7ffc1ffc1ffc1ffe1ffefffefffefffefffefffefffe80fe80fe9cfe00fe9ffe17fe83fe83fefffefffefffefffe80008000800080008000800080008000800080008000800080008000fffefffe9ffe9ffe9ffe9ffe003e003e003e003e9ffe9ffe0000000000000000fffffffffff00ffffff81fffffffffff",
+      "imageHash": "p1:000000017ffc7ffc1ffc1ffc1ffe1ffefffefffefffefffefffefffe80fe80fe94fe00fe9ffe17fe83fe83fefffefffefffefffe80008000800080008000800080008000800080008000800080008000fffefffe9ffe9ffe9ffe9ffe003e003e003e003e9ffe9ffe0000000000000000fffffffffff00ffffff81fffffffffff",
       "generatedAt": "2026-07-11T22:10:05.920Z",
       "severity": "low",
       "summary": [
@@ -552,7 +552,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41497942386831277
+      "metricMismatch": 0.4149707602339181
     },
     {
       "id": "components.ui.spinner.states",
@@ -852,7 +852,7 @@
     {
       "id": "components.auth.register.inputs",
       "status": "ready",
-      "imageHash": "p1:1ffe1ffc000000000000000000000000fe7f7180fe7ffe7ff08ffe7ff00ff81f9fffffff83fcc3fb8000c0038fffc00380fccffb8000c003801fd47ff01fe7cf8000c0038000c003c183c003b00cffff8000ffffb00cffff8000fffff7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:1ffe1ffc000000000000000000000000fe7f7180fe7ffe7ff08ffe7ff00ff81f9fffffff83fcc3fb8000c0038fffc00380fccffb8000c003801fd47ff01fe7e78000c0038000c003c183c003b00cffff8000ffffb00cffff8000fffff7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-08-13T22:14:33.090Z",
       "severity": "high",
       "summary": [
@@ -880,7 +880,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18482399643537084
+      "metricMismatch": 0.18489049567248617
     },
     {
       "id": "components.navigation.tabbar.states",
@@ -915,251 +915,99 @@
     },
     {
       "id": "components.thread.composer.empty",
-      "status": "ready",
-      "imageHash": "p1:fffffffffffefffffffcfffc0ffc0ffc0fff0fff0000000000000000ffffffff80010001bffc7ffdfffefffdbffe3ffd81fe03fdfffe7ffdfffefffd8ffc07fd87fc03f987dc033987c4000187dc037987f807f98ffe0001800000018000ffffffffffff0000000080008001fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-09-02T22:07:54.308Z",
-      "severity": "medium",
-      "summary": [
-        "Android renders an extra icon button (camera) between the image and attachment icons, which is absent in React baseline",
-        "Android adds an 'Original image' checkbox/label that is missing from the React baseline",
-        "React shows only two left-side icons (image-add and paperclip); Android shows three (image-add, camera, paperclip)",
-        "Both versions share the 'As Task' checkbox and send icon, but Android layout is more crowded horizontally",
-        "Cropping offset (x=24 on Android) suggests the Android component was captured with extra left padding, not a true visual offset"
-      ],
-      "likelyCauses": [
-        "Android implementation includes additional action buttons (camera capture, original image toggle) not part of the current empty-composer spec",
-        "Component-bound contract may have been redefined on Android to expose a wider feature set",
-        "Test crop on Android used a manual rect with x=24, introducing artificial horizontal shift in comparison",
-        "Feature parity gap between React and Android thread composer variants"
-      ],
-      "suggestedOwner": "android-chat",
-      "suggestedFixes": [
-        "Confirm whether the camera icon and 'Original image' checkbox are intentional for Android; if not, remove them to match React baseline",
-        "Re-capture Android screenshot using element-bounds crop (x=0) instead of manual-rect to eliminate the 24px offset",
-        "Verify composer empty-state spec is shared and align React variant if Android extras are product-requirements",
-        "Check checkbox sizing/spacing — Android 'As Task' and 'Original image' labels appear closer together than React's single label",
-        "Align icon button dimensions and spacing between platforms for visual consistency"
-      ],
-      "intentional": [
-        "Camera icon button may be a platform-specific quick action",
-        "'Original image' toggle may be an Android-only feature for attachment provenance"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.20619883040935671
+      "status": "pending",
+      "imageHash": "p1:fffffffffffefffffffcfffc0ffc0ffc0fff0fff0000000000000000ffffffff80010001bffc7ffdfffefffdbffe33fd81fe03fdeffe7ffdfffefffd8ffc07f987fc07f987dc079987c0078187dc079987f807f98ffc0001800000018000ffffffffffff0000000080000001fffffffffffffffffff81fffffffffffffffffff",
+      "generatedAt": "2026-09-03T22:05:47.226Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.20123456790123462
     },
     {
       "id": "components.thread.composer.states",
-      "status": "ready",
-      "imageHash": "p1:fffffffffffffffffffefffc0ffc0ffc8fff0fff0000000000000000ffffffff80010001fffefffdfffefffd80b6000d80060005fffefffdfffefffd8ff807f987f803f987d8033987c0000187d8037987f807f98ff80001800000018000ffffffffffff0000000080018001fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-09-02T22:07:54.395Z",
-      "severity": "high",
-      "summary": [
-        "Android has an extra camera icon button between the gallery and paperclip icons that is absent in React",
-        "Android includes an additional 'Original image' checkbox/label that does not exist in the React baseline",
-        "Icon row spacing is tighter on Android; the three icons appear closer together than React's two icons",
-        "React uses a checkbox glyph (square outline) next to 'As Task' while Android appears to use a different or missing checkbox indicator",
-        "Overall row width is larger on Android due to the extra controls, pushing the send button (pink paper airplane) further right and reducing right padding"
-      ],
-      "likelyCauses": [
-        "Android implementation added a camera attachment action and an 'Original image' toggle not in the React design",
-        "Design spec divergence between Android and React thread composer states",
-        "Icon set/control inventory not synchronized across platforms"
-      ],
-      "suggestedOwner": "android-design",
-      "suggestedFixes": [
-        "Confirm with design whether the camera icon and 'Original image' toggle are intentional additions on Android",
-        "If unintentional, remove the extra camera button and 'Original image' control to match React baseline",
-        "Align checkbox glyph style and spacing between the 'As Task' controls across platforms",
-        "Re-capture the Android screenshot after fixes to verify pixel and RGB similarity recover above tolerance",
-        "Sync the thread composer state component contract between Android and React implementations"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2209291747888239
+      "status": "pending",
+      "imageHash": "p1:fffffffffffffffffffefffc0ffc0ffc8fff0fff0000000000000000ffffffff80010001fffefffdfffefffd80b6000d80060005fffefffdfffefffd8ff807f987f807f187d8079187c007c187d8079187f807f18ff80009800000018000ffffffffffff0000000080018001fffffffffffffffffff81fffffffffffffffffff",
+      "generatedAt": "2026-09-03T22:05:47.258Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.21514294996751138
     },
     {
       "id": "components.thread.composer.pending-mention-actions",
-      "status": "ready",
-      "imageHash": "p1:ffffffff03fe03fc000000008001000380000001f03e407dc07e4ffdcffe77f5f7de7e79fc0e7ffdfc047ffdfc06701d800070098001700d80010001bffe000183fe7ffdbffe03fd87dc7ffd87cc03798418020180000209ffff0001fffffffffffffffffffffffffffffffffffffffffffeffff80018001ffffffffffffffff",
-      "generatedAt": "2026-09-02T22:07:54.397Z",
-      "severity": "medium",
-      "summary": [
-        "Mention card body text differs: React shows '@Android-Developer-4 was not notified because they are not in #design' on two lines; Android shows '@Android-Developer-4 isn't in #design. Add them to #design or send a one-time notification.' on three lines, occupying more vertical space.",
-        "Tertiary action label changed: React uses 'Ignore' (text-only, right-aligned); Android uses 'Dismiss' with a darker/bolder weight, shifting the button row layout and spacing.",
-        "Avatar/icon spacing on mention card differs: React has tighter gap between person-add icon and avatar; Android has a noticeably larger gap, pushing avatar further right.",
-        "Composer toolbar contains extra controls on Android: a camera (image capture) icon and an 'Original image' checkbox appear between the attachment icon and 'As Task'; React has only the image-with-plus and paperclip icons then 'As Task'.",
-        "Send icon on the right of the composer is clipped in both, but the surrounding whitespace/alignment of the 'As Task' row differs between platforms due to the added items."
-      ],
-      "likelyCauses": [
-        "Copy/string divergence between platforms — the explanatory sentence was reworded for Android.",
-        "Android implementation renders an extra 'camera' compose action and 'Original image' toggle that the React version omits from this state.",
-        "Independent label choice: Android picked 'Dismiss' while React kept 'Ignore'.",
-        "Avatar/icon spacing tokens not shared across platforms.",
-        "Outset/crop offset on the Android side (manual-rect with x=24) may slightly shift alignment compared with the React element-bounds crop."
-      ],
-      "suggestedOwner": "mobile-composer",
-      "suggestedFixes": [
-        "Unify the mention-not-notified message across platforms or, if intentional, update the React copy to match.",
-        "Align the tertiary action label (use 'Dismiss' or 'Ignore' consistently) and share the design token.",
-        "Decide whether the camera action and 'Original image' toggle belong in the empty composer state on both platforms; align toolbar composition.",
-        "Share avatar-to-icon spacing tokens between React and Android implementations.",
-        "Re-run the comparison with matching crop contracts (both 'element' / 'component-bounds') to avoid the 24px x-offset."
-      ],
-      "intentional": [
-        "The 'Original image' toggle may intentionally only appear on Android when an image attachment exists, but here it appears with no image present, which suggests a rendering-state mismatch."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.27875243664717353
+      "status": "pending",
+      "imageHash": "p1:ffffffff03fe03fc000000008001000380000001f03e407dc07e4ffdcffe77f5f7de7e79fc0e7ffdfc047ffdfc06701d800070098001700d80010001bffe000183fe7ffdbffe03fd87dc7ffd87cc07f98418078980000001ffff0001fffffffffffffffffffffffffffffffffffffffffffeffff80018001ffffffffffffffff",
+      "generatedAt": "2026-09-03T22:05:47.284Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.27652192422307365
     },
     {
       "id": "components.thread.composer.as-task-selected",
-      "status": "ready",
-      "imageHash": "p1:fffffffffffffffffffefffc03fc03fc97ff17ff0000000000000000ffffffff80010001fffefffdfffefffd80b6000d80060005fffefffdfffefffd8ff807f987f803f987d8033987c0000187d8037987f807f98ff80009800000018001ffffffffffff0000000080018001fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-09-02T22:07:54.399Z",
-      "severity": "high",
-      "summary": [
-        "Android composer shows three icon buttons (plus, camera, paperclip) while React shows two (plus, paperclip); camera button is missing on React",
-        "Android has an unchecked 'Original image' checkbox to the right of 'As Task' that is absent on the React baseline",
-        "'As Task' label appears with reduced spacing on Android due to inserted checkbox and extra button group",
-        "Same composer text typography is preserved across both implementations",
-        "As-Task selection state appears unchecked in the Android capture while React shows it unchecked as well; verify whether selected state styling (filled checkbox) renders correctly on Android"
-      ],
-      "likelyCauses": [
-        "Android composer tool renders an additional camera/image attachment button that React omits or vice versa",
-        "Mismatch between React and Android prop/state bindings for the 'Original image' option in As-Task mode",
-        "Selected-state indicator (filled checkbox, color background) may not be applied on Android",
-        "Different horizontal overflow handling caused the Android crop rect to be offset (crop x=24) indicating the component bounds differ between platforms"
-      ],
-      "suggestedOwner": "android-eng",
-      "suggestedFixes": [
-        "Audit React vs Android attachment tool set parity and align which buttons render in As-Task composer mode",
-        "Verify the 'Original image' checkbox is conditionally rendered on Android based on the same feature flag/state used in React",
-        "Ensure selected-state visual treatment (filled checkbox background, accent color) is applied consistently on Android",
-        "Re-capture Android screenshot using element crop mode (matching React's 342x100 bounds) instead of manual rect to avoid x-offset misregistration",
-        "Review composer action row flex layout so extra controls don't compress 'As Task' label spacing"
-      ],
-      "intentional": [
-        "The camera attachment button presence may be intentional Android-only behavior requiring product confirmation",
-        "'Original image' option may be a deliberate Android-only affordance for image-attached threads"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2247888239116309
+      "status": "pending",
+      "imageHash": "p1:fffffffffffffffffffefffc03fc03fc97ff17ff0000000000000000ffffffff80010001fffefffdfffefffd80b6000d80060005fffefffdfffefffd8ff807f987f807f987d8079187c0078187d8079187f807f98ff80009800000018001ffffffffffff0000000080018001fffffffffffffffffff81fffffffffffffffffff",
+      "generatedAt": "2026-09-03T22:05:47.267Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2178460038986355
     },
     {
       "id": "components.thread.composer.member-suggestions",
-      "status": "ready",
-      "imageHash": "p1:fffeffff03fe03fcfffffffffc01ffff81fcffffbbfeffffbf8400018000f7ff80003dabbffc000181fc000183fc7fff800003ff80fe07fffffe0001bffe01ff9dfcfffffffe3fffbffc23ff80003fff80000000bffc0001bffe3ffdbffc3ffd87d807f987c80009841803f980000001ffffffff80008000ffffffffffffffff",
-      "generatedAt": "2026-09-02T22:07:54.401Z",
-      "severity": "high",
-      "summary": [
-        "Android renders the 'IN THIS CHANNEL' highlighted/selected row as 'Cindy' with description and @Cindy handle, while React shows 'artin / HUMAN / Owner / @artin' in the highlighted row — different selected user and missing HUMAN/Owner badges on Android.",
-        "Android shows only one user in 'IN THIS CHANNEL' section (Cindy + Product UX …) whereas React shows two entries (artin highlighted + Cindy unhighlighted) — section content/count differs.",
-        "Android 'NOT IN THIS CHANNEL' lists 'Android Dev…' instead of React's 'artin / HUMAN' and 'Product UX De… / AGENT' — different member list rendered.",
-        "Android adds a 'Original image' checkbox and a camera icon in the bottom composer action row; React only shows image+ and attach icons plus 'As Task' and send — extra controls present on Android.",
-        "Android typography is noticeably larger/bolter for member names (e.g., 'Cindy', 'Product UX …') than React, increasing row height and causing more aggressive text truncation of descriptions and handles ('Tur…', '@Product-UX-Desi…', '@Android-Develop…')."
-      ],
-      "likelyCauses": [
-        "Android composer is wired to a different member/suggestion dataset (or different ordering/filter) than React, surfacing Cindy's row as the highlighted suggestion.",
-        "Android thread composer renders an additional 'Original image' action (camera + checkbox) not implemented in the web React composer.",
-        "Android applies a larger text style/line height to suggestion rows, causing different truncation thresholds than React.",
-        "HUMAN/AGENT role pills are not being rendered on Android suggestion rows."
-      ],
-      "suggestedOwner": "android-eng",
-      "suggestedFixes": [
-        "Align Android member-suggestion source data with the web spec so the first 'IN THIS CHANNEL' row matches (artin / HUMAN / Owner) and subsequent rows match React's order.",
-        "Render HUMAN/AGENT role badges on each Android suggestion row to match React.",
-        "Match Android row typography (name, description, handle) size and weight to React, then re-tune TextView maxLines/ellipsize so truncation ('Tur…', '@Product-UX-Desi…') matches.",
-        "Remove or gate the Android-only 'Original image' checkbox and camera icon, or add equivalent UI to React if the feature is intentional.",
-        "Verify the highlighted row selection state — Android appears to highlight 'Cindy' while React highlights 'artin'; confirm which user should be the focused suggestion."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.32413397498375573
+      "status": "pending",
+      "imageHash": "p1:fffeffff03fe03fcfffffffffc01ffff81fcffffbbfeffffbf8400018000f7ff80003dabbffc000181fc000183fc7fff800003ff80fe07fffffe0001bffe01ff9dfcfffffffe3fff9ffc23ff80003fff80000000bffc0001bffe3ffdbffc3ffd87d807f987c80791841807f180000001ffffffff80008000ffffffffffffffff",
+      "generatedAt": "2026-09-03T22:05:47.347Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.32191256497725795
     },
     {
       "id": "components.thread.composer.channel-suggestions",
-      "status": "ready",
-      "imageHash": "p1:fffeffff03fe03fcffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8000ffff8000ffff80000001800000019ffc000187fc3ffbfffe0fff80fc3fff80fc3fff800001ff80000000bffc0001bffc7ffdfffc7ffd87d807f987c80009841803f980000001ffffffff80008000ffffffffffffffff",
-      "generatedAt": "2026-09-02T22:07:54.440Z",
-      "severity": "high",
-      "summary": [
-        "Android toolbar shows three icon buttons (image-add, camera, attach) vs React's two (image-add, attach); Android adds a camera icon not present on React",
-        "Android toolbar includes an additional 'Original image' checkbox option that React does not render",
-        "Android suggestions container is horizontally narrower with less internal padding, causing tighter spacing between # icon, channel name, and description",
-        "Android's selected row (design) highlight bar appears shorter in height compared to React's taller selected row",
-        "Vertical gap between the suggestions list and the toolbar is smaller on Android, compressing the overall layout"
-      ],
-      "likelyCauses": [
-        "Feature drift in Android composer toolbar exposing camera capture and 'Original image' toggle that React lacks",
-        "Different container widths/padding between the two implementations causing reflow",
-        "Android applying different list-item heights and selected-state row metrics than the React design tokens",
-        "Inconsistent design-token parity between React (web) and Android (native) composer components"
-      ],
-      "suggestedOwner": "android-thread-composer",
-      "suggestedFixes": [
-        "Hide camera icon and 'Original image' checkbox on Android to match React toolbar, or intentionally document them as Android-only features",
-        "Align suggestion container width and internal padding to React's spacing tokens",
-        "Match selected-row height and highlight bar height to React baseline",
-        "Increase vertical spacing between suggestions list and toolbar to match React",
-        "Audit shared design tokens for list-item and toolbar dimensions across platforms"
-      ],
-      "intentional": [
-        "If camera capture and 'Original image' are intentional Android-only composer affordances, mark them as expected divergence in the test contract"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2692221003898635
+      "status": "pending",
+      "imageHash": "p1:fffeffff03fe03fcffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8000ffff8000ffff80000001800000019ffc000187fc3ffbfffe0fff80fc3fff80fc3fff800001ff80000000bffc0001bffc7ffdfffc7ffd87d807f987c80791841807f180000001ffffffff80008000ffffffffffffffff",
+      "generatedAt": "2026-09-03T22:05:47.334Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2672626299545159
     },
     {
       "id": "components.thread.composer.image-preview",
-      "status": "ready",
-      "imageHash": "p1:fffeffff07fc07fc020000000000000080000fff80000fff80000fff83fc0fff80001fff80010fffa004000380022009801200018ff83efd87c007f987d800018000037980010001fffff807fffffffffffffffffffffffffffeffff0000fffffffffffffffffffffffffffffffffffffffffffeffff8001fff81fffffffffff",
-      "generatedAt": "2026-09-02T22:07:58.684Z",
-      "severity": "high",
-      "summary": [
-        "Android version includes an attached image preview thumbnail (yellow with pink circle and black mountains) with a remove (X) button at top; React version shows no attached image.",
-        "React version displays a pink/peach error banner reading 'The upload size limit could not be checked. Try again in a moment.'; Android version does not render this error state.",
-        "Android toolbar row contains an extra camera icon between the image and paperclip icons that React does not have.",
-        "Android adds a second checkbox 'Original image' next to 'As Task'; React only shows 'As Task'.",
-        "Android's 'As Task' and 'Original image' labels are rendered in lighter/grey weight, while React's 'As Task' uses a darker weight closer to the body text."
-      ],
-      "likelyCauses": [
-        "Android composer is rendering a different state (image already attached) versus React which is showing a pre-upload error state.",
-        "State-driven rendering mismatch: error banner is gated by a flag not surfaced on Android, or image+remove UI is missing on React.",
-        "Feature gap: 'Original image' toggle and camera attachment shortcut not implemented in the React composer.",
-        "Possible duplication of toolbar actions between platform implementations causing divergent button order/contents."
-      ],
-      "suggestedOwner": "mobile-eng",
-      "suggestedFixes": [
-        "Align composer state machine so React and Android show the same combination of attached image, error banner, and toolbar options.",
-        "Port the 'Original image' checkbox and camera icon to React, or hide them on Android if out of scope.",
-        "Ensure the upload-size-check error banner renders identically (same copy, pink/peach fill, border) on both platforms.",
-        "Verify toolbar order and spacing tokens match across platforms; audit the send-button right padding.",
-        "Update Slock baselines to capture the image-attached state separately from the error state to avoid false mismatches."
-      ],
-      "intentional": [
-        "Android preview shows the image-attached state while React shows error state — could be intentional scenario coverage."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3001034822997136
+      "status": "pending",
+      "imageHash": "p1:fffeffff07fc07fc020000000000000080000fff80000fff80000fff83fc0fff80001fff80010fffa004000380022009801200018ff83efd87c007f987d80781800007f180010001ffffff8ffffffffffffffffffffffffffffeffff0000fffffffffffffffffffffffffffffffffffffffffffeffff8001fff85fffffffffff",
+      "generatedAt": "2026-09-03T22:05:47.359Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.29756575939162033
     },
     {
       "id": "components.thread.files.list",
       "status": "ready",
-      "imageHash": "p1:bffc3ffc1ffe1ffcffff7fffdffe8ffe803e803f801188618fd18fe18ff18fe18ffefffffffffffbcffe89ff807fa07f80710be1cff100e1aff189f18ffefffffff3ffc3cffe883f801f803180310be18bd12fe18ff18fff8ffe5ffffffffffffffff83ffc1ffc1ffc1ff81ffc1ff83fffffffff00000000fffb9ffffffe7fff",
+      "imageHash": "p1:bffc3ffc1ffe1ffcffff7fffdffe8ffe803e803f801188618ff18fe18ff18fe18ffefffffffffffbcffe89ff807fa07f80710be1cfb100e1aff189f18ffefffffff3ffc3cffe883f801f803180310be18bf12fe18ff18fff8ffe5ffffffffffffffff83ffc1ffc1ffc1ff81ffc1ff83fffffffff00000000fffbbffffffe7fff",
       "generatedAt": "2026-07-11T22:10:16.768Z",
       "severity": "medium",
       "summary": [
@@ -1191,7 +1039,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18889522000633108
+      "metricMismatch": 0.1872546691991136
     },
     {
       "id": "components.thread.header.states",
@@ -1232,7 +1080,7 @@
     {
       "id": "components.thread.message.row",
       "status": "ready",
-      "imageHash": "p1:ffffffff00000000bffcbffc0ffe1ffc1fff1fffffffffffffffffffffffffff1fff1fff010f03a307ff07ff1fff3fff00033fff000300071fff0007ffffe6ffc000c07fe000c007fffec003e01fc05fc007e0ffc003efffc007cfffe01fefffffffffff0000000000000000fffffffffffffffffff81fffffffffffffffffff",
+      "imageHash": "p1:ffffffff00000000bffcbffc0ffe1ffc1fff1fffffffffffffffffffffffffff1fff1fff008f03a307ff07ff1fff3fff00033fff000300071fff0007ffffe6ffc000c07fe000c007fffec003e01fc05fc007e0ffc003efffc007cfffe01fefffffffffff0000000000000000fffffffffffffffffff81fffffffffffffffffff",
       "generatedAt": "2026-08-02T22:01:52.486Z",
       "severity": "high",
       "summary": [
@@ -1261,12 +1109,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.34832255011993574
+      "metricMismatch": 0.34783840584494174
     },
     {
       "id": "components.thread.message-row.deleted-human",
       "status": "ready",
-      "imageHash": "p1:ffffffff000000000ffc0ffc03fc03fc07ff07fffffefffffffeffffbf1ef9ff1f1f18ff0000001f001f00ff1f1f39ff0bf13fff0000000204010002fffeffffc07effffc07ee003fffec002fffeffefeffeffffe3fec7ffe7fec3fffffefffefffeffff0000000000000000fffffffffffffffffff81ffffffeffffffffffff",
+      "imageHash": "p1:ffffffff000000000ffc0ffc03fc03fc07ff07fffffefffffffeffffbf1ef9ff1f1f18ff0003001f001f00ff1f1f39ff0bf13fff0000000204010002fffeffffc07effffc07ee003fffec002fffeffefeffeffffe3fec7ffe7fec3fffffefffefffeffff0000000000000000fffffffffffffffffff81ffffffeffffffffffff",
       "generatedAt": "2026-07-11T22:10:19.219Z",
       "severity": "medium",
       "summary": [
@@ -1296,7 +1144,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2362535228158542
+      "metricMismatch": 0.23405942860880802
     },
     {
       "id": "components.thread.message-menu.default",
@@ -1333,7 +1181,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4141069523770946
+      "metricMismatch": 0.4140475418911438
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1369,12 +1217,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.42276501802568156
+      "metricMismatch": 0.42270560753973074
     },
     {
       "id": "components.thread.message-share.selection",
       "status": "ready",
-      "imageHash": "p1:07fe07fcfffe7ffe805e81fec0024002f0fe7006f1fe7ffe83fe83fe80024002f8fe7002fffe7cfeffff0000ffff0000fffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00007ffe00007ffe00000000fffe3fff",
+      "imageHash": "p1:07fe07fcfffe7ffe815e81fec0024002f0fe7006f1fe7ffe83fe83fe80024002f8fe7002fffe7cfeffff0000ffff0000fffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00007ffe00007ffe00000000fffe3fff",
       "generatedAt": "2026-08-13T22:14:33.420Z",
       "severity": "high",
       "summary": [
@@ -1406,7 +1254,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7241031041978909
+      "metricMismatch": 0.7241540756943601
     },
     {
       "id": "components.thread.forward-modal",
@@ -1443,37 +1291,16 @@
     },
     {
       "id": "components.thread.comment-anchor",
-      "status": "ready",
-      "imageHash": "p1:07fe07fc001e01fe0000001e807e0e08807f0ffeffff1d06ffff7ffefffefffefffefffefffefffefffefffefffefffefffefffeffff0000fffe07f8ffff001cffff00beffff03feffff0200ffff001cffff0004ffff1dfcffff00fcffff0000ffff0002fffe043e003207fc00023ffc7fde00007ff8000400000000ffff7fff",
-      "generatedAt": "2026-08-07T00:05:57.389Z",
-      "severity": "high",
-      "summary": [
-        "Android renders a full 'File Preview' screen with a back arrow, large 'FILE PREVIEW' heading, filename subtitle, 'Review' heading, descriptive body text, and a separate comments panel — React shows only a minimal attachment-anchored comment view with header and a single comment card.",
-        "Android timestamp is rendered as 24-hour '18:32'; React uses '06/25 10:32 AM' (date + 12-hour time).",
-        "Android comment card includes 'All'/'Unresolved' segmented filter tabs and Quote/Resolve action buttons that are absent on React.",
-        "Android includes a 'COMMENT' input area with 'ADD COMMENT' placeholder and a 'SEND COMMENT' submit button; React shows a different bottom input area ('Comment on agent-tabs-full-page-…' with a paper-plane icon) and no send button.",
-        "React shows a 'Comments · agent-tabs-full-page-review.mp4' top heading and an attachment tag '§ agent-tabs-full-page-review.mp4 ×' inside the comment; Android's tag is 'Anchor: agent-tabs-full-page-review.md' inside the card and a standalone 'Anchor: agent-tabs-full-page-review.md' label above the input — different label text and no close '×' on Android."
-      ],
-      "likelyCauses": [
-        "Android capture uses a different surface/route (full File Preview + comments panel) than the React baseline (attachment-anchored comment thread), indicating the wrong screen or variant was screenshotted.",
-        "Locale/time-format configuration diverges between platforms (12h with date vs 24h).",
-        "Comment thread component on Android lacks the minimal header chrome (page title, attachment tag with dismiss) present on React, and instead ships the full comments drawer UI.",
-        "Avatar asset not rendered on Android build.",
-        "File extension mismatch suggests seed/test data diverged between platforms."
-      ],
-      "suggestedOwner": "android",
-      "suggestedFixes": [
-        "Navigate Android capture to the same attachment-anchored comment screen as React instead of the standalone File Preview with comments drawer.",
-        "Align locale/time formatting: render comment timestamps in the same format (e.g., 'MM/DD hh:mm AM/PM').",
-        "On Android, render the top header 'Comments · ' and the dismissible attachment tag chip above the input to match React's chrome.",
-        "Hide 'All'/'Unresolved' filter tabs and Quote/Resolve action buttons in this minimal variant, or ensure both platforms render the same component variant.",
-        "Add the avatar image (purple square with person glyph) to the Android comment header."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.24918479361607326
+      "status": "pending",
+      "imageHash": "p1:07fe07fc001e01fe0000001e807e0e08807f0ffeffff1d06ffff7ffefffefffefffefffefffefffefffe7ffefffefffeffff7ffeffff07f8ffff07f8ffff001cffff03feffff03feffff0000ffff001cffff0004ffff14fcffff00fcffff0000ffff001efffe0140003227fc00027ffc7fde00007ff8000400000000ffff7fff",
+      "generatedAt": "2026-09-03T22:05:47.580Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.24959357826656403
     },
     {
       "id": "components.home.titlebar.states",
@@ -1548,7 +1375,7 @@
     {
       "id": "components.home.search.results",
       "status": "ready",
-      "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800307000002dfffffffffffffff80ff80009fff803c80ff800080ff8803dfffe7ffffffc0fe8001c00e8002fffe03ffd8fe87ffd05ec9fedffe9fffffff807effff7fffffff403fffffc1effffffffffffff81ffffffc3ffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800307000002dfffffffffffffff80ff80009fff803c80ff800080ff8803dfffe7ffffffc0fe8001c00e8002fffe03ffd8fe87ffd07ec9fedffe9fffffff807effff7fffffff403fffffc1effffffffffffff81ffffffc3ffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-08-13T22:14:37.330Z",
       "severity": "medium",
       "summary": [
@@ -1579,12 +1406,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2689732112717895
+      "metricMismatch": 0.26886012881273547
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f000038021c380012fc7cfe00fc00fe9e813c00879d3c000081fc00068000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff41ffc9ffffff9fffffff807fffffffffffffd83fffffc3fffffffffffffff81ffffffc3ffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f000038021c380012fc7cfe00fc00fe9e813c00879d3c000081fc00068000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff43ffc9ffffff9fffffff807fffffffffffffd83fffffc3fffffffffffffff81ffffffc3ffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-08-13T22:14:38.408Z",
       "severity": "high",
       "summary": [
@@ -1613,49 +1440,25 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26883784988050385
+      "metricMismatch": 0.26872139182565724
     },
     {
       "id": "components.home.saved.results",
-      "status": "ready",
-      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1398032c0188012c00e807ec0fefffefffafffede79fcfece7888f2801e8012c01e801ecffecffefffafffef0f9fffec1f9e1f2c00ec1f2c01ec072fffe803ec1f8dffec039fffec00efc3ec0fefc3ec0fefffefff8fffecc79fffec018fffe00040000fffa7fff",
-      "generatedAt": "2026-07-30T04:34:27.469Z",
-      "severity": "medium",
-      "summary": [
-        "Subtitle differs: React shows '5 saved items' vs Android shows '5 saved'",
-        "Bookmark/book icon styling differs: React uses orange-filled bookmark on light card; Android uses white/outlined bookmark on gray card",
-        "List item card backgrounds differ: React is near-white (#FAFAFA), Android is noticeably darker gray",
-        "Item count diverges after first item: React shows 4 visible cards with '38 days ago' dates; Android shows only 3 visible cards with '14-15 days ago' dates",
-        "Android renders a 'Load More' button absent in the React baseline"
-      ],
-      "likelyCauses": [
-        "Android implementation uses different pluralization/string resource ('items' suffix missing)",
-        "Android card uses a darker surface token while React uses a lighter elevation token",
-        "Android bookmark icon swapped from filled orange variant to outlined/white variant (different asset or tint)",
-        "Android list caps visible items and appends a 'Load More' affordance; React shows full inline list",
-        "Test fixtures/seed data differ between platforms (different timestamps, possibly fewer items loaded)"
-      ],
-      "suggestedOwner": "Android UI engineer (saved-results list owner), coordinate with design system",
-      "suggestedFixes": [
-        "Update Android subtitle string to match '5 saved items' pluralization token",
-        "Align Android card background to the same surface color as React (light neutral)",
-        "Replace Android bookmark icon with the filled orange variant used in React, or sync design tokens",
-        "Either remove the 'Load More' button in Android or add an equivalent in React baseline; verify intended pagination UX",
-        "Use shared mock data (identical timestamps and item count) in visual regression fixtures"
-      ],
-      "intentional": [
-        "Darker Android card background may be intentional Material 3 surface tint",
-        "Outlined vs filled bookmark icon may be an intentional platform-specific state"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.19001236663941812
+      "status": "pending",
+      "imageHash": "p1:0ffc1ffc3ffe3ffe83fe03fe81fe83fe08000000f3f8e3f2c1798032c0188012c00e807ec0fefffefefafffecc79fcfec01888f2c01e8012cffe801efffecffef0f8fffef0f9fffec04ee1f2c01ec1f2fffec072f3f8803ec139dffec018fffec00efc3ec0fefc3efefafffecc79fffec018fffec01efffe00000000fffe7fff",
+      "generatedAt": "2026-09-03T22:05:47.737Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.19757540505984195
     },
     {
       "id": "components.home.activity.results",
       "status": "ready",
-      "imageHash": "p1:0ffc0ffc3ffe3ffe83fe81fe877e977e000000008040804000000000fffefffecffedff0c1fec011807ec00ec38e800e807e83fec07e801efffe87fec0fe8ffec01efff2801e81318ffe801afffe800efffe8ffec3fe8ffefffefff2fffe9ff1fffed9fafffefffefffefffefffefffefffefffefffefffe00000000fffe7fff",
+      "imageHash": "p1:0ffc0ffc3ffe3ffe83fe81fe877e977e000000008040804000000000fffefffecffedff0c07ec011c0fec00ec38e800e807e83fec07e801efffe87fec0fe8ffec01efff2801e81318ffe801afffe800efffe8ffec3fe8ffefffefff2fffe9ff1fffed9fafffefffefffefffefffefffefffefffefffefffe00000000fffe7fff",
       "generatedAt": "2026-08-19T22:10:36.393Z",
       "severity": "low",
       "summary": [
@@ -1686,7 +1489,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18510081955186652
+      "metricMismatch": 0.1859303276111426
     },
     {
       "id": "components.tasks.panel.states",
@@ -1757,40 +1560,16 @@
     },
     {
       "id": "components.home.create-channel.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff00000000000000000000000000007ffc7ffc7ef87ffe7ffc7ffe7ffc7ffc7ffc67fc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffe47fc67fe7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc5ffc7ffc5ffc7ffc5ffc7ffc7ffc7ffc7ffc7ffc4ffc7f007f807f807f0000000000000000000000000000000000ffffffff",
-      "generatedAt": "2026-07-19T05:31:18.917Z",
-      "severity": "high",
-      "summary": [
-        "Android dialog is significantly larger and uses more vertical space — it starts higher (closer to top) and extends further down, leaving little bottom margin versus React's more compact modal.",
-        "Android renders secondary metadata under each member (e.g., 'agent · @Cindy', 'human · @designer') which is absent in React.",
-        "Android adds a helper text under the Name input ('Start with a letter. Use letters from any language, nu…') that React does not show — text is also clipped/truncated on Android.",
-        "Android's Description textarea clips the second line ('blockers' is cut off) due to fixed height; React wraps fully.",
-        "Agent list rows on Android are taller with more vertical padding; selection checkmark indicator is larger and farther right."
-      ],
-      "likelyCauses": [
-        "Android implementation uses different default TextView/Compose typography scale and line-heights than the web (React) baseline.",
-        "Android dialog is laid out with a fixed larger modal height (or no max-height constraint) versus React's compact modal styling.",
-        "Name field on Android includes extra helper/validation text that React omits, increasing row height.",
-        "Member list item rendering on Android adds an avatar status dot + subtitle line that React's simpler item layout does not.",
-        "Description textarea has a fixed small height on Android that doesn't grow with content, causing clipping."
-      ],
-      "suggestedOwner": "android-ui",
-      "suggestedFixes": [
-        "Match Android dialog dimensions/padding to the React modal sizing and constrain vertical extent so it doesn't expand the viewport.",
-        "Remove or conditionally hide the 'Start with a letter...' helper text under Name to align with React, or ensure consistent copy.",
-        "Allow the Description textarea to auto-grow or set a taller min-height so 'Build reports, screenshots, release blockers' is not clipped.",
-        "Normalize section label typography (NAME, DESCRIPTION, VISIBILITY, MEMBERS) and dialog title to React's size/weight.",
-        "Simplify member list rows on Android to a single line (name only) or ensure subtitle metadata matches React's design intent; resize the selection checkmark to React's scale."
-      ],
-      "intentional": [
-        "Platform-native status indicator dot on avatars may be an intentional Android addition.",
-        "Larger touch targets on Android for accessibility could be intentional if documented."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2292745169522421
+      "status": "pending",
+      "imageHash": "p1:ffffffff00000000000000000000000000007ffc7ffc7ff87ffc7ffc7ffe7ffc7ffc7ffc67fc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffe47fc67fe7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc5ffc7ffc4ffc7ffc5ffc7ffc7ffc7ffc7ffc7ffc4ffc7f007fc47f807f0000003800000000000000000000000000ffffffff",
+      "generatedAt": "2026-09-03T22:05:47.845Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.24860486625889466
     },
     {
       "id": "components.members.create-agent.dialog",
@@ -1830,7 +1609,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:09:41.005Z",
+      "generatedAt": "2026-09-03T22:05:47.729Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1843,7 +1622,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:09:41.005Z",
+      "generatedAt": "2026-09-03T22:05:47.729Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1922,40 +1701,16 @@
     },
     {
       "id": "components.members.agent-detail.profile",
-      "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fffc0fff87f80fff1fffffff1ffd47fffffffffffffdfff0c3f800f0c3f800f0c7f8fff00078fff000380ffffff807f97ff807f87fffffe1c02ffffffff",
-      "generatedAt": "2026-08-28T22:42:49.063Z",
-      "severity": "medium",
-      "summary": [
-        "Header layout differs: React places avatar+title+description inline with back/menu buttons; Android stacks them into two distinct rows with a wider avatar and a separate 'Working' status row.",
-        "React shows truncated description ('Turns product feedback, s…') with overflow ellipsis in header; Android shows full truncated text ('Turns product feedback, screensho…') on its own line below title.",
-        "React shows full profile header block (avatar + name + handle + 'Capturing determ…' status) as one row with content clipped; Android separates these into a large avatar on the left and name/handle/status on the right.",
-        "INFO section layout: React uses a 3-column inline grid (Computer, Created, Creator) with horizontal alignment; Android stacks these fields vertically with right-aligned values.",
-        "React shows Computer name in monospace code style ('Jiachengs-MacBook-Pro') on its own line; Android shows the same string inline next to 'Connected · daemon v0.61.1' status."
-      ],
-      "likelyCauses": [
-        "Independent implementation of the agent detail profile in the Android client that re-flows fields into a 2-column responsive grid rather than mirroring the React 3-column layout.",
-        "Missing or skipped rendering of edit-pencil affordances in Android component variants.",
-        "Different truncation strategy applied to the header description line on Android (separate line vs. inline).",
-        "Android surfaces a 'CREATED AGENTS' child list that React either renders below the fold or hides in this view.",
-        "Code-style (monospace) typography token for Computer field not ported to Android text style."
-      ],
-      "suggestedOwner": "android-engineering",
-      "suggestedFixes": [
-        "Replicate React's 3-column INFO row (Computer | Created | Creator) on Android or align both clients on a single responsive spec.",
-        "Restore the green 'Connected' status dot and the monospace styling for the Computer field name in Android.",
-        "Add edit-pencil affordances next to DISPLAY NAME, DESCRIPTION, and Runtime Config section headers to match React.",
-        "Move Environment Variables back to vertical stacking (one key per row) to match React's layout.",
-        "Decide whether CREATED AGENTS belongs in this view; if yes, ensure React renders it identically, otherwise hide it on Android."
-      ],
-      "intentional": [
-        "Avatar sizes and tab bar treatment differences may be intentional platform conventions.",
-        "CREATED AGENTS panel may be an intentional Android-only extension."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.1801018754810224
+      "status": "pending",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0bffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fffffff8fffffffc0ff80ff80ffffffffffd4ffd47fffffffffffffdfff0c3f800f0c3f800f0c7f8fff0c7f8fff000380ff0403807ff7ff807f87fffffe07fcffffffff",
+      "generatedAt": "2026-09-03T22:05:47.955Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.17481738026761728
     },
     {
       "id": "components.channel.settings.panel",
@@ -1994,7 +1749,7 @@
       "id": "components.channel.members.add-panel",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:09:41.101Z",
+      "generatedAt": "2026-09-03T22:05:47.834Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2174,7 +1929,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19863254614439452
+      "metricMismatch": 0.19841954604987777
     },
     {
       "id": "components.settings.notifications.page",
@@ -2280,42 +2035,112 @@
     },
     {
       "id": "screens.members.agent-detail.profile",
-      "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff1fff8fff0fff80fff87f80fff1fffffff1ffd47fffffffffffffdfff0c3f800f0c3f800f0c7f8fff00078fff000380ffffff807f97ff807f87fffffe1c02ffffffff",
-      "generatedAt": "2026-08-28T22:42:49.265Z",
-      "severity": "high",
-      "summary": [
-        "Profile header layout differs: React shows avatar, title and truncated description on one row with action icons on the right; Android shows avatar, title and full description below the title with action icons aligned right at the title baseline.",
-        "Header description text rendering differs: React truncates with ellipsis ('Turns product feedback, s...'), Android wraps to a second line ('Turns product feedback, screensho...') causing different vertical spacing.",
-        "Avatar asset differs: React uses a solid cyan square, Android renders a patterned/mosaic avatar glyph causing the header height to grow on Android.",
-        "User status row is clipped on React: 'Produc...' title and 'Capturing determi...' status are truncated; on Android the full title and 'Working' status with green dot fit, indicating React container is narrower or has overflow.",
-        "Tab bar spacing differs: React tabs have visible borders around each cell and tighter widths; Android tabs are borderless with more horizontal padding."
-      ],
-      "likelyCauses": [
-        "Android implementation re-flows the profile header into a different column structure rather than mirroring the React one-line header",
-        "Truncation behavior on React uses a fixed-width container with ellipsis, while Android allows wrapping",
-        "Avatar asset source diverged between platforms (placeholder color block on web vs styled glyph on Android)",
-        "Runtime Config component is implemented with a different grid system on Android (2-col vs 3-col)",
-        "Agent list section exists on Android but was not yet wired into the React agent-detail profile screen"
-      ],
-      "suggestedOwner": "android-ui",
-      "suggestedFixes": [
-        "Match Android header layout to React: single row with avatar, title, truncated description, and right-aligned action icons; constrain description with maxLines=1 and ellipsize=end",
-        "Replace Android avatar with the same solid cyan placeholder used on React, or ensure both platforms render the same avatar asset",
-        "Unify the Role chip rendering: use the same label and color treatment across platforms",
-        "Reflow INFO section on Android to match React's two-row layout (Computer/Connected on row 1, Created/Creator on row 2) with inline creator avatar",
-        "Align Runtime Config to a 3-column layout (Runtime, Model, Reasoning) with Mode on its own row to match React"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.18061429092234782
+      "status": "pending",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0bffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fffffff8fffffffc0ff80ff80ffffffffffd4ffd47fffffffffffffdfff0c3f800f0c3f800f0c7f8fff0c7f8fff000380ff0403807ff7ff807f87fffffe07fcffffffff",
+      "generatedAt": "2026-09-03T22:05:48.180Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.17477518532020897
+    },
+    {
+      "id": "screens.members.agent-detail.profile.computer-offline",
+      "status": "pending",
+      "imageHash": "p1:15fe35fe800000118010080100000000000206fa81ff0f7f8fff000f8fff0bffffffdfff81ffc7ffffffcfff87fbffff800f001fffffffffffffffff8fff1fff8fff0fff9bff1fff93ff03ffffffffffd47fd4ffffffffffdffff7ff800f0c3f800f0c3f8fff0c7f8fff0c7f80ff0001807fffff807f87fffffe03fcffffffff",
+      "generatedAt": "2026-09-03T22:05:48.248Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1615067309380106
+    },
+    {
+      "id": "screens.members.agent-detail.profile.computer-missing",
+      "status": "pending",
+      "imageHash": "p1:17fe35fe800000018000080100000000000207fa81ff0f7f8fff000f8fff0bffffffdfff81ffc7ffffffcfff87ffdfff80038007ffffffffffffffffffff1fff8fff0fff8fffffffffffffffffffffffd47fd4ffffffffffd7fff7ff800f0c3f800f0c3f8fff0c7f8fff0c7f80ff0001807fffff807f87fffffe03fcffffffff",
+      "generatedAt": "2026-09-03T22:05:48.276Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.16064021549803542
+    },
+    {
+      "id": "screens.members.agent-detail.profile.no-computer",
+      "status": "pending",
+      "imageHash": "p1:1dfe3ffe803000318010083100000000020207ea83ff0fff8fff001f8fff0ffff7ffdfff83ffc7ffffffdfff87ffcfff83ff9ffbffffffffffffffff8fff1fff8fff0fffffffffffffffffffd47ffffffeffd4ffffffffff800ff7ff800f0c3f9fff0c3f8fff0c7f80ff0c7f807f0001803fffffffff87ff83fe03fcffffffff",
+      "generatedAt": "2026-09-03T22:05:48.287Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.16362491729790307
+    },
+    {
+      "id": "screens.members.agent-detail.profile.long-machine-name",
+      "status": "pending",
+      "imageHash": "p1:17fe37fe801000118010081100000000005a07fe81ff8fff8fff00078fff0fffffffdfff80ffc7ffffffdfff87ffffff8007001bffffffffffffffff8fff1fff8fff1fffe963dfff80030001ffffd1effefffdfff47ff47fffffffffdfffffff80070c3f9fff0c3f8fff0c7f8dff000780ff0003807fffff803e0006ffffffff",
+      "generatedAt": "2026-09-03T22:05:48.306Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.17243623499547667
+    },
+    {
+      "id": "screens.members.agent-detail.profile.daemon-only",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-09-03T22:05:48.185Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "screens.members.agent-detail.profile.no-membership",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-09-03T22:05:48.185Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "screens.members.agent-detail.profile.loading-state",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-09-03T22:05:48.185Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
     },
     {
       "id": "screens.members.agent-detail.reminders",
       "status": "ready",
-      "imageHash": "p1:03fc03fc001000308010000000000000000000008002000600060006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "imageHash": "p1:03fc03fc001000300010000000000000000000008002000600060006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
       "generatedAt": "2026-07-13T22:11:30.144Z",
       "severity": "medium",
       "summary": [
@@ -2346,211 +2171,85 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06126672607715267
+      "metricMismatch": 0.06017640863612428
     },
     {
       "id": "screens.members.agent-detail.workspace",
-      "status": "ready",
-      "imageHash": "p1:03fc03fc001000300010000000000000000000004ffe7ff80ffe0ff887fe43fe07fe0ffecffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-13T22:11:35.162Z",
-      "severity": "high",
-      "summary": [
-        "Tab bar order and content differs: React shows Chat/Reminders/Workspace(active)/Apps; Android shows Profile/Activity/Chat/Reminders with an extra truncated active tab and no Workspace or Apps labels",
-        "Subtitle text is truncated differently: React ends at 's…' while Android ends at 'screensho…' indicating different container widths or font metrics",
-        "Breadcrumb path '~/.slock/agents/agent-product-ux/' with copy button is missing on Android",
-        "Two action icons (visibility/eye-off and refresh) next to the WORKSPACE header on React are reduced to a single refresh icon on Android (eye-off icon missing)",
-        "MEMORY.md row on Android shows size '86 B' aligned right; React shows no size label, and the 'notes' row shows 'folder' label on Android but is missing on React"
-      ],
-      "likelyCauses": [
-        "Android tab bar component is rendering a different (possibly default) set of tabs with incorrect order and an unselected/extra tab",
-        "Different typography metrics (font weight, kerning, or available width) on Android cause earlier string truncation",
-        "Breadcrumb component not implemented or hidden on Android variant",
-        "Eye-off/visibility toggle action for workspace files not wired up on Android",
-        "File metadata (size/type labels) rendered only on Android, missing on React baseline (or vice versa)"
-      ],
-      "suggestedOwner": "android-eng",
-      "suggestedFixes": [
-        "Verify the tab bar source on Android matches the React order (Chat, Reminders, Workspace, Apps) and ensure Workspace is the highlighted/active tab",
-        "Reuse the same agent subtitle string and container width rules so truncation aligns between platforms",
-        "Add the breadcrumb row '~/.slock/agents/agent-product-ux/' with copy icon to the Android layout",
-        "Restore the second icon (eye-off/visibility toggle) next to the refresh action in the WORKSPACE header on Android",
-        "Decide whether file size and type metadata labels should appear on both platforms and align the spec"
-      ],
-      "intentional": [
-        "Avatar tile rendering as a checkered placeholder on Android vs solid cyan on React appears to be a placeholder/missing-asset state, likely unintentional"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.04860655405679104
+      "status": "pending",
+      "imageHash": "p1:03fc03fc00100030001000000000000000000000effe7ff80ffe0ff887fe43fe8ffe4ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-09-03T22:05:48.407Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.04796654109450316
     },
     {
       "id": "screens.members.agent-detail.apps",
-      "status": "ready",
-      "imageHash": "p1:07fe17fc8010003080100020000000000000400087fefffeffff0000ffff1efcffff0000ffff03e0ffff23fdffff001dffff3c05ffff007dffff0038ffff0000ffff0000ffff0000ffff07e0ffff0009ffff03fdffff0038ffff0000ffff0000ffff0000fffefffefffefffefffefffefffffffefffefffe7ffe7ffefffe7fff",
-      "generatedAt": "2026-07-18T07:39:58.524Z",
-      "severity": "high",
-      "summary": [
-        "Tab order/names differ: React shows Chat/Reminders/Workspace/Apps; Android shows Profile/Activity/Chat/Reminders.",
-        "Avatar rendering differs: React shows a solid teal square, Android shows a teal-and-black pixelated checkerboard avatar.",
-        "Apps tab is highlighted/active on React (yellow background) but no tab is highlighted on Android.",
-        "Android displays two fully-populated connected-app cards (Raft Actions, Calendar) with status badges, permissions chips, and View service buttons; React shows the empty-state copy 'No connected apps yet.'",
-        "Header/description text is truncated slightly differently between renders."
-      ],
-      "likelyCauses": [
-        "Android build is rendering a different agent-detail screen variant or incorrect route/data payload.",
-        "Connected apps endpoint returning data on Android but not on React, or vice versa.",
-        "State/seed data mismatch between the two platforms (different mock fixtures).",
-        "Tab list not aligned to the same design spec across platforms (component drift).",
-        "Avatar source/asset pipeline produces a placeholder on Android vs. a solid color on React."
-      ],
-      "suggestedOwner": "mobile-android-engineer",
-      "suggestedFixes": [
-        "Reconcile tab definitions so both platforms expose the same set in the same order; ensure the currently selected tab gets the yellow active background.",
-        "Align avatar source: use a consistent Avatar component that falls back to initials or the same colored placeholder across React and Android.",
-        "Verify the /connected-apps API response and seed data — gate the 'No connected apps yet.' empty state on an actual empty list, not on a different code path.",
-        "Standardize the empty-state vs. populated-list rendering rule between React and Android implementations.",
-        "Audit component library parity (Tabs, Card, Badge, Chip, Avatar) and sync design tokens for spacing, typography weight, and status badge colors."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.11806787648019879
+      "status": "pending",
+      "imageHash": "p1:1ffe37fc80100030801008200000000080024000c7ffffffffff0000ffff3ffcffff0000ffff03e1ffff23fdffff003dffff3c0dffff007dffff0039ffff0000ffff0001ffff0001ffff2fe1ffff0009ffff03fdffff0039ffff0000ffff0001ffff0000ffffffffffffffffffffffffffffffffffffffff7ffe7ffeffffffff",
+      "generatedAt": "2026-09-03T22:05:48.398Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1174278635179109
     },
     {
       "id": "screens.members.agent-detail.activity",
-      "status": "ready",
-      "imageHash": "p1:07fe17fc80100030801000000000000000000000010053e0000271fef87e71fef006719ef8fe703ef0fe707ef84e780ef03e703ef0127002f9827c7ef8be7ffef01e7ffef8467ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-08-14T22:11:11.671Z",
-      "severity": "medium",
-      "summary": [
-        "Time format differs: React shows 12-hour format with AM/PM (e.g. '12:28:00 PM'), Android shows 24-hour format (e.g. '20:28:00')",
-        "Button label shortened: React 'Copy Diagnostic Info' vs Android 'Copy info'",
-        "Avatar rendering differs: React shows solid cyan/blue square, Android shows a black-and-cyan pixelated/checkered placeholder pattern",
-        "Description text truncation differs: React truncates at 's…' (shorter width), Android truncates at 'screensho…' (slightly more characters shown)",
-        "Activity item text styling differs: React uses monospace/code-like font for descriptions with wrapped multi-line text, Android uses proportional sans-serif with different wrapping/line spacing"
-      ],
-      "likelyCauses": [
-        "Time locale/formatting configuration not aligned between React (uses 'h:mm:ss a') and Android (uses 'HH:mm:ss')",
-        "Button label string inconsistency or localization difference not synchronized across platforms",
-        "Avatar component fallback rendering differs: React renders solid color block while Android uses image-error placeholder",
-        "Subtitle/truncation width or character limit differs between platform implementations",
-        "Typography stack differs: React likely uses monospace fallback for code-like content (command output), Android uses default sans-serif, causing different line breaks"
-      ],
-      "suggestedOwner": "android",
-      "suggestedFixes": [
-        "Align time formatting to use the same 12-hour AM/PM format on Android (use 'h:mm:ss a' pattern)",
-        "Update Android button label to 'Copy Diagnostic Info' to match React copy",
-        "Investigate avatar source/loading: ensure React and Android render the same avatar image or identical placeholder",
-        "Normalize description truncation width/max-chars across both platforms",
-        "Sync typography: apply monospace font to code-like content (e.g., 'Running command' description) on Android for consistent rendering"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.10116829370383873
+      "status": "pending",
+      "imageHash": "p1:17fe17fc80100030801000000000000000000000010043e0000073fef3fe73fee00253fef3fe7002f1fe71fefc02507ee032707ef20270bafffe403ee03e7002f00e7002f3fe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
+      "generatedAt": "2026-09-03T22:05:48.433Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.10205405003983203
     },
     {
       "id": "screens.members.human.profile",
-      "status": "ready",
-      "imageHash": "p1:07fe03fc03f807f801f803f800003c0083fe0bfe0ffe01fe8ffe0ffec7fe0ffe9ffe0ffefffe0006bffe3ffe8ffe7ffe8ffe0ffe87fe0ffe8ffe17fe97fe07fed7fe1ffec3fe07fec3fe03fefffe6bfedffe7ffe80007ffe80007ffedffa7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-26T22:12:58.685Z",
-      "severity": "high",
-      "summary": [
-        "React version shows 'Owner' role with a 'Owner' description value; Android version shows 'Member' role with a 'Product design and server administration.' description value — different member data state",
-        "React version renders an ACTIONS section with a full-width red 'Remove Member' button; Android version is missing the entire ACTIONS section and Remove Member button",
-        "React version has active edit affordances (info question-mark icon, pencil edit icon near Role) highlighted; Android version shows only the pencil icon and no info question-mark icon",
-        "Header avatar in React is clipped/text is truncated to 'artin' with '@artin' below in lighter color; Android renders the same text without the lighter weight/strength difference, and the avatar block sits differently relative to the title",
-        "Spacing/alignment of the avatar, name, and @handle row differs: React centers the avatar vertically next to a two-line stack; Android uses a single-line inline layout with a larger avatar block"
-      ],
-      "likelyCauses": [
-        "Android screen rendered against a different test fixture where the member is a regular Member rather than Owner, so the destructive action/description is conditionally hidden",
-        "Role-specific conditional rendering (show Remove Member only for Owner) not implemented in Android or guarded by a wrong flag",
-        "Missing translation/branch for the danger action and description copy in Android string/component resources",
-        "Component-level padding/margin or layout primitive (Row vs Column) mismatch between React and Android implementations"
-      ],
-      "suggestedOwner": "android",
-      "suggestedFixes": [
-        "Align Android fixture/seed data with the React baseline (Owner role + same description) so the same conditional UI is exercised",
-        "Implement the ACTIONS section and Remove Member button in Android, gated on the same role-check used in React",
-        "Ensure the @handle/subtitle uses a lighter color weight and that the avatar row matches React's vertical alignment and spacing",
-        "Sync the info question-mark icon and any other role/edit affordances visible in the React header in the Android implementation",
-        "Verify the header avatar is not clipped and renders the full name alongside the avatar with consistent left padding"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.1058897395390287
+      "status": "pending",
+      "imageHash": "p1:07fe03fc03f807f801f803f800003c0083fe03fe0ffe01fe8ffe0ffec7fe0ffe9ffe0ffefffe0006bffe3ffe8ffe7ffe8ffe0ffe87fe0ffe8ffe5ffe97fe03fed7fe1ffec3fe03fec3fe03fefffe63fedffe7ffe80007ffe80007ffedffa7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-09-03T22:05:48.499Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.10591741942452848
     },
     {
       "id": "components.members.agent-lifecycle-actions",
-      "status": "ready",
-      "imageHash": "p1:1ffe3ffe8010003180100821000c000000840dfc80008c018fff00018fff0fffffffdfff83ffe7ffffffffff85fbffffc03f81ffffffffffffffffff8fff1fff8fff0fffc0fff87f81fff9fffffff1ffd47fffffffffffffdfff0c3f800f8c3f800f0c7f8fff00078fff000380ffffff807f97ff807f87fffffe1ffeffffffff",
-      "generatedAt": "2026-08-28T22:42:49.405Z",
-      "severity": "high",
-      "summary": [
-        "Cropping contracts differ (element-bounds vs viewport-bounds) so the Android side shows significantly more vertical content, exposing extra sections like Computer/Created/Creator rows in INFO and the CREATED AGENTS list.",
-        "Context menu (Stop Agent / Restart / Reset) overlaps the Profile/Activity tab bar and the agent card on both sides, but is clipped on the React baseline vs. fully visible on Android — different z-order and overflow handling.",
-        "Agent avatar image on Android renders with a black background and visible pixelation, while React shows a solid cyan fill with no apparent image — different avatar asset or placeholder.",
-        "Agent subtitle text is truncated on React ('Turns product feedback, s…') but renders fully on Android ('Turns product feedback, screensho…') — text-overflow ellipsis is not applied on Android.",
-        "Runtime Config section uses different grid layout: React is a single-column label/value stack (Runtime, Model, Reasoning on one row, Mode below), Android uses a 2-column grid (Runtime/Model top row, Reasoning/Mode bottom row) — relayout difference."
-      ],
-      "likelyCauses": [
-        "Slock used different crop contracts between runs, so the Android capture includes the full viewport while React was cropped to a component — accounts for the extra sections and most of the pixel mismatch.",
-        "React component may apply text truncation/ellipsis at the subtitle that the Android Compose implementation does not.",
-        "Avatar image source or fallback differs between platforms (Android shows a low-res/broken image; React shows a placeholder color).",
-        "Layout component for Runtime Config has different responsive rules across web vs. mobile.",
-        "Status dot color tokens map to different values on each platform."
-      ],
-      "suggestedOwner": "mobile-android",
-      "suggestedFixes": [
-        "Re-run Slock with matching crop contracts (both viewport-bounds or both component-bounds) before comparing to eliminate the layout-extension false positive.",
-        "Make subtitle truncation behavior consistent: apply ellipsis on overflow in Android Compose Text and align maxLines.",
-        "Verify avatar asset URL/fallback renders identically; ensure the same placeholder color or image is used on both platforms.",
-        "Refactor Runtime Config to use the same 2x2 grid on web, or a single-column stack on mobile, so the field order matches across platforms.",
-        "Unify status dot color tokens (use the same semantic green for Connected on both platforms)."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.1962092059248457
+      "status": "pending",
+      "imageHash": "p1:1ffe3ffe8010003180100821000c000000840dfc80008c018fff00018fff0fffffffdfff83ffe7ffffffffff85fbffffc03f81ffffffffffffffffff8fffffff8fffffffc0ff80ff81fffffffffff4ffd47fffffffffffffdfff0c3f800f0c3f800f1c7f8fff0c7f8fff000380ff8607807fffff807f97fffffe87fcffffffff",
+      "generatedAt": "2026-09-03T22:05:48.545Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.19261453396524486
     },
     {
       "id": "components.members.avatar-management",
-      "status": "ready",
-      "imageHash": "p1:3ffe3ffe801b003384100a310000000081fe000e81ff0b3f8fff8fff8fffffffffffc7ffa001ffff8001ffff8001c1ff8003fffff81ffffffe7f0fff87ff0ffffffffdfffffff1ff803bfbffffffffffffff9cffffff8c3f8fff9c7fdfff8c7f80ff0003ffff8403fcfffffffcff87ffffff97ff89cfffff80070ffeffffffff",
-      "generatedAt": "2026-08-28T22:42:49.465Z",
-      "severity": "high",
-      "summary": [
-        "Android view is missing the 'Choose Avatar' avatar picker grid and the selected large edit-pencil avatar tile present on React.",
-        "Android header title and description text are clipped with ellipsis ('Product UX Designer', 'Turns product feedback, screensho…') whereas React shows full text.",
-        "Android renders an additional 'Runtime Config' grid (Runtime/Model/Reasoning/Mode) and 'Created Agents' and 'Skills' sections that are absent on React; React instead shows more detailed Info rows (Computer, Created, Creator) inline.",
-        "Section heading typography differs: React uses small-caps tracked labels ('CHOOSE AVATAR','DISPLAY NAME','DESCRIPTION','INFO','RUNTIME Config') while Android uses flat uppercase labels at different weights.",
-        "Android shows avatar state indicator as a blue/cyan checkerboard pattern while React uses a solid teal square with white pencil icon; selected avatar styling is inconsistent."
-      ],
-      "likelyCauses": [
-        "Android component renders a different page/screen (likely Profile details view) than the React Avatar Management edit view being compared.",
-        "Tab and content state mismatch: Android appears to be on a Profile/About sub-screen while React is on the avatar-selection edit screen.",
-        "Missing conditional rendering for the avatar picker grid and edit-pencil affordance on Android.",
-        "Different section ordering and additional Runtime Config / Created Agents / Skills blocks rendered only on Android, suggesting divergent component composition."
-      ],
-      "suggestedOwner": "android",
-      "suggestedFixes": [
-        "Align Android 'Avatar Management' screen to render the same view as React: include the 'Choose Avatar' grid and large selected avatar with edit-pencil overlay.",
-        "Ensure header title and description text are not truncated; allow wrapping or widen container instead of ellipsis on 390px viewport.",
-        "Match React section label style (uppercase small-caps tracked) or explicitly tokenize section headers in the design system.",
-        "Restrict Android render to the avatar management scope (remove Runtime Config, Created Agents, Skills sections) or move them to their own route.",
-        "Verify selected avatar visual treatment (solid color + pencil vs. checkerboard) against the shared design tokens."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.23827351777588746
+      "status": "pending",
+      "imageHash": "p1:3ffe3ffe801b003384100a310000000081fe000e81ff0b3f8fff8fff8fffffffffffc7ffa001ffff8001ffff8001c1ff8003fffff81ffffffe7fffff87ff83ffffffd3fffffffdff803bf4ffffffffffffffffffffff8c3f8fff8c3fdfff8c7f80ff807fffff0003fcfffffffcff97ffffff87ff89cfffff8007fffeffffffff",
+      "generatedAt": "2026-09-03T22:05:48.556Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.23495091883717478
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2652,7 +2351,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23333349825023175
+      "metricMismatch": 0.23331948031386984
     },
     {
       "id": "components.thread.message-row.long-inline-code",
@@ -2688,7 +2387,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.31393682234914466
+      "metricMismatch": 0.3138760616248768
     },
     {
       "id": "components.thread.message-row.md-link-ref",
@@ -2726,7 +2425,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.7704547602651868
+      "metricMismatch": 0.7704021009708213
     },
     {
       "id": "components.thread.message-row.md-latest-release",
@@ -2762,7 +2461,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.757956954402452
+      "metricMismatch": 0.7579262364807389
     },
     {
       "id": "components.thread.message-row.md-wrap-slice1",
@@ -2798,7 +2497,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2102812208854863
+      "metricMismatch": 0.20988222546279423
     },
     {
       "id": "components.thread.message-row.md-wrap-clarify",
@@ -2832,12 +2531,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.5436049337708105
+      "metricMismatch": 0.5432054320087496
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",
       "status": "ready",
-      "imageHash": "p1:01fc01fc039e7ffe003e0012400e001e400660020130e402fffffffeffff7ff6ffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffefffffffeffff0000fff81fff",
+      "imageHash": "p1:01fc01fc01fe7ffe003e0012400e001e400660020130e402fffffffeffff7ff6ffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffefffffffeffff0000fff81fff",
       "generatedAt": "2026-08-07T00:06:15.721Z",
       "severity": "high",
       "summary": [
@@ -2864,7 +2563,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.8714758779924656
+      "metricMismatch": 0.8714151172681979
     },
     {
       "id": "components.thread.message-row.md-wrap-status606",
@@ -2898,7 +2597,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.695132390866988
+      "metricMismatch": 0.6951364415819392
     },
     {
       "id": "components.thread.message-row.md-wrap-task607",
@@ -2932,13 +2631,13 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.6371364483331308
+      "metricMismatch": 0.6367374529104387
     },
     {
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:09:41.692Z",
+      "generatedAt": "2026-09-03T22:05:48.718Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2951,7 +2650,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:09:41.692Z",
+      "generatedAt": "2026-09-03T22:05:48.718Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2964,7 +2663,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:09:41.692Z",
+      "generatedAt": "2026-09-03T22:05:48.718Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2977,7 +2676,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-02T22:09:41.692Z",
+      "generatedAt": "2026-09-03T22:05:48.718Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

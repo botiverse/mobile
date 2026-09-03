@@ -1,0 +1,27 @@
+{
+  "provider": "ios",
+  "providerType": "ios-kuikly-shared-page",
+  "source": "kmp-shared",
+  "caseId": "components.thread.message-row.deleted-human",
+  "image": "components.thread.message-row.deleted-human.png",
+  "pageName": "compose_thread_message_row_visual",
+  "pageData": {
+    "instanceId": "visual-thread-message-row-deleted-human",
+    "visualFixture": "deleted_human",
+    "pageName": "compose_thread_message_row_visual",
+    "slockVisualZeroSafeArea": true
+  },
+  "viewport": {
+    "width": 1170,
+    "height": 2532,
+    "density": 1
+  },
+  "device": "iPhone 14",
+  "systemBars": "status-hidden-home-indicator-visible",
+  "richTextCapabilities": {
+    "inlineCodeChrome": true,
+    "slockRefChrome": true,
+    "reactionAtlas": true
+  },
+  "declaredDivergences": []
+}
