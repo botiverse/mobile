@@ -164,9 +164,14 @@ class MembersAgentServerRoleTest {
         assertEquals(MembersAgentServerRoleDisplay.Hidden, membersAgentDisplayServerRole("", " "))
     }
 
-    // A deleted agent also loses its role row, so it reaches the same branch from a wholly
-    // ordinary state. Both hide today, but they are asserted separately: if either ever gains
-    // its own wording, wording written for the anomaly would be wrong on a deleted agent.
+    // A deleted agent reaches this from a wholly ordinary state, and the "with a role" case is
+    // reachable in client state even though the wire never sends it: SharedServerMembersStore
+    // merges serverRole fill-only, so a role cached before deletion is never overwritten --
+    // not even by the authoritative path, which starts by calling that same merge. Without the
+    // deleted check such an agent still shows an Admin chip (LiBai, task #261).
+    //
+    // Both hide today, but they are asserted separately: if either ever gains its own wording,
+    // wording written for the anomaly would be wrong on a deleted agent.
     @Test
     fun displayRoleHidesTheChipForADeletedAgentEvenWithARole() {
         assertEquals(
