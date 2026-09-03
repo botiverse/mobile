@@ -93,8 +93,7 @@ class ThreadUnreadJumpPolicyTest {
     }
 
     @Test
-    fun unreadJumpPillUsesCompactHeightInsteadOfActionButtonTarget() {
-        assertEquals(28.dp, ThreadUnreadJumpPillMinHeight)
-        assertTrue(ThreadUnreadJumpPillMinHeight < ThreadFloatingPillButtonMinHeight)
+    fun floatingThreadPillsUseCompactHeight() {
+        assertEquals(28.dp, ThreadFloatingPillButtonMinHeight)
     }
 }
