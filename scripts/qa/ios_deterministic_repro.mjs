@@ -26,6 +26,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createIosDriver } from "./ios_driver.mjs";
 import {
+  dumpShowsComposer,
   findAllChannelTarget,
   findComposerImageTarget,
   hasPhotoPickerGate,
@@ -115,27 +116,24 @@ async function ensureLoggedIn() {
   await drv.text(password);
   rec(`password typed at [${p.x},${p.y}]`);
 
-  // Dismiss keyboard, re-dump, and submit with FRESH button bounds. Tapping
-  // while the keyboard is visible targets the overlay instead of the shifted
-  // app content (r3 evidence).
-  await drv.key("esc");
-  await new Promise((r2) => setTimeout(r2, 2500));
-  dump = await drv.dumpUi();
-  const btnLine = dump.split("\n").filter((l) => /"Sign In"/.test(l));
-  if (btnLine.length) {
-    const last = btnLine[btnLine.length - 1]; // the button is the last Sign In label on the page
-    const p2 = parseBounds(last);
-    rec(`submitting via fresh Sign In bounds [${p2.x},${p2.y}]`);
-    await drv.tap(p2.x, p2.y);
-  }
+  // On this auth form, agent-device keyboard dismiss taps Return/Go and
+  // already submits. Name that action: keyboard enter. Do not press Sign In
+  // afterwards — the button is gone.
+  const enterOut = await drv.key("enter");
+  rec(`submitting via keyboard enter stdout: ${String(enterOut || "").replace(/\s+/g, " ").slice(0, 300)}`);
   await new Promise((r2) => setTimeout(r2, 8000));
+
+  if (typeof drv.dismissSystemAlerts === "function") {
+    const alerts = await drv.dismissSystemAlerts();
+    rec(`system alerts: present=${Boolean(alerts?.present)} accepted=${Boolean(alerts?.accepted)}`);
+  }
 
   dump = await drv.dumpUi();
   const stillLogin = /"Email"/.test(dump) && /"Password"/.test(dump);
   if (stillLogin) {
     // Do NOT screenshot here: the form holds the typed email (secret hygiene —
     // r3 artifact was flagged for exactly this). Steps carry the failure.
-    writeVerdict("fail", "login did not complete: Sign In page still visible after esc+fresh-bounds submit");
+    writeVerdict("fail", "login did not complete: Sign In page still visible after keyboard enter");
     process.exit(1);
   }
 
@@ -170,9 +168,11 @@ try {
   // Open #all deterministically: find the channel row whose label (space-
   // stripped) is "#all" and tap it. If we are already inside #all (composer
   // placeholder "Message #all"), skip navigation.
+  // Do not alert-get on Home: iOS runner get/accept ignore timeout and use a
+  // 10s main-thread budget that Kuikly Home exceeds.
   let dump = await drv.dumpUi();
   fs.writeFileSync(path.join(outDir, "home-dump.txt"), redactEditableValues(dump));
-  if (!dump.includes('"Message #all"')) {
+  if (!dumpShowsComposer(dump)) {
     let target;
     try {
       target = findAllChannelTarget(dump);
@@ -185,9 +185,12 @@ try {
     await new Promise((r) => setTimeout(r, 4000));
     dump = await drv.dumpUi();
   }
-  if (!dump.includes('"Message #all"')) { writeVerdict("fail", "#all composer placeholder not visible after open"); process.exit(1); }
-  rec("#all open, composer visible");
   fs.writeFileSync(path.join(outDir, "channel-dump.txt"), redactEditableValues(dump));
+  if (!dumpShowsComposer(dump)) {
+    writeVerdict("fail", "#all composer [INPUT] not visible after open (agent-device dumps have no placeholder)");
+    process.exit(1);
+  }
+  rec("#all open, composer visible");
   await shot("step-01-channel.png");
 
   // Assert the image button and mark the process state before the single tap.

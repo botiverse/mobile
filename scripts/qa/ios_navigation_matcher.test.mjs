@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  dumpShowsComposer,
   findAllChannelTarget,
   findComposerImageTarget,
   hasPhotoPickerGate,
@@ -93,6 +94,18 @@ test("derives the image target from real composer bounds when icon nodes are abs
   ].join("\n"));
   assert.equal(target.mode, "composer-relative");
   assert.deepEqual({ x: target.x, y: target.y }, { x: 95, y: 2311 });
+});
+
+test("agent-device composer dump uses a bottom [INPUT] when placeholder is absent", () => {
+  const dump = [
+    '"all" [150,1260][198,1314]',
+    '[BTN] "" [48,2268][138,2358]',
+    '[INPUT] "" [24,2161][1140,2382]',
+  ].join("\n");
+  assert.equal(dumpShowsComposer(dump), true);
+  const target = findComposerImageTarget(dump);
+  assert.equal(target.mode, "semantic-button");
+  assert.deepEqual({ x: target.x, y: target.y }, { x: 93, y: 2313 });
 });
 
 test("prefers the leftmost contained semantic button over geometry fallback", () => {

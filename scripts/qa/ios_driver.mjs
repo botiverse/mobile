@@ -132,6 +132,40 @@ export function pickTapText(nodes, wanted, toPx) {
 
 const UDID_RE = /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/;
 
+export function parseAlertGet(stdout) {
+  const text = String(stdout || "").trim();
+  if (!text) return { present: false, raw: text };
+  let parsed = null;
+  try {
+    parsed = parseJsonStdout(text);
+  } catch {
+    parsed = null;
+  }
+  const data = parsed?.data && typeof parsed.data === "object" ? parsed.data : parsed;
+  if (data && typeof data === "object") {
+    if (data.present === false || data.found === false) return { present: false, raw: text, parsed: data };
+    if (data.title || data.buttons || data.action === "alert" || (Array.isArray(data.nodes) && data.nodes.length)) {
+      return { present: true, raw: text, parsed: data };
+    }
+  }
+  if (/no (active )?alert|none/i.test(text) && !/Would Like/i.test(text)) return { present: false, raw: text };
+  if (/Allow|Don't Allow|Would Like/i.test(text)) return { present: true, raw: text };
+  return { present: false, raw: text, parsed };
+}
+
+export function mapIosKeyToAgentDevice(name) {
+  const key = String(name || "").trim().toLowerCase();
+  if (key === "esc" || key === "escape") {
+    return { argv: ["keyboard", "dismiss"], optional: true };
+  }
+  if (key === "enter" || key === "return") {
+    return { argv: ["keyboard", "enter"], optional: false };
+  }
+  throw new Error(
+    `iOS agent-device has no hardware key ${JSON.stringify(name)}; use keyboard dismiss/enter or press a UI selector`,
+  );
+}
+
 export function agentDeviceTargetArgs(selector) {
   if (UDID_RE.test(String(selector || ""))) return ["--udid", selector];
   return ["--device", selector || "booted"];
@@ -292,6 +326,15 @@ function createQaLoopDriver({ ioDir, udid, bundle, simctl }) {
     async launch() {
       return send({ type: "launch" }, 120000);
     },
+    async dismissSystemAlerts() {
+      return { present: false, skipped: DRIVER_QA_LOOP };
+    },
+    async pressLabel(text) {
+      const picked = pickTapText(await describeNodes(), text, toPx);
+      if (picked.x === undefined) throw new Error(picked.feedback);
+      await send({ type: "tap", x: picked.x / screenSizePx().w, y: picked.y / screenSizePx().h });
+      return picked;
+    },
     async dumpUi() {
       return compactDumpUi(await describeNodes(), toPx);
     },
@@ -426,10 +469,19 @@ function createAgentDeviceDriver({ ioDir, udid, bundle, binary, fixturePage, fix
       runAd(["type", String(value)]);
     },
     async key(name) {
-      runAd(["press", `label="${name}"`, "--settle"]);
+      const mapped = mapIosKeyToAgentDevice(name);
+      try {
+        return runAd(mapped.argv);
+      } catch (error) {
+        const detail = String(error);
+        if (mapped.optional && /UNSUPPORTED_OPERATION|already hidden|Keyboard already hidden/i.test(detail)) {
+          return detail;
+        }
+        throw error;
+      }
     },
     async clear() {
-      runAd(["press", 'label="delete"', "--count", "60", "--settle"]);
+      throw new Error("iOS agent-device has no delete key; clear() cannot fake press label=delete");
     },
     openLink(url) {
       simctl(["openurl", udid, url]);
@@ -437,6 +489,24 @@ function createAgentDeviceDriver({ ioDir, udid, bundle, binary, fixturePage, fix
     async launch() {
       runAd(["open", bundle, "--relaunch"], { timeout: 180000 });
       opened = true;
+    },
+    async dismissSystemAlerts({ timeoutMs = 30000 } = {}) {
+      let raw = "";
+      try {
+        raw = runAd(["alert", "get", String(timeoutMs), "--json"], { timeout: timeoutMs + 5000 });
+      } catch (error) {
+        const detail = String(error);
+        if (/alert not found|no (active )?alert|NO_ALERT/i.test(detail)) return { present: false, raw: detail };
+        throw error;
+      }
+      const parsed = parseAlertGet(raw);
+      if (!parsed.present) return parsed;
+      const accepted = runAd(["alert", "accept", String(timeoutMs)], { timeout: timeoutMs + 5000 });
+      return { present: true, accepted: true, raw, accept: accepted, parsed: parsed.parsed };
+    },
+    async pressLabel(text) {
+      const escaped = String(text).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      return runAd(["press", `role="button" label="${escaped}" || label="${escaped}"`, "--settle"]);
     },
     async dumpUi() {
       return compactDumpUi(describeNodes(), toPx);

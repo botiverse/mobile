@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   agentDeviceTargetArgs,
   compactDumpUi,
+  mapIosKeyToAgentDevice,
+  parseAlertGet,
   parseJsonStdout,
   pickTapText,
   resolveIosQaDriver,
@@ -62,6 +64,20 @@ test("tapText prefers the smallest clickable match and returns pixel centers", (
   assert.equal(picked.x, 40);
   assert.equal(picked.y, 40);
   assert.match(picked.feedback, /2 matches; picked the smallest clickable/);
+});
+
+test("parseAlertGet treats notification permission copy as present", () => {
+  assert.equal(parseAlertGet("").present, false);
+  assert.equal(parseAlertGet("no alert").present, false);
+  assert.match("alert not found", /alert not found|no (active )?alert|NO_ALERT/i);
+  assert.equal(parseAlertGet('{"title":"Raft Would Like to Send You Notifications","buttons":["Don\'t Allow","Allow"]}').present, true);
+  assert.equal(parseAlertGet("Raft Would Like to Send You Notifications\nAllow").present, true);
+});
+
+test("iOS key() maps esc/enter onto keyboard commands and rejects hardware keys", () => {
+  assert.deepEqual(mapIosKeyToAgentDevice("esc"), { argv: ["keyboard", "dismiss"], optional: true });
+  assert.deepEqual(mapIosKeyToAgentDevice("enter"), { argv: ["keyboard", "enter"], optional: false });
+  assert.throws(() => mapIosKeyToAgentDevice("del"), /no hardware key/);
 });
 
 test("CI UDIDs go to --udid so duplicate simulator names cannot steal the lease", () => {
