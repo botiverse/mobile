@@ -61,9 +61,19 @@ expect_refuse nohands     "$(mk_app "$T/c" iphonesimulator -absent-)" "got: '<em
 expect_refuse unknown     "$(mk_app "$T/d" iphonesimulator unknown)"  "got: 'unknown'"
 expect_refuse shortsha    "$(mk_app "$T/e" iphonesimulator 0123456)"  "got: '0123456'"
 expect_refuse uppersha    "$(mk_app "$T/f" iphonesimulator 0123456789ABCDEF0123456789ABCDEF01234567)" "HandsBuildCommit"
-# source commit shape is enforced before anything is read
-if "$SCRIPT" "$(mk_app "$T/g" iphonesimulator "$SHA40")" "$T/out-src" abc1234 4242 >/dev/null 2>&1; then
-  echo "FAIL short source commit accepted"; exit 1; fi; echo "ok   short source commit refused"
+# Length boundary (@LiBai review): the 40-`?` glob is the ONLY thing the guard
+# measures, and a copy-paste with 39 or 41 marks fails silently (39 admits a
+# short sha, 41 makes the guard constant-false). 39 and 41 hex must both be
+# refused so a miscounted literal turns red instead of relying on a human count.
+SHA39=${SHA40:0:39}; SHA41="${SHA40}0"
+expect_refuse hands39     "$(mk_app "$T/f39" iphonesimulator "$SHA39")" "got: '$SHA39'"
+expect_refuse hands41     "$(mk_app "$T/f41" iphonesimulator "$SHA41")" "got: '$SHA41'"
+# source commit shape is enforced before anything is read — same boundary.
+for bad in abc1234 "$SHA39" "$SHA41"; do
+  if "$SCRIPT" "$(mk_app "$T/g" iphonesimulator "$SHA40")" "$T/out-src" "$bad" 4242 >/dev/null 2>&1; then
+    echo "FAIL source commit '$bad' (${#bad} chars) accepted"; exit 1; fi
+  echo "ok   source commit of ${#bad} chars refused"
+done
 
 # Happy path: shape must be exactly what prepare_pinned_ios_app.sh reads.
 good=$(mk_app "$T/h" iphonesimulator "$SHA40")
