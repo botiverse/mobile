@@ -11224,7 +11224,7 @@ private fun MembersAgentActivityRow(
                 } else {
                     Text(
                         text = displayBody,
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 16.sp),
                         color = SlockColor.TextMutedGray,
                         maxLines = if (expanded) 12 else 3,
                         overflow = TextOverflow.Ellipsis,
