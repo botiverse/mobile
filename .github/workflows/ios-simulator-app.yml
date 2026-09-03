@@ -95,8 +95,16 @@ jobs:
           fi
           exit "$status"
 
-      - name: Upload xcodebuild log on failure
-        if: ${{ failure() }}
+      # `failure()` alone misses the timeout case: main run 33799197240 hit the
+      # job's 60-minute limit inside the same "Build shared" phase and was
+      # cancelled, and a cancelled job does not satisfy failure(), so the one
+      # log that could explain the stall was never uploaded. Whether a job-level
+      # timeout also makes cancelled() true for the remaining steps is not
+      # documented unambiguously (@LiBai review), so this is always(): a few MB
+      # of artifact on green runs buys a log that is never missing again, and
+      # removes "why is there no log this time" as a question.
+      - name: Upload xcodebuild log
+        if: ${{ always() }}
         uses: actions/upload-artifact@v6
         with:
           name: ios-simulator-app-build-log-${{ github.run_id }}
