@@ -916,7 +916,7 @@
     <string name="member_state_workspace_loading_short">正在加载</string>
     <string name="member_state_activity_start_agent">启动 Agent 后可查看其动态日志。</string>
     <string name="member_label_computer">计算机</string>
-    <string name="member_daemon_version_suffix"> · 守护进程 v%1$s</string>
+    <string name="member_daemon_version_suffix">&#160;· 守护进程 v%1$s</string>
     <string name="member_label_created">创建时间</string>
     <string name="member_label_creator">创建者</string>
     <string name="member_label_status">状态</string>
@@ -1854,7 +1854,7 @@
     <string name="settings_server_delete_detail">永久删除 %1$s 及其全部数据。此操作无法撤销。</string>
     <string name="settings_server_this_server">此服务器</string>
     <string name="settings_server_delete_type_prefix">输入</string>
-    <string name="settings_server_delete_confirm_suffix"> 以确认：</string>
+    <string name="settings_server_delete_confirm_suffix">&#160;以确认：</string>
     <string name="settings_server_delete_warning_prefix">此操作将永久删除</string>
     <string name="settings_server_delete_warning_suffix">及其所有数据（Agent、频道、消息），且无法撤销。</string>
     <string name="settings_server_action_deleting">正在删除…</string>
