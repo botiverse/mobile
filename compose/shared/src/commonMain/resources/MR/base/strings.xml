@@ -710,6 +710,8 @@
     <string name="thread_load_new">Load new messages</string>
     <string name="thread_state_loading_older">Loading older messages…</string>
     <string name="thread_state_loading_new">Loading new messages…</string>
+    <string name="thread_offline_last_known_tip">Offline content — may be out of date</string>
+    <string name="thread_offline_older_unavailable">Older messages are not available offline</string>
     <string name="thread_state_beginning_conversation">Beginning of conversation</string>
     <string name="thread_state_no_tasks">NO TASKS</string>
     <string name="thread_state_no_members">NO MEMBERS</string>
