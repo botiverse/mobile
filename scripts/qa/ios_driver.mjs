@@ -132,6 +132,19 @@ export function pickTapText(nodes, wanted, toPx) {
 
 const UDID_RE = /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/;
 
+export function mapIosKeyToAgentDevice(name) {
+  const key = String(name || "").trim().toLowerCase();
+  if (key === "esc" || key === "escape") {
+    return { argv: ["keyboard", "dismiss"], optional: true };
+  }
+  if (key === "enter" || key === "return") {
+    return { argv: ["keyboard", "enter"], optional: false };
+  }
+  throw new Error(
+    `iOS agent-device has no hardware key ${JSON.stringify(name)}; use keyboard dismiss/enter or press a UI selector`,
+  );
+}
+
 export function agentDeviceTargetArgs(selector) {
   if (UDID_RE.test(String(selector || ""))) return ["--udid", selector];
   return ["--device", selector || "booted"];
@@ -426,10 +439,19 @@ function createAgentDeviceDriver({ ioDir, udid, bundle, binary, fixturePage, fix
       runAd(["type", String(value)]);
     },
     async key(name) {
-      runAd(["press", `label="${name}"`, "--settle"]);
+      const mapped = mapIosKeyToAgentDevice(name);
+      try {
+        runAd(mapped.argv);
+      } catch (error) {
+        const detail = String(error);
+        if (mapped.optional && /UNSUPPORTED_OPERATION|already hidden|Keyboard already hidden/i.test(detail)) {
+          return;
+        }
+        throw error;
+      }
     },
     async clear() {
-      runAd(["press", 'label="delete"', "--count", "60", "--settle"]);
+      throw new Error("iOS agent-device has no delete key; clear() cannot fake press label=delete");
     },
     openLink(url) {
       simctl(["openurl", udid, url]);
