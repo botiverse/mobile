@@ -643,7 +643,38 @@ data class AgentDetailSnapshot(
     val reminders: List<AgentReminderSummary>,
     val activity: List<AgentActivityEntry>,
     val skills: AgentSkillsSnapshot = AgentSkillsSnapshot(agentId = agentId),
-    val appLogins: AgentAppLoginSnapshot = AgentAppLoginSnapshot(agentId = agentId)
+    val appLogins: AgentAppLoginSnapshot = AgentAppLoginSnapshot(agentId = agentId),
+    /**
+     * `GET /agents/{id}/external-status` for external agents (React
+     * AgentDetailPanel parity). Null means *not provided*: the agent is not
+     * external, the caller lacks `editAgents`/creator authority (403), or the
+     * request failed. Consumers must not read null as "waiting for login".
+     */
+    val externalStatus: ExternalAgentStatusSnapshot? = null
+)
+
+/** Wire `setupState` of `GET /agents/{id}/external-status`. */
+enum class ExternalAgentSetupState {
+    WaitingForLogin,
+    CredentialMinted,
+    Connected,
+    Unknown;
+
+    companion object {
+        fun fromWireValue(value: String?): ExternalAgentSetupState =
+            when (value?.trim()?.lowercase()) {
+                "waiting_for_login" -> WaitingForLogin
+                "credential_minted" -> CredentialMinted
+                "connected" -> Connected
+                else -> Unknown
+            }
+    }
+}
+
+data class ExternalAgentStatusSnapshot(
+    val setupState: ExternalAgentSetupState,
+    val credentialLastUsedAt: String? = null,
+    val lastActivityAt: String? = null
 )
 
 data class AgentDetailSummary(
@@ -654,6 +685,7 @@ data class AgentDetailSummary(
     val serverRole: String? = null,
     val status: String? = null,
     val runtime: String? = null,
+    val isExternal: Boolean = false,
     val model: String? = null,
     val runtimeModelKind: String? = null,
     val runtimeProvider: build.raft.app.model.RuntimeProviderConfig? = null,

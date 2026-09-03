@@ -566,6 +566,14 @@ class RealMemberRepository(
         }
 
         val summary = summaryRequest.await()
+        // React AgentDetailPanel parity: external setup/activity status is a
+        // separate, per-agent, permission-gated request. Only external agents
+        // are asked; 400/403/failure collapse to null (= not provided), never
+        // to a "waiting for login" reading.
+        val externalStatus =
+            summary.contentOrNull()
+                ?.takeIf { it.isExternal }
+                ?.let { agentsApiClient.agentExternalStatus(agentId).contentOrNull() }
         val directMessages = directMessagesRequest.await()
         val channels = channelsRequest.await()
         val reminders = remindersRequest.await()
@@ -587,7 +595,8 @@ class RealMemberRepository(
                         reminders = reminders.contentOrNull()?.reminders.orEmpty(),
                         activity = activity.contentOrNull()?.activity.orEmpty(),
                         skills = skills.contentOrNull() ?: AgentSkillsSnapshot(agentId = agentId),
-                        appLogins = appLogins
+                        appLogins = appLogins,
+                        externalStatus = externalStatus
                     )
                 )
             summary is DataResult.NoPermission -> summary

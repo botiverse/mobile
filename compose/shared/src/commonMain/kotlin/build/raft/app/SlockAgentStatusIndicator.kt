@@ -13,6 +13,7 @@ import com.tencent.kuikly.compose.ui.graphics.Color
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 
 internal data class SlockAgentStatusIndicatorState(
     val status: AgentStatus?,
@@ -148,3 +149,75 @@ internal fun projectHomeAgentStatusIndicatorState(
     } else {
         null
     }
+
+/** Caption for an external agent's detail-page status (React AgentDetailPanel `AgentStatusBadge` parity). */
+internal sealed interface ExternalAgentDetailCaption {
+    /** `waiting_for_login`: gray dot; copy tells the user to finish setup on the web app. */
+    data object SetupRequired : ExternalAgentDetailCaption
+    data object Active : ExternalAgentDetailCaption
+    /** [iso] is the wire timestamp, kept so the UI can format it with the page's time context. */
+    data class LastActivity(val epochMillis: Long, val iso: String) : ExternalAgentDetailCaption
+    data object NoRaftActivity : ExternalAgentDetailCaption
+    data object NotConfigured : ExternalAgentDetailCaption
+    /** Status not provided (non-external, 403, failure): claim only "External". */
+    data object External : ExternalAgentDetailCaption
+}
+
+internal data class ExternalAgentDetailIndicator(
+    val state: SlockAgentStatusIndicatorState,
+    val caption: ExternalAgentDetailCaption
+)
+
+internal const val ExternalAgentActiveThresholdMillis: Long = 5L * 60L * 1000L
+internal const val ExternalAgentRecentThresholdMillis: Long = 30L * 60L * 1000L
+
+/** Server sends `toISOString()` (UTC, `Z`); the repo parser also accepts offsets and epoch-millis strings. */
+internal fun parseExternalAgentTimestampOrNull(iso: String?): Long? =
+    parseSlockTimestampEpochMillisOrNull(iso, localOffsetMinutes = 0)
+
+/**
+ * Detail-page tone for an external agent, mirroring web `AgentStatusBadge`
+ * (slock@2676dab22) with one deliberate difference:
+ *  - `waiting_for_login`      → gray, "Setup required" — evaluated FIRST. Web
+ *    checks activity tiers before the setup state, which can pair a lime dot
+ *    with a "setup required" caption (an agent that ran and then lost its
+ *    credential). Product rule (@artin): not signed in ⇒ gray, and this file's
+ *    invariant is that the dot never disagrees with the text beside it.
+ *  - activity within 5 min    → lime, "Active"
+ *  - activity within 30 min   → cyan, "Last activity …"
+ *  - else                     → cyan
+ * [status] == null means *not provided* (non-external, 403, request failed) and
+ * yields the plain unconditional-cyan "External" state — never gray, because
+ * "we may not read it" is not "it is waiting for login" (task #1119, LiBai).
+ */
+internal fun externalAgentDetailIndicator(
+    status: build.raft.app.data.ExternalAgentStatusSnapshot?,
+    nowEpochMillis: Long
+): ExternalAgentDetailIndicator {
+    // status = null on purpose: external agents have no managed liveness, and a
+    // null live status makes membersLiveAgentStatusLabel surface this label
+    // verbatim instead of a summary activity string.
+    val base = slockAgentStatusIndicatorState(status = null, presence = Presence.Offline, external = true)
+    if (status == null) return ExternalAgentDetailIndicator(base, ExternalAgentDetailCaption.External)
+    val lastAt = parseExternalAgentTimestampOrNull(status.lastActivityAt)
+    val ageMs = lastAt?.let { nowEpochMillis - it }
+    val waiting = status.setupState == build.raft.app.data.ExternalAgentSetupState.WaitingForLogin
+    val color =
+        when {
+            waiting -> SlockColor.StatusNeutralGray
+            ageMs != null && ageMs < ExternalAgentActiveThresholdMillis -> SlockColor.AccentLime
+            ageMs != null && ageMs < ExternalAgentRecentThresholdMillis -> SlockColor.AccentCyan
+            else -> SlockColor.AccentCyan
+        }
+    val caption =
+        when {
+            waiting -> ExternalAgentDetailCaption.SetupRequired
+            lastAt != null && ageMs != null && ageMs < ExternalAgentActiveThresholdMillis -> ExternalAgentDetailCaption.Active
+            lastAt != null -> ExternalAgentDetailCaption.LastActivity(lastAt, status.lastActivityAt.orEmpty())
+            status.setupState == build.raft.app.data.ExternalAgentSetupState.CredentialMinted ||
+                status.setupState == build.raft.app.data.ExternalAgentSetupState.Connected ->
+                ExternalAgentDetailCaption.NoRaftActivity
+            else -> ExternalAgentDetailCaption.NotConfigured
+        }
+    return ExternalAgentDetailIndicator(base.copy(color = color), caption)
+}
