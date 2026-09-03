@@ -7122,8 +7122,8 @@ private fun MembersHumanCreatedAgentRow(
     fixtureStatusFallbackEnabled: Boolean = false
 ) {
     val profile = remember(agent) { agent.toStaticMembersProfile() }
-    val statusIndicatorState =
-        resolveMembersAgentStatusIndicatorState(
+    val observedIndicatorState =
+        resolveMembersAgentStatusIndicatorStateOrNull(
             canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, profile.id.value),
             fixtureFallback =
                 if (fixtureStatusFallbackEnabled) {
@@ -7133,7 +7133,9 @@ private fun MembersHumanCreatedAgentRow(
                 },
             fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
         )
+    val statusIndicatorState = observedIndicatorState ?: unknownMembersAgentStatusIndicatorState()
     val statusDisplayState = statusIndicatorState.toMembersAgentStatusDisplayState()
+    val observedDisplayState = observedIndicatorState?.toMembersAgentStatusDisplayState()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -7171,11 +7173,14 @@ private fun MembersHumanCreatedAgentRow(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        SlockStatusIndicator(
-            color = statusDisplayState.color,
-            size = 10.dp,
-            pulsing = statusDisplayState.pulsing
-        )
+        // Unknown is not Offline: no dot until something is observed (task #256).
+        observedDisplayState?.let { observed ->
+            SlockStatusIndicator(
+                color = observed.color,
+                size = 10.dp,
+                pulsing = observed.pulsing
+            )
+        }
     }
 }
 
@@ -10273,8 +10278,8 @@ private fun MembersAgentCreatedAgentRow(
     fixtureStatusFallbackEnabled: Boolean = false
 ) {
     val profile = remember(agent) { agent.toStaticMembersProfile() }
-    val statusIndicatorState =
-        resolveMembersAgentStatusIndicatorState(
+    val observedIndicatorState =
+        resolveMembersAgentStatusIndicatorStateOrNull(
             canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, profile.id.value),
             fixtureFallback =
                 if (fixtureStatusFallbackEnabled) {
@@ -10284,7 +10289,9 @@ private fun MembersAgentCreatedAgentRow(
                 },
             fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
         )
+    val statusIndicatorState = observedIndicatorState ?: unknownMembersAgentStatusIndicatorState()
     val statusDisplayState = statusIndicatorState.toMembersAgentStatusDisplayState()
+    val observedDisplayState = observedIndicatorState?.toMembersAgentStatusDisplayState()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -10322,11 +10329,14 @@ private fun MembersAgentCreatedAgentRow(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        SlockStatusIndicator(
-            color = statusDisplayState.color,
-            size = 10.dp,
-            pulsing = statusDisplayState.pulsing
-        )
+        // Unknown is not Offline: no dot until something is observed (task #256).
+        observedDisplayState?.let { observed ->
+            SlockStatusIndicator(
+                color = observed.color,
+                size = 10.dp,
+                pulsing = observed.pulsing
+            )
+        }
     }
 }
 

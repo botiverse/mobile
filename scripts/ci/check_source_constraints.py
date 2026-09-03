@@ -23,6 +23,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 THREAD_PAGE = "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt"
+MEMBERS_PAGE = "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt"
 BASIC_WIDGET = "compose/shared/src/commonMain/kotlin/build/raft/app/BasicWidget.kt"
 THREAD_COMPOSER_PAGE = (
     "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt"
@@ -665,6 +666,46 @@ def check_native_apple_authentication_services(
         )
 
 
+# task #256: a null agent-status resolution means Unknown, but the label-facing
+# resolver substitutes a placeholder built with Presence.Offline, whose colour maps
+# to StatusNeutralGray. Feeding that to a dot makes an unknown agent look offline.
+# The defect reappeared three times in one file with three different spellings
+# (elvis to StatusNeutralGray, constructing a grey-equivalent state, and reading
+# .color straight off the non-null resolver), so the contract in the resolver's
+# KDoc is not enough on its own: a comment is guarded by the same thing it failed
+# to guard, i.e. someone reading it.
+#
+# LIMITATION, stated on purpose: this is a NAME-based check. It catches the
+# label-facing bindings as currently named. A new binding name for the same
+# non-null resolution would slip past it; the durable fix is a return type that
+# has no .color to read.
+LABEL_FACING_STATUS_BINDINGS = (
+    "statusDisplayState",
+    "statusIndicatorState",
+    "agentStatusIndicatorState",
+    "agentStatusDisplayState",
+)
+
+
+def check_status_dot_uses_observed_state(members_page: str) -> None:
+    for match in re.finditer(r"SlockStatusIndicator\(([^)]*)\)", members_page):
+        args = match.group(1)
+        colour = re.search(r"color\s*=\s*([^,\n]+)", args)
+        if colour is None:
+            continue
+        expression = colour.group(1).strip()
+        for binding in LABEL_FACING_STATUS_BINDINGS:
+            if re.search(rf"\b{binding}\.(color|pulsing)\b", expression):
+                raise Violation(
+                    "MembersPage.kt paints a status dot from the label-facing resolution "
+                    f"`{binding}` (task #256). That value is never null: it falls back to "
+                    "unknownMembersAgentStatusIndicatorState(), which is grey and therefore "
+                    "impersonates Offline for an agent whose status is merely unknown. Use "
+                    "resolveMembersAgentStatusIndicatorStateOrNull(...) and render the dot "
+                    "inside `?.let`; keep the non-null resolution for the label only."
+                )
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -688,6 +729,7 @@ def run(root: Path) -> None:
         tasks_data_source=read(TASKS_DATA_SOURCE),
         slock_shared_store_provider=read(SLOCK_SHARED_STORE_PROVIDER),
     )
+    check_status_dot_uses_observed_state(read(MEMBERS_PAGE))
     check_system_selectable_text_dialog(thread_page)
     check_thread_ime_tail_pixel_probe_scope(thread_page)
     check_composer_retirement_uses_bounded_waits(read(COMPOSER_IME_CONNECTED_TEST))
