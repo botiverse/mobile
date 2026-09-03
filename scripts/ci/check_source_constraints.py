@@ -687,33 +687,46 @@ LABEL_FACING_STATUS_BINDINGS = (
 )
 
 
-def check_status_dot_uses_observed_state(members_page: str) -> None:
-    # Scan by balanced parentheses, not `[^)]*`: BiSheng found that a violating
-    # expression placed after a nested ')' — `color = if (cond) statusDisplayState.color
-    # else ...` — truncated the argument list and slipped through. That form is an
-    # innocent refactor, not a deliberate bypass, so the earlier regex was worse than
-    # the rename hole it already documented.
-    for match in re.finditer(r"SlockStatusIndicator\(", members_page):
-        start = match.end()
-        depth = 1
-        index = start
-        while index < len(members_page) and depth:
-            if members_page[index] == "(":
-                depth += 1
-            elif members_page[index] == ")":
-                depth -= 1
-            index += 1
-        args = members_page[start : index - 1]
-        for binding in LABEL_FACING_STATUS_BINDINGS:
-            if re.search(rf"\b{binding}\.(color|pulsing)\b", args):
-                raise Violation(
-                    "MembersPage.kt paints a status dot from the label-facing resolution "
-                    f"`{binding}` (task #256). That value is never null: it falls back to "
-                    "unknownMembersAgentStatusIndicatorState(), which is grey and therefore "
-                    "impersonates Offline for an agent whose status is merely unknown. Use "
-                    "resolveMembersAgentStatusIndicatorStateOrNull(...) and render the dot "
-                    "inside `?.let`; keep the non-null resolution for the label only."
-                )
+def check_label_facing_resolver_has_no_production_callers(root: Path) -> None:
+    """`resolveMembersAgentStatusIndicatorState` must not be called from production code.
+
+    It never returns null: it substitutes unknownMembersAgentStatusIndicatorState(), whose
+    presence is Offline and whose colour is therefore StatusNeutralGray -- pixel-identical
+    to a real Offline dot for an agent whose status is merely not known yet (tasks #253,
+    #256). Production dot *and* label sites both have safe alternatives, so a production
+    caller is always a mistake; the resolver survives for tests that pin its behaviour.
+
+    This replaces an earlier check that scanned MembersPage.kt for `SlockStatusIndicator(`
+    argument lists. That check had two independent scope holes, and a real defect went
+    through both: SettingsHomePage.kt:17360 painted a dot from this resolver via
+    `SlockAvatarWithStatus(statusColor = ...)`. It was in a file the check never read, AND
+    behind a composable the pattern never matched -- widening either one alone would still
+    have missed it. Checking the resolver's callers instead is scope-free: it cannot be
+    evaded by a new file, a new dot-painting composable, or a renamed local.
+    """
+    offenders = []
+    for path in sorted((root / "compose").rglob("*.kt")):
+        if "commonTest" in path.parts or "src/test" in path.as_posix():
+            continue
+        text = path.read_text(encoding="utf-8").replace("\r\n", "\n")
+        for line_number, line in enumerate(text.split("\n"), start=1):
+            if "resolveMembersAgentStatusIndicatorState(" not in line:
+                continue
+            if "resolveMembersAgentStatusIndicatorStateOrNull(" in line:
+                continue
+            if re.match(r"\s*internal fun resolveMembersAgentStatusIndicatorState\(", line):
+                continue
+            offenders.append(f"{path.relative_to(root)}:{line_number}")
+    if offenders:
+        raise Violation(
+            "production code calls the label-facing resolveMembersAgentStatusIndicatorState "
+            f"({', '.join(offenders)}). It is never null -- it falls back to a grey "
+            "placeholder that impersonates Offline for a merely-unknown status (tasks #253, "
+            "#256). For a dot, use resolveMembersAgentStatusIndicatorStateOrNull(...) and "
+            "render inside `?.let` so an unresolved status paints nothing. For a label, "
+            "build the unknown placeholder explicitly at the call site so the substitution "
+            "is visible where it happens."
+        )
 
 
 def run(root: Path) -> None:
@@ -739,7 +752,7 @@ def run(root: Path) -> None:
         tasks_data_source=read(TASKS_DATA_SOURCE),
         slock_shared_store_provider=read(SLOCK_SHARED_STORE_PROVIDER),
     )
-    check_status_dot_uses_observed_state(read(MEMBERS_PAGE))
+    check_label_facing_resolver_has_no_production_callers(root)
     check_system_selectable_text_dialog(thread_page)
     check_thread_ime_tail_pixel_probe_scope(thread_page)
     check_composer_retirement_uses_bounded_waits(read(COMPOSER_IME_CONNECTED_TEST))
