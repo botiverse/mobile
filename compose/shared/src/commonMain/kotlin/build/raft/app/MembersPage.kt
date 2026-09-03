@@ -8427,6 +8427,7 @@ private fun MembersAgentProfileTab(
                 )
                 // Status line: wraps rather than compressing, and only the version
                 // segment is mono (web applies the mono class to that span alone).
+                @OptIn(ExperimentalLayoutApi::class)
                 FlowRow(
                     modifier = Modifier.fillMaxWidth().padding(top = MembersInfoBlockGap),
                     horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
@@ -8459,6 +8460,7 @@ private fun MembersAgentProfileTab(
             // Created and Creator sit side by side while they fit and drop to their own
             // lines when they do not. A fixed two-column Row would keep them side by
             // side at any width, which is the failure this section is meant to avoid.
+            @OptIn(ExperimentalLayoutApi::class)
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(MembersInfoFieldGapX),
