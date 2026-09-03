@@ -57,9 +57,12 @@ class IosConfig:
     def tool_status(self) -> dict[str, object]:
         xcrun_path = shutil.which(self.xcrun) if "/" not in self.xcrun else self.xcrun
         xcodebuild_path = shutil.which(self.xcodebuild) if "/" not in self.xcodebuild else self.xcodebuild
+        from .agent_device import tool_status as agent_device_status
+
         return {
             "xcrun": {"path": xcrun_path or self.xcrun, "exists": bool(xcrun_path)},
             "xcodebuild": {"path": xcodebuild_path or self.xcodebuild, "exists": bool(xcodebuild_path)},
+            "agent_device": agent_device_status(),
             "device": self.device,
             "bundle": self.bundle,
             "workspace": str(self.workspace) if self.workspace else None,

@@ -138,13 +138,27 @@ class IosSimulator:
         derived_data: Path | None = None,
         bundle: str | None = None,
         device: str | None = None,
+        driver: str | None = None,
+        agent_device_bin: str | None = None,
     ) -> dict[str, Any]:
+        from .agent_device import DRIVER_AGENT_DEVICE, DRIVER_QA_LOOP
+
+        resolved_driver = (driver or os.environ.get("IOS_USE_DRIVER") or DRIVER_AGENT_DEVICE).strip()
+        resolved_device = device or self.ensure_device()
+        resolved_bundle = bundle or self.config.bundle
+        if resolved_driver == DRIVER_AGENT_DEVICE:
+            return self._interact_agent_device(
+                actions,
+                bundle=resolved_bundle,
+                device=resolved_device,
+                binary=agent_device_bin,
+            )
+        if resolved_driver != DRIVER_QA_LOOP:
+            raise IosUseError(f"unknown ios-use driver {resolved_driver!r}; use agent-device or qa-loop")
         resolved_workspace = workspace or self.config.workspace
         if resolved_workspace is None:
-            raise IosUseError("interact requires --workspace or IOS_USE_WORKSPACE")
-        resolved_device = device or self.ensure_device()
+            raise IosUseError("qa-loop driver requires --workspace or IOS_USE_WORKSPACE")
         resolved_derived_data = derived_data or self.config.derived_data
-        resolved_bundle = bundle or self.config.bundle
         session = self._ensure_qa_loop(
             workspace=resolved_workspace,
             interaction_scheme=interaction_scheme,
@@ -164,10 +178,54 @@ class IosSimulator:
             "bundle": resolved_bundle,
             "actions": actions,
             "harness": "QaAcceptanceLoopTests",
+            "driver": "qa-loop",
             "io_dir": str(session["io_dir"]),
             "loop_pid": session["pid"],
             "results": results,
         }
+
+    def _interact_agent_device(
+        self,
+        actions: list[dict[str, Any]],
+        *,
+        bundle: str,
+        device: str,
+        binary: str | None,
+    ) -> dict[str, Any]:
+        from .agent_device import AgentDeviceSession, resolve_binary
+
+        session = AgentDeviceSession(binary=resolve_binary(binary), bundle=bundle, device=device)
+        session.ensure_open()
+        screen_px = self._screen_px(device)
+        results: list[str] = []
+        for action in actions:
+            results.extend(session.apply(action, screen_px=screen_px))
+        return {
+            "device": device,
+            "bundle": bundle,
+            "actions": actions,
+            "driver": "agent-device",
+            "harness": "agent-device",
+            "session": session.session,
+            "binary": session.binary,
+            "results": results,
+        }
+
+    def _screen_px(self, device: str) -> tuple[int, int]:
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
+            path = Path(handle.name)
+        try:
+            self.xcrun(["simctl", "io", device, "screenshot", str(path)])
+            data = path.read_bytes()
+        finally:
+            path.unlink(missing_ok=True)
+        if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n":
+            raise IosUseError("could not read simulator screenshot size")
+        width = int.from_bytes(data[16:20], "big")
+        height = int.from_bytes(data[20:24], "big")
+        return width, height
 
     def start_xcodebuild_background(
         self,
