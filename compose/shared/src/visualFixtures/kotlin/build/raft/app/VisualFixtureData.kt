@@ -257,6 +257,47 @@ object VisualFixtureData {
             const val CREATED_AT_ISO: String = "2026-06-01T09:15:00.000Z"
             val CREATED_AGENTS: List<String> = listOf()
         }
+        object DaemonOnly {
+            const val ID: String = "agent-daemon-only"
+            const val NAME: String = "Daemon-Only-Probe"
+            const val DISPLAY_NAME: String = "Daemon Only Probe"
+            const val AVATAR: String = "pixel:robot"
+            const val AVATAR_LABEL: String = "DO"
+            const val DESCRIPTION: String = "Bound to a bare daemon (not a managed Computer): web shows Connected · daemon vX, never a computer version."
+            const val STATUS: String = "active"
+            const val SERVER_ROLE: String = "member"
+            const val ACTIVITY: String = "working"
+            const val ACTIVITY_DETAIL: String = "Holding a fixed Computer-row state for the visual oracle"
+            const val MODEL: String = "gpt-5-codex"
+            const val RUNTIME: String = "codex"
+            const val REASONING_EFFORT: String = "medium"
+            const val EXECUTION_MODE: String = "byoc"
+            const val SESSION_ID: String = "session-daemon-only"
+            const val MACHINE_KEY: String = "daemonOnly"
+            val ENV_VAR_NAMES: List<String> = listOf("RAFT_PROFILE", "SLOCK_VISUAL_PROVIDER")
+            const val CREATED_AT_ISO: String = "2026-06-01T09:15:00.000Z"
+            val CREATED_AGENTS: List<String> = listOf()
+        }
+        object NoMembership {
+            const val ID: String = "agent-no-membership"
+            const val NAME: String = "No-Membership-Probe"
+            const val DISPLAY_NAME: String = "No Membership Probe"
+            const val AVATAR: String = "pixel:robot"
+            const val AVATAR_LABEL: String = "NM"
+            const val DESCRIPTION: String = "Has no server membership row, so the wire omits serverRole (artin 2026-09-03 16:54: hide the role chip)."
+            const val STATUS: String = "active"
+            const val ACTIVITY: String = "working"
+            const val ACTIVITY_DETAIL: String = "Holding a fixed Computer-row state for the visual oracle"
+            const val MODEL: String = "gpt-5-codex"
+            const val RUNTIME: String = "codex"
+            const val REASONING_EFFORT: String = "medium"
+            const val EXECUTION_MODE: String = "byoc"
+            const val SESSION_ID: String = "session-no-membership"
+            const val MACHINE_KEY: String = "primary"
+            val ENV_VAR_NAMES: List<String> = listOf("RAFT_PROFILE", "SLOCK_VISUAL_PROVIDER")
+            const val CREATED_AT_ISO: String = "2026-06-01T09:15:00.000Z"
+            val CREATED_AGENTS: List<String> = listOf()
+        }
     }
 
     object Machines {
@@ -302,6 +343,21 @@ object VisualFixtureData {
             const val DAEMON_VERSION: String = "0.65.0"
             const val COMPUTER_VERSION: String = "0.0.48"
             const val IS_COMPUTER: Boolean = true
+            const val LAST_HEARTBEAT_ISO: String = "2026-06-19T12:28:00.000Z"
+            const val CREATED_AT_ISO: String = "2026-06-18T00:00:00.000Z"
+        }
+        object DaemonOnly {
+            const val ID: String = "computer-daemon-only"
+            const val NAME: String = "build-box-bare-daemon"
+            const val HOSTNAME: String = "build-box.local"
+            const val OS: String = "linux"
+            const val STATUS: String = "online"
+            const val STATUS_VERSION: Int = 1
+            const val API_KEY_PREFIX: String = "slk_dmn"
+            val RUNTIMES: List<String> = listOf("codex")
+            const val DAEMON_VERSION: String = "0.65.0"
+            val COMPUTER_VERSION: String? = null
+            const val IS_COMPUTER: Boolean = false
             const val LAST_HEARTBEAT_ISO: String = "2026-06-19T12:28:00.000Z"
             const val CREATED_AT_ISO: String = "2026-06-18T00:00:00.000Z"
         }
