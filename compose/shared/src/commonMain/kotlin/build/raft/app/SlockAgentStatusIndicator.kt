@@ -169,7 +169,6 @@ internal data class ExternalAgentDetailIndicator(
 )
 
 internal const val ExternalAgentActiveThresholdMillis: Long = 5L * 60L * 1000L
-internal const val ExternalAgentRecentThresholdMillis: Long = 30L * 60L * 1000L
 
 /** Server sends `toISOString()` (UTC, `Z`); the repo parser also accepts offsets and epoch-millis strings. */
 internal fun parseExternalAgentTimestampOrNull(iso: String?): Long? =
@@ -202,11 +201,16 @@ internal fun externalAgentDetailIndicator(
     val lastAt = parseExternalAgentTimestampOrNull(status.lastActivityAt)
     val ageMs = lastAt?.let { nowEpochMillis - it }
     val waiting = status.setupState == build.raft.app.data.ExternalAgentSetupState.WaitingForLogin
+    // Mobile is waiting-first; web (AgentDetailPanel) is activity-first. artin chose that
+    // divergence deliberately ("don't render it as online when it isn't set up"), so web's
+    // 30-minute line still decides cyan-vs-grey for an unlogged-in agent with 10-40 minute
+    // old activity, while here `waiting` consumes that case before any age comparison. The
+    // 30-minute constant was therefore unreachable on this platform and has been removed —
+    // this is NOT three-platform parity, and re-adding it here would restore dead code.
     val color =
         when {
             waiting -> SlockColor.StatusNeutralGray
             ageMs != null && ageMs < ExternalAgentActiveThresholdMillis -> SlockColor.AccentLime
-            ageMs != null && ageMs < ExternalAgentRecentThresholdMillis -> SlockColor.AccentCyan
             else -> SlockColor.AccentCyan
         }
     val caption =
