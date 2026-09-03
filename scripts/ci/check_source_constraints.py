@@ -720,9 +720,15 @@ def check_label_facing_resolver_has_no_production_callers(root: Path) -> None:
             continue
         text = path.read_text(encoding="utf-8").replace("\r\n", "\n")
         for line_number, line in enumerate(text.split("\n"), start=1):
-            if "resolveMembersAgentStatusIndicatorState(" not in line:
-                continue
-            if "resolveMembersAgentStatusIndicatorStateOrNull(" in line:
+            # `(` or `::` distinguishes a use from a mention: prose names this resolver
+            # (MembersPage.kt's KDoc, and the comment at the fixed call site) and must not
+            # be flagged. `::` catches a callable reference, which carries the value just
+            # as well as a call does.
+            if not re.search(
+                r"(?<!OrNull)\bresolveMembersAgentStatusIndicatorState\s*\("
+                r"|::\s*resolveMembersAgentStatusIndicatorState\b(?!OrNull)",
+                line,
+            ):
                 continue
             if re.match(r"\s*internal fun resolveMembersAgentStatusIndicatorState\(", line):
                 continue
