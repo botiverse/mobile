@@ -156,6 +156,9 @@ private class RecordingCreateAgentApi(
     override suspend fun agentWorkspaceFiles(agentId: MemberId, dirPath: String?): HomeNetworkResponse = error("unused")
     override suspend fun readAgentWorkspaceFile(agentId: MemberId, path: String): HomeNetworkResponse = error("unused")
     override suspend fun agentSkills(agentId: MemberId): HomeNetworkResponse = error("unused")
+
+    override suspend fun agentExternalStatus(agentId: MemberId): HomeNetworkResponse = error("unused")
+
     override suspend fun agentScopes(agentId: MemberId): HomeNetworkResponse = error("unused")
     override suspend fun updateAgentScopes(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
     override suspend fun resetAgentScopes(agentId: MemberId): HomeNetworkResponse = error("unused")

@@ -237,6 +237,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import build.raft.app.model.isExternalAgentRuntime
+import build.raft.app.data.defaultNowMillis
 
 const val MEMBERS_PAGE = "compose_members"
 const val MEMBER_DETAIL_PAGE = "compose_member_detail"
@@ -979,6 +980,34 @@ internal fun membersResolvedPrimaryLifecycleAction(
                 deleted = false
             )
     }
+
+/**
+ * Detail-page dot + caption for an external agent. Tiers mirror web
+ * `AgentStatusBadge`; the caption is localized here because the pure mapping
+ * ([externalAgentDetailIndicator]) must stay free of string resources.
+ * A missing status (non-external, 403, failure) renders plain cyan "External".
+ */
+@Composable
+private fun rememberExternalAgentDetailIndicatorState(
+    detail: AgentDetailSnapshot?,
+    timeContext: SlockTimeContext
+): SlockAgentStatusIndicatorState {
+    val externalStatus = detail?.externalStatus
+    val now = timeContext.nowEpochMillis ?: remember(externalStatus) { defaultNowMillis() }
+    val indicator = remember(externalStatus, now) { externalAgentDetailIndicator(externalStatus, now) }
+    val label =
+        when (val caption = indicator.caption) {
+            ExternalAgentDetailCaption.External -> stringResource(MR.strings.member_external_status)
+            ExternalAgentDetailCaption.SetupRequired -> stringResource(MR.strings.member_external_setup_required)
+            ExternalAgentDetailCaption.Active -> stringResource(MR.strings.member_external_active)
+            is ExternalAgentDetailCaption.LastActivity ->
+                membersStringTemplate(MR.strings.member_external_last_activity)
+                    .membersFormat(timeContext.formatTimestampLabel(caption.iso).ifBlank { caption.iso })
+            ExternalAgentDetailCaption.NoRaftActivity -> stringResource(MR.strings.member_external_no_raft_activity)
+            ExternalAgentDetailCaption.NotConfigured -> stringResource(MR.strings.member_external_not_configured)
+        }
+    return indicator.state.copy(label = label)
+}
 
 private fun unknownMembersAgentStatusIndicatorState(): SlockAgentStatusIndicatorState =
     slockAgentStatusIndicatorState(
@@ -4511,7 +4540,7 @@ private fun MembersDetailContent(
     val diagnosticsCopied = stringResource(MR.strings.member_action_diagnostics_copied)
     val issueReported = stringResource(MR.strings.member_action_issue_reported)
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
-    val agentStatusIndicatorState =
+    val managedAgentStatusIndicatorState =
         if (member.kind == MemberKind.Agent) {
             val canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.id.value)
             resolveMembersAgentStatusIndicatorState(
@@ -4529,6 +4558,14 @@ private fun MembersDetailContent(
             )
         } else {
             null
+        }
+    // task #1119 PR 2: the detail page (and only the detail page) reads the
+    // external agent's setup/activity status — React AgentDetailPanel parity.
+    val agentStatusIndicatorState =
+        if (member.kind == MemberKind.Agent && (member.isExternal || detail?.summary?.isExternal == true)) {
+            rememberExternalAgentDetailIndicatorState(detail = detail, timeContext = timeContext)
+        } else {
+            managedAgentStatusIndicatorState
         }
     val canViewPrivate = member.kind == MemberKind.Agent && canViewPrivateAgentSurfaces(member, detail)
     val canManage = member.kind == MemberKind.Agent && !deleted && canManageAgent(member, detail)
