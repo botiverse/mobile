@@ -2858,6 +2858,9 @@ class SharedThreadStoreTest {
     @Test
     fun sameRouteIntentDoesNotRestartOrImportOriginCandidateContent() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val originCommitStarted = CompletableDeferred<Unit>()
+        val releaseOriginCommit = CompletableDeferred<Unit>()
+        val originCommitFinished = CompletableDeferred<Unit>()
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val dataSource =
             SharedThreadDataSource(
@@ -2865,50 +2868,82 @@ class SharedThreadStoreTest {
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                diagnosticsLogger = { message ->
+                    if (message.startsWith("thread_focused_origin_result")) {
+                        originCommitFinished.complete(Unit)
+                    }
+                },
+                beforeFocusedOriginCommit = {
+                    originCommitStarted.complete(Unit)
+                    releaseOriginCommit.await()
+                }
+            )
         val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
 
-        store.accept(SharedThreadIntent.Start(route))
-        val afterStart = store.state.value.payload
-        assertEquals(1, api.channelMessageCalls)
+        try {
+            store.accept(SharedThreadIntent.Start(route))
+            // Freeze the independent origin writer before applying the same-route intent. The
+            // hook is test-only; production does not wait here. A failed origin lookup is allowed
+            // to advance loading -> error/missing in production, so loading is not itself the
+            // invariant. Holding this boundary lets the test inspect the route-intent projection
+            // before that legitimate transition, then verify the transition below as well.
+            withTimeout(5_000) { originCommitStarted.await() }
+            val afterStart = store.state.value.payload
+            assertEquals(1, api.channelMessageCalls)
+            assertEquals("loading", afterStart.originStatus)
 
-        val originCandidate =
-            KuiklyThreadMessageItem(
-                id = "m1",
-                authorId = "route-author",
-                authorName = "Route",
-                body = "late route origin should stay out of state"
-            )
-        store.accept(
-            SharedThreadIntent.ApplyRouteIntent(
-                route.copy(
-                    selectedTab = "files",
-                    focusedMessageId = "reply-1",
-                    focusedMessageRequestNonce = 7,
-                    originMessage = originCandidate,
-                    originStatus = "loaded",
-                    messages =
-                        listOf(
-                            KuiklyThreadMessageItem(
-                                id = "route-message",
-                                authorId = "route-author",
-                                authorName = "Route",
-                                body = "late route body should stay out of state"
+            val originCandidate =
+                KuiklyThreadMessageItem(
+                    id = "m1",
+                    authorId = "route-author",
+                    authorName = "Route",
+                    body = "late route origin should stay out of state"
+                )
+            store.accept(
+                SharedThreadIntent.ApplyRouteIntent(
+                    route.copy(
+                        selectedTab = "files",
+                        focusedMessageId = "reply-1",
+                        focusedMessageRequestNonce = 7,
+                        originMessage = originCandidate,
+                        originStatus = "loaded",
+                        messages =
+                            listOf(
+                                KuiklyThreadMessageItem(
+                                    id = "route-message",
+                                    authorId = "route-author",
+                                    authorName = "Route",
+                                    body = "late route body should stay out of state"
+                                )
                             )
-                        )
+                    )
                 )
             )
-        )
 
-        val payload = store.state.value.payload
-        assertEquals(1, api.channelMessageCalls)
-        assertEquals("files", payload.selectedTab)
-        assertEquals("reply-1", payload.focusedMessageId)
-        assertEquals(7, payload.focusedMessageRequestNonce)
-        assertEquals(afterStart.messages, payload.messages)
-        assertNull(payload.originMessage)
-        assertEquals(afterStart.originStatus, payload.originStatus)
-        scope.cancel()
+            val payloadBeforeOriginCommit = store.state.value.payload
+            assertEquals(1, api.channelMessageCalls)
+            assertEquals("files", payloadBeforeOriginCommit.selectedTab)
+            assertEquals("reply-1", payloadBeforeOriginCommit.focusedMessageId)
+            assertEquals(7, payloadBeforeOriginCommit.focusedMessageRequestNonce)
+            assertEquals(afterStart.messages, payloadBeforeOriginCommit.messages)
+            assertNull(payloadBeforeOriginCommit.originMessage)
+            assertEquals(afterStart.originStatus, payloadBeforeOriginCommit.originStatus)
+
+            releaseOriginCommit.complete(Unit)
+            withTimeout(5_000) { originCommitFinished.await() }
+            val payloadAfterOriginCommit = store.state.value.payload
+            assertTrue(payloadAfterOriginCommit.originStatus != "loading")
+            assertFalse(payloadAfterOriginCommit.originMessage?.body == originCandidate.body)
+            assertEquals("files", payloadAfterOriginCommit.selectedTab)
+            assertEquals("reply-1", payloadAfterOriginCommit.focusedMessageId)
+        } finally {
+            releaseOriginCommit.complete(Unit)
+            scope.cancel()
+        }
     }
 
     @Test
