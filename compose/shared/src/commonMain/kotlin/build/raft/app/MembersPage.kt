@@ -983,7 +983,8 @@ private fun unknownMembersAgentStatusIndicatorState(): SlockAgentStatusIndicator
     slockAgentStatusIndicatorState(
         status = null,
         presence = Presence.Offline,
-        statusLabel = MembersUnknownAgentStatusLabel
+        statusLabel = MembersUnknownAgentStatusLabel,
+        external = false
     )
 
 internal fun resolveMembersAgentStatusIndicatorState(
@@ -999,7 +1000,8 @@ private fun SlockAgentStatusIndicatorState.toMembersAgentStatusDisplayState(): M
     MembersAgentStatusDisplayState(
         status = status,
         color = color,
-        pulsing = pulsing
+        pulsing = pulsing,
+        external = external
     )
 
 @Page(MEMBERS_SMOKE_PAGE, supportInLocal = true)
@@ -12040,64 +12042,57 @@ private val MemberKind.membersAvatarColor: Color
         MemberKind.System -> SlockColor.AccentCyan
     }
 
-private fun AgentStatus?.membersStatusColor(presence: Presence): Color =
-    slockAgentStatusIndicatorState(this, presence).color
-
-private fun AgentStatus?.membersStatusPulsing(): Boolean =
-    slockAgentStatusIndicatorState(this, this?.presence ?: Presence.Offline).pulsing
-
 internal data class MembersAgentStatusDisplayState(
     val status: AgentStatus?,
     val color: Color,
-    val pulsing: Boolean
+    val pulsing: Boolean,
+    val external: Boolean
 )
 
 private val MembersUnknownAgentStatusDisplayState =
     MembersAgentStatusDisplayState(
         status = null,
         color = SlockColor.StatusNeutralGray,
-        pulsing = false
+        pulsing = false,
+        external = false
     )
 
 internal fun MemberProfile.membersAgentStatusDisplayState(
     summaryStatus: String? = null,
     summaryActivity: String? = null
-): MembersAgentStatusDisplayState {
-    val resolvedStatus = membersResolvedAgentStatus(summaryStatus, summaryActivity)
-    return MembersAgentStatusDisplayState(
-        status = resolvedStatus,
-        color = resolvedStatus.membersStatusColor(presence),
-        pulsing = resolvedStatus.membersStatusPulsing()
-    )
-}
+): MembersAgentStatusDisplayState =
+    toFixtureSlockAgentStatusIndicatorState(
+        summaryStatus = summaryStatus,
+        summaryActivity = summaryActivity
+    ).toMembersAgentStatusDisplayState()
 
+/**
+ * Fixture fallback goes through the single canonical mapping so the external
+ * short-circuit (task #1119) applies here exactly as it does to the live resolver.
+ */
 private fun MemberProfile.toFixtureSlockAgentStatusIndicatorState(
     summaryStatus: String? = null,
     summaryActivity: String? = null
-): SlockAgentStatusIndicatorState {
-    val display = membersAgentStatusDisplayState(
-        summaryStatus = summaryStatus,
-        summaryActivity = summaryActivity
+): SlockAgentStatusIndicatorState =
+    slockAgentStatusIndicatorState(
+        status = membersResolvedAgentStatus(summaryStatus, summaryActivity),
+        presence = presence,
+        external = isExternal
     )
-    return SlockAgentStatusIndicatorState(
-        status = display.status,
-        color = display.color,
-        pulsing = display.pulsing,
-        label = display.status?.label ?: presence.name
-    )
-}
 
 private fun AgentCreatedSummary.toFixtureSlockAgentStatusIndicatorState(): SlockAgentStatusIndicatorState =
     slockAgentStatusIndicatorState(
         status = normalizedAgentRuntimeStatus(activity = null, lifecycleStatus = status),
-        presence = Presence.Offline
+        presence = Presence.Offline,
+        external = isExternal
     )
 
 private fun AgentProfile.toFixtureSlockAgentStatusIndicatorState(): SlockAgentStatusIndicatorState =
     slockAgentStatusIndicatorState(
         status = agentStatus,
         presence = presence,
-        statusLabel = statusLabel
+        statusLabel = statusLabel,
+        external = isExternal
     )
 
 private val MemberProfile.detailHandle: String

@@ -1119,7 +1119,8 @@ class ThreadPayloadTest {
                 message,
                 canonicalState = slockAgentStatusIndicatorState(
                     status = AgentStatus.Working,
-                    presence = Presence.Active
+                    presence = Presence.Active,
+                    external = false
                 )
             )?.status
         )
@@ -2009,7 +2010,8 @@ class ThreadPayloadTest {
         val canonical =
             slockAgentStatusIndicatorState(
                 status = AgentStatus.Working,
-                presence = Presence.Active
+                presence = Presence.Active,
+                external = false
             )
 
         assertNull(

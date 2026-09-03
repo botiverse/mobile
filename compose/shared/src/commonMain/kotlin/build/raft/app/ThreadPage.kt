@@ -4610,6 +4610,7 @@ internal fun Task797ThreadHeaderVisualScreen() {
                 status = AgentStatus.Working,
                 presence = Presence.Active,
                 statusLabel = "Measuring safe-area alignment and action centerlines",
+                external = false,
             )
         }
     val activityResolver: SlockAgentStatusResolver = remember(activityState) { { flowOf(activityState) } }
@@ -4670,7 +4671,8 @@ internal fun ThreadDmAgentActivityHeaderVisualScreen() {
             slockAgentStatusIndicatorState(
                 status = AgentStatus.Working,
                 presence = Presence.Active,
-                statusLabel = "Reviewing release readiness and visual diffs"
+                statusLabel = "Reviewing release readiness and visual diffs",
+                external = false
             )
         }
     val activityResolver: SlockAgentStatusResolver = remember(activityState) { { flowOf(activityState) } }

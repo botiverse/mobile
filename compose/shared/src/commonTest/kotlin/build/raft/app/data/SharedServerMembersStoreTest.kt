@@ -242,7 +242,7 @@ class SharedServerMembersStoreTest {
         )
 
         assertEquals(
-            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active),
+            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active, external = false),
             store.memberStatusFlow(serverId, "agent-1").first()
         )
 
@@ -252,7 +252,7 @@ class SharedServerMembersStoreTest {
         )
 
         assertEquals(
-            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active),
+            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active, external = false),
             store.memberStatusFlow(serverId, "agent-1").first(),
             "an authoritative profile without a runtime fact must preserve the prior status pair"
         )
@@ -978,7 +978,7 @@ class SharedServerMembersStoreTest {
         assertEquals(Presence.Offline, members.single { it.id.value == "agent-1" }.presence)
         // … while the registry-backed read edge shows the live fact.
         assertEquals(
-            SharedServerMemberStatus(status = AgentStatus.Thinking, presence = AgentStatus.Thinking.presence),
+            SharedServerMemberStatus(status = AgentStatus.Thinking, presence = AgentStatus.Thinking.presence, external = false),
             runBlocking { store.memberStatusFlow(ServerId("server-1"), "agent-1").first() }
         )
         assertEquals(MemberKind.Human, members.single { it.id.value == "u1" }.kind)
@@ -1068,7 +1068,7 @@ class SharedServerMembersStoreTest {
         )
 
         assertEquals(
-            SharedServerMemberStatus(status = AgentStatus.Online, presence = Presence.Offline),
+            SharedServerMemberStatus(status = AgentStatus.Online, presence = Presence.Offline, external = false),
             runBlocking { store.memberStatusFlow(ServerId("server-1"), "agent-1").first() }
         )
     }
@@ -1134,7 +1134,8 @@ class SharedServerMembersStoreTest {
             SharedServerMemberStatus(
                 status = AgentStatus.Working,
                 presence = Presence.Active,
-                statusLabel = "Building"
+                statusLabel = "Building",
+                external = false
             ),
             runBlocking { store.memberStatusFlow(ServerId("server-1"), "agent-1").first() }
         )
@@ -1402,7 +1403,7 @@ class SharedServerMembersStoreTest {
             store.channelMemberSliceFlow(ServerId("server-1"), ChannelId("channel-1")).first().status
         )
         assertEquals(
-            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active),
+            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active, external = false),
             store.memberStatusFlow(ServerId("server-1"), "agent-1").first()
         )
         assertEquals(
@@ -1813,7 +1814,7 @@ class SharedServerMembersStoreTest {
         assertEquals(AgentStatus.Online, member.agentStatus)
         assertEquals(Presence.Active, member.presence)
         assertEquals(
-            SharedServerMemberStatus(status = AgentStatus.Thinking, presence = AgentStatus.Thinking.presence),
+            SharedServerMemberStatus(status = AgentStatus.Thinking, presence = AgentStatus.Thinking.presence, external = false),
             store.memberStatusFlow(ServerId("server-1"), "agent-1").first()
         )
     }
@@ -2167,8 +2168,8 @@ class SharedServerMembersStoreTest {
 
         val expected: List<SharedServerMemberStatus?> =
             listOf(
-                SharedServerMemberStatus(status = AgentStatus.Online, presence = Presence.Active),
-                SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active)
+                SharedServerMemberStatus(status = AgentStatus.Online, presence = Presence.Active, external = false),
+                SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active, external = false)
             )
         assertEquals(expected, emissions)
     }
@@ -2213,7 +2214,7 @@ class SharedServerMembersStoreTest {
         )
 
         assertEquals(
-            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active),
+            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active, external = false),
             store.memberStatusFlow(ServerId("server-1"), "agent-1").first()
         )
         assertEquals(
@@ -2879,7 +2880,7 @@ class SharedServerMembersStoreTest {
 
     @Test
     fun seedOnlyOfflinePolicyRewritesOnlyTheForcedOfflineSeedArtefact() {
-        val forcedSeedArtefact = SharedServerMemberStatus(status = null, presence = Presence.Offline)
+        val forcedSeedArtefact = SharedServerMemberStatus(status = null, presence = Presence.Offline, external = false)
 
         // Today's shipped behaviour, held until the task #253 product choice lands.
         assertEquals(
@@ -2917,18 +2918,18 @@ class SharedServerMembersStoreTest {
                 "an authoritative Offline must survive policy $policy"
             )
             assertEquals(
-                SharedServerMemberStatus(status = AgentStatus.Offline, presence = Presence.Offline),
+                SharedServerMemberStatus(status = AgentStatus.Offline, presence = Presence.Offline, external = false),
                 applySeedOnlyOfflinePolicy(
-                    SharedServerMemberStatus(status = AgentStatus.Offline, presence = Presence.Offline),
+                    SharedServerMemberStatus(status = AgentStatus.Offline, presence = Presence.Offline, external = false),
                     seedOnly = true,
                     policy = policy
                 ),
                 "a seed carrying a real Offline status is an observation, not an artefact ($policy)"
             )
             assertEquals(
-                SharedServerMemberStatus(status = null, presence = Presence.Active),
+                SharedServerMemberStatus(status = null, presence = Presence.Active, external = false),
                 applySeedOnlyOfflinePolicy(
-                    SharedServerMemberStatus(status = null, presence = Presence.Active),
+                    SharedServerMemberStatus(status = null, presence = Presence.Active, external = false),
                     seedOnly = true,
                     policy = policy
                 ),
@@ -2973,7 +2974,7 @@ class SharedServerMembersStoreTest {
             )
         )
         assertEquals(
-            SharedServerMemberStatus(status = null, presence = Presence.Offline),
+            SharedServerMemberStatus(status = null, presence = Presence.Offline, external = false),
             rosterStore.memberStatusFlow(serverId, "agent-1").first(),
             "a roster member is authoritative: its Offline is an observation and must survive"
         )
@@ -3013,7 +3014,7 @@ class SharedServerMembersStoreTest {
             )
         )
         assertEquals(
-            SharedServerMemberStatus(status = null, presence = Presence.Offline),
+            SharedServerMemberStatus(status = null, presence = Presence.Offline, external = false),
             rosterStore.state.value.memberStatus(serverId, "agent-1"),
             "a roster member's Offline is an observation and must survive here too"
         )

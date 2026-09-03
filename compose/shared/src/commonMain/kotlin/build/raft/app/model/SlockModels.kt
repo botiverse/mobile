@@ -156,6 +156,16 @@ enum class Presence {
     Offline
 }
 
+/** Wire runtime id of external agents (parity with shared `EXTERNAL_AGENT_RUNTIME_ID`). */
+const val ExternalAgentRuntimeId: String = "external"
+
+/** Parity with shared `isExternalAgentRuntime`: exact match, no trimming or casing. */
+fun isExternalAgentRuntime(runtime: String?): Boolean = runtime == ExternalAgentRuntimeId
+
+/** Web keeps the projected boolean and the runtime sentinel as parallel sources. */
+fun isExternalAgent(external: Boolean?, runtime: String?): Boolean =
+    external == true || isExternalAgentRuntime(runtime)
+
 @Serializable
 enum class AgentStatus {
     Online,
@@ -264,6 +274,13 @@ data class MemberProfile(
     val avatarLabel: String = displayName.take(1).uppercase(),
     val presence: Presence = Presence.Offline,
     val agentStatus: AgentStatus? = null,
+    /**
+     * External agents (runtime `external`) have no managed liveness. Web keeps
+     * `agent.external === true || runtime === "external"` as parallel sources
+     * (agentStore.ts resolveAgentDisplayState); the parser folds both here so a
+     * payload missing one key cannot silently demote the agent to a managed one.
+     */
+    val isExternal: Boolean = false,
     val joinedAt: String? = null,
     val membershipStatus: String? = null,
     val agentDeletedAt: String? = null,
@@ -289,6 +306,7 @@ data class AgentProfile(
     val agentStatus: AgentStatus? = null,
     val statusLabel: String? = null,
     val runtime: String? = null,
+    val isExternal: Boolean = false,
     val model: String? = null,
     val reasoning: String? = null,
     val hasOnlineMachine: Boolean = false,

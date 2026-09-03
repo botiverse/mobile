@@ -17356,7 +17356,8 @@ private fun SharedCreateChannelMemberRow(
                 fixtureFallback =
                     slockAgentStatusIndicatorState(
                         status = member.agentStatus,
-                        presence = member.presence
+                        presence = member.presence,
+                        external = member.isExternal
                     ),
                 fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
             )

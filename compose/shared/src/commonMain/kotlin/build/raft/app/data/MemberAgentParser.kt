@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.isExternalAgent
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AvatarReference
@@ -92,6 +93,7 @@ private data class WireAgent(
     val avatarUrl: String? = null,
     val status: String = "inactive",
     val runtime: String? = null,
+    val external: Boolean? = null,
     val serverRole: String? = null,
     val model: String? = null,
     val reasoningEffort: String? = null,
@@ -746,6 +748,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         serverSlug = serverSlug?.takeIf { it.isNotBlank() },
         description = description,
         roleDescription = runtime,
+        isExternal = isExternalAgent(external, runtime),
         serverRole = serverRole?.normalizedServerRoleOrNull(),
         avatarUrl = avatarUrl,
         avatar = AvatarReference.fromWireValue(avatarUrl),
@@ -808,6 +811,7 @@ private fun WireAgent.toAgentProfile(): AgentProfile {
         agentStatus = agentStatus,
         statusLabel = agentStatus?.label,
         runtime = runtime,
+        isExternal = isExternalAgent(external, runtime),
         model = model,
         reasoning = reasoningEffort,
         permissionBadges = listOfNotNull(

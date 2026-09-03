@@ -1091,7 +1091,8 @@ private fun threadMessageVisualAgentStatusResolver(
     val cindyState =
         slockAgentStatusIndicatorState(
             status = cindyStatus,
-            presence = cindyStatus.presence
+            presence = cindyStatus.presence,
+            external = false
         )
     return { memberId ->
         flowOf(cindyState.takeIf { memberId?.trim() == "agent-cindy" })
