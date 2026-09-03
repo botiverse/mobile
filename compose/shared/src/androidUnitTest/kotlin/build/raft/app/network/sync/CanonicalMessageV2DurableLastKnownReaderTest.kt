@@ -93,6 +93,32 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
     }
 
     @Test
+    fun twoTopLevelKindsUnderOneIdAreAmbiguousAndReadNothing() = withFreshDatabase { database ->
+        val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
+        val logs = mutableListOf<String>()
+        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true }, logger = logs::add)
+        runBlocking {
+            store.applySnapshot(CanonicalMessageV2SnapshotFrame(SyncScopeKey(partitionA, "channel-a", "channel"), listOf(envelope(1)), cursor()))
+            // Positive control: one committed kind reads back.
+            assertNotNull(reader.read(partitionA, "channel-a"))
+            assertTrue(logs.isEmpty(), logs.toString())
+
+            // The current writer never commits two top-level kinds for one id; if it ever did, the
+            // reader must refuse to guess which one the route means.
+            val privateEnvelope = CanonicalMessageEnvelopeV2(
+                fact = fact(2),
+                context = CanonicalConversationContextV2.TopLevel(TopLevelScopeRefV2.Private("server-a", "channel-a")),
+            )
+            store.applySnapshot(CanonicalMessageV2SnapshotFrame(SyncScopeKey(partitionA, "channel-a", "private"), listOf(privateEnvelope), cursor(latest = 2)))
+            assertEquals(setOf("channel", "private"), store.baselinedScopeKinds(partitionA, "channel-a").toSet())
+            assertNull(reader.read(partitionA, "channel-a"))
+        }
+        val ambiguous = assertNotNull(logs.singleOrNull(), logs.toString())
+        assertTrue("outcome=ambiguous_scope_kind" in ambiguous, ambiguous)
+        assertTrue("scope=channel-a" in ambiguous, ambiguous)
+    }
+
+    @Test
     fun poisonedScopeReadsNothingAndLogsInsteadOfThrowing() = withFreshDatabase { database ->
         val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
         val scope = SyncScopeKey(partitionA, "channel-a", "channel")
