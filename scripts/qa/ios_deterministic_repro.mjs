@@ -118,15 +118,21 @@ async function ensureLoggedIn() {
   // Dismiss keyboard, re-dump, and submit with FRESH button bounds. Tapping
   // while the keyboard is visible targets the overlay instead of the shifted
   // app content (r3 evidence).
-  await drv.key("esc");
+  const dismissOut = await drv.key("esc");
+  rec(`keyboard dismiss stdout: ${String(dismissOut || "").replace(/\s+/g, " ").slice(0, 300)}`);
   await new Promise((r2) => setTimeout(r2, 2500));
   dump = await drv.dumpUi();
-  const btnLine = dump.split("\n").filter((l) => /"Sign In"/.test(l));
-  if (btnLine.length) {
-    const last = btnLine[btnLine.length - 1]; // the button is the last Sign In label on the page
-    const p2 = parseBounds(last);
-    rec(`submitting via fresh Sign In bounds [${p2.x},${p2.y}]`);
-    await drv.tap(p2.x, p2.y);
+  if (typeof drv.pressLabel === "function") {
+    rec('submitting via press label="Sign In"');
+    await drv.pressLabel("Sign In");
+  } else {
+    const btnLine = dump.split("\n").filter((l) => /"Sign In"/.test(l));
+    if (btnLine.length) {
+      const last = btnLine[btnLine.length - 1];
+      const p2 = parseBounds(last);
+      rec(`submitting via fresh Sign In bounds [${p2.x},${p2.y}]`);
+      await drv.tap(p2.x, p2.y);
+    }
   }
   await new Promise((r2) => setTimeout(r2, 8000));
 
