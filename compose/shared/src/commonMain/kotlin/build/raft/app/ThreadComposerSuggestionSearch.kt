@@ -47,29 +47,57 @@ internal fun immediateThreadComposerMemberSuggestions(
     suggestions: List<KuiklyComposerMemberItem>
 ): List<KuiklyComposerMemberItem> {
     if (query.isNotBlank()) return emptyList()
-    if (suggestions.size <= ThreadComposerSuggestionMaxResults) return suggestions
+    // The panel renders current-scope members before out-of-scope members.  Apply the same
+    // partition before the bounded source-server selection; otherwise a large directory can
+    // spend all 30 immediate slots on people from outside the current channel and the later
+    // panel grouping cannot recover the omitted in-channel agent/member.
+    val (inChannelSuggestions, outsideChannelSuggestions) =
+        suggestions.partition { suggestion -> suggestion.inMentionChannel }
+    if (suggestions.size <= ThreadComposerSuggestionMaxResults) {
+        return inChannelSuggestions + outsideChannelSuggestions
+    }
+
+    val inScopeResults =
+        immediateThreadComposerMemberSuggestionsBySource(
+            suggestions = inChannelSuggestions,
+            limit = ThreadComposerSuggestionMaxResults
+        )
+    if (inScopeResults.size == ThreadComposerSuggestionMaxResults) return inScopeResults
+    return inScopeResults +
+        immediateThreadComposerMemberSuggestionsBySource(
+            suggestions = outsideChannelSuggestions,
+            limit = ThreadComposerSuggestionMaxResults - inScopeResults.size
+        )
+}
+
+private fun immediateThreadComposerMemberSuggestionsBySource(
+    suggestions: List<KuiklyComposerMemberItem>,
+    limit: Int
+): List<KuiklyComposerMemberItem> {
+    if (suggestions.isEmpty() || limit <= 0) return emptyList()
+    if (suggestions.size <= limit) return suggestions
 
     val groups = LinkedHashMap<String, ArrayDeque<KuiklyComposerMemberItem>>()
     suggestions.forEach { suggestion ->
         groups.getOrPut(suggestion.threadComposerSuggestionSourceKey()) { ArrayDeque() }.addLast(suggestion)
     }
-    if (groups.size <= 1) return suggestions.take(ThreadComposerSuggestionMaxResults)
+    if (groups.size <= 1) return suggestions.take(limit)
 
     val localKey = suggestions.firstOrNull { it.isLocalServer }?.threadComposerSuggestionSourceKey()
         ?: groups.keys.first()
     val local = groups.remove(localKey) ?: ArrayDeque()
     val remoteGroups = groups.values.toList()
     var remoteGroupIndex = 0
-    return buildList(ThreadComposerSuggestionMaxResults) {
-        while (size < ThreadComposerSuggestionMaxResults) {
+    return buildList(limit) {
+        while (size < limit) {
             var added = false
             repeat(2) {
-                if (size < ThreadComposerSuggestionMaxResults && local.isNotEmpty()) {
+                if (size < limit && local.isNotEmpty()) {
                     add(local.removeFirst())
                     added = true
                 }
             }
-            if (size < ThreadComposerSuggestionMaxResults && remoteGroups.any { it.isNotEmpty() }) {
+            if (size < limit && remoteGroups.any { it.isNotEmpty() }) {
                 var attempts = 0
                 while (attempts < remoteGroups.size) {
                     val group = remoteGroups[remoteGroupIndex]

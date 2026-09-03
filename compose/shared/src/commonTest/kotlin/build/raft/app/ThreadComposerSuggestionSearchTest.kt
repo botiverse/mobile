@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.model.MemberKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -265,6 +266,91 @@ class ThreadComposerSuggestionSearchTest {
         assertEquals(20, result.count { it.isLocalServer })
         assertEquals(10, result.count { !it.isLocalServer })
         assertEquals(setOf("server-local", "server-remote"), result.mapNotNull { it.sourceServerId }.toSet())
+    }
+
+    @Test
+    fun blankMemberQueryPrioritizesCurrentChannelBeforeSourceServerRoundRobin() {
+        val outsideLocal =
+            (0 until 35).map { index ->
+                KuiklyComposerMemberItem(
+                    displayName = "Outside local $index",
+                    handle = "outside-local-$index",
+                    inMentionChannel = false,
+                    sourceServerId = "server-local",
+                    isLocalServer = true
+                )
+            }
+        val outsideRemote =
+            (0 until 10).map { index ->
+                KuiklyComposerMemberItem(
+                    displayName = "Outside remote $index",
+                    handle = "outside-remote-$index",
+                    inMentionChannel = false,
+                    sourceServerId = "server-remote",
+                    isLocalServer = false,
+                    sourceServerLabel = "Remote Lab"
+                )
+            }
+        val inChannelLocal =
+            listOf(
+                KuiklyComposerMemberItem(
+                    displayName = "Channel agent",
+                    handle = "channel-agent",
+                    inMentionChannel = true,
+                    kind = MemberKind.Agent,
+                    sourceServerId = "server-local",
+                    isLocalServer = true
+                )
+            )
+        val inChannelRemote =
+            listOf(
+                KuiklyComposerMemberItem(
+                    displayName = "Remote channel agent",
+                    handle = "remote-channel-agent",
+                    inMentionChannel = true,
+                    kind = MemberKind.Agent,
+                    sourceServerId = "server-remote",
+                    isLocalServer = false,
+                    sourceServerLabel = "Remote Lab"
+                )
+            )
+
+        val result =
+            immediateThreadComposerMemberSuggestions(
+                query = "",
+                suggestions = outsideLocal + outsideRemote + inChannelLocal + inChannelRemote
+            )
+
+        assertEquals(30, result.size)
+        assertEquals(
+            listOf("channel-agent", "remote-channel-agent"),
+            result.take(2).map { it.handle }
+        )
+        assertTrue(result.take(2).all { it.inMentionChannel })
+        assertTrue(result.drop(2).none { it.inMentionChannel })
+        assertEquals(setOf("server-local", "server-remote"), result.take(2).mapNotNull { it.sourceServerId }.toSet())
+    }
+
+    @Test
+    fun blankMemberQueryKeepsCurrentScopeFirstEvenWhenDirectoryFitsImmediateLimit() {
+        val outside =
+            KuiklyComposerMemberItem(
+                displayName = "Outside",
+                handle = "outside",
+                inMentionChannel = false
+            )
+        val agent =
+            KuiklyComposerMemberItem(
+                displayName = "Channel agent",
+                handle = "channel-agent",
+                inMentionChannel = true,
+                kind = MemberKind.Agent
+            )
+
+        assertEquals(
+            listOf("channel-agent", "outside"),
+            immediateThreadComposerMemberSuggestions("", listOf(outside, agent)).map { it.handle }
+        )
     }
 
     @Test
