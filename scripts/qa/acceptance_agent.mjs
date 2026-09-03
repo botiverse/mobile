@@ -55,7 +55,8 @@ const opts = {
   appPackage: arg("--package", "build.raft.app"),
   playbook: arg("--playbook", process.env.QA_PLAYBOOK || "docs/qa-acceptance-operations.md"),
   // "android" drives adb directly (unchanged); "ios" delegates every device
-  // primitive to scripts/qa/ios_driver.mjs (simctl + XCUITest loop harness).
+  // primitive to scripts/qa/ios_driver.mjs (agent-device by default; qa-loop
+  // keeps the XCUITest file protocol).
   platform: arg("--platform", process.env.QA_PLATFORM || "android"),
   iosIoDir: arg("--ios-io-dir", process.env.QA_LOOP_IO_DIR || ""),
   iosUdid: arg("--ios-udid", process.env.QA_IOS_UDID || "booted"),
@@ -569,7 +570,7 @@ async function main() {
     if (!opts.iosIoDir) { console.error("--platform ios requires --ios-io-dir / QA_LOOP_IO_DIR"); process.exit(2); }
     const { createIosDriver } = await import("./ios_driver.mjs");
     drv = createIosDriver({ ioDir: opts.iosIoDir, udid: opts.iosUdid, bundle: opts.appPackage });
-    console.error("waiting for the iOS loop harness (xcodebuild test) to launch the app...");
+    console.error(`waiting for the iOS driver (${drv.driver}) to open the app...`);
     await drv.waitReady();
   }
   const stepsPath = path.join(opts.out, "steps.jsonl");
