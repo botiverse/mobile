@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -103,12 +105,15 @@ class IosUseXcuitestSelectionTest(unittest.TestCase):
         cls.IosConfig = IosConfig
         cls.IosSimulator = IosSimulator
 
-    def test_interact_runs_only_the_bounded_ios_use_test(self) -> None:
+    def test_interact_starts_persistent_qa_loop_not_oneshot_ios_use(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            config = self.IosConfig(device="A-UDID", workspace=root / "iosApp.xcworkspace", derived_data=root)
+            workspace = root / "iosApp.xcworkspace"
+            workspace.mkdir()
+            config = self.IosConfig(device="A-UDID", workspace=workspace, derived_data=root)
             simulator = self.IosSimulator(config)
             calls: list[list[str]] = []
+            io_dir = root / "ios-use-qa-loop" / "A-UDID" / "io"
 
             def fake_xcodebuild(args, **_kwargs):
                 calls.append(args)
@@ -116,14 +121,57 @@ class IosUseXcuitestSelectionTest(unittest.TestCase):
 
                 return CommandResult(argv=["xcodebuild", *args], returncode=0, stdout="", stderr="")
 
-            with mock.patch.object(simulator, "xcodebuild", side_effect=fake_xcodebuild), mock.patch.object(
-                simulator, "_patched_xctestrun", return_value=root / "actions.xctestrun"
-            ):
-                simulator.interact([{"type": "tap", "x": 0.5, "y": 0.5}], device="A-UDID")
+            def fake_start(args, *, log_path, env=None):
+                calls.append(args)
+                captured["env"] = env
+                io_dir.mkdir(parents=True, exist_ok=True)
+                (io_dir / "ready.json").write_text('{"ok":true,"ready":true}', encoding="utf-8")
+                (io_dir / "res-1.json").write_text('{"ok":true,"data":{"tapped":true}}', encoding="utf-8")
+                return 4242
 
-        self.assertEqual(len(calls), 2)
-        self.assertIn("-only-testing:iosAppUITests/IosUseInteractionTests/testRunIosUseActions", calls[1])
-        self.assertIn("test-without-building", calls[1])
+            captured: dict[str, object] = {}
+            with mock.patch.object(simulator, "xcodebuild", side_effect=fake_xcodebuild), mock.patch.object(
+                simulator, "start_xcodebuild_background", side_effect=fake_start
+            ):
+                result = simulator.interact([{"type": "tap", "x": 0.5, "y": 0.5}], device="A-UDID")
+
+        self.assertEqual(result["harness"], "QaAcceptanceLoopTests")
+        self.assertEqual(result["loop_pid"], 4242)
+        self.assertTrue(any("build-for-testing" in call for call in calls))
+        self.assertTrue(
+            any("-only-testing:iosAppUITests/QaAcceptanceLoopTests" in call for call in calls)
+        )
+        self.assertFalse(
+            any("IosUseInteractionTests" in part for call in calls for part in call)
+        )
+        env = captured["env"]
+        self.assertIsInstance(env, dict)
+        self.assertEqual(env["TEST_RUNNER_QA_LOOP_IO_DIR"], str(io_dir))
+        self.assertEqual(env["TEST_RUNNER_QA_LOOP_BUNDLE"], "build.raft.app")
+
+    def test_interact_reuses_running_qa_loop(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            workspace = root / "iosApp.xcworkspace"
+            workspace.mkdir()
+            io_root = root / "ios-use-qa-loop" / "A-UDID"
+            io_dir = io_root / "io"
+            io_dir.mkdir(parents=True)
+            (io_dir / "ready.json").write_text('{"ok":true,"ready":true}', encoding="utf-8")
+            (io_root / "loop.pid").write_text(str(os.getpid()), encoding="utf-8")
+            (io_dir / "res-1.json").write_text('{"ok":true}', encoding="utf-8")
+            config = self.IosConfig(device="A-UDID", workspace=workspace, derived_data=root)
+            simulator = self.IosSimulator(config)
+            with mock.patch.object(simulator, "xcodebuild") as xcodebuild, mock.patch.object(
+                simulator, "start_xcodebuild_background"
+            ) as start:
+                result = simulator.interact([{"type": "tapText", "text": "joint-slock-test"}], device="A-UDID")
+            xcodebuild.assert_not_called()
+            start.assert_not_called()
+            self.assertEqual(result["harness"], "QaAcceptanceLoopTests")
+            self.assertEqual(result["loop_pid"], os.getpid())
+            cmd = json.loads((io_dir / "cmd-1.json").read_text(encoding="utf-8"))
+            self.assertEqual(cmd, {"type": "tapText", "text": "joint-slock-test"})
 
 
 if __name__ == "__main__":
