@@ -7,6 +7,17 @@ const android = fs.readFileSync(new URL("../../.github/workflows/qa-acceptance.y
 const infra = fs.readFileSync(new URL("../../.github/workflows/qa-infra-test.yml", import.meta.url), "utf8");
 const probeSource = fs.readFileSync(new URL("./visible_servers_probe.mjs", import.meta.url), "utf8");
 
+test("iOS acceptance defaults to agent-device and keeps qa-loop plus mode allowlists", () => {
+  assert.match(ios, /IOS_QA_DRIVER: agent-device/);
+  assert.match(ios, /name: Start loop harness \(background\)\n        if: \$\{\{ env\.IOS_QA_DRIVER == 'qa-loop' \}\}/);
+  assert.match(ios, /if: \$\{\{ inputs\.mode == 'agent' \|\| inputs\.mode == '' \}\}/);
+  assert.match(ios, /if: \$\{\{ inputs\.mode == 'deterministic' \}\}/);
+  assert.match(ios, /if: \$\{\{ inputs\.mode == 'tabpager-probe' \}\}/);
+  assert.doesNotMatch(ios, /inputs\.mode != 'deterministic'/);
+  assert.match(ios, /name: Prepare iOS driver I\/O dir/);
+  assert.match(ios, /agent-device@0\.20\.10/);
+});
+
 test("iOS frozen artifact inputs match Stamp dispatch and replacement is opt-in", () => {
   for (const name of ["app_run_id", "artifact_sha256", "artifact_source_commit", "artifact_version", "artifact_version_code", "artifact_package_id"]) {
     assert.match(ios, new RegExp(`\\n      ${name}:`));
