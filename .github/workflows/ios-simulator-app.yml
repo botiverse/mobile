@@ -85,9 +85,24 @@ jobs:
           tail -60 "$log"
           if [ "$status" -ne 0 ]; then
             echo "===== iOS build FAILED (status=$status) — extracted errors ====="
-            grep -nE "e: |: error:|error: |Unresolved|BUILD FAILED|following build commands failed|PhaseScriptExecution" "$log" | tail -100 || true
+            # `e: ` alone also matches every "Using response file: ..." line xcodebuild
+            # prints, and `tail -100` then keeps only those — run 33781925404 failed with
+            # status 65 and this block showed nothing but TEST BUILD FAILED. Anchor the
+            # Kotlin `e: ` pattern and drop the response-file noise so the real errors
+            # survive the tail; the full log is uploaded below for anything else.
+            grep -nE "(^|[[:space:]])e: |: error:|error: |Unresolved|FAILURE:|Execution failed|BUILD FAILED|following build commands failed|PhaseScriptExecution" "$log" \
+              | grep -v "Using response file" | tail -100 || true
           fi
           exit "$status"
+
+      - name: Upload xcodebuild log on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-simulator-app-build-log-${{ github.run_id }}
+          path: xcodebuild-ios.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       # task #247: the artifact must carry the metadata.json shape that
       # qa-acceptance-ios.yml's `app_run_id` consumer validates
