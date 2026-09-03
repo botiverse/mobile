@@ -565,6 +565,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlin.time.TimeSource
+import build.raft.app.model.isExternalAgent
 
 const val SETTINGS_HOME_PAGE = "compose_settings_home"
 const val SETTINGS_ROUTE_VISUAL_PAGE = "compose_settings_route_visual"
@@ -16478,6 +16479,11 @@ private fun JsonObject.toSharedMemberProfile(defaultKind: MemberKind? = null): M
         avatarLabel = displayName.take(1).uppercase(),
         presence = (profile.string("presence", "availability") ?: string("presence", "availability")).toSharedPresence(),
         agentStatus = agentStatus,
+        isExternal =
+            isExternalAgent(
+                external = profile.boolean("external") ?: boolean("external"),
+                runtime = profile.string("runtime") ?: string("runtime")
+            ),
         permissionBadges = profile.stringArray("permissionBadges") ?: stringArray("permissionBadges") ?: emptyList()
     )
 }

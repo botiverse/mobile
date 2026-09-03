@@ -1,6 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.model.isExternalAgentRuntime
 import build.raft.app.model.*
 import build.raft.app.network.sync.ReplyPreview
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
@@ -691,7 +690,8 @@ data class AgentCreatedSummary(
     val avatarUrl: String? = null,
     val runtime: String? = null,
     val status: String? = null,
-    val isExternal: Boolean = isExternalAgentRuntime(runtime)
+    /** Required: producers must fold both sources via isExternalAgent(external, runtime). */
+    val isExternal: Boolean
 )
 
 data class AgentDmSnapshot(

@@ -11,6 +11,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import build.raft.app.model.toMemberProfile
 
 class MemberAgentParserTest {
     @Test
@@ -564,5 +565,45 @@ class MemberAgentParserTest {
             )
         assertFalse(human.isExternal)
         assertEquals(listOf(true, false), human.createdAgents.map { it.isExternal })
+    }
+
+    @Test
+    fun agentProfileToMemberProfilePreservesExternal() {
+        val external =
+            assertNotNull(
+                parseSharedAgentProfile(
+                    """
+                    {"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external"}
+                    """.trimIndent()
+                )
+            )
+        val managed =
+            assertNotNull(
+                parseSharedAgentProfile(
+                    """
+                    {"id":"agent-y","name":"claude","displayName":"Claude","status":"active","runtime":"claude"}
+                    """.trimIndent()
+                )
+            )
+        // parseSharedAgentProfile already yields a MemberProfile; round-trip through the
+        // human profile's createdAgents (AgentProfile) and back to MemberProfile.
+        val human =
+            assertNotNull(
+                parseSharedMemberProfile(
+                    """
+                    {"userId":"user-1","name":"owner","displayName":"Owner","role":"member",
+                     "createdAgents":[
+                       {"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external"},
+                       {"id":"agent-y","name":"claude","displayName":"Claude","status":"active","runtime":"claude"}
+                     ]}
+                    """.trimIndent()
+                )
+            )
+        assertEquals(
+            listOf(true, false),
+            human.createdAgents.map { it.toMemberProfile().isExternal }
+        )
+        assertTrue(external.isExternal)
+        assertFalse(managed.isExternal)
     }
 }

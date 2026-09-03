@@ -277,8 +277,19 @@ data class MemberProfile(
     /**
      * External agents (runtime `external`) have no managed liveness. Web keeps
      * `agent.external === true || runtime === "external"` as parallel sources
-     * (agentStore.ts resolveAgentDisplayState); the parser folds both here so a
-     * payload missing one key cannot silently demote the agent to a managed one.
+     * (agentStore.ts resolveAgentDisplayState); producers fold both via
+     * [isExternalAgent] so a payload missing one key cannot silently demote the
+     * agent to a managed one.
+     *
+     * Defaulted on purpose — boundary (task #1119): every producer whose wire
+     * payload carries `external`/`runtime` sets it explicitly
+     * (MemberAgentParser agent mappers, [AgentProfile.toMemberProfile],
+     * MembersPage static conversions, Settings JSON profiles). The remaining
+     * constructors are identity seeds (message authors, DM peers, task
+     * assignees, auth session user, visual fixtures) whose payloads carry
+     * neither key; they are never a status source — the status dot reads the
+     * roster/detail profile through SharedServerMembersStore, where the flag
+     * is required downstream ([build.raft.app.data.SharedServerMemberStatus]).
      */
     val isExternal: Boolean = false,
     val joinedAt: String? = null,

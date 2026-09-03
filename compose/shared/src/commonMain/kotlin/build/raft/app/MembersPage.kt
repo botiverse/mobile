@@ -236,6 +236,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
+import build.raft.app.model.isExternalAgentRuntime
 
 const val MEMBERS_PAGE = "compose_members"
 const val MEMBER_DETAIL_PAGE = "compose_member_detail"
@@ -1215,7 +1216,8 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
                 name = "visual-qa",
                 displayName = "Visual QA",
                 runtime = "codex",
-                status = "idle"
+                status = "idle",
+                isExternal = false
             )
         ),
         activity = "working",
@@ -12291,7 +12293,8 @@ private fun AgentCreatedSummary.toStaticMembersProfile(): MemberProfile {
         avatarUrl = avatarWireValue,
         avatar = AvatarReference.fromWireValue(avatarWireValue),
         avatarLabel = display.take(1).uppercase(),
-        roleDescription = runtime
+        roleDescription = runtime,
+        isExternal = isExternal
     )
 }
 
@@ -12428,6 +12431,8 @@ internal fun AgentDetailSnapshot.toStaticMembersProfile(server: ServerSummary): 
         avatarLabel = label.take(1).uppercase(),
         presence = Presence.Offline,
         agentStatus = null,
+        // Detail summaries carry the runtime sentinel only (no projected boolean).
+        isExternal = isExternalAgentRuntime(summary?.runtime),
         permissionBadges = listOfNotNull(
             summary?.runtime?.takeIf { it.isNotBlank() },
             summary?.machineName?.takeIf { it.isNotBlank() }?.let { "computer:$it" },
