@@ -7405,11 +7405,18 @@ private fun MembersAgentProfileHeader(
                     horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SlockStatusIndicator(
-                        color = agentStatusIndicatorState?.color ?: SlockColor.StatusNeutralGray,
-                        size = 8.dp,
-                        pulsing = agentStatusIndicatorState?.pulsing == true
-                    )
+                    // A null resolution is Unknown/not-ready, and StatusNeutralGray is the
+                    // Offline/Disconnected colour — falling back to it makes the dot claim
+                    // offline while the label beside it says Unknown, the disagreement
+                    // SlockAgentStatusIndicator's own contract forbids. Render nothing until
+                    // something authoritative arrives (task #253/#256).
+                    agentStatusIndicatorState?.let { state ->
+                        SlockStatusIndicator(
+                            color = state.color,
+                            size = 8.dp,
+                            pulsing = state.pulsing
+                        )
+                    }
                     Text(
                         text = statusLabel,
                         style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
@@ -12041,11 +12048,15 @@ private fun MembersListRow(
             }
         }
         if (member.kind == MemberKind.Agent) {
-            SlockStatusIndicator(
-                color = agentStatusDisplayState?.color ?: SlockColor.StatusNeutralGray,
-                size = MemberStatusDotSize,
-                pulsing = agentStatusDisplayState?.pulsing == true
-            )
+            // Same contract as the detail header: null is Unknown, not Offline, so the row
+            // shows no dot rather than a grey one until a resolution exists (task #253/#256).
+            agentStatusDisplayState?.let { state ->
+                SlockStatusIndicator(
+                    color = state.color,
+                    size = MemberStatusDotSize,
+                    pulsing = state.pulsing
+                )
+            }
         }
     }
 }
