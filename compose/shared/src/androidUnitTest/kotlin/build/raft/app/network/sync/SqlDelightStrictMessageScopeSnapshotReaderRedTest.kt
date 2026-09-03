@@ -127,6 +127,7 @@ class SqlDelightStrictMessageScopeSnapshotReaderRedTest {
             serverId = "server-1",
             principalId = "principal-1",
             consumerId = SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID,
+            environmentId = "env-test",
         ),
         scopeId = "channel-1",
         scopeKind = "channel",

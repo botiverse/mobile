@@ -60,13 +60,13 @@ class ProcessPresenceBindingReadinessTest {
         transition(
             RealtimeAuthRevision(
                 generation = 1L,
-                session = RealtimeAuthoritySession(principalId = "user-1", serverIds = listOf("server-1")),
+                session = RealtimeAuthoritySession(principalId = "user-1", serverIds = listOf("server-1"), environmentId = "env-test"),
             )
         )
         transition(
             RealtimeAuthRevision(
                 generation = 2L,
-                session = RealtimeAuthoritySession(principalId = "user-1", serverIds = listOf("server-1")),
+                session = RealtimeAuthoritySession(principalId = "user-1", serverIds = listOf("server-1"), environmentId = "env-test"),
             )
         )
 
@@ -120,6 +120,7 @@ class ProcessPresenceBindingReadinessTest {
                 registry = authorityRegistry,
                 authStore = auth,
                 authEvents = auth,
+                currentEnvironmentId = { "env-test" },
                 diagnosticsLogger =
                     if (throwingDiagnosticsLogger) {
                         { message ->

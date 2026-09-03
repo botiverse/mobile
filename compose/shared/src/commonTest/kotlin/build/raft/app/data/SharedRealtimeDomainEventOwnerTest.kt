@@ -42,7 +42,7 @@ class SharedRealtimeDomainEventOwnerTest {
         authority.advanceAuth(
             RealtimeAuthRevision(
                 generation = 1L,
-                session = RealtimeAuthoritySession("account-1", listOf("server-1")),
+                session = RealtimeAuthoritySession("account-1", listOf("server-1"), environmentId = "env-test"),
             )
         )
         val processLease = authority.register("process-realtime-host")
@@ -300,7 +300,7 @@ class SharedRealtimeDomainEventOwnerTest {
         suspend fun authenticate(accountId: String, environmentId: String = "env-1") {
             boundEnvironmentId = environmentId
             authority.advanceAuthFromCurrentSession(
-                RealtimeAuthoritySession(principalId = accountId, serverIds = listOf("server-1")),
+                RealtimeAuthoritySession(principalId = accountId, serverIds = listOf("server-1"), environmentId = "env-test"),
                 force = true,
             )
             bindingTransition(authority.snapshot.value.authRevision)

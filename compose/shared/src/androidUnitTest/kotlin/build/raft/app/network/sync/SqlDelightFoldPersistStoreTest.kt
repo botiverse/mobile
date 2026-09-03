@@ -64,7 +64,7 @@ class SqlDelightFoldPersistStoreTest {
         scopeId: String = "c1",
         scopeKind: String = "channel",
     ) = SyncScopeKey(
-        partition = DurablePartitionKey(serverId, principalId, consumerId),
+        partition = DurablePartitionKey(serverId, principalId, consumerId, "env-test"),
         scopeId = scopeId,
         scopeKind = scopeKind,
     )

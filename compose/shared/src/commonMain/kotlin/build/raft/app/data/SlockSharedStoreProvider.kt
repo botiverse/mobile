@@ -168,6 +168,7 @@ internal fun createSharedRealtimeAuthorityProvider(
     registry: RealtimeAuthorityRegistry,
     authStore: SlockAuthSessionStore,
     authEvents: SlockAuthSessionEventSource,
+    currentEnvironmentId: () -> String,
     diagnosticsLogger: (String) -> Unit = {},
     canonicalFinalIntegration: RealtimeCanonicalFinalSinkIntegrationSeam? = null,
     // REQUIRED at the production creation seam: a provider that can publish
@@ -180,6 +181,7 @@ internal fun createSharedRealtimeAuthorityProvider(
         registry = registry,
         authStore = authStore,
         authEvents = authEvents,
+        currentEnvironmentId = currentEnvironmentId,
         diagnosticsLogger = diagnosticsLogger,
         canonicalFinalIntegration = canonicalFinalIntegration,
         onAuthRevisionAdvanced = onAuthRevisionAdvanced,
@@ -1979,6 +1981,9 @@ internal class SlockSharedStoreProvider private constructor(
                     registry = realtimeAuthorityRegistry,
                     authStore = authStore,
                     authEvents = authStore,
+                    currentEnvironmentId = {
+                        apiEnvironmentStore.current().apiBaseUrl.normalizedEnvironmentId()
+                    },
                     diagnosticsLogger = realtimeAuthorityDiagnosticsLogger,
                     canonicalFinalIntegration = canonicalFinalIntegration,
                     // Presence binding readiness (task #136): the ONE writer of
