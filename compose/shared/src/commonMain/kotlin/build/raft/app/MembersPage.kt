@@ -1017,14 +1017,37 @@ private fun unknownMembersAgentStatusIndicatorState(): SlockAgentStatusIndicator
         external = false
     )
 
+/**
+ * The observed state, or null when nothing authoritative (or fixture-supplied) exists.
+ *
+ * Surfaces that paint a dot must use this, never [resolveMembersAgentStatusIndicatorState]:
+ * that one substitutes [unknownMembersAgentStatusIndicatorState], whose colour maps through
+ * `Presence.Offline` to StatusNeutralGray, so an unknown agent would render the same dot as
+ * an offline one while its label reads "—" (task #256; @LiBai's review of PR #2325 caught the
+ * first attempt fixing only the elvis-fallback spelling of this defect and missing this one).
+ */
+internal fun resolveMembersAgentStatusIndicatorStateOrNull(
+    canonicalState: SlockAgentStatusIndicatorState?,
+    fixtureFallback: SlockAgentStatusIndicatorState?,
+    fixtureStatusFallbackEnabled: Boolean
+): SlockAgentStatusIndicatorState? =
+    canonicalState ?: fixtureFallback.takeIf { fixtureStatusFallbackEnabled }
+
+/**
+ * Label-facing resolution: never null, because an explicit unknown must outrank a stale
+ * summary caption (see `explicitCanonicalUnknownCannotBeCaptionedByStaleSummaryActivity`).
+ * Do not use it to choose a dot colour.
+ */
 internal fun resolveMembersAgentStatusIndicatorState(
     canonicalState: SlockAgentStatusIndicatorState?,
     fixtureFallback: SlockAgentStatusIndicatorState?,
     fixtureStatusFallbackEnabled: Boolean
 ): SlockAgentStatusIndicatorState =
-    canonicalState
-        ?: fixtureFallback.takeIf { fixtureStatusFallbackEnabled }
-        ?: unknownMembersAgentStatusIndicatorState()
+    resolveMembersAgentStatusIndicatorStateOrNull(
+        canonicalState = canonicalState,
+        fixtureFallback = fixtureFallback,
+        fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
+    ) ?: unknownMembersAgentStatusIndicatorState()
 
 private fun SlockAgentStatusIndicatorState.toMembersAgentStatusDisplayState(): MembersAgentStatusDisplayState =
     MembersAgentStatusDisplayState(
@@ -4540,10 +4563,12 @@ private fun MembersDetailContent(
     val diagnosticsCopied = stringResource(MR.strings.member_action_diagnostics_copied)
     val issueReported = stringResource(MR.strings.member_action_issue_reported)
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
-    val managedAgentStatusIndicatorState =
+    // task #256: observed-or-null drives the dot. The label-facing resolution below may
+    // substitute the unknown placeholder, which is grey and would impersonate Offline.
+    val managedAgentStatusObservedState =
         if (member.kind == MemberKind.Agent) {
             val canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.id.value)
-            resolveMembersAgentStatusIndicatorState(
+            resolveMembersAgentStatusIndicatorStateOrNull(
                 canonicalState = canonicalState,
                 fixtureFallback =
                     if (stableVisualCapture) {
@@ -4559,14 +4584,29 @@ private fun MembersDetailContent(
         } else {
             null
         }
+    val managedAgentStatusIndicatorState =
+        if (member.kind == MemberKind.Agent) {
+            managedAgentStatusObservedState ?: unknownMembersAgentStatusIndicatorState()
+        } else {
+            null
+        }
+    val isExternalAgent =
+        member.kind == MemberKind.Agent && (member.isExternal || detail?.summary?.isExternal == true)
     // task #1119 PR 2: the detail page (and only the detail page) reads the
     // external agent's setup/activity status — React AgentDetailPanel parity.
     val agentStatusIndicatorState =
-        if (member.kind == MemberKind.Agent && (member.isExternal || detail?.summary?.isExternal == true)) {
+        if (isExternalAgent) {
             rememberExternalAgentDetailIndicatorState(detail = detail, timeContext = timeContext)
         } else {
             managedAgentStatusIndicatorState
         }
+    // task #256 x #1119: the no-manufactured-dot rule covers the MANAGED branch only. An
+    // external agent's tiers are cyan/green — never StatusNeutralGray — so that state is an
+    // observation in its own right and must keep painting its dot. Suppressing it here would
+    // silently undo #1119's setup/activity tiers, which is exactly what resolving this
+    // conflict in favour of either side alone would have done.
+    val agentStatusObservedState =
+        if (isExternalAgent) agentStatusIndicatorState else managedAgentStatusObservedState
     val canViewPrivate = member.kind == MemberKind.Agent && canViewPrivateAgentSurfaces(member, detail)
     val canManage = member.kind == MemberKind.Agent && !deleted && canManageAgent(member, detail)
     val scope = rememberCoroutineScope()
@@ -5037,6 +5077,7 @@ private fun MembersDetailContent(
                                         onAgentRuntimeModelsRequest = onAgentRuntimeModelsRequest,
                                         canManage = canManage,
                                         agentStatusIndicatorState = agentStatusIndicatorState,
+                                        agentStatusObservedState = agentStatusObservedState,
                                         agentStatusResolver = agentStatusResolver,
                                         memberAvatarResolver = memberAvatarResolver,
                                         showAvatarPicker = showAvatarPicker && canManage && !deleted,
@@ -7336,6 +7377,7 @@ private fun MembersAgentProfileHeader(
     member: MemberProfile,
     summary: AgentDetailSummary?,
     canEdit: Boolean,
+    agentStatusObservedState: SlockAgentStatusIndicatorState?,
     agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     showAvatarPicker: Boolean,
@@ -7410,7 +7452,7 @@ private fun MembersAgentProfileHeader(
                     // offline while the label beside it says Unknown, the disagreement
                     // SlockAgentStatusIndicator's own contract forbids. Render nothing until
                     // something authoritative arrives (task #253/#256).
-                    agentStatusIndicatorState?.let { state ->
+                    agentStatusObservedState?.let { state ->
                         SlockStatusIndicator(
                             color = state.color,
                             size = 8.dp,
@@ -7491,6 +7533,7 @@ private fun MembersAgentProfileTab(
     agentProfileEditAuthority: MembersAgentProfileEditAuthority? = null,
     onAgentRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> },
     canManage: Boolean,
+    agentStatusObservedState: SlockAgentStatusIndicatorState?,
     agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
@@ -8008,6 +8051,7 @@ private fun MembersAgentProfileTab(
             summary = summary,
             canEdit = canEdit,
             agentStatusIndicatorState = agentStatusIndicatorState,
+            agentStatusObservedState = agentStatusObservedState,
             memberAvatarResolver = memberAvatarResolver,
             showAvatarPicker = showAvatarPicker,
             onToggleAvatarPicker = onToggleAvatarPicker,
