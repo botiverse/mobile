@@ -1058,6 +1058,34 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun composerImageActionSlotsPutOriginalImageOnConfirmBar() {
+        assertEquals(
+            listOf(
+                SlockFilePreviewComposerImageActionSlot.Edit,
+                SlockFilePreviewComposerImageActionSlot.OriginalImage,
+                SlockFilePreviewComposerImageActionSlot.FlexibleSpacer,
+                SlockFilePreviewComposerImageActionSlot.Done,
+            ),
+            slockFilePreviewComposerImageActionSlots(
+                canEdit = true,
+                canComplete = true,
+                originalImageOptionEnabled = true,
+            ),
+        )
+        assertEquals(
+            listOf(
+                SlockFilePreviewComposerImageActionSlot.Edit,
+                SlockFilePreviewComposerImageActionSlot.FlexibleSpacer,
+            ),
+            slockFilePreviewComposerImageActionSlots(
+                canEdit = true,
+                canComplete = false,
+                originalImageOptionEnabled = true,
+            ),
+        )
+    }
+
+    @Test
     fun downloadStatusLabelIncludesPercentAndSpeed() {
         val label =
             slockFilePreviewDownloadStatusLabel(

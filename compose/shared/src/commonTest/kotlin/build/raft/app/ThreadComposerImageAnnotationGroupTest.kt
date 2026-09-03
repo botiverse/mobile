@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.PlatformFile
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -55,6 +56,8 @@ class ThreadComposerImageAnnotationGroupTest {
         assertEquals("file:///first.jpg", payload.imageGallery[0].composerImageFileRef)
         assertEquals("file:///second.jpg", payload.imageGallery[1].composerImageFileRef)
         assertTrue(payload.composerImageCompressAfterEdit)
+        assertTrue(payload.showsComposerOriginalImageOption())
+        assertFalse(payload.composerOriginalImageSelected())
     }
 
     @Test
@@ -72,6 +75,8 @@ class ThreadComposerImageAnnotationGroupTest {
         assertEquals("", payload.composerImageGroupId)
         assertEquals(1, payload.imageGallery.size)
         assertEquals(false, payload.composerImageCompressAfterEdit)
+        assertTrue(payload.showsComposerOriginalImageOption())
+        assertTrue(payload.composerOriginalImageSelected())
     }
 
     private fun imageFile(id: String, fileRef: String) =
