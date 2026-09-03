@@ -17,6 +17,12 @@ name: iOS Simulator app (on demand)
 
 on:
   workflow_dispatch:
+    inputs:
+      archs:
+        description: "Simulator slices to build (xcodebuild ARCHS). Default arm64 — see the ARCHS note on the build step before widening."
+        required: false
+        type: string
+        default: "arm64"
   # workflow_dispatch only registers once this file reaches the default
   # branch; until then, pushing an edit of THIS FILE on a branch is the
   # trigger (scoped so ordinary source pushes never burn a macOS runner).
@@ -68,10 +74,28 @@ jobs:
         working-directory: compose/iosApp
         run: pod install
 
+      # ARCHS is pinned (default arm64) because the generic Simulator destination
+      # alone builds arm64 AND x86_64, and the CocoaPods "Build shared" phase then
+      # links BOTH Kotlin/Native frameworks in one Gradle invocation under the
+      # 4 GiB heap from compose/gradle.properties. Read from the uploaded logs of
+      # main run 33805615758 (OOM: "Execution failed for task
+      # ':shared:linkPodDebugFrameworkIosX64' ... java.lang.OutOfMemoryError:
+      # Java heap space", BUILD FAILED in 55m 57s) and run 33805224692 (same
+      # "Daemon will expire after running out of JVM heap space" during the
+      # arm64 link, then a GC stall to the 60-minute timeout). qa-acceptance-ios
+      # builds with a UDID destination, i.e. arm64 only, and finishes in ~12 min;
+      # the arm64 slice is also the only one any of our Simulator seats execute
+      # (task #246 seam measurement: executed arm64 slices byte-identical between
+      # the fat producer build and the thin consumer build). Widen via the
+      # `archs` input only for an Intel host, and expect the memory cost.
       - name: Build app for Simulator
         working-directory: compose/iosApp
+        env:
+          ARCHS_INPUT: ${{ inputs.archs }}
         run: |
           log="$GITHUB_WORKSPACE/xcodebuild-ios.log"
+          archs="${ARCHS_INPUT:-arm64}"
+          echo "ARCHS=$archs"
           set +e
           xcodebuild \
             -workspace iosApp.xcworkspace \
@@ -79,6 +103,7 @@ jobs:
             -configuration Debug \
             -destination "generic/platform=iOS Simulator" \
             -derivedDataPath build/DerivedData \
+            ARCHS="$archs" \
             CODE_SIGNING_ALLOWED=NO \
             build-for-testing > "$log" 2>&1
           status=$?
