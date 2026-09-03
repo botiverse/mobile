@@ -26,6 +26,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createIosDriver } from "./ios_driver.mjs";
 import {
+  dumpShowsComposer,
   findAllChannelTarget,
   findComposerImageTarget,
   hasPhotoPickerGate,
@@ -171,7 +172,7 @@ try {
   // 10s main-thread budget that Kuikly Home exceeds.
   let dump = await drv.dumpUi();
   fs.writeFileSync(path.join(outDir, "home-dump.txt"), redactEditableValues(dump));
-  if (!dump.includes('"Message #all"')) {
+  if (!dumpShowsComposer(dump)) {
     let target;
     try {
       target = findAllChannelTarget(dump);
@@ -184,7 +185,10 @@ try {
     await new Promise((r) => setTimeout(r, 4000));
     dump = await drv.dumpUi();
   }
-  if (!dump.includes('"Message #all"')) { writeVerdict("fail", "#all composer placeholder not visible after open"); process.exit(1); }
+  if (!dumpShowsComposer(dump)) {
+    writeVerdict("fail", "#all composer [INPUT] not visible after open (agent-device dumps have no placeholder)");
+    process.exit(1);
+  }
   rec("#all open, composer visible");
   fs.writeFileSync(path.join(outDir, "channel-dump.txt"), redactEditableValues(dump));
   await shot("step-01-channel.png");
