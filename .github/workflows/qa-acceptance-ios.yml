@@ -102,7 +102,6 @@ jobs:
       SIM_DEVICE: iPhone 14
       # Default inspect/act path. qa-loop keeps QaAcceptanceLoopTests.
       IOS_QA_DRIVER: agent-device
-      AGENT_DEVICE_STATE_DIR: ${{ runner.temp }}/agent-device
     steps:
       # Blacksmith macOS starts its local Actions-results proxy with the job.
       # Give it a bounded readiness window before any action can use artifact
@@ -354,8 +353,12 @@ jobs:
             "$EXPECTED_SHA256" "$EXPECTED_SOURCE_COMMIT" "$EXPECTED_PACKAGE_ID" \
             "$EXPECTED_VERSION" "$EXPECTED_VERSION_CODE"
 
+      - name: Set agent-device state dir
+        if: ${{ env.IOS_QA_DRIVER == 'agent-device' }}
+        run: echo "AGENT_DEVICE_STATE_DIR=$RUNNER_TEMP/agent-device" >> "$GITHUB_ENV"
+
       - name: Install agent-device
-        if: ${{ env.IOS_QA_DRIVER != 'qa-loop' }}
+        if: ${{ env.IOS_QA_DRIVER == 'agent-device' }}
         run: npm install -g agent-device@0.20.10
 
       - name: Install app
@@ -380,11 +383,11 @@ jobs:
           cat "$GITHUB_WORKSPACE/build-info-ios.json"
 
       - name: Prepare agent-device iOS runner
-        if: ${{ env.IOS_QA_DRIVER != 'qa-loop' }}
+        if: ${{ env.IOS_QA_DRIVER == 'agent-device' }}
         run: |
           mkdir -p "$AGENT_DEVICE_STATE_DIR"
           agent-device --version
-          agent-device prepare ios-runner --platform ios --timeout 180000
+          agent-device prepare ios-runner --platform ios --udid "$UDID" --timeout 180000
 
       - name: Install M3 SDK (pi-ai)
         working-directory: ${{ runner.temp }}
