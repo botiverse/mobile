@@ -980,6 +980,19 @@ WHERE serverId = ?
   AND scopeKind = ?
   AND scopeId = ?;
 
+-- Offline read entry (task #1123): a thread screen enters by channel id alone and must resolve the
+-- persisted scopeKind before it can restore the scope. Only a committed cursor row proves a baseline
+-- exists; a scope with facts but no cursor is poisoned, not readable.
+selectSyncCursorScopeKindsForScopeId:
+SELECT scopeKind
+FROM syncCursorEntity
+WHERE environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND scopeId = ?
+ORDER BY scopeKind;
+
 -- #491 P1 warm-start restore: canonical server-backed timeline read. Only server-backed rows
 -- (seq IS NOT NULL) in (seq, id) tie-break order — NOT selectMessagesForChannel, which sorts by
 -- timestampLabel. Sparse seq orders only; it never synthesizes dense successors.

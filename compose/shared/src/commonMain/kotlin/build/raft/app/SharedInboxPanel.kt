@@ -205,6 +205,7 @@ internal fun SharedHomeActivityScreen(
                     sharedStores.awaitThreadReplyCacheIdentityTransition(storeScope, transitionAnchor)
                 },
                 payloadStore = sharedStores.threadPayloadStore,
+                durableLastKnownReader = sharedStores.threadDurableLastKnownReader,
                 threadPageSizeProvider = { serverId ->
                     sharedStores.serverFeatureFlags.snapshotFor(serverId).mobileThreadPageSize()
                 },
