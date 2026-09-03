@@ -633,7 +633,8 @@ class AgentsApiTest {
                 )
             )
 
-        assertIs<DataResult.NoPermission>(client.agentExternalStatus(MemberId("agent-1")))
+        val result = client.agentExternalStatus(MemberId("agent-1"))
+        assertTrue(result is DataResult.NoPermission, "403 must map to NoPermission, got $result")
     }
 
     // 400 = agent is not external; also non-Content.
@@ -644,7 +645,8 @@ class AgentsApiTest {
                 RecordingAgentsApi(externalStatusCode = 400, externalStatusErrorBody = """{"error":"Agent is not external"}""")
             )
 
-        assertIs<DataResult.Error>(client.agentExternalStatus(MemberId("agent-1")))
+        val result = client.agentExternalStatus(MemberId("agent-1"))
+        assertTrue(result is DataResult.Error, "400 must map to Error, got $result")
     }
 
     @Test
