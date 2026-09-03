@@ -65,12 +65,12 @@
     <string name="home_error_notification_sign_in">この通知を開くにはログインしてください</string>
     <string name="home_error_conversation_unavailable">この会話は利用できなくなりました</string>
     <string name="home_error_direct_message_unavailable">ダイレクトメッセージを利用できません</string>
-    <string name="home_error_open_direct_message_failed_prefix">ダイレクトメッセージを開けませんでした: </string>
+    <string name="home_error_open_direct_message_failed_prefix">ダイレクトメッセージを開けませんでした:&#160;</string>
     <string name="auth_notice_source_licenses_sign_in">オープンソースライセンスはログイン後に表示できます</string>
-    <string name="auth_notice_report_submitted_prefix">レポートを送信しました: </string>
+    <string name="auth_notice_report_submitted_prefix">レポートを送信しました:&#160;</string>
     <string name="auth_notice_report_failed_diagnostics_copied">レポートの送信に失敗しました。診断情報をコピーしました</string>
     <string name="member_error_report_issue">エージェントの問題を報告できませんでした</string>
-    <string name="settings_error_join_link_load_prefix">参加リンクを読み込めませんでした: </string>
+    <string name="settings_error_join_link_load_prefix">参加リンクを読み込めませんでした:&#160;</string>
     <string name="settings_billing_action_compare_plans">すべての機能を見てプランを比較</string>
     <string name="settings_pwa_install_title">アプリをインストール</string>
     <string name="settings_pwa_install_native_detail">インストールの案内は、ネイティブビルド以外では Web PWA API が管理します。ネイティブの Android および OHOS ビルドは各プラットフォームのアプリインストールフローを使用します。</string>
@@ -924,7 +924,7 @@
     <string name="member_state_workspace_loading_short">読み込み中</string>
     <string name="member_state_activity_start_agent">アクティビティログを見るには、エージェントを開始してください。</string>
     <string name="member_label_computer">コンピューター</string>
-    <string name="member_daemon_version_suffix"> · デーモン v%1$s</string>
+    <string name="member_daemon_version_suffix">&#160;· デーモン v%1$s</string>
     <string name="member_label_created">作成日</string>
     <string name="member_label_creator">作成者</string>
     <string name="member_label_status">ステータス</string>
@@ -1860,9 +1860,9 @@
     <string name="settings_server_delete_detail">%1$s とそのすべてのデータを完全に削除します。元に戻すことはできません。</string>
     <string name="settings_server_this_server">このサーバー</string>
     <string name="settings_server_delete_type_prefix">確認のため</string>
-    <string name="settings_server_delete_confirm_suffix"> と入力してください:</string>
-    <string name="settings_server_delete_warning_prefix">この操作により </string>
-    <string name="settings_server_delete_warning_suffix"> とそのすべてのデータ（エージェント、チャンネル、メッセージ）が完全に削除されます。元に戻すことはできません。</string>
+    <string name="settings_server_delete_confirm_suffix">&#160;と入力してください:</string>
+    <string name="settings_server_delete_warning_prefix">この操作により&#160;</string>
+    <string name="settings_server_delete_warning_suffix">&#160;とそのすべてのデータ（エージェント、チャンネル、メッセージ）が完全に削除されます。元に戻すことはできません。</string>
     <string name="settings_server_action_deleting">削除中...</string>
     <string name="settings_server_section_owners_admins">オーナーと管理者</string>
     <string name="settings_server_action_add_admin">オーナー／管理者を追加</string>
