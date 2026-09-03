@@ -53,6 +53,7 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
 @property (nonatomic, assign) BOOL pageDidAppear;
 @property (nonatomic, assign) BOOL childActive;
 @property (nonatomic, assign) BOOL childVisible;
+@property (nonatomic, assign) BOOL appWantsSnapshot;
 
 @end
 
@@ -66,6 +67,9 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
         _pageDataText = @"{}";
         _glassStyle = @"";
         _childActive = YES;
+        _appWantsSnapshot = UIApplication.sharedApplication.applicationState != UIApplicationStateActive;
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applicationWillResignActive:) name:UIApplicationWillResignActiveNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applicationDidBecomeActive:) name:UIApplicationDidBecomeActiveNotification object:nil];
         self.backgroundColor = UIColor.clearColor;
         _contentContainerView = [[UIView alloc] initWithFrame:CGRectZero];
         _contentContainerView.backgroundColor = UIColor.clearColor;
@@ -74,6 +78,20 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
         [self addSubview:_contentContainerView];
     }
     return self;
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)applicationWillResignActive:(NSNotification *)notification {
+    self.appWantsSnapshot = YES;
+    [self syncChildVisibility];
+}
+
+- (void)applicationDidBecomeActive:(NSNotification *)notification {
+    self.appWantsSnapshot = NO;
+    [self syncChildVisibility];
 }
 
 - (void)hrv_setPropWithKey:(NSString *)propKey propValue:(id)propValue {
@@ -344,9 +362,11 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
 - (void)syncChildVisibility {
     BOOL shouldBeRendered = self.childActive && self.childView != nil;
     BOOL shouldBeLifecycleVisible = shouldBeRendered && self.viewDidAppear && self.pageDidAppear;
-    self.contentContainerView.hidden = !shouldBeRendered;
+    // Preserve content only while the app is inactive for the system snapshot.
+    BOOL shouldKeepSnapshotContent = shouldBeRendered || (self.childView != nil && self.appWantsSnapshot);
+    self.contentContainerView.hidden = !shouldKeepSnapshotContent;
     self.userInteractionEnabled = shouldBeRendered;
-    self.childView.hidden = !shouldBeRendered;
+    self.childView.hidden = !shouldKeepSnapshotContent;
     if (self.childVisible == shouldBeLifecycleVisible) {
         return;
     }
