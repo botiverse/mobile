@@ -10604,7 +10604,7 @@ private fun MembersAgentReminderCard(
             }
             Text(
                 text = reminder.fireAt.membersReminderShortDateTime(timeContext),
-                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
                 color = SlockColor.TextBlack.copy(alpha = 0.5f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
