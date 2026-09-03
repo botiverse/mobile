@@ -95,8 +95,13 @@ jobs:
           fi
           exit "$status"
 
-      - name: Upload xcodebuild log on failure
-        if: ${{ failure() }}
+      # `failure()` alone misses the timeout case: main run 33799197240 hit the
+      # job's 60-minute limit inside the same "Build shared" phase and was
+      # cancelled, and a cancelled job does not satisfy failure(), so the one
+      # log that could explain the stall was never uploaded. cancelled() steps
+      # still run after the cancellation, so cover both.
+      - name: Upload xcodebuild log on failure or timeout
+        if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v6
         with:
           name: ios-simulator-app-build-log-${{ github.run_id }}
