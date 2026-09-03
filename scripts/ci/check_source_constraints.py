@@ -706,13 +706,17 @@ def check_label_facing_resolver_has_no_production_callers(root: Path) -> None:
     """
     offenders = []
     for path in sorted((root / "compose").rglob("*.kt")):
-        # Any source set whose path has a `*Test*` component. Enumerating them
-        # (commonTest, androidTest, androidUnitTest, iosTest, jvmTest, ...) would be one
-        # more list someone has to remember to extend -- the same species as the three
-        # scope holes this check replaced (LiBai). Here the failure direction is the safe
-        # one (a missed exclusion is a false positive, which is noisy rather than silent),
-        # but the shape is worth removing anyway.
-        if any("test" in part.lower() for part in path.parts):
+        # Directory components only, matched whole. Two earlier attempts were wrong in
+        # opposite directions: enumerating source sets (commonTest, src/test) is a list
+        # someone must remember to extend, and a substring test over path.parts matches
+        # FILE names too -- "AppShellTabRouteState.kt" contains "rouTESTate" and
+        # "SharedAuthGateStore.kt" contains "gaTESTore", so both production files were
+        # skipped while the check still reported green (LiBai). The list version failed
+        # loudly (a missed exclusion is a false positive); the substring version failed
+        # silently, which is strictly worse. `endswith("Test")` covers every Kotlin test
+        # source set by construction -- they are all named `<target>Test` -- so this is a
+        # rule rather than a list; `== "test"` covers buildSrc/src/test.
+        if any(part == "test" or part.endswith("Test") for part in path.parent.parts):
             continue
         text = path.read_text(encoding="utf-8").replace("\r\n", "\n")
         for line_number, line in enumerate(text.split("\n"), start=1):
