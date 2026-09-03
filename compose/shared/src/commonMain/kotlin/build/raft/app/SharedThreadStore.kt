@@ -113,13 +113,17 @@ import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.avatarWireValueForAvatarSlot
+import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.InlineThreadReplyPreviewLimit
+import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
+import build.raft.app.network.sync.ThreadDurableLastKnownReader
 import build.raft.app.network.sync.ThreadRepliesAcceptedProjection
 import build.raft.app.network.sync.ThreadRepliesAuthoritativeSnapshot
 import build.raft.app.network.sync.ThreadRepliesPageIdentity
 import build.raft.app.network.sync.ThreadRepliesScopeIdentity
 import build.raft.app.network.sync.ThreadRepliesSyncHost
 import build.raft.app.network.sync.initialThreadRepliesReadModel
+import build.raft.app.network.sync.toThreadMessageItem
 import build.raft.app.model.messageStreamChannelId
 import build.raft.app.model.resolveAvatarSlot
 import build.raft.app.model.safeDisplayNameOrNull
@@ -224,6 +228,26 @@ internal val ReplyCacheProvenance.replyCacheOwnerScopeId: String?
 
 internal val ReplyCacheProvenance.threadPayloadOwnerScopeId: String?
     get() = replyCacheOwnerScopeId
+
+/**
+ * The durable message partition this provenance may read (task #1123). It is the same identity
+ * the realtime writer persists under (`RealtimeGrantRecord.durablePartition`: normalized
+ * environment, principal, server) — generations are deliberately not part of the on-disk key.
+ * Admission reuses [replyCacheOwnerScopeId]: a blank segment or the auth "no session" sentinel
+ * owns no partition, and a segment that is not already canonical (surrounding whitespace) is
+ * refused rather than normalized here, because the writer never produces such a key.
+ */
+internal fun ReplyCacheProvenance.durableMessagePartitionOrNull(consumerId: String): DurablePartitionKey? {
+    replyCacheOwnerScopeId ?: return null
+    return runCatching {
+        DurablePartitionKey(
+            serverId = serverId,
+            principalId = principalId,
+            consumerId = consumerId,
+            environmentId = environmentId,
+        )
+    }.getOrNull()
+}
 
 internal val ReplyCacheProvenance.threadPendingSendOwnerScopeId: String?
     get() = replyCacheOwnerScopeId
@@ -1401,6 +1425,11 @@ internal class SharedThreadDataSource(
     private val replyCacheIdentityTransitionWaiter:
         (suspend (ThreadReplyCacheIdentityTransitionAnchor?) -> Boolean)? = null,
     payloadStore: SharedThreadPayloadStore? = null,
+    /**
+     * Offline cache read entry (task #1123). Absent means "no durable first frame"; the store then
+     * behaves exactly as before this seam existed. Production wires the V2 reader from the provider.
+     */
+    private val durableLastKnownReader: ThreadDurableLastKnownReader? = null,
     private val agentsApiClient: SlockAgentsApiClient? = null,
     private val actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
     private val savedStatusRepository: SavedStatusRepository? = null,
@@ -1498,6 +1527,7 @@ internal class SharedThreadDataSource(
         replyCacheIdentityTransitionWaiter:
             (suspend (ThreadReplyCacheIdentityTransitionAnchor?) -> Boolean)? = null,
         payloadStore: SharedThreadPayloadStore? = null,
+        durableLastKnownReader: ThreadDurableLastKnownReader? = null,
         agentsApiClient: SlockAgentsApiClient? = null,
         actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
         savedStatusRepository: SavedStatusRepository? = null,
@@ -1526,6 +1556,7 @@ internal class SharedThreadDataSource(
         replyCacheIdentityAuthority = replyCacheIdentityAuthority,
         replyCacheIdentityTransitionWaiter = replyCacheIdentityTransitionWaiter,
         payloadStore = payloadStore,
+        durableLastKnownReader = durableLastKnownReader,
         agentsApiClient = agentsApiClient,
         actionCardsApiClient = actionCardsApiClient,
         savedStatusRepository = savedStatusRepository,
@@ -1975,6 +2006,71 @@ internal class SharedThreadDataSource(
                 ownerScopeId
             )
         }
+
+    /**
+     * Durable last-known first frame for a top-level route (channel / DM), read from the
+     * `sync-core.messages.v2` partition of [context]'s identity. Returns `null` for every
+     * non-positive case (no reader, reply-thread route, unrenderable route, incomplete identity,
+     * identity moved during the disk read, flag off, no baseline, projection produced nothing) so the
+     * caller falls through to the ordinary loading shell. The returned payload is a stand-in, not an
+     * authority: paging is closed and `durableLastKnown` is set so the first network content slice
+     * replaces it wholesale.
+     */
+    internal suspend fun durableLastKnownPayloadIfCurrent(
+        routePayload: KuiklyThreadScreenPayload,
+        routeIdentity: ThreadRouteIdentity,
+        context: ReplyCacheProducerContext,
+    ): KuiklyThreadScreenPayload? {
+        val reader = durableLastKnownReader ?: return null
+        if (!routeIdentity.canRenderTimelineCandidates) return null
+        val allowedScopeKinds =
+            when (routeIdentity.surfaceKind) {
+                KuiklyThreadSurfaceKind.Channel -> setOf("channel", "private", "joint")
+                KuiklyThreadSurfaceKind.DirectMessage -> setOf("dm")
+                else -> return null
+            }
+        val channelId = routeIdentity.timelineChannelId ?: return null
+        val partition =
+            context.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+                ?: return null
+        if (!isCurrentReplyCacheProvenance(context.provenance)) return null
+        val frame = reader.read(partition, channelId) ?: return null
+        // The disk read suspended; a sign-out / account switch in between must not let identity A's
+        // rows render under identity B's route.
+        if (!isCurrentReplyCacheProvenance(context.provenance)) return null
+        if (frame.scope.scopeKind !in allowedScopeKinds) {
+            diagnosticsLogger(
+                "thread_durable_last_known threadId=$channelId outcome=surface_mismatch " +
+                    "surface=${routeIdentity.surfaceKind} scopeKind=${frame.scope.scopeKind}"
+            )
+            return null
+        }
+        val messages =
+            frame.envelopes
+                .mapNotNull { envelope ->
+                    envelope.toThreadMessageItem(
+                        currentUserId = context.provenance.principalId,
+                        diagnostics = diagnosticsLogger,
+                    )
+                }
+                .sortedByThreadTimeline()
+        if (messages.isEmpty()) return null
+        diagnosticsLogger(
+            "thread_durable_last_known threadId=$channelId outcome=frame scopeKind=${frame.scope.scopeKind} " +
+                "messages=${messages.size} latestSeq=${frame.cursor.latestSeq}"
+        )
+        return routePayload.copy(
+            status = "content",
+            backgroundRefreshing = false,
+            durableLastKnown = true,
+            messages = messages,
+            canLoadMoreBefore = false,
+            canLoadMoreAfter = false,
+            olderMessagesStatus = "idle",
+            newerMessagesStatus = "idle",
+            errorCode = null,
+        )
+    }
 
     suspend fun rememberedReplyThreadAccessFailure(
         basePayload: KuiklyThreadScreenPayload
@@ -5876,14 +5972,38 @@ internal class SharedThreadStore(
             } else {
                 null
             }
+        // Offline cache read entry (task #1123): only when no in-memory candidate exists does the
+        // durable last-known frame stand in for the loading shell. Memory candidates are newer by
+        // construction (they were written by a network response in this process).
+        val durableLastKnown =
+            if (cached == null && current == null && threadId != null) {
+                producerContext?.let { context ->
+                    dataSource.durableLastKnownPayloadIfCurrent(
+                        routePayload = routeContextPayload,
+                        routeIdentity = routeIdentity,
+                        context = context,
+                    )
+                }
+            } else {
+                null
+            }
+        durableLastKnown?.let { accepted ->
+            dataSource.seedThreadAuthorProfiles(
+                serverId = session?.currentServerId,
+                payload = accepted,
+                source = "durable_last_known"
+            )
+        }
         diagnosticsLogger?.invoke(
             "thread_start threadId=${threadId.orEmpty()} cachedMemory=${cached != null || current != null} " +
+                "durableLastKnown=${durableLastKnown != null} " +
                 "status=${routeContextPayload.status} messages=${routeContextPayload.messages.size} " +
                 routeContextPayload.originDiagnostics()
         )
         val visiblePayload =
             (cached
                 ?: current
+                ?: durableLastKnown
                 ?: if (threadId == null) {
                     routeContextPayload
                 } else {
@@ -6284,7 +6404,18 @@ internal class SharedThreadStore(
                     // network errors deliberately keep the warm cache.
                     latest.asRefreshNoPermission(basePayload, result.blocker.code)
                 }
-            }.copy(backgroundRefreshing = false)
+            }.copy(
+                backgroundRefreshing = false,
+                // A durable last-known frame survives only a transient failure; any canonical answer
+                // (content, empty, no permission) replaces it and clears the stand-in flag.
+                durableLastKnown =
+                    latest.durableLastKnown &&
+                        when (result) {
+                            is DataResult.Error -> true
+                            is DataResult.Empty -> result.reason != EmptyReason.NoMessages
+                            else -> false
+                        },
+            )
         var committedPayload: KuiklyThreadScreenPayload? = null
         val committed =
             initialAccessStateMutex.withLock<Boolean?> {
@@ -10877,6 +11008,8 @@ internal fun KuiklyThreadScreenPayload.withContentSliceFrom(patch: KuiklyThreadS
             },
         status = patch.status,
         backgroundRefreshing = patch.backgroundRefreshing,
+        // The content slice carries its own provenance: a network patch is never last-known.
+        durableLastKnown = patch.durableLastKnown,
         messages = patch.messages,
         gapRefillMessageIds = patch.gapRefillMessageIds,
         originMessage = patch.originMessage,

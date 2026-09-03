@@ -2493,6 +2493,7 @@ private fun SlockAppShellReadyContent(
                     sharedStores.awaitThreadReplyCacheIdentityTransition(storeScope, transitionAnchor)
                 },
                 payloadStore = sharedStores.threadPayloadStore,
+                durableLastKnownReader = sharedStores.threadDurableLastKnownReader,
                 readReceiptCoordinator = sharedStores.processReadReceiptCoordinator(),
                 readReceiptOwnerFactory = sharedStores::readReceiptOwner,
                 threadPageSizeProvider = { serverId ->

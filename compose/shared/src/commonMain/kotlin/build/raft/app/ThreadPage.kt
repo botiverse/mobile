@@ -1661,6 +1661,12 @@ internal data class KuiklyThreadScreenPayload(
     val subtitle: String? = null,
     val status: String = "loading",
     val backgroundRefreshing: Boolean = false,
+    /**
+     * True while `messages` come from the durable last-known frame (offline cache read entry,
+     * task #1123) rather than from a network response. Cleared by the first network content
+     * slice; the frame is a first-frame stand-in, never an authority for paging or reactions.
+     */
+    val durableLastKnown: Boolean = false,
     val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
     val channelKind: String = "channel",
     val sourceThreadId: String? = null,
@@ -3819,6 +3825,7 @@ private fun ThreadPageScreen(
                     sharedStores.publishCanonicalConversationIdentity(storeScope, provenance, detail)
                 },
                 payloadStore = sharedStores.threadPayloadStore,
+                durableLastKnownReader = sharedStores.threadDurableLastKnownReader,
                 agentsApiClient = SlockAgentsApiClient(
                     transport = SlockAgentsNetworkApi(networkClient),
                     diagnosticsLogger = { message -> bridge.log("thread_agents_api $message") }

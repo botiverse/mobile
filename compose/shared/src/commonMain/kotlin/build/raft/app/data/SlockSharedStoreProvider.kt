@@ -54,6 +54,7 @@ import build.raft.app.network.sync.CanonicalMessageFoldInput
 import build.raft.app.network.sync.CanonicalMessageFoldKind
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
 import build.raft.app.network.sync.CanonicalMessageV2CanaryOutcome
+import build.raft.app.network.sync.CanonicalMessageV2DurableLastKnownReader
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
@@ -64,6 +65,7 @@ import build.raft.app.network.sync.PreparedCurrentGrantMessageCommitDisposition
 import build.raft.app.network.sync.SqlDelightFoldPersistStore
 import build.raft.app.network.sync.SqlDelightFoldPersistTransactionRunner
 import build.raft.app.network.sync.SqlDelightCanonicalMessageV2Store
+import build.raft.app.network.sync.ThreadDurableLastKnownReader
 import build.raft.app.network.sync.SqlDelightStrictMessageScopeSnapshotReader
 import build.raft.app.network.sync.ReadStateV1ProductionCanary
 import build.raft.app.network.sync.ReadStateV1DestinationPublication
@@ -392,6 +394,8 @@ internal class SlockSharedStoreProvider private constructor(
     val messageBodyFontSizeStore: SharedMessageBodyFontSizeStore,
     val threadMessageStore: SharedThreadMessageStore,
     val threadPayloadStore: SharedThreadPayloadStore,
+    /** Offline cache read entry (task #1123): durable V2 last-known frame for thread screens. */
+    internal val threadDurableLastKnownReader: ThreadDurableLastKnownReader,
     internal val threadPendingSendJournal: ThreadPendingSendJournal,
     val channelSettingsSnapshotCache: ChannelSettingsSnapshotCache,
     val foregroundReconciler: SharedForegroundReconciler,
@@ -1915,10 +1919,11 @@ internal class SlockSharedStoreProvider private constructor(
                     },
                 )
             val attachmentCommentsReadCacheV2 = AttachmentCommentsReadCacheV2()
+            val canonicalMessageV2Store = SqlDelightCanonicalMessageV2Store(database, now = ::defaultNowMillis)
             val canonicalMessageV2GenerationEngine =
                 CanonicalMessageV2GenerationEngine(
                     coordinator = CanonicalMessageV2BaselineCoordinator(),
-                    store = SqlDelightCanonicalMessageV2Store(database, now = ::defaultNowMillis),
+                    store = canonicalMessageV2Store,
                     snapshotCommitObserver =
                         CanonicalMessageV2SnapshotCommitObserver(attachmentCommentsReadCacheV2::invalidateParent),
                 )
@@ -1932,6 +1937,19 @@ internal class SlockSharedStoreProvider private constructor(
                     },
                     generationEngine = canonicalMessageV2GenerationEngine,
                     logger = sharedInfoLogger("CanonicalMessageV2Canary", "canonical_v2_canary"),
+                )
+            // Read side of the same partition the canary writes: same store instance, same per-server
+            // flag, no baseline-coordinator side effects (task #1123).
+            val threadDurableLastKnownReader =
+                CanonicalMessageV2DurableLastKnownReader(
+                    store = canonicalMessageV2Store,
+                    isEnabledForServer = { serverId ->
+                        serverFeatureFlags.isEnabled(
+                            ServerId(serverId),
+                            SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
+                        )
+                    },
+                    logger = sharedInfoLogger("ThreadDurableLastKnown", "thread_durable_last_known"),
                 )
             val threadSendScope = CoroutineScope(SupervisorJob())
             val realtimeAuthorityDiagnosticsLogger =
@@ -2191,6 +2209,7 @@ internal class SlockSharedStoreProvider private constructor(
                 messageBodyFontSizeStore = messageBodyFontSizeStore,
                 threadMessageStore = SharedThreadMessageStore(),
                 threadPayloadStore = SharedThreadPayloadStore(CoroutineScope(SupervisorJob())),
+                threadDurableLastKnownReader = threadDurableLastKnownReader,
                 threadPendingSendJournal = threadPendingSendJournal,
                 channelSettingsSnapshotCache = ChannelSettingsSnapshotCache(),
                 foregroundReconciler = foregroundReconciler,
