@@ -710,6 +710,8 @@
     <string name="thread_load_new">加载新消息</string>
     <string name="thread_state_loading_older">正在加载更早的消息…</string>
     <string name="thread_state_loading_new">正在加载更新的消息…</string>
+    <string name="thread_offline_last_known_tip">当前为离线内容，可能不是最新</string>
+    <string name="thread_offline_older_unavailable">离线时无法加载更早消息</string>
     <string name="thread_state_beginning_conversation">对话开始</string>
     <string name="thread_state_no_tasks">暂无任务</string>
     <string name="thread_state_no_members">暂无成员</string>

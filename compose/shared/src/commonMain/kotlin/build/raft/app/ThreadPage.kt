@@ -15542,6 +15542,13 @@ private fun ThreadMessagesList(
             timelineSlice.focusedMessageTargetSignature()
         }
     val renderPayload = timelineSlice
+    // Task #1125: offline stand-in chrome (top inset + tip overlay), see threadOfflineLastKnownChrome.
+    val offlineLastKnownChrome =
+        threadOfflineLastKnownChrome(
+            durableLastKnown = renderPayload.durableLastKnown,
+            status = renderPayload.status,
+            backgroundRefreshing = renderConfig.backgroundRefreshing
+        )
     val showReplyLoadingSkeleton = renderPayload.status == "loading" && renderPayload.messages.isEmpty()
     val showReplyEmptyState =
         renderPayload.messages.isEmpty() && renderPayload.originStatus != "none" && !showReplyLoadingSkeleton
@@ -17799,6 +17806,13 @@ private fun ThreadMessagesList(
             LaunchedEffect(threadInstanceKey, maxHeight) {
                 measuredThreadViewportHeightDp = maxHeight.value
             }
+            if (offlineLastKnownChrome.tipVisible) {
+                // Absolute overlay, out of the list's flow (artin, task #1125); the list reserves an
+                // equal top inset below so the tip never hides the first row when scrolled to the top.
+                ThreadOfflineLastKnownTip(
+                    modifier = Modifier.align(Alignment.TopCenter).zIndex(ThreadOfflineLastKnownTipZIndex)
+                )
+            }
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize()
@@ -17889,6 +17903,8 @@ private fun ThreadMessagesList(
                         )
                     ),
                 verticalArrangement = Arrangement.Bottom,
+                contentPadding =
+                    PaddingValues(top = if (offlineLastKnownChrome.insetActive) ThreadOfflineLastKnownTipHeight else 0.dp),
                 beyondBoundsItemCount = activeListBeyondBoundsItems
             ) {
             if (renderPayload.hasThreadOriginItem()) {
@@ -18895,18 +18911,79 @@ internal fun threadOlderMessagesStatusSpec(payload: KuiklyThreadScreenPayload): 
 internal fun threadOlderMessagesStatusSpec(timelineSlice: ThreadTimelineSlice): ThreadHistoryStatusSpec =
     threadOlderMessagesStatusSpec(
         canLoadMoreBefore = timelineSlice.canLoadMoreBefore,
-        secondaryLabel = timelineSlice.beginningReplyCountLabel
+        secondaryLabel = timelineSlice.beginningReplyCountLabel,
+        durableLastKnown = timelineSlice.durableLastKnown
     )
 
 internal fun threadOlderMessagesStatusSpec(
     canLoadMoreBefore: Boolean,
-    secondaryLabel: String? = null
+    secondaryLabel: String? = null,
+    durableLastKnown: Boolean = false
 ): ThreadHistoryStatusSpec =
-    if (canLoadMoreBefore) {
-        ThreadHistoryStatusSpec(label = MR.strings.thread_state_loading_older.desc())
-    } else {
-        ThreadHistoryStatusSpec(label = MR.strings.thread_state_beginning_conversation.desc(), secondaryLabel = secondaryLabel)
+    when {
+        // Task #1125: an offline stand-in frame has paging closed, but it is NOT the beginning of the
+        // conversation. Say what is true instead of claiming a boundary the frame cannot prove.
+        durableLastKnown -> ThreadHistoryStatusSpec(label = MR.strings.thread_offline_older_unavailable.desc())
+        canLoadMoreBefore -> ThreadHistoryStatusSpec(label = MR.strings.thread_state_loading_older.desc())
+        else -> ThreadHistoryStatusSpec(label = MR.strings.thread_state_beginning_conversation.desc(), secondaryLabel = secondaryLabel)
     }
+
+/**
+ * Task #1125: chrome around a durable last-known (offline stand-in) frame.
+ *
+ * - [insetActive]: the list reserves the tip's height at its top for as long as the frame is the
+ *   stand-in, so the tip can appear later without pushing content (no jump) and never covers the
+ *   first row when scrolled to the top.
+ * - [tipVisible]: the tip itself shows only once the background refresh has ended without
+ *   replacing the frame (transient failure). A canonical answer clears `durableLastKnown` and
+ *   both go away together with the content replacement.
+ */
+internal data class ThreadOfflineLastKnownChrome(
+    val insetActive: Boolean,
+    val tipVisible: Boolean
+)
+
+internal fun threadOfflineLastKnownChrome(
+    durableLastKnown: Boolean,
+    status: String,
+    backgroundRefreshing: Boolean
+): ThreadOfflineLastKnownChrome {
+    val standIn = durableLastKnown && status == "content"
+    return ThreadOfflineLastKnownChrome(insetActive = standIn, tipVisible = standIn && !backgroundRefreshing)
+}
+
+internal fun threadOfflineLastKnownChrome(payload: KuiklyThreadScreenPayload): ThreadOfflineLastKnownChrome =
+    threadOfflineLastKnownChrome(
+        durableLastKnown = payload.durableLastKnown,
+        status = payload.status,
+        backgroundRefreshing = payload.backgroundRefreshing
+    )
+
+/** Fixed so the list's top inset equals the overlay's height exactly (two caption lines + padding). */
+internal val ThreadOfflineLastKnownTipHeight = 40.dp
+private const val ThreadOfflineLastKnownTipZIndex = 3f
+
+@Composable
+private fun ThreadOfflineLastKnownTip(modifier: Modifier = Modifier) {
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(ThreadOfflineLastKnownTipHeight)
+                .background(SlockColor.SurfaceCream)
+                .padding(horizontal = SlockSpacing.Md, vertical = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = stringResource(MR.strings.thread_offline_last_known_tip),
+            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
 
 internal fun threadNewerMessagesActionSpec(newerMessagesStatus: String): ThreadInlineActionSpec =
     when (newerMessagesStatus) {
