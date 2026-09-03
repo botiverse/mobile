@@ -1316,7 +1316,9 @@ private fun MembersAgentDetailVisualVariant.toMember(): MemberProfile =
 
 private fun MembersAgentDetailVisualVariant.toSeed(): MemberDetailVisualSeed {
     val member = toMember()
-    val summary = membersAgentDetailVisualSnapshot.summary.copy(
+    // The default seed always carries a summary; a null here would mean the
+    // default case itself lost its Computer row, which is the wrong place to hide.
+    val summary = checkNotNull(membersAgentDetailVisualSnapshot.summary).copy(
         id = id,
         name = name,
         displayName = displayName,
