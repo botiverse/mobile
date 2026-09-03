@@ -17355,9 +17355,17 @@ private fun SharedCreateChannelMemberRow(
     onClick: () -> Unit
 ) {
     val avatarWireValue = member.avatarWireValueForAvatarSlot()
+    // Dot-facing resolution: must be the OrNull variant. The label-facing
+    // resolveMembersAgentStatusIndicatorState substitutes a placeholder whose presence is
+    // Offline, so its colour is StatusNeutralGray -- pixel-identical to a real Offline dot
+    // for an agent whose status is merely not known yet. SlockAvatarWithStatus omits the dot
+    // entirely on a null colour, which is the behaviour task #253 chose: show nothing rather
+    // than something wrong. Same defect as task #256 fixed in MembersPage; this call site
+    // survived because that sweep, and the lint written alongside it, only looked at
+    // MembersPage.kt.
     val statusIndicatorState =
         if (member.kind == MemberKind.Agent) {
-            resolveMembersAgentStatusIndicatorState(
+            resolveMembersAgentStatusIndicatorStateOrNull(
                 canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.id.value),
                 fixtureFallback =
                     slockAgentStatusIndicatorState(
