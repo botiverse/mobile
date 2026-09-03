@@ -191,34 +191,26 @@ internal fun ReplyCacheProvenance?.currentRevisionForReplyCacheOwner(
     return this?.takeIf { current -> current.namespaceId == ownerNamespaceId }
 }
 
-internal val ReplyCacheProvenance.threadPayloadOwnerScopeId: String?
-    get() =
-        // The payload cache predates the durable journal and still has legacy/test
-        // callers that do not provide an environment. Keep that compatibility key
-        // here; the journal uses the strict identity-bound key below instead.
-        takeIf { provenance -> provenance.principalId.isNotBlank() && provenance.serverId.isNotBlank() }
-            ?.let { provenance ->
-                listOf(
-                    provenance.environmentId.ifBlank { "legacy_environment" },
-                    provenance.principalId,
-                    provenance.serverId,
-                    provenance.authGeneration.toString(),
-                    provenance.selectionGeneration.toString()
-                ).joinToString("\u001f")
-            }
-
 /**
- * Owner key for the durable pending-send journal. Unlike the historical payload
- * cache key, this key has no legacy namespace: an absent environment cannot prove
- * which server realm owns a local send and therefore fails closed.
+ * One owner key for every reply cache (in-memory payload cache and durable pending-send
+ * journal). There is no legacy namespace: an absent environment, principal, or server cannot
+ * prove which realm owns the cached rows, so the owner is `null` and every cache fails closed
+ * instead of collapsing unknown identities into one shared bucket (task #1121).
+ *
+ * `authGeneration` is the auth epoch of `RealtimeAuthorityRegistry`, whose `Empty` revision is
+ * generation `0` with no session and whose every advance starts at `1`; `0` is therefore the
+ * "no authenticated session" sentinel and is rejected here exactly as the realtime witness
+ * rejects it. `selectionGeneration` has no sentinel: `SelectedServerStore` writes its first
+ * durable selection at epoch `0`, and an unselected server is already excluded by the blank
+ * `serverId`.
  */
-internal val ReplyCacheProvenance.threadPendingSendOwnerScopeId: String?
+internal val ReplyCacheProvenance.replyCacheOwnerScopeId: String?
     get() =
         takeIf { provenance ->
             provenance.environmentId.isNotBlank() &&
                 provenance.principalId.isNotBlank() &&
                 provenance.serverId.isNotBlank() &&
-                provenance.authGeneration >= 0L
+                provenance.authGeneration > 0L
         }
             ?.let { provenance ->
                 listOf(
@@ -229,6 +221,12 @@ internal val ReplyCacheProvenance.threadPendingSendOwnerScopeId: String?
                     provenance.selectionGeneration.toString()
                 ).joinToString("\u001f")
             }
+
+internal val ReplyCacheProvenance.threadPayloadOwnerScopeId: String?
+    get() = replyCacheOwnerScopeId
+
+internal val ReplyCacheProvenance.threadPendingSendOwnerScopeId: String?
+    get() = replyCacheOwnerScopeId
 
 private data class ReplyResolutionScope(
     val session: StoredAuthSession,
@@ -252,12 +250,24 @@ internal data class SharedThreadPayloadCacheKey(
     val threadId: String
 )
 
+/**
+ * Owner-scoped payload cache key. `ownerScopeId` is REQUIRED and must already be a
+ * [replyCacheOwnerScopeId]; a blank owner is rejected instead of being mapped onto a shared
+ * legacy bucket, because an unknown owner can never be proven equal to another unknown owner
+ * (task #1121, same rule as `DurablePartitionKey`).
+ */
 internal data class SharedThreadOwnedPayloadCacheKey(
     val ownerScopeId: String,
     val payloadKey: SharedThreadPayloadCacheKey
-)
+) {
+    init {
+        requireSharedThreadOwnerScopeId(ownerScopeId)
+    }
+}
 
-private const val SharedThreadPayloadLegacyOwnerScopeId = "legacy"
+internal fun requireSharedThreadOwnerScopeId(ownerScopeId: String) {
+    require(ownerScopeId.isNotBlank()) { "ownerScopeId must not be blank" }
+}
 
 private fun sharedThreadOwnedPayloadCacheKey(
     ownerScopeId: String,
@@ -265,7 +275,7 @@ private fun sharedThreadOwnedPayloadCacheKey(
     threadId: String
 ): SharedThreadOwnedPayloadCacheKey =
     SharedThreadOwnedPayloadCacheKey(
-        ownerScopeId = ownerScopeId.ifBlank { SharedThreadPayloadLegacyOwnerScopeId },
+        ownerScopeId = ownerScopeId,
         payloadKey = SharedThreadPayloadCacheKey(serverId, threadId)
     )
 
@@ -282,7 +292,21 @@ private fun <T> staleReplyCacheProvenanceResult(): DataResult<T> =
 
 class SharedThreadFreshnessGeneration internal constructor(
     internal val key: SharedThreadPayloadCacheKey,
-    internal val ownerScopeId: String = SharedThreadPayloadLegacyOwnerScopeId
+    internal val ownerScopeId: String
+) {
+    init {
+        requireSharedThreadOwnerScopeId(ownerScopeId)
+    }
+}
+
+/**
+ * Owner-less content-mutation token for one server/thread. Activity prewarm markers compare
+ * these by identity to learn "canonical content changed since I looked"; they never select a
+ * cached payload, so they carry no owner and must not be confused with
+ * [SharedThreadFreshnessGeneration].
+ */
+class SharedThreadContentGeneration internal constructor(
+    internal val key: SharedThreadPayloadCacheKey
 )
 
 internal data class SharedThreadSummaryFact(
@@ -302,9 +326,17 @@ private data class SharedThreadMessageMutationKey(
 
 private data class SharedThreadReplyCountKey(
     val key: SharedThreadPayloadCacheKey,
+    val environmentId: String,
     val principalId: String,
     val parentMessageId: String
-)
+) {
+    init {
+        // Reply totals are server facts observed by one principal in one environment; an
+        // unknown environment or principal must not share a fact bucket (task #1121).
+        require(environmentId.isNotBlank()) { "environmentId must not be blank" }
+        require(principalId.isNotBlank()) { "principalId must not be blank" }
+    }
+}
 
 internal data class SharedThreadReplyCountFact(
     val threadChannelId: String?,
@@ -319,6 +351,8 @@ internal class SharedThreadFreshnessLedger(
     // owner token, so a canonical content mutation conservatively advances every already-captured
     // owner generation for that server/thread without making their cached payloads interchangeable.
     private val generations = mutableMapOf<SharedThreadOwnedPayloadCacheKey, SharedThreadFreshnessGeneration>()
+    // Owner-less content tokens for prewarm markers; advanced together with every owner generation.
+    private val contentGenerations = mutableMapOf<SharedThreadPayloadCacheKey, SharedThreadContentGeneration>()
     private val messageFacts = LinkedHashMap<SharedThreadMessageMutationKey, Message>()
     private val summaryFacts = mutableMapOf<SharedThreadPayloadCacheKey, SharedThreadSummaryFact>()
     // Summary-authoritative reply totals remain useful when a timeline mutation supersedes the full payload generation.
@@ -327,7 +361,7 @@ internal class SharedThreadFreshnessLedger(
     fun capture(
         serverId: String,
         threadId: String,
-        ownerScopeId: String = SharedThreadPayloadLegacyOwnerScopeId
+        ownerScopeId: String
     ): SharedThreadFreshnessGeneration =
         synchronized(lock) {
             val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
@@ -336,35 +370,40 @@ internal class SharedThreadFreshnessLedger(
             }
         }
 
+    fun captureContent(
+        serverId: String,
+        threadId: String
+    ): SharedThreadContentGeneration =
+        synchronized(lock) {
+            val key = SharedThreadPayloadCacheKey(serverId, threadId)
+            contentGenerations.getOrPut(key) { SharedThreadContentGeneration(key) }
+        }
+
     fun advance(
         serverId: String,
         threadId: String,
-        ownerScopeId: String? = null
+        ownerScopeId: String
     ): SharedThreadFreshnessGeneration =
         synchronized(lock) {
-            val payloadKey = SharedThreadPayloadCacheKey(serverId, threadId)
-            if (ownerScopeId == null) {
-                advanceAllOwnersLocked(payloadKey)
-                val legacyKey =
-                    sharedThreadOwnedPayloadCacheKey(
-                        SharedThreadPayloadLegacyOwnerScopeId,
-                        serverId,
-                        threadId
-                    )
-                generations[legacyKey]
-                    ?: SharedThreadFreshnessGeneration(payloadKey).also { generation ->
-                        generations[legacyKey] = generation
-                    }
-            } else {
-                val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
-                SharedThreadFreshnessGeneration(payloadKey, key.ownerScopeId).also { generations[key] = it }
-            }
+            val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
+            SharedThreadFreshnessGeneration(key.payloadKey, key.ownerScopeId).also { generations[key] = it }
+        }
+
+    /** Canonical content changed for every owner of this server/thread (no owner is selected). */
+    fun advanceAllOwners(
+        serverId: String,
+        threadId: String
+    ): SharedThreadContentGeneration =
+        synchronized(lock) {
+            val key = SharedThreadPayloadCacheKey(serverId, threadId)
+            advanceAllOwnersLocked(key)
+            requireNotNull(contentGenerations[key])
         }
 
     fun advanceAndRun(
         serverId: String,
         threadId: String,
-        ownerScopeId: String = SharedThreadPayloadLegacyOwnerScopeId,
+        ownerScopeId: String,
         block: (previous: SharedThreadFreshnessGeneration?, current: SharedThreadFreshnessGeneration) -> Unit
     ): SharedThreadFreshnessGeneration =
         synchronized(lock) {
@@ -420,13 +459,15 @@ internal class SharedThreadFreshnessLedger(
     fun recordReplyCountFacts(
         serverId: String,
         threadId: String,
+        environmentId: String,
         principalId: String,
         facts: List<Pair<String, SharedThreadReplyCountFact>>
     ) {
+        if (environmentId.isBlank() || principalId.isBlank()) return
         synchronized(lock) {
             val key = SharedThreadPayloadCacheKey(serverId, threadId)
             facts.forEach { (parentMessageId, fact) ->
-                val factKey = SharedThreadReplyCountKey(key, principalId, parentMessageId)
+                val factKey = SharedThreadReplyCountKey(key, environmentId, principalId, parentMessageId)
                 replyCountFacts.remove(factKey)
                 replyCountFacts[factKey] = fact
             }
@@ -439,16 +480,20 @@ internal class SharedThreadFreshnessLedger(
     fun applyReplyCountFacts(
         serverId: String,
         threadId: String,
+        environmentId: String,
         principalId: String,
         payload: KuiklyThreadScreenPayload
-    ): KuiklyThreadScreenPayload =
-        synchronized(lock) {
+    ): KuiklyThreadScreenPayload {
+        if (environmentId.isBlank() || principalId.isBlank()) return payload
+        return synchronized(lock) {
             applyReplyCountFactsLocked(
                 key = SharedThreadPayloadCacheKey(serverId, threadId),
+                environmentId = environmentId,
                 principalId = principalId,
                 payload = payload
             )
         }
+    }
 
     fun invalidateServer(serverId: String) {
         synchronized(lock) {
@@ -457,6 +502,9 @@ internal class SharedThreadFreshnessLedger(
                 .forEach { key ->
                     generations[key] = SharedThreadFreshnessGeneration(key.payloadKey, key.ownerScopeId)
                 }
+            contentGenerations.keys
+                .filter { key -> key.serverId == serverId }
+                .forEach { key -> contentGenerations[key] = SharedThreadContentGeneration(key) }
             messageFacts.keys
                 .filter { mutation -> mutation.key.serverId == serverId }
                 .forEach(messageFacts::remove)
@@ -472,10 +520,10 @@ internal class SharedThreadFreshnessLedger(
     fun retireOwner(
         ownerScopeId: String
     ): Map<SharedThreadOwnedPayloadCacheKey, Pair<SharedThreadFreshnessGeneration, SharedThreadFreshnessGeneration>> {
-        val normalizedOwnerScopeId = ownerScopeId.ifBlank { SharedThreadPayloadLegacyOwnerScopeId }
+        requireSharedThreadOwnerScopeId(ownerScopeId)
         return synchronized(lock) {
             generations.keys
-                .filter { key -> key.ownerScopeId == normalizedOwnerScopeId }
+                .filter { key -> key.ownerScopeId == ownerScopeId }
                 .associateWith { key ->
                     val previous = requireNotNull(generations[key])
                     val current = SharedThreadFreshnessGeneration(key.payloadKey, key.ownerScopeId)
@@ -536,11 +584,13 @@ internal class SharedThreadFreshnessLedger(
             .forEach { key ->
                 generations[key] = SharedThreadFreshnessGeneration(payloadKey, key.ownerScopeId)
             }
+        contentGenerations[payloadKey] = SharedThreadContentGeneration(payloadKey)
     }
 
     internal fun clearForTest() {
         synchronized(lock) {
             generations.clear()
+            contentGenerations.clear()
             messageFacts.clear()
             summaryFacts.clear()
             replyCountFacts.clear()
@@ -549,11 +599,12 @@ internal class SharedThreadFreshnessLedger(
 
     private fun applyReplyCountFactsLocked(
         key: SharedThreadPayloadCacheKey,
+        environmentId: String,
         principalId: String,
         payload: KuiklyThreadScreenPayload
     ): KuiklyThreadScreenPayload {
         fun merge(message: KuiklyThreadMessageItem): KuiklyThreadMessageItem {
-            val factKey = SharedThreadReplyCountKey(key, principalId, message.id)
+            val factKey = SharedThreadReplyCountKey(key, environmentId, principalId, message.id)
             val accepted = replyCountFacts[factKey] ?: return message
             val nextThreadChannelId = accepted.threadChannelId ?: message.threadChannelId
             val nextReplyCount = accepted.replyCount
@@ -839,21 +890,24 @@ internal class SharedThreadPayloadStore(
     fun get(
         serverId: String,
         threadId: String,
-        principalId: String = "",
-        ownerScopeId: String = SharedThreadPayloadLegacyOwnerScopeId
+        environmentId: String,
+        principalId: String,
+        ownerScopeId: String
     ): KuiklyThreadScreenPayload? {
         val generation = freshnessLedger.capture(serverId, threadId, ownerScopeId)
         return payloads.value[sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)]
             ?.takeIf { entry -> entry.generation === generation }
             ?.payload
-            ?.let { payload -> freshnessLedger.applyReplyCountFacts(serverId, threadId, principalId, payload) }
+            ?.let { payload ->
+                freshnessLedger.applyReplyCountFacts(serverId, threadId, environmentId, principalId, payload)
+            }
     }
 
     fun put(
         serverId: String,
         threadId: String,
         payload: KuiklyThreadScreenPayload,
-        ownerScopeId: String = SharedThreadPayloadLegacyOwnerScopeId
+        ownerScopeId: String
     ) {
         val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
         val generation = freshnessLedger.capture(serverId, threadId, ownerScopeId)
@@ -863,14 +917,13 @@ internal class SharedThreadPayloadStore(
     fun putIfCurrent(
         generation: SharedThreadFreshnessGeneration,
         payload: KuiklyThreadScreenPayload,
-        ownerScopeId: String = SharedThreadPayloadLegacyOwnerScopeId
+        ownerScopeId: String
     ): Boolean {
-        val normalizedOwnerScopeId = ownerScopeId.ifBlank { SharedThreadPayloadLegacyOwnerScopeId }
-        if (generation.ownerScopeId != normalizedOwnerScopeId) return false
+        if (generation.ownerScopeId != ownerScopeId) return false
         return freshnessLedger.runIfCurrent(generation) {
             val key =
                 sharedThreadOwnedPayloadCacheKey(
-                    normalizedOwnerScopeId,
+                    ownerScopeId,
                     generation.key.serverId,
                     generation.key.threadId
                 )
@@ -883,30 +936,33 @@ internal class SharedThreadPayloadStore(
     fun recordReplyCountFacts(
         serverId: String,
         threadId: String,
+        environmentId: String,
         principalId: String,
         facts: List<Pair<String, SharedThreadReplyCountFact>>
     ) {
-        freshnessLedger.recordReplyCountFacts(serverId, threadId, principalId, facts)
+        freshnessLedger.recordReplyCountFacts(serverId, threadId, environmentId, principalId, facts)
     }
 
     fun applyReplyCountFacts(
         serverId: String,
         threadId: String,
-        principalId: String = "",
+        environmentId: String,
+        principalId: String,
         payload: KuiklyThreadScreenPayload
-    ): KuiklyThreadScreenPayload = freshnessLedger.applyReplyCountFacts(serverId, threadId, principalId, payload)
+    ): KuiklyThreadScreenPayload =
+        freshnessLedger.applyReplyCountFacts(serverId, threadId, environmentId, principalId, payload)
 
     fun captureGeneration(
         serverId: String,
         threadId: String,
-        ownerScopeId: String = SharedThreadPayloadLegacyOwnerScopeId
+        ownerScopeId: String
     ): SharedThreadFreshnessGeneration =
         freshnessLedger.capture(serverId, threadId, ownerScopeId)
 
     fun remove(
         serverId: String,
         threadId: String,
-        ownerScopeId: String = SharedThreadPayloadLegacyOwnerScopeId
+        ownerScopeId: String
     ) {
         val ownedKey = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
         val ownedLegacyKey = sharedThreadOwnedPayloadCacheKey(ownerScopeId, "", threadId)
@@ -941,12 +997,12 @@ internal class SharedThreadPayloadStore(
 
     fun values(
         serverId: String,
-        ownerScopeId: String = SharedThreadPayloadLegacyOwnerScopeId
+        ownerScopeId: String
     ): Collection<KuiklyThreadScreenPayload> {
-        val normalizedOwnerScopeId = ownerScopeId.ifBlank { SharedThreadPayloadLegacyOwnerScopeId }
+        requireSharedThreadOwnerScopeId(ownerScopeId)
         return payloads.value
             .filter { (key, entry) ->
-                key.ownerScopeId == normalizedOwnerScopeId &&
+                key.ownerScopeId == ownerScopeId &&
                     key.payloadKey.serverId == serverId &&
                     freshnessLedger.isCurrent(entry.generation)
             }
@@ -957,7 +1013,7 @@ internal class SharedThreadPayloadStore(
     suspend fun prewarm(
         serverId: String,
         threadId: String,
-        ownerScopeId: String = SharedThreadPayloadLegacyOwnerScopeId,
+        ownerScopeId: String,
         fetch: suspend () -> DataResult<KuiklyThreadScreenPayload>
     ): DataResult<KuiklyThreadScreenPayload> = coroutineScope {
         val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
@@ -1074,7 +1130,7 @@ internal class SharedThreadPayloadStore(
     suspend fun promoteQueuedPrewarm(
         serverId: String,
         threadId: String,
-        ownerScopeId: String = SharedThreadPayloadLegacyOwnerScopeId
+        ownerScopeId: String
     ): Boolean {
         val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
         var queued: Deferred<DataResult<KuiklyThreadScreenPayload>>? = null
@@ -1097,7 +1153,7 @@ internal class SharedThreadPayloadStore(
     suspend fun joinOrConsumePrewarm(
         serverId: String,
         threadId: String,
-        ownerScopeId: String = SharedThreadPayloadLegacyOwnerScopeId
+        ownerScopeId: String
     ): DataResult<KuiklyThreadScreenPayload>? {
         val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
         val lookup =
@@ -1132,7 +1188,7 @@ internal class SharedThreadPayloadStore(
     suspend fun takeOverFailedPrewarm(
         serverId: String,
         threadId: String,
-        ownerScopeId: String = SharedThreadPayloadLegacyOwnerScopeId,
+        ownerScopeId: String,
         fetch: suspend () -> DataResult<KuiklyThreadScreenPayload>
     ): DataResult<KuiklyThreadScreenPayload> = coroutineScope {
         val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
@@ -1193,13 +1249,12 @@ internal class SharedThreadPayloadStore(
 
     suspend fun recordCanonicalSuccess(
         generation: SharedThreadFreshnessGeneration,
-        ownerScopeId: String = SharedThreadPayloadLegacyOwnerScopeId
+        ownerScopeId: String
     ) {
-        val normalizedOwnerScopeId = ownerScopeId.ifBlank { SharedThreadPayloadLegacyOwnerScopeId }
-        if (generation.ownerScopeId != normalizedOwnerScopeId) return
+        if (generation.ownerScopeId != ownerScopeId) return
         val key =
             sharedThreadOwnedPayloadCacheKey(
-                normalizedOwnerScopeId,
+                ownerScopeId,
                 generation.key.serverId,
                 generation.key.threadId
             )
@@ -1337,7 +1392,9 @@ internal class SharedThreadDataSource(
     private val homeSnapshotProvider: ((ServerId) -> HomeSnapshot?)? = null,
     private val channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
     private val messageStore: SharedThreadMessageStore? = null,
-    private val cacheEnvironmentIdProvider: () -> String = { "" },
+    // REQUIRED: the cache environment is an identity dimension of every reply cache. There is no
+    // blank default; a caller that cannot name its environment owns no cache (task #1121).
+    private val cacheEnvironmentIdProvider: () -> String,
     /** Current API environment used to bind direct-session uploads to one route authority. */
     private val apiEnvironmentIdProvider: () -> String = { cacheEnvironmentIdProvider() },
     private val replyCacheIdentityAuthority: (suspend () -> ThreadReplyCacheIdentitySnapshot?)? = null,
@@ -1435,7 +1492,7 @@ internal class SharedThreadDataSource(
         homeSnapshotProvider: ((ServerId) -> HomeSnapshot?)? = null,
         channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
         messageStore: SharedThreadMessageStore? = null,
-        cacheEnvironmentIdProvider: () -> String = { "" },
+        cacheEnvironmentIdProvider: () -> String,
         apiEnvironmentIdProvider: () -> String = cacheEnvironmentIdProvider,
         replyCacheIdentityAuthority: (suspend () -> ThreadReplyCacheIdentitySnapshot?)? = null,
         replyCacheIdentityTransitionWaiter:
@@ -1648,6 +1705,31 @@ internal class SharedThreadDataSource(
         }
     }
 
+    private data class PrivateReplyCacheAuthEpochKey(
+        val environmentId: String,
+        val principalId: String,
+        val serverIds: List<String>,
+    )
+
+    private var privateReplyCacheAuthEpoch = 0L
+    private var privateReplyCacheAuthEpochKey: PrivateReplyCacheAuthEpochKey? = null
+
+    /**
+     * Auth epoch for the private resolver only. Production never reaches this: the provider-owned
+     * authority carries `RealtimeAuthorityRegistry`'s generation. This mirrors that registry's
+     * non-forced advance — the first session is epoch `1`, and the epoch moves by one whenever
+     * the session identity (environment, principal, server set) read here changes — so the
+     * fallback never publishes the registry's `0` "no session" sentinel as a live owner.
+     */
+    private fun privateReplyCacheAuthEpoch(key: PrivateReplyCacheAuthEpochKey): Long =
+        synchronized(replyCacheProvenanceLock) {
+            if (privateReplyCacheAuthEpochKey != key) {
+                privateReplyCacheAuthEpochKey = key
+                privateReplyCacheAuthEpoch += 1L
+            }
+            privateReplyCacheAuthEpoch
+        }
+
     private suspend fun readReplyCacheIdentitySource(): ThreadReplyCacheIdentitySnapshot? {
         replyCacheIdentityAuthority?.let { authority -> return authority() }
         // A process-shared message store must never mint cache ownership from independently sampled
@@ -1655,6 +1737,8 @@ internal class SharedThreadDataSource(
         // a hard fail-closed boundary. The fallback exists only for this data source's private resolver.
         if (messageStore != null) return null
         val session = sessionStore.readSession() ?: return null
+        val environmentId = cacheEnvironmentIdProvider().trim().trimEnd('/')
+        val principalId = session.user.id.trim()
         val selectedServerId =
             selectedServerStore?.selectedServerId?.value
                 ?.trim()
@@ -1669,10 +1753,19 @@ internal class SharedThreadDataSource(
                 .orEmpty()
         return ThreadReplyCacheIdentitySnapshot(
             session = session,
-            environmentId = cacheEnvironmentIdProvider().trim().trimEnd('/'),
-            principalId = session.user.id.trim(),
+            environmentId = environmentId,
+            principalId = principalId,
             serverId = serverId,
-            authGeneration = 0L,
+            authGeneration =
+                privateReplyCacheAuthEpoch(
+                    PrivateReplyCacheAuthEpochKey(
+                        environmentId = environmentId,
+                        principalId = principalId,
+                        serverIds = session.servers.map { it.id.trim() }.filter { it.isNotEmpty() }.distinct(),
+                    )
+                ),
+            // First durable selection epoch, not a sentinel: `SelectedServerStore` starts at 0 and
+            // only advances on server change or logout, which the private resolver never observes.
             selectionGeneration = 0L,
         )
     }
@@ -1852,7 +1945,8 @@ internal class SharedThreadDataSource(
         threadId: String,
         ownerScopeId: String = cachePayloadOwnerScopeId.value,
         serverId: String = cacheServerId.value,
-        principalId: String = cachePrincipalId.value
+        principalId: String = cachePrincipalId.value,
+        environmentId: String = cacheEnvironmentId.value
     ): KuiklyThreadScreenPayload? =
         ownerScopeId
             .takeIf { ownerScopeId -> ownerScopeId.isNotBlank() }
@@ -1860,6 +1954,7 @@ internal class SharedThreadDataSource(
                 payloadCache.get(
                     serverId,
                     threadId,
+                    environmentId,
                     principalId,
                     ownerScopeId
                 )
@@ -1875,6 +1970,7 @@ internal class SharedThreadDataSource(
             payloadCache.get(
                 expectedProvenance.serverId,
                 threadId,
+                expectedProvenance.environmentId,
                 expectedProvenance.principalId,
                 ownerScopeId
             )
@@ -3016,6 +3112,7 @@ internal class SharedThreadDataSource(
                         payloadCache.applyReplyCountFacts(
                             serverId = session.currentServerId.orEmpty(),
                             threadId = resolvedThreadId,
+                            environmentId = resolutionScope.provenance.environmentId,
                             principalId = session.user.id,
                             payload = canonicalPayload
                         )
@@ -3331,6 +3428,7 @@ internal class SharedThreadDataSource(
                 payloadCache.recordReplyCountFacts(
                     serverId = serverId,
                     threadId = threadId,
+                    environmentId = expectedProvenance.environmentId,
                     principalId = principalId,
                     facts = facts
                 )

@@ -37,6 +37,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
             SharedThreadDataSource(
                 networkApi = SharedThreadStoreTest.FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "viewer")),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 homeSnapshotProvider = { dmHomeSnapshot() }
             )
 
@@ -65,6 +66,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
             SharedThreadDataSource(
                 networkApi = SharedThreadStoreTest.FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "viewer")),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 homeSnapshotProvider = { ambiguousHome }
             )
 

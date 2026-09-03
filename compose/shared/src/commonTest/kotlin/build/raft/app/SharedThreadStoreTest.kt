@@ -142,10 +142,14 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNotSame
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
@@ -257,7 +261,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         var writeActionsEnabled = true
         val mountedDialog =
@@ -328,6 +333,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = repository,
                 channelProfileUpdateSink = published::add
             )
@@ -366,6 +372,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = repository
             )
         val store =
@@ -401,6 +408,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = repository
             )
         val store =
@@ -441,6 +449,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = repository,
                 channelProfileUpdateSink = published::add
             )
@@ -485,6 +494,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = repository,
                 channelProfileUpdateSink = {
                     sinkStarted.complete(Unit)
@@ -539,6 +549,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = repository,
                 channelProfileUpdateSink = { error("projection unavailable") }
             )
@@ -585,6 +596,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = repository,
                 channelProfileUpdateSink = published::add
             )
@@ -976,7 +988,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val unresolved =
             contentPayloadForRoute(
@@ -1009,11 +1022,11 @@ class SharedThreadStoreTest {
         val serverOne = basePayload().copy(sourceThreadId = "same-thread", title = "server-one")
         val serverTwo = basePayload().copy(sourceThreadId = "same-thread", title = "server-two")
 
-        store.put("server-1", "same-thread", serverOne)
-        store.put("server-2", "same-thread", serverTwo)
+        store.put("server-1", "same-thread", serverOne, TestThreadOwnerScopeId)
+        store.put("server-2", "same-thread", serverTwo, TestThreadOwnerScopeId)
 
-        assertEquals("server-one", store.get("server-1", "same-thread")?.title)
-        assertEquals("server-two", store.get("server-2", "same-thread")?.title)
+        assertEquals("server-one", store.get("server-1", "same-thread", TestThreadEnvironmentId, TestThreadPrincipalId, TestThreadOwnerScopeId)?.title)
+        assertEquals("server-two", store.get("server-2", "same-thread", TestThreadEnvironmentId, TestThreadPrincipalId, TestThreadOwnerScopeId)?.title)
     }
 
     @Test
@@ -1026,15 +1039,15 @@ class SharedThreadStoreTest {
 
         store.put("server-1", "channel-1", payloadA, ownerA)
 
-        assertEquals("owner-a", store.get("server-1", "channel-1", ownerScopeId = ownerA)?.title)
-        assertNull(store.get("server-1", "channel-1", ownerScopeId = ownerB))
+        assertEquals("owner-a", store.get("server-1", "channel-1", environmentId = TestThreadEnvironmentId, principalId = TestThreadPrincipalId, ownerScopeId = ownerA)?.title)
+        assertNull(store.get("server-1", "channel-1", environmentId = TestThreadEnvironmentId, principalId = TestThreadPrincipalId, ownerScopeId = ownerB))
         assertEquals(listOf("owner-a"), store.values("server-1", ownerA).map { it.title })
         assertEquals(emptyList(), store.values("server-1", ownerB))
 
         store.put("server-1", "channel-1", payloadB, ownerB)
 
-        assertEquals("owner-a", store.get("server-1", "channel-1", ownerScopeId = ownerA)?.title)
-        assertEquals("owner-b", store.get("server-1", "channel-1", ownerScopeId = ownerB)?.title)
+        assertEquals("owner-a", store.get("server-1", "channel-1", environmentId = TestThreadEnvironmentId, principalId = TestThreadPrincipalId, ownerScopeId = ownerA)?.title)
+        assertEquals("owner-b", store.get("server-1", "channel-1", environmentId = TestThreadEnvironmentId, principalId = TestThreadPrincipalId, ownerScopeId = ownerB)?.title)
     }
 
     @Test
@@ -1057,8 +1070,183 @@ class SharedThreadStoreTest {
 
         store.freshnessLedger.advance("server-1", "channel-1", ownerA)
 
-        assertNull(store.get("server-1", "channel-1", ownerScopeId = ownerA))
-        assertEquals("owner-b", store.get("server-1", "channel-1", ownerScopeId = ownerB)?.title)
+        assertNull(store.get("server-1", "channel-1", environmentId = TestThreadEnvironmentId, principalId = TestThreadPrincipalId, ownerScopeId = ownerA))
+        assertEquals("owner-b", store.get("server-1", "channel-1", environmentId = TestThreadEnvironmentId, principalId = TestThreadPrincipalId, ownerScopeId = ownerB)?.title)
+    }
+
+    @Test
+    fun replyCacheOwnerScopeIdIsNullWhenAnyIdentitySegmentIsBlank() {
+        val full =
+            ReplyCacheProvenance(
+                environmentId = "https://prod.example.test",
+                principalId = "user-1",
+                serverId = "server-1",
+                generation = 3L,
+                authGeneration = 1L,
+                selectionGeneration = 2L
+            )
+
+        // Positive control: a complete identity yields one owner key shared by every reply cache.
+        assertEquals(
+            "https://prod.example.test\u001fuser-1\u001fserver-1\u001f1\u001f2",
+            full.threadPayloadOwnerScopeId
+        )
+        assertEquals(full.threadPayloadOwnerScopeId, full.threadPendingSendOwnerScopeId)
+
+        // A blank segment no longer collapses into a shared "legacy" bucket: the owner is absent.
+        assertNull(full.copy(environmentId = "").threadPayloadOwnerScopeId)
+        assertNull(full.copy(environmentId = " ").threadPendingSendOwnerScopeId)
+        assertNull(full.copy(principalId = "").threadPayloadOwnerScopeId)
+        assertNull(full.copy(serverId = "").threadPayloadOwnerScopeId)
+        // Auth generation 0 is RealtimeAuthorityRegistry's "no session" revision (every advance
+        // starts at 1), so it is a sentinel like a blank segment, not a first epoch.
+        assertNull(full.copy(authGeneration = 0L).threadPayloadOwnerScopeId)
+        assertNull(full.copy(authGeneration = 0L).threadPendingSendOwnerScopeId)
+        assertNull(full.copy(authGeneration = -1L).threadPayloadOwnerScopeId)
+        // Selection generation 0 is the first durable selection epoch, not a sentinel.
+        assertEquals(
+            "https://prod.example.test\u001fuser-1\u001fserver-1\u001f1\u001f0",
+            full.copy(selectionGeneration = 0L).threadPayloadOwnerScopeId
+        )
+    }
+
+    @Test
+    fun privateIdentityResolverMintsLiveAuthEpochInsteadOfNoSessionSentinel() = runBlocking {
+        // No provider-owned authority and no shared message store: the data source's private
+        // resolver is the only identity source. Production never runs this path; it exists for
+        // tests and fixtures, and must still never publish the registry's "no session" 0.
+        val authStore = InMemorySlockAuthSessionStore(sampleSession())
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = authStore,
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                selectedServerStore =
+                    SelectedServerStore(SlockShellStoreScope.create("private-auth-epoch", "server-1")),
+                conversationRepository = FakeConversationRepository()
+            )
+
+        val first = dataSource.threadPayloadOwnerScopeIdForTest()
+        assertEquals("$TestThreadEnvironmentId\u001fu1\u001fserver-1\u001f1\u001f0", first)
+        // Same session identity re-read: same epoch (the registry's non-forced advance is a no-op).
+        assertEquals(first, dataSource.threadPayloadOwnerScopeIdForTest())
+
+        // A token refresh alone is not an identity change for the registry either.
+        authStore.saveSession(sampleSession().copy(accessToken = "access-2", refreshToken = "refresh-2"))
+        assertEquals(first, dataSource.threadPayloadOwnerScopeIdForTest())
+
+        // The server set changes (environment/principal/server-set is the registry's session
+        // identity): the epoch advances by one, so the previous owner key can never be reused.
+        authStore.saveSession(
+            sampleSession().copy(servers = listOf(StoredAuthServer(id = "server-1", name = "One", slug = "one")))
+        )
+        val second = dataSource.threadPayloadOwnerScopeIdForTest()
+        assertEquals("$TestThreadEnvironmentId\u001fu1\u001fserver-1\u001f2\u001f0", second)
+        assertNotEquals(first, second)
+    }
+
+    @Test
+    fun sharedThreadPayloadStoreRejectsBlankOwnerInsteadOfLegacyBucket() {
+        val store = SharedThreadPayloadStore()
+        val payload = basePayload().copy(sourceThreadId = "channel-1", title = "owned")
+        val cacheKey = SharedThreadPayloadCacheKey("server-1", "channel-1")
+
+        // Positive control: a named owner round-trips.
+        store.put("server-1", "channel-1", payload, TestThreadOwnerScopeId)
+        assertEquals(
+            "owned",
+            store.get("server-1", "channel-1", TestThreadEnvironmentId, TestThreadPrincipalId, TestThreadOwnerScopeId)?.title
+        )
+
+        // A blank owner is rejected at every entry instead of being routed to a constant bucket.
+        assertFailsWith<IllegalArgumentException> { SharedThreadOwnedPayloadCacheKey("", cacheKey) }
+        assertFailsWith<IllegalArgumentException> { SharedThreadFreshnessGeneration(cacheKey, " ") }
+        assertFailsWith<IllegalArgumentException> { store.put("server-1", "channel-1", payload, "") }
+        assertFailsWith<IllegalArgumentException> {
+            store.get("server-1", "channel-1", TestThreadEnvironmentId, TestThreadPrincipalId, "")
+        }
+        assertFailsWith<IllegalArgumentException> { store.values("server-1", "") }
+        assertFailsWith<IllegalArgumentException> { store.remove("server-1", "channel-1", " ") }
+        assertFailsWith<IllegalArgumentException> { store.freshnessLedger.capture("server-1", "channel-1", "") }
+        assertFailsWith<IllegalArgumentException> { store.freshnessLedger.advance("server-1", "channel-1", "") }
+        assertFailsWith<IllegalArgumentException> { store.freshnessLedger.retireOwner("") }
+
+        // The rejected calls left the named owner's entry untouched.
+        assertEquals(
+            "owned",
+            store.get("server-1", "channel-1", TestThreadEnvironmentId, TestThreadPrincipalId, TestThreadOwnerScopeId)?.title
+        )
+    }
+
+    @Test
+    fun contentGenerationAdvancesEveryOwnerWithoutNamingOne() {
+        val ledger = SharedThreadFreshnessLedger()
+        val ownerA = "https://prod.example.test\u001fu-a\u001fserver-1\u001f1\u001f1"
+        val ownerB = "https://prod.example.test\u001fu-b\u001fserver-1\u001f2\u001f1"
+        val freshnessA = ledger.capture("server-1", "channel-1", ownerA)
+        val freshnessB = ledger.capture("server-1", "channel-1", ownerB)
+        val content = ledger.captureContent("server-1", "channel-1")
+        val otherServerContent = ledger.captureContent("server-2", "channel-1")
+        assertSame(content, ledger.captureContent("server-1", "channel-1"))
+
+        // Owner-scoped advance retires exactly that owner and leaves the owner-less token alone.
+        ledger.advance("server-1", "channel-1", ownerA)
+        assertNotSame(freshnessA, ledger.capture("server-1", "channel-1", ownerA))
+        assertSame(freshnessB, ledger.capture("server-1", "channel-1", ownerB))
+        assertSame(content, ledger.captureContent("server-1", "channel-1"))
+
+        // A canonical content change (activity facts carry no owner) retires every owner and
+        // rotates the owner-less token once, without pretending to be any owner.
+        val advanced = ledger.advanceAllOwners("server-1", "channel-1")
+        assertNotSame(content, advanced)
+        assertSame(advanced, ledger.captureContent("server-1", "channel-1"))
+        assertNotSame(freshnessB, ledger.capture("server-1", "channel-1", ownerB))
+        assertSame(otherServerContent, ledger.captureContent("server-2", "channel-1"))
+
+        // Server invalidation rotates only that server's token.
+        ledger.invalidateServer("server-1")
+        assertNotSame(advanced, ledger.captureContent("server-1", "channel-1"))
+        assertSame(otherServerContent, ledger.captureContent("server-2", "channel-1"))
+    }
+
+    @Test
+    fun replyCountFactsAreScopedByEnvironmentAndDropBlankIdentity() {
+        val store = SharedThreadPayloadStore()
+        val canonical =
+            basePayload().copy(
+                status = "content",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "u1",
+                            authorName = "Artin",
+                            body = "parent",
+                            threadChannelId = null,
+                            replyCount = 0
+                        )
+                    )
+            )
+        val facts = listOf("m1" to SharedThreadReplyCountFact("thread-m1", 7))
+        fun replyCount(environmentId: String, principalId: String): Int =
+            store.applyReplyCountFacts("server-1", "channel-1", environmentId, principalId, canonical)
+                .messages.single().replyCount
+
+        // Positive control: same environment + principal sees the recorded fact.
+        store.recordReplyCountFacts("server-1", "channel-1", "https://prod.example.test", "user-1", facts)
+        assertEquals(7, replyCount("https://prod.example.test", "user-1"))
+
+        // The same principal on another environment is a different identity: no sharing.
+        assertEquals(0, replyCount("https://staging.example.test", "user-1"))
+        assertEquals(0, replyCount("https://prod.example.test", "user-2"))
+
+        // A blank environment or principal can neither record nor read facts (fail-closed).
+        store.recordReplyCountFacts("server-1", "channel-1", "", "user-1", facts)
+        store.recordReplyCountFacts("server-1", "channel-1", "https://staging.example.test", "", facts)
+        assertEquals(0, replyCount("", "user-1"))
+        assertEquals(0, replyCount("https://staging.example.test", ""))
+        assertEquals(0, replyCount("https://staging.example.test", "user-1"))
+        assertEquals(7, replyCount("https://prod.example.test", "user-1"))
     }
 
     @Test
@@ -1130,41 +1318,43 @@ class SharedThreadStoreTest {
                     }
             )
 
-        store.put("server-1", "channel-1", enriched)
+        store.put("server-1", "channel-1", enriched, TestThreadOwnerScopeId)
         store.recordReplyCountFacts(
             serverId = "server-1",
             threadId = "channel-1",
+            environmentId = TestThreadEnvironmentId,
             principalId = "user-1",
             facts = listOf("m1" to SharedThreadReplyCountFact("thread-m1", 7))
         )
-        store.freshnessLedger.advance("server-1", "channel-1")
+        store.freshnessLedger.advance("server-1", "channel-1", TestThreadOwnerScopeId)
 
-        assertNull(store.get("server-1", "channel-1"))
+        assertNull(store.get("server-1", "channel-1", TestThreadEnvironmentId, TestThreadPrincipalId, TestThreadOwnerScopeId))
         assertEquals(
             7,
-            store.applyReplyCountFacts("server-1", "channel-1", "user-1", canonicalWithoutSummaries)
+            store.applyReplyCountFacts("server-1", "channel-1", TestThreadEnvironmentId, "user-1", canonicalWithoutSummaries)
                 .messages.single().replyCount
         )
         assertEquals(
             0,
-            store.applyReplyCountFacts("server-1", "channel-1", "user-2", canonicalWithoutSummaries)
+            store.applyReplyCountFacts("server-1", "channel-1", TestThreadEnvironmentId, "user-2", canonicalWithoutSummaries)
                 .messages.single().replyCount
         )
         assertEquals(
             0,
-            store.applyReplyCountFacts("server-2", "channel-1", "user-1", canonicalWithoutSummaries)
+            store.applyReplyCountFacts("server-2", "channel-1", TestThreadEnvironmentId, "user-1", canonicalWithoutSummaries)
                 .messages.single().replyCount
         )
 
         store.recordReplyCountFacts(
             serverId = "server-1",
             threadId = "channel-1",
+            environmentId = TestThreadEnvironmentId,
             principalId = "user-1",
             facts = listOf("m1" to SharedThreadReplyCountFact("thread-m1", 3))
         )
         assertEquals(
             3,
-            store.applyReplyCountFacts("server-1", "channel-1", "user-1", canonicalWithoutSummaries)
+            store.applyReplyCountFacts("server-1", "channel-1", TestThreadEnvironmentId, "user-1", canonicalWithoutSummaries)
                 .messages.single().replyCount
         )
 
@@ -1172,7 +1362,7 @@ class SharedThreadStoreTest {
 
         assertEquals(
             0,
-            store.applyReplyCountFacts("server-1", "channel-1", "user-1", canonicalWithoutSummaries)
+            store.applyReplyCountFacts("server-1", "channel-1", TestThreadEnvironmentId, "user-1", canonicalWithoutSummaries)
                 .messages.single().replyCount
         )
     }
@@ -1194,7 +1384,7 @@ class SharedThreadStoreTest {
         val jobs =
             (1..3).map { index ->
                 async {
-                    store.prewarm("server-1", "thread-$index") {
+                    store.prewarm("server-1", "thread-$index", TestThreadOwnerScopeId) {
                         active += 1
                         starts += 1
                         maxActive = maxOf(maxActive, active)
@@ -1202,7 +1392,7 @@ class SharedThreadStoreTest {
                         release.await()
                         active -= 1
                         val payload = basePayload().copy(sourceThreadId = "thread-$index")
-                        store.put("server-1", "thread-$index", payload)
+                        store.put("server-1", "thread-$index", payload, TestThreadOwnerScopeId)
                         DataResult.Content(payload)
                     }
                 }
@@ -1234,10 +1424,10 @@ class SharedThreadStoreTest {
         val jobs =
             (1..2).map { index ->
                 async {
-                    store.prewarm("server-1", "thread-$index") {
+                    store.prewarm("server-1", "thread-$index", TestThreadOwnerScopeId) {
                         starts += origin.elapsedNow().inWholeMilliseconds
                         val payload = basePayload().copy(sourceThreadId = "thread-$index")
-                        store.put("server-1", "thread-$index", payload)
+                        store.put("server-1", "thread-$index", payload, TestThreadOwnerScopeId)
                         DataResult.Content(payload)
                     }
                 }
@@ -1278,6 +1468,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore =
                     SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-test", "server-1")),
                 conversationRepository = repository,
@@ -1330,6 +1521,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore =
                     SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-success", "server-1")),
                 conversationRepository = repository,
@@ -1381,17 +1573,17 @@ class SharedThreadStoreTest {
         val releaseFresh = CompletableDeferred<Unit>()
         val stalePrewarm =
             async {
-                payloadStore.prewarm("server-1", "thread-m1") {
+                payloadStore.prewarm("server-1", "thread-m1", TestThreadOwnerScopeId) {
                     staleStarted.complete(Unit)
                     releaseStale.await()
                     DataResult.Content(stale)
                 }
             }
         staleStarted.await()
-        payloadStore.freshnessLedger.advance("server-1", "thread-m1")
+        payloadStore.freshnessLedger.advance("server-1", "thread-m1", TestThreadOwnerScopeId)
         val freshPrewarm =
             async {
-                payloadStore.prewarm("server-1", "thread-m1") {
+                payloadStore.prewarm("server-1", "thread-m1", TestThreadOwnerScopeId) {
                     freshStarted.complete(Unit)
                     releaseFresh.await()
                     DataResult.Content(fresh)
@@ -1406,7 +1598,7 @@ class SharedThreadStoreTest {
 
         val consumed =
             assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
-                payloadStore.joinOrConsumePrewarm("server-1", "thread-m1")
+                payloadStore.joinOrConsumePrewarm("server-1", "thread-m1", TestThreadOwnerScopeId)
             )
         assertEquals("fresh generation", consumed.data.messages.single().body)
         appScope.cancel()
@@ -1428,7 +1620,7 @@ class SharedThreadStoreTest {
         val release = CompletableDeferred<Unit>()
         val prewarm =
             async {
-                payloadStore.prewarm("server-1", "thread-m1") {
+                payloadStore.prewarm("server-1", "thread-m1", TestThreadOwnerScopeId) {
                     started.complete(Unit)
                     release.await()
                     DataResult.Content(stale)
@@ -1436,12 +1628,12 @@ class SharedThreadStoreTest {
             }
         started.await()
 
-        payloadStore.freshnessLedger.advance("server-1", "thread-m1")
+        payloadStore.freshnessLedger.advance("server-1", "thread-m1", TestThreadOwnerScopeId)
         release.complete(Unit)
         assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(prewarm.await())
 
-        assertEquals(null, payloadStore.joinOrConsumePrewarm("server-1", "thread-m1"))
-        assertEquals(null, payloadStore.get("server-1", "thread-m1"))
+        assertEquals(null, payloadStore.joinOrConsumePrewarm("server-1", "thread-m1", TestThreadOwnerScopeId))
+        assertEquals(null, payloadStore.get("server-1", "thread-m1", TestThreadEnvironmentId, TestThreadPrincipalId, TestThreadOwnerScopeId))
         appScope.cancel()
     }
 
@@ -1457,15 +1649,15 @@ class SharedThreadStoreTest {
                 id = "reply-old",
                 channelId = "thread-m1"
             )
-        payloadStore.put("server-1", "thread-m1", cached)
+        payloadStore.put("server-1", "thread-m1", cached, TestThreadOwnerScopeId)
         assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
-            payloadStore.prewarm("server-1", "thread-m1") { DataResult.Content(cached) }
+            payloadStore.prewarm("server-1", "thread-m1", TestThreadOwnerScopeId) { DataResult.Content(cached) }
         )
 
         payloadStore.freshnessLedger.invalidateServer("server-1")
 
-        assertEquals(null, payloadStore.get("server-1", "thread-m1"))
-        assertEquals(null, payloadStore.joinOrConsumePrewarm("server-1", "thread-m1"))
+        assertEquals(null, payloadStore.get("server-1", "thread-m1", TestThreadEnvironmentId, TestThreadPrincipalId, TestThreadOwnerScopeId))
+        assertEquals(null, payloadStore.joinOrConsumePrewarm("server-1", "thread-m1", TestThreadOwnerScopeId))
         appScope.cancel()
     }
 
@@ -1490,6 +1682,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore =
                     SelectedServerStore(SlockShellStoreScope.create("canonical-generation", "server-1")),
                 conversationRepository = repository,
@@ -1506,14 +1699,14 @@ class SharedThreadStoreTest {
             }
         started.await()
 
-        payloadStore.freshnessLedger.advance("server-1", "channel-1")
+        payloadStore.freshnessLedger.advance("server-1", "channel-1", ownerScopeId)
         release.complete(Unit)
         val result = assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(request.await())
 
         assertEquals("current fresh", result.data.messages.single().body)
         assertEquals(
             "current fresh",
-            payloadStore.get("server-1", "channel-1", ownerScopeId = ownerScopeId)?.messages?.single()?.body
+            payloadStore.get("server-1", "channel-1", environmentId = TestThreadEnvironmentId, principalId = TestThreadPrincipalId, ownerScopeId = ownerScopeId)?.messages?.single()?.body
         )
         assertEquals(2, repository.getThreadRequests.size)
         appScope.cancel()
@@ -1531,6 +1724,7 @@ class SharedThreadStoreTest {
             val result = SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore = SelectedServerStore(SlockShellStoreScope.create(shellId, "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
@@ -1556,7 +1750,7 @@ class SharedThreadStoreTest {
         val secondVisible = async { secondDataSource.fetchThreadPayload(basePayload(), reusePrewarm = true) }
         yield()
 
-        payloadStore.freshnessLedger.advance("server-1", "channel-1")
+        payloadStore.freshnessLedger.advance("server-1", "channel-1", ownerScopeId)
         release.complete(Unit)
         assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(stalePrewarm.await())
         val firstResult = assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(firstVisible.await())
@@ -1589,6 +1783,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("takeover-current", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
@@ -1600,7 +1795,7 @@ class SharedThreadStoreTest {
         val visible = async { dataSource.fetchThreadPayload(basePayload(), reusePrewarm = true) }
         started.await()
 
-        payloadStore.freshnessLedger.advance("server-1", "channel-1")
+        payloadStore.freshnessLedger.advance("server-1", "channel-1", ownerScopeId)
         release.complete(Unit)
         val result = assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(visible.await())
 
@@ -1626,6 +1821,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = authStore,
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("retired-takeover", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
@@ -1651,8 +1847,8 @@ class SharedThreadStoreTest {
         assertEquals("thread_reply_cache_provenance_stale", result.error.code)
         assertEquals(false, result.error.retryable)
         assertEquals(1, repository.getThreadRequests.size)
-        assertNull(payloadStore.get("server-1", "channel-1", ownerScopeId = ownerA))
-        assertNull(payloadStore.get("server-1", "channel-1", ownerScopeId = ownerB))
+        assertNull(payloadStore.get("server-1", "channel-1", environmentId = TestThreadEnvironmentId, principalId = TestThreadPrincipalId, ownerScopeId = ownerA))
+        assertNull(payloadStore.get("server-1", "channel-1", environmentId = TestThreadEnvironmentId, principalId = TestThreadPrincipalId, ownerScopeId = ownerB))
         appScope.cancel()
     }
 
@@ -1676,14 +1872,14 @@ class SharedThreadStoreTest {
                 channelId = "thread-m1"
             )
         assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
-            payloadStore.prewarm("server-1", "thread-m1") { DataResult.Content(stale) }
+            payloadStore.prewarm("server-1", "thread-m1", TestThreadOwnerScopeId) { DataResult.Content(stale) }
         )
-        payloadStore.remove("server-1", "thread-m1")
+        payloadStore.remove("server-1", "thread-m1", TestThreadOwnerScopeId)
         var freshFetches = 0
 
         val result =
             assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
-                payloadStore.prewarm("server-1", "thread-m1") {
+                payloadStore.prewarm("server-1", "thread-m1", TestThreadOwnerScopeId) {
                     freshFetches += 1
                     DataResult.Content(fresh)
                 }
@@ -1727,6 +1923,7 @@ class SharedThreadStoreTest {
             val dataSource = SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore = SelectedServerStore(SlockShellStoreScope.create(shellId, "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
@@ -1803,6 +2000,7 @@ class SharedThreadStoreTest {
                 SharedThreadDataSource(
                     networkApi = FakeThreadApi(),
                     sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                     selectedServerStore = SelectedServerStore(SlockShellStoreScope.create(shellId, "server-1")),
                     conversationRepository = repository,
                     payloadStore = payloadStore
@@ -1818,7 +2016,7 @@ class SharedThreadStoreTest {
                 DataResult.Content(stale)
             }
         )
-        payloadStore.freshnessLedger.advance("server-1", "thread-m1")
+        payloadStore.freshnessLedger.advance("server-1", "thread-m1", ownerScopeId)
         assertIs<DataResult.Error>(
             payloadStore.prewarm("server-1", "thread-m1", ownerScopeId) {
                 DataResult.Error(ScreenError(code = "prewarm_v2_offline", retryable = true))
@@ -1851,6 +2049,7 @@ class SharedThreadStoreTest {
             val dataSource = SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore = SelectedServerStore(SlockShellStoreScope.create(shellId, "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
@@ -1891,11 +2090,15 @@ class SharedThreadStoreTest {
                         )
                 )
             )
+        // Under a named environment the failed access flight is remembered per identity, so a
+        // manual retry must say so (the Store passes explicitRetry here); a blank environment
+        // used to skip that memory entirely and made this test pass without it.
         assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
             dataSource("failed-prewarm-manual-retry").fetchThreadPayload(
                 basePayload = route,
                 persistResult = false,
-                reusePrewarm = false
+                reusePrewarm = false,
+                replaceReplyAccessFailure = true
             )
         )
         assertEquals(2, repository.getReplyThreadRequests.size)
@@ -1915,7 +2118,7 @@ class SharedThreadStoreTest {
     fun failedPrewarmTakeoverJoinsNewPrewarmStartedDuringHandoff() = runBlocking {
         val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val payloadStore = SharedThreadPayloadStore(appScope)
-        payloadStore.prewarm("server-1", "thread-m1") {
+        payloadStore.prewarm("server-1", "thread-m1", TestThreadOwnerScopeId) {
             DataResult.Error(ScreenError(code = "prewarm_offline", retryable = true))
         }
         val replacementStarted = CompletableDeferred<Unit>()
@@ -1929,7 +2132,7 @@ class SharedThreadStoreTest {
             )
         val replacement =
             async {
-                payloadStore.prewarm("server-1", "thread-m1") {
+                payloadStore.prewarm("server-1", "thread-m1", TestThreadOwnerScopeId) {
                     replacementStarted.complete(Unit)
                     releaseReplacement.await()
                     DataResult.Content(replacementPayload)
@@ -1939,7 +2142,7 @@ class SharedThreadStoreTest {
         var directFetches = 0
         val takeover =
             async {
-                payloadStore.takeOverFailedPrewarm("server-1", "thread-m1") {
+                payloadStore.takeOverFailedPrewarm("server-1", "thread-m1", TestThreadOwnerScopeId) {
                     directFetches += 1
                     DataResult.Error(ScreenError(code = "duplicate_fresh", retryable = true))
                 }
@@ -1984,6 +2187,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore =
                     SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-marker", "server-1")),
                 conversationRepository = repository,
@@ -2059,6 +2263,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(ownerASession),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore =
                     SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-owner-transition", "server-1")),
                 conversationRepository = repository,
@@ -2093,8 +2298,8 @@ class SharedThreadStoreTest {
 
         val result = assertIs<DataResult.Error>(prewarm.await())
         assertEquals("thread_reply_access_authority_changed", result.error.code)
-        assertNull(payloadStore.get("server-1", "thread-m1", ownerScopeId = ownerA))
-        assertNull(payloadStore.get("server-1", "thread-m1", ownerScopeId = ownerB))
+        assertNull(payloadStore.get("server-1", "thread-m1", environmentId = TestThreadEnvironmentId, principalId = TestThreadPrincipalId, ownerScopeId = ownerA))
+        assertNull(payloadStore.get("server-1", "thread-m1", environmentId = TestThreadEnvironmentId, principalId = TestThreadPrincipalId, ownerScopeId = ownerB))
     }
 
     @Test
@@ -2143,6 +2348,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore =
                     SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-version", "server-1")),
                 conversationRepository = repository,
@@ -2178,7 +2384,11 @@ class SharedThreadStoreTest {
                     )
                 )
             )
-        payloadStore.freshnessLedger.advance("server-1", "thread-m1")
+        payloadStore.freshnessLedger.advance(
+            "server-1",
+            "thread-m1",
+            dataSource.threadPayloadOwnerScopeIdForTest()
+        )
 
         assertIs<DataResult.Content<Unit>>(
             dataSource.prewarmReplyThread(
@@ -2204,7 +2414,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val routePayload =
             basePayload().copy(
@@ -2234,7 +2445,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val resolvedRoute = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
         dataSource.cachePayloadForTest(
@@ -2267,7 +2479,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -2313,6 +2526,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(ownerASession),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 replyCacheIdentityAuthority = { identity },
                 payloadStore = payloadStore
             )
@@ -2400,6 +2614,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(ownerASession),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 replyCacheIdentityAuthority = { identity },
                 payloadStore = payloadStore
             )
@@ -2450,7 +2665,7 @@ class SharedThreadStoreTest {
             assertEquals(
                 "owner-a cached body",
                 payloadStore
-                    .get("server-1", "channel-1", ownerScopeId = ownerA.threadPayloadOwnerScopeId.orEmpty())
+                    .get("server-1", "channel-1", environmentId = ownerA.environmentId, principalId = ownerA.principalId, ownerScopeId = ownerA.threadPayloadOwnerScopeId.orEmpty())
                     ?.messages
                     ?.single()
                     ?.body
@@ -2459,6 +2674,8 @@ class SharedThreadStoreTest {
                 payloadStore.get(
                     "server-1",
                     "channel-1",
+                    environmentId = ownerB.environmentId,
+                    principalId = ownerB.principalId,
                     ownerScopeId = ownerB.threadPayloadOwnerScopeId.orEmpty()
                 )
             )
@@ -2476,7 +2693,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val route = basePayload()
         dataSource.cachePayloadForTest(contentPayload("stale cached body"))
@@ -2608,7 +2826,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val routePayload =
             contentPayload("stale route body").copy(
@@ -2643,7 +2862,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
@@ -2701,7 +2921,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val firstRoute = replyPayload(parentMessageId = "m1", threadId = "thread-m1").copy(focusedMessageId = "reply-1")
@@ -2733,7 +2954,8 @@ class SharedThreadStoreTest {
                 dataSource =
                     SharedThreadDataSource(
                         networkApi = api,
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
                     ),
                 scope = scope,
                 diagnosticsLogger = { message ->
@@ -2786,7 +3008,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         dataSource.cachePayloadForTest(
             contentPayload("cached body").copy(
@@ -2820,7 +3043,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
@@ -2844,7 +3068,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
@@ -2880,6 +3105,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
                         threadResult = DataResult.Empty(EmptyReason.NoMessages)
@@ -2943,6 +3169,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = conversationRepository,
                 channelRepository = FakeChannelRepository { DataResult.Content(emptyHomeSnapshot()) }
             )
@@ -3002,6 +3229,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
                         threadResult = DataResult.Empty(EmptyReason.NoMessages)
@@ -3040,6 +3268,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
                         threadResult = DataResult.Empty(EmptyReason.NoMessages),
@@ -3077,6 +3306,7 @@ class SharedThreadStoreTest {
                 SharedThreadDataSource(
                     networkApi = FakeThreadApi(failChannelMessages = true),
                     sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                     conversationRepository = FakeConversationRepository(threadResult = result),
                     channelRepository = FakeChannelRepository { DataResult.Content(emptyHomeSnapshot()) }
                 )
@@ -3130,7 +3360,8 @@ class SharedThreadStoreTest {
             val dataSource =
                 SharedThreadDataSource(
                     networkApi = api,
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
                 )
             dataSource.cachePayloadForTest(contentPayload("cached body $iteration"))
             val store =
@@ -3209,6 +3440,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
         )
@@ -3308,6 +3540,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
             )
@@ -3405,6 +3638,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
             )
@@ -3499,6 +3733,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
             )
@@ -3578,6 +3813,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
             )
@@ -3662,6 +3898,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
             )
@@ -3716,6 +3953,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository,
                 homeSnapshotProvider = { joinedHomeSnapshot() }
@@ -3773,6 +4011,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
             )
@@ -3826,6 +4065,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
             )
@@ -3933,6 +4173,7 @@ class SharedThreadStoreTest {
                         SharedThreadDataSource(
                             networkApi = FakeThreadApi(failChannelMessages = true),
                             sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                            cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                             conversationRepository = repository,
                             channelRepository = channelRepository
                         ),
@@ -3948,16 +4189,18 @@ class SharedThreadStoreTest {
                     delay(10)
                 }
             }
-
             repository.threadResult = DataResult.Empty(EmptyReason.NoMessages)
             if (homeCompletesFirst) {
-                repository.getReplyThreadStarted = CompletableDeferred()
-                repository.releaseGetReplyThread = CompletableDeferred()
+                // Start already resolved and cached the reply stream under this named environment,
+                // so Refresh re-reads the thread by id (getThread) instead of by parent pair. The
+                // parent-pair hook only fired here while a blank environment disabled that cache.
+                repository.getThreadStarted = CompletableDeferred()
+                repository.releaseGetThread = CompletableDeferred()
             }
             store.dispatch(SharedThreadIntent.Refresh)
-            retryHomeStarted.await()
+            withTimeout(5_000) { retryHomeStarted.await() }
             if (homeCompletesFirst) {
-                repository.getReplyThreadStarted?.await()
+                withTimeout(5_000) { repository.getThreadStarted?.await() }
                 retryHomeFinished.await()
                 withTimeout(1_000) {
                     while (retryHomeMarker !in store.state.value.payload.knownMarkdownChannelNames) {
@@ -3966,7 +4209,7 @@ class SharedThreadStoreTest {
                 }
                 assertEquals("content", store.state.value.payload.status)
                 assertFalse(store.state.value.writeActionsEnabled)
-                repository.releaseGetReplyThread?.complete(Unit)
+                repository.releaseGetThread?.complete(Unit)
             } else {
                 withTimeout(1_000) {
                     while (store.state.value.payload.status != "empty") {
@@ -4047,6 +4290,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
             )
@@ -4126,6 +4370,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = FakeChannelRepository { DataResult.Content(emptyHomeSnapshot()) }
             )
@@ -4202,6 +4447,7 @@ class SharedThreadStoreTest {
                 SharedThreadDataSource(
                     networkApi = FakeThreadApi(failChannelMessages = true),
                     sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                     conversationRepository = repository,
                     channelRepository = channelRepository
                 )
@@ -4286,6 +4532,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
             )
@@ -4339,6 +4586,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
             )
@@ -4397,6 +4645,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -4439,6 +4688,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = FakeConversationRepository(),
                 channelRepository = channelRepository
             )
@@ -4601,7 +4851,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         dataSource.cachePayloadForTest(
             contentPayloadForRoute(directMessagePayload(), "cached body")
@@ -4691,7 +4942,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val replyRoute = replyPayload(parentMessageId = "parent-a", threadId = "thread-a")
         dataSource.cachePayloadForTest(
@@ -4965,7 +5217,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
@@ -5001,6 +5254,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = channelRepository
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -5026,7 +5280,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
@@ -5046,7 +5301,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -5323,6 +5579,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -5363,7 +5620,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -5386,6 +5644,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = sessionStore,
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -5434,7 +5693,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -5499,6 +5759,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
                         threadResult =
@@ -5557,7 +5818,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -5581,7 +5843,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -5626,6 +5889,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(ownerASession),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 replyCacheIdentityAuthority = { identity },
                 payloadStore = payloadStore
             )
@@ -5682,6 +5946,8 @@ class SharedThreadStoreTest {
             payloadStore.get(
                 "server-1",
                 "channel-1",
+                environmentId = ownerA.environmentId,
+                principalId = ownerA.principalId,
                 ownerScopeId = ownerA.threadPayloadOwnerScopeId.orEmpty()
             )
         )
@@ -5689,6 +5955,8 @@ class SharedThreadStoreTest {
             payloadStore.get(
                 "server-1",
                 "channel-1",
+                environmentId = ownerB.environmentId,
+                principalId = ownerB.principalId,
                 ownerScopeId = ownerB.threadPayloadOwnerScopeId.orEmpty()
             )
         assertEquals(listOf("owner-b body"), ownerBCache?.messages?.map { it.body })
@@ -5737,6 +6005,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(ownerASession),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = FakeConversationRepository(),
                 replyCacheIdentityAuthority = { identity },
                 replyCacheIdentityTransitionWaiter = {
@@ -5766,6 +6035,8 @@ class SharedThreadStoreTest {
             payloadStore.get(
                 serverId = "server-1",
                 threadId = "channel-1",
+                environmentId = ownerA.environmentId,
+                principalId = ownerA.principalId,
                 ownerScopeId = ownerA.threadPayloadOwnerScopeId.orEmpty()
             )
 
@@ -5840,6 +6111,8 @@ class SharedThreadStoreTest {
             payloadStore.get(
                 serverId = "server-1",
                 threadId = "channel-1",
+                environmentId = ownerA.environmentId,
+                principalId = ownerA.principalId,
                 ownerScopeId = ownerA.threadPayloadOwnerScopeId.orEmpty()
             )
         )
@@ -5847,6 +6120,8 @@ class SharedThreadStoreTest {
             payloadStore.get(
                 serverId = "server-1",
                 threadId = "channel-1",
+                environmentId = ownerB.environmentId,
+                principalId = ownerB.principalId,
                 ownerScopeId = ownerB.threadPayloadOwnerScopeId.orEmpty()
             )
         )
@@ -5862,6 +6137,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
                         threadResult =
@@ -5926,7 +6202,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val payload =
             contentPayload("sent body", id = "server-1").copy(
@@ -5953,6 +6230,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val route =
             basePayload().copy(
@@ -5978,6 +6256,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val freshPayload = contentPayload("fresh memory body")
 
@@ -6036,6 +6315,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val payload =
             replyPayload(parentMessageId = "parent-1", threadId = "thread-parent-1")
@@ -6077,6 +6357,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val localMessageId = "local-send-channel-1-1"
@@ -6112,6 +6393,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val localMessageId = "local-send-channel-1-1"
@@ -6143,6 +6425,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val basePayload =
             basePayload().copy(
@@ -6171,7 +6454,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val basePayload =
             basePayload().copy(
@@ -6200,6 +6484,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val localMessageId = "local-send-channel-1-1"
@@ -6224,6 +6509,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val localMessageId = "local-send-channel-1-1"
@@ -6247,6 +6533,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val localMessageId = "local-send-channel-1-1"
@@ -6270,7 +6557,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -6301,7 +6589,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -6338,7 +6627,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -6359,7 +6649,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -6431,6 +6722,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository,
                 serverMembersStore = serverMembersStore
             )
@@ -6483,6 +6775,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = flakyMemberRepository
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -6529,6 +6822,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -6548,6 +6842,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository,
                 serverMembersStore = memberStore
             )
@@ -6622,6 +6917,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 serverMembersStore = memberStore,
                 payloadStore = payloadStore
             )
@@ -6677,6 +6973,7 @@ class SharedThreadStoreTest {
                     SharedThreadDataSource(
                         networkApi = FakeThreadApi(failChannelMessages = true),
                         sessionStore = InMemorySlockAuthSessionStore(session),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         serverMembersStore = memberStore,
                         payloadStore = payloadStore
                     )
@@ -6713,6 +7010,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = sessionStore,
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository,
                 serverMembersStore = memberStore
             )
@@ -6843,6 +7141,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository
             )
 
@@ -6865,6 +7164,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = channelRepository,
                 actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
             )
@@ -6913,6 +7213,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 agentsApiClient = SlockAgentsApiClient(agentsApi),
                 actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
             )
@@ -6944,6 +7245,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 createAgentCoordinator = coordinator
             )
 
@@ -6958,6 +7260,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 agentsApiClient = SlockAgentsApiClient(agentsApi),
                 actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
             )
@@ -7000,6 +7303,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 agentsApiClient = SlockAgentsApiClient(agentsApi),
                 actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
             )
@@ -7021,6 +7325,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository,
                 actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
             )
@@ -7063,6 +7368,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
             )
         val card =
@@ -7130,6 +7436,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
             )
         val card =
@@ -7166,6 +7473,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
             )
 
@@ -7200,6 +7508,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository,
                 serverMembersStore = serverMembersStore
             )
@@ -7235,6 +7544,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository,
                 serverMembersStore = serverMembersStore
             )
@@ -7274,6 +7584,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -7320,6 +7631,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
@@ -7364,6 +7676,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
 
@@ -7405,6 +7718,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
@@ -7461,6 +7775,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val gravatarSeed =
@@ -7498,6 +7813,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
@@ -7518,6 +7834,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
 
         dataSource.fetchThreadPayload(basePayload())
@@ -7545,6 +7862,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
         )
         val firstOpen = dataSource.fetchThreadPayload(unresolvedReplyPayload(parentMessageId = "m1"))
@@ -7621,6 +7939,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
 
         val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
@@ -7652,6 +7971,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository
             )
 
@@ -7684,6 +8004,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository,
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -7755,6 +8076,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 memberRepository = memberRepository
             )
@@ -7828,6 +8150,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val base =
@@ -7860,7 +8183,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
 
         val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
@@ -7875,7 +8199,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore()
+                sessionStore = InMemorySlockAuthSessionStore(),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
 
         val result = dataSource.fetchThreadPayload(basePayload())
@@ -7896,6 +8221,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
 
@@ -7951,6 +8277,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val parentRoute =
@@ -8003,6 +8330,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
 
@@ -8070,6 +8398,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
             )
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -8150,6 +8479,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
             )
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -8221,6 +8551,7 @@ class SharedThreadStoreTest {
                     SharedThreadDataSource(
                         networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository = repository,
                     ),
                 scope = scope,
@@ -8270,6 +8601,7 @@ class SharedThreadStoreTest {
                     SharedThreadDataSource(
                         networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository = repository,
                     ),
                 scope = scope,
@@ -8309,6 +8641,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val logs = mutableListOf<String>()
@@ -8351,7 +8684,7 @@ class SharedThreadStoreTest {
         val releaseBlocker = CompletableDeferred<Unit>()
         val blocker =
             async {
-                payloadStore.prewarm("server-1", "thread-blocker") {
+                payloadStore.prewarm("server-1", "thread-blocker", TestThreadOwnerScopeId) {
                     blockerStarted.complete(Unit)
                     releaseBlocker.await()
                     DataResult.Content(
@@ -8392,6 +8725,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore =
                     SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-promote", "server-1")),
                 conversationRepository = repository,
@@ -8478,6 +8812,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore =
                     SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-visible-start", "server-1")),
                 conversationRepository = repository,
@@ -8575,6 +8910,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val base =
@@ -8622,6 +8958,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val base =
@@ -8681,6 +9018,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 memberRepository = memberRepository
             )
@@ -8717,6 +9055,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
 
@@ -8770,6 +9109,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val route =
@@ -8845,6 +9185,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val route =
@@ -8981,6 +9322,7 @@ class SharedThreadStoreTest {
                     SharedThreadDataSource(
                         networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository = repository
                     ),
                 scope = scope
@@ -9102,6 +9444,7 @@ class SharedThreadStoreTest {
                     SharedThreadDataSource(
                         networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository = repository
                     ),
                 scope = scope
@@ -9151,6 +9494,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
 
@@ -9202,6 +9546,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
 
@@ -9268,6 +9613,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
 
@@ -9608,10 +9954,18 @@ class SharedThreadStoreTest {
 
         environmentId = ""
         repository.configureReplyThread("thread-missing-environment", parent.id)
+        // A blank environment is not a "legacy" identity that may reuse the prod bucket: it owns
+        // no reply cache at all (namespace and payload owner both absent), so the open fails
+        // closed and nothing was cached.
         assertEquals(
-            "thread-missing-environment",
-            (dataSource.createOrOpenReplyThread(base, parent) as DataResult.Content).data.streamChannelId
+            "thread_reply_cache_provenance_stale",
+            assertIs<DataResult.Error>(dataSource.createOrOpenReplyThread(base, parent)).error.code
         )
+        val blankEnvironmentProvenance = requireNotNull(dataSource.currentReplyCacheProvenance())
+        assertEquals("", blankEnvironmentProvenance.environmentId)
+        assertNull(blankEnvironmentProvenance.namespaceId)
+        assertNull(blankEnvironmentProvenance.threadPayloadOwnerScopeId)
+        assertNull(dataSource.cachedPayload("thread-missing-environment"))
 
         environmentId = "https://prod.example.test"
         selectedServerStore.select("server-b", "server-b")
@@ -9773,6 +10127,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
 
@@ -9823,6 +10178,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
 
@@ -9915,6 +10271,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
 
@@ -9990,6 +10347,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
 
@@ -10058,6 +10416,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
 
@@ -10083,6 +10442,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         dataSource.cachePayloadForTest(wrongReplyCachedPayload())
@@ -10123,6 +10483,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -10166,6 +10527,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         dataSource.cachePayloadForTest(wrongReplyCachedPayload())
@@ -10232,6 +10594,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -10309,6 +10672,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -10382,6 +10746,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 diagnosticsLogger = diagnostics::add
             )
@@ -10443,6 +10808,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val store =
@@ -10480,6 +10846,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val store =
@@ -10528,6 +10895,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -10577,6 +10945,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -10626,7 +10995,8 @@ class SharedThreadStoreTest {
                             seq = 44
                         )
                 ),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
@@ -10652,6 +11022,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -10694,6 +11065,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(channelMessagesResponseCode = 403),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -10714,6 +11086,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -10750,6 +11123,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -10785,7 +11159,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -10817,7 +11192,8 @@ class SharedThreadStoreTest {
                     FakeThreadApi(
                         bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false)
                     ),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(focusedMessageId = "m10")))
@@ -10861,6 +11237,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -10995,6 +11372,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
@@ -11032,6 +11410,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
@@ -11068,7 +11447,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -11096,7 +11476,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -11132,6 +11513,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
                         threadResult =
@@ -11755,6 +12137,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
                         threadResult = DataResult.Content(threadSnapshot(body = "cached body", seq = 0))
@@ -11783,6 +12166,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -11824,6 +12208,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
                         threadResult = DataResult.NoPermission(PermissionBlocker(code = "thread_forbidden"))
@@ -11850,6 +12235,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
                         threadResult = DataResult.Content(threadSnapshot(body = "cached body", seq = 10))
@@ -11877,6 +12263,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
 
         val result = dataSource.markVisibleChannelRead("reply-thread", latestSeq = null)
@@ -11894,6 +12281,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
                         threadResult = DataResult.Content(threadSnapshot(body = "cached body", seq = 0))
@@ -11932,7 +12320,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val initial =
             basePayload().copy(
@@ -12005,6 +12394,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
                         threadResult = DataResult.Content(threadSnapshot(body = "cached body", seq = 0))
@@ -12062,7 +12452,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
 
         dataSource.sendMessage(
@@ -12083,7 +12474,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
 
         dataSource.saveMessage("m1")
@@ -12097,7 +12489,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
 
         dataSource.unsaveMessage("m1")
@@ -12112,6 +12505,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 savedStatusRepository = savedStatusRepository
             )
 
@@ -12153,6 +12547,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 savedStatusRepository = savedStatusRepository
             )
@@ -12196,6 +12591,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("saveable body"))
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -12220,6 +12616,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("reactable body"))
 
@@ -12240,6 +12637,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("reactable body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -12263,6 +12661,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("reactable body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -12309,6 +12708,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val message =
             contentPayload("reactable body").messages.single().copy(
@@ -12338,6 +12738,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val message =
             contentPayload("reactable body").messages.single().copy(
@@ -12433,7 +12834,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
 
         val result = dataSource.setMessageReaction("m1", "🔥", selected = false)
@@ -12450,7 +12852,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val originalReactions = listOf(KuiklyThreadReactionItem("🔥", count = 1, selected = true))
         val message = contentPayload("reactable body").messages.single()
@@ -12475,7 +12878,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val base = contentPayload("parent body")
         val parent = base.messages.single()
@@ -12499,7 +12903,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val base = contentPayload("parent body")
         val parent = base.messages.single()
@@ -12604,6 +13009,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val base =
@@ -12664,6 +13070,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val base =
@@ -12734,6 +13141,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
             )
         val base =
@@ -12795,6 +13203,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val base =
@@ -13129,6 +13538,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -13158,6 +13568,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 threadPageSizeProvider = { remotePageSize }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -13179,6 +13590,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 threadPageSizeProvider = { remotePageSize }
             )
@@ -13244,7 +13656,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = true)))
@@ -13274,7 +13687,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = true)))
@@ -13305,7 +13719,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = true)))
@@ -13328,7 +13743,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = true)))
@@ -13354,6 +13770,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = true)))
@@ -13398,7 +13815,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
@@ -13424,7 +13842,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
@@ -13451,7 +13870,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
@@ -13484,6 +13904,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
@@ -13550,6 +13971,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
@@ -13593,6 +14015,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
@@ -13652,7 +14075,7 @@ class SharedThreadStoreTest {
             )
         api.syncStarted = CompletableDeferred()
         api.releaseSync = CompletableDeferred()
-        val dataSource = SharedThreadDataSource(networkApi = api, sessionStore = sessionStore)
+        val dataSource = SharedThreadDataSource(networkApi = api, sessionStore = sessionStore, cacheEnvironmentIdProvider = { TestThreadEnvironmentId })
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
 
@@ -13714,6 +14137,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
@@ -13772,6 +14196,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
@@ -13833,6 +14258,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
@@ -13914,6 +14340,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
@@ -13988,6 +14415,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
@@ -14035,6 +14463,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
@@ -14080,6 +14509,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
@@ -14110,6 +14540,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
@@ -14146,6 +14577,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
@@ -14170,7 +14602,7 @@ class SharedThreadStoreTest {
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
             )
-        val dataSource = SharedThreadDataSource(networkApi = api, sessionStore = auth)
+        val dataSource = SharedThreadDataSource(networkApi = api, sessionStore = auth, cacheEnvironmentIdProvider = { TestThreadEnvironmentId })
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
         val cacheContext = requireNotNull(dataSource.captureReplyCacheProducerContext())
@@ -14222,6 +14654,7 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1").copy(canLoadMoreAfter = false)
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -14264,7 +14697,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
@@ -14290,7 +14724,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
@@ -14330,7 +14765,8 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = true)))
@@ -15347,6 +15783,7 @@ class SharedThreadStoreTest {
         SharedThreadDataSource(
             networkApi = FakeThreadApi(failChannelMessages = true),
             sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
         )
 
     private fun emptyHomeSnapshot(): HomeSnapshot =
@@ -15737,6 +16174,8 @@ class SharedThreadStoreTest {
         sessionProvider: suspend () -> StoredAuthSession?,
         environmentProvider: () -> String = { "https://prod.example.test" },
         serverIdProvider: (StoredAuthSession) -> String? = { it.currentServerId },
+        // Like RealtimeAuthorityRegistry: a session always carries a generation >= 1; 0 is "no session".
+        authGenerationProvider: () -> Long = { 1L },
     ): suspend () -> ThreadReplyCacheIdentitySnapshot? = {
         sessionProvider()?.let { session ->
             val environmentId = environmentProvider().trim().trimEnd('/')
@@ -15747,7 +16186,7 @@ class SharedThreadStoreTest {
                 environmentId = environmentId,
                 principalId = principalId,
                 serverId = serverId,
-                authGeneration = 0L,
+                authGeneration = authGenerationProvider(),
                 selectionGeneration = 0L,
             )
         }

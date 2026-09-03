@@ -76,7 +76,10 @@ internal class SlockNetworkTransportController(
 
     fun updateRemoteActiveSelection(scopeId: String, serverId: String?): String? =
         mutateRemoteState("selection") { state ->
-            val normalizedScope = scopeId.trim().ifBlank { "legacy" }
+            // A shell scope id is required (SlockShellStoreScope rejects blank ids). Two anonymous
+            // callers must not share one "legacy" slot and overwrite each other's active server.
+            val normalizedScope = scopeId.trim()
+            if (normalizedScope.isBlank()) return@mutateRemoteState state
             val normalizedServer = serverId?.trim()?.takeIf(String::isNotBlank)
             val next = state.activeServerByScope.toMutableMap()
             if (normalizedServer == null) next.remove(normalizedScope) else next[normalizedScope] = normalizedServer

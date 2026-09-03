@@ -202,7 +202,7 @@ class SharedActivityStoreTest {
 
         store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
         store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
-        ledger.advance(marker.key.serverId, marker.key.threadChannelId)
+        ledger.advanceAllOwners(marker.key.serverId, marker.key.threadChannelId)
         store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
 
         assertEquals(listOf(marker.key, marker.key), calls.map { it.key })
@@ -253,7 +253,7 @@ class SharedActivityStoreTest {
             )
 
         store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
-        ledger.advance(marker.key.serverId, marker.key.threadChannelId)
+        ledger.advanceAllOwners(marker.key.serverId, marker.key.threadChannelId)
         store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
         assertEquals(1, calls.size)
 
@@ -335,7 +335,7 @@ class SharedActivityStoreTest {
         secondStore.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
         assertTrue(firstCalls.single().contentGeneration === secondCalls.single().contentGeneration)
 
-        ledger.advance(marker.key.serverId, marker.key.threadChannelId)
+        ledger.advanceAllOwners(marker.key.serverId, marker.key.threadChannelId)
         firstStore.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
         secondStore.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
         assertTrue(firstCalls.last().contentGeneration === secondCalls.last().contentGeneration)
@@ -573,7 +573,7 @@ class SharedActivityStoreTest {
         assertEquals(1, calls.size)
 
         // Replan while A(v1) is still in-flight: A is re-versioned to v2 and B appears below it.
-        ledger.advance(storeMarkerKey.serverId, storeMarkerKey.threadChannelId)
+        ledger.advanceAllOwners(storeMarkerKey.serverId, storeMarkerKey.threadChannelId)
         store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(secondVersion, below)))
 
         // The superseded A(v1) is unwound; the tail then reschedules A(v2) and warms B, one at a
@@ -640,9 +640,9 @@ class SharedActivityStoreTest {
         assertEquals(listOf(firstVersion.key), calls.map { it.key })
 
         // Two rapid consecutive replans arrive while A(v1) is still SLOWLY draining.
-        ledger.advance(firstVersion.key.serverId, firstVersion.key.threadChannelId)
+        ledger.advanceAllOwners(firstVersion.key.serverId, firstVersion.key.threadChannelId)
         store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(secondVersion, secondBelow)))
-        ledger.advance(firstVersion.key.serverId, firstVersion.key.threadChannelId)
+        ledger.advanceAllOwners(firstVersion.key.serverId, firstVersion.key.threadChannelId)
         store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(thirdVersion, thirdBelow)))
 
         // The drain barrier holds every later generation: nothing new may start while A(v1) drains.
@@ -2361,7 +2361,7 @@ class SharedActivityStoreTest {
                 replyThreadFreshnessLedger = ledger
             )
         store.dispatch(SharedActivityIntent.LoadInitial)
-        val initial = ledger.capture("server-1", "thread-channel-1")
+        val initial = ledger.captureContent("server-1", "thread-channel-1")
         val accepted =
             ThreadUpdated(
                 parentMessageId = MessageId("parent-message"),
@@ -2372,18 +2372,18 @@ class SharedActivityStoreTest {
             )
 
         store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(accepted))
-        val advanced = ledger.capture("server-1", "thread-channel-1")
+        val advanced = ledger.captureContent("server-1", "thread-channel-1")
         assertTrue(initial !== advanced)
 
         store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(accepted))
-        assertTrue(advanced === ledger.capture("server-1", "thread-channel-1"))
+        assertTrue(advanced === ledger.captureContent("server-1", "thread-channel-1"))
 
         store.dispatch(
             SharedActivityIntent.ApplyRealtimeEvent(
                 accepted.copy(replyCount = 2, lastReplyAt = "2026-07-13T03:01:00Z")
             )
         )
-        assertTrue(advanced === ledger.capture("server-1", "thread-channel-1"))
+        assertTrue(advanced === ledger.captureContent("server-1", "thread-channel-1"))
         scope.cancel()
     }
 
@@ -2398,7 +2398,7 @@ class SharedActivityStoreTest {
                 replyThreadFreshnessLedger = ledger
             )
         store.dispatch(SharedActivityIntent.LoadInitial)
-        val initial = ledger.capture("server-1", "thread-channel-1")
+        val initial = ledger.captureContent("server-1", "thread-channel-1")
         val update =
             MessageUpdated(
                 message(
@@ -2409,11 +2409,11 @@ class SharedActivityStoreTest {
             )
 
         store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(update))
-        val advanced = ledger.capture("server-1", "thread-channel-1")
+        val advanced = ledger.captureContent("server-1", "thread-channel-1")
         assertTrue(initial !== advanced)
 
         store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(update))
-        assertTrue(advanced === ledger.capture("server-1", "thread-channel-1"))
+        assertTrue(advanced === ledger.captureContent("server-1", "thread-channel-1"))
         scope.cancel()
     }
 
@@ -2435,12 +2435,12 @@ class SharedActivityStoreTest {
             )
 
         store.dispatch(SharedActivityIntent.LoadInitial)
-        val initial = ledger.capture("server-1", "thread-channel-1")
+        val initial = ledger.captureContent("server-1", "thread-channel-1")
         store.dispatch(SharedActivityIntent.Refresh)
-        assertTrue(initial === ledger.capture("server-1", "thread-channel-1"))
+        assertTrue(initial === ledger.captureContent("server-1", "thread-channel-1"))
 
         store.dispatch(SharedActivityIntent.Refresh)
-        assertTrue(initial !== ledger.capture("server-1", "thread-channel-1"))
+        assertTrue(initial !== ledger.captureContent("server-1", "thread-channel-1"))
         scope.cancel()
     }
 
@@ -2470,12 +2470,12 @@ class SharedActivityStoreTest {
                 )
             )
         )
-        val realtimeGeneration = ledger.capture("server-1", "thread-channel-1")
+        val realtimeGeneration = ledger.captureContent("server-1", "thread-channel-1")
 
         store.dispatch(SharedActivityIntent.Refresh)
 
         assertEquals(3, store.state.value.items.single().replyCount)
-        assertTrue(realtimeGeneration === ledger.capture("server-1", "thread-channel-1"))
+        assertTrue(realtimeGeneration === ledger.captureContent("server-1", "thread-channel-1"))
         scope.cancel()
     }
 
@@ -2490,14 +2490,14 @@ class SharedActivityStoreTest {
                 replyThreadFreshnessLedger = ledger
             )
         store.dispatch(SharedActivityIntent.LoadInitial)
-        val initial = ledger.capture("server-1", "thread-channel-1")
+        val initial = ledger.captureContent("server-1", "thread-channel-1")
 
         store.dispatch(
             SharedActivityIntent.ApplyRealtimeEvent(
                 SyncResumeResponse(messages = emptyList(), currentSeq = 10L, hasMore = false)
             )
         )
-        val afterResume = ledger.capture("server-1", "thread-channel-1")
+        val afterResume = ledger.captureContent("server-1", "thread-channel-1")
         assertTrue(initial !== afterResume)
 
         store.dispatch(
@@ -2509,7 +2509,7 @@ class SharedActivityStoreTest {
                 )
             )
         )
-        assertTrue(afterResume !== ledger.capture("server-1", "thread-channel-1"))
+        assertTrue(afterResume !== ledger.captureContent("server-1", "thread-channel-1"))
         scope.cancel()
     }
 

@@ -32,6 +32,7 @@ private const val ThreadNewerAutoServerId = "thread-newer-auto-server"
 private const val ThreadNewerAutoChannelId = "thread-newer-auto-channel"
 private const val ThreadNewerAutoInitialMessageCount = 16
 private const val ThreadNewerAutoPageSize = 30
+private const val ThreadNewerAutoEnvironmentId = "https://thread-newer-auto.fixture.example.test"
 private const val ThreadNewerAutoFocusedMessageSeq = 8L
 
 /**
@@ -207,6 +208,8 @@ private fun ThreadNewerAutoPaginationVisualContent(runNonce: String, showCompose
             SharedThreadDataSource(
                 networkApi = networkApi,
                 sessionStore = sessionStore,
+                // This fixture is its own realm: name it instead of relying on a blank default.
+                cacheEnvironmentIdProvider = { ThreadNewerAutoEnvironmentId },
                 threadPageSizeProvider = { ThreadNewerAutoPageSize },
                 diagnosticsLogger = { message -> bridge.log("thread_newer_auto_fixture $message") },
             )

@@ -252,6 +252,7 @@ class ThreadPendingSendStoreIntegrationTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = sessionStore,
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 pendingSendJournal = journal,
                 replyCacheIdentityAuthority = { identity },
             )

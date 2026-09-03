@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.SharedThreadFreshnessGeneration
+import build.raft.app.SharedThreadContentGeneration
 import build.raft.app.SharedThreadFreshnessLedger
 import build.raft.app.SharedThreadSummaryFact
 import build.raft.app.model.ChannelId
@@ -69,7 +69,9 @@ data class ActivityReplyThreadPrewarmKey(
 
 data class ActivityReplyThreadPrewarmMarker(
     val key: ActivityReplyThreadPrewarmKey,
-    val contentGeneration: SharedThreadFreshnessGeneration? = null
+    // Owner-less content token: "did canonical content change since this marker was stamped".
+    // The marker never selects a cached payload, so it carries no payload-cache owner.
+    val contentGeneration: SharedThreadContentGeneration? = null
 )
 
 class SharedActivityStore internal constructor(
@@ -127,9 +129,9 @@ class SharedActivityStore internal constructor(
     private var visibleReplyPrewarmMarkers: Map<ActivityReplyThreadPrewarmKey, ActivityReplyThreadPrewarmMarker> = emptyMap()
     private var tailReplyPrewarmMarkers: Map<ActivityReplyThreadPrewarmKey, ActivityReplyThreadPrewarmMarker> = emptyMap()
     private val completedReplyPrewarmGenerations =
-        mutableMapOf<ActivityReplyThreadPrewarmKey, SharedThreadFreshnessGeneration>()
+        mutableMapOf<ActivityReplyThreadPrewarmKey, SharedThreadContentGeneration>()
     private val failedReplyPrewarmGenerations =
-        mutableMapOf<ActivityReplyThreadPrewarmKey, SharedThreadFreshnessGeneration>()
+        mutableMapOf<ActivityReplyThreadPrewarmKey, SharedThreadContentGeneration>()
     private val replyPrewarmJobs = mutableMapOf<ActivityReplyThreadPrewarmKey, Job>()
     private var tailPrewarmLoopJob: Job? = null
     private var tailInFlightJob: Job? = null
@@ -526,7 +528,7 @@ class SharedActivityStore internal constructor(
                     item.replyThreadSummaryFact()
                 )
             }
-        val generation = replyThreadFreshnessLedger.capture(marker.key.serverId, marker.key.threadChannelId)
+        val generation = replyThreadFreshnessLedger.captureContent(marker.key.serverId, marker.key.threadChannelId)
         return marker.copy(contentGeneration = generation)
     }
 
