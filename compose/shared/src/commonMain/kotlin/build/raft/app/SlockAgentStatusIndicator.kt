@@ -13,6 +13,7 @@ import com.tencent.kuikly.compose.ui.graphics.Color
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 
 internal data class SlockAgentStatusIndicatorState(
     val status: AgentStatus?,
@@ -170,14 +171,9 @@ internal data class ExternalAgentDetailIndicator(
 internal const val ExternalAgentActiveThresholdMillis: Long = 5L * 60L * 1000L
 internal const val ExternalAgentRecentThresholdMillis: Long = 30L * 60L * 1000L
 
+/** Server sends `toISOString()` (UTC, `Z`); the repo parser also accepts offsets and epoch-millis strings. */
 internal fun parseExternalAgentTimestampOrNull(iso: String?): Long? =
-    iso?.takeIf { it.isNotBlank() }?.let { value ->
-        try {
-            kotlinx.datetime.Instant.parse(value).toEpochMilliseconds()
-        } catch (_: IllegalArgumentException) {
-            null
-        }
-    }
+    parseSlockTimestampEpochMillisOrNull(iso, localOffsetMinutes = 0)
 
 /**
  * Detail-page tone for an external agent, mirroring web `AgentStatusBadge`
