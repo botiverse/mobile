@@ -81,3 +81,5 @@ internal actual fun slockFirstComposedCharacterEnd(text: String): Int? {
 internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 50L * 1024L * 1024L
 
 internal actual fun slockSlugSlashCenteringOffsetDp(): Float = -1.5f
+
+internal actual fun slockPlatformTabPagerStartEdgeInsetDp(): Float = 0f

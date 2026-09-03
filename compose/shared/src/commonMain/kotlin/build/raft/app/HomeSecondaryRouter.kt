@@ -250,8 +250,6 @@ private fun HomeActivityRouterContent(
     environment: HomeSecondaryRouteEnvironment,
     routeVisibleTick: Int = 0
 ) {
-    val listState = rememberLazyListState()
-    val scrollScope = rememberCoroutineScope()
     SharedHomeActivityScreen(
         bridge = environment.bridge,
         authStore = environment.authStore,
@@ -271,11 +269,9 @@ private fun HomeActivityRouterContent(
         bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
         timeContext = environment.timeContext,
         shellScope = environment.shellScope,
-        listState = listState,
         activityTaskStatusBadgesEnabled = environment.activityTaskStatusBadgesEnabled,
         activitySenderAvatarsEnabled = environment.activitySenderAvatarsEnabled,
-        storeScope = environment.storeScope,
-        onTitleClick = { scrollScope.launch { listState.animateScrollToTopExpressive() } }
+        storeScope = environment.storeScope
     )
 }
 
