@@ -1238,6 +1238,102 @@ private val membersAgentDetailVisualScopeSet = AgentScopeSet(
     updatedAt = "2026-06-19T12:28:00.000Z"
 )
 
+/**
+ * task #535 / #537 — Computer-row oracle variants of the agent-detail visual seed.
+ * Same page, same data except the identity and the Computer row inputs, so a
+ * capture difference against the default seed is attributable to that row.
+ * Values mirror packages/visual-testing/shared/fixtureData.json (agents
+ * computerOffline / computerMissing / noComputer / longMachine, machines
+ * studio / longName); the slock-side test pins them there.
+ */
+private data class MembersAgentDetailVisualVariant(
+    val id: String,
+    val name: String,
+    val displayName: String,
+    val avatarLabel: String,
+    val description: String,
+    val machineId: String?,
+    val machineName: String?,
+    val daemonVersion: String?
+)
+
+private val membersAgentDetailVisualVariants = listOf(
+    // store knows the machine and reports it offline: web = gray dot + Offline
+    MembersAgentDetailVisualVariant(
+        id = "agent-computer-offline",
+        name = "Computer-Offline-Probe",
+        displayName = "Computer Offline Probe",
+        avatarLabel = "C",
+        description = "Bound to a computer the store knows and reports offline: web shows a gray dot and Offline.",
+        machineId = "computer-studio",
+        machineName = "Studio Test Rig",
+        daemonVersion = "0.65.0"
+    ),
+    // machineId points at a machine the store never loaded: web = "No computer assigned", no dot
+    MembersAgentDetailVisualVariant(
+        id = "agent-computer-missing",
+        name = "Computer-Missing-Probe",
+        displayName = "Computer Missing Probe",
+        avatarLabel = "C",
+        description = "machineId points at a computer the store has never seen: web shows No computer assigned, no dot.",
+        machineId = "computer-missing",
+        machineName = null,
+        daemonVersion = null
+    ),
+    // no machineId at all: web = "No computer assigned", no dot
+    MembersAgentDetailVisualVariant(
+        id = "agent-no-computer",
+        name = "No-Computer-Probe",
+        displayName = "No Computer Probe",
+        avatarLabel = "N",
+        description = "No machineId at all: web shows No computer assigned, no dot.",
+        machineId = null,
+        machineName = null,
+        daemonVersion = null
+    ),
+    // a machine name that cannot fit one 390dp line (44-char run with no break opportunity)
+    MembersAgentDetailVisualVariant(
+        id = "agent-long-machine",
+        name = "Long-Machine-Name-Probe",
+        displayName = "Long Machine Name Probe",
+        avatarLabel = "L",
+        description = "Bound to a computer whose name cannot fit one 390dp line, so wrap vs truncate is observable.",
+        machineId = "computer-long-name",
+        machineName = "ci-visual-capture-runner-us-west-2b_node17_macbookpro_m4max_buildhost_2026",
+        daemonVersion = "0.0.48"
+    )
+)
+
+private fun MembersAgentDetailVisualVariant.toMember(): MemberProfile =
+    membersAgentDetailVisualMember.copy(
+        id = MemberId(id),
+        displayName = displayName,
+        handle = "@$name",
+        description = description,
+        avatarLabel = avatarLabel,
+        permissionBadges = listOfNotNull(machineName?.let { "computer:$it" }, "runtime:Codex")
+    )
+
+private fun MembersAgentDetailVisualVariant.toSeed(): MemberDetailVisualSeed {
+    val member = toMember()
+    val summary = membersAgentDetailVisualSnapshot.summary.copy(
+        id = id,
+        name = name,
+        displayName = displayName,
+        machineId = machineId,
+        machineName = machineName,
+        daemonVersion = daemonVersion,
+        activityDetail = "Holding a fixed Computer-row state for the visual oracle"
+    )
+    return MemberDetailVisualSeed(
+        member = member,
+        agentDetailState = MembersAgentDetailLoadState.Content(
+            membersAgentDetailVisualSnapshot.copy(agentId = member.id, summary = summary)
+        ),
+        agentScopeSet = membersAgentDetailVisualScopeSet.copy(agentId = member.id)
+    )
+}
+
 private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
     agentId = membersAgentDetailVisualMember.id,
     summary = AgentDetailSummary(
@@ -3626,7 +3722,9 @@ private fun KuiklyMemberDetailPayload.toMemberDetailVisualSeedOrNull(): MemberDe
                 member = membersHumanDetailVisualMember,
                 agentDetailState = MembersAgentDetailLoadState.Idle
             )
-        else -> null
+        else -> membersAgentDetailVisualVariants
+            .firstOrNull { it.id == identity?.memberId?.value }
+            ?.toSeed()
     }
 }
 
