@@ -1254,7 +1254,11 @@ private data class MembersAgentDetailVisualVariant(
     val description: String,
     val machineId: String?,
     val machineName: String?,
-    val daemonVersion: String?
+    val daemonVersion: String?,
+    /** Server role as the wire sends it. Every fixture agent is a server member;
+        one is admin so the role chip cell can fail (task #261). Without this the
+        default seed leaves it null and membersAgentDisplayServerRole draws Member. */
+    val serverRole: String
 )
 
 private val membersAgentDetailVisualVariants = listOf(
@@ -1267,7 +1271,8 @@ private val membersAgentDetailVisualVariants = listOf(
         description = "Bound to a computer the store knows and reports offline: web shows a gray dot and Offline.",
         machineId = "computer-studio",
         machineName = "Studio Test Rig",
-        daemonVersion = "0.65.0"
+        daemonVersion = "0.65.0",
+        serverRole = "member"
     ),
     // machineId points at a machine the store never loaded: web = "No computer assigned", no dot
     MembersAgentDetailVisualVariant(
@@ -1278,7 +1283,8 @@ private val membersAgentDetailVisualVariants = listOf(
         description = "machineId points at a computer the store has never seen: web shows No computer assigned, no dot.",
         machineId = "computer-missing",
         machineName = null,
-        daemonVersion = null
+        daemonVersion = null,
+        serverRole = "member"
     ),
     // no machineId at all: web = "No computer assigned", no dot
     MembersAgentDetailVisualVariant(
@@ -1289,7 +1295,8 @@ private val membersAgentDetailVisualVariants = listOf(
         description = "No machineId at all: web shows No computer assigned, no dot.",
         machineId = null,
         machineName = null,
-        daemonVersion = null
+        daemonVersion = null,
+        serverRole = "member"
     ),
     // a machine name that cannot fit one 390dp line (44-char run with no break opportunity)
     MembersAgentDetailVisualVariant(
@@ -1300,7 +1307,8 @@ private val membersAgentDetailVisualVariants = listOf(
         description = "Bound to a computer whose name cannot fit one 390dp line, so wrap vs truncate is observable.",
         machineId = "computer-long-name",
         machineName = "ci-visual-capture-runner-us-west-2b_node17_macbookpro_m4max_buildhost_2026",
-        daemonVersion = "0.0.48"
+        daemonVersion = "0.0.48",
+        serverRole = "admin"
     )
 )
 
@@ -1311,6 +1319,7 @@ private fun MembersAgentDetailVisualVariant.toMember(): MemberProfile =
         handle = "@$name",
         description = description,
         avatarLabel = avatarLabel,
+        serverRole = serverRole,
         permissionBadges = listOfNotNull(machineName?.let { "computer:$it" }, "runtime:Codex")
     )
 
@@ -1325,6 +1334,7 @@ private fun MembersAgentDetailVisualVariant.toSeed(): MemberDetailVisualSeed {
         machineId = machineId,
         machineName = machineName,
         daemonVersion = daemonVersion,
+        serverRole = serverRole,
         activityDetail = "Holding a fixed Computer-row state for the visual oracle"
     )
     return MemberDetailVisualSeed(
