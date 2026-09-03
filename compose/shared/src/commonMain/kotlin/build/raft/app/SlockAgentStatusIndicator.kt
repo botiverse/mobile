@@ -177,11 +177,15 @@ internal fun parseExternalAgentTimestampOrNull(iso: String?): Long? =
 
 /**
  * Detail-page tone for an external agent, mirroring web `AgentStatusBadge`
- * (slock@2676dab22) tier for tier:
- *  - activity within 5 min  → lime, "Active"
- *  - activity within 30 min → cyan, "Last activity …"
- *  - else `waiting_for_login` → gray, "Setup required" (product: not signed in ⇒ gray)
- *  - else                   → cyan
+ * (slock@2676dab22) with one deliberate difference:
+ *  - `waiting_for_login`      → gray, "Setup required" — evaluated FIRST. Web
+ *    checks activity tiers before the setup state, which can pair a lime dot
+ *    with a "setup required" caption (an agent that ran and then lost its
+ *    credential). Product rule (@artin): not signed in ⇒ gray, and this file's
+ *    invariant is that the dot never disagrees with the text beside it.
+ *  - activity within 5 min    → lime, "Active"
+ *  - activity within 30 min   → cyan, "Last activity …"
+ *  - else                     → cyan
  * [status] == null means *not provided* (non-external, 403, request failed) and
  * yields the plain unconditional-cyan "External" state — never gray, because
  * "we may not read it" is not "it is waiting for login" (task #1119, LiBai).
@@ -200,9 +204,9 @@ internal fun externalAgentDetailIndicator(
     val waiting = status.setupState == build.raft.app.data.ExternalAgentSetupState.WaitingForLogin
     val color =
         when {
+            waiting -> SlockColor.StatusNeutralGray
             ageMs != null && ageMs < ExternalAgentActiveThresholdMillis -> SlockColor.AccentLime
             ageMs != null && ageMs < ExternalAgentRecentThresholdMillis -> SlockColor.AccentCyan
-            waiting -> SlockColor.StatusNeutralGray
             else -> SlockColor.AccentCyan
         }
     val caption =

@@ -105,17 +105,18 @@ class ExternalAgentDetailIndicatorTest {
         assertEquals(ExternalAgentDetailCaption.LastActivity(at, iso(at)), result.caption)
     }
 
-    // Web order: activity tiers are evaluated before the setup-state gray, so a
-    // waiting agent with fresh activity renders lime while its caption still says
-    // setup is required. Mirrored deliberately, not accidentally.
+    // Deliberate divergence from web: web evaluates activity tiers before the
+    // setup state and can show a lime dot beside a "setup required" caption
+    // (agent ran, then lost its credential). Product rule: not signed in ⇒ gray,
+    // and the dot must never disagree with the text beside it.
     @Test
-    fun waitingForLoginWithFreshActivityFollowsWebOrder() {
+    fun waitingForLoginWithFreshActivityStaysGrayAndSetupRequired() {
         val result =
             externalAgentDetailIndicator(
                 status(ExternalAgentSetupState.WaitingForLogin, lastActivityAt = iso(now - 60_000L)),
                 now
             )
-        assertEquals(SlockColor.AccentLime, result.state.color)
+        assertEquals(SlockColor.StatusNeutralGray, result.state.color)
         assertEquals(ExternalAgentDetailCaption.SetupRequired, result.caption)
     }
 
