@@ -183,8 +183,18 @@ internal fun parseExternalAgentTimestampOrNull(iso: String?): Long? =
  *    credential). Product rule (@artin): not signed in ⇒ gray, and this file's
  *    invariant is that the dot never disagrees with the text beside it.
  *  - activity within 5 min    → lime, "Active"
- *  - activity within 30 min   → cyan, "Last activity …"
- *  - else                     → cyan
+ *  - any older activity       → cyan, "Last activity …"
+ *  - no activity              → cyan, "No Raft activity" / "Not configured"
+ *
+ * Note there are only TWO colour tiers here, deliberately. Web has a third line
+ * at 30 minutes, and it is meaningful there *because* web is activity-first: an
+ * unlogged-in agent whose last activity is 10-40 minutes old gets cyan on web
+ * and gray here. Since this file evaluates `waiting` first, that same input never
+ * reaches an age comparison, so a 30-minute constant would be unreachable — it
+ * existed and was removed. This is an intentional divergence, not missing parity;
+ * re-adding the tier here would reintroduce dead code, and making the two ends
+ * agree is a product decision about ordering, not a cleanup.
+ *
  * [status] == null means *not provided* (non-external, 403, request failed) and
  * yields the plain unconditional-cyan "External" state — never gray, because
  * "we may not read it" is not "it is waiting for login" (task #1119, LiBai).
@@ -201,12 +211,7 @@ internal fun externalAgentDetailIndicator(
     val lastAt = parseExternalAgentTimestampOrNull(status.lastActivityAt)
     val ageMs = lastAt?.let { nowEpochMillis - it }
     val waiting = status.setupState == build.raft.app.data.ExternalAgentSetupState.WaitingForLogin
-    // Mobile is waiting-first; web (AgentDetailPanel) is activity-first. artin chose that
-    // divergence deliberately ("don't render it as online when it isn't set up"), so web's
-    // 30-minute line still decides cyan-vs-grey for an unlogged-in agent with 10-40 minute
-    // old activity, while here `waiting` consumes that case before any age comparison. The
-    // 30-minute constant was therefore unreachable on this platform and has been removed —
-    // this is NOT three-platform parity, and re-adding it here would restore dead code.
+    // waiting-first: see the KDoc on the two-tier divergence from web before adding a tier.
     val color =
         when {
             waiting -> SlockColor.StatusNeutralGray

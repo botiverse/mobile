@@ -90,7 +90,7 @@ class ExternalAgentDetailIndicatorTest {
     }
 
     @Test
-    fun activityWithinThirtyMinutesIsCyanWithLastActivity() {
+    fun activityOlderThanFiveMinutesIsCyanWithLastActivity() {
         val at = now - 10 * 60_000L
         val result = externalAgentDetailIndicator(status(ExternalAgentSetupState.Connected, lastActivityAt = iso(at)), now)
         assertEquals(SlockColor.AccentCyan, result.state.color)
@@ -114,6 +114,25 @@ class ExternalAgentDetailIndicatorTest {
         val result =
             externalAgentDetailIndicator(
                 status(ExternalAgentSetupState.WaitingForLogin, lastActivityAt = iso(now - 60_000L)),
+                now
+            )
+        assertEquals(SlockColor.StatusNeutralGray, result.state.color)
+        assertEquals(ExternalAgentDetailCaption.SetupRequired, result.caption)
+    }
+
+    // The input that makes a 30-minute tier unreachable on this platform, and the
+    // guard against re-adding one. Web is activity-first, so 20-minute-old activity
+    // on an unlogged-in agent lands in its 30-minute tier and paints cyan. Here
+    // `waiting` is evaluated first and consumes the case, so no age comparison ever
+    // runs. If someone reintroduces a `< 30 min` arm below `waiting`, this test does
+    // NOT go red — the arm would simply be dead again, which is why the removal was
+    // safe. What this pins is the ordering: move `waiting` below the age tiers to
+    // "match web" and this goes gray → cyan, exposing it as a product change.
+    @Test
+    fun waitingForLoginOutranksTheAgeTiersWebWouldUseHere() {
+        val result =
+            externalAgentDetailIndicator(
+                status(ExternalAgentSetupState.WaitingForLogin, lastActivityAt = iso(now - 20 * 60_000L)),
                 now
             )
         assertEquals(SlockColor.StatusNeutralGray, result.state.color)
