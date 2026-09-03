@@ -109,6 +109,61 @@ class SlockAgentStatusLabelTest {
     }
 
     @Test
+    fun observedResolutionIsNullWhenOnlyTheUnknownPlaceholderWouldApply() {
+        // The dot must come from this function, not from the label-facing one: that one
+        // substitutes the unknown placeholder, whose colour maps through Presence.Offline to
+        // StatusNeutralGray, so an unknown agent would paint the same dot as an offline one
+        // (task #256).
+        assertEquals(
+            null,
+            resolveMembersAgentStatusIndicatorStateOrNull(
+                canonicalState = null,
+                fixtureFallback = null,
+                fixtureStatusFallbackEnabled = false
+            )
+        )
+        // ...while the label-facing resolution still yields a non-null placeholder, because an
+        // explicit unknown has to outrank a stale summary caption.
+        assertEquals(
+            SlockColor.StatusNeutralGray,
+            resolveMembersAgentStatusIndicatorState(
+                canonicalState = null,
+                fixtureFallback = null,
+                fixtureStatusFallbackEnabled = false
+            ).color
+        )
+
+        val fixture = slockAgentStatusIndicatorState(AgentStatus.Online, Presence.Active, external = false)
+        val canonical = slockAgentStatusIndicatorState(AgentStatus.Working, Presence.Active, external = false)
+        // A disabled fixture fallback is not an observation.
+        assertEquals(
+            null,
+            resolveMembersAgentStatusIndicatorStateOrNull(
+                canonicalState = null,
+                fixtureFallback = fixture,
+                fixtureStatusFallbackEnabled = false
+            )
+        )
+        // An enabled one is: visual fixtures must still paint their dot.
+        assertEquals(
+            AgentStatus.Online,
+            resolveMembersAgentStatusIndicatorStateOrNull(
+                canonicalState = null,
+                fixtureFallback = fixture,
+                fixtureStatusFallbackEnabled = true
+            )?.status
+        )
+        assertEquals(
+            AgentStatus.Working,
+            resolveMembersAgentStatusIndicatorStateOrNull(
+                canonicalState = canonical,
+                fixtureFallback = fixture,
+                fixtureStatusFallbackEnabled = true
+            )?.status
+        )
+    }
+
+    @Test
     fun fixtureStatusFallbackIsExplicitAndCanonicalStateStillWins() {
         val fixture = slockAgentStatusIndicatorState(AgentStatus.Online, Presence.Active, external = false)
         val canonical = slockAgentStatusIndicatorState(AgentStatus.Working, Presence.Active, external = false)
