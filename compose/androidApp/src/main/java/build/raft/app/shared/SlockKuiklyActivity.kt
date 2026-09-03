@@ -3187,11 +3187,18 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
             else -> widthPx
         }
         val sourceMetrics = context.resources.displayMetrics
-        val density = hostDisplayDensity(
+        // DIAGNOSTIC PROBE (task #536, artin 「我看看关了之后长啥样」) — DO NOT MERGE.
+        // Bypasses the 393dp design-width scaling: density comes straight from the
+        // system. `scaledDensity` below still mirrors `density`, exactly as on main,
+        // so the only variable that moves in this build is the design scaling
+        // (LiBai: keep the font-scale clamp identical so the picture has one cause).
+        val density = sourceMetrics.density
+        @Suppress("UNUSED_VARIABLE")
+        val designDensityForReference = hostDisplayDensity(
             widthPx = widthPx,
             heightPx = heightPx,
             sourceDensity = sourceMetrics.density
-        ) ?: return
+        )
         hostDisplayMetrics = DisplayMetrics().apply {
             setTo(sourceMetrics)
             this.widthPixels = widthPx
