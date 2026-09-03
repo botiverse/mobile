@@ -5,6 +5,7 @@ import build.raft.app.base.Utils
 import build.raft.app.base.reduceAttachmentDownloadProgress
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.components.SlockCheckbox
 import build.raft.app.components.SlockRaftUiControlledMenu
 import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.data.DataRequestPriority
@@ -54,6 +55,7 @@ import androidx.compose.runtime.withFrameNanos
 import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.gestures.detectDragGestures
 import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
@@ -1422,6 +1424,11 @@ internal data class SlockFilePreviewPayload(
      * so non-composer previews cannot accidentally invoke the compressor.
      */
     val composerImageCompressAfterEdit: Boolean = false,
+    /**
+     * Thread composer confirm screens may expose the Original image policy. Feedback and
+     * ordinary file previews leave this false so they cannot inherit a composer-only control.
+     */
+    val composerImageOriginalOptionEnabled: Boolean = false,
     /** True once the currently selected composer image has a final deliverable. */
     val composerImageEditCompleted: Boolean = false,
     /** True only when that final deliverable is the JPEG returned by the compressor. */
@@ -3549,7 +3556,10 @@ private fun SlockFilePreviewStandalonePageContent() {
                 // duplicate guard.
                 enabled = !downloadActive && !composerImageFinalizing,
                 onEdit = { composerImageEditMode = true },
-                onComplete = ::postComposerImageSelection
+                onComplete = ::postComposerImageSelection,
+                onOriginalImageChange = { enabled ->
+                    payload = payload.withComposerOriginalImage(enabled)
+                },
             )
         }
         attachmentCommentsState?.let { state ->
@@ -3638,11 +3648,13 @@ internal fun SlockFilePreviewComposerImageActionBar(
     payload: SlockFilePreviewPayload,
     enabled: Boolean,
     onEdit: () -> Unit,
-    onComplete: () -> Unit
+    onComplete: () -> Unit,
+    onOriginalImageChange: (Boolean) -> Unit = {},
 ) {
     if (payload.composerImageActionId.isBlank()) return
     if (!payload.composerImageCanEdit && !payload.composerImageCanComplete) return
     val bottomSafeArea = slockBottomSafeAreaPadding()
+    val originalImageSelected = payload.composerOriginalImageSelected()
     Row(
         modifier =
             Modifier
@@ -3660,6 +3672,7 @@ internal fun SlockFilePreviewComposerImageActionBar(
         slockFilePreviewComposerImageActionSlots(
             canEdit = payload.composerImageCanEdit,
             canComplete = payload.composerImageCanComplete,
+            originalImageOptionEnabled = payload.showsComposerOriginalImageOption(),
         ).forEach { slot ->
             when (slot) {
                 SlockFilePreviewComposerImageActionSlot.Edit ->
@@ -3675,6 +3688,41 @@ internal fun SlockFilePreviewComposerImageActionBar(
                         shadowOffset = 2.dp,
                         textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 14.sp)
                     )
+                SlockFilePreviewComposerImageActionSlot.OriginalImage -> {
+                    val labelColor =
+                        if (enabled) {
+                            SlockColor.TextBlack.copy(alpha = 0.6f)
+                        } else {
+                            SlockColor.TextMutedGray
+                        }
+                    Row(
+                        modifier =
+                            Modifier
+                                .clickable(enabled = enabled) {
+                                    onOriginalImageChange(!originalImageSelected)
+                                }
+                                .heightIn(min = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        SlockCheckbox(
+                            checked = originalImageSelected,
+                            onCheckedChange = onOriginalImageChange,
+                            enabled = enabled,
+                            size = 14.dp,
+                        )
+                        Text(
+                            text = stringResource(MR.strings.thread_composer_original_image),
+                            style =
+                                SlockType.Caption
+                                    .withSlockFontWeight(FontWeight.Bold)
+                                    .copy(lineHeight = 18.sp, color = labelColor),
+                            color = labelColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 SlockFilePreviewComposerImageActionSlot.FlexibleSpacer ->
                     Box(modifier = Modifier.weight(1f))
                 SlockFilePreviewComposerImageActionSlot.Done ->
@@ -3698,6 +3746,7 @@ internal fun SlockFilePreviewComposerImageActionBar(
 
 internal enum class SlockFilePreviewComposerImageActionSlot {
     Edit,
+    OriginalImage,
     FlexibleSpacer,
     Done,
 }
@@ -3705,9 +3754,13 @@ internal enum class SlockFilePreviewComposerImageActionSlot {
 internal fun slockFilePreviewComposerImageActionSlots(
     canEdit: Boolean,
     canComplete: Boolean,
+    originalImageOptionEnabled: Boolean = false,
 ): List<SlockFilePreviewComposerImageActionSlot> =
     buildList {
         if (canEdit) add(SlockFilePreviewComposerImageActionSlot.Edit)
+        if (originalImageOptionEnabled && canComplete) {
+            add(SlockFilePreviewComposerImageActionSlot.OriginalImage)
+        }
         add(SlockFilePreviewComposerImageActionSlot.FlexibleSpacer)
         if (canComplete) add(SlockFilePreviewComposerImageActionSlot.Done)
     }
@@ -5228,6 +5281,7 @@ private fun SlockFilePreviewPayload.withFilePreviewAuthorityRejected(): SlockFil
         composerImageOwnedTemporaryFileRefs = emptyList(),
         composerImageReplaceAttachmentId = "",
         composerImageCompressAfterEdit = false,
+        composerImageOriginalOptionEnabled = false,
         composerImageEditCompleted = false,
         composerImageCompressed = false,
         composerImageCanComplete = false,
@@ -7088,6 +7142,17 @@ internal fun SlockFilePreviewPayload.canCompleteComposerImageSelection(): Boolea
     } else {
         composerImageFileRef.isNotBlank()
     }
+
+internal fun SlockFilePreviewPayload.showsComposerOriginalImageOption(): Boolean =
+    composerImageOriginalOptionEnabled &&
+        composerImageCanComplete &&
+        composerImageActionId.isNotBlank()
+
+internal fun SlockFilePreviewPayload.composerOriginalImageSelected(): Boolean =
+    showsComposerOriginalImageOption() && !composerImageCompressAfterEdit
+
+internal fun SlockFilePreviewPayload.withComposerOriginalImage(enabled: Boolean): SlockFilePreviewPayload =
+    copy(composerImageCompressAfterEdit = !enabled)
 
 /**
  * Returns whether at least one composer image still needs its final delivery representation.

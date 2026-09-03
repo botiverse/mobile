@@ -7606,6 +7606,7 @@ internal fun SharedThreadRouteContent(
                             .filter(PlatformFile::isComposerImageOwnedTemporary)
                             .mapNotNull(PlatformFile::fileRef),
                     composerImageCompressAfterEdit = !currentDraftState.originalImage,
+                    composerImageOriginalOptionEnabled = true,
                     composerImageCanComplete = true,
                     composerImageCanEdit = true
                 )
@@ -7645,6 +7646,7 @@ internal fun SharedThreadRouteContent(
                         ),
                     composerImageReplaceAttachmentId = attachment.id,
                     composerImageCompressAfterEdit = !currentDraftState.originalImage,
+                    composerImageOriginalOptionEnabled = true,
                     composerImageCanComplete = true,
                     composerImageCanEdit = true
                 )
@@ -25539,6 +25541,7 @@ internal fun threadComposerImageAnnotationPayload(
         composerImageSizeBytes = firstFile.sizeBytes,
         composerImagePreviewUri = previewUri,
         composerImageCompressAfterEdit = !originalImage,
+        composerImageOriginalOptionEnabled = true,
         composerImageOwnedTemporaryFileRefs =
             files.filter(PlatformFile::isComposerImageOwnedTemporary)
                 .mapNotNull(PlatformFile::fileRef),

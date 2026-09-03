@@ -113,6 +113,41 @@ class ThreadImageCompressionContractTest {
     }
 
     @Test
+    fun originalImageConfirmScreenTogglesCompressionWithoutComposerChrome() {
+        val confirmPayload =
+            SlockFilePreviewPayload(
+                composerImageActionId = "composer-image-confirm",
+                composerImageFileRef = "file:///picked/photo.png",
+                composerImageCompressAfterEdit = true,
+                composerImageOriginalOptionEnabled = true,
+                composerImageCanComplete = true,
+                composerImageCanEdit = true,
+            )
+
+        assertTrue(confirmPayload.showsComposerOriginalImageOption())
+        assertFalse(confirmPayload.composerOriginalImageSelected())
+
+        val originalSelected = confirmPayload.withComposerOriginalImage(true)
+        assertTrue(originalSelected.composerOriginalImageSelected())
+        assertFalse(originalSelected.composerImageCompressAfterEdit)
+
+        val compressedAgain = originalSelected.withComposerOriginalImage(false)
+        assertFalse(compressedAgain.composerOriginalImageSelected())
+        assertTrue(compressedAgain.composerImageCompressAfterEdit)
+
+        val feedbackPayload =
+            SlockFilePreviewPayload(
+                composerImageActionId = "feedback-image-group-a",
+                composerImageFileRef = "file:///picked/photo.png",
+                composerImageCompressAfterEdit = true,
+                composerImageCanComplete = true,
+                composerImageCanEdit = true,
+            )
+        assertFalse(feedbackPayload.showsComposerOriginalImageOption())
+        assertFalse(feedbackPayload.composerOriginalImageSelected())
+    }
+
+    @Test
     fun composerImageEventMetadataUsesClosedSourceAndCompressionVocabulary() {
         assertEquals(
             SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE,

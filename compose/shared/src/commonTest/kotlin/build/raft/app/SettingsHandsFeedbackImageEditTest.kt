@@ -226,6 +226,7 @@ class SettingsHandsFeedbackImageEditTest {
         assertEquals("feedback-image-group-a", request.previewPayload.composerImageActionId)
         assertEquals("group-a", request.previewPayload.composerImageGroupId)
         assertTrue(request.previewPayload.composerImageCompressAfterEdit)
+        assertFalse(request.previewPayload.showsComposerOriginalImageOption())
         assertEquals("file:///picked/zero.png", request.previewPayload.composerImageFileRef)
         assertEquals(
             listOf("file:///picked/zero.png", "file:///picked/one.png"),

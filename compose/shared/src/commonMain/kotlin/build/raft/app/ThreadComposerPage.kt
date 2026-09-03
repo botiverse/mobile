@@ -2914,36 +2914,6 @@ internal fun ThreadComposerContentLeaf(
                                     )
                                 }
                             }
-                            if (state.attachmentActionsEnabled && state.originalImageOptionEnabled) {
-                                Row(
-                                    modifier = Modifier.heightIn(min = 18.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    SlockCheckbox(
-                                        checked = state.originalImage,
-                                        onCheckedChange = { checked ->
-                                            onEvent("toggleOriginalImage", null, checked, null)
-                                        },
-                                        enabled = composerEnabled,
-                                        size = 14.dp
-                                    )
-                                    val labelColor =
-                                        if (composerEnabled) {
-                                            SlockColor.TextBlack.copy(alpha = 0.6f)
-                                        } else {
-                                            SlockColor.TextMutedGray
-                                        }
-                                    Text(
-                                        text = stringResource(MR.strings.thread_composer_original_image),
-                                        style =
-                                            SlockType.Caption
-                                                .withSlockFontWeight(FontWeight.Bold)
-                                                .copy(lineHeight = 18.sp, color = labelColor),
-                                        color = labelColor
-                                    )
-                                }
-                            }
                             ComposerSendButton(
                                 enabled = canSend,
                                 sending = state.composerMode == "sending" || state.composerMode == "uploading"
