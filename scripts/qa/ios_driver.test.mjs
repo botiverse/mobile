@@ -69,6 +69,7 @@ test("tapText prefers the smallest clickable match and returns pixel centers", (
 test("parseAlertGet treats notification permission copy as present", () => {
   assert.equal(parseAlertGet("").present, false);
   assert.equal(parseAlertGet("no alert").present, false);
+  assert.match("alert not found", /alert not found|no (active )?alert|NO_ALERT/i);
   assert.equal(parseAlertGet('{"title":"Raft Would Like to Send You Notifications","buttons":["Don\'t Allow","Allow"]}').present, true);
   assert.equal(parseAlertGet("Raft Would Like to Send You Notifications\nAllow").present, true);
 });

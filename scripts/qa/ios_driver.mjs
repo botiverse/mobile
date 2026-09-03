@@ -496,7 +496,7 @@ function createAgentDeviceDriver({ ioDir, udid, bundle, binary, fixturePage, fix
         raw = runAd(["alert", "get", "--json"]);
       } catch (error) {
         const detail = String(error);
-        if (/NO_ALERT|no (active )?alert/i.test(detail)) return { present: false, raw: detail };
+        if (/alert not found|no (active )?alert|NO_ALERT/i.test(detail)) return { present: false, raw: detail };
         throw error;
       }
       const parsed = parseAlertGet(raw);
