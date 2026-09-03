@@ -2036,7 +2036,10 @@ internal class SharedThreadDataSource(
         if (!isCurrentReplyCacheProvenance(context.provenance)) return null
         val frame = reader.read(partition, channelId) ?: return null
         // The disk read suspended; a sign-out / account switch in between must not let identity A's
-        // rows render under identity B's route.
+        // rows act under identity B's route. Rendering is ALSO refused by the commit gate in start()
+        // (`withCurrentReplyCacheProvenance`), but `seedThreadAuthorProfiles` runs upstream of that
+        // gate: without this check A's author profiles would be written into the process-wide
+        // `serverMembersStore` before the frame is rejected. This line guards the write, not the display.
         if (!isCurrentReplyCacheProvenance(context.provenance)) return null
         if (frame.scope.scopeKind !in allowedScopeKinds) {
             diagnosticsLogger(
