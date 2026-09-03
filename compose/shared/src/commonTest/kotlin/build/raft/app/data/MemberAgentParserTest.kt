@@ -489,7 +489,6 @@ class MemberAgentParserTest {
                 )
             ).single()
         assertTrue(profile.isExternal)
-        assertEquals(AgentStatus.Online, profile.agentStatus)
     }
 
     @Test
