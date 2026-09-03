@@ -706,7 +706,13 @@ def check_label_facing_resolver_has_no_production_callers(root: Path) -> None:
     """
     offenders = []
     for path in sorted((root / "compose").rglob("*.kt")):
-        if "commonTest" in path.parts or "src/test" in path.as_posix():
+        # Any source set whose path has a `*Test*` component. Enumerating them
+        # (commonTest, androidTest, androidUnitTest, iosTest, jvmTest, ...) would be one
+        # more list someone has to remember to extend -- the same species as the three
+        # scope holes this check replaced (LiBai). Here the failure direction is the safe
+        # one (a missed exclusion is a false positive, which is noisy rather than silent),
+        # but the shape is worth removing anyway.
+        if any("test" in part.lower() for part in path.parts):
             continue
         text = path.read_text(encoding="utf-8").replace("\r\n", "\n")
         for line_number, line in enumerate(text.split("\n"), start=1):
