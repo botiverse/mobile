@@ -688,14 +688,24 @@ LABEL_FACING_STATUS_BINDINGS = (
 
 
 def check_status_dot_uses_observed_state(members_page: str) -> None:
-    for match in re.finditer(r"SlockStatusIndicator\(([^)]*)\)", members_page):
-        args = match.group(1)
-        colour = re.search(r"color\s*=\s*([^,\n]+)", args)
-        if colour is None:
-            continue
-        expression = colour.group(1).strip()
+    # Scan by balanced parentheses, not `[^)]*`: BiSheng found that a violating
+    # expression placed after a nested ')' — `color = if (cond) statusDisplayState.color
+    # else ...` — truncated the argument list and slipped through. That form is an
+    # innocent refactor, not a deliberate bypass, so the earlier regex was worse than
+    # the rename hole it already documented.
+    for match in re.finditer(r"SlockStatusIndicator\(", members_page):
+        start = match.end()
+        depth = 1
+        index = start
+        while index < len(members_page) and depth:
+            if members_page[index] == "(":
+                depth += 1
+            elif members_page[index] == ")":
+                depth -= 1
+            index += 1
+        args = members_page[start : index - 1]
         for binding in LABEL_FACING_STATUS_BINDINGS:
-            if re.search(rf"\b{binding}\.(color|pulsing)\b", expression):
+            if re.search(rf"\b{binding}\.(color|pulsing)\b", args):
                 raise Violation(
                     "MembersPage.kt paints a status dot from the label-facing resolution "
                     f"`{binding}` (task #256). That value is never null: it falls back to "
