@@ -163,6 +163,7 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
 import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.ColumnScope
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
@@ -7377,6 +7378,48 @@ private fun MembersAgentAvatarPickerCell(
 
 private const val MembersAgentProfileDescriptionMaxLength = 3000
 
+// Web AgentDetailPanel's INFO block uses five different spacings here. They are
+// kept as five separate constants on purpose: collapsing them onto shared tokens
+// (SlockSpacing.Xs/Sm) reads as tidier and can even score better at 390dp, but it
+// removes the ability to change one without the others, and the layout only holds
+// at narrow widths because these differ. See task #257.
+private val MembersInfoBlockGap = 6.dp // web space-y-1.5, within one field
+private val MembersInfoLabelGap = 4.dp // web mb-1, under a label — deliberately not the block gap
+private val MembersInfoFieldGapX = 32.dp // web gap-x-8, between Created and Creator
+private val MembersInfoFieldGapY = 12.dp // web gap-y-3, when those two wrap onto separate lines
+private val MembersInfoStatusGapX = 6.dp // web gap-x-1.5, inside the machine status line
+private val MembersInfoStatusGapY = 4.dp // web gap-y-1, when that status line wraps
+
+// Value text is 14sp/black; the label is 12sp/muted. The previous rows used 13sp
+// values and 11sp labels with an 86dp label gutter.
+private val MembersInfoValueFontSize = 14.sp
+private val MembersInfoValueLineHeight = 20.sp
+
+/**
+ * One INFO metadata field: label above value, matching web's stacked block rather
+ * than the fixed-gutter two-column row this replaced.
+ *
+ * The Computer block previously hand-wrote its label styling instead of sharing it,
+ * which is how its label drifted from the others. Routing every field through here
+ * means a future label change cannot land on some rows and miss one.
+ */
+@Composable
+private fun MembersAgentInfoField(
+    label: String,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(modifier = modifier) {
+        Text(
+            text = label,
+            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+            color = SlockColor.TextMutedGray,
+            modifier = Modifier.padding(bottom = MembersInfoLabelGap)
+        )
+        content()
+    }
+}
+
 @Composable
 private fun MembersAgentProfileHeader(
     member: MemberProfile,
@@ -8351,136 +8394,145 @@ private fun MembersAgentProfileTab(
             if (roleHelpOpen) {
                 MembersAgentRoleHelpDialog(onDismiss = { roleHelpOpen = false })
             }
-            // Computer row
-            val computerRowModifier =
-                if (onOpenComputer != null) {
-                    Modifier.fillMaxWidth().clickable(onClick = onOpenComputer)
-                } else {
-                    Modifier.fillMaxWidth()
-                }
-            val computerNameStyle =
-                SlockType.Body.copy(
-                    fontFamily = slockMonoFamilyForWeight(FontWeight.SemiBold),
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                    fontWeight = FontWeight.Normal
-                ).let { baseStyle ->
-                    if (onOpenComputer != null) {
-                        baseStyle.copy(textDecoration = TextDecoration.Underline)
-                    } else {
-                        baseStyle
+            // Computer / Created / Creator — web AgentDetailPanel stacks label ABOVE
+            // value here rather than using a fixed left gutter. The old 86dp label
+            // column is what made a long machine name ellipsize: the gutter never
+            // yields, so the value gets whatever is left. Stacked, the value owns the
+            // full width and wraps instead.
+            MembersAgentInfoField(label = stringResource(MR.strings.member_label_computer)) {
+                val machineName = summary?.machineName.orBadgeFallback(member.membersComputerName)
+                val machineNameStyle =
+                    SlockType.Body.copy(
+                        fontFamily = slockMonoFamilyForWeight(FontWeight.SemiBold),
+                        fontSize = MembersInfoValueFontSize,
+                        lineHeight = MembersInfoValueLineHeight,
+                        fontWeight = FontWeight.Normal
+                    ).let { base ->
+                        // Web renders the name as a button with a hover underline. Android
+                        // has no hover, so the underline is shown whenever it is actually
+                        // tappable — the affordance has to be visible without a pointer.
+                        if (onOpenComputer != null) base.copy(textDecoration = TextDecoration.Underline) else base
                     }
-                }
-            Row(
-                modifier = computerRowModifier,
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
                 Text(
-                    text = stringResource(MR.strings.member_label_computer),
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextMutedGray,
-                    modifier = Modifier.width(86.dp)
-                )
-                Text(
-                    text = summary?.machineName.orBadgeFallback(member.membersComputerName),
-                    style = computerNameStyle,
+                    text = machineName,
+                    style = machineNameStyle,
                     color = SlockColor.TextBlack,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    // Web sets break-all on this specific value: machine names are
+                    // unbroken tokens, so without it a long one overflows its box. No
+                    // maxLines/ellipsis here on purpose — truncating a machine name
+                    // hides exactly the part that distinguishes two similar hosts.
+                    softWrap = true,
+                    modifier = (if (onOpenComputer != null) Modifier.clickable(onClick = onOpenComputer) else Modifier)
+                        .fillMaxWidth()
                 )
-                val machineStatusLabel =
-                    if (summary?.machineId != null) stringResource(MR.strings.member_label_connected) else stringResource(MR.strings.member_label_offline)
-                Text(
-                    text = machineStatusLabel,
-                    style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                    color = SlockColor.TextMutedGray
-                )
-                if (summary?.daemonVersion != null) {
+                // Status line: wraps rather than compressing, and only the version
+                // segment is mono (web applies the mono class to that span alone).
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth().padding(top = MembersInfoBlockGap),
+                    horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
+                    verticalArrangement = Arrangement.spacedBy(MembersInfoStatusGapY)
+                ) {
+                    val machineStatusLabel =
+                        if (summary?.machineId != null) {
+                            stringResource(MR.strings.member_label_connected)
+                        } else {
+                            stringResource(MR.strings.member_label_offline)
+                        }
                     Text(
-                        text = stringResource(MR.strings.member_daemon_version_suffix, summary.daemonVersion),
-                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 14.sp),
+                        text = machineStatusLabel,
+                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
                         color = SlockColor.TextMutedGray
                     )
-                }
-            }
-            summary?.createdAt?.membersAgentCreatedDate(timeContext)?.takeIf { it.isNotBlank() }?.let { createdDate ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = stringResource(MR.strings.member_label_created),
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextMutedGray,
-                        modifier = Modifier.width(86.dp)
-                    )
-                    Text(
-                        text = createdDate,
-                        style = SlockType.Body.copy(fontFamily = SlockMonoFamily, fontSize = 13.sp, lineHeight = 18.sp),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            // Creator row (clickable button — React opens the creator's profile)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = stringResource(MR.strings.member_label_creator),
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextMutedGray,
-                    modifier = Modifier.width(86.dp)
-                )
-                val creatorProfile = summary?.creator?.toStrictMemberProfile()
-                if (creatorProfile != null) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        MembersAvatar(
-                            member = creatorProfile,
-                            avatarSize = 22.dp,
-                            statusSize = 0.dp,
-                            memberAvatarResolver = memberAvatarResolver,
-                            showStatusOverlay = false
-                        )
+                    if (summary?.daemonVersion != null) {
                         Text(
-                            text = creatorProfile.displayName,
-                            style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
-                                .withSlockFontWeight(FontWeight.Bold),
+                            text = stringResource(MR.strings.member_daemon_version_suffix, summary.daemonVersion),
+                            style = SlockType.Caption.copy(
+                                fontFamily = SlockMonoFamily,
+                                fontSize = 10.sp,
+                                lineHeight = 14.sp
+                            ),
+                            color = SlockColor.TextMutedGray
+                        )
+                    }
+                }
+            }
+            // Created and Creator sit side by side while they fit and drop to their own
+            // lines when they do not. A fixed two-column Row would keep them side by
+            // side at any width, which is the failure this section is meant to avoid.
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(MembersInfoFieldGapX),
+                verticalArrangement = Arrangement.spacedBy(MembersInfoFieldGapY)
+            ) {
+                summary?.createdAt?.membersAgentCreatedDate(timeContext)?.takeIf { it.isNotBlank() }?.let { createdDate ->
+                    MembersAgentInfoField(label = stringResource(MR.strings.member_label_created)) {
+                        Text(
+                            text = createdDate,
+                            style = SlockType.Body.copy(
+                                fontFamily = SlockMonoFamily,
+                                fontSize = MembersInfoValueFontSize,
+                                lineHeight = MembersInfoValueLineHeight
+                            ),
                             color = SlockColor.TextBlack,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
+                            overflow = TextOverflow.Ellipsis
                         )
+                    }
+                }
+                // Creator value stays a clickable identity chip (web opens the profile).
+                MembersAgentInfoField(label = stringResource(MR.strings.member_label_creator)) {
+                    val creatorProfile = summary?.creator?.toStrictMemberProfile()
+                    if (creatorProfile != null) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            MembersAvatar(
+                                member = creatorProfile,
+                                avatarSize = 22.dp,
+                                statusSize = 0.dp,
+                                memberAvatarResolver = memberAvatarResolver,
+                                showStatusOverlay = false
+                            )
+                            Text(
+                                text = creatorProfile.displayName,
+                                style = SlockType.Body.copy(
+                                    fontSize = MembersInfoValueFontSize,
+                                    lineHeight = MembersInfoValueLineHeight
+                                ).withSlockFontWeight(FontWeight.Bold),
+                                color = SlockColor.TextBlack,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                // fill = false so the name shrinks to its content and the
+                                // handle beside it is not pushed out; without this the
+                                // name would claim the row and squeeze its sibling.
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            Text(
+                                text = creatorProfile.detailHandle,
+                                style = SlockType.Caption.copy(
+                                    fontFamily = SlockMonoFamily,
+                                    fontSize = 11.sp,
+                                    lineHeight = 16.sp
+                                ),
+                                color = SlockColor.TextMutedGray,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    } else {
                         Text(
-                            text = creatorProfile.detailHandle,
-                            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 16.sp),
+                            text = stringResource(MR.strings.member_state_no_creator_assigned),
+                            style = SlockType.Body.copy(
+                                fontSize = MembersInfoValueFontSize,
+                                lineHeight = MembersInfoValueLineHeight,
+                                fontStyle = FontStyle.Italic
+                            ),
                             color = SlockColor.TextMutedGray,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                } else {
-                    Text(
-                        text = stringResource(MR.strings.member_state_no_creator_assigned),
-                        style = SlockType.Body.copy(
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            fontStyle = FontStyle.Italic
-                        ),
-                        color = SlockColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
                 }
             }
         }
