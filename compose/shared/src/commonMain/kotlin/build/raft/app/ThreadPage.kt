@@ -8087,9 +8087,19 @@ internal fun SharedThreadRouteContent(
             bridge.toast(attachmentPickerUnavailableLabel)
             return false
         }
-        // 1.11.0 bleed-stop: do not consume directUploadEnabled. Gallery/Done stays on the
-        // 1.10.0 multipart path. The direct-session coordinator remains on main.
-        val directUploadOperation: DirectAttachmentUploadOperation? = null
+        // Capture one complete authority witness for the all-files/direct-session path and reuse
+        // it for capabilities, upload, and compensation. This prevents a session/account/server
+        // switch between those calls from silently falling back to an unbound repository.
+        val directUploadOperation =
+            if (requireAllFiles) {
+                dataSource.captureDirectAttachmentUploadOperation { message -> bridge.log(message) }
+            } else {
+                null
+            }
+        if (requireAllFiles && directUploadOperation == null) {
+            bridge.logWarn("thread_composer_attachment_batch_rejected reason=authority_unavailable")
+            return false
+        }
         val directCapabilities =
             if (directUploadOperation != null) {
                 when (val result = directUploadOperation.capabilities()) {
@@ -8291,7 +8301,7 @@ internal fun SharedThreadRouteContent(
             )
         }
 
-        if (directUploadOperation != null) {
+        if (requireAllFiles) {
             // Gallery handoff is an atomic N/N surface.  Do not launch one legacy multipart
             // attempt per file: a sibling can fail after an earlier server attachment has been
             // published, and the legacy route has no retract contract.  The direct-session
@@ -8593,9 +8603,9 @@ internal fun SharedThreadRouteContent(
             return true
         }
 
-        // The aggregate branch above returns for every `requireAllFiles` call.  This remaining
-        // path is the ordinary picker/retry uploader, where each attachment has its own retry and
-        // ownership lifecycle and the legacy multipart endpoint is sufficient.
+        // Gallery on this train calls with requireAllFiles=false, so this remaining
+        // per-file multipart path is the 1.10.0-shaped uploader. The aggregate
+        // direct-session branch above stays dormant.
         var launchedCount = 0
         for (file in acceptedFiles) {
             val localAttachmentId = file.id.takeIf { it.isNotBlank() } ?: continue
@@ -9246,7 +9256,10 @@ internal fun SharedThreadRouteContent(
                             withContext(NonCancellable) {
                                 uploadComposerAttachmentFiles(
                                     files = files,
-                                    requireAllFiles = true,
+                                    // 1.11.0 bleed-stop: 1.10.0 admitted per file. requireAllFiles
+                                    // would reject the whole gallery pick if one image exceeds
+                                    // maxBytes. Replacement ids stay keyed by local file id.
+                                    requireAllFiles = false,
                                     replaceAttachmentIdsByLocalId = replaceAttachmentIdsByLocalId
                                 )
                             }
