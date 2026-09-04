@@ -761,6 +761,7 @@ jobs:
               compose/shared/src/commonMain/kotlin/build/raft/app/LazyViewportController.kt \
               compose/shared/src/commonMain/kotlin/build/raft/app/ThreadNewerPagination.kt \
               compose/androidApp/src/androidTest/java/build/raft/app/shared/SlockThreadNewerAutoPaginationConnectedTest.kt \
+              compose/shared/src/visualFixtures/kotlin/build/raft/app/ThreadNewerAutoPaginationVisualFixture.kt \
               || diff_rc=$?
             case "$diff_rc" in
               0) run_gate=false ;;
