@@ -51,7 +51,15 @@ jobs:
             echo "slock_skip_ohos_local_dep_prep=$SLOCK_SKIP_OHOS_LOCAL_DEP_PREP"
             echo 'repository_policy=Raft Maven only for KBA-001; no restored/published local artifacts'
           } | tee "$RUNNER_TEMP/ohos-sqldelight-receipt/environment.txt"
-          ./gradlew -c settings.ohos.gradle.kts tasks --all --no-daemon --console=plain \
+          cat > "$RUNNER_TEMP/ohos-sqldelight-init.gradle" <<'GRADLE'
+          gradle.settingsEvaluated { settings ->
+            settings.pluginManagement.repositories.removeIf { it.name == 'MavenLocal' }
+            settings.pluginManagement.repositories.maven { url = uri('https://maven.artifacts.botiverse.dev') }
+            settings.dependencyResolutionManagement.repositories.removeIf { it.name == 'MavenLocal' }
+            settings.dependencyResolutionManagement.repositories.maven { url = uri('https://maven.artifacts.botiverse.dev') }
+          }
+          GRADLE
+          ./gradlew -c settings.ohos.gradle.kts --init-script "$RUNNER_TEMP/ohos-sqldelight-init.gradle" tasks --all --no-daemon --console=plain \
             | tee "$RUNNER_TEMP/ohos-sqldelight-receipt/tasks.txt"
 
       - name: Resolve and compile real OHOS target
@@ -61,11 +69,12 @@ jobs:
           set -euo pipefail
           out="$RUNNER_TEMP/ohos-sqldelight-receipt"
           ./gradlew -c settings.ohos.gradle.kts \
+            --init-script "$RUNNER_TEMP/ohos-sqldelight-init.gradle" \
             :shared:compileKotlinOhosArm64 \
             --no-daemon --console=plain --stacktrace 2>&1 | tee "$out/compile.log"
           # The exact configuration name is source-dependent; enumerate and
           # inspect every OHOS compile classpath exposed by this checkout.
-          configs=$(./gradlew -c settings.ohos.gradle.kts :shared:dependencies --no-daemon --console=plain 2>&1 \
+          configs=$(./gradlew -c settings.ohos.gradle.kts --init-script "$RUNNER_TEMP/ohos-sqldelight-init.gradle" :shared:dependencies --no-daemon --console=plain 2>&1 \
             | sed -n 's/.*configuration[[:space:]]\+\([^[:space:]]*ohos[^[:space:]]*CompileClasspath\).*/\1/p' | sort -u || true)
           if [[ -z "$configs" ]]; then
             configs='ohosArm64MainCompileClasspath'
@@ -74,6 +83,7 @@ jobs:
           for cfg in $configs; do
             echo "=== configuration=$cfg ===" | tee -a "$out/resolution.log"
             ./gradlew -c settings.ohos.gradle.kts \
+              --init-script "$RUNNER_TEMP/ohos-sqldelight-init.gradle" \
               :shared:dependencies --configuration "$cfg" \
               --no-daemon --console=plain 2>&1 | tee -a "$out/resolution.log" || true
           done
