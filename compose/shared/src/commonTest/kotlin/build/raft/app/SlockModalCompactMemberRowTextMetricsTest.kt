@@ -17,17 +17,31 @@ class SlockModalCompactMemberRowTextMetricsTest {
         assertEquals(18f, m.titleLineHeightSp)
         assertEquals(16f, m.subtitleLineHeightSp)
         assertEquals(2f, m.lineSpacingDp)
+        assertEquals(16f, m.badgeLineHeightSp)
+        assertEquals(16f, m.badgeBoxHeightDp)
     }
 
     @Test
-    fun doubledFontDoublesAllThreeQuantities() {
+    fun doubledFontDoublesAllFiveQuantities() {
         // HuaTuo's acceptance: at fontScale 2.0 on a 1.5x device the row (8 + 36 + 4 + 32 + 8 = 88dp)
         // must read 132px, not the unscaled 78px and not a double-scaled 234px.
         val m = slockModalCompactMemberRowTextMetrics(2f)
         assertEquals(36f, m.titleLineHeightSp)
         assertEquals(32f, m.subtitleLineHeightSp)
         assertEquals(4f, m.lineSpacingDp)
+        assertEquals(32f, m.badgeLineHeightSp)
+        assertEquals(32f, m.badgeBoxHeightDp)
         assertEquals(88f, 8f + m.titleLineHeightSp + m.lineSpacingDp + m.subtitleLineHeightSp + 8f)
+    }
+
+    @Test
+    fun badgeBoxNeverOutgrowsTheTitleLineSoRowHeightExpectationsHold() {
+        // The badge sits beside the title inside one Row; if it were ever taller than the title's
+        // line box the row would grow and the 78/132/234px acceptance values would be wrong.
+        for (scale in listOf(0.85f, 1f, 1.3f, 2f)) {
+            val m = slockModalCompactMemberRowTextMetrics(scale)
+            assert(m.badgeBoxHeightDp < m.titleLineHeightSp) { "scale $scale: badge ${m.badgeBoxHeightDp} >= title ${m.titleLineHeightSp}" }
+        }
     }
 
     @Test

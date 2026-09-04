@@ -792,7 +792,10 @@ internal fun SlockModalCompactMemberRow(
  * lineHeight 18.sp / 16.sp and a 2.dp gap written as constants, the ink grows with the font
  * while the line boxes and the gap stay fixed; at fontScale 2.0 the two text lines touch
  * (measured: gap 31px -> 0px, HuaTuo 2026-09-04). Multiplying the three quantities by the
- * scale keeps 1.0x pixel-identical (18/16/2) and lets the boxes grow with the ink.
+ * scale keeps 1.0x pixel-identical (18/16/2, badge 16/16) and lets the boxes grow with the ink.
+ * The source badge (only the channel add-member dialog passes a label) is the fourth pinned
+ * quantity -- a 9.sp label in a 16dp box -- and follows the same scale; because 16*s < 18*s it
+ * never becomes the title row's tallest child, so the expected row heights below do not change.
  *
  * TEMPORARY, and NOT idempotent with the root fix: if the render layer starts applying the
  * font scale to lineHeight itself (task #270 track A, BiSheng), this multiplication must be
@@ -803,7 +806,10 @@ internal fun SlockModalCompactMemberRow(
 internal data class SlockModalCompactMemberRowTextMetrics(
     val titleLineHeightSp: Float,
     val subtitleLineHeightSp: Float,
-    val lineSpacingDp: Float
+    val lineSpacingDp: Float,
+    /** The source badge (channel add-member dialog only) is a 9.sp label in a 16dp box; both follow the scale. */
+    val badgeLineHeightSp: Float,
+    val badgeBoxHeightDp: Float
 )
 
 internal fun slockModalCompactMemberRowTextMetrics(fontSizeScale: Float): SlockModalCompactMemberRowTextMetrics {
@@ -812,7 +818,9 @@ internal fun slockModalCompactMemberRowTextMetrics(fontSizeScale: Float): SlockM
     return SlockModalCompactMemberRowTextMetrics(
         titleLineHeightSp = 18f * scale,
         subtitleLineHeightSp = 16f * scale,
-        lineSpacingDp = 2f * scale
+        lineSpacingDp = 2f * scale,
+        badgeLineHeightSp = 16f * scale,
+        badgeBoxHeightDp = 16f * scale
     )
 }
 
@@ -870,7 +878,7 @@ internal fun RowScope.SlockModalCompactMemberRowContent(
                     Box(
                         modifier =
                             Modifier
-                                .height(16.dp)
+                                .height(textMetrics.badgeBoxHeightDp.dp)
                                 .widthIn(max = 88.dp)
                                 // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1065
                                 .background(SlockColor.AccentCyan.copy(alpha = 0.24f))
@@ -880,7 +888,7 @@ internal fun RowScope.SlockModalCompactMemberRowContent(
                     ) {
                         Text(
                             text = badge.uppercase(),
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 9.sp, lineHeight = 16.sp),
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 9.sp, lineHeight = textMetrics.badgeLineHeightSp.sp),
                             color = SlockColor.TextBlack,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
