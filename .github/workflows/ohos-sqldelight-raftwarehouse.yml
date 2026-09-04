@@ -19,7 +19,7 @@ jobs:
       image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1
     timeout-minutes: 90
     env:
-      GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home
+      GRADLE_USER_HOME: ${{ github.workspace }}/.ci-gradle-home
       SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
     steps:
       - name: Checkout locked source
