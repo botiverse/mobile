@@ -9257,7 +9257,10 @@ internal fun SharedThreadRouteContent(
                             withContext(NonCancellable) {
                                 uploadComposerAttachmentFiles(
                                     files = files,
-                                    requireAllFiles = true,
+                                    // This train does not consume R2 direct upload. 1.10.0
+                                    // admitted per file; keep that shape so one oversize
+                                    // image does not reject the rest of the batch.
+                                    requireAllFiles = false,
                                     replaceAttachmentIdsByLocalId = replaceAttachmentIdsByLocalId
                                 )
                             }
