@@ -187,6 +187,7 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.extension.NestedScrollMode
 import com.tencent.kuikly.compose.extension.nestedScroll
 import com.tencent.kuikly.compose.material3.Text
@@ -7679,16 +7680,37 @@ private val MembersMachineStatusFontSize = 12.sp
 private val MembersMachineStatusLineHeight = 16.sp
 private val MembersMachineStatusDotSize = 8.dp
 
-@Composable
-private fun MembersMachineRunLabel.localized(): String =
+/**
+ * Label -> string resource pairing, kept out of the Composable so the six pairs are unit-testable
+ * (MembersMachineStatusRowTest). Three of the six branches have no visual fixture until Batch 3,
+ * so without this a swapped resource would compile, pass the logic tests and only show in pixels.
+ */
+internal fun MembersMachineRunLabel.resource(): StringResource =
     when (this) {
-        is MembersMachineRunLabel.ComputerVersion -> stringResource(MR.strings.member_machine_run_computer_version, version)
-        is MembersMachineRunLabel.DaemonVersion -> stringResource(MR.strings.member_machine_run_daemon_version, version)
-        MembersMachineRunLabel.ComputerOnline -> stringResource(MR.strings.member_machine_run_computer_online)
-        MembersMachineRunLabel.DaemonOnline -> stringResource(MR.strings.member_machine_run_daemon_online)
-        MembersMachineRunLabel.ComputerOffline -> stringResource(MR.strings.member_machine_run_computer_offline)
-        MembersMachineRunLabel.DaemonOffline -> stringResource(MR.strings.member_machine_run_daemon_offline)
+        is MembersMachineRunLabel.ComputerVersion -> MR.strings.member_machine_run_computer_version
+        is MembersMachineRunLabel.DaemonVersion -> MR.strings.member_machine_run_daemon_version
+        MembersMachineRunLabel.ComputerOnline -> MR.strings.member_machine_run_computer_online
+        MembersMachineRunLabel.DaemonOnline -> MR.strings.member_machine_run_daemon_online
+        MembersMachineRunLabel.ComputerOffline -> MR.strings.member_machine_run_computer_offline
+        MembersMachineRunLabel.DaemonOffline -> MR.strings.member_machine_run_daemon_offline
     }
+
+/** The single `%1$s` argument for the two version labels; null for the four argument-free ones. */
+internal fun MembersMachineRunLabel.formatArg(): String? =
+    when (this) {
+        is MembersMachineRunLabel.ComputerVersion -> version
+        is MembersMachineRunLabel.DaemonVersion -> version
+        MembersMachineRunLabel.ComputerOnline,
+        MembersMachineRunLabel.DaemonOnline,
+        MembersMachineRunLabel.ComputerOffline,
+        MembersMachineRunLabel.DaemonOffline -> null
+    }
+
+@Composable
+private fun MembersMachineRunLabel.localized(): String {
+    val arg = formatArg()
+    return if (arg != null) stringResource(resource(), arg) else stringResource(resource())
+}
 
 // Value text is 14sp/black; the label is 12sp/muted. The previous rows used 13sp
 // values and 11sp labels with an 86dp label gutter.
