@@ -8795,6 +8795,7 @@ private fun MembersAgentProfileTab(
                         }
                     }
                 }
+            }
             // Created and Creator sit side by side while they fit and drop to their own
             // lines when they do not. A fixed two-column Row would keep them side by
             // side at any width, which is the failure this section is meant to avoid.
