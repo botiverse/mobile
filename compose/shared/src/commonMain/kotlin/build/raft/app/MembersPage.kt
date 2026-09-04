@@ -87,6 +87,10 @@ import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
+import build.raft.app.data.ComputerStatus
+import build.raft.app.data.ComputerSummary
+import build.raft.app.data.SharedComputersLoadStatus
+import build.raft.app.data.selectComputerServerSlice
 import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.SharedApiEnvironmentStore
@@ -435,6 +439,81 @@ internal sealed interface MembersAgentServerRoleDisplay {
      * explains.
      */
     data object Hidden : MembersAgentServerRoleDisplay
+}
+
+/**
+ * What the machine status row on the agent detail page should show. Mirrors web's
+ * `machineRunLabel.ts`, which is a SIX-way choice, not four (LiBai, task #259):
+ *
+ *   status != online                   -> ComputerOffline / DaemonOffline
+ *   status == online && version != null -> ComputerVersion / DaemonVersion
+ *   status == online && version == null -> ComputerOnline  / DaemonOnline
+ *
+ * The last pair exists because a non-owner REST read returns `status = online` with
+ * `version = null`. An earlier web build routed that into the offline label and showed a
+ * live Computer as offline (#wg-raft-computer:de94165c). Do not collapse those two cases.
+ *
+ * The status word (Connected / Offline) and the run label are TWO independent facts from
+ * the same machine record and are asserted separately; the " · " separator between them is
+ * layout, not part of either string (web renders it as literal JSX text).
+ */
+internal sealed interface MembersMachineRunLabel {
+    data class ComputerVersion(val version: String) : MembersMachineRunLabel
+    data class DaemonVersion(val version: String) : MembersMachineRunLabel
+    data object ComputerOnline : MembersMachineRunLabel
+    data object DaemonOnline : MembersMachineRunLabel
+    data object ComputerOffline : MembersMachineRunLabel
+    data object DaemonOffline : MembersMachineRunLabel
+}
+
+internal sealed interface MembersMachineStatusRow {
+    /** computers store has not answered yet: render nothing for this row (artin: 甲). */
+    data object Loading : MembersMachineStatusRow
+    /** No machineId, or machineId not in the loaded store: "no computer assigned", no dot. */
+    data object NoComputer : MembersMachineStatusRow
+    data class Machine(
+        val online: Boolean,
+        val runLabel: MembersMachineRunLabel
+    ) : MembersMachineStatusRow
+}
+
+internal fun membersMachineRunLabel(machine: ComputerSummary): MembersMachineRunLabel {
+    val online = machine.status == ComputerStatus.Online
+    val version = (if (machine.isComputer) machine.computerVersion else machine.daemonVersion)
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+    return when {
+        !online && machine.isComputer -> MembersMachineRunLabel.ComputerOffline
+        !online -> MembersMachineRunLabel.DaemonOffline
+        version != null && machine.isComputer -> MembersMachineRunLabel.ComputerVersion(version)
+        version != null -> MembersMachineRunLabel.DaemonVersion(version)
+        machine.isComputer -> MembersMachineRunLabel.ComputerOnline
+        else -> MembersMachineRunLabel.DaemonOnline
+    }
+}
+
+/**
+ * Cell 6 of the task #259 table. `machineId` present but absent from a *loaded* store and
+ * "store not loaded yet" look identical on the map; only the load status tells them apart.
+ * The loading case must not fall through to NoComputer -- web does exactly that and flashes
+ * "no computer assigned" on every open (its own defect, not a reference to copy).
+ */
+internal fun membersMachineStatusRow(
+    machineId: String?,
+    machines: List<ComputerSummary>,
+    loadStatus: SharedComputersLoadStatus,
+    hasSnapshot: Boolean
+): MembersMachineStatusRow {
+    val id = machineId?.trim()?.takeIf { it.isNotBlank() }
+        ?: return MembersMachineStatusRow.NoComputer
+    if (!hasSnapshot && loadStatus != SharedComputersLoadStatus.Loaded) {
+        return MembersMachineStatusRow.Loading
+    }
+    val machine = machines.firstOrNull { it.id == id } ?: return MembersMachineStatusRow.NoComputer
+    return MembersMachineStatusRow.Machine(
+        online = machine.status == ComputerStatus.Online,
+        runLabel = membersMachineRunLabel(machine)
+    )
 }
 
 internal fun membersAgentDisplayServerRole(
@@ -1237,6 +1316,61 @@ private val membersSmokePayload = KuiklyMembersPayload(
         )
     )
 )
+
+/**
+ * The four machines from packages/visual-testing/shared/fixtureData.json, as the computers
+ * store would hold them, so the visual routes resolve the status row from a loaded store
+ * rather than from an empty one (which would render every fixture agent as "no computer
+ * assigned" -- the exact defect #2355 removed from the avatar grid).
+ *
+ * These are literals for the same reason the seed snapshots above use literal machineIds:
+ * VisualFixtureData lives in a gated srcDir this file cannot reference. The drift gate
+ * (visual-testing.yml "Check fixture data drift") covers VisualFixtureData.kt, NOT these
+ * lines -- if fixtureData.json changes a machine, this table is only kept honest by a
+ * human. Task #259 asked XiShi for a non-gated injection point; replace this when one exists.
+ */
+private val membersVisualFixtureMachines: List<ComputerSummary> =
+    listOf(
+        membersVisualFixtureMachine("computer-mbp", "Jiachengs-MacBook-Pro", ComputerStatus.Online, isComputer = true, computerVersion = "0.0.48", daemonVersion = "0.65.0"),
+        membersVisualFixtureMachine("computer-studio", "Studio Test Rig", ComputerStatus.Offline, isComputer = true, computerVersion = "0.0.50", daemonVersion = "0.65.0"),
+        membersVisualFixtureMachine("computer-long-name", "ci-visual-capture-runner-us-west-2b_node17_macbookpro_m4max_buildhost_2026", ComputerStatus.Online, isComputer = true, computerVersion = "0.0.48", daemonVersion = "0.65.0"),
+        membersVisualFixtureMachine("computer-daemon-only", "build-box-bare-daemon", ComputerStatus.Online, isComputer = false, computerVersion = null, daemonVersion = "0.65.0")
+    )
+
+private fun membersVisualFixtureMachine(
+    id: String,
+    name: String,
+    status: ComputerStatus,
+    isComputer: Boolean,
+    computerVersion: String?,
+    daemonVersion: String?
+): ComputerSummary =
+    ComputerSummary(
+        id = id,
+        name = name,
+        status = status,
+        statusVersion = 0L,
+        apiKeyPrefix = null,
+        runtimes = emptyList(),
+        daemonVersion = daemonVersion,
+        computerVersion = computerVersion,
+        isComputer = isComputer,
+        hostname = null,
+        os = null,
+        description = null,
+        lastHeartbeat = null,
+        createdAt = null
+    )
+
+/** Fixture routes: the store is "loaded" with the fixture machines; `computer-missing` resolves to NoComputer by design. */
+private val membersVisualFixtureMachineStatusRow: (String?) -> MembersMachineStatusRow = { machineId ->
+    membersMachineStatusRow(
+        machineId = machineId,
+        machines = membersVisualFixtureMachines,
+        loadStatus = SharedComputersLoadStatus.Loaded,
+        hasSnapshot = true
+    )
+}
 
 private val membersAgentDetailVisualMember = MemberProfile(
     id = MemberId("agent-product-ux"),
@@ -3117,6 +3251,26 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
         val serverId = statusLookupServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         provider.computersStore.dispatch(SharedComputersIntent.EnsureComputerPicker(serverId))
     }
+    // Task #259: the status row's truth source is the computers store, not `machineId != null`.
+    // The slice for this server is what EnsureComputerPicker above is loading; the resolver
+    // distinguishes "store has not answered" (render nothing) from "answered, machine absent"
+    // ("no computer assigned") -- web collapses the two and flashes the latter on every open.
+    val computersState by provider.computersStore.state.collectAsState()
+    val machineStatusRow: (String?) -> MembersMachineStatusRow =
+        remember(computersState, statusLookupServerId) {
+            // selectComputerServerSlice normalises the key; indexing serverSlices directly
+            // would miss silently and read as "store never answered".
+            val slice = computersState.selectComputerServerSlice(statusLookupServerId)
+            ;
+            { machineId ->
+                membersMachineStatusRow(
+                    machineId = machineId,
+                    machines = slice.machines,
+                    loadStatus = slice.status,
+                    hasSnapshot = slice.hasSnapshot
+                )
+            }
+        }
     LaunchedEffect(provider.agentPanelTabOrderStore, agentPanelTabOrderServerId, payload.agentPanelTabOrder) {
         val serverId = agentPanelTabOrderServerId ?: return@LaunchedEffect
         provider.agentPanelTabOrderStore.bindServer(
@@ -3543,6 +3697,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                             detail?.summary?.creatorId == current.currentUserId
                             )
                     },
+                    machineStatusRow = machineStatusRow,
                     onBack = { provider.bridge.closePage() },
                     onOpenDirectMessage = {
                         routeScope.launch {
@@ -3706,6 +3861,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                 agentDetailState = MembersAgentDetailLoadState.Idle,
                 canViewPrivateAgentSurfaces = { _, _ -> false },
                 canManageAgent = { _, _ -> false },
+                machineStatusRow = machineStatusRow,
                 onBack = { provider.bridge.closePage() },
                 onOpenDirectMessage = {
                     routeScope.launch {
@@ -3806,6 +3962,7 @@ private fun MemberDetailVisualSeedContent(
         agentDetailState = seed.agentDetailState,
         canViewPrivateAgentSurfaces = { member, _ -> member.kind == MemberKind.Agent },
         canManageAgent = { member, _ -> member.kind == MemberKind.Agent },
+        machineStatusRow = membersVisualFixtureMachineStatusRow,
         onBack = {},
         onOpenDirectMessage = {},
         onCopyMemberId = {},
@@ -3929,6 +4086,7 @@ internal fun MembersAgentDetailVisualContent() {
                 serverId = ServerId("visual-fixture"),
                 profileGeneration = 0L
             ),
+        machineStatusRow = membersVisualFixtureMachineStatusRow,
         onBack = {},
         onOpenDirectMessage = {},
         onCopyMemberId = {},
@@ -4686,6 +4844,8 @@ private fun MembersDetailContent(
     onBack: () -> Unit,
     onOpenDirectMessage: () -> Unit,
     onOpenComputer: (() -> Unit)? = null,
+    /** Task #259: resolves the machine status row from the computers store. No default on purpose -- a silent fallback here is the #253 shape. */
+    machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
     onCopyMemberId: () -> Unit,
     onRemoveMember: (() -> Unit)? = null,
     humanActorRole: String? = null,
@@ -5296,6 +5456,7 @@ private fun MembersDetailContent(
                                             reportIssueDialogOpen = true
                                         },
                                         onOpenComputer = onOpenComputer,
+                                        machineStatusRow = machineStatusRow,
                                         timeContext = timeContext,
                                         fixtureStatusFallbackEnabled = stableVisualCapture,
                                         modifier = Modifier.padding(horizontal = MembersPageInset)
@@ -7497,6 +7658,22 @@ private val MembersInfoFieldGapY = 12.dp // web gap-y-3, when those two wrap ont
 private val MembersInfoStatusGapX = 6.dp // web gap-x-1.5, inside the machine status line
 private val MembersInfoStatusGapY = 4.dp // web gap-y-1, when that status line wraps
 
+// Task #259: web's status line is text-xs (12px); the old row was 10sp. Dot matches web StatusDot.
+private val MembersMachineStatusFontSize = 12.sp
+private val MembersMachineStatusLineHeight = 16.sp
+private val MembersMachineStatusDotSize = 8.dp
+
+@Composable
+private fun MembersMachineRunLabel.localized(): String =
+    when (this) {
+        is MembersMachineRunLabel.ComputerVersion -> stringResource(MR.strings.member_machine_run_computer_version, version)
+        is MembersMachineRunLabel.DaemonVersion -> stringResource(MR.strings.member_machine_run_daemon_version, version)
+        MembersMachineRunLabel.ComputerOnline -> stringResource(MR.strings.member_machine_run_computer_online)
+        MembersMachineRunLabel.DaemonOnline -> stringResource(MR.strings.member_machine_run_daemon_online)
+        MembersMachineRunLabel.ComputerOffline -> stringResource(MR.strings.member_machine_run_computer_offline)
+        MembersMachineRunLabel.DaemonOffline -> stringResource(MR.strings.member_machine_run_daemon_offline)
+    }
+
 // Value text is 14sp/black; the label is 12sp/muted. The previous rows used 13sp
 // values and 11sp labels with an 86dp label gutter.
 private val MembersInfoValueFontSize = 14.sp
@@ -7712,6 +7889,7 @@ private fun MembersAgentProfileTab(
     onCopyDiagnostics: () -> Unit = {},
     onReportIssue: () -> Unit = {},
     onOpenComputer: (() -> Unit)? = null,
+    machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
     timeContext: SlockTimeContext,
     fixtureStatusFallbackEnabled: Boolean = false,
     modifier: Modifier = Modifier
@@ -8538,38 +8716,69 @@ private fun MembersAgentProfileTab(
                     modifier = (if (onOpenComputer != null) Modifier.clickable(onClick = onOpenComputer) else Modifier)
                         .fillMaxWidth()
                 )
-                // Status line: wraps rather than compressing, and only the version
-                // segment is mono (web applies the mono class to that span alone).
-                @OptIn(ExperimentalLayoutApi::class)
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth().padding(top = MembersInfoBlockGap),
-                    horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
-                    verticalArrangement = Arrangement.spacedBy(MembersInfoStatusGapY)
-                ) {
-                    val machineStatusLabel =
-                        if (summary?.machineId != null) {
-                            stringResource(MR.strings.member_label_connected)
-                        } else {
-                            stringResource(MR.strings.member_label_offline)
-                        }
-                    Text(
-                        text = machineStatusLabel,
-                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextMutedGray
-                    )
-                    if (summary?.daemonVersion != null) {
+                // Status line (task #259). Truth source is the computers store, not
+                // `machineId != null`; the six-way run label mirrors web machineRunLabel.ts.
+                // Two independent facts -- status word and run label -- rendered as two
+                // spans with a literal " · " between them, exactly as web does in JSX.
+                when (val statusRow = machineStatusRow(summary?.machineId)) {
+                    // artin: 甲 -- until the store has answered, render nothing here. Web
+                    // falls through to "no computer assigned" during this window; that is
+                    // its defect, not a reference to copy.
+                    MembersMachineStatusRow.Loading -> Unit
+                    MembersMachineStatusRow.NoComputer ->
                         Text(
-                            text = stringResource(MR.strings.member_daemon_version_suffix, summary.daemonVersion),
+                            text = stringResource(MR.strings.member_machine_no_computer_assigned),
                             style = SlockType.Caption.copy(
-                                fontFamily = SlockMonoFamily,
-                                fontSize = 10.sp,
-                                lineHeight = 14.sp
+                                fontSize = MembersMachineStatusFontSize,
+                                lineHeight = MembersMachineStatusLineHeight,
+                                fontStyle = FontStyle.Italic
                             ),
-                            color = SlockColor.TextMutedGray
+                            color = SlockColor.TextMutedGray,
+                            modifier = Modifier.padding(top = MembersInfoBlockGap)
                         )
+                    is MembersMachineStatusRow.Machine -> {
+                        @OptIn(ExperimentalLayoutApi::class)
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth().padding(top = MembersInfoBlockGap),
+                            horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
+                            verticalArrangement = Arrangement.spacedBy(MembersInfoStatusGapY)
+                        ) {
+                            // web: <StatusDot class="shrink-0"> -- fixed size, never compressed.
+                            Box(
+                                modifier = Modifier
+                                    .size(MembersMachineStatusDotSize)
+                                    .background(
+                                        if (statusRow.online) SlockColor.AccentLime else SlockColor.StatusNeutralGray,
+                                        shape = RoundedCornerShape(MembersMachineStatusDotSize / 2)
+                                    )
+                                    // FlowRow in this fork has no per-item vertical alignment; the
+                                    // dot sits on the row's top edge. Web centres it (items-center).
+                                    // Recorded as a known, visible divergence for the capture.
+                            )
+                            Text(
+                                text = stringResource(
+                                    if (statusRow.online) MR.strings.member_label_connected else MR.strings.member_label_offline
+                                ),
+                                style = SlockType.Caption.copy(
+                                    fontSize = MembersMachineStatusFontSize,
+                                    lineHeight = MembersMachineStatusLineHeight
+                                ),
+                                color = SlockColor.TextMutedGray
+                            )
+                            // web: <span class="font-mono">· {runLabel}</span> -- the separator is
+                            // layout text inside the mono span, not part of any i18n string.
+                            Text(
+                                text = "· " + statusRow.runLabel.localized(),
+                                style = SlockType.Caption.copy(
+                                    fontFamily = SlockMonoFamily,
+                                    fontSize = MembersMachineStatusFontSize,
+                                    lineHeight = MembersMachineStatusLineHeight
+                                ),
+                                color = SlockColor.TextMutedGray
+                            )
+                        }
                     }
                 }
-            }
             // Created and Creator sit side by side while they fit and drop to their own
             // lines when they do not. A fixed two-column Row would keep them side by
             // side at any width, which is the failure this section is meant to avoid.
