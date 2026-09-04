@@ -87,16 +87,27 @@ internal fun parseSharedAttachmentUploadCapabilities(bodyText: String): Attachme
     require(dto.maxBytes in 1L..ATTACHMENT_UPLOAD_MAX_BYTES) {
         "attachment upload maxBytes must be positive and within the contract limit"
     }
-    // This train does not consume R2 direct-upload fields. Production Free-plan
-    // capabilities advertise enabled=true with threshold=90MiB > maxBytes=50MiB;
-    // parsing those fields as admission gates fail-closed the whole document and
-    // blocked every image. Keep maxBytes (1.10.0 did) and ignore the rest until
-    // threshold routing actually exists.
+    // Cap threshold at the contract limit, not this response's maxBytes. Production
+    // Free-plan capabilities advertise threshold=90MiB with maxBytes=50MiB; the old
+    // require(threshold <= maxBytes) fail-closed the whole document. Gallery on this
+    // train still does not enter DirectAttachmentUploadCoordinator (requireAllFiles=false).
+    require(dto.directUploadThresholdBytes == null ||
+        dto.directUploadThresholdBytes in 1L..ATTACHMENT_UPLOAD_MAX_BYTES) {
+        "attachment upload directUploadThresholdBytes is invalid"
+    }
+    require(dto.sessionExpiresInSeconds == null || dto.sessionExpiresInSeconds in 1..86_400) {
+        "attachment upload sessionExpiresInSeconds is invalid"
+    }
+    if (!dto.directUploadEnabled) {
+        require(dto.directUploadThresholdBytes == null && dto.sessionExpiresInSeconds == null) {
+            "disabled direct upload cannot advertise session parameters"
+        }
+    }
     return AttachmentUploadCapabilities(
         maxBytes = dto.maxBytes,
-        directUploadEnabled = false,
-        directUploadThresholdBytes = null,
-        sessionExpiresInSeconds = null,
+        directUploadEnabled = dto.directUploadEnabled,
+        directUploadThresholdBytes = dto.directUploadThresholdBytes,
+        sessionExpiresInSeconds = dto.sessionExpiresInSeconds,
     )
 }
 

@@ -971,9 +971,25 @@ class ConversationRepositoryDataSourceTest {
         ).data
 
         assertEquals(52_428_800L, capability.maxBytes)
-        assertEquals(false, capability.directUploadEnabled)
-        assertEquals(null, capability.directUploadThresholdBytes)
-        assertEquals(null, capability.sessionExpiresInSeconds)
+        assertEquals(true, capability.directUploadEnabled)
+        assertEquals(94_371_840L, capability.directUploadThresholdBytes)
+        assertEquals(900, capability.sessionExpiresInSeconds)
+    }
+
+    @Test
+    fun attachmentUploadCapabilitiesRejectThresholdAboveContractLimit() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET attachments/upload-capabilities" to
+                            """{"directUploadEnabled":true,"directUploadThresholdBytes":209715201,"maxBytes":52428800,"sessionExpiresInSeconds":900}"""
+                    )
+            )
+
+        val result = RealConversationRepository(sampleStore(), network).getAttachmentUploadCapabilities()
+
+        assertEquals("network_parse_failed", assertIs<DataResult.Error>(result).error.code)
     }
 
     @Test
