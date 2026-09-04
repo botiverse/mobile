@@ -334,7 +334,7 @@ class SharedReplyThreadAccessIntegrationTest {
         replyOriginHydrationGraceMillis: Long = 300L,
         diagnosticsLogger: (String) -> Unit = {},
     ): SharedThreadDataSource =
-        SharedThreadDataSource(
+        testSharedThreadDataSource(
             networkApi = SharedThreadStoreTest.FakeThreadApi(),
             sessionStore = sessionStore,
             conversationRepository = repository,

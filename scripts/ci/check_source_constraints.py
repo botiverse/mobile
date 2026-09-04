@@ -1036,6 +1036,43 @@ def check_task_259_members_visual_fixtures(
             )
 
 
+SHARED_COMMON_TEST_ROOT = "compose/shared/src/commonTest/kotlin"
+TEST_SESSION_STORE_CLASS_FIELD = re.compile(
+    r"^ {4}(?:private |internal |protected )?(?:val|var|lateinit var) \w+(?:\s*:\s*[\w.<>?]+)?\s*=\s*InMemorySlockAuthSessionStore\(",
+    re.MULTILINE,
+)
+
+
+def check_test_session_stores_are_test_local(sources: dict[str, str]) -> None:
+    """Task #1122: the test identity authority is memoised per session-store INSTANCE.
+
+    Every data source built on one `InMemorySlockAuthSessionStore` shares one
+    generation sequence; that is the property the card wanted. It stays a
+    property only while each test function creates its own store. A store held
+    as a class field would let generations leak silently between test
+    functions (and stay green), which is the per-instance defect shape moved up
+    one level. Store instances must therefore be function-local in commonTest.
+    """
+    # Denominator: a prohibition over an empty (or store-free) input is vacuously true. The scan
+    # must see commonTest files AND at least one function-local store, or the glob has drifted.
+    if not sources:
+        raise Violation("task #1122 checker saw no commonTest sources (glob drift?)")
+    if not any("InMemorySlockAuthSessionStore(" in text for text in sources.values()):
+        raise Violation(
+            "task #1122 checker saw no InMemorySlockAuthSessionStore construction at all in commonTest "
+            "(the constraint no longer observes what it constrains)"
+        )
+    for name, text in sorted(sources.items()):
+        match = TEST_SESSION_STORE_CLASS_FIELD.search(text)
+        if match:
+            line = text.count("\n", 0, match.start()) + 1
+            raise Violation(
+                f"task #1122 regression: {name}:{line} holds an InMemorySlockAuthSessionStore as a "
+                "class field; create it inside the test function so the memoised identity "
+                "authority stays test-local"
+            )
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -1088,6 +1125,15 @@ def run(root: Path) -> None:
     check_task_259_members_visual_fixtures(
         members_page=read(MEMBERS_PAGE),
         visual_fixture_data=read(VISUAL_FIXTURE_DATA),
+    )
+    common_test_root = root / SHARED_COMMON_TEST_ROOT
+    if not common_test_root.is_dir():
+        raise Violation(f"constraint source missing (fail-closed): {SHARED_COMMON_TEST_ROOT}")
+    check_test_session_stores_are_test_local(
+        {
+            str(path.relative_to(root)): path.read_text(encoding="utf-8").replace("\r\n", "\n")
+            for path in sorted(common_test_root.rglob("*.kt"))
+        }
     )
 
 
@@ -1862,6 +1908,31 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
         else:
             raise SystemExit(f"self-test: task #259 checker accepted violation: {desc}")
 
+    check_test_session_stores_are_test_local(
+        {
+            "f": "class T {\n    @Test\n    fun a() = runBlocking {\n        val store = InMemorySlockAuthSessionStore(session())\n    }\n}\n",
+            "g": "class U {\n    private fun make() = InMemorySlockAuthSessionStore(session())\n}\n",
+        }
+    )
+    for empty_input in ({}, {"f": "class T {\n    @Test\n    fun a() = Unit\n}\n"}):
+        try:
+            check_test_session_stores_are_test_local(empty_input)
+        except Violation:
+            pass
+        else:
+            raise SystemExit("self-test: task #1122 checker passed vacuously on input without any session store")
+    for offending in (
+        "class T {\n    private val store = InMemorySlockAuthSessionStore(session())\n}\n",
+        "class T {\n    val authStore: InMemorySlockAuthSessionStore = InMemorySlockAuthSessionStore(session())\n}\n",
+        "class T {\n    lateinit var store = InMemorySlockAuthSessionStore(session())\n}\n",
+    ):
+        try:
+            check_test_session_stores_are_test_local({"f": offending})
+        except Violation:
+            pass
+        else:
+            raise SystemExit("self-test: task #1122 test-local session-store checker accepted a class field")
+
     print("check_source_constraints self-test passed")
 
 
@@ -1879,7 +1950,7 @@ def main(argv: list[str]) -> int:
         return 1
     print(
         "source constraints hold "
-        "(tasks #17/#800/#803/#361/#161/#924/#82/#183/#76/#127/#991/#259 structural faces)"
+        "(tasks #17/#800/#803/#361/#161/#924/#82/#183/#76/#127/#991/#259/#1122 structural faces)"
     )
     return 0
 
