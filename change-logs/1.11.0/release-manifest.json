@@ -17,13 +17,15 @@
       "change-logs/1.11.0/changesets/external-agent-detail-status.md",
       "change-logs/1.11.0/changesets/external-agent-list-status.md"
     ],
-    "excluded": ["#2350 offline content banner"],
+    "excluded": [
+      "#2350 offline content banner"
+    ],
     "play_review": "skipped",
     "ios_testflight": "required",
     "sync_core_messages_v0": "disabled; future enablement"
   },
   "document_sha256": {
-    "change-logs/1.11.0/release-plan.md": "2cb7c982f4b84e27070c3c020b989adbd9d1ddc5b62424f69ccc2e95f30a6522",
+    "change-logs/1.11.0/release-plan.md": "9b9e97ab0d9b8b1dbf693c4b387a7cfdb5f01e736c6f44950b743a7f7376501e",
     "change-logs/1.11.0/changesets/external-agent-detail-status.md": "1032d129ec082a1b465c55d8e81a37ef7ff5eff24ef5b1e02458a7b3c8747f04",
     "change-logs/1.11.0/changesets/external-agent-list-status.md": "dee0b51efa421acaa59828b668fd1af3a0d3c445dfa14f1d8d554f879cf18079"
   },
@@ -32,5 +34,27 @@
     "approval_message": "83786153",
     "approved": true
   },
-  "execution_state": "manifest_frozen; preflight_not_started"
+  "execution_state": "manifest_frozen; preflight_in_progress; version_and_mavenLocal_gates_clarified",
+  "version_coordinates": {
+    "android": {
+      "version_name": "1.11.0",
+      "version_code": 1110000,
+      "hands_high_water": 1100007
+    },
+    "ohos": {
+      "version_name": "1.11.0",
+      "version_code": 1110000,
+      "hands_high_water": 1100003
+    },
+    "ios": {
+      "version_name": "1.0.0",
+      "version_code": 1000022,
+      "hands_high_water": 1000021,
+      "marketing_note": "App Store 1.0.0; CFBundleVersion monotonic"
+    }
+  },
+  "sop_clarification": {
+    "version_placeholders_not_blockers": true,
+    "mavenLocal_repository_list_not_blocker": true
+  }
 }

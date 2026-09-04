@@ -29,10 +29,22 @@ The release candidate includes only changes reachable from the frozen source abo
 - [ ] Reconcile every `change-logs/1.11.0/changesets/` entry and release note.
 - [ ] Produce and freeze a release manifest/digest.
 
+## Allocated version coordinates
+
+These are CI dispatch inputs. Frozen source may keep placeholder defaults
+(`1.0.0` / `1000000` on Android and OHOS; iOS `MARKETING_VERSION=1.0`). Do
+not rewrite those placeholders into this tree.
+
+| Platform | versionName | versionCode | Hands live high-water | Notes |
+| --- | --- | ---: | ---: | --- |
+| Android | `1.11.0` | `1110000` | `1100007` | Inject `version_major=1 version_minor=11 version_patch=0 version_build=0` |
+| OHOS | `1.11.0` | `1110000` | `1100003` | CI rewrites `AppScope/app.json5` at dispatch |
+| iOS | `1.0.0` | `1000022` | `1000021` | Keep App Store marketing `1.0.0`; `CFBundleVersion` only. Owner may later choose iOS marketing `1.11.0` / `1110000` instead |
+
 ## Phase 1 — preflight (fail closed)
 
-- [ ] Confirm versionName/versionCode/build numbers are monotonic and unused.
-- [ ] Resolve Kuikly/NetworkKMM/Raft artifacts from an empty cache; forbid gitlink, MavenLocal, local Pod/HAR, and source fallback.
+- [ ] Confirm the allocated coordinates above are monotonic and unused. Do not fail because the source tree still shows placeholder `1.0.0` / `1000000`. After build, verify artifacts match the allocated inputs.
+- [ ] Admit Kuikly/Hands from the immutable Raft Artifacts release set (`exclusiveContent` + manifest). Silent fallback of those pinned coordinates to gitlink, mavenLocal, local Pod/HAR, or source build blocks. Declaring `mavenLocal()` in Gradle repository lists is not a blocker. Other shared forks keep their own provenance.
 - [ ] Verify Android package/variant/Google Services (production + Alpha), signing lineage, zipalign, 16 KiB, v3/v4, R8/DEX.
 - [ ] Verify iOS bundle/signature/IPA/dSYM/source marker.
 - [ ] Verify OHOS App Pack/HAP/signature/module/lock/resource/ABI provenance.
