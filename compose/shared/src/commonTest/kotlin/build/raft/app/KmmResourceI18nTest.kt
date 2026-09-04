@@ -351,7 +351,6 @@ class KmmResourceI18nTest {
             MR.strings.member_action_save_permissions,
             MR.strings.member_hint_permissions_notifications,
             MR.strings.member_hint_permissions_cli,
-            MR.strings.member_dialog_change_avatar,
             MR.strings.member_dialog_edit_runtime_config,
             MR.strings.member_hint_chat_audit_only,
             MR.strings.member_hint_no_scheduled_reminders,
