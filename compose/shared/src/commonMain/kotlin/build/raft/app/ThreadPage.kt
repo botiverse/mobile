@@ -8603,9 +8603,9 @@ internal fun SharedThreadRouteContent(
             return true
         }
 
-        // The aggregate branch above returns for every `requireAllFiles` call.  This remaining
-        // path is the ordinary picker/retry uploader, where each attachment has its own retry and
-        // ownership lifecycle and the legacy multipart endpoint is sufficient.
+        // Gallery on this train calls with requireAllFiles=false, so this remaining
+        // per-file multipart path is the 1.10.0-shaped uploader. The aggregate
+        // direct-session branch above stays dormant.
         var launchedCount = 0
         for (file in acceptedFiles) {
             val localAttachmentId = file.id.takeIf { it.isNotBlank() } ?: continue
@@ -9256,7 +9256,10 @@ internal fun SharedThreadRouteContent(
                             withContext(NonCancellable) {
                                 uploadComposerAttachmentFiles(
                                     files = files,
-                                    requireAllFiles = true,
+                                    // 1.11.0 bleed-stop: 1.10.0 admitted per file. requireAllFiles
+                                    // would reject the whole gallery pick if one image exceeds
+                                    // maxBytes. Replacement ids stay keyed by local file id.
+                                    requireAllFiles = false,
                                     replaceAttachmentIdsByLocalId = replaceAttachmentIdsByLocalId
                                 )
                             }
