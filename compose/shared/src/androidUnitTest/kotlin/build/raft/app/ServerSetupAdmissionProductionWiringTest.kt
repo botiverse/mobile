@@ -47,9 +47,11 @@ class ServerSetupAdmissionProductionWiringTest {
     fun androidBridgeImplementsUrlCodecRequiredByOnboardingWakeDecoder() {
         val bridge = repositoryFile("compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt").readText()
         assertTrue(bridge.contains("\"urlEncode\" ->"))
-        assertTrue(bridge.contains("URLEncoder.encode(payload.optString(\"string\"), StandardCharsets.UTF_8.name())"))
+        assertTrue(bridge.contains("slockAndroidBridgeUrlEncode(payload.optString(\"string\"))"))
         assertTrue(bridge.contains("\"urlDecode\" ->"))
-        assertTrue(bridge.contains("URLDecoder.decode(payload.optString(\"string\"), StandardCharsets.UTF_8.name())"))
+        assertTrue(bridge.contains("slockAndroidBridgeUrlDecode(payload.optString(\"string\"))"))
+        assertTrue(bridge.contains("internal fun slockAndroidBridgeUrlEncode(value: String): String"))
+        assertTrue(bridge.contains("internal fun slockAndroidBridgeUrlDecode(value: String): String"))
     }
 
     @Test
