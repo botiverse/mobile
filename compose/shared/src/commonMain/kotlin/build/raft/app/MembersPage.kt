@@ -1492,7 +1492,7 @@ private val membersAgentDetailVisualVariants = listOf(
         description = "Bound to a computer whose name cannot fit one 390dp line, so wrap vs truncate is observable.",
         machineId = "computer-long-name",
         machineName = "ci-visual-capture-runner-us-west-2b_node17_macbookpro_m4max_buildhost_2026",
-        daemonVersion = "0.0.48",
+        daemonVersion = "0.65.0",
         serverRole = "admin"
     ),
     // a bare daemon (isComputer=false) with no computer version: web = green dot + Online + "daemon v0.65.0"
