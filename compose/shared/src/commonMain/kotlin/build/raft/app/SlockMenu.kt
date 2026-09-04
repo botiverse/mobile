@@ -472,10 +472,13 @@ private fun SlockTaskAssigneeMemberButton(
     ) {
         // Task #258 (artin msg=be381a13): same 12dp horizontal inset as the
         // channel SlockModalCompactMemberRow shell so member rows indent alike.
+        // Task #269 (artin msg=d04b1d19): and the same 8dp vertical padding -- the
+        // port kept only the horizontal value, so rows sat avatar-to-avatar with no
+        // gap. The native Button shell contributes no padding of its own here.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
