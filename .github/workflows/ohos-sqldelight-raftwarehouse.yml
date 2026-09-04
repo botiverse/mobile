@@ -53,12 +53,11 @@ jobs:
           } | tee "$RUNNER_TEMP/ohos-sqldelight-receipt/environment.txt"
           cat > "$RUNNER_TEMP/ohos-sqldelight-init.gradle" <<'GRADLE'
           gradle.settingsEvaluated { settings ->
-            settings.pluginManagement.repositories.removeIf { it.name == 'MavenLocal' }
-            settings.pluginManagement.repositories.maven { url = uri('https://maven.artifacts.botiverse.dev') }
             settings.dependencyResolutionManagement.repositories.removeIf { it.name == 'MavenLocal' }
             settings.dependencyResolutionManagement.repositories.maven { url = uri('https://maven.artifacts.botiverse.dev') }
           }
           GRADLE
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           ./gradlew -c settings.ohos.gradle.kts --init-script "$RUNNER_TEMP/ohos-sqldelight-init.gradle" tasks --all --no-daemon --console=plain \
             | tee "$RUNNER_TEMP/ohos-sqldelight-receipt/tasks.txt"
 
