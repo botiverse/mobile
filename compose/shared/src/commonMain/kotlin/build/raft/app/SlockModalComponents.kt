@@ -42,6 +42,7 @@ import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListScope
 import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.platform.LocalConfiguration
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Rect
@@ -784,6 +785,38 @@ internal fun SlockModalCompactMemberRow(
 }
 
 /**
+ * Text metrics for the compact member row, scaled by the system font-size scale.
+ *
+ * Task #270. The Kuikly Android render layer converts a Text's fontSize with spToPx (so it
+ * follows the system font scale) but its lineHeight with toPx (dp, so it does NOT). With
+ * lineHeight 18.sp / 16.sp and a 2.dp gap written as constants, the ink grows with the font
+ * while the line boxes and the gap stay fixed; at fontScale 2.0 the two text lines touch
+ * (measured: gap 31px -> 0px, HuaTuo 2026-09-04). Multiplying the three quantities by the
+ * scale keeps 1.0x pixel-identical (18/16/2) and lets the boxes grow with the ink.
+ *
+ * TEMPORARY, and NOT idempotent with the root fix: if the render layer starts applying the
+ * font scale to lineHeight itself (task #270 track A, BiSheng), this multiplication must be
+ * REMOVED in the same change, or line heights are scaled twice (row 234px instead of 132px
+ * at fontScale 2.0 on a 1.5x device). Expected row heights on that device: unscaled 78px,
+ * this fix 132px, double-scaled 234px -- HuaTuo's acceptance discriminates all three.
+ */
+internal data class SlockModalCompactMemberRowTextMetrics(
+    val titleLineHeightSp: Float,
+    val subtitleLineHeightSp: Float,
+    val lineSpacingDp: Float
+)
+
+internal fun slockModalCompactMemberRowTextMetrics(fontSizeScale: Float): SlockModalCompactMemberRowTextMetrics {
+    // A scale the host never reported (<= 0) means "unknown"; render as 1.0x rather than collapse.
+    val scale = if (fontSizeScale > 0f) fontSizeScale else 1f
+    return SlockModalCompactMemberRowTextMetrics(
+        titleLineHeightSp = 18f * scale,
+        subtitleLineHeightSp = 16f * scale,
+        lineSpacingDp = 2f * scale
+    )
+}
+
+/**
  * Row children of SlockModalCompactMemberRow (avatar + texts + trailing) so the
  * exact channel add-member visuals can be embedded in other row shells (e.g. a
  * native Button for the task detail assignee popover, where plain-`clickable`
@@ -821,11 +854,12 @@ internal fun RowScope.SlockModalCompactMemberRowContent(
                 cacheServerId = cacheServerId
             )
         }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        val textMetrics = slockModalCompactMemberRowTextMetrics(LocalConfiguration.current.fontSizeScale)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(textMetrics.lineSpacingDp.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = title,
-                    style = SlockType.Body.withSlockFontWeight(FontWeight.Medium).copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    style = SlockType.Body.withSlockFontWeight(FontWeight.Medium).copy(fontSize = 14.sp, lineHeight = textMetrics.titleLineHeightSp.sp),
                     color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -857,7 +891,7 @@ internal fun RowScope.SlockModalCompactMemberRowContent(
             if (subtitle.isNotBlank()) {
                 Text(
                     text = subtitle,
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = textMetrics.subtitleLineHeightSp.sp),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
