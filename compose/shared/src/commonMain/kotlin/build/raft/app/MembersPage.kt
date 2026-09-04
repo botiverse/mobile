@@ -1323,11 +1323,15 @@ private val membersSmokePayload = KuiklyMembersPayload(
  * rather than from an empty one (which would render every fixture agent as "no computer
  * assigned" -- the exact defect #2355 removed from the avatar grid).
  *
- * These are literals for the same reason the seed snapshots above use literal machineIds:
- * VisualFixtureData lives in a gated srcDir this file cannot reference. The drift gate
- * (visual-testing.yml "Check fixture data drift") covers VisualFixtureData.kt, NOT these
- * lines -- if fixtureData.json changes a machine, this table is only kept honest by a
- * human. Task #259 asked XiShi for a non-gated injection point; replace this when one exists.
+ * Why literals and not an injected list: the machine-status capture cases run on the
+ * production `compose_member_detail` page (MEMBER_DETAIL_PAGE, this file), whose `visual-`
+ * seeds are built here in commonMain. That route has no gated wrapper that could read
+ * VisualFixtureData and pass a `List<ComputerSummary>` in. (The gated
+ * `compose_members_agent_detail_visual` page *could* inject -- it just doesn't carry these
+ * cells.) The drift gate (visual-testing.yml "Check fixture data drift") covers
+ * VisualFixtureData.kt, NOT these lines; a separate lint (XiShi, task #259) asserts each row
+ * below equals VisualFixtureData.Machines.* field for field, with `computer-missing`
+ * listed as the deliberate absent id. Keep the two in lockstep.
  */
 private val membersVisualFixtureMachines: List<ComputerSummary> =
     listOf(
@@ -1490,6 +1494,18 @@ private val membersAgentDetailVisualVariants = listOf(
         machineName = "ci-visual-capture-runner-us-west-2b_node17_macbookpro_m4max_buildhost_2026",
         daemonVersion = "0.0.48",
         serverRole = "admin"
+    ),
+    // a bare daemon (isComputer=false) with no computer version: web = green dot + Online + "daemon v0.65.0"
+    MembersAgentDetailVisualVariant(
+        id = "agent-daemon-only",
+        name = "Daemon-Only-Probe",
+        displayName = "Daemon Only Probe",
+        avatarLabel = "DO",
+        description = "Bound to a bare daemon (not a managed Computer): web shows Connected · daemon vX, never a computer version.",
+        machineId = "computer-daemon-only",
+        machineName = "build-box-bare-daemon",
+        daemonVersion = "0.65.0",
+        serverRole = "member"
     )
 )
 
