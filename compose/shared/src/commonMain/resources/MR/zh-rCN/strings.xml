@@ -988,7 +988,6 @@
     <string name="member_action_save_runtime_config">保存运行时配置</string>
     <string name="member_action_diagnostics_copied">诊断信息已复制</string>
     <string name="member_action_issue_reported">问题已报告</string>
-    <string name="member_dialog_change_avatar">更换头像</string>
     <string name="member_dialog_edit_runtime_config">编辑运行时配置</string>
     <string name="member_placeholder_description">描述此 Agent</string>
     <string name="member_hint_runtime_restart">修改运行时配置可能会重启 Agent，使下次启动使用新设置。</string>
