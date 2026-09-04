@@ -73,6 +73,16 @@ versionCode = major * 1_000_000 + minor * 10_000 + patch * 100 + build
 Build `1` is required when rebuilding the same semantic version for a client
 that may already have build `0` installed.
 
+Those coordinates are **dispatch inputs**, not a source-tree requirement.
+`compose/androidApp/build.gradle.kts` computes `versionName` / `versionCode`
+from Gradle properties or `SLOCK_ANDROID_VERSION_*` environment variables,
+with formula fallbacks that produce `1.0.0` / `1000000` when no inputs are
+set. Do not treat those source defaults as a preflight blocker, and do not
+rewrite them into the frozen tree. Allocate the release coordinates, pass
+them to `android-release.yml` (`version_major` / `version_minor` /
+`version_patch` / `version_build` / `version_suffix`), then verify the signed
+artifact carries the allocated values.
+
 ## 2. Run The Preflight
 
 Start from a clean local checkout of the release branch that exactly equals
@@ -107,8 +117,15 @@ The preflight fails closed when any of these facts is false:
 4. The pinned Kuikly release has a valid create-last manifest with the exact
    coordinate closure. The release build then resolves those coordinates
    through the standard Gradle/CocoaPods/OHPM surfaces; there is no source
-   checkout or Maven Local fallback in the release lane. Full 920-object
-   readback remains an explicit audit/recovery mode, not an ordinary build step.
+   checkout or Maven Local fallback **for those Kuikly coordinates** in the
+   release lane. Full 920-object readback remains an explicit audit/recovery
+   mode, not an ordinary build step. This Kuikly/Hands rule is enforced by
+   `exclusiveContent` routing `com.tencent.kuikly-open` and `build.hands` to
+   Raft Artifacts. Declaring `mavenLocal()` in Gradle repository lists is not
+   by itself a blocker; it remains available for unrelated local-dev and
+   shared-fork paths. Fail closed only when a pinned Kuikly/Hands coordinate
+   would resolve from mavenLocal, a gitlink, a local Pod/HAR, or a source
+   build.
 5. The OHOS Hands dependency is complete and immutable. For the current public
    OHPM package mode, `oh-package.json5` must use an exact version, the lock
    must bind that version to the official `ohpm.openharmony.cn` HAR with a
@@ -117,9 +134,10 @@ The preflight fails closed when any of these facts is false:
    Historical release branches that still use `file:./libs/hands.har` remain
    supported only when the local HAR is readable and its metadata agrees with
    the exact local manifest/lock record.
-6. The candidate versionCode is strictly greater than the active Hands version
-   returned by the public update endpoint for the selected channel and Android
-   architecture.
+6. The candidate versionCode — computed from the allocated dispatch inputs,
+   not from source-tree placeholders — is strictly greater than the active
+   Hands version returned by the public update endpoint for the selected
+   channel and Android architecture.
 
 The preflight is read-only apart from fetching remote refs and writing its
 optional report. It never uploads artifacts, creates a tag, or activates a

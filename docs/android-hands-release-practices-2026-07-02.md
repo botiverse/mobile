@@ -95,6 +95,12 @@ Build tooling should expose Gradle properties for these parts, for example:
 The APK's Android manifest/build config and the Hands release metadata must use
 the same computed `versionCode`.
 
+Checked-in source defaults of `versionName=1.0.0` / `versionCode=1000000` are
+the formula fallback when no Gradle property or `SLOCK_ANDROID_VERSION_*`
+input is set. Release preflight records and injects the allocated coordinates
+at CI dispatch; it does not require rewriting those placeholders into the
+frozen tree.
+
 ## SDK Integration
 
 Slock Android should consume the configured Android updater SDK rather than
