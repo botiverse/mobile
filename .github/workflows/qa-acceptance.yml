@@ -568,7 +568,7 @@ jobs:
             # dismiss the keyguard.
             adb shell input keyevent 82 || true
             # task #354 fixture seed: give the photo picker a real image.
-            if [ -s qa-fixture-image.png ]; then adb push qa-fixture-image.png /sdcard/Pictures/qa-fixture-image.png && { adb shell cmd media_scanner scan /sdcard/Pictures/qa-fixture-image.png || adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Pictures/qa-fixture-image.png || true; } || true; fi
+            if [ -s qa-fixture-image.png ]; then adb push qa-fixture-image.png /data/local/tmp/qa-fixture-image.png && adb shell "mkdir -p /sdcard/Pictures /sdcard/Download; cp /data/local/tmp/qa-fixture-image.png /sdcard/Pictures/qa-fixture-image.png || cp /data/local/tmp/qa-fixture-image.png /sdcard/Download/qa-fixture-image.png" && { adb shell cmd media media-scan /sdcard/Pictures/qa-fixture-image.png || adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Pictures/qa-fixture-image.png || true; }; fi
             # emulator-runner executes each script LINE as its own `sh -c`, so
             # shell vars do NOT survive to the next line (林舟: my earlier
             # `APK=$(...)` on one line + `adb install "$APK"` on the next gave an
