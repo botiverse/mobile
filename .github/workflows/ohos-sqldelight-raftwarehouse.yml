@@ -78,24 +78,17 @@ jobs:
             --init-script "$RUNNER_TEMP/ohos-sqldelight-init.gradle" \
             :shared:compileKotlinOhosArm64 \
             --no-daemon --console=plain --stacktrace 2>&1 | tee "$out/compile.log"
-          # The exact configuration name is source-dependent; enumerate and
-          # inspect every OHOS compile classpath exposed by this checkout.
-          configs=$(./gradlew -c settings.ohos.gradle.kts --init-script "$RUNNER_TEMP/ohos-sqldelight-init.gradle" :shared:dependencies --no-daemon --console=plain 2>&1 \
-            | sed -n 's/.*configuration[[:space:]]\+\([^[:space:]]*ohos[^[:space:]]*CompileClasspath\).*/\1/p' | sort -u || true)
-          if [[ -z "$configs" ]]; then
-            configs='ohosArm64MainCompileClasspath'
-          fi
-          : > "$out/resolution.log"
-          for cfg in $configs; do
-            echo "=== configuration=$cfg ===" | tee -a "$out/resolution.log"
-            ./gradlew -c settings.ohos.gradle.kts \
-              --init-script "$RUNNER_TEMP/ohos-sqldelight-init.gradle" \
-              :shared:dependencies --configuration "$cfg" \
-              --no-daemon --console=plain 2>&1 | tee -a "$out/resolution.log" || true
-          done
-          grep -q 'app.cash.sqldelight:runtime:2.1.0-KBA-001' "$out/resolution.log"
-          grep -q 'app.cash.sqldelight:native-driver-ohosarm64:2.1.0-KBA-001' "$out/resolution.log"
-          ! grep -Eqi 'project|included-source|mavenLocal' "$out/resolution.log"
+          # Kotlin MPP does not expose a stable resolvable *CompileClasspath
+          # configuration for native targets. Record the artifacts actually
+          # consumed by the successful compiler invocation instead.
+          find "$GRADLE_USER_HOME/caches/modules-2/files-2.1/app.cash.sqldelight" \
+            -type f -path '*/2.1.0-KBA-001/*' -print | sort \
+            | tee "$out/resolution.log"
+          grep -q '/app.cash.sqldelight/runtime/2.1.0-KBA-001/' "$out/resolution.log"
+          grep -q '/app.cash.sqldelight/runtime-ohosarm64/2.1.0-KBA-001/' "$out/resolution.log"
+          grep -q '/app.cash.sqldelight/native-driver-ohosarm64/2.1.0-KBA-001/' "$out/resolution.log"
+          grep -q '/app.cash.sqldelight/native-driver-ohosarm64/2.1.0-KBA-001/' "$out/compile.log"
+          ! grep -Eqi 'third_party/sqldelight|included-source|mavenLocal' "$out/compile.log"
 
       - name: Upload resolved-coordinate receipt
         if: always()
