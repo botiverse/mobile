@@ -87,8 +87,12 @@ internal fun parseSharedAttachmentUploadCapabilities(bodyText: String): Attachme
     require(dto.maxBytes in 1L..ATTACHMENT_UPLOAD_MAX_BYTES) {
         "attachment upload maxBytes must be positive and within the contract limit"
     }
+    // The server contract caps threshold at ATTACHMENT_UPLOAD_MAX_BYTES, not at
+    // this response's maxBytes. Production Free-plan capabilities advertise
+    // threshold=90MiB with maxBytes=50MiB; requiring threshold <= maxBytes
+    // fail-closes the whole document and blocks every image upload.
     require(dto.directUploadThresholdBytes == null ||
-        dto.directUploadThresholdBytes in 1L..dto.maxBytes) {
+        dto.directUploadThresholdBytes in 1L..ATTACHMENT_UPLOAD_MAX_BYTES) {
         "attachment upload directUploadThresholdBytes is invalid"
     }
     require(dto.sessionExpiresInSeconds == null || dto.sessionExpiresInSeconds in 1..86_400) {
