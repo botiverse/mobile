@@ -3914,6 +3914,21 @@ internal fun MembersAgentDetailVisualContent() {
         agentDetailState = MembersAgentDetailLoadState.Content(membersAgentDetailVisualSnapshot),
         canViewPrivateAgentSurfaces = { _, _ -> true },
         canManageAgent = { _, _ -> true },
+        // Without this the avatar picker never expands under capture. MembersAgentProfileTab
+        // gates editing on `agentProfileEditAuthority != null` (canEdit), and the header only
+        // draws MembersAgentAvatarChoiceGrid when canEdit && showAvatarPicker -- so the
+        // avatar-management visual case was photographing the *collapsed* state while web
+        // photographed the expanded grid. Its 23.83% mismatch was "expanded vs collapsed",
+        // not a spacing difference (XiShi, task #264). The values are fixture identity;
+        // nothing here is authoritative for any real server.
+        agentProfileEditAuthority =
+            MembersAgentProfileEditAuthority(
+                memberId = membersAgentDetailVisualMember.id,
+                environmentId = "visual-fixture",
+                accountId = "visual-fixture",
+                serverId = ServerId("visual-fixture"),
+                profileGeneration = 0L
+            ),
         onBack = {},
         onOpenDirectMessage = {},
         onCopyMemberId = {},
