@@ -80,11 +80,22 @@ jobs:
           cache: pnpm
           cache-dependency-path: slock-source/pnpm-lock.yaml
 
+      - name: Assert workspace packages present (fail-fast guard)
+        run: |
+          if [ -z "$(pnpm ls --filter "@botiverse/raft-web" --depth -1 --parseable 2>/dev/null)" ]; then
+            echo "::error::Package @botiverse/raft-web not found in slock workspace. Possible package rename or branch desync."
+            exit 1
+          fi
+          if [ -z "$(pnpm ls --filter "@botiverse/raft-visual-testing" --depth -1 --parseable 2>/dev/null)" ]; then
+            echo "::error::Package @botiverse/raft-visual-testing not found in slock workspace. Possible package rename or branch desync."
+            exit 1
+          fi
+
       - name: Install web + visual-testing workspace deps
-        run: pnpm install --frozen-lockfile --filter "@slock-ai/web..." --filter "@botiverse/raft-visual-testing..."
+        run: pnpm install --frozen-lockfile --filter "@botiverse/raft-web..." --filter "@botiverse/raft-visual-testing..."
 
       - name: Install playwright chromium
-        run: pnpm --filter "@slock-ai/web" exec playwright install --with-deps chromium
+        run: pnpm --filter "@botiverse/raft-web" exec playwright install --with-deps chromium
 
       # continue-on-error: single broken cases must surface as "missing" in the
       # diff report instead of killing the whole pipeline.
@@ -760,17 +771,11 @@ jobs:
           SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
         run: node scripts/generate_pixel_avatars.mjs --check
 
-      # A targeted case_filter can select cases for one provider only, in which
-      # case the other provider legitimately uploads nothing and this download
-      # has nothing to find. PR #2226 made the UPLOAD side tolerate that
-      # (if-no-files-found: warn when filtered) but not this side, so the failure
-      # simply moved one job downstream: react-capture went green, uploaded no
-      # artifact, and the report job died on "Artifact not found for name:
-      # visual-results-react". Every filtered dispatch has been reporting a red
-      # run for that reason while its Android shard was green.
-      #
-      # Tolerated ONLY when a filter is in play. An unfiltered run that produces
-      # no react/android artifact is a real failure and must still be one.
+      # A targeted case_filter can select Android-only cases (e.g. compact
+      # message menu) which React legitimately has no counterpart for. In that
+      # case React uploads nothing and this download has nothing to find.
+      # Tolerated ONLY for React when a filter is in play. Unfiltered runs must
+      # produce React results. Android captures are always required.
       - name: Download react results
         if: ${{ !inputs.site_only }}
         continue-on-error: ${{ inputs.case_filter != '' }}
@@ -781,12 +786,24 @@ jobs:
 
       - name: Download android results (merge shards)
         if: ${{ !inputs.site_only }}
-        continue-on-error: ${{ inputs.case_filter != '' }}
         uses: actions/download-artifact@v7
         with:
           pattern: visual-results-android-shard-*
           merge-multiple: true
           path: mobile/visual-testing-results/android
+
+      - name: Verify capture artifacts
+        if: ${{ !inputs.site_only }}
+        working-directory: mobile
+        run: |
+          if [ ! -d visual-testing-results/android ] || [ -z "$(ls -A visual-testing-results/android/*.png 2>/dev/null)" ]; then
+            echo "::error::Android capture results missing or empty in visual-testing-results/android"
+            exit 1
+          fi
+          if [ -z "${{ inputs.case_filter }}" ] && { [ ! -d visual-testing-results/react ] || [ -z "$(ls -A visual-testing-results/react/*.png 2>/dev/null)" ]; }; then
+            echo "::error::Unfiltered run requires React captures, but visual-testing-results/react is missing or empty"
+            exit 1
+          fi
 
       # iOS results are additive (task #418): tolerate an absent/red ios leg so
       # the react/android site never blocks on it.
