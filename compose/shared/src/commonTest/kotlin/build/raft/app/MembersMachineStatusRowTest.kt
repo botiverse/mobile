@@ -1,10 +1,13 @@
 package build.raft.app
 
 import build.raft.app.data.ComputerStatus
+import build.raft.app.resources.MR
 import build.raft.app.data.ComputerSummary
 import build.raft.app.data.SharedComputersLoadStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertSame
 
 /**
  * Task #259. One test per cell of the acceptance table on the card. Every input here is
@@ -167,5 +170,63 @@ class MembersMachineStatusRowTest {
         ) as MembersMachineStatusRow.Machine
         assertEquals(false, row.online)
         assertEquals(MembersMachineRunLabel.ComputerOffline, row.runLabel)
+    }
+
+    // LiBai (review of c1fadb13f): localized() is @Composable, so the six label -> resource pairs had
+    // no unit coverage; a swapped resource would compile and pass every test above. The pairing is
+    // now a pure function. Each branch is asserted by identity against its own MR key, and the
+    // argument-carrying branches are asserted separately from the argument-free ones.
+
+    @Test
+    fun computerVersionPairsWithItsOwnResourceAndCarriesTheVersion() {
+        val label = MembersMachineRunLabel.ComputerVersion("0.0.48")
+        assertSame(MR.strings.member_machine_run_computer_version, label.resource())
+        assertEquals("0.0.48", label.formatArg())
+    }
+
+    @Test
+    fun daemonVersionPairsWithItsOwnResourceAndCarriesTheVersion() {
+        val label = MembersMachineRunLabel.DaemonVersion("0.65.0")
+        assertSame(MR.strings.member_machine_run_daemon_version, label.resource())
+        assertEquals("0.65.0", label.formatArg())
+    }
+
+    @Test
+    fun computerOnlinePairsWithItsOwnResourceAndTakesNoArgument() {
+        assertSame(MR.strings.member_machine_run_computer_online, MembersMachineRunLabel.ComputerOnline.resource())
+        assertNull(MembersMachineRunLabel.ComputerOnline.formatArg())
+    }
+
+    @Test
+    fun daemonOnlinePairsWithItsOwnResourceAndTakesNoArgument() {
+        assertSame(MR.strings.member_machine_run_daemon_online, MembersMachineRunLabel.DaemonOnline.resource())
+        assertNull(MembersMachineRunLabel.DaemonOnline.formatArg())
+    }
+
+    @Test
+    fun computerOfflinePairsWithItsOwnResourceAndTakesNoArgument() {
+        assertSame(MR.strings.member_machine_run_computer_offline, MembersMachineRunLabel.ComputerOffline.resource())
+        assertNull(MembersMachineRunLabel.ComputerOffline.formatArg())
+    }
+
+    @Test
+    fun daemonOfflinePairsWithItsOwnResourceAndTakesNoArgument() {
+        assertSame(MR.strings.member_machine_run_daemon_offline, MembersMachineRunLabel.DaemonOffline.resource())
+        assertNull(MembersMachineRunLabel.DaemonOffline.formatArg())
+    }
+
+    @Test
+    fun theSixLabelsMapToSixDistinctResources() {
+        // A copy-paste that pointed two branches at one key would pass each single-branch test
+        // above only if the wrong key were also the asserted one; this catches the pair colliding.
+        val resources = listOf(
+            MembersMachineRunLabel.ComputerVersion("x"),
+            MembersMachineRunLabel.DaemonVersion("x"),
+            MembersMachineRunLabel.ComputerOnline,
+            MembersMachineRunLabel.DaemonOnline,
+            MembersMachineRunLabel.ComputerOffline,
+            MembersMachineRunLabel.DaemonOffline
+        ).map { it.resource() }
+        assertEquals(6, resources.toSet().size)
     }
 }
