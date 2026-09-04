@@ -1,0 +1,91 @@
+name: OHOS SQLDelight Raft Maven consumer
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Mobile source ref/commit to verify
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  clean-cache-consumer:
+    name: Clean-cache OHOS KBA-001 resolution
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    container:
+      image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1
+    timeout-minutes: 90
+    env:
+      GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home
+      SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
+    steps:
+      - name: Checkout locked source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_ref }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Verify isolated cache and Raft-only coordinates
+        working-directory: compose
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GRADLE_USER_HOME" "$RUNNER_TEMP/ohos-sqldelight-receipt"
+          test ! -d "$HOME/.m2/repository/app/cash/sqldelight" || {
+            echo 'unexpected host Maven cache present' >&2; exit 1;
+          }
+          {
+            echo "source=$(git -C .. rev-parse HEAD)"
+            echo "gradle_user_home=$GRADLE_USER_HOME"
+            echo "slock_skip_ohos_local_dep_prep=$SLOCK_SKIP_OHOS_LOCAL_DEP_PREP"
+            echo 'repository_policy=Raft Maven only for KBA-001; no restored/published local artifacts'
+          } | tee "$RUNNER_TEMP/ohos-sqldelight-receipt/environment.txt"
+          ./gradlew -c settings.ohos.gradle.kts tasks --all --no-daemon --console=plain \
+            | tee "$RUNNER_TEMP/ohos-sqldelight-receipt/tasks.txt"
+
+      - name: Resolve and compile real OHOS target
+        working-directory: compose
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ohos-sqldelight-receipt"
+          ./gradlew -c settings.ohos.gradle.kts \
+            :shared:compileKotlinOhosArm64 \
+            --no-daemon --console=plain --stacktrace 2>&1 | tee "$out/compile.log"
+          # The exact configuration name is source-dependent; enumerate and
+          # inspect every OHOS compile classpath exposed by this checkout.
+          configs=$(./gradlew -c settings.ohos.gradle.kts :shared:dependencies --no-daemon --console=plain 2>&1 \
+            | sed -n 's/.*configuration[[:space:]]\+\([^[:space:]]*ohos[^[:space:]]*CompileClasspath\).*/\1/p' | sort -u || true)
+          if [[ -z "$configs" ]]; then
+            configs='ohosArm64MainCompileClasspath'
+          fi
+          : > "$out/resolution.log"
+          for cfg in $configs; do
+            echo "=== configuration=$cfg ===" | tee -a "$out/resolution.log"
+            ./gradlew -c settings.ohos.gradle.kts \
+              :shared:dependencies --configuration "$cfg" \
+              --no-daemon --console=plain 2>&1 | tee -a "$out/resolution.log" || true
+          done
+          grep -q 'app.cash.sqldelight:runtime:2.1.0-KBA-001' "$out/resolution.log"
+          grep -q 'app.cash.sqldelight:native-driver-ohosarm64:2.1.0-KBA-001' "$out/resolution.log"
+          ! grep -Eqi 'project|included-source|mavenLocal' "$out/resolution.log"
+
+      - name: Upload resolved-coordinate receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ohos-sqldelight-kba001-receipt
+          path: ${{ runner.temp }}/ohos-sqldelight-receipt/
+          if-no-files-found: error
+          retention-days: 14
