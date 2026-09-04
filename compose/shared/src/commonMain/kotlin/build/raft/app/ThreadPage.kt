@@ -8087,19 +8087,9 @@ internal fun SharedThreadRouteContent(
             bridge.toast(attachmentPickerUnavailableLabel)
             return false
         }
-        // Capture one complete authority witness for the all-files/direct-session path and reuse
-        // it for capabilities, upload, and compensation. This prevents a session/account/server
-        // switch between those calls from silently falling back to an unbound repository.
-        val directUploadOperation =
-            if (requireAllFiles) {
-                dataSource.captureDirectAttachmentUploadOperation { message -> bridge.log(message) }
-            } else {
-                null
-            }
-        if (requireAllFiles && directUploadOperation == null) {
-            bridge.logWarn("thread_composer_attachment_batch_rejected reason=authority_unavailable")
-            return false
-        }
+        // 1.11.0 bleed-stop: do not consume directUploadEnabled. Gallery/Done stays on the
+        // 1.10.0 multipart path. The direct-session coordinator remains on main.
+        val directUploadOperation: DirectAttachmentUploadOperation? = null
         val directCapabilities =
             if (directUploadOperation != null) {
                 when (val result = directUploadOperation.capabilities()) {
@@ -8301,7 +8291,7 @@ internal fun SharedThreadRouteContent(
             )
         }
 
-        if (requireAllFiles) {
+        if (directUploadOperation != null) {
             // Gallery handoff is an atomic N/N surface.  Do not launch one legacy multipart
             // attempt per file: a sibling can fail after an earlier server attachment has been
             // published, and the legacy route has no retract contract.  The direct-session
