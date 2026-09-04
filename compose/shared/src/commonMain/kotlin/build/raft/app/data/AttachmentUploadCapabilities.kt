@@ -87,29 +87,16 @@ internal fun parseSharedAttachmentUploadCapabilities(bodyText: String): Attachme
     require(dto.maxBytes in 1L..ATTACHMENT_UPLOAD_MAX_BYTES) {
         "attachment upload maxBytes must be positive and within the contract limit"
     }
-    // The server contract caps threshold at ATTACHMENT_UPLOAD_MAX_BYTES, not at
-    // this response's maxBytes. Production Free-plan capabilities advertise
-    // threshold=90MiB with maxBytes=50MiB; requiring threshold <= maxBytes
-    // fail-closes the whole document and blocks every image upload.
-    require(dto.directUploadThresholdBytes == null ||
-        dto.directUploadThresholdBytes in 1L..ATTACHMENT_UPLOAD_MAX_BYTES) {
-        "attachment upload directUploadThresholdBytes is invalid"
-    }
-    require(dto.sessionExpiresInSeconds == null || dto.sessionExpiresInSeconds in 1..86_400) {
-        "attachment upload sessionExpiresInSeconds is invalid"
-    }
-    if (!dto.directUploadEnabled) {
-        // A disabled server must not accidentally advertise a usable direct-session lifetime or
-        // threshold.  This keeps the capability branch fail-closed when fields drift.
-        require(dto.directUploadThresholdBytes == null && dto.sessionExpiresInSeconds == null) {
-            "disabled direct upload cannot advertise session parameters"
-        }
-    }
+    // This train does not consume R2 direct-upload fields. Production Free-plan
+    // capabilities advertise enabled=true with threshold=90MiB > maxBytes=50MiB;
+    // parsing those fields as admission gates fail-closed the whole document and
+    // blocked every image. Keep maxBytes (1.10.0 did) and ignore the rest until
+    // threshold routing actually exists.
     return AttachmentUploadCapabilities(
         maxBytes = dto.maxBytes,
-        directUploadEnabled = dto.directUploadEnabled,
-        directUploadThresholdBytes = dto.directUploadThresholdBytes,
-        sessionExpiresInSeconds = dto.sessionExpiresInSeconds,
+        directUploadEnabled = false,
+        directUploadThresholdBytes = null,
+        sessionExpiresInSeconds = null,
     )
 }
 
