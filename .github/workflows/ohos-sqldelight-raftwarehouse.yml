@@ -60,11 +60,16 @@ jobs:
             // marker is resolvable from Raft Maven without MavenLocal.
             project.buildscript.repositories.removeIf { it.name == 'MavenLocal' }
           }
-          gradle.settingsEvaluated { settings ->
+          gradle.beforeSettings { settings ->
             settings.pluginManagement.repositories.maven {
               name = 'RaftArtifactsSQLDelight'
               url = uri('https://maven.artifacts.botiverse.dev')
               content { includeGroup('app.cash.sqldelight') }
+            }
+            settings.pluginManagement.resolutionStrategy.eachPlugin {
+              if (requested.id.id == 'app.cash.sqldelight' && requested.version == '2.1.0-KBA-001') {
+                useModule('app.cash.sqldelight:gradle-plugin:2.1.0-KBA-001')
+              }
             }
           }
           gradle.settingsEvaluated { settings ->
