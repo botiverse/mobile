@@ -1,7 +1,9 @@
 package build.raft.app
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class ThreadComposerMountReadinessTest {
@@ -41,4 +43,33 @@ class ThreadComposerMountReadinessTest {
             )
         )
     }
+
+    @Test
+    fun composerStartIdentityChangesForParentRebindButNotDraftEdits() {
+        val composer = KuiklyThreadComposerPayload(instanceId = "composer-route")
+        val firstSurface =
+            ThreadComposerSurface(
+                kind = KuiklyThreadSurfaceKind.ReplyThread,
+                channelId = "thread-a",
+                streamChannelId = "thread-a",
+                parentChannelId = "channel-a",
+                parentMessageId = "message-a"
+            )
+        val secondSurface = firstSurface.copy(parentMessageId = "message-b")
+
+        val first = threadComposerStartIdentity(composer, firstSurface)
+        val second = threadComposerStartIdentity(composer, secondSurface)
+
+        assertNotEquals(first, second)
+        assertNotEquals(first.draftKey, second.draftKey)
+        assertEquals("composer-route", second.instanceId)
+        assertEquals(
+            first,
+            threadComposerStartIdentity(
+                composer.copy(seedText = "draft changed"),
+                firstSurface
+            )
+        )
+    }
+
 }

@@ -6833,23 +6833,26 @@ internal fun SharedThreadRouteContent(
         }
     }
 
-    LaunchedEffect(composerDraftViewModel, threadInstanceKey, resolvedAuxiliaryThreadId) {
-        val composer =
-            renderedPayload
-                .resolveThreadComposer(displayName = headerDisplayModel.title)
-                .copy(streamChannelId = resolvedAuxiliaryThreadId)
-        val draftKey =
-            composer
-                .toThreadComposerSurface(
-                    channelId = resolvedAuxiliaryThreadId.orEmpty(),
-                    parentChannelId = renderedPayload.parentChannelId,
-                    memberSuggestionHeadersVisible = renderedPayload.threadComposerMemberSuggestionHeadersVisible()
-                )
-                .threadComposerDraftKey()
+    val composerStartState =
+        renderedPayload
+            .resolveThreadComposer(displayName = headerDisplayModel.title)
+            .copy(streamChannelId = resolvedAuxiliaryThreadId)
+    val composerStartSurface =
+        composerStartState.toThreadComposerSurface(
+            channelId = resolvedAuxiliaryThreadId.orEmpty(),
+            parentChannelId = renderedPayload.parentChannelId,
+            memberSuggestionHeadersVisible = renderedPayload.threadComposerMemberSuggestionHeadersVisible()
+        )
+    val composerStartIdentity =
+        threadComposerStartIdentity(
+            composer = composerStartState,
+            surface = composerStartSurface
+        )
+    LaunchedEffect(composerDraftViewModel, threadInstanceKey, composerStartIdentity) {
         composerDraftViewModel.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = composer,
-                draftKey = draftKey
+                composer = composerStartState,
+                draftKey = composerStartIdentity.draftKey
             )
         )
     }
@@ -14482,11 +14485,11 @@ private fun ThreadComposerRoute(
     onKeyboardHeightChange: (Float) -> Unit
 ) {
     val composerDraftState by composerDraftViewModel.state.collectAsState()
-    val expectedDraftKey = remember(surface) { surface.threadComposerDraftKey() }
+    val composerStartIdentity = threadComposerStartIdentity(baseComposerState, surface)
     if (
         !threadComposerEditorReadyToMount(
-            composerInstanceId = baseComposerState.instanceId,
-            expectedDraftKey = expectedDraftKey,
+            composerInstanceId = composerStartIdentity.instanceId,
+            expectedDraftKey = composerStartIdentity.draftKey,
             draftState = composerDraftState,
         )
     ) {

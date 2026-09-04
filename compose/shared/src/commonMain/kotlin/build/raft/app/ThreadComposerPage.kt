@@ -461,6 +461,29 @@ internal fun ThreadComposerSurface.threadComposerDraftKey(): String? {
     }
 }
 
+/**
+ * Identity which must restart the route-owned draft session.
+ *
+ * A Thread route can retain one Compose instance while its payload is rebound to another
+ * conversation. Route/stream keys alone do not cover every payload transition: the resolved
+ * composer instance or draft key may change while the route instance remains alive. Keep surface
+ * presentation, seed text, and other mutable editor values out of this identity so an ordinary
+ * recomposition cannot re-run Start and overwrite a user's current edit.
+ */
+internal data class ThreadComposerStartIdentity(
+    val instanceId: String,
+    val draftKey: String?
+)
+
+internal fun threadComposerStartIdentity(
+    composer: KuiklyThreadComposerPayload,
+    surface: ThreadComposerSurface
+): ThreadComposerStartIdentity =
+    ThreadComposerStartIdentity(
+        instanceId = composer.instanceId,
+        draftKey = surface.threadComposerDraftKey()
+    )
+
 private fun String.threadComposerDraftKeyPart(): String =
     if (isBlank()) {
         "_"
