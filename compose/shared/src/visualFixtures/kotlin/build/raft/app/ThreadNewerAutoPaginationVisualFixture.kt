@@ -8,6 +8,9 @@ import build.raft.app.base.Utils
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.ProcessPresenceAuthContext
+import build.raft.app.data.SelectedServerStore
+import build.raft.app.data.ThreadReplyCacheIdentityAuthority
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedThreadNetworkApi
 import build.raft.app.data.SlockSharedStoreRegistry
@@ -198,9 +201,29 @@ private fun ThreadNewerAutoPaginationVisualContent(runNonce: String, showCompose
                 initialServerId = ThreadNewerAutoServerId,
             )
         }
+    val fixtureSession = remember(runNonce) { threadNewerAutoSession(runNonce) }
     val sessionStore =
         remember(runNonce) {
-            InMemorySlockAuthSessionStore(threadNewerAutoSession(runNonce))
+            InMemorySlockAuthSessionStore(fixtureSession)
+        }
+    // Task #1122: the data source has no private identity resolver any more; this fixture is its
+    // own realm (own session store, own environment id), so it names its own authority — the
+    // production authority class, fed a fixed auth context that matches the fixture session.
+    val replyCacheIdentityAuthority =
+        remember(runNonce, sessionStore, storeScope) {
+            ThreadReplyCacheIdentityAuthority(
+                sessionStore = sessionStore,
+                selectedServerStore = SelectedServerStore(storeScope),
+                authContextProvider = {
+                    ProcessPresenceAuthContext(
+                        environmentId = ThreadNewerAutoEnvironmentId,
+                        accountId = fixtureSession.user.id,
+                        authorityGeneration = 1L,
+                        writeGeneration = 1L,
+                    )
+                },
+                environmentIdProvider = { ThreadNewerAutoEnvironmentId },
+            )
         }
     val networkApi = remember(runNonce) { ThreadNewerAutoPaginationNetworkApi(runNonce) }
     val dataSource =
@@ -210,6 +233,7 @@ private fun ThreadNewerAutoPaginationVisualContent(runNonce: String, showCompose
                 sessionStore = sessionStore,
                 // This fixture is its own realm: name it instead of relying on a blank default.
                 cacheEnvironmentIdProvider = { ThreadNewerAutoEnvironmentId },
+                replyCacheIdentityAuthority = { replyCacheIdentityAuthority.capture() },
                 threadPageSizeProvider = { ThreadNewerAutoPageSize },
                 diagnosticsLogger = { message -> bridge.log("thread_newer_auto_fixture $message") },
             )

@@ -1422,7 +1422,10 @@ internal class SharedThreadDataSource(
     private val cacheEnvironmentIdProvider: () -> String,
     /** Current API environment used to bind direct-session uploads to one route authority. */
     private val apiEnvironmentIdProvider: () -> String = { cacheEnvironmentIdProvider() },
-    private val replyCacheIdentityAuthority: (suspend () -> ThreadReplyCacheIdentitySnapshot?)? = null,
+    // REQUIRED (task #1122): reply-cache identity comes only from the provider-owned authority
+    // (`ThreadReplyCacheIdentityAuthority`). There is no private fallback resolver any more, so a
+    // data source that cannot name its authority cannot be constructed.
+    private val replyCacheIdentityAuthority: suspend () -> ThreadReplyCacheIdentitySnapshot?,
     private val replyCacheIdentityTransitionWaiter:
         (suspend (ThreadReplyCacheIdentityTransitionAnchor?) -> Boolean)? = null,
     payloadStore: SharedThreadPayloadStore? = null,
@@ -1530,7 +1533,7 @@ internal class SharedThreadDataSource(
         messageStore: SharedThreadMessageStore? = null,
         cacheEnvironmentIdProvider: () -> String,
         apiEnvironmentIdProvider: () -> String = cacheEnvironmentIdProvider,
-        replyCacheIdentityAuthority: (suspend () -> ThreadReplyCacheIdentitySnapshot?)? = null,
+        replyCacheIdentityAuthority: suspend () -> ThreadReplyCacheIdentitySnapshot?,
         replyCacheIdentityTransitionWaiter:
             (suspend (ThreadReplyCacheIdentityTransitionAnchor?) -> Boolean)? = null,
         payloadStore: SharedThreadPayloadStore? = null,
@@ -1745,70 +1748,8 @@ internal class SharedThreadDataSource(
         }
     }
 
-    private data class PrivateReplyCacheAuthEpochKey(
-        val environmentId: String,
-        val principalId: String,
-        val serverIds: List<String>,
-    )
-
-    private var privateReplyCacheAuthEpoch = 0L
-    private var privateReplyCacheAuthEpochKey: PrivateReplyCacheAuthEpochKey? = null
-
-    /**
-     * Auth epoch for the private resolver only. Production never reaches this: the provider-owned
-     * authority carries `RealtimeAuthorityRegistry`'s generation. This mirrors that registry's
-     * non-forced advance — the first session is epoch `1`, and the epoch moves by one whenever
-     * the session identity (environment, principal, server set) read here changes — so the
-     * fallback never publishes the registry's `0` "no session" sentinel as a live owner.
-     */
-    private fun privateReplyCacheAuthEpoch(key: PrivateReplyCacheAuthEpochKey): Long =
-        synchronized(replyCacheProvenanceLock) {
-            if (privateReplyCacheAuthEpochKey != key) {
-                privateReplyCacheAuthEpochKey = key
-                privateReplyCacheAuthEpoch += 1L
-            }
-            privateReplyCacheAuthEpoch
-        }
-
-    private suspend fun readReplyCacheIdentitySource(): ThreadReplyCacheIdentitySnapshot? {
-        replyCacheIdentityAuthority?.let { authority -> return authority() }
-        // A process-shared message store must never mint cache ownership from independently sampled
-        // live fields. Production supplies the provider-owned authority above; missing authority is
-        // a hard fail-closed boundary. The fallback exists only for this data source's private resolver.
-        if (messageStore != null) return null
-        val session = sessionStore.readSession() ?: return null
-        val environmentId = cacheEnvironmentIdProvider().trim().trimEnd('/')
-        val principalId = session.user.id.trim()
-        val selectedServerId =
-            selectedServerStore?.selectedServerId?.value
-                ?.trim()
-                ?.takeIf { it.isNotEmpty() }
-        val serverId =
-            (selectedServerId ?: session.currentServerId)
-                ?.trim()
-                ?.takeIf { candidate ->
-                    candidate.isNotEmpty() &&
-                        (session.servers.isEmpty() || session.servers.any { it.id == candidate })
-                }
-                .orEmpty()
-        return ThreadReplyCacheIdentitySnapshot(
-            session = session,
-            environmentId = environmentId,
-            principalId = principalId,
-            serverId = serverId,
-            authGeneration =
-                privateReplyCacheAuthEpoch(
-                    PrivateReplyCacheAuthEpochKey(
-                        environmentId = environmentId,
-                        principalId = principalId,
-                        serverIds = session.servers.map { it.id.trim() }.filter { it.isNotEmpty() }.distinct(),
-                    )
-                ),
-            // First durable selection epoch, not a sentinel: `SelectedServerStore` starts at 0 and
-            // only advances on server change or logout, which the private resolver never observes.
-            selectionGeneration = 0L,
-        )
-    }
+    private suspend fun readReplyCacheIdentitySource(): ThreadReplyCacheIdentitySnapshot? =
+        replyCacheIdentityAuthority()
 
     private fun publishReplyCacheProvenance(
         source: ThreadReplyCacheIdentitySnapshot,

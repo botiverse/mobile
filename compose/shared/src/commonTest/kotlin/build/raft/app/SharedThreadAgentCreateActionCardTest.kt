@@ -124,7 +124,7 @@ class SharedThreadAgentCreateActionCardTest {
         actionsApi: RecordingActionCardApi,
         computersApi: UnusedComputersApi
     ): SharedThreadDataSource =
-        SharedThreadDataSource(
+        testSharedThreadDataSource(
             networkApi = UnusedThreadNetworkApi(),
             sessionStore = InMemorySlockAuthSessionStore(),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },

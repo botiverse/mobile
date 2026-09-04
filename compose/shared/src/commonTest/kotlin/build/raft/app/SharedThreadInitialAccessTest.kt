@@ -117,7 +117,7 @@ class SharedThreadInitialAccessTest {
         val store =
             SharedThreadStore(
                 dataSource =
-                    SharedThreadDataSource(
+                    testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -172,7 +172,7 @@ class SharedThreadInitialAccessTest {
         val store =
             SharedThreadStore(
                 dataSource =
-                    SharedThreadDataSource(
+                    testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -236,7 +236,7 @@ class SharedThreadInitialAccessTest {
         val store =
             SharedThreadStore(
                 dataSource =
-                    SharedThreadDataSource(
+                    testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -397,7 +397,7 @@ class SharedThreadInitialAccessTest {
         val store =
             SharedThreadStore(
                 dataSource =
-                    SharedThreadDataSource(
+                    testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -455,7 +455,7 @@ class SharedThreadInitialAccessTest {
         val store =
             SharedThreadStore(
                 dataSource =
-                    SharedThreadDataSource(
+                    testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -526,7 +526,7 @@ class SharedThreadInitialAccessTest {
         val store =
             SharedThreadStore(
                 dataSource =
-                    SharedThreadDataSource(
+                    testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -603,7 +603,7 @@ class SharedThreadInitialAccessTest {
         val store =
             SharedThreadStore(
                 dataSource =
-                    SharedThreadDataSource(
+                    testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },

@@ -34,7 +34,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
     @Test
     fun homeEnrichmentKeepsDmPeersSeparateFromOrdinaryMentionValidity() = runBlocking {
         val dataSource =
-            SharedThreadDataSource(
+            testSharedThreadDataSource(
                 networkApi = SharedThreadStoreTest.FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "viewer")),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -63,7 +63,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
                         )
             )
         val dataSource =
-            SharedThreadDataSource(
+            testSharedThreadDataSource(
                 networkApi = SharedThreadStoreTest.FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "viewer")),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },

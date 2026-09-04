@@ -95,7 +95,7 @@ class SharedThreadJumpToLatestTest {
     }
 
     private fun dataSource(api: SharedThreadNetworkApi): SharedThreadDataSource =
-        SharedThreadDataSource(
+        testSharedThreadDataSource(
             networkApi = api,
             sessionStore =
                 InMemorySlockAuthSessionStore(

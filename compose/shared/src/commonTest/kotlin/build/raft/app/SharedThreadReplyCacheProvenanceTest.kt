@@ -573,27 +573,6 @@ class SharedThreadReplyCacheProvenanceTest {
     }
 
     @Test
-    fun sharedMessageStoreWithoutOwnerAuthorityMintsNoToken() = runBlocking {
-        val messageStore = SharedThreadMessageStore()
-        val dataSource =
-            SharedThreadDataSource(
-                api = UnusedThreadApi,
-                sessionStore = InMemorySlockAuthSessionStore(session("account-a")),
-                messageStore = messageStore,
-                cacheEnvironmentIdProvider = { "https://prod.example.test" },
-            )
-
-        assertNull(dataSource.captureReplyCacheProducerContext())
-        assertNull(
-            messageStore.getReplyThreadStream(
-                "https://prod.example.test\u001faccount-a\u001fserver-1",
-                "channel-1",
-                ParentMessageId,
-            )
-        )
-    }
-
-    @Test
     fun missingSessionOrContextCannotUseRetiredAnchorToRepairAuthority() = runBlocking {
         val accountA = session("account-a")
         val authStore = InMemorySlockAuthSessionStore(accountA)
