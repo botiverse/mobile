@@ -63,6 +63,12 @@ enter the semantic version components. `version_build` must be between 0 and
 major * 1,000,000 + minor * 10,000 + patch * 100 + build
 ```
 
+`compose/ohosApp/AppScope/app.json5` may still contain placeholder
+`versionName: "1.0.0"` / `versionCode: 1000000`. That is expected. CI rewrites
+those fields with `scripts/set_ohos_app_version.mjs` at dispatch; do not treat
+the source placeholders as a preflight blocker, and do not rewrite them into
+the frozen tree.
+
 Before upload, CI verifies all of the following:
 
 - the `.app` ZIP structure is readable;

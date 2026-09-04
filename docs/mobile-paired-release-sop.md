@@ -48,10 +48,24 @@ must remain separate for the exact being reviewed.
    Artifacts release set. Record the exact version, source commit/tree/tag,
    complete manifest, and per-artifact bytes and SHA-256. A missing manifest,
    incomplete platform set, hash mismatch, version range, `latest`, or silent
-   fallback to a gitlink, `mavenLocal`, local pod, HAR, or source build blocks
-   the candidate. A source checkout may remain as a provenance anchor, but it
-   is not a production dependency fallback.
-8. When the release owner says **publish iOS** or **publish to TestFlight**
+   fallback of those pinned coordinates to a gitlink, `mavenLocal`, local pod,
+   HAR, or source build blocks the candidate. A source checkout may remain as
+   a provenance anchor, but it is not a production dependency fallback.
+   Kuikly (`com.tencent.kuikly-open`) and Hands (`build.hands`) are routed
+   with Gradle `exclusiveContent` to Raft Artifacts, so they cannot fall
+   through to `mavenLocal()`. Declaring `mavenLocal()` in repository lists is
+   therefore not a preflight blocker. Other shared forks keep their own
+   provenance rules and are not covered by deleting that repository entry.
+8. Platform versionName / versionCode / CFBundleVersion values are **CI
+   dispatch inputs**. Frozen source may keep placeholder defaults
+   (`1.0.0` / `1000000` on Android and OHOS; iOS `MARKETING_VERSION=1.0` /
+   `CURRENT_PROJECT_VERSION=1`). Do not rewrite those placeholders into the
+   freeze tree, and do not fail preflight merely because the source defaults
+   are still present. The version gate is: allocate monotonic coordinates,
+   inject them at workflow dispatch, then verify the signed artifacts. Android
+   and OHOS normally use the train semantic version; iOS may keep a separate
+   App Store marketing version and a monotonic `CFBundleVersion`.
+9. When the release owner says **publish iOS** or **publish to TestFlight**
    without narrowing the boundary, the delivery contract ends only after the
    selected testers have actually been notified. Upload completion, an ASC
    `VALID` build, beta-group assignment, localized What to Test, Beta App
@@ -157,13 +171,16 @@ production train.
 Start from a clean checkout equal to `origin/release-X.Y.Z`. Record branch,
 carrier source exact, tree, required PRs, and terminal exact-source checks.
 
-Before dispatch, resolve every private fork dependency from an empty cache
-using only the plan's exact Raft Artifacts manifest. Require the resolved
-Android/KMP, Apple, OHOS, plugin, and renderer set selected by the plan to be
-complete and byte-identical to that manifest. Record the dependency release
-version, source exact, manifest digest, and resolved artifact digests in the
-candidate receipt. Publishing the dependency set and consuming it are separate
-gates; neither is inferred from a source merge.
+Before dispatch, allocate and record each platform's version coordinates as
+workflow inputs. Source-tree placeholders are expected. Then resolve the
+plan's Raft Artifacts Kuikly/Hands coordinates from an empty cache using only
+that exact manifest. Require the resolved Android/KMP, Apple, OHOS, plugin,
+and renderer set selected by the plan to be complete and byte-identical to
+that manifest. Record the dependency release version, source exact, manifest
+digest, and resolved artifact digests in the candidate receipt. Publishing
+the dependency set and consuming it are separate gates; neither is inferred
+from a source merge. An empty-cache proof is for those pinned coordinates,
+not a requirement to delete `mavenLocal()` from Gradle settings.
 
 Android:
 

@@ -56,7 +56,12 @@ stamps the processed `Info.plist` with the source commit under the
 `HandsBuildCommit` key (what the Hands iOS SDK reads) and, when the env vars are
 present, overrides `CFBundleShortVersionString` and `CFBundleVersion`. This
 prevents release artifacts from falling back to the project defaults
-`MARKETING_VERSION=1.0` / `CURRENT_PROJECT_VERSION=1`.
+`MARKETING_VERSION=1.0` / `CURRENT_PROJECT_VERSION=1`. Those project defaults
+are expected in frozen source. Preflight must not fail because the Xcode
+project still shows `1.0` / `1`; the version gate is dispatch injection plus
+artifact readback. iOS may keep App Store marketing version `1.0.0` and a
+monotonic `CFBundleVersion` (for example `1000022`) while Android uses the
+train semantic version.
 
 ## GitHub Actions
 
