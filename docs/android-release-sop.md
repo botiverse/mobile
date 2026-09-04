@@ -192,6 +192,9 @@ must run image picker → Done → composer preview → send → row readback, p
 oversize sibling admission. Identity receipts do not transfer across
 versionCodes. See [Mobile Paired Release SOP](mobile-paired-release-sop.md)
 section 6. A testbed case list is a dispatch list; it is not auto-executed.
+A hotfix may skip the full matrix only as `NOT RUN · hotfix waiver` with owner,
+scope, compensating check, and follow-up date. Identity receipts are not
+waivable.
 
 Android 1.8 production dispatches default to `dex_packaging=compressed` and
 `jni_packaging=current`. The DEX choice is admitted only with the 45 MiB APK

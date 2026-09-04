@@ -279,6 +279,14 @@ named seat has timed one image-upload case on the release carrier, do not treat
 the full testbed table as a hard time-box. Physical OHOS stays `NOT RUN` unless
 a physical seat exists.
 
+A **hotfix** train may skip the full smoke matrix only with a recorded owner
+exception. Record `release_mode=hotfix`, waiver owner, scope, expiry or
+follow-up date, skipped cases, compensating checks on the affected path, and
+risk. Skipped cases are `NOT RUN · hotfix waiver`. Never record a waiver as
+PASS. Identity/signature receipts on the exact versionCode + SHA-256 are
+**not** waivable. An affected core path (for example image upload on an upload
+hotfix) is not silently skipped.
+
 ## 7. Apply Notes With Revision Preconditions
 
 For each Hands draft:
