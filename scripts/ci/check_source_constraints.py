@@ -52,6 +52,9 @@ SLOCK_SHARED_STORE_PROVIDER = (
     "compose/shared/src/commonMain/kotlin/build/raft/app/data/SlockSharedStoreProvider.kt"
 )
 ANDROID_ACTIVITY = "compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt"
+VISUAL_FIXTURE_DATA = (
+    "compose/shared/src/visualFixtures/kotlin/build/raft/app/VisualFixtureData.kt"
+)
 COMPOSER_IME_CONNECTED_TEST = (
     "compose/androidApp/src/androidTest/java/build/raft/app/shared/"
     "SlockThreadImePaintConnectedTest.kt"
@@ -745,6 +748,232 @@ def check_label_facing_resolver_has_no_production_callers(root: Path) -> None:
         )
 
 
+def check_task_259_members_visual_fixtures(
+    members_page: str, visual_fixture_data: str
+) -> None:
+    """task #259: assert MembersPage.kt literal machines and variants match VisualFixtureData.
+
+    MembersPage.kt runs on production compose_member_detail in commonMain without
+    a gated wrapper to inject ComputerSummary fixtures, so it carries literal machines.
+    This constraint verifies:
+    1. membersVisualFixtureMachines equals VisualFixtureData.Machines field for field.
+    2. membersAgentDetailVisualVariants daemonVersion matches the referenced machine's
+       daemonVersion (in-file self-consistency).
+    3. Variant machineIds are restricted to {Machines.*} union {"computer-missing", None}.
+    4. agent-daemon-only variant fields match VisualFixtureData.Agents.DaemonOnly verbatim.
+    """
+    machines_block_match = re.search(
+        r"object Machines \{(.*?)\n    \}", visual_fixture_data, re.DOTALL
+    )
+    if not machines_block_match:
+        raise Violation("task #259: VisualFixtureData.Machines block not found")
+    machines_block = machines_block_match.group(1)
+
+    fixture_machines = {}
+    obj_matches = re.finditer(
+        r"object (\w+) \{(.*?)\n        \}", machines_block, re.DOTALL
+    )
+    for om in obj_matches:
+        obj_body = om.group(2)
+        m_id = re.search(r'const val ID: String = "([^"]+)"', obj_body).group(1)
+        m_name = re.search(r'const val NAME: String = "([^"]+)"', obj_body).group(1)
+        m_status = re.search(r'const val STATUS: String = "([^"]+)"', obj_body).group(1)
+        m_is_comp = (
+            re.search(r"const val IS_COMPUTER: Boolean = (true|false)", obj_body).group(1)
+            == "true"
+        )
+        comp_ver_m = re.search(
+            r'(?:const val|val) COMPUTER_VERSION: String\?? = (?:null|"([^"]+)")',
+            obj_body,
+        )
+        m_comp_ver = comp_ver_m.group(1) if comp_ver_m else None
+        daemon_ver_m = re.search(
+            r'(?:const val|val) DAEMON_VERSION: String\?? = (?:null|"([^"]+)")',
+            obj_body,
+        )
+        m_daemon_ver = daemon_ver_m.group(1) if daemon_ver_m else None
+
+        fixture_machines[m_id] = {
+            "name": m_name,
+            "status": m_status,
+            "is_computer": m_is_comp,
+            "computer_version": m_comp_ver,
+            "daemon_version": m_daemon_ver,
+        }
+
+    page_machines_block_m = re.search(
+        r"private val membersVisualFixtureMachines: List<ComputerSummary> =.*?listOf\((.*?)\n    \)",
+        members_page,
+        re.DOTALL,
+    )
+    if not page_machines_block_m:
+        raise Violation(
+            "task #259: membersVisualFixtureMachines list not found in MembersPage.kt"
+        )
+    page_machines_block = page_machines_block_m.group(1)
+
+    machine_call_regex = re.compile(
+        r'membersVisualFixtureMachine\(\s*'
+        r'"(?P<id>[^"]+)",\s*'
+        r'"(?P<name>[^"]+)",\s*'
+        r'ComputerStatus\.(?P<status>Online|Offline),\s*'
+        r'isComputer\s*=\s*(?P<isComputer>true|false),\s*'
+        r'computerVersion\s*=\s*(?P<computerVersion>"[^"]*"|null),\s*'
+        r'daemonVersion\s*=\s*(?P<daemonVersion>"[^"]*"|null)'
+        r'\s*\)'
+    )
+
+    page_machines = {}
+    for m in machine_call_regex.finditer(page_machines_block):
+        m_id = m.group("id")
+        cv = m.group("computerVersion")
+        dv = m.group("daemonVersion")
+        page_machines[m_id] = {
+            "name": m.group("name"),
+            "status": m.group("status").lower(),
+            "is_computer": m.group("isComputer") == "true",
+            "computer_version": cv.strip('"') if cv != "null" else None,
+            "daemon_version": dv.strip('"') if dv != "null" else None,
+        }
+
+    if len(page_machines) != len(fixture_machines):
+        raise Violation(
+            f"task #259: membersVisualFixtureMachines count ({len(page_machines)}) "
+            f"!= VisualFixtureData.Machines count ({len(fixture_machines)})"
+        )
+
+    for m_id, f_data in fixture_machines.items():
+        if m_id not in page_machines:
+            raise Violation(
+                f"task #259: machine {m_id} missing from membersVisualFixtureMachines"
+            )
+        p_data = page_machines[m_id]
+        for field in ("name", "status", "is_computer", "computer_version", "daemon_version"):
+            if p_data[field] != f_data[field]:
+                raise Violation(
+                    f"task #259: machine {m_id} field {field} mismatch: "
+                    f"page has {p_data[field]!r}, fixture has {f_data[field]!r}"
+                )
+
+    variants_block_m = re.search(
+        r"private val membersAgentDetailVisualVariants = listOf\((.*?)\n\)",
+        members_page,
+        re.DOTALL,
+    )
+    if not variants_block_m:
+        raise Violation(
+            "task #259: membersAgentDetailVisualVariants list not found in MembersPage.kt"
+        )
+    variants_block = variants_block_m.group(1)
+
+    variant_call_regex = re.compile(
+        r'MembersAgentDetailVisualVariant\(\s*'
+        r'id\s*=\s*"(?P<id>[^"]+)",\s*'
+        r'name\s*=\s*"(?P<name>[^"]+)",\s*'
+        r'displayName\s*=\s*"(?P<displayName>[^"]+)",\s*'
+        r'avatarLabel\s*=\s*"(?P<avatarLabel>[^"]+)",\s*'
+        r'description\s*=\s*"(?P<description>[^"]+)",\s*'
+        r'machineId\s*=\s*(?P<machineId>"[^"]*"|null),\s*'
+        r'machineName\s*=\s*(?P<machineName>"[^"]*"|null),\s*'
+        r'daemonVersion\s*=\s*(?P<daemonVersion>"[^"]*"|null),\s*'
+        r'serverRole\s*=\s*"(?P<serverRole>[^"]+)"\s*'
+        r'\)',
+        re.DOTALL,
+    )
+
+    page_variants = {}
+    allowed_machine_ids = set(page_machines.keys()) | {"computer-missing", None}
+
+    for vm in variant_call_regex.finditer(variants_block):
+        v_id = vm.group("id")
+        mid = vm.group("machineId")
+        m_id = mid.strip('"') if mid != "null" else None
+        mname = vm.group("machineName")
+        m_name = mname.strip('"') if mname != "null" else None
+        dver = vm.group("daemonVersion")
+        d_ver = dver.strip('"') if dver != "null" else None
+
+        page_variants[v_id] = {
+            "name": vm.group("name"),
+            "displayName": vm.group("displayName"),
+            "avatarLabel": vm.group("avatarLabel"),
+            "description": vm.group("description"),
+            "machineId": m_id,
+            "machineName": m_name,
+            "daemonVersion": d_ver,
+            "serverRole": vm.group("serverRole"),
+        }
+
+        if m_id not in allowed_machine_ids:
+            raise Violation(
+                f"task #259: variant {v_id} references unallowed machineId {m_id!r} "
+                "(must be in fixture machines or 'computer-missing' / null)"
+            )
+
+        if m_id in page_machines:
+            expected_daemon_ver = page_machines[m_id]["daemon_version"]
+            if d_ver != expected_daemon_ver:
+                raise Violation(
+                    f"task #259: variant {v_id} daemonVersion ({d_ver!r}) mismatches "
+                    f"referenced machine {m_id} daemonVersion ({expected_daemon_ver!r})"
+                )
+
+    if "agent-daemon-only" not in page_variants:
+        raise Violation(
+            "task #259: variant agent-daemon-only missing from membersAgentDetailVisualVariants"
+        )
+
+    agents_block_m = re.search(
+        r"object Agents \{(.*?)\n    \}", visual_fixture_data, re.DOTALL
+    )
+    if not agents_block_m:
+        raise Violation("task #259: VisualFixtureData.Agents block not found")
+    agents_block = agents_block_m.group(1)
+
+    agent_do_block_m = re.search(
+        r"object DaemonOnly \{(.*?)\n        \}", agents_block, re.DOTALL
+    )
+    if not agent_do_block_m:
+        raise Violation("task #259: VisualFixtureData.Agents.DaemonOnly block not found")
+    agent_do_block = agent_do_block_m.group(1)
+
+    f_agent_name = re.search(r'const val NAME: String = "([^"]+)"', agent_do_block).group(1)
+    f_agent_dname = re.search(
+        r'const val DISPLAY_NAME: String = "([^"]+)"', agent_do_block
+    ).group(1)
+    f_agent_alabel = re.search(
+        r'const val AVATAR_LABEL: String = "([^"]+)"', agent_do_block
+    ).group(1)
+    f_agent_desc = re.search(
+        r'const val DESCRIPTION: String = "([^"]+)"', agent_do_block
+    ).group(1)
+    f_agent_role = re.search(
+        r'const val SERVER_ROLE: String = "([^"]+)"', agent_do_block
+    ).group(1)
+
+    p_v = page_variants["agent-daemon-only"]
+    if p_v["name"] != f_agent_name:
+        raise Violation(
+            f"task #259: agent-daemon-only name mismatch: {p_v['name']!r} != {f_agent_name!r}"
+        )
+    if p_v["displayName"] != f_agent_dname:
+        raise Violation(
+            f"task #259: agent-daemon-only displayName mismatch: {p_v['displayName']!r} != {f_agent_dname!r}"
+        )
+    if p_v["avatarLabel"] != f_agent_alabel:
+        raise Violation(
+            f"task #259: agent-daemon-only avatarLabel mismatch: {p_v['avatarLabel']!r} != {f_agent_alabel!r}"
+        )
+    if p_v["description"] != f_agent_desc:
+        raise Violation(
+            f"task #259: agent-daemon-only description mismatch: {p_v['description']!r} != {f_agent_desc!r}"
+        )
+    if p_v["serverRole"] != f_agent_role:
+        raise Violation(
+            f"task #259: agent-daemon-only serverRole mismatch: {p_v['serverRole']!r} != {f_agent_role!r}"
+        )
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -793,6 +1022,10 @@ def run(root: Path) -> None:
         auth_data_source=read(AUTH_DATA_SOURCE),
         entitlements=read(IOS_ENTITLEMENTS),
         xcode_project=read(IOS_XCODE_PROJECT),
+    )
+    check_task_259_members_visual_fixtures(
+        members_page=read(MEMBERS_PAGE),
+        visual_fixture_data=read(VISUAL_FIXTURE_DATA),
     )
 
 
@@ -1320,6 +1553,158 @@ com.apple.SignInWithApple = {
         else:
             raise SystemExit("self-test: task #82 native Apple checker accepted a violation")
 
+    good_members_page = """
+private val membersVisualFixtureMachines: List<ComputerSummary> =
+    listOf(
+        membersVisualFixtureMachine("computer-mbp", "Jiachengs-MacBook-Pro", ComputerStatus.Online, isComputer = true, computerVersion = "0.0.48", daemonVersion = "0.65.0"),
+        membersVisualFixtureMachine("computer-studio", "Studio Test Rig", ComputerStatus.Offline, isComputer = true, computerVersion = "0.0.50", daemonVersion = "0.65.0"),
+        membersVisualFixtureMachine("computer-long-name", "ci-visual-capture-runner-us-west-2b_node17_macbookpro_m4max_buildhost_2026", ComputerStatus.Online, isComputer = true, computerVersion = "0.0.48", daemonVersion = "0.65.0"),
+        membersVisualFixtureMachine("computer-daemon-only", "build-box-bare-daemon", ComputerStatus.Online, isComputer = false, computerVersion = null, daemonVersion = "0.65.0")
+    )
+private val membersAgentDetailVisualVariants = listOf(
+    MembersAgentDetailVisualVariant(
+        id = "agent-computer-offline",
+        name = "Computer-Offline-Probe",
+        displayName = "Computer Offline Probe",
+        avatarLabel = "C",
+        description = "offline probe",
+        machineId = "computer-studio",
+        machineName = "Studio Test Rig",
+        daemonVersion = "0.65.0",
+        serverRole = "member"
+    ),
+    MembersAgentDetailVisualVariant(
+        id = "agent-computer-missing",
+        name = "Computer-Missing-Probe",
+        displayName = "Computer Missing Probe",
+        avatarLabel = "C",
+        description = "missing probe",
+        machineId = "computer-missing",
+        machineName = null,
+        daemonVersion = null,
+        serverRole = "member"
+    ),
+    MembersAgentDetailVisualVariant(
+        id = "agent-no-computer",
+        name = "No-Computer-Probe",
+        displayName = "No Computer Probe",
+        avatarLabel = "N",
+        description = "no computer probe",
+        machineId = null,
+        machineName = null,
+        daemonVersion = null,
+        serverRole = "member"
+    ),
+    MembersAgentDetailVisualVariant(
+        id = "agent-long-machine",
+        name = "Long-Machine-Name-Probe",
+        displayName = "Long Machine Name Probe",
+        avatarLabel = "L",
+        description = "long machine probe",
+        machineId = "computer-long-name",
+        machineName = "ci-visual-capture-runner-us-west-2b_node17_macbookpro_m4max_buildhost_2026",
+        daemonVersion = "0.65.0",
+        serverRole = "admin"
+    ),
+    MembersAgentDetailVisualVariant(
+        id = "agent-daemon-only",
+        name = "Daemon-Only-Probe",
+        displayName = "Daemon Only Probe",
+        avatarLabel = "DO",
+        description = "Bound to a bare daemon (not a managed Computer): web shows Connected · daemon vX, never a computer version.",
+        machineId = "computer-daemon-only",
+        machineName = "build-box-bare-daemon",
+        daemonVersion = "0.65.0",
+        serverRole = "member"
+    )
+)
+"""
+    good_fixture_data = """
+    object Machines {
+        object Primary {
+            const val ID: String = "computer-mbp"
+            const val NAME: String = "Jiachengs-MacBook-Pro"
+            const val STATUS: String = "online"
+            const val IS_COMPUTER: Boolean = true
+            const val COMPUTER_VERSION: String = "0.0.48"
+            const val DAEMON_VERSION: String = "0.65.0"
+        }
+        object Studio {
+            const val ID: String = "computer-studio"
+            const val NAME: String = "Studio Test Rig"
+            const val STATUS: String = "offline"
+            const val IS_COMPUTER: Boolean = true
+            const val COMPUTER_VERSION: String = "0.0.50"
+            const val DAEMON_VERSION: String = "0.65.0"
+        }
+        object LongName {
+            const val ID: String = "computer-long-name"
+            const val NAME: String = "ci-visual-capture-runner-us-west-2b_node17_macbookpro_m4max_buildhost_2026"
+            const val STATUS: String = "online"
+            const val IS_COMPUTER: Boolean = true
+            const val COMPUTER_VERSION: String = "0.0.48"
+            const val DAEMON_VERSION: String = "0.65.0"
+        }
+        object DaemonOnly {
+            const val ID: String = "computer-daemon-only"
+            const val NAME: String = "build-box-bare-daemon"
+            const val STATUS: String = "online"
+            const val IS_COMPUTER: Boolean = false
+            val COMPUTER_VERSION: String? = null
+            const val DAEMON_VERSION: String = "0.65.0"
+        }
+    }
+    object Agents {
+        object DaemonOnly {
+            const val ID: String = "agent-daemon-only"
+            const val NAME: String = "Daemon-Only-Probe"
+            const val DISPLAY_NAME: String = "Daemon Only Probe"
+            const val AVATAR_LABEL: String = "DO"
+            const val DESCRIPTION: String = "Bound to a bare daemon (not a managed Computer): web shows Connected · daemon vX, never a computer version."
+            const val SERVER_ROLE: String = "member"
+        }
+    }
+"""
+    check_task_259_members_visual_fixtures(good_members_page, good_fixture_data)
+
+    bad_task_259_cases = (
+        (
+            good_members_page.replace('"0.65.0"', '"0.0.48"', 1),
+            good_fixture_data,
+            "machine field mismatch",
+        ),
+        (
+            good_members_page.replace(
+                'daemonVersion = "0.65.0",\n        serverRole = "admin"',
+                'daemonVersion = "0.0.48",\n        serverRole = "admin"',
+            ),
+            good_fixture_data,
+            "variant daemonVersion mismatches referenced machine (historic :1495 defect)",
+        ),
+        (
+            good_members_page.replace('machineId = "computer-missing"', 'machineId = "computer-unlisted"'),
+            good_fixture_data,
+            "unallowed machineId outside whitelist",
+        ),
+        (
+            good_members_page.replace('avatarLabel = "DO"', 'avatarLabel = "D"'),
+            good_fixture_data,
+            "agent-daemon-only avatarLabel mismatch",
+        ),
+        (
+            good_members_page.replace('id = "agent-daemon-only"', 'id = "agent-daemon-missing"'),
+            good_fixture_data,
+            "agent-daemon-only variant missing",
+        ),
+    )
+    for bad_page, bad_fix, desc in bad_task_259_cases:
+        try:
+            check_task_259_members_visual_fixtures(bad_page, bad_fix)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(f"self-test: task #259 checker accepted violation: {desc}")
+
     print("check_source_constraints self-test passed")
 
 
@@ -1337,7 +1722,7 @@ def main(argv: list[str]) -> int:
         return 1
     print(
         "source constraints hold "
-        "(tasks #17/#800/#803/#361/#161/#924/#82/#183/#76/#127/#991 structural faces)"
+        "(tasks #17/#800/#803/#361/#161/#924/#82/#183/#76/#127/#991/#259 structural faces)"
     )
     return 0
 

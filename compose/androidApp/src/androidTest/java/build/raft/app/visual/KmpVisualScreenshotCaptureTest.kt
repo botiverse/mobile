@@ -3396,6 +3396,17 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    // task #259: a bare daemon (isComputer=false) with no computer version:
+    // web shows Connected · daemon vX, never a computer version.
+    @Test
+    fun captureMembersAgentDetailProfileDaemonOnlyScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.profile.daemon-only",
+            tab = "profile",
+            memberId = "agent-daemon-only"
+        )
+    }
+
     @Test
     fun captureMembersAgentDetailChatScreen() {
         captureMembersAgentDetailScreen(
