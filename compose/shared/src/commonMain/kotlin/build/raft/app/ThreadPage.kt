@@ -8307,6 +8307,7 @@ internal fun SharedThreadRouteContent(
             // published, and the legacy route has no retract contract.  The direct-session
             // coordinator stages every member, compensates every created session on any failure,
             // and returns ready attachments only after the whole batch is complete.
+            // Gallery on this train calls with requireAllFiles=false, so this branch stays dormant.
             val acceptedLocalIds = acceptedFiles.map(PlatformFile::id).toSet()
             suspend fun markGalleryBatchFailed(errorCode: String): Boolean {
                 val currentFailureState = composerDraftViewModel.state.value
@@ -8603,9 +8604,8 @@ internal fun SharedThreadRouteContent(
             return true
         }
 
-        // The aggregate branch above returns for every `requireAllFiles` call.  This remaining
-        // path is the ordinary picker/retry uploader, where each attachment has its own retry and
-        // ownership lifecycle and the legacy multipart endpoint is sufficient.
+        // Gallery on this train calls with requireAllFiles=false, so this remaining
+        // path is the 1.10.0 per-file legacy multipart uploader.
         var launchedCount = 0
         for (file in acceptedFiles) {
             val localAttachmentId = file.id.takeIf { it.isNotBlank() } ?: continue
@@ -9256,7 +9256,10 @@ internal fun SharedThreadRouteContent(
                             withContext(NonCancellable) {
                                 uploadComposerAttachmentFiles(
                                     files = files,
-                                    requireAllFiles = true,
+                                    // This train does not consume R2 direct upload. 1.10.0
+                                    // admitted per file; keep that shape so one oversize
+                                    // image does not reject the rest of the batch.
+                                    requireAllFiles = false,
                                     replaceAttachmentIdsByLocalId = replaceAttachmentIdsByLocalId
                                 )
                             }
