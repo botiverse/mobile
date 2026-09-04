@@ -81,7 +81,9 @@ Default dispatch behavior:
 Every dispatch uploads the signed IPA and dSYM to Hands and creates a draft.
 The helper fails fast if the installed CLI package does not expose
 `builds publish-ios`. CI never activates that draft; activation remains a
-separate owner-authorized operation after review.
+separate owner-authorized operation after review. If this dispatch starts the
+train, schedule the Raft 10-minute interval reminder on the release thread
+before walking away.
 
 Reviewed trilingual release notes live at
 `change-logs/<version>/ios/{zh-CN,en,ja}.md`. The workflow sends all three
