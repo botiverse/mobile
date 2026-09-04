@@ -186,6 +186,13 @@ identity work still in flight, then posts status. Cancel it only when the
 train is terminal or the owner stops it. Starting a release without this
 reminder is a process defect. The reminder does not authorize activation.
 
+Release smoke is not the QA Acceptance default (login + home + one channel).
+Before activation, the exact APK (`versionName` + `versionCode` + SHA-256)
+must run image picker → Done → composer preview → send → row readback, plus
+oversize sibling admission. Identity receipts do not transfer across
+versionCodes. See [Mobile Paired Release SOP](mobile-paired-release-sop.md)
+section 6. A testbed case list is a dispatch list; it is not auto-executed.
+
 Android 1.8 production dispatches default to `dex_packaging=compressed` and
 `jni_packaging=current`. The DEX choice is admitted only with the 45 MiB APK
 cap, 0.60 aggregate DEX compression-ratio cap, 16 KB ELF/ZIP admission,
