@@ -8301,14 +8301,13 @@ internal fun SharedThreadRouteContent(
             )
         }
 
-        if (requireAllFiles && directCapabilities?.directUploadEnabled == true) {
+        if (requireAllFiles) {
             // Gallery handoff is an atomic N/N surface.  Do not launch one legacy multipart
             // attempt per file: a sibling can fail after an earlier server attachment has been
             // published, and the legacy route has no retract contract.  The direct-session
             // coordinator stages every member, compensates every created session on any failure,
             // and returns ready attachments only after the whole batch is complete.
-            // This train does not consume directUploadEnabled, so the parser always reports
-            // false and Gallery falls through to the 1.10.0 multipart path below.
+            // Gallery on this train calls with requireAllFiles=false, so this branch stays dormant.
             val acceptedLocalIds = acceptedFiles.map(PlatformFile::id).toSet()
             suspend fun markGalleryBatchFailed(errorCode: String): Boolean {
                 val currentFailureState = composerDraftViewModel.state.value
@@ -8605,8 +8604,8 @@ internal fun SharedThreadRouteContent(
             return true
         }
 
-        // The aggregate branch above returns only when this train consumes direct upload.
-        // Otherwise Gallery handoff uses the same per-file legacy multipart path as 1.10.0.
+        // Gallery on this train calls with requireAllFiles=false, so this remaining
+        // path is the 1.10.0 per-file legacy multipart uploader.
         var launchedCount = 0
         for (file in acceptedFiles) {
             val localAttachmentId = file.id.takeIf { it.isNotBlank() } ?: continue
