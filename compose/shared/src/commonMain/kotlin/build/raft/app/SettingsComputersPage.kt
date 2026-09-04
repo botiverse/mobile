@@ -1,7 +1,6 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
-import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.StoredAuthSession
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.layout.Box
@@ -14,9 +13,9 @@ import com.tencent.kuikly.core.pager.Pager
 internal const val SETTINGS_COMPUTER_ID = "settingsComputerId"
 
 /**
- * Identity-only target for the existing Computers Web/MVI surface.  The
- * destination still loads the canonical machine snapshot; this is never a
- * route payload carrying a computer name, status, or any other content.
+ * Identity-only target for the existing Computers Web surface. The embedded
+ * Web app loads the canonical machine snapshot; this is never a route payload
+ * carrying a computer name, status, or any other content.
  */
 internal data class SettingsComputerRouteIdentity(
     val serverId: String,
@@ -77,7 +76,6 @@ internal fun Pager.openSettingsComputerPage(
 internal val settingsComputersWebViewSpec =
     StandaloneSettingsWebViewSpec(
         surface = SettingsWebViewSurface.Computers,
-        destination = SharedSettingsDestination.Developer,
         headerFollowsDocumentTitle = true,
         buildWebUrl = { webBaseUrl, session, _ -> settingsComputersWebViewUrl(webBaseUrl, session) },
     )
