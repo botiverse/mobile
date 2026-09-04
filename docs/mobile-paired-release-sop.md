@@ -73,6 +73,16 @@ must remain separate for the exact being reviewed.
    intermediate states. A narrower instruction such as `upload only`,
    `internal only`, `submit for review`, or `do not notify` overrides this
    default and must be repeated in the receipt.
+9a. A standing owner directive may make **TestFlight internal** the default
+    after every successful iOS Hands draft. Record the named internal group
+    in the release plan. Each later iOS rebuild on that train is uploaded and
+    assigned to that internal group without a per-build go. This still does
+    not authorize Insiders, external testers, App Store production, Hands
+    activation, or a community announcement. For internal groups, Hands
+    `notify_testers` is `NOTIFY_EXTERNAL_ONLY`; completion is
+    `processing_state=VALID`, the named internal group assigned, and
+    `internal_build_state=IN_BETA_TESTING` (Apple `auto_notify_enabled` may
+    be the only notify path).
 10. Starting a release train requires a Raft **interval reminder**. As soon as
     the first platform draft is dispatched, the operator schedules a recurring
     10-minute reminder on the release thread. Each firing must fresh-read every
@@ -306,8 +316,8 @@ The release plan names each platform's intended boundary. Examples:
 | --- | --- | --- |
 | Android Hands | Activate exact draft and scope | Yes |
 | iOS Hands | Activate exact draft | Yes |
-| TestFlight upload | Upload verified Hands IPA | Yes |
-| TestFlight internal | Assign named internal group | Yes |
+| TestFlight upload | Upload verified Hands IPA | Yes, unless the plan has standing internal-after-draft |
+| TestFlight internal | Assign named internal group | Yes, unless the plan has standing internal-after-draft for that named group |
 | TestFlight external | Assign named group, What to Test, Beta Review, notification | Yes |
 | App Store production | Submit/publish production version | Yes |
 | Community | Post approved announcement | Yes |
