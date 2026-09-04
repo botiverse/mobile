@@ -761,6 +761,8 @@ def check_task_259_members_visual_fixtures(
        daemonVersion (in-file self-consistency).
     3. Variant machineIds are restricted to {Machines.*} union {"computer-missing", None}.
     4. agent-daemon-only variant fields match VisualFixtureData.Agents.DaemonOnly verbatim.
+    5. membersAgentDetailVisualSnapshot.summary daemonVersion matches the referenced machine's
+       daemonVersion and its machineId is in allowed_machine_ids.
     """
     machines_block_match = re.search(
         r"object Machines \{(.*?)\n    \}", visual_fixture_data, re.DOTALL
@@ -972,6 +974,42 @@ def check_task_259_members_visual_fixtures(
         raise Violation(
             f"task #259: agent-daemon-only serverRole mismatch: {p_v['serverRole']!r} != {f_agent_role!r}"
         )
+
+    snapshot_summary_m = re.search(
+        r"private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot\(.*?"
+        r"summary = AgentDetailSummary\((.*?)\n    \),",
+        members_page,
+        re.DOTALL,
+    )
+    if not snapshot_summary_m:
+        raise Violation(
+            "task #259: membersAgentDetailVisualSnapshot summary not found in MembersPage.kt"
+        )
+    snapshot_body = snapshot_summary_m.group(1)
+    sm_id_m = re.search(r'machineId\s*=\s*(?P<machineId>"[^"]*"|null)', snapshot_body)
+    sd_ver_m = re.search(r'daemonVersion\s*=\s*(?P<daemonVersion>"[^"]*"|null)', snapshot_body)
+    if not sm_id_m or not sd_ver_m:
+        raise Violation(
+            "task #259: machineId or daemonVersion missing from membersAgentDetailVisualSnapshot.summary"
+        )
+    s_mid = sm_id_m.group("machineId")
+    snapshot_machine_id = s_mid.strip('"') if s_mid != "null" else None
+    s_dver = sd_ver_m.group("daemonVersion")
+    snapshot_daemon_ver = s_dver.strip('"') if s_dver != "null" else None
+
+    if snapshot_machine_id not in allowed_machine_ids:
+        raise Violation(
+            f"task #259: snapshot summary references unallowed machineId {snapshot_machine_id!r} "
+            "(must be in fixture machines or 'computer-missing' / null)"
+        )
+
+    if snapshot_machine_id in page_machines:
+        expected_daemon_ver = page_machines[snapshot_machine_id]["daemon_version"]
+        if snapshot_daemon_ver != expected_daemon_ver:
+            raise Violation(
+                f"task #259: snapshot summary daemonVersion ({snapshot_daemon_ver!r}) mismatches "
+                f"referenced machine {snapshot_machine_id} daemonVersion ({expected_daemon_ver!r})"
+            )
 
 
 def run(root: Path) -> None:
@@ -1618,6 +1656,34 @@ private val membersAgentDetailVisualVariants = listOf(
         serverRole = "member"
     )
 )
+private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
+    agentId = membersAgentDetailVisualMember.id,
+    summary = AgentDetailSummary(
+        id = membersAgentDetailVisualMember.id.value,
+        name = "Product-UX-Designer",
+        displayName = membersAgentDetailVisualMember.displayName,
+        createdAt = "2026-06-18T00:00:00.000Z",
+        status = "working",
+        runtime = "codex",
+        model = "gpt-5-codex",
+        reasoning = "medium",
+        executionMode = "byoc",
+        machineId = "computer-mbp",
+        machineName = "Jiachengs-MacBook-Pro",
+        daemonVersion = "0.65.0",
+        creatorId = "artin",
+        creatorType = "user",
+        creator = AgentCreatorSummary(
+            type = "human",
+            id = "artin",
+            name = "artin",
+            displayName = "artin",
+            avatarUrl = "pixel:user"
+        ),
+    ),
+    details = membersAgentDetailVisualMember,
+    computers = membersVisualFixtureMachines,
+)
 """
     good_fixture_data = """
     object Machines {
@@ -1695,6 +1761,22 @@ private val membersAgentDetailVisualVariants = listOf(
             good_members_page.replace('id = "agent-daemon-only"', 'id = "agent-daemon-missing"'),
             good_fixture_data,
             "agent-daemon-only variant missing",
+        ),
+        (
+            good_members_page.replace(
+                'daemonVersion = "0.65.0",\n        creatorId = "artin"',
+                'daemonVersion = "0.0.48",\n        creatorId = "artin"',
+            ),
+            good_fixture_data,
+            "snapshot summary daemonVersion mismatches referenced machine (historic :1561 defect)",
+        ),
+        (
+            good_members_page.replace(
+                'machineId = "computer-mbp",\n        machineName = "Jiachengs-MacBook-Pro",\n        daemonVersion = "0.65.0"',
+                'machineId = "computer-unlisted",\n        machineName = "Unlisted",\n        daemonVersion = "0.65.0"',
+            ),
+            good_fixture_data,
+            "snapshot summary unallowed machineId outside whitelist",
         ),
     )
     for bad_page, bad_fix, desc in bad_task_259_cases:
