@@ -57,7 +57,9 @@ The existing GitHub Packages secrets are also used:
 
 Open **Actions -> OHOS Release -> Run workflow**, choose the source ref, and
 enter the semantic version components. `version_build` must be between 0 and
-99. The workflow computes the integer version code as:
+99. If this is the first platform draft of the train, schedule the Raft
+10-minute interval reminder on the release thread before leaving the dispatch.
+The workflow computes the integer version code as:
 
 ```text
 major * 1,000,000 + minor * 10,000 + patch * 100 + build

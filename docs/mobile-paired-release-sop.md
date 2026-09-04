@@ -73,6 +73,14 @@ must remain separate for the exact being reviewed.
    intermediate states. A narrower instruction such as `upload only`,
    `internal only`, `submit for review`, or `do not notify` overrides this
    default and must be repeated in the receipt.
+10. Starting a release train requires a Raft **interval reminder**. As soon as
+    the first platform draft is dispatched, the operator schedules a recurring
+    10-minute reminder on the release thread. Each firing must fresh-read every
+    in-flight Android, iOS, and OHOS run, Hands draft/readback, and any
+    TestFlight processing state, then post a short status in that thread.
+    Cancel the reminder only after every dispatched platform is terminal and
+    the receipt is written, or the owner explicitly stops the train. A release
+    with in-flight carriers and no interval reminder is a process defect.
 
 ## 1. Open The Release Plan
 
@@ -181,6 +189,11 @@ digest, and resolved artifact digests in the candidate receipt. Publishing
 the dependency set and consuming it are separate gates; neither is inferred
 from a source merge. An empty-cache proof is for those pinned coordinates,
 not a requirement to delete `mavenLocal()` from Gradle settings.
+
+When the first platform draft is dispatched, schedule the 10-minute Raft
+interval reminder on the release thread before walking away. Keep it running
+until all dispatched platforms are terminal. The reminder does not authorize
+activation.
 
 Android:
 

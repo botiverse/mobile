@@ -179,6 +179,13 @@ callers remain build-only by explicitly setting `create_hands_draft: false`;
 they cannot enter the manual draft job. See [Android Hands release input
 migration](android-hands-release-migration-2026-07-24.md).
 
+As soon as this draft (or any sibling iOS/OHOS draft for the same train) is
+dispatched, schedule a Raft interval reminder every 10 minutes on the release
+thread. Each firing fresh-reads the GitHub run, Hands draft, and artifact
+identity work still in flight, then posts status. Cancel it only when the
+train is terminal or the owner stops it. Starting a release without this
+reminder is a process defect. The reminder does not authorize activation.
+
 Android 1.8 production dispatches default to `dex_packaging=compressed` and
 `jni_packaging=current`. The DEX choice is admitted only with the 45 MiB APK
 cap, 0.60 aggregate DEX compression-ratio cap, 16 KB ELF/ZIP admission,
