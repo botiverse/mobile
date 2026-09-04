@@ -16,6 +16,7 @@ missing files); 2 = usage error.
 from __future__ import annotations
 
 import re
+import tempfile
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -708,6 +709,8 @@ def check_label_facing_resolver_has_no_production_callers(root: Path) -> None:
     evaded by a new file, a new dot-painting composable, or a renamed local.
     """
     offenders = []
+    scanned_production_files = 0
+    definition_sites = []
     for path in sorted((root / "compose").rglob("*.kt")):
         # Directory components only, matched whole. Two earlier attempts were wrong in
         # opposite directions: enumerating source sets (commonTest, src/test) is a list
@@ -722,6 +725,7 @@ def check_label_facing_resolver_has_no_production_callers(root: Path) -> None:
         if any(part == "test" or part.endswith("Test") for part in path.parent.parts):
             continue
         text = path.read_text(encoding="utf-8").replace("\r\n", "\n")
+        scanned_production_files += 1
         for line_number, line in enumerate(text.split("\n"), start=1):
             # `(` or `::` distinguishes a use from a mention: prose names this resolver
             # (MembersPage.kt's KDoc, and the comment at the fixed call site) and must not
@@ -734,8 +738,28 @@ def check_label_facing_resolver_has_no_production_callers(root: Path) -> None:
             ):
                 continue
             if re.match(r"\s*internal fun resolveMembersAgentStatusIndicatorState\(", line):
+                definition_sites.append(f"{path.relative_to(root)}:{line_number}")
                 continue
             offenders.append(f"{path.relative_to(root)}:{line_number}")
+    # Denominator first (LiBai, 2026-09-04): a "must be zero" check is vacuously green on an
+    # empty scan, and a broken glob or an exclusion rule that swallowed commonMain prints
+    # exactly what a clean tree prints. So before judging the offenders, prove the scan
+    # reached the production code at all: it must have read files, and it must have passed
+    # the resolver's own definition exactly once. Not pinned to a file count -- that rots.
+    if scanned_production_files == 0:
+        raise Violation(
+            "check_label_facing_resolver_has_no_production_callers scanned zero production "
+            "Kotlin files under compose/ -- the glob or the test-dir exclusion is wrong, so "
+            "'no offenders' below would be meaningless."
+        )
+    if len(definition_sites) != 1:
+        raise Violation(
+            "check_label_facing_resolver_has_no_production_callers expected to pass exactly one "
+            "definition of `internal fun resolveMembersAgentStatusIndicatorState(` in production "
+            f"code and found {len(definition_sites)} ({', '.join(definition_sites) or 'none'}). "
+            "If the resolver moved or was retired, update or retire this check; if it is still "
+            "in commonMain, the scan is not reaching it and every result it reports is blind."
+        )
     if offenders:
         raise Violation(
             "production code calls the label-facing resolveMembersAgentStatusIndicatorState "
@@ -1031,6 +1055,57 @@ def run(root: Path) -> None:
 
 def self_test() -> None:
     """Every checker must reject its violation shape and accept the good shape."""
+    # check_label_facing_resolver_has_no_production_callers scans a tree, so probe it on
+    # miniature trees. The two denominator probes are the point (LiBai, 2026-09-04): an
+    # empty scan and a scan that never reaches the definition must both be red, not the
+    # same green a clean tree produces.
+    definition = "internal fun resolveMembersAgentStatusIndicatorState(x: Int) = x\n"
+    caller = "val s = resolveMembersAgentStatusIndicatorState(1)\n"
+    def _tree(files: dict[str, str]):
+        tmp = tempfile.TemporaryDirectory()
+        root = Path(tmp.name)
+        for rel, body in files.items():
+            target = root / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(body, encoding="utf-8")
+        return tmp, root
+    good_files = {
+        "compose/shared/src/commonMain/kotlin/a/Members.kt": definition,
+        "compose/shared/src/commonTest/kotlin/a/MembersTest.kt": caller,
+    }
+    tmp, root = _tree(good_files)
+    with tmp:
+        check_label_facing_resolver_has_no_production_callers(root)
+    for label, files, needle in (
+        (
+            "production caller",
+            {**good_files, "compose/shared/src/commonMain/kotlin/a/Settings.kt": caller},
+            "production code calls",
+        ),
+        ("empty scan", {}, "scanned zero production"),
+        (
+            "definition only under a test dir (scan reaches production but never the resolver)",
+            {
+                "compose/shared/src/commonMain/kotlin/a/Other.kt": "val unrelated = 1\n",
+                "compose/shared/src/commonTest/kotlin/a/Members.kt": definition + caller,
+            },
+            "found 0",
+        ),
+        (
+            "definition twice",
+            {**good_files, "compose/shared/src/commonMain/kotlin/a/Copy.kt": definition},
+            "found 2",
+        ),
+    ):
+        tmp, root = _tree(files)
+        with tmp:
+            try:
+                check_label_facing_resolver_has_no_production_callers(root)
+            except Violation as violation:
+                if needle not in str(violation):
+                    raise AssertionError(f"{label}: wrong violation: {violation}")
+            else:
+                raise AssertionError(f"{label}: expected a Violation, got none")
     good_snapshot_basic_widget = """
 internal fun DeclarativeBaseView<*, *>.findSlockNativeTextEditor() = when (this) {
     is AutoHeightTextAreaView -> this
