@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalCard
-import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SettingsBillingActionSnapshot
 import build.raft.app.data.StoredAuthSession
@@ -201,7 +200,6 @@ internal val settingsBillingSmokePayload =
 internal val settingsBillingWebViewSpec =
     StandaloneSettingsWebViewSpec(
         surface = SettingsWebViewSurface.Billing,
-        destination = SharedSettingsDestination.Billing,
         includeLocaleQuery = true,
         buildWebUrl = ::settingsBillingWebViewUrl,
     )
