@@ -44,6 +44,15 @@ class ServerSetupAdmissionProductionWiringTest {
     }
 
     @Test
+    fun androidBridgeImplementsUrlCodecRequiredByOnboardingWakeDecoder() {
+        val bridge = repositoryFile("compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt").readText()
+        assertTrue(bridge.contains("\"urlEncode\" ->"))
+        assertTrue(bridge.contains("URLEncoder.encode(payload.optString(\"string\"), StandardCharsets.UTF_8.name())"))
+        assertTrue(bridge.contains("\"urlDecode\" ->"))
+        assertTrue(bridge.contains("URLDecoder.decode(payload.optString(\"string\"), StandardCharsets.UTF_8.name())"))
+    }
+
+    @Test
     fun hostedSwitchUsesCanonicalShellSelectionAndOriginGenerationFences() {
         val host = repositoryFile("compose/shared/src/commonMain/kotlin/build/raft/app/ServerSetupAdmissionHost.kt").readText()
         assertTrue(host.contains("serverSetupControlledDocumentMatchesOrigin(currentDocumentUrl, webBaseUrl)"))

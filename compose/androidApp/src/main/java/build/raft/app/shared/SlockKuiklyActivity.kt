@@ -165,6 +165,7 @@ import java.io.IOException
 import java.io.FileOutputStream
 import java.net.URL
 import java.net.URLDecoder
+import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
@@ -3884,6 +3885,12 @@ internal class SlockKuiklyImageAdapter(
     }
 }
 
+internal fun slockAndroidBridgeUrlEncode(value: String): String =
+        URLEncoder.encode(value, StandardCharsets.UTF_8.name())
+
+internal fun slockAndroidBridgeUrlDecode(value: String): String =
+        URLDecoder.decode(value, StandardCharsets.UTF_8.name())
+
 internal class SlockKuiklyBridgeModule(
         private val appContext: Context,
 ) : KuiklyRenderBaseModule() {
@@ -4037,6 +4044,14 @@ internal class SlockKuiklyBridgeModule(
             "socialAuth" -> {
                 socialAuth(params, callback)
                 null
+            }
+            "urlEncode" -> {
+                val payload = JSONObject(params ?: "{}")
+                slockAndroidBridgeUrlEncode(payload.optString("string"))
+            }
+            "urlDecode" -> {
+                val payload = JSONObject(params ?: "{}")
+                slockAndroidBridgeUrlDecode(payload.optString("string"))
             }
             "currentTimestamp" -> System.currentTimeMillis().toString()
             else -> {
