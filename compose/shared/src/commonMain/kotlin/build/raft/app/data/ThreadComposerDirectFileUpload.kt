@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.Attachment
+import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -147,14 +148,36 @@ internal suspend fun DirectAttachmentUploadSessionGateway.uploadOneThreadFile(
         onPhase(ThreadComposerDirectUploadPhase.Putting)
         val putResult = put(created.upload, prepared)
         if (putResult !is DataResult.Content) {
-            val recovered = recoverSameSessionAfterUncertainPut(created.uploadId, putResult)
-            if (recovered != null) return recovered
+            val recovered =
+                recoverSameSessionAfterUncertainPut(
+                    expectedUploadId = created.uploadId,
+                    expectedAttachmentId = created.attachmentId,
+                    putResult = putResult,
+                )
+            if (recovered != null) {
+                if (recovered is DataResult.Error &&
+                    recovered.error.code == "attachment_upload_session_contract_invalid"
+                ) {
+                    cancelCreatedSession(created.uploadId)
+                }
+                return recovered
+            }
             cancelCreatedSession(created.uploadId)
             return putResult.asAttachmentFailure("attachment_upload_session_put_failed")
         }
         currentCoroutineContext().ensureActive()
         onPhase(ThreadComposerDirectUploadPhase.Verifying)
-        completeThreadFile(created.uploadId)
+        val completed =
+            completeThreadFile(
+                expectedUploadId = created.uploadId,
+                expectedAttachmentId = created.attachmentId,
+            )
+        if (completed is DataResult.Error &&
+            completed.error.code == "attachment_upload_session_contract_invalid"
+        ) {
+            cancelCreatedSession(created.uploadId)
+        }
+        completed
     } catch (cancellation: CancellationException) {
         cancelCreatedSession(created.uploadId)
         throw cancellation
@@ -168,7 +191,8 @@ private suspend fun DirectAttachmentUploadSessionGateway.cancelCreatedSession(up
 }
 
 private suspend fun DirectAttachmentUploadSessionGateway.recoverSameSessionAfterUncertainPut(
-    uploadId: String,
+    expectedUploadId: String,
+    expectedAttachmentId: AttachmentId,
     putResult: DataResult<*>,
 ): DataResult<Attachment>? {
     val error = (putResult as? DataResult.Error)?.error ?: return null
@@ -179,12 +203,24 @@ private suspend fun DirectAttachmentUploadSessionGateway.recoverSameSessionAfter
             error.code.lowercase() in PUT_UNCERTAIN_CODES ||
             error.serverCode?.lowercase() in PUT_UNCERTAIN_CODES
     if (!uncertain) return null
-    val statusResult = status(uploadId)
+    val statusResult = status(expectedUploadId)
     val statusView = (statusResult as? DataResult.Content)?.data
-    if (statusView?.state == "completed" && statusView.attachment != null) {
-        return DataResult.Content(statusView.attachment)
+    if (statusView?.state == "completed") {
+        return boundCompletedAttachment(
+            expectedUploadId = expectedUploadId,
+            expectedAttachmentId = expectedAttachmentId,
+            uploadId = statusView.uploadId,
+            state = statusView.state,
+            attachment = statusView.attachment,
+        )
     }
-    return when (val completed = completeThreadFile(uploadId)) {
+    return when (
+        val completed =
+            completeThreadFile(
+                expectedUploadId = expectedUploadId,
+                expectedAttachmentId = expectedAttachmentId,
+            )
+    ) {
         is DataResult.Content -> completed
         is DataResult.Error -> {
             val code = completed.error.serverCode?.lowercase() ?: completed.error.code.lowercase()
@@ -205,27 +241,52 @@ private suspend fun DirectAttachmentUploadSessionGateway.recoverSameSessionAfter
 }
 
 private suspend fun DirectAttachmentUploadSessionGateway.completeThreadFile(
-    uploadId: String,
+    expectedUploadId: String,
+    expectedAttachmentId: AttachmentId,
 ): DataResult<Attachment> {
     var last: DataResult<AttachmentUploadSessionCompleteResult>? = null
     repeat(3) { attempt ->
         currentCoroutineContext().ensureActive()
-        val result = complete(uploadId)
+        val result = complete(expectedUploadId)
         last = result
         val error = (result as? DataResult.Error)?.error
         val serverCode = error?.serverCode?.trim()?.lowercase() ?: error?.code?.lowercase()
         if (result is DataResult.Content) {
-            val value = result.data
-            if (value.state == "completed") {
-                return DataResult.Content(value.attachment)
-            }
-            return DataResult.Error(ScreenError(code = "attachment_upload_session_contract_invalid", retryable = false))
+            return boundCompletedAttachment(
+                expectedUploadId = expectedUploadId,
+                expectedAttachmentId = expectedAttachmentId,
+                uploadId = result.data.uploadId,
+                state = result.data.state,
+                attachment = result.data.attachment,
+            )
         }
         if (serverCode !in COMPLETE_RETRY_CODES || attempt == 2) {
             return result.asAttachmentFailure("attachment_upload_session_complete_failed")
         }
     }
     return last.asAttachmentFailure("attachment_upload_session_complete_failed")
+}
+
+private fun boundCompletedAttachment(
+    expectedUploadId: String,
+    expectedAttachmentId: AttachmentId,
+    uploadId: String,
+    state: String,
+    attachment: Attachment?,
+): DataResult<Attachment> {
+    if (
+        state != "completed" ||
+        uploadId != expectedUploadId ||
+        !isLegalAttachmentUploadSessionId(uploadId) ||
+        attachment == null ||
+        attachment.id != expectedAttachmentId ||
+        !isLegalAttachmentUploadSessionId(attachment.id.value)
+    ) {
+        return DataResult.Error(
+            ScreenError(code = "attachment_upload_session_contract_invalid", retryable = false),
+        )
+    }
+    return DataResult.Content(attachment)
 }
 
 private fun DataResult<*>?.asAttachmentFailure(fallbackCode: String): DataResult<Attachment> =
