@@ -139,6 +139,78 @@ class ThreadComposerDirectFileUploadTest {
     }
 
     @Test
+    fun staleOversizeHintDoesNotRejectAfterPrepare() = runBlocking {
+        val gateway = FakeThreadGateway()
+        gateway.preparedRefSizes["ref-1"] = 90L
+        val unresolved =
+            PlatformFile(
+                id = "local-ref",
+                fileName = "a.bin",
+                mimeType = "application/octet-stream",
+                sizeBytes = 999_999L,
+                bytes = ByteArray(0),
+                fileRef = "ref-1",
+            )
+        val resolved =
+            resolveThreadComposerDirectUpload(
+                file = unresolved,
+                capabilities = enabled(threshold = 90L, maxBytes = 200L),
+                cancelled = false,
+                prepare = gateway::prepare,
+            )
+        val upload = assertIs<DataResult.Content<ThreadComposerResolvedUpload>>(resolved).data
+        assertEquals(ThreadComposerDirectUploadDecision.Direct, upload.decision)
+        assertEquals(90L, upload.file.sizeBytes)
+    }
+
+    @Test
+    fun staleUndersizeHintDoesNotSkipDirectAfterPrepare() = runBlocking {
+        val gateway = FakeThreadGateway()
+        gateway.preparedRefSizes["ref-1"] = 90L
+        val unresolved =
+            PlatformFile(
+                id = "local-ref",
+                fileName = "a.bin",
+                mimeType = "application/octet-stream",
+                sizeBytes = 1L,
+                bytes = ByteArray(0),
+                fileRef = "ref-1",
+            )
+        val resolved =
+            resolveThreadComposerDirectUpload(
+                file = unresolved,
+                capabilities = enabled(threshold = 90L, maxBytes = 200L),
+                cancelled = false,
+                prepare = gateway::prepare,
+            )
+        val upload = assertIs<DataResult.Content<ThreadComposerResolvedUpload>>(resolved).data
+        assertEquals(ThreadComposerDirectUploadDecision.Direct, upload.decision)
+        assertEquals(90L, upload.file.sizeBytes)
+    }
+
+    @Test
+    fun bytesBackedStaleHintUsesActualByteLength() = runBlocking {
+        val unresolved =
+            PlatformFile(
+                id = "local-bytes",
+                fileName = "a.bin",
+                mimeType = "application/octet-stream",
+                sizeBytes = 999_999L,
+                bytes = ByteArray(90) { 1 },
+            )
+        val resolved =
+            resolveThreadComposerDirectUpload(
+                file = unresolved,
+                capabilities = enabled(threshold = 90L, maxBytes = 200L),
+                cancelled = false,
+                prepare = ::prepareDirectAttachmentUploadFile,
+            )
+        val upload = assertIs<DataResult.Content<ThreadComposerResolvedUpload>>(resolved).data
+        assertEquals(ThreadComposerDirectUploadDecision.Direct, upload.decision)
+        assertEquals(90L, upload.file.sizeBytes)
+    }
+
+    @Test
     fun fileRefOnlyBelowThresholdUsesMultipartAfterPrepare() = runBlocking {
         val gateway = FakeThreadGateway()
         gateway.preparedRefSizes["ref-1"] = 89L

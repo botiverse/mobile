@@ -65,7 +65,7 @@ internal suspend fun resolveThreadComposerDirectUpload(
         )
     }
     val prepared =
-        when (val preparedResult = prepare(file)) {
+        when (val preparedResult = prepare(file.copy(sizeBytes = null))) {
             is DataResult.Content -> preparedResult.data
             is DataResult.Error -> return preparedResult
             is DataResult.NoPermission -> return preparedResult
@@ -115,7 +115,7 @@ internal suspend fun DirectAttachmentUploadSessionGateway.uploadOneThreadFile(
     onPhase: (ThreadComposerDirectUploadPhase) -> Unit = {},
 ): DataResult<Attachment> {
     val prepared =
-        when (val preparedResult = prepare(file)) {
+        when (val preparedResult = prepare(file.copy(sizeBytes = null))) {
             is DataResult.Content -> preparedResult.data
             is DataResult.Error -> return preparedResult
             is DataResult.NoPermission -> return preparedResult
