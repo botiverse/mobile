@@ -820,16 +820,18 @@ internal class ThreadComposerImageEventBatchAccumulator(
 }
 
 /**
- * Generic file picks bypass the image annotation editor, so their image members may be
- * normalized by the native picker before the shared upload-size gate runs.  Image/camera picks
- * intentionally stay uncompressed here: they enter the editor first and are finalized exactly
- * once after confirmation.  The policy value is sampled while the picker is opened so a later
- * draft recomposition cannot change the meaning of an in-flight picker result.
+ * File picks never compress images and never surface the original-image toggle. 1.11 added
+ * native JPEG compression on the generic attachFile path; product rolled that back so a File
+ * JPEG stays its source bytes and hits the shared size gate. Image/camera picks still skip
+ * compression here: they enter the editor first and are finalized after confirmation.
+ * [action] and [originalImage] stay on the signature so the picker-admission freeze call site
+ * does not change; neither argument can enable compression anymore.
  */
+@Suppress("UNUSED_PARAMETER")
 internal fun shouldCompressThreadAttachmentPickerImages(
     action: String,
     originalImage: Boolean,
-): Boolean = action == "attachFile" && !originalImage
+): Boolean = false
 
 /**
  * A generic picker can return a readable subset together with a compression error (HTTP-like
@@ -11061,12 +11063,11 @@ internal fun SharedThreadRouteContent(
                                 channelId = channelId,
                                 imageOnly = action != "attachFile",
                                 capture = action == ThreadComposerCaptureImageAction,
-                                // Image picker/camera results enter the annotation editor (or
-                                // the shared bypass compressor) first.  Do not encode before
-                                // the editor decision: picker JPEG -> editor PNG -> JPEG would
-                                // incur two lossy generations.  Generic file picks bypass the
-                                // editor, so native hosts compress only their image members when
-                                // the frozen session policy requests it.
+                                // Image picker/camera results enter the annotation editor first.
+                                // Do not encode before the editor decision: picker JPEG -> editor
+                                // PNG -> JPEG would incur two lossy generations. Generic file
+                                // picks also stay uncompressed so a JPEG remains source bytes
+                                // and the shared size gate sees the real file.
                                 compressImages = compressPickerImages,
                             )
                         val files = parseSharedThreadPickedPlatformFiles(response)
