@@ -520,8 +520,8 @@ class ThreadImageCompressionContractTest {
     }
 
     @Test
-    fun pickerCompressionIsLimitedToGenericFilesAndFrozenOriginalChoice() {
-        assertTrue(
+    fun pickerCompressionIsOffForFilePicksAndImageCameraPicks() {
+        assertFalse(
             shouldCompressThreadAttachmentPickerImages(
                 action = "attachFile",
                 originalImage = false
