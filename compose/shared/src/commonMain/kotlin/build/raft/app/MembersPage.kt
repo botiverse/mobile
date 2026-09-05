@@ -5213,25 +5213,18 @@ private fun MembersDetailContent(
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
                     beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
                 ) {
-                    if (initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement) {
+                    // ABLATION PROBE D (task #273 / #2384, DO NOT MERGE): for agents the list has
+                    // exactly ONE item. The top spacer and the state notice are composed inside
+                    // the body item instead of being sibling lazy items, so there is no other
+                    // item whose node/slot table the reuse path could hand to the profile body.
+                    // 0 crashes ⇒ inter-item reuse is the path (and this is a shippable app-side
+                    // mitigation); unchanged ⇒ the foreign slot table comes from somewhere else.
+                    if (member.kind != MemberKind.Agent && initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement) {
                         item(key = "member-detail-${member.id.value}-top-spacer") {
                             Spacer(Modifier.height(SlockSpacing.Sm))
                         }
                     }
                     if (member.kind == MemberKind.Agent) {
-                        if (
-                            membersAgentDetailShowsProfileStateNotice(
-                                selectedTab = selectedTab,
-                                avatarManagementMode = initialVisualMode == MembersAgentDetailVisualMode.AvatarManagement
-                            )
-                        ) {
-                            item(key = "member-detail-${member.id.value}-state-notice") {
-                                MembersAgentDetailStateNotice(
-                                    state = agentDetailState,
-                                    modifier = Modifier.padding(horizontal = MembersPageInset)
-                                )
-                            }
-                        }
                         // This item switches between composables with different remember slots
                         // as the selected tab/member changes.  An implicit index key lets
                         // Kuikly's lazy provider reuse the previous tab's slot table; on
@@ -5240,6 +5233,21 @@ private fun MembersDetailContent(
                         // crash while entering the profile.  Keep each member/tab surface a
                         // distinct lazy item so state is disposed/recreated at the boundary.
                         item(key = membersAgentDetailBodyItemKey(member.id.value, selectedTab)) {
+                            if (initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement) {
+                                Spacer(Modifier.height(SlockSpacing.Sm))
+                            }
+                            if (
+                                membersAgentDetailShowsProfileStateNotice(
+                                    selectedTab = selectedTab,
+                                    avatarManagementMode = initialVisualMode == MembersAgentDetailVisualMode.AvatarManagement
+                                )
+                            ) {
+                                MembersAgentDetailStateNotice(
+                                    state = agentDetailState,
+                                    modifier = Modifier.padding(horizontal = MembersPageInset)
+                                )
+                                Spacer(Modifier.height(SlockSpacing.Md))
+                            }
                             // Kuikly's lazy item key is not sufficient to fence the nested
                             // composition on every renderer.  Give each tab surface its own
                             // Compose group as well, so remember slots from Profile/Chat/etc.
