@@ -2,6 +2,7 @@ package build.raft.app
 
 import java.io.File
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -39,6 +40,14 @@ class MembersAgentDetailLazyKeyProductionContractTest {
         assertTrue(
             detailSource.contains("item(key = \"member-detail-\${member.id.value}-bottom-spacer\")"),
             "bottom spacer must be keyed"
+        )
+
+        val itemCalls = Regex("\\bitem\\s*[({]").findAll(detailSource).count()
+        val keyedCalls = Regex("\\bitem\\(key\\s*=").findAll(detailSource).count()
+        assertEquals(
+            itemCalls,
+            keyedCalls,
+            "every lazy item in MembersDetailContent must carry an explicit key"
         )
     }
 
