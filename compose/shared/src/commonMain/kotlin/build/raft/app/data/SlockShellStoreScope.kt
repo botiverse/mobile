@@ -197,6 +197,11 @@ internal data class ThreadReplyCacheIdentitySnapshot(
     val serverId: String,
     val authGeneration: Long,
     val selectionGeneration: Long,
+    /**
+     * Stable process-auth binding generation. Token rotation keeps this value;
+     * logout, account, or environment replacement advances it.
+     */
+    val bindingGeneration: Long = 0L,
 )
 
 internal data class ThreadReplyCacheIdentityTransitionAnchor(
@@ -743,6 +748,7 @@ internal class ThreadReplyCacheIdentityAuthority(
             serverId = serverId,
             authGeneration = authContext.authorityGeneration,
             selectionGeneration = selection.selectionEpoch,
+            bindingGeneration = authContext.writeGeneration,
         )
     }
 }

@@ -7769,7 +7769,7 @@ internal fun SharedThreadRouteContent(
         )
         threadSendScope.launch {
             fun sendAuthorityStillCurrent(): Boolean =
-                dataSource.isCurrentReplyCacheProvenance(sendProvenance) &&
+                dataSource.isCurrentReplyCacheProvenanceForLocalSend(sendProvenance) &&
                     threadViewModel.state.value.payload
                         .resolveThreadRouteIdentity()
                         .isPendingSendEquivalentTo(sendRoute)
@@ -7978,14 +7978,20 @@ internal fun SharedThreadRouteContent(
                             }
                     }
                 }
-                if (!sendAuthorityStillCurrent()) return@launch
-                if (startedFromComposer) {
-                    composerDraftViewModel.dispatch(
-                        SharedThreadComposerDraftIntent.CompleteSend(pendingMentionActions = pendingMentionActions)
-                    )
+                if (sendAuthorityStillCurrent()) {
+                    if (startedFromComposer) {
+                        composerDraftViewModel.dispatch(
+                            SharedThreadComposerDraftIntent.CompleteSend(pendingMentionActions = pendingMentionActions)
+                        )
+                    } else {
+                        composerDraftViewModel.dispatch(
+                            SharedThreadComposerDraftIntent.ApplyPendingMentionActions(pendingMentionActions)
+                        )
+                    }
                 } else {
-                    composerDraftViewModel.dispatch(
-                        SharedThreadComposerDraftIntent.ApplyPendingMentionActions(pendingMentionActions)
+                    bridge.logWarn(
+                        "thread_send_success_terminal_projection_dropped localMessageId=$localMessageId " +
+                            "channelId=${context.channelId} reason=owner_changed_after_response"
                     )
                 }
                 if (context.ownedTemporaryFileRefs.isNotEmpty()) {
