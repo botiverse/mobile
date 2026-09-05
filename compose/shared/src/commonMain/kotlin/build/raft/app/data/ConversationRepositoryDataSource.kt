@@ -1490,7 +1490,10 @@ class RealConversationRepository private constructor(
     ): DataResult<Unit> {
         return try {
             val response = block()
-            if (response.isSuccessful) {
+            // If-None-Match:* returns 412 when the object is already present. Treat that as a
+            // successful PUT so the caller can complete the same session instead of creating
+            // another reservation.
+            if (response.isSuccessful || response.code == 412) {
                 warningLogger(
                     "conversation_binary_result source=$source code=${response.code} " +
                         "result=content"
