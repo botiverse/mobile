@@ -5250,14 +5250,16 @@ private fun MembersDetailContent(
                                     MembersAgentProfileTab(
                                         member = member,
                                         detail = detail,
-                                        agentMachineRuntimes = agentMachineRuntimes,
-                                        agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
-                                        agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
-                                        agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
-                                        agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
+                                        runtimeModels = MembersAgentRuntimeModelInputs(
+                                            agentMachineRuntimes = agentMachineRuntimes,
+                                            agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
+                                            agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
+                                            agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
+                                            agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
+                                            onAgentRuntimeModelsRequest = onAgentRuntimeModelsRequest
+                                        ),
                                         createAgentFormStore = createAgentFormStore,
                                         agentProfileEditAuthority = agentProfileEditAuthority,
-                                        onAgentRuntimeModelsRequest = onAgentRuntimeModelsRequest,
                                         canManage = canManage,
                                         agentStatusIndicatorState = agentStatusIndicatorState,
                                         agentStatusObservedState = agentStatusObservedState,
@@ -5295,17 +5297,19 @@ private fun MembersDetailContent(
                                         onApplyAgentProfileResult = onApplyAgentProfileResult,
                                         onApplyAgentRuntimeConfigProjection = onApplyAgentRuntimeConfigProjection,
                                         onUnavailableAction = onUnavailableAction,
-                                        lifecycleInFlight = lifecycleInFlight,
-                                        diagnosticActionState = effectiveDiagnosticActionState,
-                                        onRunLifecycleAction = { runLifecycleAction(it) },
-                                        onOpenRestartReset = { openRestartResetDialog() },
-                                        onCopyDiagnostics = { copyDiagnostics() },
-                                        onReportIssue = {
-                                            issueReportReceipt = null
-                                            issueReportReferenceCopied = false
-                                            reportIssueDialogOpen = true
-                                        },
-                                        onOpenComputer = onOpenComputer,
+                                        lifecycle = MembersAgentLifecycleInputs(
+                                            lifecycleInFlight = lifecycleInFlight,
+                                            diagnosticActionState = effectiveDiagnosticActionState,
+                                            onRunLifecycleAction = { runLifecycleAction(it) },
+                                            onOpenRestartReset = { openRestartResetDialog() },
+                                            onCopyDiagnostics = { copyDiagnostics() },
+                                            onReportIssue = {
+                                                issueReportReceipt = null
+                                                issueReportReferenceCopied = false
+                                                reportIssueDialogOpen = true
+                                            },
+                                            onOpenComputer = onOpenComputer
+                                        ),
                                         timeContext = timeContext,
                                         fixtureStatusFallbackEnabled = stableVisualCapture,
                                         modifier = Modifier.padding(horizontal = MembersPageInset)
@@ -7782,18 +7786,39 @@ private fun MembersAgentProfileHeader(
     }
 }
 
+/**
+ * Probe I (#273 agent-detail cold-start crash): parameter holders that bring
+ * [MembersAgentProfileTab] from 36 parameters down to 25, below the Compose compiler's
+ * 31-parameters-per-int `$changed` / `$default` mask packing boundary. Behaviour is
+ * unchanged; the tab no longer skips because a new holder instance is built per
+ * recomposition of the caller.
+ */
+private class MembersAgentRuntimeModelInputs(
+    val agentMachineRuntimes: List<String> = emptyList(),
+    val agentRuntimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
+    val agentRuntimeModelLoadsInFlight: Set<String> = emptySet(),
+    val agentRuntimeModelErrorsByRuntime: Map<String, String> = emptyMap(),
+    val agentRuntimeModelGenerationsByRuntime: Map<String, Long> = emptyMap(),
+    val onAgentRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> }
+)
+
+private class MembersAgentLifecycleInputs(
+    val lifecycleInFlight: String? = null,
+    val diagnosticActionState: MembersAgentDiagnosticActionState? = null,
+    val onRunLifecycleAction: (MembersAgentLifecycleAction) -> Unit = {},
+    val onOpenRestartReset: () -> Unit = {},
+    val onCopyDiagnostics: () -> Unit = {},
+    val onReportIssue: () -> Unit = {},
+    val onOpenComputer: (() -> Unit)? = null
+)
+
 @Composable
 private fun MembersAgentProfileTab(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
-    agentMachineRuntimes: List<String> = emptyList(),
-    agentRuntimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
-    agentRuntimeModelLoadsInFlight: Set<String> = emptySet(),
-    agentRuntimeModelErrorsByRuntime: Map<String, String> = emptyMap(),
-    agentRuntimeModelGenerationsByRuntime: Map<String, Long> = emptyMap(),
+    runtimeModels: MembersAgentRuntimeModelInputs = MembersAgentRuntimeModelInputs(),
     createAgentFormStore: SharedCreateAgentFormStore? = null,
     agentProfileEditAuthority: MembersAgentProfileEditAuthority? = null,
-    onAgentRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> },
     canManage: Boolean,
     agentStatusObservedState: SlockAgentStatusIndicatorState?,
     agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
@@ -7812,17 +7837,24 @@ private fun MembersAgentProfileTab(
     onApplyAgentRuntimeConfigProjection:
         suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
     onUnavailableAction: (String) -> Unit,
-    lifecycleInFlight: String? = null,
-    diagnosticActionState: MembersAgentDiagnosticActionState? = null,
-    onRunLifecycleAction: (MembersAgentLifecycleAction) -> Unit = {},
-    onOpenRestartReset: () -> Unit = {},
-    onCopyDiagnostics: () -> Unit = {},
-    onReportIssue: () -> Unit = {},
-    onOpenComputer: (() -> Unit)? = null,
+    lifecycle: MembersAgentLifecycleInputs = MembersAgentLifecycleInputs(),
     timeContext: SlockTimeContext,
     fixtureStatusFallbackEnabled: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val agentMachineRuntimes = runtimeModels.agentMachineRuntimes
+    val agentRuntimeModelsByRuntime = runtimeModels.agentRuntimeModelsByRuntime
+    val agentRuntimeModelLoadsInFlight = runtimeModels.agentRuntimeModelLoadsInFlight
+    val agentRuntimeModelErrorsByRuntime = runtimeModels.agentRuntimeModelErrorsByRuntime
+    val agentRuntimeModelGenerationsByRuntime = runtimeModels.agentRuntimeModelGenerationsByRuntime
+    val onAgentRuntimeModelsRequest = runtimeModels.onAgentRuntimeModelsRequest
+    val lifecycleInFlight = lifecycle.lifecycleInFlight
+    val diagnosticActionState = lifecycle.diagnosticActionState
+    val onRunLifecycleAction = lifecycle.onRunLifecycleAction
+    val onOpenRestartReset = lifecycle.onOpenRestartReset
+    val onCopyDiagnostics = lifecycle.onCopyDiagnostics
+    val onReportIssue = lifecycle.onReportIssue
+    val onOpenComputer = lifecycle.onOpenComputer
     val errorStrings = localizedErrorPresentationStrings()
     val summary = detail?.summary
     val runtimeConfigResolution = remember(summary) { summary.toMembersRuntimeConfigResolution() }
