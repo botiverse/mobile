@@ -280,25 +280,25 @@ def check_shared_preview(sources: Mapping[str, str]) -> None:
 def check_thread_routing(sources: Mapping[str, str]) -> None:
     thread = _source(sources, "thread")
     preview = _source(sources, "preview")
-    # Generic file picks bypass the annotation editor.  Their image members may
-    # therefore be compressed by the native picker, but the policy must be
-    # sampled before the async launch and must remain session-local.  Image and
-    # camera picks stay on the two-stage editor path.
+    # File picks never compress images. The helper must stay a hard false so a
+    # JPEG selected via attachFile keeps source bytes for the shared size gate.
+    # Image and camera picks still skip picker compression and stay on the
+    # two-stage editor path. Sample the policy before the async launch.
     policy = _region(
         thread,
         "internal fun shouldCompressThreadAttachmentPickerImages(",
         "internal fun slockComposerImagePickerFilesAreStrictImages(",
         "ThreadPage mixed-picker compression policy",
     )
-    _require_all(
+    if re.search(r'action\s*==\s*"attachFile"\s*&&\s*!originalImage', policy):
+        raise Violation(
+            "ThreadPage mixed-picker compression policy: File picks must not compress"
+        )
+    _require(
         policy,
-        ('action == "attachFile"', "!originalImage"),
+        ": Boolean = false",
         "ThreadPage mixed-picker compression policy",
     )
-    if "&&" not in policy:
-        raise Violation(
-            "ThreadPage mixed-picker compression policy: action/original-image gates are not conjunctive"
-        )
     picker_calls = list(re.finditer(r"threadAttachmentUpload\s*\(", thread))
     if not picker_calls:
         raise Violation("ThreadPage: no threadAttachmentUpload call")
@@ -1013,8 +1013,7 @@ private val SlockFilePreviewImageExtensions = setOf("jpg")
 private val SlockFilePreviewVideoExtensions = setOf("mp4", "flv")
     '''
     thread = '''
-internal fun shouldCompressThreadAttachmentPickerImages(action: String, originalImage: Boolean): Boolean =
-  action == "attachFile" && !originalImage
+internal fun shouldCompressThreadAttachmentPickerImages(action: String, originalImage: Boolean): Boolean = false
 internal fun slockComposerImagePickerFilesAreStrictImages(files: List<PlatformFile>): Boolean = true
 val compressPickerImages = shouldCompressThreadAttachmentPickerImages("attachFile", currentDraftState.originalImage)
 val response = bridge.threadAttachmentUpload(channelId = id, imageOnly = true,
@@ -1227,10 +1226,14 @@ def self_test() -> int:
             ),
         ),
         (
-            "mixed-picker original-image policy",
+            "file-picker compression reintroduced",
             lambda s: s.__setitem__(
                 "thread",
-                s["thread"].replace("!originalImage", "originalImage", 1),
+                s["thread"].replace(
+                    "internal fun shouldCompressThreadAttachmentPickerImages(action: String, originalImage: Boolean): Boolean = false",
+                    'internal fun shouldCompressThreadAttachmentPickerImages(action: String, originalImage: Boolean): Boolean = action == "attachFile" && !originalImage',
+                    1,
+                ),
             ),
         ),
         (
