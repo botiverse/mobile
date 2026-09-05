@@ -5356,6 +5356,8 @@ private fun MembersDetailContent(
                                     MembersAgentDetailTab.Activity -> Unit
                                 }
                             }
+                            // PROBE F: bottom spacer folded into the single agent item as well.
+                            Spacer(Modifier.height(180.dp))
                         }
                     } else {
                         item(key = "member-detail-${member.id.value}-human-content") {
@@ -5378,8 +5380,10 @@ private fun MembersDetailContent(
                             )
                         }
                     }
-                    item(key = "member-detail-${member.id.value}-bottom-spacer") {
-                        Spacer(Modifier.height(180.dp))
+                    if (member.kind != MemberKind.Agent) {
+                        item(key = "member-detail-${member.id.value}-bottom-spacer") {
+                            Spacer(Modifier.height(180.dp))
+                        }
                     }
                 }
             }
