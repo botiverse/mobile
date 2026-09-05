@@ -5228,6 +5228,7 @@ private fun MembersDetailContent(
                             item(key = "member-detail-${member.id.value}-state-notice") {
                                 MembersAgentDetailStateNotice(
                                     state = agentDetailState,
+                                    errorStrings = errorStrings,
                                     modifier = Modifier.padding(horizontal = MembersPageInset)
                                 )
                             }
@@ -5248,6 +5249,7 @@ private fun MembersDetailContent(
                                 when (selectedTab) {
                                 MembersAgentDetailTab.Profile ->
                                     MembersAgentProfileTab(
+                                        errorStrings = errorStrings,
                                         member = member,
                                         detail = detail,
                                         agentMachineRuntimes = agentMachineRuntimes,
@@ -6627,9 +6629,9 @@ internal fun membersAgentTabMinimumWidth(tab: MembersAgentDetailTab): Dp =
 @Composable
 private fun MembersAgentDetailStateNotice(
     state: MembersAgentDetailLoadState,
+    errorStrings: ErrorPresentationStrings,
     modifier: Modifier = Modifier
 ) {
-    val errorStrings = localizedErrorPresentationStrings()
     val message =
         when (state) {
             MembersAgentDetailLoadState.Loading -> stringResource(MR.strings.member_state_loading_agent_profile)
@@ -7821,9 +7823,11 @@ private fun MembersAgentProfileTab(
     onOpenComputer: (() -> Unit)? = null,
     timeContext: SlockTimeContext,
     fixtureStatusFallbackEnabled: Boolean = false,
+    // PROBE G (task #273, DO NOT MERGE): error strings resolved by the parent, outside the lazy
+    // subcomposition, so this group's first composition reads no CompositionLocal here.
+    errorStrings: ErrorPresentationStrings,
     modifier: Modifier = Modifier
 ) {
-    val errorStrings = localizedErrorPresentationStrings()
     val summary = detail?.summary
     val runtimeConfigResolution = remember(summary) { summary.toMembersRuntimeConfigResolution() }
     val canonicalRuntimeConfig =
