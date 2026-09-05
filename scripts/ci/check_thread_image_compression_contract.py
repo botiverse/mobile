@@ -294,11 +294,13 @@ def check_thread_routing(sources: Mapping[str, str]) -> None:
         raise Violation(
             "ThreadPage mixed-picker compression policy: File picks must not compress"
         )
-    _require(
-        policy,
-        ": Boolean = false",
-        "ThreadPage mixed-picker compression policy",
-    )
+    # Anchor the hard-false to the return type, not a parameter default.
+    # `originalImage: Boolean = false` would otherwise satisfy a bare
+    # ": Boolean = false" substring while the body compresses again.
+    if not re.search(r"\)\s*:\s*Boolean\s*=\s*false\b", policy):
+        raise Violation(
+            "ThreadPage mixed-picker compression policy: helper must be a hard false"
+        )
     picker_calls = list(re.finditer(r"threadAttachmentUpload\s*\(", thread))
     if not picker_calls:
         raise Violation("ThreadPage: no threadAttachmentUpload call")
@@ -1232,6 +1234,17 @@ def self_test() -> int:
                 s["thread"].replace(
                     "internal fun shouldCompressThreadAttachmentPickerImages(action: String, originalImage: Boolean): Boolean = false",
                     'internal fun shouldCompressThreadAttachmentPickerImages(action: String, originalImage: Boolean): Boolean = action == "attachFile" && !originalImage',
+                    1,
+                ),
+            ),
+        ),
+        (
+            "file-picker false satisfied by parameter default",
+            lambda s: s.__setitem__(
+                "thread",
+                s["thread"].replace(
+                    "internal fun shouldCompressThreadAttachmentPickerImages(action: String, originalImage: Boolean): Boolean = false",
+                    'internal fun shouldCompressThreadAttachmentPickerImages(action: String, originalImage: Boolean = false): Boolean = action == "attachFile"',
                     1,
                 ),
             ),
