@@ -111,6 +111,46 @@ class SharedServerFeatureFlagsTest {
         assertFalse(flags.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
     }
 
+    // ---- task #1129 STABILITY PROBE (throwaway branch, not for merge) ----
+    // Same scenario as concurrentColdStartPrefetchesShareOneEvaluation, repeated 50x in one JVM.
+    // `dispatched` reproduces the shape on main before #2397 (expected to go red at least once);
+    // `undispatched` is the #2397 shape (expected to stay green). Two tests so JUnit reports them apart.
+    private suspend fun kotlinx.coroutines.CoroutineScope.probeOnce(undispatched: Boolean): Int {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var calls = 0
+        val api =
+            object : SlockFeatureFlagsApi {
+                override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse {
+                    calls += 1
+                    started.complete(Unit)
+                    release.await()
+                    return ok("""{"evaluations":[{"key":"$WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY","enabled":false}]}""")
+                }
+            }
+        val flags = SharedServerFeatureFlags(api)
+        val first = async { flags.prefetch(server, evaluationContext = "env-a") }
+        started.await()
+        val second =
+            if (undispatched) async(start = CoroutineStart.UNDISPATCHED) { flags.prefetch(server, evaluationContext = "env-a") }
+            else async { flags.prefetch(server, evaluationContext = "env-a") }
+        release.complete(Unit)
+        first.await(); second.await()
+        return calls
+    }
+
+    @Test
+    fun probe1129_dispatchedSecondCaller_x50() = runBlocking {
+        val calls = (1..50).map { probeOnce(undispatched = false) }
+        assertEquals(List(50) { 1 }, calls, "dispatched shape: per-iteration evaluate counts")
+    }
+
+    @Test
+    fun probe1129_undispatchedSecondCaller_x50() = runBlocking {
+        val calls = (1..50).map { probeOnce(undispatched = true) }
+        assertEquals(List(50) { 1 }, calls, "undispatched shape: per-iteration evaluate counts")
+    }
+
     @Test
     fun cancellingOneWaiterDoesNotCancelTheSharedEvaluation() = runBlocking {
         val started = CompletableDeferred<Unit>()
