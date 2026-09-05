@@ -150,6 +150,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.NonSkippableComposable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
@@ -7782,7 +7783,28 @@ private fun MembersAgentProfileHeader(
     }
 }
 
+/**
+ * Agent-detail Profile tab.
+ *
+ * [NonSkippableComposable] is deliberate and must stay: this function takes 36 parameters,
+ * which is past the Compose compiler's 31-parameters-per-int packing boundary for the
+ * generated `$changed` / `$default` masks (this signature gets 4 `$changed` + 2 `$default`
+ * ints after `Composer`). Release 1.11.0 alpha builds crashed on Android on cold entry to
+ * this tab with a ClassCastException inside [rememberCoroutineScope] (a Boolean was read
+ * from the slot where the scope canceller was expected), and a diagnostic build that only
+ * added one read at the function head (1110008) was rejected by the ART verifier on this
+ * very function ("register has type Composer but expected Integer"): the generated
+ * skip/`changed(param)` code for this function sits on a codegen boundary.
+ *
+ * The annotation makes the compiler emit no skip check and no `changed(param)` parameter
+ * slots for this function, so the slot layout is fixed and the boundary code is never
+ * generated. Cost: this tab no longer skips and recomposes whenever its parent does; it is
+ * one screen of content, which is acceptable. Removing the annotation reintroduces the
+ * crash. Verification is device-only (compiler layer): 6/6 clean cold starts on build
+ * 1110012 versus 6/6 crashes on the unannotated base, plus the A/D2/E ablation controls.
+ */
 @Composable
+@NonSkippableComposable
 private fun MembersAgentProfileTab(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
