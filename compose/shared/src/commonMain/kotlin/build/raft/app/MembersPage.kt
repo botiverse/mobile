@@ -5211,7 +5211,12 @@ private fun MembersDetailContent(
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
-                    beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
+                    // ABLATION PROBE (task #273 / #2384, DO NOT MERGE): no beyond-bounds
+                    // precomposition on the agent-detail list. HuaTuo's 39-run reproduction never
+                    // switches tabs, so the slot mix-up must happen between items of THIS list
+                    // (top-spacer: zero remember slots; body: rememberCoroutineScope). If the
+                    // crash vanishes here, item-level reuse/precompose is the mechanism.
+                    beyondBoundsItemCount = 0
                 ) {
                     if (initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement) {
                         item(key = "member-detail-${member.id.value}-top-spacer") {
