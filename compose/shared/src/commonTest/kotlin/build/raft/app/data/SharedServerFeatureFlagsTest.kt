@@ -141,6 +141,63 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
+    fun cancellingAllWaitersCannotPublishALateSharedResponse() = runBlocking {
+        val firstStarted = CompletableDeferred<Unit>()
+        val firstReturned = CompletableDeferred<Unit>()
+        val secondStarted = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        var calls = 0
+        val observed = mutableListOf<Boolean>()
+        val api =
+            object : SlockFeatureFlagsApi {
+                override suspend fun evaluate(
+                    serverId: ServerId,
+                    keys: List<String>
+                ): HomeNetworkResponse {
+                    when (++calls) {
+                        1 -> {
+                            firstStarted.complete(Unit)
+                            withContext(NonCancellable) { releaseFirst.await() }
+                            firstReturned.complete(Unit)
+                            return ok(
+                                """{"evaluations":[{"key":"$WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY","enabled":false}]}"""
+                            )
+                        }
+                        else -> {
+                            secondStarted.complete(Unit)
+                            return ok(
+                                """{"evaluations":[{"key":"$WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY","enabled":true}]}"""
+                            )
+                        }
+                    }
+                }
+            }
+        val flags =
+            SharedServerFeatureFlags(api) { _, key, enabled, _, _, _, _ ->
+                if (key == WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY) {
+                    observed += enabled
+                }
+            }
+        val first = launch { flags.prefetch(server) }
+        firstStarted.await()
+        val second = async(start = CoroutineStart.UNDISPATCHED) { flags.prefetch(server) }
+        first.cancel()
+        second.cancel()
+        first.join()
+        second.join()
+
+        releaseFirst.complete(Unit)
+        val fresh = async { flags.prefetch(server) }
+        secondStarted.await()
+        assertTrue(fresh.await().isEnabled(WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
+        firstReturned.await()
+
+        assertEquals(2, calls)
+        assertEquals(listOf(true), observed)
+        assertTrue(flags.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
+    }
+
+    @Test
     fun enabledThreadPageSizeFlagPreservesItsVariant() = runBlocking {
         val api =
             FakeApi(
