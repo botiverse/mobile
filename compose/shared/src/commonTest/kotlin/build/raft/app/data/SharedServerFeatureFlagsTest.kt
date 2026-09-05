@@ -7,6 +7,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlin.test.Test
@@ -139,16 +140,46 @@ class SharedServerFeatureFlagsTest {
         return calls
     }
 
+    // Round 2 (run 33964951887 was 50/50 green for BOTH shapes, i.e. the positive control did not
+    // reproduce at N=50 on an idle runner). Inverted assertion so the job status alone is readable:
+    //   dispatched probes are GREEN only if the race reproduced at least once (calls == 2 seen);
+    //   the undispatched probe is GREEN only if it never did (0 of N).
+    private suspend fun kotlinx.coroutines.CoroutineScope.raceCount(n: Int, undispatched: Boolean): Int =
+        (1..n).count { probeOnce(undispatched = undispatched) == 2 }
+
     @Test
-    fun probe1129_dispatchedSecondCaller_x50() = runBlocking {
-        val calls = (1..50).map { probeOnce(undispatched = false) }
-        assertEquals(List(50) { 1 }, calls, "dispatched shape: per-iteration evaluate counts")
+    fun probe1129_dispatched_x2000_idle_expectsAtLeastOneRace() = runBlocking {
+        val races = raceCount(2000, undispatched = false)
+        println("probe1129 dispatched idle: races=$races/2000")
+        assertTrue(races >= 1, "dispatched shape never raced in 2000 idle iterations (races=$races)")
     }
 
     @Test
-    fun probe1129_undispatchedSecondCaller_x50() = runBlocking {
-        val calls = (1..50).map { probeOnce(undispatched = true) }
-        assertEquals(List(50) { 1 }, calls, "undispatched shape: per-iteration evaluate counts")
+    fun probe1129_dispatched_x2000_underDefaultLoad_expectsAtLeastOneRace() = runBlocking {
+        // Contend for Dispatchers.Default so the owner's resumption after release.complete() lands
+        // on a busy pool — the CI condition under which #2392/#2396 went red.
+        val burners = List(8) {
+            launch(kotlinx.coroutines.Dispatchers.Default) {
+                var x = 0L
+                while (isActive) { x += 1; if (x % 100_000L == 0L) kotlinx.coroutines.yield() }
+            }
+        }
+        val races = try { raceCount(2000, undispatched = false) } finally { burners.forEach { it.cancel() } }
+        println("probe1129 dispatched under Default load: races=$races/2000")
+        assertTrue(races >= 1, "dispatched shape never raced in 2000 loaded iterations (races=$races)")
+    }
+
+    @Test
+    fun probe1129_undispatched_x2000_underDefaultLoad_expectsZeroRaces() = runBlocking {
+        val burners = List(8) {
+            launch(kotlinx.coroutines.Dispatchers.Default) {
+                var x = 0L
+                while (isActive) { x += 1; if (x % 100_000L == 0L) kotlinx.coroutines.yield() }
+            }
+        }
+        val races = try { raceCount(2000, undispatched = true) } finally { burners.forEach { it.cancel() } }
+        println("probe1129 undispatched under Default load: races=$races/2000")
+        assertEquals(0, races, "undispatched shape raced under load")
     }
 
     @Test
