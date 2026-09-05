@@ -177,5 +177,13 @@ class SlockKuiklyPageRenderViewTest {
                 pageDidAppear = true
             )
         )
+        assertFalse(
+            slockKuiklyChildLifecycleVisible(
+                childActive = true,
+                childAttached = true,
+                viewDidAppear = true,
+                pageDidAppear = false
+            )
+        )
     }
 }
