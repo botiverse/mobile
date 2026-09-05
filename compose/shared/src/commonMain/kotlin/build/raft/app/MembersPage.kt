@@ -149,6 +149,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.currentCompositeKeyHash
+import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -7823,6 +7825,13 @@ private fun MembersAgentProfileTab(
     fixtureStatusFallbackEnabled: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    // PROBE D (task #273, DO NOT MERGE): composition-state log at the head of this restart
+    // group. Read logcat tag System.out, prefix "probe273".
+    println(
+        "probe273 enter MembersAgentProfileTab member=${member.id.value} inserting=${currentComposer.inserting} " +
+            "skipping=${currentComposer.skipping} compositeKeyHash=$currentCompositeKeyHash " +
+            "canManage=$canManage showAvatarPicker=$showAvatarPicker fixtureFallback=$fixtureStatusFallbackEnabled"
+    )
     val errorStrings = localizedErrorPresentationStrings()
     val summary = detail?.summary
     val runtimeConfigResolution = remember(summary) { summary.toMembersRuntimeConfigResolution() }
@@ -7846,7 +7855,18 @@ private fun MembersAgentProfileTab(
                 customModelName = (canonicalRuntimeModel as? RuntimeModelConfig.Custom)?.name.orEmpty(),
                 machineRuntimeIds = agentMachineRuntimes
             )
-    val scope = rememberCoroutineScope()
+    val scope =
+        try {
+            rememberCoroutineScope()
+        } catch (e: ClassCastException) {
+            // PROBE D: the exception message names the foreign value ("Boolean" → which one?).
+            println(
+                "probe273 rememberCoroutineScope ClassCast member=${member.id.value} msg=${e.message} " +
+                    "inserting=${currentComposer.inserting} skipping=${currentComposer.skipping} " +
+                    "canManage=$canManage showAvatarPicker=$showAvatarPicker fixtureFallback=$fixtureStatusFallbackEnabled"
+            )
+            throw e
+        }
     val currentProfileEditAuthority by rememberUpdatedState(agentProfileEditAuthority)
     val currentRuntimeModelGenerations by rememberUpdatedState(agentRuntimeModelGenerationsByRuntime)
     val deleted = summary?.deletedAt?.isNotBlank() == true
