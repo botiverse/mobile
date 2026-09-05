@@ -62,7 +62,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.DirectAttachmentUploadOperation
 import build.raft.app.data.ThreadComposerDirectUploadDecision
 import build.raft.app.data.ThreadComposerDirectUploadPhase
-import build.raft.app.data.decideThreadComposerDirectUpload
+import build.raft.app.data.resolveThreadComposerDirectUpload
 import build.raft.app.data.newAttachmentUploadClientRequestId
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.ThreadApiResult
@@ -8711,13 +8711,43 @@ internal fun SharedThreadRouteContent(
                                         threadDirectUploadClientRequestIds =
                                             threadDirectUploadClientRequestIds + (identity to clientRequestId)
                                     }
-                                    val sizeBytes = file.sizeBytes ?: 0L
-                                    val decision =
-                                        decideThreadComposerDirectUpload(
-                                            capabilities = directCapabilities,
-                                            sizeBytes = sizeBytes,
-                                            cancelled = false,
-                                        )
+                                    val resolvedUpload =
+                                        when (
+                                            val resolved =
+                                                resolveThreadComposerDirectUpload(
+                                                    file = file,
+                                                    capabilities = directCapabilities,
+                                                    cancelled = false,
+                                                    prepare = { candidate ->
+                                                        val operation = directUploadOperation
+                                                        if (operation == null) {
+                                                            DataResult.Error(
+                                                                ScreenError(
+                                                                    code = "attachment_size_unavailable",
+                                                                    retryable = true,
+                                                                )
+                                                            )
+                                                        } else {
+                                                            operation.prepare(candidate)
+                                                        }
+                                                    },
+                                                )
+                                        ) {
+                                            is DataResult.Content -> resolved.data
+                                            is DataResult.Error ->
+                                                return@withPermit resolved
+                                            is DataResult.NoPermission ->
+                                                return@withPermit resolved
+                                            is DataResult.Empty ->
+                                                return@withPermit DataResult.Error(
+                                                    ScreenError(
+                                                        code = "attachment_size_unavailable",
+                                                        retryable = false,
+                                                    )
+                                                )
+                                        }
+                                    val uploadFile = resolvedUpload.file
+                                    val decision = resolvedUpload.decision
                                     fun publishPhaseProgress(phase: ThreadComposerDirectUploadPhase) {
                                         val transferred =
                                             when (phase) {
@@ -8755,7 +8785,7 @@ internal fun SharedThreadRouteContent(
                                             if (operation == null) {
                                                 dataSource.uploadAttachments(
                                                     channelId = channelId,
-                                                    files = listOf(file),
+                                                    files = listOf(uploadFile),
                                                     onProgress = { progress ->
                                                         coroutineScope.launch {
                                                             attachmentUploadOrchestrator.publishIfAccepted(
@@ -8781,7 +8811,7 @@ internal fun SharedThreadRouteContent(
                                                     val one =
                                                         operation.uploadOneThreadFile(
                                                             channelId = ChannelId(channelId),
-                                                            file = file,
+                                                            file = uploadFile,
                                                             clientRequestId = clientRequestId,
                                                             onPhase = ::publishPhaseProgress,
                                                         )
@@ -8797,7 +8827,7 @@ internal fun SharedThreadRouteContent(
                                         ThreadComposerDirectUploadDecision.LegacyMultipart ->
                                             dataSource.uploadAttachments(
                                                 channelId = channelId,
-                                                files = listOf(file),
+                                                files = listOf(uploadFile),
                                                 onProgress = { progress ->
                                                     coroutineScope.launch {
                                                         attachmentUploadOrchestrator.publishIfAccepted(

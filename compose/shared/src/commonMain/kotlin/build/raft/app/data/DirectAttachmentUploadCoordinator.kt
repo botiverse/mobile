@@ -112,6 +112,8 @@ internal class DirectAttachmentUploadOperation(
 ) {
     suspend fun capabilities(): DataResult<AttachmentUploadCapabilities> = coordinator.capabilities()
 
+    suspend fun prepare(file: PlatformFile): DataResult<PlatformFile> = coordinator.prepare(file)
+
     suspend fun upload(
         channelId: ChannelId,
         files: List<PlatformFile>,
@@ -462,6 +464,9 @@ internal class DirectAttachmentUploadCoordinator(
     /** Read the capability through the same authority-bound gateway used by upload/compensation. */
     internal suspend fun capabilities(): DataResult<AttachmentUploadCapabilities> =
         safeCall("capabilities") { gateway.capabilities() }
+
+    internal suspend fun prepare(file: PlatformFile): DataResult<PlatformFile> =
+        safeCall("prepare") { gateway.prepare(file) }
 
     internal suspend fun uploadOneThreadFile(
         channelId: ChannelId,
