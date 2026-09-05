@@ -3,10 +3,13 @@ package build.raft.app.data
 import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
+import build.raft.app.ThreadAttachmentUploadAttemptIdentity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 internal enum class ThreadComposerDirectUploadDecision {
@@ -43,6 +46,16 @@ internal data class ThreadComposerResolvedUpload(
     val file: PlatformFile,
     val decision: ThreadComposerDirectUploadDecision,
 )
+
+internal class ThreadComposerDirectUploadClientRequestIds {
+    private val mutex = Mutex()
+    private val ids = mutableMapOf<ThreadAttachmentUploadAttemptIdentity, String>()
+
+    suspend fun idFor(identity: ThreadAttachmentUploadAttemptIdentity): String =
+        mutex.withLock {
+            ids.getOrPut(identity) { newAttachmentUploadClientRequestId() }
+        }
+}
 
 /**
  * Capabilities miss fail-opens to multipart without stating. When capabilities are

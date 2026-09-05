@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.ThreadAttachmentUploadAttemptIdentity
 import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
@@ -7,8 +8,10 @@ import build.raft.app.runPortableCoroutineTest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -430,6 +433,34 @@ class ThreadComposerDirectFileUploadTest {
         assertEquals(1, gateway.cancelCalls)
         assertEquals(0, gateway.completeCalls)
         assertEquals("11111111-1111-4111-8111-111111111111", gateway.cancelledIds.single())
+    }
+
+    @Test
+    fun concurrentTwoFilesKeepDistinctStableClientRequestIds() = runPortableCoroutineTest {
+        val registry = ThreadComposerDirectUploadClientRequestIds()
+        val first = ThreadAttachmentUploadAttemptIdentity("local-a", "draft-1")
+        val second = ThreadAttachmentUploadAttemptIdentity("local-b", "draft-1")
+        val firstIds = MutableList(32) { "" }
+        val secondIds = MutableList(32) { "" }
+        coroutineScope {
+            repeat(32) { index ->
+                launch(Dispatchers.Default) {
+                    firstIds[index] = registry.idFor(first)
+                }
+                launch(Dispatchers.Default) {
+                    secondIds[index] = registry.idFor(second)
+                }
+            }
+        }
+        val firstId = firstIds.first()
+        val secondId = secondIds.first()
+        assertTrue(firstId.isNotBlank())
+        assertTrue(secondId.isNotBlank())
+        assertTrue(firstId != secondId)
+        assertTrue(firstIds.all { it == firstId })
+        assertTrue(secondIds.all { it == secondId })
+        assertEquals(firstId, registry.idFor(first))
+        assertEquals(secondId, registry.idFor(second))
     }
 
     @Test

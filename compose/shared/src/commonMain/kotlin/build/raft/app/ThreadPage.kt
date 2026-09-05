@@ -63,6 +63,7 @@ import build.raft.app.data.DirectAttachmentUploadOperation
 import build.raft.app.data.ThreadComposerDirectUploadDecision
 import build.raft.app.data.ThreadComposerDirectUploadPhase
 import build.raft.app.data.resolveThreadComposerDirectUpload
+import build.raft.app.data.ThreadComposerDirectUploadClientRequestIds
 import build.raft.app.data.newAttachmentUploadClientRequestId
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.ThreadApiResult
@@ -6055,8 +6056,8 @@ internal fun SharedThreadRouteContent(
     var attachmentUploadFilesByLocalId by remember(threadInstanceKey) {
         mutableStateOf<Map<ThreadAttachmentUploadAttemptIdentity, PlatformFile>>(emptyMap())
     }
-    var threadDirectUploadClientRequestIds by remember(threadInstanceKey) {
-        mutableStateOf<Map<ThreadAttachmentUploadAttemptIdentity, String>>(emptyMap())
+    val threadDirectUploadClientRequestIds = remember(threadInstanceKey) {
+        ThreadComposerDirectUploadClientRequestIds()
     }
     // Rows restored from the durable draft are tracked separately from files admitted by the
     // currently mounted composer.  When a reused Thread instance moves to another draft key we
@@ -8642,6 +8643,13 @@ internal fun SharedThreadRouteContent(
             val localAttachmentId = file.id.takeIf { it.isNotBlank() } ?: continue
             val admission = admittedLocalAdmissions[localAttachmentId] ?: continue
             val admittedSourceAttachment = localAttachments.firstOrNull { it.id == localAttachmentId }
+            val identity = threadAttachmentUploadAttemptIdentity(localAttachmentId, draftKey)
+            val clientRequestId =
+                if (identity != null) {
+                    threadDirectUploadClientRequestIds.idFor(identity)
+                } else {
+                    newAttachmentUploadClientRequestId()
+                }
             val attemptToken =
                 attachmentUploadOrchestrator.launch(
                     localAttachmentId = localAttachmentId,
@@ -8663,15 +8671,6 @@ internal fun SharedThreadRouteContent(
                         val uploadResult =
                             withContext(Dispatchers.Default) {
                                 attachmentUploadSemaphore.withPermit {
-                                    val identity =
-                                        threadAttachmentUploadAttemptIdentity(localAttachmentId, draftKey)
-                                    val clientRequestId =
-                                        identity?.let { key -> threadDirectUploadClientRequestIds[key] }
-                                            ?: newAttachmentUploadClientRequestId()
-                                    if (identity != null && identity !in threadDirectUploadClientRequestIds) {
-                                        threadDirectUploadClientRequestIds =
-                                            threadDirectUploadClientRequestIds + (identity to clientRequestId)
-                                    }
                                     val resolvedUpload =
                                         when (
                                             val resolved =
