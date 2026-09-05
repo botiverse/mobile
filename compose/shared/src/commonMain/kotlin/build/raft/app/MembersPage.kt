@@ -7823,6 +7823,11 @@ private fun MembersAgentProfileTab(
     fixtureStatusFallbackEnabled: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    // ABLATION PROBE (task #273 / #2384, DO NOT MERGE): take the coroutine-scope slot before any
+    // other slot in this restart group. If the crash moves (different slot type/frame) or vanishes,
+    // the misalignment sits between the group head and the old position; if it is byte-identical,
+    // the whole group is entered with a foreign slot table (host/reuse path), not this function.
+    val scope = rememberCoroutineScope()
     val errorStrings = localizedErrorPresentationStrings()
     val summary = detail?.summary
     val runtimeConfigResolution = remember(summary) { summary.toMembersRuntimeConfigResolution() }
@@ -7846,7 +7851,6 @@ private fun MembersAgentProfileTab(
                 customModelName = (canonicalRuntimeModel as? RuntimeModelConfig.Custom)?.name.orEmpty(),
                 machineRuntimeIds = agentMachineRuntimes
             )
-    val scope = rememberCoroutineScope()
     val currentProfileEditAuthority by rememberUpdatedState(agentProfileEditAuthority)
     val currentRuntimeModelGenerations by rememberUpdatedState(agentRuntimeModelGenerationsByRuntime)
     val deleted = summary?.deletedAt?.isNotBlank() == true
