@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-09-05 22:11:36 UTC
+Generated: 2026-09-05 22:16:09 UTC
 Latest run: 9e487358-20260905220922
 Latest commit: 9e487358-20260905220922
 Commit subject: test(feature-flags): register the second cold-start caller before releasing the owner (task #1129) (#2397)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 99, same 0, pass 0, basic-pass 0, different 90, missing 9
-AI analysis: ready 77 / total 99, pending 22
+AI analysis: ready 90 / total 99, pending 9
 Visual coverage matrix: active 108 / total 127, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

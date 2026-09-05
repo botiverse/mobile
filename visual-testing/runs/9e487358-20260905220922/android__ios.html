@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>9e487358-20260905220922</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-09-05T22:11:36.641Z" data-timestamp="2026-09-05T22:11:36.641Z" title="2026-09-05T22:11:36.641Z">2026-09-05 22:11:36 UTC</time></p>
+    <p class="runMeta"><code>9e487358-20260905220922</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-09-05T22:16:09.291Z" data-timestamp="2026-09-05T22:16:09.291Z" title="2026-09-05T22:16:09.291Z">2026-09-05 22:16:09 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <a href="react__ios.html">React vs iOS</a> · <strong>Android vs iOS</strong></p>
     <div class="summary">
       <span class="pill">Total 99</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 20</span>
       <span class="pill">Different 45</span>
       <span class="pill">Missing 18</span>
-      <span class="pill">AI 78/99 ready</span>
+      <span class="pill">AI 81/99 ready</span>
       <span class="pill">Matrix 108/127 active</span>
       <span class="pill">Components Parity 90/94 active</span><span class="pill">Screens Parity 18/33 active</span>
     </div>
@@ -4364,7 +4364,12 @@
       <p><code>RGB 94.8%</code><br/><code>Pixel 90.62%</code><br/><code>Mismatch 9.38%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · ui-components</summary>
+    <ul><li>Avatar placeholder in 'Created Agents' Visual QA card appears slightly larger on iOS</li><li>iOS render shows the Codex CLI label with subtly different vertical alignment within the Visual QA card</li><li>Minor horizontal padding difference between Android and iOS in the Creator avatar block</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize avatar size in Visual QA card via explicit width/height in dp</li><li>Unify Creator block horizontal padding across platforms in the shared theme</li><li>Apply consistent font line-height token for INFO/Profile section across iOS and Android</li><li>Audit Kuikly Image/Avatar defaults and override with platform-agnostic sizing tokens</li><li>Run pixel-diff after fixes to confirm avatar and Creator block alignment parity</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.members.agent-detail.profile.png" data-current-src="ios/components.members.agent-detail.profile.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -4423,7 +4428,12 @@
       <p><code>RGB 94.7%</code><br/><code>Pixel 90.21%</code><br/><code>Mismatch 9.79%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · kuikly-components / agent-profile</summary>
+    <ul><li>Popover menu position differs: on Android it floats over the tab strip area; on iOS it is anchored higher, overlapping the tab bar and partially covering the agent header</li><li>Tab bar appearance differs: iOS tabs have a white background with subtle border, Android tabs appear with stronger filled/inverted contrast for the active state</li><li>'Created Agents' list item layout differs: iOS shows agent avatar, name, and 'Codex CLI' subtitle stacked; Android shows avatar with name only (no subtitle visible)</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize popover anchor in the lifecycle-actions menu: pin a consistent top offset relative to the trigger and constrain z-order over tabs</li><li>Unify TabBar tokens (background, active-state fill, divider) via a shared style map instead of native defaults</li><li>Ensure the 'Created Agents' list cell always renders the secondary runtime label (e.g., 'Codex CLI') on both platforms</li><li>Define a shared design token for the environment-variable chip row vertical spacing</li><li>Allow a single font-family override or weight harmonization step so iOS SF and Android Roboto render at visually equivalent weight/metrics</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.members.agent-lifecycle-actions.png" data-current-src="ios/components.members.agent-lifecycle-actions.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -4482,7 +4492,12 @@
       <p><code>RGB 94.5%</code><br/><code>Pixel 90.59%</code><br/><code>Mismatch 9.41%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · ui-engineering</summary>
+    <ul><li>Avatar grid layout matches in count and selection (cyan-tile selected) on both platforms</li><li>Typography weight and color treatment appear consistent across Android and iOS renders</li><li>Profile header, tab bar, and form labels (DISPLAY NAME, DESCRIPTION, INFO, RUNTIME CONFIG) render identically in structure</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Accept as isomorphic if pixel mismatch stays below tolerance once device-px normalization is applied</li><li>If stricter parity is required, pin a cross-platform font (e.g., Inter/Roboto) via the Kuikly typography token to neutralize weight differences</li><li>Re-run comparison at matched DP/px scale (390 logical) to confirm residual delta is sub-tolerance</li><li>Verify tab indicator (Profile) yellow fill matches design token on iOS Kuikly render path</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.members.avatar-management.png" data-current-src="ios/components.members.avatar-management.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">

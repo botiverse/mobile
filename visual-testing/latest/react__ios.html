@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>9e487358-20260905220922</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-09-05T22:11:36.641Z" data-timestamp="2026-09-05T22:11:36.641Z" title="2026-09-05T22:11:36.641Z">2026-09-05 22:11:36 UTC</time></p>
+    <p class="runMeta"><code>9e487358-20260905220922</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-09-05T22:16:09.291Z" data-timestamp="2026-09-05T22:16:09.291Z" title="2026-09-05T22:16:09.291Z">2026-09-05 22:16:09 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <strong>React vs iOS</strong> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 99</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 13</span>
       <span class="pill">Different 56</span>
       <span class="pill">Missing 19</span>
-      <span class="pill">AI 72/99 ready</span>
+      <span class="pill">AI 80/99 ready</span>
       <span class="pill">Matrix 108/127 active</span>
       <span class="pill">Components Parity 90/94 active</span><span class="pill">Screens Parity 18/33 active</span>
     </div>
@@ -1028,7 +1028,12 @@
       <p><code>RGB 98.0%</code><br/><code>Pixel 99.77%</code><br/><code>Mismatch 0.23%</code><br/><code>Raw 1026×276 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">pass: pixel perfect 99.77% &gt; 99% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×92 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · design-system</summary>
+    <ul><li>All five status dots (green, orange, gray, blue, pink) render with matching colors, sizes, and stroke widths on both React and iOS renderings.</li><li>The &quot;Waiting pulse&quot; label text and the pink dot beside it are visually equivalent in color, weight, alignment, and spacing.</li><li>Pixel-perfect similarity of 99.77% and mismatch ratio of 0.23% confirm no meaningful visual divergence; any delta is likely sub-pixel antialiasing.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>No action required: visuals are within the configured 0.02 pixel-ratio tolerance.</li><li>If desired, align iOS font rendering options (e.g., `adjustsFontForContentSizeCategory` or `Font.body.monospacedDigit()`) with the React typographic baseline to reduce antialiasing delta.</li><li>Re-baseline after any token change to the Status Dot component to keep the diff minimal.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.ui.status-dot.states.png" data-current-src="ios/components.ui.status-dot.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -2632,7 +2637,12 @@
       <p><code>RGB 93.0%</code><br/><code>Pixel 90.45%</code><br/><code>Mismatch 9.55%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-with-portal 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · mobile-platform-team</summary>
+    <ul><li>iOS version includes an extra 'Select Text' menu item not present in React baseline</li><li>React baseline includes 'Open Thread in New Tab' menu item missing from iOS version</li><li>Message avatar differs: React shows pixelated/QR-style image, iOS shows generic purple user silhouette placeholder</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Reconcile menu item lists: ensure Select Text is added to React and Open Thread in New Tab is added to iOS</li><li>Standardize avatar fallback rendering across platforms (use consistent placeholder component)</li><li>Align message card max-width and truncation rules across React and iOS</li><li>Verify shared design token definitions for menu item ordering, spacing, and dividers</li><li>Add visual regression tests covering all menu items to prevent drift</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-menu.default.png" data-current-src="ios/components.thread.message-menu.default.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -2691,7 +2701,12 @@
       <p><code>RGB 92.4%</code><br/><code>Pixel 89.28%</code><br/><code>Mismatch 10.72%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-with-portal 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · iOS team (components/thread/message-menu)</summary>
+    <ul><li>iOS message context menu is missing the 'Open Thread in New Tab' and 'Open Task in New Tab' menu items compared to React baseline</li><li>iOS adds an extra 'Select Text' action that is not present in the React menu</li><li>Emoji/reaction bar in iOS has no visible container border around it unlike React which shows a subtle outlined grouping</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Conditionally render 'Open Thread in New Tab' / 'Open Task in New Tab' as disabled or hide them on iOS rather than missing silently - or ensure parity spec defines this omission explicitly</li><li>Reconcile 'Select Text' vs 'Select Message' - either remove iOS-only 'Select Text' or document why it differs</li><li>Align divider/grouping logic so menu section breaks match React baseline</li><li>Match inter-item spacing to React baseline using shared design tokens</li><li>Verify emoji reaction bar container border is applied consistently on both platforms</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-menu.task.png" data-current-src="ios/components.thread.message-menu.task.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -3841,7 +3856,12 @@
       <p><code>RGB 91.3%</code><br/><code>Pixel 89.28%</code><br/><code>Mismatch 10.72%</code><br/><code>Raw 1026×1860 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×620 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · components.home.activity-card (React)</summary>
+    <ul><li>iOS adds a checkmark (✓) button at the right edge of every activity card that React does not render</li><li>iOS wraps channel-tag pill onto a second row and adds a separate link-attachment (▷ #607 @Mahua) pill with an edit (✎) icon that React does not show</li><li>iOS card titles render in a heavier weight and wrap onto 2 lines, whereas React titles are lighter and single-line with ellipsis</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Add a trailing checkmark/mark-read button to React activity cards aligned to the right edge of the tag row</li><li>Surface attachment and edit chips in React when the message has a link attachment, matching the iOS pill set</li><li>Align title/body font-weight tokens and line-clamp behavior with iOS so wrapped previews render in 2 lines at the heavier weight</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.home.activity.results.png" data-current-src="ios/components.home.activity.results.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -3967,7 +3987,12 @@
       <p><code>RGB 85.5%</code><br/><code>Pixel 77.94%</code><br/><code>Mismatch 22.06%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · design-system</summary>
+    <ul><li>React header lacks the leading checkbox icon present in iOS; iOS shows a checked square next to the 'Tasks' title.</li><li>React task cards omit the per-card relative timestamp at top-right that iOS shows ('6 minutes ago', 'in 3 days').</li><li>React task cards omit the bottom-left assignee line ('Unassigned', '@Cindy', '@Product UX Designer') present in iOS.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Backfill React task card with bottom-left assignee pill and top-right relative timestamp per the adopt-later tickets.</li><li>Unify header subtitle font-family to the shared design token; align size/weight between platforms.</li><li>Re-render baseline once React adopts assignee/timestamp so the Slock reference includes these elements.</li><li>Keep filter chip row layout differences; only enforce chip styling/title-case consistency.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.tasks.panel.states.png" data-current-src="ios/components.tasks.panel.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -4343,7 +4368,12 @@
       <p><code>RGB 89.9%</code><br/><code>Pixel 81.75%</code><br/><code>Mismatch 18.25%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop page-viewport 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · design-system / members-agent-detail owner (cross-platform profile card component)</summary>
+    <ul><li>Avatar in header (React) appears smaller/inset compared to the larger avatar used in the iOS detail header.</li><li>Header title subtitle text differs: React shows truncated 'Turns product feedback, s…' whereas iOS shows 'Turns product feedback, screensh…' (different truncation widths).</li><li>Presence/status indicator near the name differs: React shows 'Capturing determ…' with a yellow dot, iOS shows 'Working' with a yellow dot.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Unify header avatar size, presence text formatting, and subtitle truncation rules across React and iOS via shared tokens.</li><li>Render Role row to include the 'Member' badge and the DISPLAY NAME edit pencil on iOS to match React.</li><li>Adopt the same Runtime Config layout (or explicitly intentional 2x2) in both platforms; if intentional, update baselines.</li><li>Make Environment Variables chips render full-width with full values on both platforms (or apply consistent truncation rules).</li><li>Align section vertical rhythm (margins, divider spacing) using shared spacing tokens; verify at 390dp viewport contract vs 1170 native.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.agent-detail.profile.png" data-current-src="ios/components.members.agent-detail.profile.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -4402,7 +4432,12 @@
       <p><code>RGB 89.0%</code><br/><code>Pixel 79.98%</code><br/><code>Mismatch 20.02%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · iOS component owner (members/agent-lifecycle-actions)</summary>
+    <ul><li>Lifecycle actions menu (Stop Agent / Restart / Reset) is rendered as a floating overlay on iOS instead of being positioned inline below the header actions as on React, causing it to overlap the Activity tab and the secondary agent card title.</li><li>iOS version shows a 'Working' status indicator with a yellow/amber dot beneath the agent handle (@Product-UX-Designer); React baseline has no such status line in the header.</li><li>Environment Variables section is stacked vertically on iOS (RAFT_PROFILE above SLOCK_VISUAL_PROVIDER) versus a 2x2 grid on React; the input widths and trailing ellipsis masking differ accordingly.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Render the Stop Agent / Restart / Reset menu inline beneath the header action group on iOS (or at minimum ensure the menu does not occlude the Profile/Activity tab bar); match React's stacking and z-index behavior.</li><li>Decide on a single source of truth for the runtime status indicator: either add 'Working' with status dot to React or remove it from iOS so the header composition matches.</li><li>Unify Runtime Config layout rules across platforms so Runtime, Model, Reasoning, and Mode render in a consistent grid (either all 4-up or all 2x2) at this viewport width.</li><li>Standardize Environment Variables presentation: same column count, same mask length, and same truncation behavior across web and iOS.</li><li>Align header action icon sizes and spacing between React and iOS, or explicitly document the deviation as platform-specific touch-target sizing.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.agent-lifecycle-actions.png" data-current-src="ios/components.members.agent-lifecycle-actions.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -4461,7 +4496,12 @@
       <p><code>RGB 85.9%</code><br/><code>Pixel 74.52%</code><br/><code>Mismatch 25.48%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · ios-engineering</summary>
+    <ul><li>iOS avatar grid wraps into 2 rows (8 + 8 + 1 = 17 tiles) while React renders 3 rows (8 + 7 + 3 = 18 tiles) with smaller tile size</li><li>React header is truncated to 'Product…' with ellipsis and shows 'Capturing determ…'; iOS shows full 'Product UX Designer' and '@Product-UX-Designer' with a 'Working' status dot</li><li>iOS reorders Runtime Config fields: uses 2×2 grid (Runtime/Model then Reasoning/Mode), React uses a single horizontal row of four</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize avatar tile width and grid columns so both platforms wrap to the same row count</li><li>Apply consistent text truncation to the Profile header on iOS to match React's 'Product…' behavior</li><li>Align Runtime Config layout to a single row across platforms or share the same grid spec</li><li>Add the 'Working' status indicator to React or remove it from iOS for parity</li><li>Reuse a shared spacing/sizing token set so pixel dimensions match at equivalent device pixel ratios</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.avatar-management.png" data-current-src="ios/components.members.avatar-management.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
