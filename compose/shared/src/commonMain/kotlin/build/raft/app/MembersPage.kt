@@ -7784,6 +7784,7 @@ private fun MembersAgentProfileHeader(
     }
 }
 
+@OptIn(androidx.compose.runtime.ComposeCompilerApi::class)
 @Composable
 private fun MembersAgentProfileTab(
     member: MemberProfile,
@@ -7855,18 +7856,7 @@ private fun MembersAgentProfileTab(
                 customModelName = (canonicalRuntimeModel as? RuntimeModelConfig.Custom)?.name.orEmpty(),
                 machineRuntimeIds = agentMachineRuntimes
             )
-    val scope =
-        try {
-            rememberCoroutineScope()
-        } catch (e: ClassCastException) {
-            // PROBE D: the exception message names the foreign value ("Boolean" → which one?).
-            println(
-                "probe273 rememberCoroutineScope ClassCast member=${member.id.value} msg=${e.message} " +
-                    "inserting=${currentComposer.inserting} skipping=${currentComposer.skipping} " +
-                    "canManage=$canManage showAvatarPicker=$showAvatarPicker fixtureFallback=$fixtureStatusFallbackEnabled"
-            )
-            throw e
-        }
+    val scope = rememberCoroutineScope()
     val currentProfileEditAuthority by rememberUpdatedState(agentProfileEditAuthority)
     val currentRuntimeModelGenerations by rememberUpdatedState(agentRuntimeModelGenerationsByRuntime)
     val deleted = summary?.deletedAt?.isNotBlank() == true
