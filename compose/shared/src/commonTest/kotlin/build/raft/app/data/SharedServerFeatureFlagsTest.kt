@@ -154,32 +154,13 @@ class SharedServerFeatureFlagsTest {
         assertTrue(races >= 1, "dispatched shape never raced in 2000 idle iterations (races=$races)")
     }
 
+    // Round 3: the race lives on an IDLE Default pool (round 2: 212/2000 idle vs 0/2000 under load),
+    // so pin the fixed shape at the same scale on the idle pool.
     @Test
-    fun probe1129_dispatched_x2000_underDefaultLoad_expectsAtLeastOneRace() = runBlocking {
-        // Contend for Dispatchers.Default so the owner's resumption after release.complete() lands
-        // on a busy pool — the CI condition under which #2392/#2396 went red.
-        val burners = List(8) {
-            launch(kotlinx.coroutines.Dispatchers.Default) {
-                var x = 0L
-                while (isActive) { x += 1; if (x % 100_000L == 0L) kotlinx.coroutines.yield() }
-            }
-        }
-        val races = try { raceCount(2000, undispatched = false) } finally { burners.forEach { it.cancel() } }
-        println("probe1129 dispatched under Default load: races=$races/2000")
-        assertTrue(races >= 1, "dispatched shape never raced in 2000 loaded iterations (races=$races)")
-    }
-
-    @Test
-    fun probe1129_undispatched_x2000_underDefaultLoad_expectsZeroRaces() = runBlocking {
-        val burners = List(8) {
-            launch(kotlinx.coroutines.Dispatchers.Default) {
-                var x = 0L
-                while (isActive) { x += 1; if (x % 100_000L == 0L) kotlinx.coroutines.yield() }
-            }
-        }
-        val races = try { raceCount(2000, undispatched = true) } finally { burners.forEach { it.cancel() } }
-        println("probe1129 undispatched under Default load: races=$races/2000")
-        assertEquals(0, races, "undispatched shape raced under load")
+    fun probe1129_undispatched_x2000_idle_expectsZeroRaces() = runBlocking {
+        val races = raceCount(2000, undispatched = true)
+        println("probe1129 undispatched idle: races=$races/2000")
+        assertEquals(0, races, "undispatched shape raced on an idle pool")
     }
 
     @Test
