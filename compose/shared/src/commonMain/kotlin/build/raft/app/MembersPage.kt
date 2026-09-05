@@ -149,7 +149,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.currentCompositeKeyHash
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -7828,10 +7827,15 @@ private fun MembersAgentProfileTab(
 ) {
     // PROBE D (task #273, DO NOT MERGE): composition-state log at the head of this restart
     // group. Read logcat tag System.out, prefix "probe273".
+    // D2: compositeKeyHash dropped (D1 red-screened the Members page before reaching the agent;
+    // suspect list narrowed to the three composer reads — keep inserting/skipping, drop the
+    // @ExplicitGroupsComposable getter).
+    val probeInserting = currentComposer.inserting
+    val probeSkipping = currentComposer.skipping
     println(
-        "probe273 enter MembersAgentProfileTab member=${member.id.value} inserting=${currentComposer.inserting} " +
-            "skipping=${currentComposer.skipping} compositeKeyHash=$currentCompositeKeyHash " +
-            "canManage=$canManage showAvatarPicker=$showAvatarPicker fixtureFallback=$fixtureStatusFallbackEnabled"
+        "probe273 enter MembersAgentProfileTab member=${member.id.value} inserting=$probeInserting " +
+            "skipping=$probeSkipping canManage=$canManage showAvatarPicker=$showAvatarPicker " +
+            "fixtureFallback=$fixtureStatusFallbackEnabled"
     )
     val errorStrings = localizedErrorPresentationStrings()
     val summary = detail?.summary
