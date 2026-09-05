@@ -5208,13 +5208,17 @@ private fun MembersDetailContent(
                         .weight(1f)
                 )
             } else {
-                LazyColumn(
+                // PROBE E (task #273, DO NOT MERGE): bypass the lazy path entirely. Kuikly exposes
+                // no Modifier.verticalScroll, so this is a plain non-scrolling Column — content past
+                // the screen is unreachable in this probe; it only answers "is the crash in the
+                // lazy path". 0 crashes ⇒ mechanism is Kuikly lazy; unchanged ⇒ lazy is excluded
+                // and the fault sits in MembersAgentProfileTab's own compiled group.
+                Column(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
-                    beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
                 ) {
                     if (initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement) {
-                        item(key = "member-detail-${member.id.value}-top-spacer") {
+                        Column(Modifier.fillMaxWidth()) {
                             Spacer(Modifier.height(SlockSpacing.Sm))
                         }
                     }
@@ -5225,7 +5229,7 @@ private fun MembersDetailContent(
                                 avatarManagementMode = initialVisualMode == MembersAgentDetailVisualMode.AvatarManagement
                             )
                         ) {
-                            item(key = "member-detail-${member.id.value}-state-notice") {
+                            Column(Modifier.fillMaxWidth()) {
                                 MembersAgentDetailStateNotice(
                                     state = agentDetailState,
                                     modifier = Modifier.padding(horizontal = MembersPageInset)
@@ -5239,7 +5243,7 @@ private fun MembersDetailContent(
                         // another tab state) as CompositionScopedCoroutineScopeCanceller and
                         // crash while entering the profile.  Keep each member/tab surface a
                         // distinct lazy item so state is disposed/recreated at the boundary.
-                        item(key = membersAgentDetailBodyItemKey(member.id.value, selectedTab)) {
+                        Column(Modifier.fillMaxWidth()) {
                             // Kuikly's lazy item key is not sufficient to fence the nested
                             // composition on every renderer.  Give each tab surface its own
                             // Compose group as well, so remember slots from Profile/Chat/etc.
@@ -5350,7 +5354,7 @@ private fun MembersDetailContent(
                             }
                         }
                     } else {
-                        item(key = "member-detail-${member.id.value}-human-content") {
+                        Column(Modifier.fillMaxWidth()) {
                             MembersHumanDetailSections(
                                 member = member,
                                 timeContext = timeContext,
@@ -5370,7 +5374,7 @@ private fun MembersDetailContent(
                             )
                         }
                     }
-                    item(key = "member-detail-${member.id.value}-bottom-spacer") {
+                    Column(Modifier.fillMaxWidth()) {
                         Spacer(Modifier.height(180.dp))
                     }
                 }
