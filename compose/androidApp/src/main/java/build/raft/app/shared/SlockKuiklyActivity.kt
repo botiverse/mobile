@@ -3180,7 +3180,8 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
 
     private data class SlockFontSpec(
             val fontRes: Int,
-            val weight: Int
+            val weight: Int,
+            val useResourceTypeface: Boolean = false,
     )
 
     private var context: Context? = null
@@ -3197,6 +3198,16 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
         inputTypeface?.let { return it }
         return resolveTypeface("space_grotesk_regular", context)
                 ?.also { inputTypeface = it }
+    }
+
+    internal fun useResourceTypefaceFor(fontFamily: String?): Boolean {
+        val fontName = fontFamily?.substringBefore(",")?.trim().orEmpty()
+        return fontName in setOf(
+                "SpaceMono-Regular",
+                "space_mono_regular",
+                "SpaceMono-Bold",
+                "space_mono_bold"
+        )
     }
 
     fun updateHostDisplayMetrics(container: View) {
@@ -3248,8 +3259,18 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
             "SpaceGrotesk-Light", "space_grotesk_light" -> SlockFontSpec(R.font.space_grotesk_light, FontStyle.FONT_WEIGHT_LIGHT)
             "SpaceGrotesk-Variable", "space_grotesk_variable" -> SlockFontSpec(R.font.space_grotesk_variable, FontStyle.FONT_WEIGHT_NORMAL)
             "Space Grotesk", "space_grotesk" -> SlockFontSpec(R.font.space_grotesk, FontStyle.FONT_WEIGHT_NORMAL)
-            "SpaceMono-Regular", "space_mono_regular" -> SlockFontSpec(R.font.space_mono_regular, FontStyle.FONT_WEIGHT_NORMAL)
-            "SpaceMono-Bold", "space_mono_bold" -> SlockFontSpec(R.font.space_mono_bold, FontStyle.FONT_WEIGHT_BOLD)
+            // Keep Space Mono as one resource-backed face. CustomFallbackBuilder's per-glyph
+            // resolver is the path that turns U+0031 into a sans-serif glyph on affected hosts.
+            "SpaceMono-Regular", "space_mono_regular" -> SlockFontSpec(
+                    R.font.space_mono_regular,
+                    FontStyle.FONT_WEIGHT_NORMAL,
+                    useResourceTypeface = useResourceTypefaceFor(fontName)
+            )
+            "SpaceMono-Bold", "space_mono_bold" -> SlockFontSpec(
+                    R.font.space_mono_bold,
+                    FontStyle.FONT_WEIGHT_BOLD,
+                    useResourceTypeface = useResourceTypefaceFor(fontName)
+            )
             else -> null
         }
         return if (fontSpec != null) {
@@ -3268,7 +3289,9 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
             }
 
     private fun buildTypeface(context: Context, fontSpec: SlockFontSpec): Typeface? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        if (fontSpec.useResourceTypeface || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            // Space Mono must remain one resource-backed face: CustomFallbackBuilder's per-glyph
+            // resolver can select a sans-serif glyph for U+0031 on affected Android hosts.
             return ResourcesCompat.getFont(context, fontSpec.fontRes)
         }
         return try {
