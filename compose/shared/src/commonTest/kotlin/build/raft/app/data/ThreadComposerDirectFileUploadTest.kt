@@ -1,0 +1,327 @@
+package build.raft.app.data
+
+import build.raft.app.model.Attachment
+import build.raft.app.model.AttachmentId
+import build.raft.app.model.ChannelId
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+
+class ThreadComposerDirectFileUploadTest {
+    @Test
+    fun capabilitiesMissingFailOpensToMultipart() {
+        assertEquals(
+            ThreadComposerDirectUploadDecision.LegacyMultipart,
+            decideThreadComposerDirectUpload(capabilities = null, sizeBytes = 100L, cancelled = false),
+        )
+    }
+
+    @Test
+    fun cancelDoesNotFallback() {
+        assertEquals(
+            ThreadComposerDirectUploadDecision.Cancelled,
+            decideThreadComposerDirectUpload(
+                capabilities = enabled(threshold = 10L, maxBytes = 100L),
+                sizeBytes = 50L,
+                cancelled = true,
+            ),
+        )
+    }
+
+    @Test
+    fun disabledOrMissingThresholdUsesMultipart() {
+        assertEquals(
+            ThreadComposerDirectUploadDecision.LegacyMultipart,
+            decideThreadComposerDirectUpload(
+                capabilities = enabled(threshold = 10L, maxBytes = 200L, directEnabled = false),
+                sizeBytes = 50L,
+                cancelled = false,
+            ),
+        )
+        assertEquals(
+            ThreadComposerDirectUploadDecision.LegacyMultipart,
+            decideThreadComposerDirectUpload(
+                capabilities = enabled(threshold = null, maxBytes = 200L),
+                sizeBytes = 50L,
+                cancelled = false,
+            ),
+        )
+    }
+
+    @Test
+    fun thresholdBoundaryUsesDirectAtAndAbove() {
+        val capabilities = enabled(threshold = 90L, maxBytes = 200L)
+        assertEquals(
+            ThreadComposerDirectUploadDecision.LegacyMultipart,
+            decideThreadComposerDirectUpload(capabilities, sizeBytes = 89L, cancelled = false),
+        )
+        assertEquals(
+            ThreadComposerDirectUploadDecision.Direct,
+            decideThreadComposerDirectUpload(capabilities, sizeBytes = 90L, cancelled = false),
+        )
+    }
+
+    @Test
+    fun sizeAboveMaxBytesIsTooLargeEvenIfAboveThreshold() {
+        val capabilities = enabled(threshold = 10L, maxBytes = 50L)
+        assertEquals(
+            ThreadComposerDirectUploadDecision.TooLarge,
+            decideThreadComposerDirectUpload(capabilities, sizeBytes = 51L, cancelled = false),
+        )
+    }
+
+    @Test
+    fun putTimeoutRecoversSameSessionAndDoesNotCreateAnother() = runBlocking {
+        val gateway = FakeThreadGateway()
+        gateway.putResults.add(
+            DataResult.Error(ScreenError(code = "network_request_failed", retryable = true)),
+        )
+        gateway.statusResults.add(
+            DataResult.Content(
+                AttachmentUploadSessionView(
+                    uploadId = "11111111-1111-4111-8111-111111111111",
+                    state = "pending",
+                    expiresAt = "2026-09-05T00:00:00Z",
+                    attachment = null,
+                ),
+            ),
+        )
+        val result =
+            gateway.uploadOneThreadFile(
+                channelId = ChannelId("channel-1"),
+                file = file(size = 100),
+                clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            )
+        assertIs<DataResult.Content<Attachment>>(result)
+        assertEquals(1, gateway.createRequests.size)
+        assertEquals("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", gateway.createRequests.single().clientRequestId)
+        assertEquals(1, gateway.putCalls)
+        assertEquals(1, gateway.statusCalls)
+        assertEquals(1, gateway.completeCalls)
+    }
+
+    @Test
+    fun putUncertainObjectNotFoundDoesNotCreateNewSession() = runBlocking {
+        val gateway = FakeThreadGateway()
+        gateway.putResults.add(
+            DataResult.Error(ScreenError(code = "network_request_failed", retryable = true)),
+        )
+        gateway.statusResults.add(
+            DataResult.Content(
+                AttachmentUploadSessionView(
+                    uploadId = "11111111-1111-4111-8111-111111111111",
+                    state = "pending",
+                    expiresAt = "2026-09-05T00:00:00Z",
+                    attachment = null,
+                ),
+            ),
+        )
+        gateway.completeResults.add(
+            DataResult.Error(
+                ScreenError(
+                    code = "attachment_upload_session_complete_failed",
+                    retryable = true,
+                    serverCode = "UPLOAD_OBJECT_NOT_FOUND",
+                ),
+            ),
+        )
+        val result =
+            gateway.uploadOneThreadFile(
+                channelId = ChannelId("channel-1"),
+                file = file(size = 100),
+                clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            )
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals("UPLOAD_OBJECT_PUT_UNCERTAIN", error.code)
+        assertEquals(1, gateway.createRequests.size)
+        assertTrue(gateway.completeCalls >= 1)
+        assertEquals(0, gateway.cancelCalls)
+    }
+
+    @Test
+    fun cancelAfterCreateDeletesSameSessionAndDoesNotCreateAnother() = runBlocking {
+        val gateway = FakeThreadGateway().apply { throwPutCancellation = true }
+        var cancelled = false
+        try {
+            gateway.uploadOneThreadFile(
+                channelId = ChannelId("channel-1"),
+                file = file(size = 100),
+                clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            )
+        } catch (_: CancellationException) {
+            cancelled = true
+        }
+        assertTrue(cancelled)
+        assertEquals(1, gateway.createRequests.size)
+        assertEquals(1, gateway.putCalls)
+        assertEquals(1, gateway.cancelCalls)
+        assertEquals(0, gateway.completeCalls)
+        assertEquals("11111111-1111-4111-8111-111111111111", gateway.cancelledIds.single())
+    }
+
+    @Test
+    fun secondFileFailureKeepsFirstSuccessOnSeparateSession() = runBlocking {
+        val gateway = FakeThreadGateway()
+        val first =
+            gateway.uploadOneThreadFile(
+                channelId = ChannelId("channel-1"),
+                file = file(size = 100, id = "local-1"),
+                clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            )
+        gateway.putResults.add(
+            DataResult.Error(
+                ScreenError(
+                    code = "UPLOAD_FORBIDDEN",
+                    retryable = false,
+                    serverCode = "UPLOAD_FORBIDDEN",
+                ),
+            ),
+        )
+        val second =
+            gateway.uploadOneThreadFile(
+                channelId = ChannelId("channel-1"),
+                file = file(size = 100, id = "local-2"),
+                clientRequestId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            )
+        assertIs<DataResult.Content<Attachment>>(first)
+        val secondError = assertIs<DataResult.Error>(second).error
+        assertEquals("UPLOAD_FORBIDDEN", secondError.code)
+        assertEquals(2, gateway.createRequests.size)
+        assertEquals(
+            listOf(
+                "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            ),
+            gateway.createRequests.map { it.clientRequestId },
+        )
+        assertEquals(1, gateway.cancelCalls)
+        assertEquals(1, gateway.completeCalls)
+    }
+
+    private fun enabled(
+        threshold: Long?,
+        maxBytes: Long,
+        directEnabled: Boolean = true,
+    ) =
+        AttachmentUploadCapabilities(
+            maxBytes = maxBytes,
+            directUploadEnabled = directEnabled,
+            directUploadThresholdBytes = threshold,
+            sessionExpiresInSeconds = 900,
+        )
+
+    private fun file(size: Int, id: String = "local-1") =
+        PlatformFile(
+            id = id,
+            fileName = "a.bin",
+            mimeType = "application/octet-stream",
+            sizeBytes = size.toLong(),
+            bytes = ByteArray(size) { 1 },
+        )
+
+    private class FakeThreadGateway : DirectAttachmentUploadSessionGateway {
+        val createRequests = mutableListOf<AttachmentUploadSessionCreateRequest>()
+        val putResults = ArrayDeque<DataResult<Unit>>()
+        val statusResults = ArrayDeque<DataResult<AttachmentUploadSessionView>>()
+        val completeResults = ArrayDeque<DataResult<AttachmentUploadSessionCompleteResult>>()
+        var putCalls = 0
+        var statusCalls = 0
+        var completeCalls = 0
+        var cancelCalls = 0
+        var throwPutCancellation = false
+        var lastCreatedId = "11111111-1111-4111-8111-111111111111"
+        val cancelledIds = mutableListOf<String>()
+        private var lastCompleteResult: DataResult<AttachmentUploadSessionCompleteResult>? = null
+
+        override suspend fun capabilities(): DataResult<AttachmentUploadCapabilities> =
+            DataResult.Content(enabledForGateway())
+
+        override suspend fun create(
+            request: AttachmentUploadSessionCreateRequest,
+        ): DataResult<AttachmentUploadSessionCreateResult> {
+            createRequests += request
+            return DataResult.Content(
+                AttachmentUploadSessionCreateResult(
+                    uploadId = lastCreatedId,
+                    attachmentId = AttachmentId("22222222-2222-4222-8222-222222222222"),
+                    state = "pending",
+                    expiresAt = "2026-09-05T00:00:00Z",
+                    upload = AttachmentUploadSessionPut(
+                        method = "PUT",
+                        url = "https://r2.example/object",
+                        headers = mapOf("Content-Type" to "application/octet-stream", "If-None-Match" to "*"),
+                    ),
+                ),
+            )
+        }
+
+        override suspend fun put(
+            upload: AttachmentUploadSessionPut,
+            file: PlatformFile,
+        ): DataResult<Unit> {
+            putCalls += 1
+            if (throwPutCancellation) throw CancellationException("cancelled")
+            return putResults.removeFirstOrNull() ?: DataResult.Content(Unit)
+        }
+
+        override suspend fun complete(uploadId: String): DataResult<AttachmentUploadSessionCompleteResult> {
+            completeCalls += 1
+            val queued = completeResults.removeFirstOrNull()
+            if (queued != null) {
+                lastCompleteResult = queued
+                return queued
+            }
+            return lastCompleteResult
+                ?: DataResult.Content(
+                    AttachmentUploadSessionCompleteResult(
+                        uploadId = uploadId,
+                        state = "completed",
+                        attachment = Attachment(
+                            id = AttachmentId("22222222-2222-4222-8222-222222222222"),
+                            name = "a.bin",
+                            mimeType = "application/octet-stream",
+                            sizeLabel = "",
+                            sizeBytes = 100,
+                        ),
+                    ),
+                )
+        }
+
+        override suspend fun cancel(uploadId: String): DataResult<AttachmentUploadSessionView> {
+            cancelCalls += 1
+            cancelledIds += uploadId
+            return DataResult.Content(
+                AttachmentUploadSessionView(
+                    uploadId = uploadId,
+                    state = "canceled",
+                    expiresAt = "2026-09-05T00:00:00Z",
+                    attachment = null,
+                ),
+            )
+        }
+
+        override suspend fun status(uploadId: String): DataResult<AttachmentUploadSessionView> {
+            statusCalls += 1
+            return statusResults.removeFirstOrNull()
+                ?: DataResult.Content(
+                    AttachmentUploadSessionView(
+                        uploadId = uploadId,
+                        state = "pending",
+                        expiresAt = "2026-09-05T00:00:00Z",
+                        attachment = null,
+                    ),
+                )
+        }
+
+        private fun enabledForGateway() =
+            AttachmentUploadCapabilities(
+                maxBytes = 200,
+                directUploadEnabled = true,
+                directUploadThresholdBytes = 10,
+                sessionExpiresInSeconds = 900,
+            )
+    }
+}

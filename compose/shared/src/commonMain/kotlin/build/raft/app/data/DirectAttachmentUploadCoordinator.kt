@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.Attachment
 import build.raft.app.model.ChannelId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -130,6 +131,14 @@ internal class DirectAttachmentUploadOperation(
 
     suspend fun compensate(batch: DirectAttachmentUploadBatch): Boolean =
         withContext(NonCancellable) { coordinator.compensateBatch(batch) }
+
+    suspend fun uploadOneThreadFile(
+        channelId: ChannelId,
+        file: PlatformFile,
+        clientRequestId: String,
+        onPhase: (ThreadComposerDirectUploadPhase) -> Unit = {},
+    ): DataResult<Attachment> =
+        coordinator.uploadOneThreadFile(channelId, file, clientRequestId, onPhase)
 }
 
 private class ConversationRepositoryDirectAttachmentUploadSessionGateway(
@@ -453,6 +462,14 @@ internal class DirectAttachmentUploadCoordinator(
     /** Read the capability through the same authority-bound gateway used by upload/compensation. */
     internal suspend fun capabilities(): DataResult<AttachmentUploadCapabilities> =
         safeCall("capabilities") { gateway.capabilities() }
+
+    internal suspend fun uploadOneThreadFile(
+        channelId: ChannelId,
+        file: PlatformFile,
+        clientRequestId: String,
+        onPhase: (ThreadComposerDirectUploadPhase) -> Unit = {},
+    ): DataResult<Attachment> =
+        gateway.uploadOneThreadFile(channelId, file, clientRequestId, onPhase)
 
     private suspend fun completeWithWhitelistedRetry(
         uploadId: String,
@@ -942,7 +959,7 @@ private fun DataResult<*>.evidenceName(view: AttachmentUploadSessionView?): Stri
         is DataResult.NoPermission -> "no_permission:${blocker.code}"
     }
 
-private fun newAttachmentUploadClientRequestId(): String {
+internal fun newAttachmentUploadClientRequestId(): String {
     // Kotlin/Native has no java.util.UUID in commonMain.  This is a version-4
     // UUID-shaped value, sufficient for the server's strict idempotency schema.
     val high = Random.nextLong().toULong()
