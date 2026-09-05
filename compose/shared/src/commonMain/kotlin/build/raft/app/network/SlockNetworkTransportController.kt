@@ -177,9 +177,9 @@ internal class SlockNetworkTransportController(
         }
         val variants = evaluations.map { evaluation ->
             if (!evaluation.enabled) {
-                SlockRemoteTransportVariant.CurlH2
+                SlockRemoteTransportVariant.CurlH3
             } else {
-                SlockRemoteTransportVariant.fromWire(evaluation.variant) ?: SlockRemoteTransportVariant.CurlH2
+                SlockRemoteTransportVariant.fromWire(evaluation.variant) ?: SlockRemoteTransportVariant.CurlH3
             }
         }.toSet()
         return if (variants.size == 1) {
@@ -298,7 +298,7 @@ private data class RemoteTransportPolicy(
     companion object {
         val Default = RemoteTransportPolicy(
             resolved = false,
-            variant = SlockRemoteTransportVariant.CurlH2,
+            variant = SlockRemoteTransportVariant.CurlH3,
             conflicting = false
         )
     }

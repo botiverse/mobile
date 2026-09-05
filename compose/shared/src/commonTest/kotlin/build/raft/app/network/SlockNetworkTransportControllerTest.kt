@@ -11,13 +11,13 @@ import kotlin.test.assertTrue
 
 class SlockNetworkTransportControllerTest {
     @Test
-    fun unresolvedRemotePolicyDefaultsToCurlHttp2() {
+    fun unresolvedRemotePolicyDefaultsToCurlHttp3() {
         val controller = readyController(curlRequired = false)
 
         val request = NetworkRequest(url = "https://example.test/default")
         assertEquals(NetworkTransportEngine.CURL, controller.selectionFor(request).requestedEngine)
-        assertEquals(false, request.curlHttp3EnabledOverride)
-        assertFalse(controller.getPreferenceSync().effectiveHttp3Enabled)
+        assertEquals(true, request.curlHttp3EnabledOverride)
+        assertTrue(controller.getPreferenceSync().effectiveHttp3Enabled)
     }
 
     @Test
@@ -74,16 +74,16 @@ class SlockNetworkTransportControllerTest {
     }
 
     @Test
-    fun disabledOrInvalidEvaluationFallsBackToCurlH2() {
+    fun disabledOrInvalidEvaluationFallsBackToCurlH3() {
         val controller = readyController(curlRequired = false)
         controller.updateRemoteEnvironment("production")
         controller.updateRemoteActiveSelection("shell-a", "server-a")
 
         controller.applyRemoteEvaluation("production", 1L, "server-a", false, "ktor")
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = true)
 
         controller.applyRemoteEvaluation("production", 2L, "server-a", true, "not-a-transport")
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = true)
     }
 
     @Test
