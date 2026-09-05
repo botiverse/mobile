@@ -10,9 +10,9 @@ class HomeColdStartSplashGateTest {
     fun timeoutRemainingUsesElapsedTime() {
         val gate = HomeColdStartSplashGate(enabled = true, startedAtMillis = 1_000L)
 
-        assertEquals(1_500L, gate.millisUntilTimeout(nowMillis = 1_000L))
-        assertEquals(1L, gate.millisUntilTimeout(nowMillis = 2_499L))
-        assertEquals(0L, gate.millisUntilTimeout(nowMillis = 2_500L))
+        assertEquals(HOME_COLD_START_SPLASH_TIMEOUT_MILLIS, gate.millisUntilTimeout(nowMillis = 1_000L))
+        assertEquals(1L, gate.millisUntilTimeout(nowMillis = 1_000L + HOME_COLD_START_SPLASH_TIMEOUT_MILLIS - 1L))
+        assertEquals(0L, gate.millisUntilTimeout(nowMillis = 1_000L + HOME_COLD_START_SPLASH_TIMEOUT_MILLIS))
     }
 
     @Test
@@ -44,14 +44,16 @@ class HomeColdStartSplashGateTest {
     }
 
     @Test
-    fun timeoutReleasesSplashAtOnePointFiveSeconds() {
+    fun timeoutTransitionsToBrandFallbackBeforeFinalRelease() {
         val gate = HomeColdStartSplashGate(enabled = true, startedAtMillis = 0L)
 
-        assertTrue(gate.shouldKeepOnScreen(1_499L))
+        assertTrue(gate.shouldKeepOnScreen(HOME_COLD_START_SPLASH_TIMEOUT_MILLIS - 1L))
         assertFalse(gate.timedOut())
-        assertFalse(gate.shouldKeepOnScreen(1_500L))
+        assertFalse(gate.shouldKeepOnScreen(HOME_COLD_START_SPLASH_TIMEOUT_MILLIS))
         assertTrue(gate.timedOut())
+        assertTrue(gate.release())
         assertFalse(gate.release())
+        assertEquals(0L, gate.millisUntilFallbackTimeout(HOME_COLD_START_SPLASH_FALLBACK_TIMEOUT_MILLIS))
     }
 
     @Test
