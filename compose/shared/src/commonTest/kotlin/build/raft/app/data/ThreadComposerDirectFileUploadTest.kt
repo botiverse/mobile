@@ -232,6 +232,114 @@ class ThreadComposerDirectFileUploadTest {
     }
 
     @Test
+    fun statusCompletedWithForeignUploadIdFailsClosed() = runBlocking {
+        val gateway = FakeThreadGateway()
+        gateway.putResults.add(
+            DataResult.Error(ScreenError(code = "network_request_failed", retryable = true)),
+        )
+        gateway.statusResults.add(
+            DataResult.Content(
+                AttachmentUploadSessionView(
+                    uploadId = "33333333-3333-4333-8333-333333333333",
+                    state = "completed",
+                    expiresAt = "2026-09-05T00:00:00Z",
+                    attachment = matchingAttachment(),
+                ),
+            ),
+        )
+        val result =
+            gateway.uploadOneThreadFile(
+                channelId = ChannelId("channel-1"),
+                file = file(size = 100),
+                clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            )
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals("attachment_upload_session_contract_invalid", error.code)
+        assertEquals(1, gateway.createRequests.size)
+        assertEquals(0, gateway.completeCalls)
+        assertEquals(1, gateway.cancelCalls)
+    }
+
+    @Test
+    fun statusCompletedWithForeignAttachmentIdFailsClosed() = runBlocking {
+        val gateway = FakeThreadGateway()
+        gateway.putResults.add(
+            DataResult.Error(ScreenError(code = "network_request_failed", retryable = true)),
+        )
+        gateway.statusResults.add(
+            DataResult.Content(
+                AttachmentUploadSessionView(
+                    uploadId = "11111111-1111-4111-8111-111111111111",
+                    state = "completed",
+                    expiresAt = "2026-09-05T00:00:00Z",
+                    attachment = matchingAttachment(id = "44444444-4444-4444-8444-444444444444"),
+                ),
+            ),
+        )
+        val result =
+            gateway.uploadOneThreadFile(
+                channelId = ChannelId("channel-1"),
+                file = file(size = 100),
+                clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            )
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals("attachment_upload_session_contract_invalid", error.code)
+        assertEquals(1, gateway.createRequests.size)
+        assertEquals(0, gateway.completeCalls)
+        assertEquals(1, gateway.cancelCalls)
+    }
+
+    @Test
+    fun completeWithForeignUploadIdFailsClosed() = runBlocking {
+        val gateway = FakeThreadGateway()
+        gateway.completeResults.add(
+            DataResult.Content(
+                AttachmentUploadSessionCompleteResult(
+                    uploadId = "33333333-3333-4333-8333-333333333333",
+                    state = "completed",
+                    attachment = matchingAttachment(),
+                ),
+            ),
+        )
+        val result =
+            gateway.uploadOneThreadFile(
+                channelId = ChannelId("channel-1"),
+                file = file(size = 100),
+                clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            )
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals("attachment_upload_session_contract_invalid", error.code)
+        assertEquals(1, gateway.createRequests.size)
+        assertEquals(1, gateway.completeCalls)
+        assertEquals(1, gateway.cancelCalls)
+    }
+
+    @Test
+    fun completeWithForeignAttachmentIdFailsClosed() = runBlocking {
+        val gateway = FakeThreadGateway()
+        gateway.completeResults.add(
+            DataResult.Content(
+                AttachmentUploadSessionCompleteResult(
+                    uploadId = "11111111-1111-4111-8111-111111111111",
+                    state = "completed",
+                    attachment = matchingAttachment(id = "44444444-4444-4444-8444-444444444444"),
+                ),
+            ),
+        )
+        val result =
+            gateway.uploadOneThreadFile(
+                channelId = ChannelId("channel-1"),
+                file = file(size = 100),
+                clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            )
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals("attachment_upload_session_contract_invalid", error.code)
+        assertEquals(1, gateway.createRequests.size)
+        assertEquals(1, gateway.completeCalls)
+        assertEquals(1, gateway.cancelCalls)
+    }
+
+    @Test
     fun cancelAfterCreateDeletesSameSessionAndDoesNotCreateAnother() = runBlocking {
         val gateway = FakeThreadGateway().apply { throwPutCancellation = true }
         var cancelled = false
@@ -339,6 +447,15 @@ class ThreadComposerDirectFileUploadTest {
             mimeType = "application/octet-stream",
             sizeBytes = size.toLong(),
             bytes = ByteArray(size) { 1 },
+        )
+
+    private fun matchingAttachment(id: String = "22222222-2222-4222-8222-222222222222") =
+        Attachment(
+            id = AttachmentId(id),
+            name = "a.bin",
+            mimeType = "application/octet-stream",
+            sizeLabel = "",
+            sizeBytes = 100,
         )
 
     private class FakeThreadGateway : DirectAttachmentUploadSessionGateway {
