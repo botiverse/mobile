@@ -4,6 +4,7 @@ import build.raft.app.model.MemberKind
 import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertSame
 
 class MembersAgentTabOrderTest {
@@ -146,6 +147,16 @@ class MembersAgentTabOrderTest {
         assertEquals(0, membersAgentTabVisibleAnchorIndex(tabs, MembersAgentDetailTab.Profile))
         assertEquals(1, membersAgentTabVisibleAnchorIndex(tabs, MembersAgentDetailTab.Chat))
         assertEquals(0, membersAgentTabVisibleAnchorIndex(tabs, MembersAgentDetailTab.Activity))
+    }
+
+    @Test
+    fun detailBodyKeysSeparateDifferentTabSurfaces() {
+        val profileKey = membersAgentDetailBodyItemKey(" agent-1 ", MembersAgentDetailTab.Profile)
+        val chatKey = membersAgentDetailBodyItemKey("agent-1", MembersAgentDetailTab.Chat)
+
+        assertEquals("member-detail-agent-1-tab-Profile", profileKey)
+        assertEquals(profileKey, membersAgentDetailBodyItemKey("agent-1", MembersAgentDetailTab.Profile))
+        assertNotEquals(profileKey, chatKey)
     }
 
     @Test
