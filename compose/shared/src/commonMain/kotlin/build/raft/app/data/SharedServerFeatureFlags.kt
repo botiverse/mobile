@@ -5,8 +5,16 @@ import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -156,6 +164,14 @@ class SharedServerFeatureFlags(
     private val stateLock = SynchronizedObject()
     private val nextRequestGenerationByServer = mutableMapOf<String, Long>()
     private val acceptedGenerationByServer = mutableMapOf<String, Long>()
+    /**
+     * Feature flags are read by more than one startup owner (the selected-server
+     * collector and the Home admission host).  Keep the transport request
+     * process-owned so a lifecycle cancellation of one caller cannot leave the
+     * other caller with a second request or a permanently unresolved gate.
+     */
+    private val inFlightByServer = mutableMapOf<String, InFlightFeatureFlagRequest>()
+    private val requestScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     // Written under [stateLock], read via isEnabled on the UI thread. @Volatile + copy-on-write lets reads
     // observe a complete immutable map without taking the writer lock; the lock prevents concurrent
@@ -180,7 +196,102 @@ class SharedServerFeatureFlags(
     /** Evaluate the registered flags for [serverId] and cache the snapshot. Returns the resolved snapshot. */
     suspend fun prefetch(
         serverId: ServerId,
-        evaluationContext: String? = null
+        evaluationContext: String? = null,
+        forceRefresh: Boolean = false,
+    ): ServerFeatureFlagSnapshot {
+        if (forceRefresh) {
+            return prefetchUnshared(serverId, evaluationContext)
+        }
+        val selection = synchronized(stateLock) {
+            val current = inFlightByServer[serverId.value]
+            if (current != null && !current.result.isCompleted) {
+                // A collector may know the environment while the admission
+                // host does not. Preserve the richer context if the owner has
+                // not started yet; the request itself is still one per server.
+                if (current.evaluationContext == null && evaluationContext != null) {
+                    current.evaluationContext = evaluationContext
+                }
+                current.waiters += 1
+                FeatureFlagFlightSelection.Join(current)
+            } else {
+                val created =
+                    InFlightFeatureFlagRequest(
+                        result = CompletableDeferred(),
+                        waiters = 1,
+                        evaluationContext = evaluationContext,
+                    )
+                inFlightByServer[serverId.value] = created
+                FeatureFlagFlightSelection.Owner(created)
+            }
+        }
+        val flight = selection.flight
+
+        if (selection is FeatureFlagFlightSelection.Owner) {
+            // The transport owner is independent from any one Compose
+            // lifecycle. A cancelled caller only relinquishes its waiter slot;
+            // a surviving admission/collector caller can still receive the
+            // same result.
+            val ownerJob =
+                requestScope.launch(start = CoroutineStart.LAZY) {
+                    try {
+                        val context = synchronized(stateLock) { flight.evaluationContext }
+                        val snapshot =
+                            prefetchUnshared(
+                                serverId = serverId,
+                                evaluationContext = context,
+                                shouldPublish = {
+                                    synchronized(stateLock) {
+                                        flight.waiters > 0 && inFlightByServer[serverId.value] === flight
+                                    }
+                                },
+                            )
+                        flight.result.complete(snapshot)
+                    } catch (cancellation: CancellationException) {
+                        flight.result.cancel(cancellation)
+                    } catch (error: Throwable) {
+                        flight.result.completeExceptionally(error)
+                    } finally {
+                        synchronized(stateLock) {
+                            if (inFlightByServer[serverId.value] === flight) {
+                                inFlightByServer.remove(serverId.value)
+                            }
+                        }
+                    }
+                }
+            synchronized(stateLock) {
+                flight.ownerJob = ownerJob
+                if (flight.cancelWhenStarted) {
+                    ownerJob.cancel()
+                } else {
+                    ownerJob.start()
+                }
+            }
+        } else {
+            diagnosticsLogger?.invoke("feature_flags evaluate_join server=${serverId.value}")
+        }
+
+        return try {
+            flight.result.await()
+        } finally {
+            synchronized(stateLock) {
+                flight.waiters = (flight.waiters - 1).coerceAtLeast(0)
+                if (
+                    flight.waiters == 0 &&
+                    !flight.result.isCompleted &&
+                    inFlightByServer[serverId.value] === flight
+                ) {
+                    inFlightByServer.remove(serverId.value)
+                    flight.ownerJob?.cancel() ?: run { flight.cancelWhenStarted = true }
+                }
+            }
+        }
+    }
+
+    /** Performs one network evaluation. Callers normally enter through [prefetch]. */
+    private suspend fun prefetchUnshared(
+        serverId: ServerId,
+        evaluationContext: String?,
+        shouldPublish: () -> Boolean = { true },
     ): ServerFeatureFlagSnapshot {
         val globalRequestGeneration = featureFlagRequestGeneration.incrementAndGet()
         val requestGeneration = synchronized(stateLock) {
@@ -222,6 +333,7 @@ class SharedServerFeatureFlags(
                 variants = variants.toMap()
             )
         val accepted = synchronized(stateLock) {
+            if (!shouldPublish()) return@synchronized null
             val latestAcceptedGeneration = acceptedGenerationByServer[serverId.value] ?: 0L
             if (requestGeneration < latestAcceptedGeneration) {
                 false
@@ -234,6 +346,7 @@ class SharedServerFeatureFlags(
         // The snapshot uses a per-server latest-success fence. The optional observer may own a broader
         // global fact (Android's environment-wide transport kill), so it receives every decoded success
         // with the global request generation and performs its own ordering/active-selection checks.
+        if (accepted == null) return snapshotFor(serverId)
         for (evaluation in observedEvaluations.values) {
             runCatching {
                 onEvaluation?.invoke(
@@ -259,5 +372,21 @@ class SharedServerFeatureFlags(
             return snapshotFor(serverId)
         }
         return snapshot
+    }
+
+    private class InFlightFeatureFlagRequest(
+        val result: CompletableDeferred<ServerFeatureFlagSnapshot>,
+        var waiters: Int,
+        var evaluationContext: String?,
+        var ownerJob: Job? = null,
+        var cancelWhenStarted: Boolean = false,
+    )
+
+    private sealed interface FeatureFlagFlightSelection {
+        val flight: InFlightFeatureFlagRequest
+
+        data class Owner(override val flight: InFlightFeatureFlagRequest) : FeatureFlagFlightSelection
+
+        data class Join(override val flight: InFlightFeatureFlagRequest) : FeatureFlagFlightSelection
     }
 }

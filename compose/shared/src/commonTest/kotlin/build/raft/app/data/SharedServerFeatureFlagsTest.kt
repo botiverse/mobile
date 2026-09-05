@@ -4,6 +4,7 @@ import build.raft.app.model.ServerId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -77,6 +78,66 @@ class SharedServerFeatureFlagsTest {
         val failed = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 500, bodyText = null)))
         assertFalse(failed.prefetch(server).resolved)
         assertFalse(failed.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
+    }
+
+    @Test
+    fun concurrentColdStartPrefetchesShareOneEvaluation() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var calls = 0
+        val api =
+            object : SlockFeatureFlagsApi {
+                override suspend fun evaluate(
+                    serverId: ServerId,
+                    keys: List<String>
+                ): HomeNetworkResponse {
+                    calls += 1
+                    started.complete(Unit)
+                    release.await()
+                    return ok(
+                        """{"evaluations":[{"key":"$WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY","enabled":false}]}"""
+                    )
+                }
+            }
+        val flags = SharedServerFeatureFlags(api)
+        val first = async { flags.prefetch(server, evaluationContext = "env-a") }
+        started.await()
+        val second = async { flags.prefetch(server, evaluationContext = "env-a") }
+        release.complete(Unit)
+
+        assertTrue(first.await().resolved)
+        assertTrue(second.await().resolved)
+        assertEquals(1, calls)
+        assertFalse(flags.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
+    }
+
+    @Test
+    fun cancellingOneWaiterDoesNotCancelTheSharedEvaluation() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var calls = 0
+        val api =
+            object : SlockFeatureFlagsApi {
+                override suspend fun evaluate(
+                    serverId: ServerId,
+                    keys: List<String>
+                ): HomeNetworkResponse {
+                    calls += 1
+                    started.complete(Unit)
+                    release.await()
+                    return ok("{}")
+                }
+            }
+        val flags = SharedServerFeatureFlags(api)
+        val owner = launch { flags.prefetch(server) }
+        started.await()
+        val survivor = async(start = CoroutineStart.UNDISPATCHED) { flags.prefetch(server) }
+        owner.cancel()
+        owner.join()
+        release.complete(Unit)
+
+        assertTrue(survivor.await().resolved)
+        assertEquals(1, calls)
     }
 
     @Test
@@ -237,9 +298,9 @@ class SharedServerFeatureFlagsTest {
                 }
             )
 
-        val first = async { flags.prefetch(server) }
+        val first = async { flags.prefetch(server, forceRefresh = true) }
         firstStarted.await()
-        val second = async { flags.prefetch(server) }
+        val second = async { flags.prefetch(server, forceRefresh = true) }
         second.await()
         releaseFirst.complete(Unit)
         first.await()
@@ -278,9 +339,9 @@ class SharedServerFeatureFlagsTest {
                 evaluations += Triple(enabled, reason, generation)
             }
 
-        val first = async { flags.prefetch(server) }
+        val first = async { flags.prefetch(server, forceRefresh = true) }
         firstStarted.await()
-        val second = async { flags.prefetch(server) }
+        val second = async { flags.prefetch(server, forceRefresh = true) }
         second.await()
         releaseFirst.complete(Unit)
         first.await()
@@ -313,7 +374,7 @@ class SharedServerFeatureFlagsTest {
                 evaluations += Triple(enabled, reason, generation)
             }
 
-        val prefetch = launch { flags.prefetch(server) }
+        val prefetch = launch { flags.prefetch(server, forceRefresh = true) }
         started.await()
         prefetch.cancel()
         release.complete(Unit)

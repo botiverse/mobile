@@ -1,8 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.NetworkSlockThreadApi
-
 import build.raft.app.base.Utils
+import build.raft.app.network.slockNetworkKmmRecoveryEnvironmentId
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockBrutalIconButton
@@ -2709,13 +2709,20 @@ private fun SlockAppShellReadyContent(
         remember(appShellServerMembersStore, readyServerId) {
             slockScopedAgentStatusResolver(appShellServerMembersStore, readyServerId)
         }
+    val appShellEnvironment = sharedStores.apiEnvironmentStore.current()
     val setupAdmissionHost =
         if (readySession != null && !readyServerId.isNullOrBlank()) {
             rememberServerSetupAdmissionHost(
                 session = readySession,
                 serverId = readyServerId,
-                environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/'),
-                webBaseUrl = sharedStores.apiEnvironmentStore.current().webUrl,
+                environmentId =
+                    appShellEnvironment.let { environment ->
+                        slockNetworkKmmRecoveryEnvironmentId(
+                            environmentKey = environment.key,
+                            apiBaseUrl = environment.apiBaseUrl,
+                        )
+                    },
+                webBaseUrl = appShellEnvironment.webUrl,
                 networkClient = appShellNetworkClient,
                 shellAuthStore = shellAuthStore,
                 authEvents = sharedStores.authStore,

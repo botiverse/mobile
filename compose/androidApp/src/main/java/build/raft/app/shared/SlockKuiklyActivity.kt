@@ -746,6 +746,8 @@ open class SlockKuiklyActivity :
     private var homeColdStartUsesNativeHold = false
     private var homeColdStartHoldView: View? = null
     private val homeColdStartTimeoutRunnable = Runnable { handleHomeColdStartTimeout() }
+    private val homeColdStartFallbackTimeoutRunnable =
+        Runnable { handleHomeColdStartFallbackTimeout() }
     private var homeColdStartFirstDrawListener: ViewTreeObserver.OnDrawListener? = null
     private var kuiklyHostAttached = false
     private var inputFontLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
@@ -955,7 +957,8 @@ open class SlockKuiklyActivity :
             homeColdStartSplashTimeoutLogged = true
             SlockAppLog.w(
                 "SlockBoot",
-                "home_content_splash_timeout timeoutMs=$HOME_COLD_START_SPLASH_TIMEOUT_MILLIS"
+                "home_content_splash_timeout timeoutMs=$HOME_COLD_START_SPLASH_TIMEOUT_MILLIS " +
+                    "action=brand_fallback"
             )
         }
         return keepOnScreen
@@ -976,11 +979,25 @@ open class SlockKuiklyActivity :
             scheduleHomeColdStartTimeout(gate)
             return
         }
-        removeHomeColdStartNativeHold(reason = "timeout")
+        val fallbackDelayMillis = gate.millisUntilFallbackTimeout(SystemClock.elapsedRealtime())
+        if (fallbackDelayMillis <= 0L) {
+            handleHomeColdStartFallbackTimeout()
+        } else {
+            window.decorView.postDelayed(homeColdStartFallbackTimeoutRunnable, fallbackDelayMillis)
+            SlockAppLog.d(
+                "SlockBoot",
+                "home_content_splash_fallback timeoutMs=$HOME_COLD_START_SPLASH_FALLBACK_TIMEOUT_MILLIS"
+            )
+        }
+    }
+
+    private fun handleHomeColdStartFallbackTimeout() {
+        removeHomeColdStartNativeHold(reason = "fallback_timeout")
     }
 
     private fun removeHomeColdStartNativeHold(reason: String) {
         window.decorView.removeCallbacks(homeColdStartTimeoutRunnable)
+        window.decorView.removeCallbacks(homeColdStartFallbackTimeoutRunnable)
         val holdView = homeColdStartHoldView ?: return
         (holdView.parent as? ViewGroup)?.removeView(holdView)
         homeColdStartHoldView = null
@@ -998,6 +1015,14 @@ open class SlockKuiklyActivity :
                 completedAtMillis = SystemClock.elapsedRealtime()
             )
         if (!isHomeAppShellChildPageData(pageDataText)) return
+        if (!isSucceed) {
+            SlockAppLog.w(
+                "SlockBoot",
+                "home_content_splash_child_load_failed page=$pageName " +
+                    "action=keep_brand_fallback"
+            )
+            return
+        }
         if (homeColdStartSplashGate?.release() != true) return
         removeHomeColdStartNativeHold(reason = "child_page_load")
         SlockAppLog.d(
