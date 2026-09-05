@@ -19,7 +19,7 @@
                 "fullscreen": true,
                 "systemBars": "hidden",
                 "validation": {
-                  "uniqueColors": 309,
+                  "uniqueColors": 301,
                   "dominantRatio": 0.9576306
                 },
                 "readyTokenObserved": false,
@@ -42,11 +42,11 @@
 },
               "captureIdentity": {
                 "attempt": 1,
-                "generation": "0c52f019e46218b93a27375d54b7329e",
-                "bootId": "ee832459-3f53-4c30-b088-bbf564020e69",
-                "capturedAtEpochMs": 1788471700132,
-                "capturedAtMonotonicNs": 86319541847
+                "generation": "979433b001ec7cae8a143942eb80427d",
+                "bootId": "ef136e51-3080-41f5-8f79-a08024596e38",
+                "capturedAtEpochMs": 1788644427458,
+                "capturedAtMonotonicNs": 54645292821
               },
               "clampedToShortWindow": false,
-              "capturedAt": "1788471700132"
+              "capturedAt": "1788644427458"
             }

@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-09-03T22:13:27.025Z",
-  "runId": "2ef048ab-20260903220322",
-  "commit": "2ef048ab-20260903220322",
-  "commitSubject": "ci(ios-simulator-app): always upload the xcodebuild log (task #247 follow-up)",
+  "generatedAt": "2026-09-05T22:11:36.641Z",
+  "runId": "9e487358-20260905220922",
+  "commit": "9e487358-20260905220922",
+  "commitSubject": "test(feature-flags): register the second cold-start caller before releasing the owner (task #1129) (#2397)",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -22,13 +22,13 @@
         "same": 0,
         "pass": 0,
         "basic-pass": 0,
-        "different": 89,
-        "missing": 10
+        "different": 90,
+        "missing": 9
       },
       "analysisSummary": {
         "total": 99,
-        "ready": 89,
-        "pending": 10
+        "ready": 77,
+        "pending": 22
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 99,
-        "ready": 80,
-        "pending": 19
+        "ready": 72,
+        "pending": 27
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 99,
-        "ready": 81,
-        "pending": 18
+        "ready": 78,
+        "pending": 21
       }
     }
   ],
@@ -85,13 +85,13 @@
     "same": 0,
     "pass": 0,
     "basic-pass": 0,
-    "different": 89,
-    "missing": 10
+    "different": 90,
+    "missing": 9
   },
   "analysisSummary": {
     "total": 99,
-    "ready": 89,
-    "pending": 10
+    "ready": 77,
+    "pending": 22
   },
   "componentMatrixSummary": {
     "total": 127,
@@ -262,8 +262,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8934720844406953,
-        "pixelPerfectSimilarity": 0.8073854660347551,
+        "rgbSimilarity": 0.8911062683447595,
+        "pixelPerfectSimilarity": 0.8019835000877655,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-lifecycle-actions.side-by-side.png"
       }
     },
@@ -319,8 +319,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8669483868312511,
-        "pixelPerfectSimilarity": 0.7650490811628252,
+        "rgbSimilarity": 0.860320878840623,
+        "pixelPerfectSimilarity": 0.7469680398590351,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.avatar-management.side-by-side.png"
       }
     },
@@ -378,8 +378,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.923806311225694,
-        "pixelPerfectSimilarity": 0.5859524581088562,
+        "rgbSimilarity": 0.9214167521155698,
+        "pixelPerfectSimilarity": 0.5831361985390422,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.default.side-by-side.png"
       }
     },
@@ -437,8 +437,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9202869468225808,
-        "pixelPerfectSimilarity": 0.5772943924602693,
+        "rgbSimilarity": 0.9156851718151745,
+        "pixelPerfectSimilarity": 0.5718525944829262,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.task.side-by-side.png"
       }
     },
@@ -547,7 +547,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8765775827080627,
+        "rgbSimilarity": 0.8765769256803327,
         "pixelPerfectSimilarity": 0.6861239383751232,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.long-inline-code.side-by-side.png"
       }
@@ -602,7 +602,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8710724020730719,
+        "rgbSimilarity": 0.8710708656254169,
         "pixelPerfectSimilarity": 0.24207376351926116,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-latest-release.side-by-side.png"
       }
@@ -657,7 +657,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8830470042667753,
+        "rgbSimilarity": 0.8830452838160576,
         "pixelPerfectSimilarity": 0.22959789902917865,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-link-ref.side-by-side.png"
       }
@@ -712,7 +712,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.884044961435556,
+        "rgbSimilarity": 0.8840436751791244,
         "pixelPerfectSimilarity": 0.12858488273180216,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-adjacent.side-by-side.png"
       }
@@ -767,8 +767,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8635541078882711,
-        "pixelPerfectSimilarity": 0.45679456799125046,
+        "rgbSimilarity": 0.8635510850753318,
+        "pixelPerfectSimilarity": 0.4567940616518816,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-clarify.side-by-side.png"
       }
     },
@@ -822,7 +822,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8753391613325395,
+        "rgbSimilarity": 0.875337788590251,
         "pixelPerfectSimilarity": 0.7901177745372058,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-slice1.side-by-side.png"
       }
@@ -877,7 +877,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8695904678646303,
+        "rgbSimilarity": 0.8695899688059574,
         "pixelPerfectSimilarity": 0.3048635584180608,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-status606.side-by-side.png"
       }
@@ -932,7 +932,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8648250819210653,
+        "rgbSimilarity": 0.8648230532541827,
         "pixelPerfectSimilarity": 0.3632625470895613,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-task607.side-by-side.png"
       }
@@ -987,7 +987,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8958136298061428,
+        "rgbSimilarity": 0.895806373462614,
         "pixelPerfectSimilarity": 0.7666805196861302,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.rich-content.side-by-side.png"
       }
@@ -1090,7 +1090,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9077418093705587,
+        "rgbSimilarity": 0.9077297904845194,
         "pixelPerfectSimilarity": 0.2758459243056399,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-share.selection.side-by-side.png"
       }
@@ -1932,8 +1932,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9937506572046189,
-        "pixelPerfectSimilarity": 0.5850292397660819,
+        "rgbSimilarity": 0.9938029702675959,
+        "pixelPerfectSimilarity": 0.5850379034004765,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.skeleton.states.side-by-side.png"
       }
     },
@@ -2055,8 +2055,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9853837037258614,
-        "pixelPerfectSimilarity": 0.9597882588919965,
+        "rgbSimilarity": 0.9854355156570449,
+        "pixelPerfectSimilarity": 0.9597917902647117,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.status-dot.states.side-by-side.png"
       }
     },
@@ -2396,8 +2396,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9100330234757735,
-        "pixelPerfectSimilarity": 0.8393597845019646,
+        "rgbSimilarity": 0.9104701706322789,
+        "pixelPerfectSimilarity": 0.8359595468600208,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.computer-missing.side-by-side.png"
       }
     },
@@ -2418,8 +2418,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9091703482724159,
-        "pixelPerfectSimilarity": 0.8384932690619894,
+        "rgbSimilarity": 0.9064342857985931,
+        "pixelPerfectSimilarity": 0.8326615897705945,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.computer-offline.side-by-side.png"
       }
     },
@@ -2437,12 +2437,12 @@
       "comparison": {
         "baseline": "react",
         "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
+        "status": "different",
+        "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
+        "rgbSimilarity": 0.9073310752583905,
+        "pixelPerfectSimilarity": 0.8346957237952498,
+        "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.daemon-only.side-by-side.png"
       }
     },
     {
@@ -2484,8 +2484,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8999283336744882,
-        "pixelPerfectSimilarity": 0.8275637650045233,
+        "rgbSimilarity": 0.897097746575893,
+        "pixelPerfectSimilarity": 0.82083485235144,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.long-machine-name.side-by-side.png"
       }
     },
@@ -2506,8 +2506,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9119927253926354,
-        "pixelPerfectSimilarity": 0.8363750827020969,
+        "rgbSimilarity": 0.9097930547978341,
+        "pixelPerfectSimilarity": 0.8325221776643578,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.no-computer.side-by-side.png"
       }
     },
@@ -2903,7 +2903,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8149947643937585,
+        "rgbSimilarity": 0.8149921392913019,
         "pixelPerfectSimilarity": 0.678087435022742,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.member-suggestions.side-by-side.png"
       }
@@ -3070,7 +3070,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8520492096839395,
+        "rgbSimilarity": 0.8521007417071496,
         "pixelPerfectSimilarity": 0.6521615941550583,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message.row.side-by-side.png"
       }
@@ -3401,8 +3401,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9101450227187559,
-        "pixelPerfectSimilarity": 0.8140696723888574,
+        "rgbSimilarity": 0.9100748670076002,
+        "pixelPerfectSimilarity": 0.8139014651323649,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.activity.results.side-by-side.png"
       }
     },
@@ -3460,7 +3460,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8587432776007571,
+        "rgbSimilarity": 0.8587409605741545,
         "pixelPerfectSimilarity": 0.7513951337411053,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.create-channel.dialog.side-by-side.png"
       }
@@ -3814,8 +3814,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9028697943129631,
-        "pixelPerfectSimilarity": 0.8251826197323827,
+        "rgbSimilarity": 0.9004794250598329,
+        "pixelPerfectSimilarity": 0.8210782328080907,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-detail.profile.side-by-side.png"
       }
     },
@@ -4689,8 +4689,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8739962270988026,
-        "pixelPerfectSimilarity": 0.7995557715936863,
+        "rgbSimilarity": 0.8559969952341686,
+        "pixelPerfectSimilarity": 0.7683389368223491,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.tasks.panel.states.side-by-side.png"
       }
     },
@@ -5129,8 +5129,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9553708076534333,
-        "pixelPerfectSimilarity": 0.830849569949096,
+        "rgbSimilarity": 0.9548160013477673,
+        "pixelPerfectSimilarity": 0.8308505826278338,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.home.loading.side-by-side.png"
       }
     },
@@ -5227,7 +5227,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9468829677849615,
+        "rgbSimilarity": 0.9468817088862955,
         "pixelPerfectSimilarity": 0.897945949960168,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.activity.side-by-side.png"
       }
@@ -5343,8 +5343,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9029701942394324,
-        "pixelPerfectSimilarity": 0.825224814679791,
+        "rgbSimilarity": 0.9006122801264078,
+        "pixelPerfectSimilarity": 0.8206846383386668,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.side-by-side.png"
       }
     },

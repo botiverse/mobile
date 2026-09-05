@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-03T22:13:18.894Z",
+  "generatedAt": "2026-09-05T22:11:28.615Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 99,
-    "ready": 89,
-    "pending": 10
+    "ready": 77,
+    "pending": 22
   },
   "cases": [
     {
@@ -460,7 +460,7 @@
     {
       "id": "components.ui.status-dot.states",
       "status": "ready",
-      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe9ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
+      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe1ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
       "generatedAt": "2026-07-10T22:11:45.609Z",
       "severity": "low",
       "summary": [
@@ -488,7 +488,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04021174110800352
+      "metricMismatch": 0.04020820973528827
     },
     {
       "id": "components.ui.progress-bar.states",
@@ -552,7 +552,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4149707602339181
+      "metricMismatch": 0.41496209659952354
     },
     {
       "id": "components.ui.spinner.states",
@@ -1286,76 +1286,29 @@
     },
     {
       "id": "components.thread.message-menu.default",
-      "status": "ready",
-      "imageHash": "p1:01fe01fc80007ffe800e07fe800000022000e002803ce7fefc1e63befc0e001efc00009efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff01defffe001efffe403efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00020000fff83fff",
-      "generatedAt": "2026-07-26T22:12:50.062Z",
-      "severity": "high",
-      "summary": [
-        "Android menu is rendered inline within the message bubble while React menu is positioned as a portal/overlay",
-        "Android menu has a smaller width and reduced vertical spacing (denser line-height) compared to React",
-        "Android includes an extra 'Select Text' menu item not present in the React version",
-        "React menu uses distinct section dividers/gaps (between react bar, then main actions, then Follow Thread/Convert to Task group) — Android flattens this into uniform spacing with only subtle dividers",
-        "React shows the time as '02:30 AM' while Android shows '10:30' — likely an intentional timestamp difference but the format also differs (AM/PM suffix vs 24h)"
-      ],
-      "likelyCauses": [
-        "Android implementation renders the context menu inline rather than as a positioned portal/popover like React",
-        "Different sectioning logic: React groups actions into 'selected-state' row, 'thread actions', and 'task action'; Android treats them as a single flat list",
-        "Missing menu item mapping — 'Select Text' was added in Android build but not yet implemented in React, or React omits it",
-        "Different typography tokens (font-family, weight, size) between the two platforms",
-        "Background/page color tokens are not shared between web and Android themes"
-      ],
-      "suggestedOwner": "android",
-      "suggestedFixes": [
-        "Render the context menu as a floating/anchored popover (not inline) to match React's portal positioning",
-        "Group menu items with the same section dividers and spacing as React: reaction row separator, primary actions group, secondary actions group",
-        "Remove or hide 'Select Text' on Android if it is not part of the intended spec, or add it to the React component",
-        "Align typography: use a single design token for menu item font-size (~14-15sp) and weight (~500/regular) matching React",
-        "Standardize the page/screen background color across platforms (use neutral white #FFFFFF)"
-      ],
-      "intentional": [
-        "Timestamp content value may legitimately differ (different test seed)",
-        "Beige page background could be a deliberate Android theme color — confirm with design before changing"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.4140475418911438
+      "status": "pending",
+      "imageHash": "p1:01fe01fc80007ffe800e07fe800000022000e002803ce7fefc1e63befc0e001efc00009efc1e27defc02019efc1e07defc1e07defc0c01defc00239efc0003deffff03defffe03deffff039effff01defffe001efffe403efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00020000fff83fff",
+      "generatedAt": "2026-09-05T22:11:27.637Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.4168638014609578
     },
     {
       "id": "components.thread.message-menu.task",
-      "status": "ready",
-      "imageHash": "p1:01fe01fc80087ffe800207fe800000022000e0028034e0fefc1e403efc0e001efc00009efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff03defffe001efffe403efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00020000fff83fff",
-      "generatedAt": "2026-08-07T00:05:55.873Z",
-      "severity": "high",
-      "summary": [
-        "Android context menu is taller/larger than React with more vertical spacing between items",
-        "Android has an extra 'Select Text' menu item between Copy Markdown and Select Message",
-        "Android context menu is positioned lower and more to the left, while React menu is positioned higher and overlaps the message",
-        "React menu shows 'Open Thread' / 'Save Message' / 'Follow Thread' grouped without dividers, Android adds dividers between Select Message and Open Thread and between Follow Thread and Mark as Done",
-        "Avatar and message body content differ substantially between the two captures (different mock message text and avatar)"
-      ],
-      "likelyCauses": [
-        "Android implementation includes a 'Select Text' action that React does not",
-        "Android menu adds separator dividers between action groups that React omits",
-        "Android uses different vertical padding/spacing tokens in the menu list",
-        "Context menu anchor/positioning differs between platforms, causing different overlay placement"
-      ],
-      "suggestedOwner": "android",
-      "suggestedFixes": [
-        "Remove the 'Select Text' menu item on Android to match React menu items (or add it to React if intentional)",
-        "Remove divider lines on Android or add matching dividers on React",
-        "Match React's vertical item spacing/padding in the Android menu",
-        "Verify menu anchor positioning so overlay aligns consistently across platforms",
-        "Audit menu item order to ensure 'Select Text' is intentionally platform-specific"
-      ],
-      "intentional": [
-        "Different mock message content and avatar between captures may be incidental to the test fixture",
-        "Reaction emoji rendering differences may be platform font fallback"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.42270560753973074
+      "status": "pending",
+      "imageHash": "p1:03fe01fc80087ffe802207fe800000062000e046803ce0fefc1e403efc0e001efc00009efc1e27defc0201defc1e07defc1e07defc0c01defc1c27defc0603defc0003deffff23deffff03deffff03deffff001efffe403efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00060000fffe3fff",
+      "generatedAt": "2026-09-05T22:11:27.642Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.42814740551707375
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1642,73 +1595,29 @@
     },
     {
       "id": "components.home.activity.results",
-      "status": "ready",
-      "imageHash": "p1:0ffc0ffc3ffe3ffe83fe81fe877e977e000000008040804000000000fffefffecffedff0c07ec011c0fec00ec38e800e807e83fec07e801efffe87fec0fe8ffec01efff2801e81318ffe801afffe800efffe8ffec3fe8ffefffefff2fffe9ff1fffed9fafffefffefffefffefffefffefffefffefffefffe00000000fffe7fff",
-      "generatedAt": "2026-08-19T22:10:36.393Z",
-      "severity": "low",
-      "summary": [
-        "Activity card title text appears bolded/heavier on Android side vs lighter weight on React (e.g., 'Captured the Android visual artifact for #product:f8e569cb...', 'Captured the previous visual baseline before leaving the workspace.').",
-        "Android side displays a leading filled-circle bullet on title rows where React uses a hollow square marker (e.g., before 'Captured the...').",
-        "Android side shows a small checkmark icon in the top-right of each activity card; React side has none.",
-        "Android side renders an extra cyan/blue play-tag chip ('#607 @Mahua') and a small pencil/edit icon below the message body; React side has neither.",
-        "Tag/pill layout on Android wraps to two rows (5 replies / @ you on row 1; 2 new / pencil on row 2) versus React's single row of pills."
-      ],
-      "likelyCauses": [
-        "Different title typography weight configured between the React and Android Activity card components.",
-        "Different leading glyph/icon used for unread vs read cards between platforms (filled circle vs hollow square).",
-        "Android Activity card renders trailing action icons (checkmark, pencil) that the React card does not include.",
-        "React card does not yet render the thread/play tag chip and edit action that exist in the Android variant.",
-        "Android pill row uses wrap-to-next-line layout whereas React constrains pills to a single row."
-      ],
-      "suggestedOwner": "mobile#1039 (Activity card parity)",
-      "suggestedFixes": [
-        "Unify the title font-weight between React and Android (pick the bolder Android weight as the target).",
-        "Decide on a single leading bullet/icon glyph for activity cards and align both platforms.",
-        "Add the trailing checkmark/action affordance to the React card or remove it from Android to match.",
-        "Add the thread/play tag chip and edit-pencil action to the React Activity card if they are intended product features.",
-        "Make the pill/tag row layout consistent (single row vs wrapped) across platforms."
-      ],
-      "intentional": [
-        "Activity card timestamp is right-aligned on the top channel-tag row on Android (e.g., '14 days ago', '16 days ago'), whereas React places it inline with the title — android behavior is the desired product direction per #wg-nightly-visual-fix (mobile#1039/#1171)."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.1859303276111426
+      "status": "pending",
+      "imageHash": "p1:0ffc0ffc3ffe3ffe83fe81fe877e977e000000008040804000000000fffefffecffedff0c07ec011c0fec00ecf82800ec07e83fec07e801efffe87fec0fe8ffec006fff2807e81318ffe801afffe800efffe8ffec3fe8ffefffefff2fffe9ff1fffed9fafffefffefffefffefffefffefffefffefffefffe00000000fffe7fff",
+      "generatedAt": "2026-09-05T22:11:27.792Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.18609853486763506
     },
     {
       "id": "components.tasks.panel.states",
-      "status": "ready",
-      "imageHash": "p1:3ffe7ffe0000000000000000801e0006ffffffefef80ff818f80df819fff9fff9ffc9ffd9ffc9ff487e487f49ffebffcfff0ffe4bfe0b00187ff87ff87ff87ffbffcbffc80368034bff4ffc4ffc0a00180018fff8fff8fff9ffcfffc8efe808cffe0f001a00080019fff9fff9fff9ffdfffc807c803cff00bff0ff00ffffffff",
-      "generatedAt": "2026-08-28T00:59:17.158Z",
-      "severity": "low",
-      "summary": [
-        "Android header shows a checkmark icon next to 'Tasks' title that is absent on the React baseline.",
-        "Android renders the Board/List toggle with slightly smaller/less prominent chips compared to the React baseline (smaller padding, lighter border).",
-        "React baseline shows the filter chips wrapped onto two rows (Channel/Creator on row 1, Assignee on row 2); Android renders them on a single row — a known platform difference, not a defect.",
-        "React baseline lacks per-card top-right timestamps (e.g. '6 minutes ago', 'in 3 days') and bottom-left assignee lines that Android displays — intentional, React to adopt later.",
-        "Overall RGB similarity 87.4% / pixel-perfect 80.0% with a 20% mismatch ratio is driven primarily by the intentional feature gaps (timestamps, assignee lines, filter-row layout, header icon), not by visual regressions on shared components."
-      ],
-      "likelyCauses": [
-        "Intentional feature divergence declared under task #373 (timestamps, assignee lines) — React has not yet adopted them.",
-        "Header checkmark icon is an Android-only adornment; React baseline does not render it.",
-        "Board/List chip token (padding/border) on Android is not fully aligned to the shared design tokens used by React, producing the slightly smaller toggle appearance."
-      ],
-      "suggestedOwner": "react-frontend",
-      "suggestedFixes": [
-        "Confirm shared chip-token application for the Board/List toggle so padding and border weight match React on Android.",
-        "Track adoption of per-card timestamp and assignee line in the React panel under task #373; do not block the parity report on this.",
-        "If the header checkmark icon is intended for both platforms, add it to the React header; if Android-only, annotate the divergence to avoid future false-positive diffs."
-      ],
-      "intentional": [
-        "Filter chip row wraps to two rows on React but stays on a single row on Android (platform-difference).",
-        "Android task cards show a relative timestamp at the top-right ('6 minutes ago', 'in 3 days'); React panel does not — React will adopt later (react-adopts-later).",
-        "Android task cards show an assignee chip at the bottom-left (e.g. 'Unassigned', '@Cindy', '@Product UX Designer'); React panel does not — React will adopt later (react-adopts-later)."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2004442284063137
+      "status": "pending",
+      "imageHash": "p1:3ffe3ffe0000000000000000803f0006ffffffefef80ff819fc05f819fff9fffbffc9ffd9ffc97f483ac87f4bffebffcbffeffe0fff0b001b82085ff87ff87ff87ff3ffcbffc80148006ffc09ffea001bffe87ffffc08fff8001bffc8fff008c8ffcf0008ffe80019efe9fffffe09ffdffe0807c80017f009fff7f00ffffffff",
+      "generatedAt": "2026-09-05T22:11:27.832Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2316610631776509
     },
     {
       "id": "components.tasks.status-menu",
@@ -1816,7 +1725,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:18.060Z",
+      "generatedAt": "2026-09-05T22:11:27.795Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1829,7 +1738,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:18.060Z",
+      "generatedAt": "2026-09-05T22:11:27.795Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1908,39 +1817,16 @@
     },
     {
       "id": "components.members.agent-detail.profile",
-      "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0bffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fffffff8fffffffc0ff80ff80ffffffffffd4ffd47fffffffffffffdfff0c3f800f0c3f800f0c7f8fff0c7f8fff000380ff0403807ff7ff807f87fffffe07fcffffffff",
-      "generatedAt": "2026-09-03T22:08:25.338Z",
-      "severity": "medium",
-      "summary": [
-        "Layout flow differs: Android (right) stacks all sections vertically and groups Runtime Config in a 2x2 grid, while React (left) uses horizontal rows for Runtime/Model/Reasoning and stacks Mode separately.",
-        "Header status row differs: React shows 'Capturing determ…' truncated text next to the avatar; Android shows '@Product-UX-Designer' and 'Working' status indicator on separate lines below the title.",
-        "Display Name, Description, Role sections on Android are missing the edit (pencil) icons present in React.",
-        "Runtime Config pill order and grouping differ: React renders Runtime/Model/Reasoning on row 1 and Mode on row 2; Android renders Runtime/Model on row 1 and Reasoning/Mode on row 2, swapping the Mode pill position.",
-        "React shows a single visible 'CREATED AGENTS' entry in the section; Android renders a 'CREATED AGENTS' card with avatar, name 'Visual QA', subtitle 'Codex CLI', a count of '1', and a green status dot, making the section taller."
-      ],
-      "likelyCauses": [
-        "Native Android implementation uses a different component for Runtime Config (2x2 grid) than the React web layout (flex row).",
-        "Edit/pencil affordances were not ported to the Android Profile screen.",
-        "Status row above the avatar was implemented as a separate block on Android rather than the inline status React uses.",
-        "CREATED AGENTS list/card is rendered with extra metadata (avatar, subtitle, count, status dot) on Android that React omits.",
-        "Spacing tokens (padding, section gaps) are not shared between web and Android style systems."
-      ],
-      "suggestedOwner": "android",
-      "suggestedFixes": [
-        "Align the Android Runtime Config layout with React: render Runtime, Model, Reasoning on the first row and Mode on the second row using consistent pills.",
-        "Restore the edit (pencil) icons next to Display Name, Description, and Role labels on Android.",
-        "Match the header status pattern: on Android, render 'Working' indicator inline with the title or in the same row pattern as React instead of as a separate line below the handle.",
-        "Add the 'Member' role pill under Role on Android to match React.",
-        "Trim the CREATED AGENTS section on Android to match React's minimal rendering, or update React to render the richer card so both platforms agree."
-      ],
-      "intentional": [
-        "Different platform tab bar styling conventions are acceptable if intentional, but should be documented in the design spec."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.17481738026761728
+      "status": "pending",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fffffff8fffffffc0ff80ff80ffffffffffd4ffd47ffcffffffffffd7ff0c7f80010c3f80011c7f80ff0c7f807f0003807f0003ffffffffdfff87ff807887fcffffffff",
+      "generatedAt": "2026-09-05T22:11:27.967Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.17892176719190933
     },
     {
       "id": "components.channel.settings.panel",
@@ -1979,7 +1865,7 @@
       "id": "components.channel.members.add-panel",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:18.146Z",
+      "generatedAt": "2026-09-05T22:11:27.886Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2265,200 +2151,87 @@
     },
     {
       "id": "screens.members.agent-detail.profile",
-      "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0bffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fffffff8fffffffc0ff80ff80ffffffffffd4ffd47fffffffffffffdfff0c3f800f0c3f800f0c7f8fff0c7f8fff000380ff0403807ff7ff807f87fffffe07fcffffffff",
-      "generatedAt": "2026-09-03T22:08:26.129Z",
-      "severity": "high",
-      "summary": [
-        "Header layout differs: React shows title with avatar inline and a truncated status line; Android shows larger avatar with title/status stacked below and a 'Working' indicator",
-        "Top tab strip: React renders tabs as a horizontal segmented control with equal-width tabs; Android uses non-uniform tab widths and Profile tab fills more space",
-        "Agent header card: React truncates name to 'Produc…' with status inline; Android shows full name with @handle and 'Working' dot below in a card-like layout",
-        "Profile status badge: React includes a 'Member' role badge below the avatar; Android omits the badge entirely",
-        "Field labels: React renders labels in monospace uppercase with edit pencil icons (DISPLAY NAME, DESCRIPTION, RUNTIME CONFIG); Android uses plain uppercase labels without edit icons"
-      ],
-      "likelyCauses": [
-        "Android implementation did not reuse the React component specs for header composition, tab control, and form labels",
-        "Edit/affordance icons (pencil) not ported to Android",
-        "Role badge component missing on Android",
-        "Layout system differs: Android uses a 2-column grid for runtime config instead of the React row-based layout",
-        "Extra 'Created Agents' list rendered on Android suggests an unported section or different data binding"
-      ],
-      "suggestedOwner": "android-engineering",
-      "suggestedFixes": [
-        "Port the React header layout: inline avatar with title and truncated status, or align Android card structure to match baseline",
-        "Equalize tab widths in the Profile/Activity/Chat/Reminders strip and keep selected tab highlight consistent",
-        "Add 'Member' role badge under the agent avatar",
-        "Restore pencil/edit icons next to DISPLAY NAME, DESCRIPTION, and RUNTIME CONFIG labels",
-        "Align Runtime/Model/Reasoning into a single row with Mode on a second row (or match React spec exactly)"
-      ],
-      "intentional": [
-        "Different cropping contract (element vs viewport-bounds) may explain some vertical padding differences",
-        "Header stacking on Android may be intentional for tablet/phone density"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.17477518532020897
-    },
-    {
-      "id": "screens.members.agent-detail.profile.computer-offline",
-      "status": "ready",
-      "imageHash": "p1:15fe35fe800000118010080100000000000206fa81ff0f7f8fff000f8fff0bffffffdfff81ffc7ffffffcfff87fbffff800f001fffffffffffffffff8fff1fff8fff0fff9bff1fff93ff03ffffffffffd47fd4ffffffffffdffff7ff800f0c3f800f0c3f8fff0c7f8fff0c7f80ff0001807fffff807f87fffffe03fcffffffff",
-      "generatedAt": "2026-09-03T22:08:26.696Z",
-      "severity": "high",
-      "summary": [
-        "Header title area: React shows clipped 'Comp…' with status 'Holding a fixed Co…' inline, Android shows full 'Computer Offline Probe' title with 'Working' status below avatar/handle",
-        "Runtime Config section: React uses 3-column horizontal layout (Runtime, Model, Reasoning) with Mode below; Android uses 2-column grid (RUNTIME/MODEL, REASONING/MODE) with all-caps labels",
-        "Android adds a 'CREATED AGENTS' section at the bottom ('Visual QA' entry) not present in React baseline",
-        "Edit pencil icons next to 'DISPLAY NAME', 'DESCRIPTION', 'Role', and 'RUNTIME CONFIG' labels are missing on Android",
-        "Computer status row differs: React shows 'Offline · computer offline' with gray dot; Android shows 'Connected · daemon v0.65.0'"
-      ],
-      "likelyCauses": [
-        "Android implementation diverged from shared React design spec for the Profile screen",
-        "Runtime Config and Environment Variables were reorganized into a 2-column grid in Android native layout",
-        "Computer connection status binding differs (Online vs Offline) possibly due to mocked/stale store data on Android",
-        "'Created Agents' section appears to be an Android-only addition not present in React baseline",
-        "Inline edit affordances (pencil icons) not ported to Android component"
-      ],
-      "suggestedOwner": "android",
-      "suggestedFixes": [
-        "Reconcile header composition so both platforms show full agent name + handle + status with consistent truncation rules",
-        "Restore 3-column Runtime Config layout (Runtime/Model/Reasoning) with Mode on its own row, or align both platforms to the same grid",
-        "Remove or add 'CREATED AGENTS' section consistently across React and Android",
-        "Re-add inline edit pencil icons next to Display Name, Description, Role, and Runtime Config labels on Android",
-        "Investigate why computer status reads 'Connected · daemon v0.65.0' instead of the expected 'Offline' state — likely a stale or incorrect binding on Android"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.1615067309380106
-    },
-    {
-      "id": "screens.members.agent-detail.profile.computer-missing",
-      "status": "ready",
-      "imageHash": "p1:17fe35fe800000018000080100000000000207fa81ff0f7f8fff000f8fff0bffffffdfff81ffc7ffffffcfff87ffdfff80038007ffffffffffffffffffff1fff8fff0fff8fffffffffffffffffffffffd47fd4ffffffffffd7fff7ff800f0c3f800f0c3f8fff0c7f8fff0c7f80ff0001807fffff807f87fffffe03fcffffffff",
-      "generatedAt": "2026-09-03T22:08:27.932Z",
-      "severity": "medium",
-      "summary": [
-        "Header avatar in Android is larger and vertically centered with the title row, while React uses a smaller avatar aligned to the top; this changes header height and layout balance.",
-        "React shows status text on a single line ('Holding a flat C…') next to the title; Android stacks it on two lines below the title and shows 'Working' instead of 'Holding a fixed C…'.",
-        "React truncates the username to 'Compu…' with ellipsis; Android renders full 'Computer Missing Probe' title without truncation in the header.",
-        "Tabs in Android render 'Reminders' label on a single line whereas React places 'Reminders' in the last tab; tab height/styling is otherwise similar.",
-        "Runtime Config section differs: React uses 3-column grid (Runtime / Model / Reasoning) then Mode on its own row; Android uses 2-column 2x2 grid (Runtime/Model, Reasoning/Mode) with uppercase labels."
-      ],
-      "likelyCauses": [
-        "Android port implemented its own layout for the Profile screen rather than reusing the React component hierarchy.",
-        "Differences in typography scale (uppercase labels, larger line-height) between platforms indicate platform-specific theme tokens not unified in a shared design system.",
-        "Edit affordances were dropped in the Android implementation, suggesting incomplete feature parity.",
-        "Sections like 'Connected' and 'Created Agents' were added or omitted inconsistently between the two implementations, likely due to differing data shaping or screen scope."
-      ],
-      "suggestedOwner": "android",
-      "suggestedFixes": [
-        "Unify header avatar size and vertical alignment with React baseline (smaller avatar, top-aligned) and keep title/status on a single truncated line.",
-        "Apply consistent truncation policy for the agent title in the header across platforms.",
-        "Restore edit pencil icons next to DISPLAY NAME, DESCRIPTION, INFO (Role) and RUNTIME CONFIG on Android to match React.",
-        "Align field-label casing/letter-spacing with React (mixed-case bold) or update both to share the same design token.",
-        "Restructure Runtime Config to either match React's 3+1 grid or update both to the 2x2 grid consistently."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.16064021549803542
-    },
-    {
-      "id": "screens.members.agent-detail.profile.no-computer",
-      "status": "ready",
-      "imageHash": "p1:1dfe3ffe803000318010083100000000020207ea83ff0fff8fff001f8fff0ffff7ffdfff83ffc7ffffffdfff87ffcfff83ff9ffbffffffffffffffff8fff1fff8fff0fffffffffffffffffffd47ffffffeffd4ffffffffff800ff7ff800f0c3f9fff0c3f8fff0c7f80ff0c7f807f0001803fffffffff87ff83fe03fcffffffff",
-      "generatedAt": "2026-09-03T22:08:32.981Z",
-      "severity": "medium",
-      "summary": [
-        "Header layout differs: React shows title + truncated subtitle inline with avatar on one row; Android stacks title/subtitle separately and places avatar in a separate card with name/handle below.",
-        "Status indicator differs: React shows a yellow dot with 'Holding a fixed Com...' status text next to title; Android shows a yellow dot with 'Working' label below the handle.",
-        "INFO section adds an 'Offline' row with em-dash on Android; React omits this row entirely (no Computer section shown after Member role).",
-        "Runtime Config layout reorganized: React uses three columns (Runtime/Model/Reasoning) then Mode on its own row; Android uses a 2x2 grid (Runtime/Model, Reasoning/Mode) with uppercase mini-labels.",
-        "Edit (pencil) icons next to Display Name, Description, and Role present on React but missing on Android."
-      ],
-      "likelyCauses": [
-        "Android screen contract used 'viewport-bounds' vs React 'screen-route' element crop, changing how much vertical content is rendered.",
-        "Android layout uses a different component (e.g., collapsible sections or different Card/List implementation) that omits edit affordances and reorders fields.",
-        "Truncation/ellipsis policy differs between web (CSS line-clamp) and Android (TextView maxLines/ellipsize) implementations.",
-        "Status mapping differs: React surfaces the literal probe reason while Android maps the same state to a generic 'Working' label.",
-        "Offline row may be conditionally rendered only when state == offline; React screenshot may have been captured in a slightly different state."
-      ],
-      "suggestedOwner": "mobile-android",
-      "suggestedFixes": [
-        "Align Android Agent Detail Profile to the React information architecture: header with title + subtitle inline, status dot inline with title, and single avatar block.",
-        "Re-add the pencil/edit affordances next to Display Name, Description, and Role on Android, or document their removal as an intentional change.",
-        "Match the Info section: either show the 'Offline' row on React or hide it on Android for the no-computer case; keep label/value alignment consistent.",
-        "Reorder Runtime Config to match React: Runtime / Model / Reasoning on one row, Mode on its own row; or update both to the 2x2 grid intentionally.",
-        "Standardize environment variable chip rendering: same truncation width, same dot count, same wrapping behavior across platforms."
-      ],
-      "intentional": [
-        "2x2 Runtime Config grid on Android may be an intentional responsive layout for narrower viewports.",
-        "Android omission of inline edit icons may be an intentional design decision for the mobile variant."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.16362491729790307
-    },
-    {
-      "id": "screens.members.agent-detail.profile.long-machine-name",
-      "status": "ready",
-      "imageHash": "p1:17fe37fe801000118010081100000000005a07fe81ff8fff8fff00078fff0fffffffdfff80ffc7ffffffdfff87ffffff8007001bffffffffffffffff8fff1fff8fff1fffe963dfff80030001ffffd1effefffdfff47ff47fffffffffdfffffff80070c3f9fff0c3f8fff0c7f8dff000780ff0003807fffff803e0006ffffffff",
-      "generatedAt": "2026-09-03T22:08:33.280Z",
-      "severity": "medium",
-      "summary": [
-        "Header avatar/title layout differs: React has avatar left of truncated title with chat/menu icons on right; Android shows truncated title with avatar below chat/menu icons (icons moved to top-right corner)",
-        "React truncates header title with ellipsis ('Long Machine Name Pr...'); Android wraps display name fully on two lines in profile block",
-        "React shows inline status 'Holding a fixed C...' next to title; Android displays separate 'Working' status line below the handle",
-        "React places tabs (Profile/Activity/Chat/Reminders) below header; Android places tabs at top with the title above tabs",
-        "React uses section labels in uppercase; Android uses uppercase for section labels (DISPLAY NAME, DESCRIPTION, etc.) as well — similar but section spacing and edit-pencil icons differ"
-      ],
-      "likelyCauses": [
-        "Android implementation did not adopt the React header layout pattern (avatar/title/icons arrangement)",
-        "Different text-truncation policy between platforms (React ellipsis vs Android wrap)",
-        "Component-level differences in header vs AppBar pattern across platforms",
-        "Runtime Config section restructured into grid on Android instead of original vertical list",
-        "Created Agents section implemented only on Android, or hidden/pending on React"
-      ],
-      "suggestedOwner": "android-engineering",
-      "suggestedFixes": [
-        "Reconcile header layout so avatar, truncated title, and action icons match React's left-avatar / right-icons pattern",
-        "Apply consistent truncation with ellipsis for the header title on Android instead of wrapping",
-        "Move the status indicator (Working) inline next to the title to match React, or keep separate but harmonize spacing",
-        "Align Runtime Config section to a single vertical list (Runtime, Model, Reasoning, Mode) on Android to match React, or update React to match the grid",
-        "Layout the Environment Variables as stacked rows to match React, or intentionally document the side-by-side change"
-      ],
-      "intentional": [
-        "Status label wording 'computer' vs 'daemon' may be intentional per platform copy",
-        "Created Agents count on Android could be a new feature under development"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.17243623499547667
-    },
-    {
-      "id": "screens.members.agent-detail.profile.daemon-only",
       "status": "pending",
-      "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:18.413Z",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0bffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fffffff8fffffffc0ff80ff80fffffffffff4ffd47ffcffffffffffd7ff0c3f80010c3f80011c7f80ff0c7f807f0003807f0403ffffffffdfff87ff807807fcffffffff",
+      "generatedAt": "2026-09-05T22:11:28.153Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "missing side-by-side image",
-      "metricMismatch": null
+      "error": "codex CLI not found",
+      "metricMismatch": 0.17931536166133322
+    },
+    {
+      "id": "screens.members.agent-detail.profile.computer-offline",
+      "status": "pending",
+      "imageHash": "p1:15fe35fe800000118010080100000000000206fa81ff0f7f8fff000f8fff0bffffffdfff81ffc7ffffffcfff87fbffff800f001fffffffffffffffff8fff1fff8fff0fff9bff1fff93ff03ffffffffffd47fd4ffffffffffd7fff7ff80010c3f80010c3f80ff0c7f807f087f807f0003ffffc627ffff97ffc3fe03fcffffffff",
+      "generatedAt": "2026-09-05T22:11:28.173Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.16733841022940554
+    },
+    {
+      "id": "screens.members.agent-detail.profile.computer-missing",
+      "status": "pending",
+      "imageHash": "p1:17fe35fe800000018000080100000000000207fa81ff0f7f8fff000f8fff0bffffffdfff81ffc7ffffffcfff87ffdfff80038007ffffffffffffffffffff1fff8fff0fff8fffffffffffffffffffffffd47fd4ffffffffffd3fff7ff80010c3f80010c3f80ff0c7f807f087f807f0003ffffc627ffff97ffc7fe03fcffffffff",
+      "generatedAt": "2026-09-05T22:11:28.206Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.16404045313997917
+    },
+    {
+      "id": "screens.members.agent-detail.profile.no-computer",
+      "status": "pending",
+      "imageHash": "p1:1dfe3ffe803000318010083100000000020207ea83ff0fff8fff001f8fff0ffff7ffdfff83ffc7ffffffdfff87ffcfff83ff9ffbffffffffffffffff8fff1fff8fff0fffffffffffffffffffd47ffffffeffd4ffffffffff8001f7ff80010c3f80ff0c3f807f0c7f807f087fffff0003ffffc627ffff97fffffe03fcffffffff",
+      "generatedAt": "2026-09-05T22:11:28.250Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.16747782233564223
+    },
+    {
+      "id": "screens.members.agent-detail.profile.long-machine-name",
+      "status": "pending",
+      "imageHash": "p1:3ffe37fe801800118010083100000000087e0ffe81ff8fff8fff00078fff0fffffffdfffc0ffc7ffffffdfff87ffffff8007801bffffffffffffffff8fff9fff8fff1fffe96bdfff80030001ffffc96ffefffdfff47ff4ffffffffffdbfff7ff80010c3f80ff0c3f80ff0c7f807f88ffd9ff0001ffffffffe3fe03feffffffff",
+      "generatedAt": "2026-09-05T22:11:28.242Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.17916514764855995
+    },
+    {
+      "id": "screens.members.agent-detail.profile.daemon-only",
+      "status": "pending",
+      "imageHash": "p1:1dfe3ffe80300031801002210000000000020fea81ff0fff8fff001f8fff0bffffffdfff83ffe7ffffffcfff87efffff80070003f6ff9fffffffffffffffffff8fff0fff8fff0fff80ff90ffbfff80fffefffdfff47ff47fffffffffdbffffff80010c3f80fb0c3f80ff0c7f807f0003c17f0003ffffffff83fe0000ffffffff",
+      "generatedAt": "2026-09-05T22:11:28.269Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1653042762047502
     },
     {
       "id": "screens.members.agent-detail.profile.no-membership",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:18.413Z",
+      "generatedAt": "2026-09-05T22:11:28.159Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2471,7 +2244,7 @@
       "id": "screens.members.agent-detail.profile.loading-state",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:18.413Z",
+      "generatedAt": "2026-09-05T22:11:28.159Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2587,7 +2360,7 @@
     {
       "id": "screens.members.agent-detail.activity",
       "status": "ready",
-      "imageHash": "p1:17fe17fc80100030801000000000000000000000010043e0000073fef3fe73fee00253fef3fe7002f1fe71fefc02507ee032707ef20270bafffe403ee03e7002f00e7002f3fe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
+      "imageHash": "p1:17fe17fc80100030801000000000000000000000010053e0000073fef3fe73fee00253fef3fe7002f1fe71fefc02507ee032707ef20270bafffe403ee03e7002f00e7002f3fe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
       "generatedAt": "2026-09-03T22:08:44.087Z",
       "severity": "medium",
       "summary": [
@@ -2652,71 +2425,29 @@
     },
     {
       "id": "components.members.agent-lifecycle-actions",
-      "status": "ready",
-      "imageHash": "p1:1ffe3ffe8010003180100821000c000000840dfc80008c018fff00018fff0fffffffdfff83ffe7ffffffffff85fbffffc03f81ffffffffffffffffff8fffffff8fffffffc0ff80ff81fffffffffff4ffd47fffffffffffffdfff0c3f800f0c3f800f1c7f8fff0c7f8fff000380ff8607807fffff807f97fffffe87fcffffffff",
-      "generatedAt": "2026-09-03T22:08:45.522Z",
-      "severity": "high",
-      "summary": [
-        "'Stop Agent' / 'Restart / Reset' action menu is anchored to a narrower region on Android, clipping the menu to roughly half the viewport width and leaving the menu visibly truncated on the right edge.",
-        "'Role' field shows a clickable edit affordance in React (question-mark icon + pencil/edit icon) but on Android it is non-interactive (only the info icon).",
-        "Header 'Agent' avatar on React renders with the pixel avatar overlapping/intersecting the 'Stop Agent' menu, while on Android the menu floats over the header and the avatar is partially obscured behind it.",
-        "Description body and DISPLAY NAME / DESCRIPTION labels are visibly thinner/lighter weight on Android (regular weight) compared to React (semi-bold/medium).",
-        "Member chip is shown as a purple 'Member' pill in React but is completely missing on Android."
-      ],
-      "likelyCauses": [
-        "Android implementation renders the lifecycle action menu as an unconstrained/auto-width dropdown anchored to a smaller trigger element rather than matching React's wider anchor.",
-        "Missing edit/pencil affordance on Android suggests Role field is rendered as read-only on the mobile client.",
-        "Typography token mapping on Android uses a lighter system font weight (Regular) instead of the React design system's SemiBold/Medium weight.",
-        "Role member chip component is conditionally omitted or not yet wired up on the Android side.",
-        "Dropdown overlay z-index/stacking differs: Android floats the menu above the agent header content while React keeps it below/aligned."
-      ],
-      "suggestedOwner": "android-engineering",
-      "suggestedFixes": [
-        "Constrain the 'Stop Agent' / 'Restart / Reset' menu width to match the React trigger bounds or set it to span the full content width to avoid clipping.",
-        "Add the edit (pencil) and role-info affordances to the Android Role row, matching React's interactive variant.",
-        "Apply React's type scale/weight tokens (SemiBold for section labels and descriptions) to the Android Member Detail screen.",
-        "Render the 'Member' role chip on Android to match the React profile header.",
-        "Verify dropdown/menu positioning so it doesn't overlap the avatar and header title; align stacking and offset with React."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.19261453396524486
+      "status": "pending",
+      "imageHash": "p1:1ffe3ffe8010003180100821000c000000840dfc80008c018fff00018fff0fffffffdfff83ffe7ffffffffff85fbffffc03f81ffffffffffffffffff8fffffff8fffffffc0ff80ff81ffffffffffd4ffd47ffcffffffffffdfff8c7f80010c3f80011c7f80ff0c7f807f0003807f0403ffffffffdfff87ff80f897fcffffffff",
+      "generatedAt": "2026-09-05T22:11:28.411Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.19801649991223447
     },
     {
       "id": "components.members.avatar-management",
-      "status": "ready",
-      "imageHash": "p1:3ffe3ffe801b003384100a310000000081fe000e81ff0b3f8fff8fff8fffffffffffc7ffa001ffff8001ffff8001c1ff8003fffff81ffffffe7fffff87ff83ffffffd3fffffffdff803bf4ffffffffffffffffffffff8c3f8fff8c3fdfff8c7f80ff807fffff0003fcfffffffcff97ffffff87ff89cfffff8007fffeffffffff",
-      "generatedAt": "2026-09-03T22:08:49.651Z",
-      "severity": "high",
-      "summary": [
-        "React shows an editable Profile view with 'CHOOSE AVATAR' grid of avatar options; Android shows a read-only detailed view with 'Product UX Designer' header, @handle, 'Working' status, and no avatar picker",
-        "React header description text is truncated with ellipsis ('Turns product feedback, s…'); Android wraps to two full lines without truncation",
-        "React INFO section includes a 'Role' badge ('Member' in purple pill) with edit pencil icons next to DISPLAY NAME, DESCRIPTION, RUNTIME CONFIG labels; Android shows Role as plain text label only with no badge and no edit icons",
-        "Android layout pushes additional sections (Runtime Model, Reasoning, Mode, Environment Variables, Created Agents list) into the visible viewport that are absent or off-screen on React",
-        "Header layout differs: React places avatar left of title with subtitle below; Android stacks a larger avatar block on the left with name/handle/status on the right"
-      ],
-      "likelyCauses": [
-        "Android component renders a different screen variant (detail/read-only view) than the React baseline (editable form)",
-        "Feature flag or route mismatch causing Android to render an alternate navigation target",
-        "Avatar picker section not implemented in Android build",
-        "Edit affordances (pencil icons) and Role badge not ported to Android",
-        "Missing top/bottom safe-area or scroll container causing extra sections to appear in viewport on Android"
-      ],
-      "suggestedOwner": "android-engineering",
-      "suggestedFixes": [
-        "Verify both renders target the same route/screen (Avatar Management vs. Profile Detail) and align navigation",
-        "Port the avatar picker grid component to Android or hide it on Android if intentionally read-only",
-        "Add Role badge and inline edit pencil icons on DISPLAY NAME, DESCRIPTION, and RUNTIME CONFIG labels to match React",
-        "Truncate header description to one line with ellipsis on Android to match React",
-        "Adjust scroll/safe-area insets so Runtime Config and Created Agents sections do not leak into the viewport"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.23495091883717478
+      "status": "pending",
+      "imageHash": "p1:bffe7ffec43b803386b10f71000000008ffe001f81ff0bbf8fff8fff8fffffffffffc003e0014001c001000180010001c0031ffff81fffffffffffffc7ffffffffffffffffffc1ffc03bffffffffffffffffffffffffffff8fff80ffdfffffffc0fffcfffffffdfffefffffffeffdfffffff8c3fdbdb9c7f80010c7fffffffff",
+      "generatedAt": "2026-09-05T22:11:28.426Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.25303196014096485
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2784,7 +2515,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.16915043005090402
+      "metricMismatch": 0.16914941737216616
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2998,7 +2729,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.5432054320087496
+      "metricMismatch": 0.5432059383481185
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",
@@ -3104,7 +2835,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:18.800Z",
+      "generatedAt": "2026-09-05T22:11:28.531Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -3117,7 +2848,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:18.800Z",
+      "generatedAt": "2026-09-05T22:11:28.531Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -3130,7 +2861,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:18.800Z",
+      "generatedAt": "2026-09-05T22:11:28.531Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -3143,7 +2874,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:18.800Z",
+      "generatedAt": "2026-09-05T22:11:28.531Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

@@ -42,11 +42,11 @@
 },
               "captureIdentity": {
                 "attempt": 1,
-                "generation": "0c52f019e46218b93a27375d54b7329e",
-                "bootId": "ee832459-3f53-4c30-b088-bbf564020e69",
-                "capturedAtEpochMs": 1788471887289,
-                "capturedAtMonotonicNs": 273475899983
+                "generation": "979433b001ec7cae8a143942eb80427d",
+                "bootId": "ef136e51-3080-41f5-8f79-a08024596e38",
+                "capturedAtEpochMs": 1788644621328,
+                "capturedAtMonotonicNs": 248515448342
               },
               "clampedToShortWindow": false,
-              "capturedAt": "1788471887289"
+              "capturedAt": "1788644621328"
             }

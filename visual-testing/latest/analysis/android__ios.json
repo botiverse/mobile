@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-03T22:13:25.327Z",
+  "generatedAt": "2026-09-05T22:11:34.901Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 99,
-    "ready": 81,
-    "pending": 18
+    "ready": 78,
+    "pending": 21
   },
   "cases": [
     {
@@ -482,7 +482,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.002999216861776066
+      "metricMismatch": 0.0029985417426175998
     },
     {
       "id": "components.ui.progress-bar.states",
@@ -1141,7 +1141,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05948373637947102
+      "metricMismatch": 0.05948542417736735
     },
     {
       "id": "components.thread.header.states",
@@ -1274,7 +1274,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3693438516898232
+      "metricMismatch": 0.3693445268089818
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1307,7 +1307,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3719268575903647
+      "metricMismatch": 0.3719241571137306
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1737,7 +1737,7 @@
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:24.674Z",
+      "generatedAt": "2026-09-05T22:11:34.257Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1750,7 +1750,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:24.674Z",
+      "generatedAt": "2026-09-05T22:11:34.257Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1827,32 +1827,16 @@
     },
     {
       "id": "components.members.agent-detail.profile",
-      "status": "ready",
-      "imageHash": "p1:3ffe3ffe00310031003100210000000007ea07e28fff0fff801f001f8fff0bff9fff9fffc7ffc7ffdfffdfffefffffff81f780f7ffffffffffffffffffffffffffffffff80ff80ffffffffffd4ffd4fffffffffffffff7ff8c3f0c3f8c3f0c3f8c7f0c7f8c7f0c7f800300018603fffff7ff87ff87fe97ff83fc0000ffffffff",
-      "generatedAt": "2026-09-03T22:10:22.624Z",
-      "severity": "low",
-      "summary": [
-        "Header/subtitle text ellipsis differs: Android shows 'Turns product feedback, screensho...' while iOS shows 'Turns product feedback, screensh...' (slightly different truncation width).",
-        "iOS uses a monospaced/typewriter-style font for the date and version metadata ('Jun 18, 2026', 'daemon v0.0.48', 'Connected', '@artin') compared to Android's sans-serif rendering."
-      ],
-      "likelyCauses": [
-        "iOS Kuikly renderer defaults to a monospace font for certain text styles (likely system 'monospaced' face) where Android uses a regular sans-serif.",
-        "Line-break/ellipsis policy differs between iOS and Android text rendering for the header subtitle."
-      ],
-      "suggestedOwner": "Kuikly platform / UI engineering",
-      "suggestedFixes": [
-        "Explicitly set fontFamily/fontWeight on the agent-detail header subtitle and metadata rows (e.g., date, daemon version, username) to a consistent sans-serif across platforms.",
-        "Unify text truncation strategy (single-line ellipsis with consistent width) for the header subtitle across iOS and Android."
-      ],
-      "intentional": [
-        "Tab bar order and active 'Profile' highlight color match.",
-        "All colored chips (Runtime/Model/Reasoning/Mode) use the same fill colors on both sides.",
-        "Layout, spacing, and component structure are otherwise isomorphic."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.09470065216510715
+      "status": "pending",
+      "imageHash": "p1:3ffe3ffe00310031003100210000000007ea07e28fff0fff801f001f8fff0bff9fff9fffc7ffc7ffd7ffd7ffffffffff81f780f7ffffffffffffffffffffffffffffffff80ff80ffffffffffd4ffd4fffcfffcffffffffff8c3f0c3f8c3f0c3f8c7f1c7f8c7f0c7f8003000380038403ffffd7ff87fe87ff87fc0000ffffffff",
+      "generatedAt": "2026-09-05T22:11:34.421Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09384358839335138
     },
     {
       "id": "components.channel.settings.panel",
@@ -2163,7 +2147,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:24.947Z",
+      "generatedAt": "2026-09-05T22:11:34.529Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2176,7 +2160,7 @@
       "id": "screens.members.agent-detail.profile.computer-offline",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:24.947Z",
+      "generatedAt": "2026-09-05T22:11:34.529Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2189,7 +2173,7 @@
       "id": "screens.members.agent-detail.profile.computer-missing",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:24.947Z",
+      "generatedAt": "2026-09-05T22:11:34.529Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2202,7 +2186,7 @@
       "id": "screens.members.agent-detail.profile.no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:24.947Z",
+      "generatedAt": "2026-09-05T22:11:34.529Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2215,7 +2199,7 @@
       "id": "screens.members.agent-detail.profile.long-machine-name",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:24.947Z",
+      "generatedAt": "2026-09-05T22:11:34.529Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2228,7 +2212,7 @@
       "id": "screens.members.agent-detail.profile.daemon-only",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:24.947Z",
+      "generatedAt": "2026-09-05T22:11:34.529Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2241,7 +2225,7 @@
       "id": "screens.members.agent-detail.profile.no-membership",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:24.947Z",
+      "generatedAt": "2026-09-05T22:11:34.529Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2254,7 +2238,7 @@
       "id": "screens.members.agent-detail.profile.loading-state",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:24.947Z",
+      "generatedAt": "2026-09-05T22:11:34.529Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2267,7 +2251,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:24.947Z",
+      "generatedAt": "2026-09-05T22:11:34.529Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2280,7 +2264,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:24.947Z",
+      "generatedAt": "2026-09-05T22:11:34.529Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2293,7 +2277,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:24.947Z",
+      "generatedAt": "2026-09-05T22:11:34.529Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2306,7 +2290,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:24.947Z",
+      "generatedAt": "2026-09-05T22:11:34.529Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2350,70 +2334,29 @@
     },
     {
       "id": "components.members.agent-lifecycle-actions",
-      "status": "ready",
-      "imageHash": "p1:3ffe3ffe40310031083108210000000005fc05dc8c018c01800100018fff0bff9fff9fffe7ffe7ffffffffffffffffff81ff81ffffffffffffffffffffffffffffffffff80ff80fffffffffff4ffd4ffffffffffffffffff8c3f0c3f8c3f0c3f8c7f9c7f8c7f8c7f800300018607ffffffff87ff87fe97ff87fe0000ffffffff",
-      "generatedAt": "2026-09-03T22:10:23.218Z",
-      "severity": "medium",
-      "summary": [
-        "Agent dropdown menu (Stop Agent / Restart / Reset) is narrower and positioned more to the right on iOS, overlapping the Activity tab more than on Android",
-        "iOS dropdown container appears to have slightly different internal padding/spacing compared to Android",
-        "Tab bar (Profile / Activity / ...) shows the Activity label partially obscured/clipped differently on iOS due to dropdown overlap",
-        "Header title 'Product UX Designer' subtitle text truncation position differs slightly between platforms",
-        "Visual QA card and other content blocks are aligned consistently but with minor pixel-level offset"
-      ],
-      "likelyCauses": [
-        "Kuikly dropdown/popup component uses platform-default sizing that doesn't account for parent container width on iOS",
-        "z-index/stacking and anchor offset for the action menu differs between Android and iOS rendering layers",
-        "Text truncation and ellipsis logic in the subtitle uses different container width assumptions per platform",
-        "Minor font metric differences (line height, descender) between platform default fonts causing pixel mismatch"
-      ],
-      "suggestedOwner": "kuikly-components",
-      "suggestedFixes": [
-        "Constrain dropdown menu max-width to match the trigger button group width on both platforms",
-        "Apply consistent horizontal padding inside the dropdown action list across Android and iOS",
-        "Adjust dropdown anchor/offset so it does not overlap the secondary tab labels",
-        "Normalize subtitle text container width and ellipsis behavior in the header across platforms",
-        "Review font metrics mapping to ensure equivalent line-height and truncation thresholds"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.09873718961396682
+      "status": "pending",
+      "imageHash": "p1:3ffe3ffe40310031083108210000000005fc05dc8c018c01800100018fff0bff9fff9ffff7ffe7ffffffffffffffffff81ff81ffffffffffffffffffffffffffffffffff80ff80ffffffffffd4fff4fffcfffdffffffffff8c3f0c3f8c3f0c3f8c7f1c7f8c7f0c7f8003000380038607ffffd7ff87fe97ff87fc0000ffffffff",
+      "generatedAt": "2026-09-05T22:11:34.661Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09788046340179046
     },
     {
       "id": "components.members.avatar-management",
-      "status": "ready",
-      "imageHash": "p1:3ffe3ffe003100310031002100000000000a000a881f081f8fff0fffffffffff83ff83ffffffffff87ff8fff81ff81ffffffffffffffffffffffffff80ff80ff80ff81fffcfffdfff47ff47fffffffffffffffff8c3f0c3f8c3f0c7f8c7f0c7f8007000380010003ffffffff97ff87ff87fe97fffffffffffffe0ffeffffffff",
-      "generatedAt": "2026-09-03T22:10:23.271Z",
-      "severity": "medium",
-      "summary": [
-        "Tab bar equal-divider widths render correctly on iOS but tab buttons (Profile/Activity/Chat/Reminders) sit tightly packed on Android, with the Profile cell visibly wider/narrower than iOS due to inconsistent padding",
-        "Header title 'Product UX Designer' and the @Product-UX-Designer subtitle use a heavier/bolder font weight on Android vs iOS (iOS appears lighter/thinner)",
-        "Subtitle text on Android reads 'Turns product feedback, screensho…' (clipped earlier) while iOS shows 'Turns product feedback, screensh…' — truncation point/width differs",
-        "Creator name pill alignment differs: on Android the avatar chip + 'artin' + '@artin' are left-aligned under the label, on iOS the avatar chip shifts right so 'artin' appears to overlap/collide with the chip",
-        "'ENVIRONMENT VARIABLES' header on Android is uppercase-tracked; on iOS it renders as sentence case 'ENVIRONMENT VARIABLES' with noticeably different letter-spacing and color saturation"
-      ],
-      "likelyCauses": [
-        "Kuikly text style is not normalizing font weight across platforms — Android renders Roboto at default medium weight while iOS uses San Francisco with a lighter default",
-        "TabBar/Tab component uses fixed pixel widths instead of flex/equal-weight distribution on Android",
-        "Text truncation width is computed from raw text metrics rather than available container width, causing earlier ellipsis on Android",
-        "Chip/Pill border and padding tokens differ between Android and iOS theme mappings",
-        "Avatar + name row layout uses absolute positioning on iOS vs flex on Android"
-      ],
-      "suggestedOwner": "Kuikly cross-platform component team / Design System",
-      "suggestedFixes": [
-        "Normalize Text component font weight so both platforms render the same weight (e.g., force 600 for headings, 400 for body)",
-        "Make TabBar tabs use equal flex weights with consistent horizontal padding on both platforms",
-        "Compute ellipsis from container width minus padding rather than raw text width",
-        "Unify Chip/Pill border-width, padding, and radius tokens across Android and iOS theme overrides",
-        "Replace absolute avatar positioning with a flex Row layout for the Creator cell"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.09898293298767236
+      "status": "pending",
+      "imageHash": "p1:bffe7ffec03382338f710a3100000000001f001f8bbf0b3f8fff8fffffffffff800180018001400180010001800100019fff1fffffffffffffffffffffffffffffffffffc1ff81ffffffffffffffffffffffffffffffffff80ff80fffffffffffcfff4fffdfffdffffffffffdfff9eff8c3f8c3f9c7f9c7f8c7f8c7fffffffff",
+      "generatedAt": "2026-09-05T22:11:34.709Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09412680088035541
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2784,7 +2727,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:25.215Z",
+      "generatedAt": "2026-09-05T22:11:34.821Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2797,7 +2740,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:25.215Z",
+      "generatedAt": "2026-09-05T22:11:34.821Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2810,7 +2753,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:25.215Z",
+      "generatedAt": "2026-09-05T22:11:34.821Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2823,7 +2766,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-03T22:13:25.215Z",
+      "generatedAt": "2026-09-05T22:11:34.821Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
