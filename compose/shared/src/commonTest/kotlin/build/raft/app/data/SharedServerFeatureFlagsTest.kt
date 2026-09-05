@@ -102,7 +102,13 @@ class SharedServerFeatureFlagsTest {
         val flags = SharedServerFeatureFlags(api)
         val first = async { flags.prefetch(server, evaluationContext = "env-a") }
         started.await()
-        val second = async { flags.prefetch(server, evaluationContext = "env-a") }
+        // UNDISPATCHED: the owner runs `evaluate` on the flags' own Dispatchers.Default scope, so once
+        // `release` completes it can finish and drop the in-flight entry in parallel with this thread.
+        // A dispatched `async` only *queues* the second caller; if the owner wins that race the second
+        // caller finds no flight to join and issues its own evaluate (calls == 2, task #1129). Running
+        // the second caller synchronously up to its first suspension registers it as a waiter before
+        // the owner is released, which is the scenario this test is about.
+        val second = async(start = CoroutineStart.UNDISPATCHED) { flags.prefetch(server, evaluationContext = "env-a") }
         release.complete(Unit)
 
         assertTrue(first.await().resolved)
