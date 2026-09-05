@@ -5213,8 +5213,12 @@ private fun MembersDetailContent(
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
                     beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
                 ) {
+                    // ABLATION PROBE C (task #273 / #2384, DO NOT MERGE): distinct contentType per
+                    // structural kind so a lazy reuse policy that honours contentType can never hand
+                    // a spacer's slot table to the body item. Zero crashes here = a shippable fix;
+                    // unchanged crashes = the reuse path ignores contentType (fork side).
                     if (initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement) {
-                        item(key = "member-detail-${member.id.value}-top-spacer") {
+                        item(key = "member-detail-${member.id.value}-top-spacer", contentType = "member-detail-spacer") {
                             Spacer(Modifier.height(SlockSpacing.Sm))
                         }
                     }
@@ -5225,7 +5229,7 @@ private fun MembersDetailContent(
                                 avatarManagementMode = initialVisualMode == MembersAgentDetailVisualMode.AvatarManagement
                             )
                         ) {
-                            item(key = "member-detail-${member.id.value}-state-notice") {
+                            item(key = "member-detail-${member.id.value}-state-notice", contentType = "member-detail-notice") {
                                 MembersAgentDetailStateNotice(
                                     state = agentDetailState,
                                     modifier = Modifier.padding(horizontal = MembersPageInset)
@@ -5239,7 +5243,7 @@ private fun MembersDetailContent(
                         // another tab state) as CompositionScopedCoroutineScopeCanceller and
                         // crash while entering the profile.  Keep each member/tab surface a
                         // distinct lazy item so state is disposed/recreated at the boundary.
-                        item(key = membersAgentDetailBodyItemKey(member.id.value, selectedTab)) {
+                        item(key = membersAgentDetailBodyItemKey(member.id.value, selectedTab), contentType = "member-detail-body") {
                             // Kuikly's lazy item key is not sufficient to fence the nested
                             // composition on every renderer.  Give each tab surface its own
                             // Compose group as well, so remember slots from Profile/Chat/etc.
@@ -5350,7 +5354,7 @@ private fun MembersDetailContent(
                             }
                         }
                     } else {
-                        item(key = "member-detail-${member.id.value}-human-content") {
+                        item(key = "member-detail-${member.id.value}-human-content", contentType = "member-detail-human") {
                             MembersHumanDetailSections(
                                 member = member,
                                 timeContext = timeContext,
@@ -5370,7 +5374,7 @@ private fun MembersDetailContent(
                             )
                         }
                     }
-                    item(key = "member-detail-${member.id.value}-bottom-spacer") {
+                    item(key = "member-detail-${member.id.value}-bottom-spacer", contentType = "member-detail-spacer") {
                         Spacer(Modifier.height(180.dp))
                     }
                 }
