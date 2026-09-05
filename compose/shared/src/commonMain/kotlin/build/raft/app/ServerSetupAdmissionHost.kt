@@ -59,9 +59,10 @@ internal fun serverSetupAllowsHome(
 internal suspend fun resolveServerSetupFeatureDecision(
     featureFlags: SharedServerFeatureFlags,
     serverId: ServerId,
+    evaluationContext: String? = null,
 ): ServerSetupFeatureDecision =
     try {
-        serverSetupFeatureDecision(featureFlags.prefetch(serverId))
+        serverSetupFeatureDecision(featureFlags.prefetch(serverId, evaluationContext = evaluationContext))
             .let { if (it == ServerSetupFeatureDecision.Checking) ServerSetupFeatureDecision.Bypassed else it }
     } catch (cancellation: CancellationException) {
         throw cancellation
@@ -108,7 +109,12 @@ internal fun rememberServerSetupAdmissionHost(
     var state by remember(identity) { mutableStateOf<ServerSetupAdmissionState?>(null) }
     LaunchedEffect(featureFlags, identity) {
         if (featureDecision == ServerSetupFeatureDecision.Checking) {
-            featureDecision = resolveServerSetupFeatureDecision(featureFlags, ServerId(serverId))
+            featureDecision =
+                resolveServerSetupFeatureDecision(
+                    featureFlags = featureFlags,
+                    serverId = ServerId(serverId),
+                    evaluationContext = environmentId,
+                )
         }
     }
     LaunchedEffect(repository, identity, featureDecision, refreshEpoch, refreshSignal) {

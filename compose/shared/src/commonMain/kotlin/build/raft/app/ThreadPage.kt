@@ -1107,6 +1107,10 @@ internal fun ThreadRouteMountPlan.toThreadRouteScaffoldPlan(): ThreadRouteScaffo
         mountFeatureBody = this == ThreadRouteMountPlan.FeatureSurfaces
     )
 
+internal fun threadRouteScaffoldUsesBrandedLoadingSurface(
+    scaffoldPlan: ThreadRouteScaffoldPlan
+): Boolean = scaffoldPlan.mountLoadingBody && !scaffoldPlan.mountFeatureBody
+
 internal data class ThreadFeatureOwnerMountPlan(
     val mountChatTimeline: Boolean,
     val mountComposer: Boolean,
@@ -12649,15 +12653,21 @@ private class ThreadRouteScaffoldSlots(
 private fun ThreadRouteScaffold(
     slots: ThreadRouteScaffoldSlots
 ) {
+    val surfaceColor =
+        if (threadRouteScaffoldUsesBrandedLoadingSurface(slots.scaffoldPlan)) {
+            SlockColor.SurfaceCream
+        } else {
+            SlockColor.SurfaceWhite
+        }
     key(slots.scaffoldPlan.rootIdentity) {
         Box(
             modifier =
                 slots.rootModifier
                     .fillMaxSize()
-                    .background(SlockColor.SurfaceWhite)
+                    .background(surfaceColor)
         ) {
             Column(
-                modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
+                modifier = Modifier.fillMaxSize().background(surfaceColor)
             ) {
                 slots.header()
                 slots.body(this)
@@ -12699,7 +12709,7 @@ private fun ThreadDeferredLoadingRouteContent(
                         Modifier
                             .weight(1f)
                             .fillMaxWidth()
-                            .background(SlockColor.SurfaceWhite)
+                            .background(SlockColor.SurfaceCream)
                 ) {
                     ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
                 }
