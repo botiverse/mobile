@@ -3,7 +3,13 @@ package build.raft.app.data
 import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
+import build.raft.app.runPortableCoroutineTest
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -71,6 +77,90 @@ class ThreadComposerDirectFileUploadTest {
             ThreadComposerDirectUploadDecision.TooLarge,
             decideThreadComposerDirectUpload(capabilities, sizeBytes = 51L, cancelled = false),
         )
+    }
+
+    @Test
+    fun fileRefOnlyUnknownSizeDoesNotMultipartBeforePrepare() = runBlocking {
+        val gateway = FakeThreadGateway()
+        gateway.preparedRefSizes["ref-1"] = 90L
+        val unresolved =
+            PlatformFile(
+                id = "local-ref",
+                fileName = "a.bin",
+                mimeType = "application/octet-stream",
+                sizeBytes = null,
+                bytes = ByteArray(0),
+                fileRef = "ref-1",
+            )
+        val beforePrepare =
+            decideThreadComposerDirectUpload(
+                capabilities = enabled(threshold = 90L, maxBytes = 200L),
+                sizeBytes = unresolved.sizeBytes ?: 0L,
+                cancelled = false,
+            )
+        assertEquals(ThreadComposerDirectUploadDecision.LegacyMultipart, beforePrepare)
+
+        val resolved =
+            resolveThreadComposerDirectUpload(
+                file = unresolved,
+                capabilities = enabled(threshold = 90L, maxBytes = 200L),
+                cancelled = false,
+                prepare = gateway::prepare,
+            )
+        val upload = assertIs<DataResult.Content<ThreadComposerResolvedUpload>>(resolved).data
+        assertEquals(ThreadComposerDirectUploadDecision.Direct, upload.decision)
+        assertEquals(90L, upload.file.sizeBytes)
+        assertEquals("ref-1", upload.file.fileRef)
+    }
+
+    @Test
+    fun fileRefOnlyAboveMaxBytesIsTooLargeAfterPrepare() = runBlocking {
+        val gateway = FakeThreadGateway()
+        gateway.preparedRefSizes["ref-1"] = 51L
+        val unresolved =
+            PlatformFile(
+                id = "local-ref",
+                fileName = "a.bin",
+                mimeType = "application/octet-stream",
+                sizeBytes = null,
+                bytes = ByteArray(0),
+                fileRef = "ref-1",
+            )
+        val resolved =
+            resolveThreadComposerDirectUpload(
+                file = unresolved,
+                capabilities = enabled(threshold = 10L, maxBytes = 50L),
+                cancelled = false,
+                prepare = gateway::prepare,
+            )
+        val upload = assertIs<DataResult.Content<ThreadComposerResolvedUpload>>(resolved).data
+        assertEquals(ThreadComposerDirectUploadDecision.TooLarge, upload.decision)
+        assertEquals(51L, upload.file.sizeBytes)
+    }
+
+    @Test
+    fun fileRefOnlyBelowThresholdUsesMultipartAfterPrepare() = runBlocking {
+        val gateway = FakeThreadGateway()
+        gateway.preparedRefSizes["ref-1"] = 89L
+        val unresolved =
+            PlatformFile(
+                id = "local-ref",
+                fileName = "a.bin",
+                mimeType = "application/octet-stream",
+                sizeBytes = null,
+                bytes = ByteArray(0),
+                fileRef = "ref-1",
+            )
+        val resolved =
+            resolveThreadComposerDirectUpload(
+                file = unresolved,
+                capabilities = enabled(threshold = 90L, maxBytes = 200L),
+                cancelled = false,
+                prepare = gateway::prepare,
+            )
+        val upload = assertIs<DataResult.Content<ThreadComposerResolvedUpload>>(resolved).data
+        assertEquals(ThreadComposerDirectUploadDecision.LegacyMultipart, upload.decision)
+        assertEquals(89L, upload.file.sizeBytes)
     }
 
     @Test
@@ -163,6 +253,35 @@ class ThreadComposerDirectFileUploadTest {
     }
 
     @Test
+    fun jobCancelAfterCreateDeletesSameSessionUnderNonCancellable() = runPortableCoroutineTest {
+        val gateway = FakeThreadGateway()
+        val accepted = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        gateway.putAccepted = accepted
+        gateway.putRelease = release
+        val job: Job = launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                gateway.uploadOneThreadFile(
+                    channelId = ChannelId("channel-1"),
+                    file = file(size = 100),
+                    clientRequestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                )
+                error("canceled upload unexpectedly completed")
+            } catch (_: CancellationException) {
+            }
+        }
+        accepted.await()
+        job.cancel()
+        release.complete(Unit)
+        job.cancelAndJoin()
+        assertEquals(1, gateway.createRequests.size)
+        assertEquals(1, gateway.putCalls)
+        assertEquals(1, gateway.cancelCalls)
+        assertEquals(0, gateway.completeCalls)
+        assertEquals("11111111-1111-4111-8111-111111111111", gateway.cancelledIds.single())
+    }
+
+    @Test
     fun secondFileFailureKeepsFirstSuccessOnSeparateSession() = runBlocking {
         val gateway = FakeThreadGateway()
         val first =
@@ -234,7 +353,25 @@ class ThreadComposerDirectFileUploadTest {
         var throwPutCancellation = false
         var lastCreatedId = "11111111-1111-4111-8111-111111111111"
         val cancelledIds = mutableListOf<String>()
+        val preparedRefSizes = mutableMapOf<String, Long>()
+        var createAccepted: CompletableDeferred<Unit>? = null
+        var createRelease: CompletableDeferred<Unit>? = null
+        var putAccepted: CompletableDeferred<Unit>? = null
+        var putRelease: CompletableDeferred<Unit>? = null
         private var lastCompleteResult: DataResult<AttachmentUploadSessionCompleteResult>? = null
+
+        override suspend fun prepare(file: PlatformFile): DataResult<PlatformFile> {
+            val ref = file.fileRef?.trim()?.takeIf { it.isNotBlank() }
+            if (ref != null) {
+                val size =
+                    preparedRefSizes[ref]
+                        ?: return DataResult.Error(
+                            ScreenError(code = "attachment_size_unavailable", retryable = false),
+                        )
+                return DataResult.Content(file.copy(sizeBytes = size))
+            }
+            return prepareDirectAttachmentUploadFile(file)
+        }
 
         override suspend fun capabilities(): DataResult<AttachmentUploadCapabilities> =
             DataResult.Content(enabledForGateway())
@@ -243,6 +380,8 @@ class ThreadComposerDirectFileUploadTest {
             request: AttachmentUploadSessionCreateRequest,
         ): DataResult<AttachmentUploadSessionCreateResult> {
             createRequests += request
+            createAccepted?.complete(Unit)
+            createRelease?.await()
             return DataResult.Content(
                 AttachmentUploadSessionCreateResult(
                     uploadId = lastCreatedId,
@@ -263,6 +402,8 @@ class ThreadComposerDirectFileUploadTest {
             file: PlatformFile,
         ): DataResult<Unit> {
             putCalls += 1
+            putAccepted?.complete(Unit)
+            putRelease?.await()
             if (throwPutCancellation) throw CancellationException("cancelled")
             return putResults.removeFirstOrNull() ?: DataResult.Content(Unit)
         }

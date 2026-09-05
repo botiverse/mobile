@@ -3,8 +3,10 @@ package build.raft.app.data
 import build.raft.app.model.Attachment
 import build.raft.app.model.ChannelId
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 
 internal enum class ThreadComposerDirectUploadDecision {
     Direct,
@@ -34,6 +36,51 @@ internal fun decideThreadComposerDirectUpload(
     } else {
         ThreadComposerDirectUploadDecision.LegacyMultipart
     }
+}
+
+internal data class ThreadComposerResolvedUpload(
+    val file: PlatformFile,
+    val decision: ThreadComposerDirectUploadDecision,
+)
+
+/**
+ * Capabilities miss fail-opens to multipart without stating. When capabilities are
+ * present, size must come from the same authority-bound prepare/stat as the later PUT.
+ */
+internal suspend fun resolveThreadComposerDirectUpload(
+    file: PlatformFile,
+    capabilities: AttachmentUploadCapabilities?,
+    cancelled: Boolean,
+    prepare: suspend (PlatformFile) -> DataResult<PlatformFile>,
+): DataResult<ThreadComposerResolvedUpload> {
+    if (cancelled) {
+        return DataResult.Content(
+            ThreadComposerResolvedUpload(file, ThreadComposerDirectUploadDecision.Cancelled),
+        )
+    }
+    if (capabilities == null) {
+        return DataResult.Content(
+            ThreadComposerResolvedUpload(file, ThreadComposerDirectUploadDecision.LegacyMultipart),
+        )
+    }
+    val prepared =
+        when (val preparedResult = prepare(file)) {
+            is DataResult.Content -> preparedResult.data
+            is DataResult.Error -> return preparedResult
+            is DataResult.NoPermission -> return preparedResult
+            is DataResult.Empty ->
+                return DataResult.Error(ScreenError(code = "attachment_size_unavailable", retryable = false))
+        }
+    val sizeBytes = prepared.sizeBytes
+    if (sizeBytes == null || sizeBytes <= 0L) {
+        return DataResult.Error(ScreenError(code = "attachment_size_unavailable", retryable = false))
+    }
+    return DataResult.Content(
+        ThreadComposerResolvedUpload(
+            file = prepared,
+            decision = decideThreadComposerDirectUpload(capabilities, sizeBytes, cancelled = false),
+        ),
+    )
 }
 
 internal enum class ThreadComposerDirectUploadPhase {
@@ -102,15 +149,21 @@ internal suspend fun DirectAttachmentUploadSessionGateway.uploadOneThreadFile(
         if (putResult !is DataResult.Content) {
             val recovered = recoverSameSessionAfterUncertainPut(created.uploadId, putResult)
             if (recovered != null) return recovered
-            runCatching { cancel(created.uploadId) }
+            cancelCreatedSession(created.uploadId)
             return putResult.asAttachmentFailure("attachment_upload_session_put_failed")
         }
         currentCoroutineContext().ensureActive()
         onPhase(ThreadComposerDirectUploadPhase.Verifying)
         completeThreadFile(created.uploadId)
     } catch (cancellation: CancellationException) {
-        runCatching { cancel(created.uploadId) }
+        cancelCreatedSession(created.uploadId)
         throw cancellation
+    }
+}
+
+private suspend fun DirectAttachmentUploadSessionGateway.cancelCreatedSession(uploadId: String) {
+    withContext(NonCancellable) {
+        runCatching { cancel(uploadId) }
     }
 }
 
