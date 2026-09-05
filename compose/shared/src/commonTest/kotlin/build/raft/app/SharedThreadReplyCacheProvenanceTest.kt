@@ -259,6 +259,30 @@ class SharedThreadReplyCacheProvenanceTest {
     }
 
     @Test
+    fun localSendAcceptsOnlyAForwardTokenRotationWithinTheSameBindingAndSelection() {
+        val captured =
+            ReplyCacheProvenance(
+                environmentId = "https://prod.example.test",
+                principalId = "account-a",
+                serverId = "server-1",
+                generation = 41L,
+                authGeneration = 7L,
+                selectionGeneration = 11L,
+                bindingGeneration = 3L,
+            )
+        val rotated = captured.copy(generation = 99L, authGeneration = 8L)
+
+        assertTrue(rotated.isCurrentOrSuccessorForLocalSend(captured))
+        assertTrue(captured.isCurrentOrSuccessorForLocalSend(captured))
+        assertFalse(captured.copy(authGeneration = 6L).isCurrentOrSuccessorForLocalSend(captured))
+        assertFalse(rotated.copy(principalId = "account-b").isCurrentOrSuccessorForLocalSend(captured))
+        assertFalse(rotated.copy(environmentId = "https://staging.example.test").isCurrentOrSuccessorForLocalSend(captured))
+        assertFalse(rotated.copy(serverId = "server-2").isCurrentOrSuccessorForLocalSend(captured))
+        assertFalse(rotated.copy(selectionGeneration = 12L).isCurrentOrSuccessorForLocalSend(captured))
+        assertFalse(rotated.copy(bindingGeneration = 4L).isCurrentOrSuccessorForLocalSend(captured))
+    }
+
+    @Test
     fun sameAccountAndServerWithNewAuthorityRevisionMintsFreshToken() = runBlocking {
         val authStore = InMemorySlockAuthSessionStore(session("account-a"))
         val messageStore = SharedThreadMessageStore()
