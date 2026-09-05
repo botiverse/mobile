@@ -8189,7 +8189,10 @@ internal fun SharedThreadRouteContent(
         val admittedFiles = admittedComposerAttachmentFiles(
             files = files,
             maxBytesOverride = directCapabilities?.maxBytes,
-            skipClientSizeGate = !requireAllFiles && directCapabilities == null,
+            // Caller sizeBytes is an untrusted hint. Direct and fail-open paths
+            // decide TooLarge/threshold only after authority-bound prepare/stat
+            // (or skip the gate entirely when capabilities cannot be read).
+            skipClientSizeGate = true,
         )
         if (admittedFiles.isEmpty() || (requireAllFiles && admittedFiles.size != files.size)) {
             if (requireAllFiles && admittedFiles.size != files.size) {
