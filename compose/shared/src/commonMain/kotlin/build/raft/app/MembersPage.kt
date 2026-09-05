@@ -2144,6 +2144,21 @@ internal sealed interface MemberDetailRouteState {
     ) : MemberDetailRouteState
 }
 
+/**
+ * The detail page changes from a loading/error shell into a full agent or human
+ * surface in the same composition. Keep those route surfaces in disjoint groups:
+ * the loading shell has different remember slots from MembersDetailContent.
+ */
+internal fun memberDetailRouteCompositionKey(routeState: MemberDetailRouteState): String =
+    when (routeState) {
+        MemberDetailRouteState.Loading -> "loading"
+        is MemberDetailRouteState.Error -> "error:${routeState.error.code}"
+        is MemberDetailRouteState.Agent ->
+            "agent:${routeState.server.id.value}:${routeState.accessMode}"
+        is MemberDetailRouteState.Human ->
+            "human:${routeState.server.id.value}:${routeState.member.id.value}:${routeState.accessMode}"
+    }
+
 internal fun memberDetailStatusResolverServerId(
     routeState: MemberDetailRouteState
 ): String? =
@@ -3315,17 +3330,26 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
         }
     }
 
-    when (val current = routeState) {
-        MemberDetailRouteState.Loading ->
-            MemberDetailLoadingPageShell(onBack = { provider.bridge.closePage() })
-        is MemberDetailRouteState.Error ->
-            MemberDetailErrorPageShell(
-                title = stringResource(MR.strings.member_error_load_member),
-                detail = current.error.userFacingMessage(errorStrings),
-                onBack = { provider.bridge.closePage() },
-                onRetry = { localAgentDetailRefreshKey += 1 }
-            )
-        is MemberDetailRouteState.Agent -> {
+    // Loading/error shells and the loaded detail surfaces have different slot
+    // layouts.  The route transition itself must be keyed; keys inside the
+    // loaded body cannot repair a mismatch created before MembersDetailContent
+    // is entered.
+    key(
+        "member-detail-route",
+        memberIdentity?.memberId?.value.orEmpty(),
+        memberDetailRouteCompositionKey(routeState)
+    ) {
+        when (val current = routeState) {
+            MemberDetailRouteState.Loading ->
+                MemberDetailLoadingPageShell(onBack = { provider.bridge.closePage() })
+            is MemberDetailRouteState.Error ->
+                MemberDetailErrorPageShell(
+                    title = stringResource(MR.strings.member_error_load_member),
+                    detail = current.error.userFacingMessage(errorStrings),
+                    onBack = { provider.bridge.closePage() },
+                    onRetry = { localAgentDetailRefreshKey += 1 }
+                )
+            is MemberDetailRouteState.Agent -> {
             val member = selectedAgentDetail?.toStaticMembersProfile(current.server)
             if (member == null) {
                 Box(
@@ -3692,7 +3716,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                 )
             }
         }
-        is MemberDetailRouteState.Human -> {
+            is MemberDetailRouteState.Human -> {
             val serverMembers = serverMembersState.entryFor(current.server.id)?.members.orEmpty()
             val ownerCount = serverMembers.count {
                 it.kind == MemberKind.Human &&
@@ -3774,6 +3798,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver
             )
+            }
         }
     }
 }
@@ -5194,20 +5219,32 @@ private fun MembersDetailContent(
                     autoScrollSelectedTab = !stableVisualCapture
                 )
             }
-            if (member.kind == MemberKind.Agent && selectedTab == MembersAgentDetailTab.Activity) {
-                MembersAgentActivityTab(
-                    detail = detail,
-                    loadState = agentActivityLoadState,
-                    diagnosticActionState = effectiveDiagnosticActionState,
-                    onCopyDiagnostics = { copyDiagnostics() },
-                    timeContext = timeContext,
-                    onOpenUrl = onOpenUrl,
-                    autoScrollToLatest = !stableVisualCapture,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                )
-            } else {
+            // The Activity surface is outside the lazy list, while every other tab is
+            // materialized inside it.  Kuikly can retain the parent composition when this
+            // branch changes, so fence the whole body (member + kind + tab + visual mode), not
+            // only the nested lazy item.  Otherwise a remembered Boolean from the previous
+            // branch can still be consumed by rememberCoroutineScope in Profile.
+            key(
+                "member-detail-body",
+                member.id.value,
+                member.kind,
+                selectedTab,
+                initialVisualMode
+            ) {
+                if (member.kind == MemberKind.Agent && selectedTab == MembersAgentDetailTab.Activity) {
+                    MembersAgentActivityTab(
+                        detail = detail,
+                        loadState = agentActivityLoadState,
+                        diagnosticActionState = effectiveDiagnosticActionState,
+                        onCopyDiagnostics = { copyDiagnostics() },
+                        timeContext = timeContext,
+                        onOpenUrl = onOpenUrl,
+                        autoScrollToLatest = !stableVisualCapture,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    )
+                } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
@@ -5520,6 +5557,7 @@ private fun MembersDetailContent(
                         }
                     }
                 )
+                }
             }
         }
     }
