@@ -107,7 +107,6 @@ pluginManagement {
         gradlePluginPortal()
         mavenCentral()
         raftArtifactsKuiklyBase()
-        mavenLocal()
         // eazytec 404s the KBA artifacts it was meant to mirror (verified: both
         // the kotlin-native-prebuilt .module and its -linux-x86_64.tar.gz return
         // 404). Because it sits ahead of the tencent mirror, Gradle's split
@@ -175,7 +174,6 @@ dependencyResolutionManagement {
         raftArtifactsKuiklyBase()
         google()
         mavenCentral()
-        mavenLocal()
         // See the pluginManagement block: eazytec 404s the KBA artifacts and
         // stalls Gradle's resolution ahead of tencent, which actually serves
         // them. Drop it.
