@@ -7824,6 +7824,10 @@ private fun MembersAgentProfileTab(
     modifier: Modifier = Modifier
 ) {
     val errorStrings = localizedErrorPresentationStrings()
+    // ABLATION PROBE A1 (task #273, DO NOT MERGE): scope AFTER the 18 stringResource calls and
+    // BEFORE remember(summary). A1 crashes ⇒ the misalignment is inside/after
+    // localizedErrorPresentationStrings(); A1 clean ⇒ it is remember(summary)'s two slots.
+    val scope = rememberCoroutineScope()
     val summary = detail?.summary
     val runtimeConfigResolution = remember(summary) { summary.toMembersRuntimeConfigResolution() }
     val canonicalRuntimeConfig =
@@ -7846,7 +7850,6 @@ private fun MembersAgentProfileTab(
                 customModelName = (canonicalRuntimeModel as? RuntimeModelConfig.Custom)?.name.orEmpty(),
                 machineRuntimeIds = agentMachineRuntimes
             )
-    val scope = rememberCoroutineScope()
     val currentProfileEditAuthority by rememberUpdatedState(agentProfileEditAuthority)
     val currentRuntimeModelGenerations by rememberUpdatedState(agentRuntimeModelGenerationsByRuntime)
     val deleted = summary?.deletedAt?.isNotBlank() == true
