@@ -765,6 +765,16 @@ internal fun membersAgentTabVisibleAnchorIndex(
     }
 }
 
+/**
+ * Stable identity for the lazy body item on an agent detail page.
+ *
+ * The body swaps whole composable surfaces (Profile/Chat/…); giving each surface a
+ * distinct identity prevents the Kuikly lazy provider from reusing a different
+ * surface's remember-slot table during a tab transition.
+ */
+internal fun membersAgentDetailBodyItemKey(memberId: String, selectedTab: MembersAgentDetailTab): String =
+    "member-detail-${memberId.trim()}-tab-${selectedTab.name}"
+
 private fun String.toMembersAgentTabOrderKey(): String =
     trim().lowercase()
         .replace("-", "_")
@@ -5395,7 +5405,9 @@ private fun MembersDetailContent(
                     beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
                 ) {
                     if (initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement) {
-                        item { Spacer(Modifier.height(SlockSpacing.Sm)) }
+                        item(key = "member-detail-${member.id.value}-top-spacer") {
+                            Spacer(Modifier.height(SlockSpacing.Sm))
+                        }
                     }
                     if (member.kind == MemberKind.Agent) {
                         if (
@@ -5404,14 +5416,21 @@ private fun MembersDetailContent(
                                 avatarManagementMode = initialVisualMode == MembersAgentDetailVisualMode.AvatarManagement
                             )
                         ) {
-                            item {
+                            item(key = "member-detail-${member.id.value}-state-notice") {
                                 MembersAgentDetailStateNotice(
                                     state = agentDetailState,
                                     modifier = Modifier.padding(horizontal = MembersPageInset)
                                 )
                             }
                         }
-                        item {
+                        // This item switches between composables with different remember slots
+                        // as the selected tab/member changes.  An implicit index key lets
+                        // Kuikly's lazy provider reuse the previous tab's slot table; on
+                        // Android that can make rememberCoroutineScope read a Boolean (or
+                        // another tab state) as CompositionScopedCoroutineScopeCanceller and
+                        // crash while entering the profile.  Keep each member/tab surface a
+                        // distinct lazy item so state is disposed/recreated at the boundary.
+                        item(key = membersAgentDetailBodyItemKey(member.id.value, selectedTab)) {
                             when (selectedTab) {
                                 MembersAgentDetailTab.Profile ->
                                     MembersAgentProfileTab(
@@ -5517,7 +5536,7 @@ private fun MembersDetailContent(
                             }
                         }
                     } else {
-                        item {
+                        item(key = "member-detail-${member.id.value}-human-content") {
                             MembersHumanDetailSections(
                                 member = member,
                                 timeContext = timeContext,
@@ -5537,7 +5556,9 @@ private fun MembersDetailContent(
                             )
                         }
                     }
-                    item { Spacer(Modifier.height(180.dp)) }
+                    item(key = "member-detail-${member.id.value}-bottom-spacer") {
+                        Spacer(Modifier.height(180.dp))
+                    }
                 }
             }
         }
