@@ -3,8 +3,8 @@ set -euo pipefail
 
 # network-android-curl-runtime:0.1.0-raft.35, published from
 # bytemain/KuiklyBase-components@f417f5c9040f742b29e928fd542f705c729b4d02.
-readonly EXPECTED_ARM64_SHA256='794d52adfd55cdfb35ccefa3624cea3e00ef9acf84a28c6fc4def520769fb54b'
-readonly EXPECTED_X86_64_SHA256='e7374e3603e0ce6cf4666536c96821069020852fd814716dfd3ac20a0195854e'
+readonly EXPECTED_ARM64_SHA256='1c1bc996eedba9445e16987125960bad941a8acc0f2a4b3a2dffd61e8ce854a2'
+readonly EXPECTED_X86_64_SHA256='34b6ad85958502d927dc16ea11536c9912e36f8683b2054e0a526c57455a53f5'
 readonly EXPECTED_CA_SHA256='86a1f3366afac7c6f8ae9f3c779ac221129328c43f0ab2b8817eb2f362a5025c'
 
 sha256_stream() {
