@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-05T22:16:01.404Z",
+  "generatedAt": "2026-09-06T22:00:20.528Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 99,
-    "ready": 90,
-    "pending": 9
+    "ready": 89,
+    "pending": 10
   },
   "cases": [
     {
@@ -488,7 +488,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04020820973528827
+      "metricMismatch": 0.04021174110800352
     },
     {
       "id": "components.ui.progress-bar.states",
@@ -1349,7 +1349,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.42814740551707375
+      "metricMismatch": 0.4281507811128664
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1777,43 +1777,22 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000000003ffc3dfc2bf87df83ffc3e4c007c00cc20fc3ffc2ffc3ffc3cfc39fc3ffc1ffc3ffc1ffc3ffc3ffc3dfc3ffc3ffc03fc27fc3ffc3ffc3ffc3ffc3ff42ffc7ffc3ffc3ffc2ffc07fc3ffc3ffc3ffc3ffc3ffc07fc3ffc27fc2ffc3ffc3ff40ffc3ffc3ffc3ffc7ffc3f447f7c3804380000000000ffffffff",
-      "generatedAt": "2026-08-29T22:00:51.432Z",
-      "severity": "medium",
-      "summary": [
-        "Android shows additional fields not present in React: REASONING (Medium) and MODE label, while React shows a '> MORE' expand control and a 'Could not load models' error with Retry link",
-        "Android Model dropdown shows 'GPT-5.6 Sol' selected; React shows 'opus' selected",
-        "Runtime values differ: Android 'Codex CLI' selected vs React showing placeholder 'Select...'",
-        "Description label differs: Android shows '(optional)' suffix in lighter weight; React label is bold without suffix",
-        "Spacing/vertical rhythm is denser on React baseline; Android form fields appear more compact with less gap between sections"
-      ],
-      "likelyCauses": [
-        "Native (Android) form renders extra sections (Reasoning, Mode) that the React baseline does not include, or React's 'More' disclosure is collapsed in baseline screenshot",
-        "React baseline is captured in a state showing a model-load error that Android render does not reproduce",
-        "Disabled Create Agent state styling on Android diverges from React's enabled pink variant",
-        "Typography token differences: label weights, placeholder opacity, link underline rendering differ between platforms",
-        "Vertical spacing token (gap between form rows) is not shared between React and Android implementations"
-      ],
-      "suggestedOwner": "android",
-      "suggestedFixes": [
-        "Conditionally render Reason and Mode sections on Android to match React's collapsed/More state, or ensure React baseline screenshot captures the expanded state",
-        "Align Runtime default value (Codex CLI) across platforms and remove placeholder when value is preselected",
-        "Standardize the disabled Create Agent button style between Android (gray) and React (pink) — pick one disabled treatment",
-        "Unify form row vertical spacing tokens (e.g., 16dp/24dp) between React and Android",
-        "Standardize Description label to include ' (optional)' on both, or remove it on both"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.24379261689688225
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000007ffc7ffc7ffc7ff87ffe7ffc6ffc41fc6ffe7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffe7cfc7ffc00007ffe00007ffe00007ffc00007ffc00007ffe00007ffe00007ffe00007ffe00003ffc000000000000ffffffff",
+      "generatedAt": "2026-09-06T22:00:19.839Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.4983624984809819
     },
     {
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-05T22:15:55.724Z",
+      "generatedAt": "2026-09-06T22:00:19.753Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1826,7 +1805,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-05T22:15:55.724Z",
+      "generatedAt": "2026-09-06T22:00:19.753Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1974,7 +1953,7 @@
       "id": "components.channel.members.add-panel",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-05T22:15:55.802Z",
+      "generatedAt": "2026-09-06T22:00:19.838Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2261,7 +2240,7 @@
     {
       "id": "screens.members.agent-detail.profile",
       "status": "ready",
-      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e281ff0f7f8fff001f8fff0bffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fffffff8fffffffc0ff80ff80fffffffffff4ffd47ffcffffffffffd7ff0c3f80010c3f80011c7f80ff0c7f807f0003807f0403ffffffffdfff87ff807807fcffffffff",
+      "imageHash": "p1:1ffe3ffe801000318010082100000000000206e2817f0f7f8fff001f8fff0bffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fffffff8fffffffc0ff80ff80fffffffffff4ffd47ffcffffffffffd7ff0c3f80010c3f80011c7f80ff0c7f807f0003807f0403ffffffffdfff87ff807807fcffffffff",
       "generatedAt": "2026-09-05T22:13:36.173Z",
       "severity": "medium",
       "summary": [
@@ -2472,7 +2451,7 @@
       "id": "screens.members.agent-detail.profile.no-membership",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-05T22:15:56.088Z",
+      "generatedAt": "2026-09-06T22:00:20.106Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2485,7 +2464,7 @@
       "id": "screens.members.agent-detail.profile.loading-state",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-05T22:15:56.088Z",
+      "generatedAt": "2026-09-06T22:00:20.106Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2601,7 +2580,7 @@
     {
       "id": "screens.members.agent-detail.activity",
       "status": "ready",
-      "imageHash": "p1:17fe17fc80100030801000000000000000000000010053e0000073fef3fe73fee00253fef3fe7002f1fe71fefc02507ee032707ef20270bafffe403ee03e7002f00e7002f3fe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
+      "imageHash": "p1:17fe17fc80100030801000000000000000000000010043e0000063fef3fe73fee00253fef3fe7002f1fe71fefc02407ee032707ef20270bafffe403ee03e7002f00e7002f3fe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
       "generatedAt": "2026-09-03T22:08:44.087Z",
       "severity": "medium",
       "summary": [
@@ -3123,7 +3102,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-05T22:15:56.444Z",
+      "generatedAt": "2026-09-06T22:00:20.447Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -3136,7 +3115,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-05T22:15:56.444Z",
+      "generatedAt": "2026-09-06T22:00:20.447Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -3149,7 +3128,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-05T22:15:56.444Z",
+      "generatedAt": "2026-09-06T22:00:20.447Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -3162,7 +3141,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-05T22:15:56.444Z",
+      "generatedAt": "2026-09-06T22:00:20.447Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
