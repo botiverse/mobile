@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-06T22:00:28.418Z",
+  "generatedAt": "2026-09-06T22:04:01.712Z",
   "runId": "9e487358-20260906215817",
   "commit": "9e487358-20260906215817",
   "commitSubject": "test(feature-flags): register the second cold-start caller before releasing the owner (task #1129) (#2397)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 99,
-        "ready": 89,
-        "pending": 10
+        "ready": 90,
+        "pending": 9
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 99,
-        "ready": 80,
-        "pending": 19
+        "ready": 81,
+        "pending": 18
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 99,
-    "ready": 89,
-    "pending": 10
+    "ready": 90,
+    "pending": 9
   },
   "componentMatrixSummary": {
     "total": 127,

@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>9e487358-20260906215817</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-09-06T22:00:28.418Z" data-timestamp="2026-09-06T22:00:28.418Z" title="2026-09-06T22:00:28.418Z">2026-09-06 22:00:28 UTC</time></p>
+    <p class="runMeta"><code>9e487358-20260906215817</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-09-06T22:04:01.712Z" data-timestamp="2026-09-06T22:04:01.712Z" title="2026-09-06T22:04:01.712Z">2026-09-06 22:04:01 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 99</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 90</span>
       <span class="pill">Missing 9</span>
-      <span class="pill">AI 89/99 ready</span>
+      <span class="pill">AI 90/99 ready</span>
       <span class="pill">Matrix 108/127 active</span>
       <span class="pill">Components Parity 90/94 active</span><span class="pill">Screens Parity 18/33 active</span>
     </div>
@@ -4118,7 +4118,12 @@
       <p><code>RGB 72.7%</code><br/><code>Pixel 50.16%</code><br/><code>Mismatch 49.84%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · Android (Mobile) team</summary>
+    <ul><li>Android dialog is missing the RUNTIME field, MODEL dropdown, error message, and 'MORE' expandable section that are present in React</li><li>Android dialog cuts off the lower content (Runtime/Model/More) and ends right after DESCRIPTION + char counter, while React shows the full form</li><li>Cancel and Create Agent buttons in Android are positioned mid-dialog with large empty gray space below, whereas React places them at the natural end of the form</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Add the missing Runtime dropdown, Model dropdown, 'Could not load models' error + Retry link, and '&gt; MORE' expandable section to the Android dialog to match React</li><li>Wrap Android dialog content in a ScrollView (or make dialog height wrap_content with max height) so all fields are reachable instead of clipping below DESCRIPTION</li><li>Move the Cancel/Create Agent button row to render after the Model/More sections (or pin to dialog footer after all fields) so it no longer floats mid-dialog</li><li>Align Cancel to the left and Create Agent immediately to its right (matching React) rather than right-aligning both buttons</li><li>Ensure dialog maxHeight matches React baseline so the modal fills the available viewport without leaving large empty bottom regions</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.dialog.png" data-current-src="android/components.members.create-agent.dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

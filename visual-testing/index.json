@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-09-06T22:00:28.418Z",
+  "generatedAt": "2026-09-06T22:04:01.712Z",
   "latestRunId": "9e487358-20260906215817",
   "latest": {
     "runId": "9e487358-20260906215817",
     "commit": "9e487358-20260906215817",
     "commitSubject": "test(feature-flags): register the second cold-start caller before releasing the owner (task #1129) (#2397)",
-    "generatedAt": "2026-09-06T22:00:28.418Z",
+    "generatedAt": "2026-09-06T22:04:01.712Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 99,
-      "ready": 89,
-      "pending": 10
+      "ready": 90,
+      "pending": 9
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "9e487358-20260906215817",
       "commit": "9e487358-20260906215817",
       "commitSubject": "test(feature-flags): register the second cold-start caller before releasing the owner (task #1129) (#2397)",
-      "generatedAt": "2026-09-06T22:00:28.418Z",
+      "generatedAt": "2026-09-06T22:04:01.712Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 99,
-        "ready": 89,
-        "pending": 10
+        "ready": 90,
+        "pending": 9
       },
       "comparisons": [
         "react__android",

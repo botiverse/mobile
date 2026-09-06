@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>9e487358-20260906215817</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-09-06T22:00:28.418Z" data-timestamp="2026-09-06T22:00:28.418Z" title="2026-09-06T22:00:28.418Z">2026-09-06 22:00:28 UTC</time></p>
+    <p class="runMeta"><code>9e487358-20260906215817</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-09-06T22:04:01.712Z" data-timestamp="2026-09-06T22:04:01.712Z" title="2026-09-06T22:04:01.712Z">2026-09-06 22:04:01 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <a href="react__ios.html">React vs iOS</a> · <strong>Android vs iOS</strong></p>
     <div class="summary">
       <span class="pill">Total 99</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 20</span>
       <span class="pill">Different 45</span>
       <span class="pill">Missing 18</span>
-      <span class="pill">AI 80/99 ready</span>
+      <span class="pill">AI 81/99 ready</span>
       <span class="pill">Matrix 108/127 active</span>
       <span class="pill">Components Parity 90/94 active</span><span class="pill">Screens Parity 18/33 active</span>
     </div>
@@ -4120,7 +4120,12 @@
       <p><code>RGB 77.9%</code><br/><code>Pixel 52.74%</code><br/><code>Mismatch 47.26%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · Kuikly mobile-platform / dialog component owner</summary>
+    <ul><li>iOS shows the soft keyboard occupying roughly the bottom 40% of the screen, compressing the dialog and pushing Cancel/Create Agent buttons up to overlap the Description field area; Android has no keyboard visible and the dialog sits comfortably above an empty gray area.</li><li>On iOS the Description textarea is visibly shorter (fewer visible lines) than on Android because the dialog has been resized/shrunk to fit above the keyboard.</li><li>Cancel and Create Agent buttons are right-aligned on iOS but centered on Android, changing the action group layout.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Apply KeyboardAvoidingView (or equivalent) so the dialog shrinks/scrolls when the IME shows on iOS, keeping Cancel/Create Agent visible.</li><li>Ensure the Name TextField is not auto-focused on dialog open, or only focus it after the user explicitly taps the field.</li><li>Unify action-bar alignment across platforms (recommend right-aligned with consistent spacing) and verify Cancel/Create Agent width tokens match.</li><li>Audit Kuikly spacing/scale tokens for label→input gap and textarea min-height so both platforms render identical vertical rhythm.</li><li>Re-capture iOS screenshot with keyboard dismissed (or use a non-focused initial state) before pixel-diffing to remove IME-related noise.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.members.create-agent.dialog.png" data-current-src="ios/components.members.create-agent.dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
