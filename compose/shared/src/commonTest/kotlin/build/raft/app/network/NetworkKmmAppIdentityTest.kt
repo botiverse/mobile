@@ -23,7 +23,7 @@ class NetworkKmmAppIdentityTest {
             val value = NetworkUserAgent.headerValue()
             assertTrue(value.startsWith("Raft/1.10.0+1100006 ("), value)
             assertContains(value, "; alpha)")
-            assertContains(value, "NetworkKMM/0.1.0-raft.36")
+            assertContains(value, "NetworkKMM/0.1.0-raft.37")
         } finally {
             NetworkUserAgent.appIdentity = previous
         }
