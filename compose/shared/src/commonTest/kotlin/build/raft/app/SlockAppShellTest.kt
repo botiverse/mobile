@@ -567,25 +567,6 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun appShellBuildsOnlyTheBootstrapGraphWhileAuthIsRestoring() {
-        assertTrue(appShellDefersReadyGraph(SharedAuthGateState.Restoring))
-        assertFalse(appShellDefersReadyGraph(SharedAuthGateState.AuthRequired))
-        assertFalse(
-            appShellDefersReadyGraph(
-                SharedAuthGateState.Ready(
-                    StoredAuthSession(
-                        accessToken = "access",
-                        refreshToken = "refresh",
-                        user = StoredAuthUser(id = "user-1", email = "user@raft.build", displayName = "User"),
-                        servers = listOf(StoredAuthServer("server-1", "Server")),
-                        selectedServerId = "server-1"
-                    )
-                )
-            )
-        )
-    }
-
-    @Test
     fun appTabRendererUsesIosPlatformDefaultWhenRoutePageDataOmitsRenderer() {
         assertEquals(
             SlockAppTabBarRenderer.IosLiquidGlass,

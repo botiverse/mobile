@@ -4,10 +4,19 @@ import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.SharedAuthGateIntent
 import build.raft.app.data.SharedAuthGateStore
 import build.raft.app.data.SharedAuthGateState
+import build.raft.app.data.SharedAuthReadyPhase
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.SharedHomeContentState
+import build.raft.app.data.SharedHomeState
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.ServerId
+import build.raft.app.model.ServerSummary
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -101,7 +110,6 @@ class SettingsHomePageAuthGateTest {
 
     @Test
     fun restoringBootstrapStillProcessesNonReplayableAuthSignals() {
-        assertTrue(appShellDefersReadyGraph(SharedAuthGateState.Restoring))
         assertEquals(
             AppShellBootstrapAuthDecision(
                 intent = SharedAuthGateIntent.SignedOut,
@@ -125,6 +133,126 @@ class SettingsHomePageAuthGateTest {
                 resetSessionState = false
             ),
             appShellBootstrapAuthDecision(AppShellBootstrapAuthSignal.BindingMetadataChanged)
+        )
+    }
+
+    @Test
+    fun cachedHomePreviewRequiresExactIdentityAndAllowsOnlyUnresolvedAdmission() {
+        val session = storedSession()
+        val state = cachedHomeState(session)
+        val pending =
+            SharedAuthGateState.Ready(
+                session,
+                phase = SharedAuthReadyPhase.CachedRestorePending
+            )
+
+        assertTrue(
+            appShellCanRenderCachedHomePreview(
+                readySession = session,
+                readyPhase = SharedAuthReadyPhase.CachedRestorePending,
+                featureDecision = ServerSetupFeatureDecision.Checking,
+                setupAdmissionAllowsHome = false,
+                readyServerId = "server-1",
+                state = state
+            )
+        )
+        assertFalse(
+            appShellCanRenderCachedHomePreview(
+                readySession = session.copy(user = session.user.copy(id = "other-user")),
+                readyPhase = SharedAuthReadyPhase.CachedRestorePending,
+                featureDecision = ServerSetupFeatureDecision.Checking,
+                setupAdmissionAllowsHome = false,
+                readyServerId = "server-1",
+                state = state
+            )
+        )
+        assertFalse(
+            appShellCanRenderCachedHomePreview(
+                readySession = session,
+                readyPhase = SharedAuthReadyPhase.CachedRestorePending,
+                featureDecision = ServerSetupFeatureDecision.Enabled,
+                setupAdmissionAllowsHome = false,
+                readyServerId = "server-1",
+                state = state
+            )
+        )
+        assertTrue(
+            appShellCanRenderCachedHomePreview(
+                readySession = session,
+                readyPhase = SharedAuthReadyPhase.CachedRestorePending,
+                featureDecision = ServerSetupFeatureDecision.Enabled,
+                setupAdmissionAllowsHome = true,
+                readyServerId = "server-1",
+                state = state
+            )
+        )
+        assertTrue(
+            appShellCanRenderCachedHomePreview(
+                readySession = session,
+                readyPhase = SharedAuthReadyPhase.CachedRestorePending,
+                featureDecision = ServerSetupFeatureDecision.Bypassed,
+                setupAdmissionAllowsHome = false,
+                readyServerId = "server-1",
+                state = state
+            )
+        )
+        assertFalse(appShellAuthoritativeHomeStartAllowed(pending, setupAdmissionAllowsHome = true))
+        assertTrue(
+            appShellAuthoritativeHomeStartAllowed(
+                SharedAuthGateState.Ready(session),
+                setupAdmissionAllowsHome = true
+            )
+        )
+    }
+
+    @Test
+    fun cachedHomePreviewDoesNotCrossServerOrRouteDestination() {
+        val session = storedSession()
+        val state = cachedHomeState(session)
+        assertFalse(
+            appShellCanRenderCachedHomePreview(
+                readySession = session,
+                readyPhase = SharedAuthReadyPhase.CachedRestorePending,
+                featureDecision = ServerSetupFeatureDecision.Checking,
+                setupAdmissionAllowsHome = false,
+                readyServerId = "server-2",
+                state = state
+            )
+        )
+        assertFalse(
+            appShellCanRenderCachedHomePreview(
+                readySession = session,
+                readyPhase = SharedAuthReadyPhase.CachedRestorePending,
+                featureDecision = ServerSetupFeatureDecision.Checking,
+                setupAdmissionAllowsHome = false,
+                readyServerId = "server-1",
+                selectedTab = "tasks",
+                state = state
+            )
+        )
+    }
+
+    @Test
+    fun parentHomeStartReconcilesStaleServerOrAccountContent() {
+        val session = storedSession()
+        val state = cachedHomeState(session)
+        assertTrue(
+            appShellParentShouldStartHome(
+                selectedTab = "home",
+                selectedHomeDestination = null,
+                readyServerId = "server-2",
+                readyAccountId = session.user.id,
+                state = state
+            )
+        )
+        assertTrue(
+            appShellParentShouldStartHome(
+                selectedTab = "home",
+                selectedHomeDestination = null,
+                readyServerId = "server-1",
+                readyAccountId = "other-user",
+                state = state
+            )
         )
     }
 
@@ -173,4 +301,31 @@ class SettingsHomePageAuthGateTest {
             selectedServerSlug = "slock",
             servers = listOf(StoredAuthServer(id = selectedServerId, name = "Slock", slug = "slock"))
         )
+
+    private fun cachedHomeState(session: StoredAuthSession): SharedHomeState {
+        val serverId = ServerId(session.currentServerId!!)
+        val snapshot =
+            HomeSnapshot(
+                server = ServerSummary(serverId, "Slock"),
+                currentMember =
+                    MemberProfile(
+                        id = MemberId(session.user.id),
+                        displayName = session.user.bestDisplayName,
+                        handle = session.user.email,
+                        kind = MemberKind.Human
+                    ),
+                channels = emptyList(),
+                directMessages = emptyList(),
+                unreadTotal = 0
+            )
+        return SharedHomeState(
+            content =
+                SharedHomeContentState.Content(
+                    snapshot = snapshot,
+                    session = session,
+                    contentRefreshing = true,
+                    isDurableIdentityCache = true
+                )
+        )
+    }
 }
