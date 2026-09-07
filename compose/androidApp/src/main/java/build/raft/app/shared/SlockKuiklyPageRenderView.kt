@@ -52,6 +52,7 @@ internal class SlockKuiklyPageRenderView(
     private var probeRecords = 0
     private var probeChildGeneration = 0
     private var probeDrawn = false
+    private var probeLayoutSeen = false
     private val lazyChildEvents = mutableListOf<() -> Unit>()
 
     init {
@@ -215,7 +216,10 @@ internal class SlockKuiklyPageRenderView(
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
-        traceChildProbe("host_layout", "changed=$changed")
+        if (changed || !probeLayoutSeen) {
+            probeLayoutSeen = true
+            traceChildProbe("host_layout", "changed=$changed")
+        }
         scheduleChildInitIfReady()
         notifyChildRootSizeChangedIfNeeded(width, height)
     }
