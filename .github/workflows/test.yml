@@ -1117,9 +1117,10 @@ jobs:
 
   ios:
     name: iOS compile
-    # Path scoping runs this for iOS/shared inputs and skips Android/OHOS-only
-    # changes. Merge queue, full-ci, release, nightly and manual plans still
-    # select every platform.
+    # Path scoping downshifts the expensive (macOS) iOS compile on ordinary PR
+    # pushes: changes touching commonMain run Linux fast gates only; the full iOS
+    # host build runs when iOS-specific code is changed, on explicit full-ci PRs,
+    # or on nightly/release readbacks.
     needs: [plan, kuikly-artifacts]
     if: ${{ needs.plan.outputs.run_ios == 'true' }}
     runs-on: blacksmith-6vcpu-macos-15
