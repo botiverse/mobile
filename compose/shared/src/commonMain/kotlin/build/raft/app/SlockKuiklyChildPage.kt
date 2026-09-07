@@ -46,6 +46,7 @@ internal class SlockKuiklyChildPageView :
     private var viewAppeared = false
     private var childLifecycleVisible = false
     private var parentAttachmentGeneration = 0L
+    private var parentAppearanceDelivered = false
 
     override fun createAttr(): SlockKuiklyChildPageAttr = SlockKuiklyChildPageAttr()
 
@@ -74,14 +75,14 @@ internal class SlockKuiklyChildPageView :
         parentPager.addPagerEventObserver(this)
         if (parentPager.isAppeared) {
             viewAppeared = true
-            sendPagerEvent("viewDidAppear")
+            onPagerEvent("viewDidAppear", JSONObject())
         }
         syncChildLifecycleVisibility()
         // Pager snapshots observers before setting isAppeared. A child attached during
         // that dispatch misses both the event and the immediate state read above.
         parentPager.addNextTickTask {
             if (attachmentGeneration != parentAttachmentGeneration || parentPager.isWillDestroy() ||
-                !parentPager.isAppeared
+                parentAppearanceDelivered || !parentPager.isAppeared
             ) {
                 return@addNextTickTask
             }
@@ -93,6 +94,7 @@ internal class SlockKuiklyChildPageView :
 
     override fun didRemoveFromParentView() {
         parentAttachmentGeneration++
+        parentAppearanceDelivered = false
         viewAppeared = false
         if (childLifecycleVisible) {
             sendPagerEvent("didDisappear")
@@ -129,6 +131,10 @@ internal class SlockKuiklyChildPageView :
     }
 
     override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
+        when (pagerEvent) {
+            "viewDidAppear" -> parentAppearanceDelivered = true
+            "viewDidDisappear" -> parentAppearanceDelivered = false
+        }
         sendPagerEvent(pagerEvent, eventData)
     }
 
