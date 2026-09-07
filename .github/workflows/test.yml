@@ -833,6 +833,7 @@ jobs:
             SOURCE_EXACT='${{ github.event.pull_request.head.sha || github.sha }}' ANDROID_EMULATOR_SYSTEM_IMAGE_PACKAGE='system-images;android-34;google_apis;x86_64' RUNNER_LABEL='blacksmith-4vcpu-ubuntu-2404' scripts/ci/prepare_android_emulator_ime.sh android-ime-environment.txt
             adb install -r "$(find android-connected-test-apks -type f -name '*connectedTest.apk' -not -name '*androidTest*' | head -n 1)"
             adb install -r "$(find android-connected-test-apks -type f -name '*androidTest.apk' | head -n 1)"
+            scripts/ci/run-instrumentation-with-retry.sh inactive-host-rendering-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockKuiklyInactiveHostRenderingTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
             scripts/ci/run-instrumentation-with-retry.sh first-character-baseline-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockComposerFirstCharacterBaselineTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
             # Keep this single-request capability probe unprimed. An earlier
             # focus/IME probe can warm the emulator and invalidate this reading.
@@ -920,6 +921,7 @@ jobs:
             attachment-atomic-sink-receipt.txt
             attachment-download-runtime-instrumentation.txt
             performance-trace-feedback-instrumentation.txt
+            inactive-host-rendering-instrumentation.txt
             child-page-visibility-instrumentation.txt
             child-page-visibility-accepted.png
             child-page-visibility-terminal.png
