@@ -8056,88 +8056,44 @@ private class MembersAgentLifecycleInputs(
     val onOpenComputer: (() -> Unit)? = null
 )
 
+/**
+ * Inputs shared by the editable sections of [MembersAgentProfileTab] (task #1130 part 2).
+ * Plain unstable class like the other Members holders; do not add `@Stable`/`@Immutable`.
+ */
+private class MembersAgentProfileEditInputs(
+    val canEdit: Boolean,
+    val agentProfileEditAuthority: MembersAgentProfileEditAuthority?,
+    val agentDetailActions: SharedAgentDetailActions?,
+    val onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
+    val onApplyAgentProfileResult: (MemberProfile) -> Unit,
+    val onUnavailableAction: (String) -> Unit,
+    val errorStrings: ErrorPresentationStrings
+)
+
+/**
+ * PROFILE section of the agent detail tab: display name + description with their independent
+ * pencil-edit state machines (task #1130 part 2, moved verbatim out of [MembersAgentProfileTab]).
+ */
 @Composable
-private fun MembersAgentProfileTab(
+private fun MembersAgentProfileFieldsSection(
     member: MemberProfile,
-    detail: AgentDetailSnapshot?,
-    runtimeModels: MembersAgentRuntimeModelInputs = MembersAgentRuntimeModelInputs(),
-    createAgentFormStore: SharedCreateAgentFormStore? = null,
-    agentProfileEditAuthority: MembersAgentProfileEditAuthority? = null,
-    canManage: Boolean,
-    agentStatusObservedState: SlockAgentStatusIndicatorState?,
-    agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    showAvatarPicker: Boolean,
-    onToggleAvatarPicker: () -> Unit,
-    onSelectAvatar: (String) -> Unit,
-    onClearAvatar: () -> Unit,
-    onUploadAvatar: suspend () -> DataResult<MemberProfile>,
-    sharedAgentDetailStore: SharedAgentDetailStore? = null,
-    storeState: SharedAgentDetailState? = null,
-    agentDetailActions: SharedAgentDetailActions? = null,
-    onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
-    onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
-    onApplyAgentRuntimeConfigProjection:
-        suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
-    onUnavailableAction: (String) -> Unit,
-    lifecycle: MembersAgentLifecycleInputs = MembersAgentLifecycleInputs(),
-    machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
-    timeContext: SlockTimeContext,
-    fixtureStatusFallbackEnabled: Boolean = false,
-    modifier: Modifier = Modifier
+    edit: MembersAgentProfileEditInputs,
+    sharedAgentDetailStore: SharedAgentDetailStore?,
+    storeState: SharedAgentDetailState?
 ) {
-    val agentMachineRuntimes = runtimeModels.agentMachineRuntimes
-    val agentRuntimeModelsByRuntime = runtimeModels.agentRuntimeModelsByRuntime
-    val agentRuntimeModelLoadsInFlight = runtimeModels.agentRuntimeModelLoadsInFlight
-    val agentRuntimeModelErrorsByRuntime = runtimeModels.agentRuntimeModelErrorsByRuntime
-    val agentRuntimeModelGenerationsByRuntime = runtimeModels.agentRuntimeModelGenerationsByRuntime
-    val onAgentRuntimeModelsRequest = runtimeModels.onAgentRuntimeModelsRequest
-    val lifecycleInFlight = lifecycle.lifecycleInFlight
-    val diagnosticActionState = lifecycle.diagnosticActionState
-    val onRunLifecycleAction = lifecycle.onRunLifecycleAction
-    val onOpenRestartReset = lifecycle.onOpenRestartReset
-    val onCopyDiagnostics = lifecycle.onCopyDiagnostics
-    val onReportIssue = lifecycle.onReportIssue
-    val onOpenComputer = lifecycle.onOpenComputer
-    val errorStrings = localizedErrorPresentationStrings()
-    val summary = detail?.summary
-    val runtimeConfigResolution = remember(summary) { summary.toMembersRuntimeConfigResolution() }
-    val canonicalRuntimeConfig =
-        (runtimeConfigResolution as? MembersAgentRuntimeConfigResolution.Content)?.config
-    val canonicalRuntimeId = canonicalRuntimeConfig?.runtime
-    val canonicalRuntimeModel = canonicalRuntimeConfig?.model
-    // Runtime mutations need an explicit canonical status. A null status is
-    // deliberately neutral in the renderer; treating it as "inactive" here
-    // would allow a reset-sensitive edit while presence is still unknown.
-    val canonicalRuntimeStatus = agentStatusIndicatorState?.status
-    val runtimeStatusResolved = membersAgentRuntimeStatusResolved(canonicalRuntimeStatus)
-    val activeAgent = membersAgentRuntimeActive(canonicalRuntimeStatus)
-    val runtimeEditorReady =
-        runtimeStatusResolved &&
-            canonicalRuntimeConfig != null &&
-            membersAgentRuntimeConfigSaveAttemptEnabled(
-                runtime = canonicalRuntimeConfig.runtime,
-                model = canonicalRuntimeConfig.toMembersRuntimeModelValue(),
-                customModelMode = canonicalRuntimeModel is RuntimeModelConfig.Custom,
-                customModelName = (canonicalRuntimeModel as? RuntimeModelConfig.Custom)?.name.orEmpty(),
-                machineRuntimeIds = agentMachineRuntimes
-            )
+    val canEdit = edit.canEdit
+    val agentProfileEditAuthority = edit.agentProfileEditAuthority
+    val agentDetailActions = edit.agentDetailActions
+    val onUpdateAgentProfile = edit.onUpdateAgentProfile
+    val onApplyAgentProfileResult = edit.onApplyAgentProfileResult
+    val onUnavailableAction = edit.onUnavailableAction
+    val errorStrings = edit.errorStrings
     val scope = rememberCoroutineScope()
     val currentProfileEditAuthority by rememberUpdatedState(agentProfileEditAuthority)
-    val currentRuntimeModelGenerations by rememberUpdatedState(agentRuntimeModelGenerationsByRuntime)
-    val deleted = summary?.deletedAt?.isNotBlank() == true
-    // Roster metadata is never edit authority. Only a canonical loaded profile summary may enter
-    // an editor or construct an update request.
-    val canEdit = canManage && summary != null && agentProfileEditAuthority != null && !deleted
     val profileEditingUnavailable = stringResource(MR.strings.member_error_profile_edit_unavailable)
-    val roleEditingUnavailable = stringResource(MR.strings.member_error_role_edit_unavailable)
-    val runtimeEditingUnavailable = stringResource(MR.strings.member_error_runtime_edit_unavailable)
     val displayNameRequired = stringResource(MR.strings.member_error_display_name_required)
     val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
     val saveErrorTemplate = membersStringTemplate(MR.strings.member_error_save)
-    val emptyResponseMessage = stringResource(MR.strings.member_error_empty_response)
-    val roleUpdateUnconfirmedMessage = stringResource(MR.strings.member_error_role_update_unconfirmed)
     val descriptionTooLongTemplate = membersStringTemplate(MR.strings.member_error_description_too_long)
 
     // Display Name: independent edit state machine, mirrors React `editingDisplayName`
@@ -8179,35 +8135,6 @@ private fun MembersAgentProfileTab(
         if (storeBackedProfileEdit) profileState.roleSaving else localSavingRole
     val roleError =
         if (storeBackedProfileEdit) profileState.roleError else localRoleError
-    val serverRoleDisplay =
-        membersAgentDisplayServerRole(member.serverRole, summary?.serverRole, deleted = deleted)
-    val currentServerRole = (serverRoleDisplay as? MembersAgentServerRoleDisplay.Known)?.role
-    // The editor can only express Admin/Member. Offering it while the server holds a role we
-    // do not recognise would let a save silently rewrite that role to one of ours, so the
-    // affordance is withdrawn for Unrecognized -- the chip still shows the real name (#261).
-    val canEditServerRole = canEdit && serverRoleDisplay !is MembersAgentServerRoleDisplay.Unrecognized
-    val serverRoleRememberKey = serverRoleDisplay.rememberKey()
-    var editingServerRole by remember(member.id.value, serverRoleRememberKey) { mutableStateOf(false) }
-    var draftServerRole by remember(member.id.value, serverRoleRememberKey) {
-        mutableStateOf(currentServerRole ?: MembersAgentServerRole.Member)
-    }
-    var serverRoleMenuExpanded by remember(member.id.value, serverRoleRememberKey) { mutableStateOf(false) }
-    var roleHelpOpen by remember(member.id.value) { mutableStateOf(false) }
-    var savingServerRole by remember(member.id.value) { mutableStateOf(false) }
-    var serverRoleError by remember(member.id.value, serverRoleRememberKey) { mutableStateOf<String?>(null) }
-    var serverRoleEditorAuthority by remember(member.id.value) {
-        mutableStateOf<MembersAgentProfileEditAuthority?>(null)
-    }
-    var editingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
-    var runtimeEditorAuthority by remember(member.id.value) {
-        mutableStateOf<MembersAgentProfileEditAuthority?>(null)
-    }
-    var savingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
-    var runtimeConfigError by remember(member.id.value) { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(canonicalRuntimeId) {
-        canonicalRuntimeId?.let { onAgentRuntimeModelsRequest(it, false) }
-    }
 
     fun saveDisplayName() {
         val callback = onUpdateAgentProfile
@@ -8390,6 +8317,256 @@ private fun MembersAgentProfileTab(
         }
     }
 
+    // PROFILE section — light divider style (no box border) per React parity.
+    // Each field is its own column with eyebrow label + content, mirroring React's
+    // `<div className="px-5 py-3"><SectionEyebrow>...</SectionEyebrow><p>...</p></div>`
+    // pattern. Display Name and Description each have an independent pencil-edit
+    // state machine (mirrors React `editingDisplayName` + `editingRole`).
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        // Display Name field
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            MembersEditableSectionTitleRow(
+                title = stringResource(MR.strings.member_label_display_name).uppercase(),
+                showEdit = canEdit && !editingDisplayName,
+                onEditClick = {
+                    displayNameEditorAuthority = agentProfileEditAuthority
+                    if (storeBackedProfileEdit) {
+                        profileStore.dispatch(
+                            SharedAgentDetailIntent.BeginEditDisplayName(member.displayName)
+                        )
+                    } else {
+                        localDraftDisplayName = member.displayName
+                        localDisplayNameError = null
+                        localEditingDisplayName = true
+                    }
+                }
+            )
+        }
+        if (editingDisplayName) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+            ) {
+                SlockFormField(
+                    label = stringResource(MR.strings.member_label_display_name),
+                    error = displayNameError,
+                    showLabel = false
+                ) {
+                    SlockBrutalInputField(
+                        value = draftDisplayName,
+                        placeholder = stringResource(MR.strings.member_label_display_name),
+                        onValueChange = {
+                            if (storeBackedProfileEdit) {
+                                profileStore.dispatch(
+                                    SharedAgentDetailIntent.UpdateDisplayNameDraft(it)
+                                )
+                            } else {
+                                localDraftDisplayName = it
+                                if (localDisplayNameError != null) localDisplayNameError = null
+                            }
+                        },
+                        enabled = !savingDisplayName,
+                        autoFocus = true,
+                        borderColor = if (displayNameError != null) SlockColor.AccentRed else SlockColor.BorderBlack,
+                        enabledBackgroundColor = if (displayNameError != null) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+                    SlockBrutalActionButton(
+                        label = if (savingDisplayName) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
+                        onClick = { saveDisplayName() },
+                        enabled = !savingDisplayName,
+                        backgroundColor = SlockColor.BrandYellow
+                    )
+                    SlockBrutalActionButton(
+                        label = stringResource(MR.strings.common_cancel),
+                        onClick = {
+                            if (storeBackedProfileEdit) {
+                                profileStore.dispatch(
+                                    SharedAgentDetailIntent.CancelEditDisplayName
+                                )
+                            } else {
+                                localDraftDisplayName = member.displayName
+                                localDisplayNameError = null
+                                localEditingDisplayName = false
+                            }
+                            displayNameEditorAuthority = null
+                        },
+                        enabled = !savingDisplayName,
+                        backgroundColor = SlockColor.SurfaceWhite
+                    )
+                }
+            }
+        } else {
+            Text(
+                text = member.displayName,
+                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        // Description field (independent edit state machine)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            MembersEditableSectionTitleRow(
+                title = stringResource(MR.strings.member_section_description).uppercase(),
+                showEdit = canEdit && !editingRole,
+                onEditClick = {
+                    roleEditorAuthority = agentProfileEditAuthority
+                    if (storeBackedProfileEdit) {
+                        profileStore.dispatch(
+                            SharedAgentDetailIntent.BeginEditRole(member.description.orEmpty())
+                        )
+                    } else {
+                        localDraftRole = member.description.orEmpty()
+                        localRoleError = null
+                        localEditingRole = true
+                    }
+                }
+            )
+        }
+        if (editingRole) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+            ) {
+                SlockFormField(
+                    label = stringResource(MR.strings.member_section_description),
+                    error = roleError,
+                    showLabel = false
+                ) {
+                    SlockBrutalInputField(
+                        value = draftRole,
+                        placeholder = stringResource(MR.strings.member_placeholder_description),
+                        onValueChange = {
+                            if (storeBackedProfileEdit) {
+                                profileStore.dispatch(
+                                    SharedAgentDetailIntent.UpdateRoleDraft(it)
+                                )
+                            } else {
+                                localDraftRole = it
+                                if (localRoleError != null) localRoleError = null
+                            }
+                        },
+                        enabled = !savingRole,
+                        autoFocus = true,
+                        maxLines = 4,
+                        fieldMinHeight = 86.dp,
+                        borderColor = if (roleError != null) SlockColor.AccentRed else SlockColor.BorderBlack,
+                        enabledBackgroundColor = if (roleError != null) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SlockBrutalActionButton(
+                        label = if (savingRole) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
+                        onClick = { saveRole() },
+                        enabled = !savingRole,
+                        backgroundColor = SlockColor.BrandYellow
+                    )
+                    SlockBrutalActionButton(
+                        label = stringResource(MR.strings.common_cancel),
+                        onClick = {
+                            if (storeBackedProfileEdit) {
+                                profileStore.dispatch(
+                                    SharedAgentDetailIntent.CancelEditRole
+                                )
+                            } else {
+                                localDraftRole = member.description.orEmpty()
+                                localRoleError = null
+                                localEditingRole = false
+                            }
+                        },
+                        enabled = !savingRole,
+                        backgroundColor = SlockColor.SurfaceWhite
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = "${draftRole.trim().length}/$MembersAgentProfileDescriptionMaxLength",
+                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 14.sp),
+                        color = SlockColor.TextMutedGray
+                    )
+                }
+            }
+        } else {
+            Text(
+                text = member.description?.takeIf { it.isNotBlank() }
+                    ?: stringResource(MR.strings.member_state_no_description),
+                style = SlockType.Body.copy(
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    fontStyle = if (member.description.isNullOrBlank()) FontStyle.Italic else FontStyle.Normal
+                ),
+                color = if (member.description.isNullOrBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                maxLines = 6,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/**
+ * INFO section of the agent detail tab: server role (with its edit state machine), computer
+ * status, created date and creator (task #1130 part 2, moved verbatim out of [MembersAgentProfileTab]).
+ */
+@Composable
+private fun MembersAgentInfoSection(
+    member: MemberProfile,
+    summary: AgentDetailSummary?,
+    deleted: Boolean,
+    edit: MembersAgentProfileEditInputs,
+    machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
+    onOpenComputer: (() -> Unit)?,
+    timeContext: SlockTimeContext,
+    memberAvatarResolver: SlockMemberAvatarResolver
+) {
+    val canEdit = edit.canEdit
+    val agentProfileEditAuthority = edit.agentProfileEditAuthority
+    val agentDetailActions = edit.agentDetailActions
+    val onUpdateAgentProfile = edit.onUpdateAgentProfile
+    val onApplyAgentProfileResult = edit.onApplyAgentProfileResult
+    val onUnavailableAction = edit.onUnavailableAction
+    val errorStrings = edit.errorStrings
+    val scope = rememberCoroutineScope()
+    val currentProfileEditAuthority by rememberUpdatedState(agentProfileEditAuthority)
+    val roleEditingUnavailable = stringResource(MR.strings.member_error_role_edit_unavailable)
+    val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
+    val saveErrorTemplate = membersStringTemplate(MR.strings.member_error_save)
+    val emptyResponseMessage = stringResource(MR.strings.member_error_empty_response)
+    val roleUpdateUnconfirmedMessage = stringResource(MR.strings.member_error_role_update_unconfirmed)
+    val serverRoleDisplay =
+        membersAgentDisplayServerRole(member.serverRole, summary?.serverRole, deleted = deleted)
+    val currentServerRole = (serverRoleDisplay as? MembersAgentServerRoleDisplay.Known)?.role
+    // The editor can only express Admin/Member. Offering it while the server holds a role we
+    // do not recognise would let a save silently rewrite that role to one of ours, so the
+    // affordance is withdrawn for Unrecognized -- the chip still shows the real name (#261).
+    val canEditServerRole = canEdit && serverRoleDisplay !is MembersAgentServerRoleDisplay.Unrecognized
+    val serverRoleRememberKey = serverRoleDisplay.rememberKey()
+    var editingServerRole by remember(member.id.value, serverRoleRememberKey) { mutableStateOf(false) }
+    var draftServerRole by remember(member.id.value, serverRoleRememberKey) {
+        mutableStateOf(currentServerRole ?: MembersAgentServerRole.Member)
+    }
+    var serverRoleMenuExpanded by remember(member.id.value, serverRoleRememberKey) { mutableStateOf(false) }
+    var roleHelpOpen by remember(member.id.value) { mutableStateOf(false) }
+    var savingServerRole by remember(member.id.value) { mutableStateOf(false) }
+    var serverRoleError by remember(member.id.value, serverRoleRememberKey) { mutableStateOf<String?>(null) }
+    var serverRoleEditorAuthority by remember(member.id.value) {
+        mutableStateOf<MembersAgentProfileEditAuthority?>(null)
+    }
+
     fun saveServerRole() {
         val callback = onUpdateAgentProfile
         if (
@@ -8466,6 +8643,335 @@ private fun MembersAgentProfileTab(
             savingServerRole = false
         }
     }
+
+    // INFO section — mirrors React AgentDetailPanel's Computer / Created / Creator rows.
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        MembersDetailSectionDivider()
+        MembersDetailSectionTitle(stringResource(MR.strings.member_section_info).uppercase())
+        // Role row: React keeps this as a label affordance plus an inline role chip/editor,
+        // not the compact two-column metadata row used by Computer/Created/Creator.
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(MR.strings.member_label_role),
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextMutedGray
+                )
+                SlockLucideIcon(
+                    SlockLucideIconName.Info,
+                    modifier = Modifier
+                        .size(14.dp)
+                        .clickable { roleHelpOpen = true },
+                    color = SlockColor.TextMutedGrayArgb
+                )
+                if (canEditServerRole && !editingServerRole) {
+                    MembersProfilePencilButton(
+                        onClick = {
+                            serverRoleEditorAuthority = agentProfileEditAuthority
+                            draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
+                            serverRoleError = null
+                            serverRoleMenuExpanded = true
+                            editingServerRole = true
+                        }
+                    )
+                }
+            }
+            if (editingServerRole) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                ) {
+                    MembersServerRoleEditor(
+                        displayValue = draftServerRole.localizedLabel(),
+                        badgeBackgroundColor = draftServerRole.backgroundColor,
+                        expanded = serverRoleMenuExpanded,
+                        enabled = !savingServerRole,
+                        saving = savingServerRole,
+                        saveEnabled = draftServerRole != currentServerRole,
+                        options = membersAgentServerRoleOptions(draftServerRole),
+                        selectedId = draftServerRole.wireValue,
+                        error = serverRoleError,
+                        onToggle = { serverRoleMenuExpanded = !serverRoleMenuExpanded },
+                        onSelect = { roleId ->
+                            roleId.toMembersAgentServerRoleOrNull()?.let { nextRole ->
+                                draftServerRole = nextRole
+                                serverRoleMenuExpanded = false
+                                serverRoleError = null
+                            }
+                        },
+                        onSave = { saveServerRole() },
+                        onCancel = {
+                            draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
+                            serverRoleError = null
+                            serverRoleMenuExpanded = false
+                            editingServerRole = false
+                        }
+                    )
+                }
+            } else {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MembersAgentServerRoleChip(serverRoleDisplay)
+                }
+            }
+        }
+        if (roleHelpOpen) {
+            MembersAgentRoleHelpDialog(onDismiss = { roleHelpOpen = false })
+        }
+        // Computer / Created / Creator — web AgentDetailPanel stacks label ABOVE
+        // value here rather than using a fixed left gutter. The old 86dp label
+        // column is what made a long machine name ellipsize: the gutter never
+        // yields, so the value gets whatever is left. Stacked, the value owns the
+        // full width and wraps instead.
+        MembersAgentInfoField(label = stringResource(MR.strings.member_label_computer)) {
+            val machineName = summary?.machineName.orBadgeFallback(member.membersComputerName)
+            val machineNameStyle =
+                SlockType.Body.copy(
+                    fontFamily = slockMonoFamilyForWeight(FontWeight.SemiBold),
+                    fontSize = MembersInfoValueFontSize,
+                    lineHeight = MembersInfoValueLineHeight,
+                    fontWeight = FontWeight.Normal
+                ).let { base ->
+                    // Web renders the name as a button with a hover underline. Android
+                    // has no hover, so the underline is shown whenever it is actually
+                    // tappable — the affordance has to be visible without a pointer.
+                    if (onOpenComputer != null) base.copy(textDecoration = TextDecoration.Underline) else base
+                }
+            Text(
+                text = machineName,
+                style = machineNameStyle,
+                color = SlockColor.TextBlack,
+                // Web sets break-all on this specific value: machine names are
+                // unbroken tokens, so without it a long one overflows its box. No
+                // maxLines/ellipsis here on purpose — truncating a machine name
+                // hides exactly the part that distinguishes two similar hosts.
+                softWrap = true,
+                modifier = (if (onOpenComputer != null) Modifier.clickable(onClick = onOpenComputer) else Modifier)
+                    .fillMaxWidth()
+            )
+            // Status line (task #259). Truth source is the computers store, not
+            // `machineId != null`; the six-way run label mirrors web machineRunLabel.ts.
+            // Two independent facts -- status word and run label -- rendered as two
+            // spans with a literal " · " between them, exactly as web does in JSX.
+            when (val statusRow = machineStatusRow(summary?.machineId)) {
+                // artin: 甲 -- until the store has answered, render nothing here. Web
+                // falls through to "no computer assigned" during this window; that is
+                // its defect, not a reference to copy.
+                MembersMachineStatusRow.Loading -> Unit
+                MembersMachineStatusRow.NoComputer ->
+                    Text(
+                        text = stringResource(MR.strings.member_machine_no_computer_assigned),
+                        style = SlockType.Caption.copy(
+                            fontSize = MembersMachineStatusFontSize,
+                            lineHeight = MembersMachineStatusLineHeight,
+                            fontStyle = FontStyle.Italic
+                        ),
+                        color = SlockColor.TextMutedGray,
+                        modifier = Modifier.padding(top = MembersInfoBlockGap)
+                    )
+                is MembersMachineStatusRow.Machine -> {
+                    @OptIn(ExperimentalLayoutApi::class)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth().padding(top = MembersInfoBlockGap),
+                        horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
+                        verticalArrangement = Arrangement.spacedBy(MembersInfoStatusGapY)
+                    ) {
+                        // web: <StatusDot class="shrink-0"> -- fixed size, never compressed.
+                        Box(
+                            modifier = Modifier
+                                .size(MembersMachineStatusDotSize)
+                                .background(
+                                    if (statusRow.online) SlockColor.AccentLime else SlockColor.StatusNeutralGray,
+                                    shape = RoundedCornerShape(MembersMachineStatusDotSize / 2)
+                                )
+                                // FlowRow in this fork has no per-item vertical alignment; the
+                                // dot sits on the row's top edge. Web centres it (items-center).
+                                // Recorded as a known, visible divergence for the capture.
+                        )
+                        Text(
+                            text = stringResource(
+                                if (statusRow.online) MR.strings.member_label_connected else MR.strings.member_label_offline
+                            ),
+                            style = SlockType.Caption.copy(
+                                fontSize = MembersMachineStatusFontSize,
+                                lineHeight = MembersMachineStatusLineHeight
+                            ),
+                            color = SlockColor.TextMutedGray
+                        )
+                        // web: <span class="font-mono">· {runLabel}</span> -- the separator is
+                        // layout text inside the mono span, not part of any i18n string.
+                        Text(
+                            text = "· " + statusRow.runLabel.localized(),
+                            style = SlockType.Caption.copy(
+                                fontFamily = SlockMonoFamily,
+                                fontSize = MembersMachineStatusFontSize,
+                                lineHeight = MembersMachineStatusLineHeight
+                            ),
+                            color = SlockColor.TextMutedGray
+                        )
+                    }
+                }
+            }
+        }
+        // Created and Creator sit side by side while they fit and drop to their own
+        // lines when they do not. A fixed two-column Row would keep them side by
+        // side at any width, which is the failure this section is meant to avoid.
+        @OptIn(ExperimentalLayoutApi::class)
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(MembersInfoFieldGapX),
+            verticalArrangement = Arrangement.spacedBy(MembersInfoFieldGapY)
+        ) {
+            summary?.createdAt?.membersAgentCreatedDate(timeContext)?.takeIf { it.isNotBlank() }?.let { createdDate ->
+                MembersAgentInfoField(label = stringResource(MR.strings.member_label_created)) {
+                    Text(
+                        text = createdDate,
+                        style = SlockType.Body.copy(
+                            fontFamily = SlockMonoFamily,
+                            fontSize = MembersInfoValueFontSize,
+                            lineHeight = MembersInfoValueLineHeight
+                        ),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            // Creator value stays a clickable identity chip (web opens the profile).
+            MembersAgentInfoField(label = stringResource(MR.strings.member_label_creator)) {
+                val creatorProfile = summary?.creator?.toStrictMemberProfile()
+                if (creatorProfile != null) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        MembersAvatar(
+                            member = creatorProfile,
+                            avatarSize = 22.dp,
+                            statusSize = 0.dp,
+                            memberAvatarResolver = memberAvatarResolver,
+                            showStatusOverlay = false
+                        )
+                        Text(
+                            text = creatorProfile.displayName,
+                            style = SlockType.Body.copy(
+                                fontSize = MembersInfoValueFontSize,
+                                lineHeight = MembersInfoValueLineHeight
+                            ).withSlockFontWeight(FontWeight.Bold),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            // fill = false so the name shrinks to its content and the
+                            // handle beside it is not pushed out; without this the
+                            // name would claim the row and squeeze its sibling.
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        Text(
+                            text = creatorProfile.detailHandle,
+                            style = SlockType.Caption.copy(
+                                fontFamily = SlockMonoFamily,
+                                fontSize = 11.sp,
+                                lineHeight = 16.sp
+                            ),
+                            color = SlockColor.TextMutedGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                } else {
+                    Text(
+                        text = stringResource(MR.strings.member_state_no_creator_assigned),
+                        style = SlockType.Body.copy(
+                            fontSize = MembersInfoValueFontSize,
+                            lineHeight = MembersInfoValueLineHeight,
+                            fontStyle = FontStyle.Italic
+                        ),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * RUNTIME CONFIG section of the agent detail tab: read-only rows plus the shared runtime-config
+ * editor dialog and its save flow (task #1130 part 2, moved verbatim out of [MembersAgentProfileTab]).
+ */
+@Composable
+private fun MembersAgentRuntimeConfigSection(
+    member: MemberProfile,
+    summary: AgentDetailSummary?,
+    agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
+    edit: MembersAgentProfileEditInputs,
+    runtimeModels: MembersAgentRuntimeModelInputs,
+    createAgentFormStore: SharedCreateAgentFormStore?,
+    onApplyAgentRuntimeConfigProjection: suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean
+) {
+    val canEdit = edit.canEdit
+    val agentProfileEditAuthority = edit.agentProfileEditAuthority
+    val agentDetailActions = edit.agentDetailActions
+    val onUpdateAgentProfile = edit.onUpdateAgentProfile
+    val onApplyAgentProfileResult = edit.onApplyAgentProfileResult
+    val onUnavailableAction = edit.onUnavailableAction
+    val errorStrings = edit.errorStrings
+    val agentMachineRuntimes = runtimeModels.agentMachineRuntimes
+    val agentRuntimeModelsByRuntime = runtimeModels.agentRuntimeModelsByRuntime
+    val agentRuntimeModelLoadsInFlight = runtimeModels.agentRuntimeModelLoadsInFlight
+    val agentRuntimeModelErrorsByRuntime = runtimeModels.agentRuntimeModelErrorsByRuntime
+    val agentRuntimeModelGenerationsByRuntime = runtimeModels.agentRuntimeModelGenerationsByRuntime
+    val onAgentRuntimeModelsRequest = runtimeModels.onAgentRuntimeModelsRequest
+    val runtimeConfigResolution = remember(summary) { summary.toMembersRuntimeConfigResolution() }
+    val canonicalRuntimeConfig =
+        (runtimeConfigResolution as? MembersAgentRuntimeConfigResolution.Content)?.config
+    val canonicalRuntimeId = canonicalRuntimeConfig?.runtime
+    val canonicalRuntimeModel = canonicalRuntimeConfig?.model
+    // Runtime mutations need an explicit canonical status. A null status is
+    // deliberately neutral in the renderer; treating it as "inactive" here
+    // would allow a reset-sensitive edit while presence is still unknown.
+    val canonicalRuntimeStatus = agentStatusIndicatorState?.status
+    val runtimeStatusResolved = membersAgentRuntimeStatusResolved(canonicalRuntimeStatus)
+    val activeAgent = membersAgentRuntimeActive(canonicalRuntimeStatus)
+    val runtimeEditorReady =
+        runtimeStatusResolved &&
+            canonicalRuntimeConfig != null &&
+            membersAgentRuntimeConfigSaveAttemptEnabled(
+                runtime = canonicalRuntimeConfig.runtime,
+                model = canonicalRuntimeConfig.toMembersRuntimeModelValue(),
+                customModelMode = canonicalRuntimeModel is RuntimeModelConfig.Custom,
+                customModelName = (canonicalRuntimeModel as? RuntimeModelConfig.Custom)?.name.orEmpty(),
+                machineRuntimeIds = agentMachineRuntimes
+            )
+    val scope = rememberCoroutineScope()
+    val currentProfileEditAuthority by rememberUpdatedState(agentProfileEditAuthority)
+    val currentRuntimeModelGenerations by rememberUpdatedState(agentRuntimeModelGenerationsByRuntime)
+    val runtimeEditingUnavailable = stringResource(MR.strings.member_error_runtime_edit_unavailable)
+    val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
+    val saveErrorTemplate = membersStringTemplate(MR.strings.member_error_save)
+    var editingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
+    var runtimeEditorAuthority by remember(member.id.value) {
+        mutableStateOf<MembersAgentProfileEditAuthority?>(null)
+    }
+    var savingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
+    var runtimeConfigError by remember(member.id.value) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(canonicalRuntimeId) {
+        canonicalRuntimeId?.let { onAgentRuntimeModelsRequest(it, false) }
+    }
+
 
     fun saveRuntimeConfig(
         nextConfig: RuntimeConfig,
@@ -8583,6 +9089,132 @@ private fun MembersAgentProfileTab(
         }
     }
 
+    // RUNTIME CONFIG section — mirrors React `AgentDetailPanel` runtime block:
+    // key/value rows with brutal semantic chips, env vars embedded in the same
+    // section, and a pencil entry point for the shared runtime-config editor.
+    // No catalog-retry affordance in this read-only view (React parity): a failed
+    // model-catalog prefetch only matters inside the editor dialog, which
+    // re-requests on open and renders its own error + Retry (task #96).
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        MembersDetailSectionDivider()
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            MembersEditableSectionTitleRow(
+                title = stringResource(MR.strings.member_section_runtime_config).uppercase(),
+                showEdit = canEdit && runtimeEditorReady && !editingRuntimeConfig,
+                onEditClick = {
+                    runtimeConfigError = null
+                    runtimeEditorAuthority = agentProfileEditAuthority
+                    editingRuntimeConfig = true
+                }
+            )
+        }
+        MembersAgentRuntimeConfigRows(
+            resolution = runtimeConfigResolution,
+            runtimeModelsCatalog =
+                canonicalRuntimeId?.let(agentRuntimeModelsByRuntime::get)
+        )
+        MembersAgentRuntimeEnvVars(summary)
+    }
+
+    if (editingRuntimeConfig && canonicalRuntimeConfig != null && runtimeStatusResolved) {
+        MembersAgentRuntimeConfigDialog(
+            initialConfig = canonicalRuntimeConfig,
+            memberId = member.id,
+            activeAgent = activeAgent,
+            machineRuntimeIds = agentMachineRuntimes,
+            runtimeModelsByRuntime = agentRuntimeModelsByRuntime,
+            runtimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
+            runtimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
+            runtimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
+            createAgentFormStore = createAgentFormStore,
+            currentServerId = agentProfileEditAuthority?.serverId?.value,
+            machineId = summary?.machineId ?: member.membersComputerId,
+            openedProfileAuthority = runtimeEditorAuthority,
+            currentProfileAuthority = agentProfileEditAuthority,
+            onRuntimeModelsRequest = onAgentRuntimeModelsRequest,
+            saving = savingRuntimeConfig,
+            error = runtimeConfigError,
+            onDismiss = {
+                if (!savingRuntimeConfig) {
+                    editingRuntimeConfig = false
+                    runtimeEditorAuthority = null
+                    runtimeConfigError = null
+                }
+            },
+            onSave = { nextConfig, catalogGeneration, retainBuiltInProviderSecret, kimiSdkFormDefinitionRef ->
+                saveRuntimeConfig(
+                    nextConfig,
+                    catalogGeneration,
+                    retainBuiltInProviderSecret,
+                    kimiSdkFormDefinitionRef
+                )
+            }
+        )
+    }
+}
+
+@Composable
+private fun MembersAgentProfileTab(
+    member: MemberProfile,
+    detail: AgentDetailSnapshot?,
+    runtimeModels: MembersAgentRuntimeModelInputs = MembersAgentRuntimeModelInputs(),
+    createAgentFormStore: SharedCreateAgentFormStore? = null,
+    agentProfileEditAuthority: MembersAgentProfileEditAuthority? = null,
+    canManage: Boolean,
+    agentStatusObservedState: SlockAgentStatusIndicatorState?,
+    agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    showAvatarPicker: Boolean,
+    onToggleAvatarPicker: () -> Unit,
+    onSelectAvatar: (String) -> Unit,
+    onClearAvatar: () -> Unit,
+    onUploadAvatar: suspend () -> DataResult<MemberProfile>,
+    sharedAgentDetailStore: SharedAgentDetailStore? = null,
+    storeState: SharedAgentDetailState? = null,
+    agentDetailActions: SharedAgentDetailActions? = null,
+    onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
+    onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
+    onApplyAgentRuntimeConfigProjection:
+        suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
+    onUnavailableAction: (String) -> Unit,
+    lifecycle: MembersAgentLifecycleInputs = MembersAgentLifecycleInputs(),
+    machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
+    timeContext: SlockTimeContext,
+    fixtureStatusFallbackEnabled: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    val lifecycleInFlight = lifecycle.lifecycleInFlight
+    val diagnosticActionState = lifecycle.diagnosticActionState
+    val onRunLifecycleAction = lifecycle.onRunLifecycleAction
+    val onOpenRestartReset = lifecycle.onOpenRestartReset
+    val onCopyDiagnostics = lifecycle.onCopyDiagnostics
+    val onReportIssue = lifecycle.onReportIssue
+    val onOpenComputer = lifecycle.onOpenComputer
+    val errorStrings = localizedErrorPresentationStrings()
+    val summary = detail?.summary
+    val deleted = summary?.deletedAt?.isNotBlank() == true
+    // Roster metadata is never edit authority. Only a canonical loaded profile summary may enter
+    // an editor or construct an update request.
+    val canEdit = canManage && summary != null && agentProfileEditAuthority != null && !deleted
+    val edit =
+        MembersAgentProfileEditInputs(
+            canEdit = canEdit,
+            agentProfileEditAuthority = agentProfileEditAuthority,
+            agentDetailActions = agentDetailActions,
+            onUpdateAgentProfile = onUpdateAgentProfile,
+            onApplyAgentProfileResult = onApplyAgentProfileResult,
+            onUnavailableAction = onUnavailableAction,
+            errorStrings = errorStrings
+        )
+
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
         if (deleted) {
             MembersDetailSection(title = stringResource(MR.strings.member_status_deleted).uppercase()) {
@@ -8606,537 +9238,31 @@ private fun MembersAgentProfileTab(
             onUnavailableAction = onUnavailableAction
         )
 
-        // PROFILE section — light divider style (no box border) per React parity.
-        // Each field is its own column with eyebrow label + content, mirroring React's
-        // `<div className="px-5 py-3"><SectionEyebrow>...</SectionEyebrow><p>...</p></div>`
-        // pattern. Display Name and Description each have an independent pencil-edit
-        // state machine (mirrors React `editingDisplayName` + `editingRole`).
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-        ) {
-            // Display Name field
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                MembersEditableSectionTitleRow(
-                    title = stringResource(MR.strings.member_label_display_name).uppercase(),
-                    showEdit = canEdit && !editingDisplayName,
-                    onEditClick = {
-                        displayNameEditorAuthority = agentProfileEditAuthority
-                        if (storeBackedProfileEdit) {
-                            profileStore.dispatch(
-                                SharedAgentDetailIntent.BeginEditDisplayName(member.displayName)
-                            )
-                        } else {
-                            localDraftDisplayName = member.displayName
-                            localDisplayNameError = null
-                            localEditingDisplayName = true
-                        }
-                    }
-                )
-            }
-            if (editingDisplayName) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-                ) {
-                    SlockFormField(
-                        label = stringResource(MR.strings.member_label_display_name),
-                        error = displayNameError,
-                        showLabel = false
-                    ) {
-                        SlockBrutalInputField(
-                            value = draftDisplayName,
-                            placeholder = stringResource(MR.strings.member_label_display_name),
-                            onValueChange = {
-                                if (storeBackedProfileEdit) {
-                                    profileStore.dispatch(
-                                        SharedAgentDetailIntent.UpdateDisplayNameDraft(it)
-                                    )
-                                } else {
-                                    localDraftDisplayName = it
-                                    if (localDisplayNameError != null) localDisplayNameError = null
-                                }
-                            },
-                            enabled = !savingDisplayName,
-                            autoFocus = true,
-                            borderColor = if (displayNameError != null) SlockColor.AccentRed else SlockColor.BorderBlack,
-                            enabledBackgroundColor = if (displayNameError != null) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite
-                        )
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-                        SlockBrutalActionButton(
-                            label = if (savingDisplayName) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
-                            onClick = { saveDisplayName() },
-                            enabled = !savingDisplayName,
-                            backgroundColor = SlockColor.BrandYellow
-                        )
-                        SlockBrutalActionButton(
-                            label = stringResource(MR.strings.common_cancel),
-                            onClick = {
-                                if (storeBackedProfileEdit) {
-                                    profileStore.dispatch(
-                                        SharedAgentDetailIntent.CancelEditDisplayName
-                                    )
-                                } else {
-                                    localDraftDisplayName = member.displayName
-                                    localDisplayNameError = null
-                                    localEditingDisplayName = false
-                                }
-                                displayNameEditorAuthority = null
-                            },
-                            enabled = !savingDisplayName,
-                            backgroundColor = SlockColor.SurfaceWhite
-                        )
-                    }
-                }
-            } else {
-                Text(
-                    text = member.displayName,
-                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                    color = SlockColor.TextBlack,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            // Description field (independent edit state machine)
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                MembersEditableSectionTitleRow(
-                    title = stringResource(MR.strings.member_section_description).uppercase(),
-                    showEdit = canEdit && !editingRole,
-                    onEditClick = {
-                        roleEditorAuthority = agentProfileEditAuthority
-                        if (storeBackedProfileEdit) {
-                            profileStore.dispatch(
-                                SharedAgentDetailIntent.BeginEditRole(member.description.orEmpty())
-                            )
-                        } else {
-                            localDraftRole = member.description.orEmpty()
-                            localRoleError = null
-                            localEditingRole = true
-                        }
-                    }
-                )
-            }
-            if (editingRole) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-                ) {
-                    SlockFormField(
-                        label = stringResource(MR.strings.member_section_description),
-                        error = roleError,
-                        showLabel = false
-                    ) {
-                        SlockBrutalInputField(
-                            value = draftRole,
-                            placeholder = stringResource(MR.strings.member_placeholder_description),
-                            onValueChange = {
-                                if (storeBackedProfileEdit) {
-                                    profileStore.dispatch(
-                                        SharedAgentDetailIntent.UpdateRoleDraft(it)
-                                    )
-                                } else {
-                                    localDraftRole = it
-                                    if (localRoleError != null) localRoleError = null
-                                }
-                            },
-                            enabled = !savingRole,
-                            autoFocus = true,
-                            maxLines = 4,
-                            fieldMinHeight = 86.dp,
-                            borderColor = if (roleError != null) SlockColor.AccentRed else SlockColor.BorderBlack,
-                            enabledBackgroundColor = if (roleError != null) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        SlockBrutalActionButton(
-                            label = if (savingRole) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
-                            onClick = { saveRole() },
-                            enabled = !savingRole,
-                            backgroundColor = SlockColor.BrandYellow
-                        )
-                        SlockBrutalActionButton(
-                            label = stringResource(MR.strings.common_cancel),
-                            onClick = {
-                                if (storeBackedProfileEdit) {
-                                    profileStore.dispatch(
-                                        SharedAgentDetailIntent.CancelEditRole
-                                    )
-                                } else {
-                                    localDraftRole = member.description.orEmpty()
-                                    localRoleError = null
-                                    localEditingRole = false
-                                }
-                            },
-                            enabled = !savingRole,
-                            backgroundColor = SlockColor.SurfaceWhite
-                        )
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            text = "${draftRole.trim().length}/$MembersAgentProfileDescriptionMaxLength",
-                            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 14.sp),
-                            color = SlockColor.TextMutedGray
-                        )
-                    }
-                }
-            } else {
-                Text(
-                    text = member.description?.takeIf { it.isNotBlank() }
-                        ?: stringResource(MR.strings.member_state_no_description),
-                    style = SlockType.Body.copy(
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
-                        fontStyle = if (member.description.isNullOrBlank()) FontStyle.Italic else FontStyle.Normal
-                    ),
-                    color = if (member.description.isNullOrBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
-                    maxLines = 6,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-
-        // INFO section — mirrors React AgentDetailPanel's Computer / Created / Creator rows.
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-        ) {
-            MembersDetailSectionDivider()
-            MembersDetailSectionTitle(stringResource(MR.strings.member_section_info).uppercase())
-            // Role row: React keeps this as a label affordance plus an inline role chip/editor,
-            // not the compact two-column metadata row used by Computer/Created/Creator.
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = stringResource(MR.strings.member_label_role),
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextMutedGray
-                    )
-                    SlockLucideIcon(
-                        SlockLucideIconName.Info,
-                        modifier = Modifier
-                            .size(14.dp)
-                            .clickable { roleHelpOpen = true },
-                        color = SlockColor.TextMutedGrayArgb
-                    )
-                    if (canEditServerRole && !editingServerRole) {
-                        MembersProfilePencilButton(
-                            onClick = {
-                                serverRoleEditorAuthority = agentProfileEditAuthority
-                                draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
-                                serverRoleError = null
-                                serverRoleMenuExpanded = true
-                                editingServerRole = true
-                            }
-                        )
-                    }
-                }
-                if (editingServerRole) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-                    ) {
-                        MembersServerRoleEditor(
-                            displayValue = draftServerRole.localizedLabel(),
-                            badgeBackgroundColor = draftServerRole.backgroundColor,
-                            expanded = serverRoleMenuExpanded,
-                            enabled = !savingServerRole,
-                            saving = savingServerRole,
-                            saveEnabled = draftServerRole != currentServerRole,
-                            options = membersAgentServerRoleOptions(draftServerRole),
-                            selectedId = draftServerRole.wireValue,
-                            error = serverRoleError,
-                            onToggle = { serverRoleMenuExpanded = !serverRoleMenuExpanded },
-                            onSelect = { roleId ->
-                                roleId.toMembersAgentServerRoleOrNull()?.let { nextRole ->
-                                    draftServerRole = nextRole
-                                    serverRoleMenuExpanded = false
-                                    serverRoleError = null
-                                }
-                            },
-                            onSave = { saveServerRole() },
-                            onCancel = {
-                                draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
-                                serverRoleError = null
-                                serverRoleMenuExpanded = false
-                                editingServerRole = false
-                            }
-                        )
-                    }
-                } else {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        MembersAgentServerRoleChip(serverRoleDisplay)
-                    }
-                }
-            }
-            if (roleHelpOpen) {
-                MembersAgentRoleHelpDialog(onDismiss = { roleHelpOpen = false })
-            }
-            // Computer / Created / Creator — web AgentDetailPanel stacks label ABOVE
-            // value here rather than using a fixed left gutter. The old 86dp label
-            // column is what made a long machine name ellipsize: the gutter never
-            // yields, so the value gets whatever is left. Stacked, the value owns the
-            // full width and wraps instead.
-            MembersAgentInfoField(label = stringResource(MR.strings.member_label_computer)) {
-                val machineName = summary?.machineName.orBadgeFallback(member.membersComputerName)
-                val machineNameStyle =
-                    SlockType.Body.copy(
-                        fontFamily = slockMonoFamilyForWeight(FontWeight.SemiBold),
-                        fontSize = MembersInfoValueFontSize,
-                        lineHeight = MembersInfoValueLineHeight,
-                        fontWeight = FontWeight.Normal
-                    ).let { base ->
-                        // Web renders the name as a button with a hover underline. Android
-                        // has no hover, so the underline is shown whenever it is actually
-                        // tappable — the affordance has to be visible without a pointer.
-                        if (onOpenComputer != null) base.copy(textDecoration = TextDecoration.Underline) else base
-                    }
-                Text(
-                    text = machineName,
-                    style = machineNameStyle,
-                    color = SlockColor.TextBlack,
-                    // Web sets break-all on this specific value: machine names are
-                    // unbroken tokens, so without it a long one overflows its box. No
-                    // maxLines/ellipsis here on purpose — truncating a machine name
-                    // hides exactly the part that distinguishes two similar hosts.
-                    softWrap = true,
-                    modifier = (if (onOpenComputer != null) Modifier.clickable(onClick = onOpenComputer) else Modifier)
-                        .fillMaxWidth()
-                )
-                // Status line (task #259). Truth source is the computers store, not
-                // `machineId != null`; the six-way run label mirrors web machineRunLabel.ts.
-                // Two independent facts -- status word and run label -- rendered as two
-                // spans with a literal " · " between them, exactly as web does in JSX.
-                when (val statusRow = machineStatusRow(summary?.machineId)) {
-                    // artin: 甲 -- until the store has answered, render nothing here. Web
-                    // falls through to "no computer assigned" during this window; that is
-                    // its defect, not a reference to copy.
-                    MembersMachineStatusRow.Loading -> Unit
-                    MembersMachineStatusRow.NoComputer ->
-                        Text(
-                            text = stringResource(MR.strings.member_machine_no_computer_assigned),
-                            style = SlockType.Caption.copy(
-                                fontSize = MembersMachineStatusFontSize,
-                                lineHeight = MembersMachineStatusLineHeight,
-                                fontStyle = FontStyle.Italic
-                            ),
-                            color = SlockColor.TextMutedGray,
-                            modifier = Modifier.padding(top = MembersInfoBlockGap)
-                        )
-                    is MembersMachineStatusRow.Machine -> {
-                        @OptIn(ExperimentalLayoutApi::class)
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth().padding(top = MembersInfoBlockGap),
-                            horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
-                            verticalArrangement = Arrangement.spacedBy(MembersInfoStatusGapY)
-                        ) {
-                            // web: <StatusDot class="shrink-0"> -- fixed size, never compressed.
-                            Box(
-                                modifier = Modifier
-                                    .size(MembersMachineStatusDotSize)
-                                    .background(
-                                        if (statusRow.online) SlockColor.AccentLime else SlockColor.StatusNeutralGray,
-                                        shape = RoundedCornerShape(MembersMachineStatusDotSize / 2)
-                                    )
-                                    // FlowRow in this fork has no per-item vertical alignment; the
-                                    // dot sits on the row's top edge. Web centres it (items-center).
-                                    // Recorded as a known, visible divergence for the capture.
-                            )
-                            Text(
-                                text = stringResource(
-                                    if (statusRow.online) MR.strings.member_label_connected else MR.strings.member_label_offline
-                                ),
-                                style = SlockType.Caption.copy(
-                                    fontSize = MembersMachineStatusFontSize,
-                                    lineHeight = MembersMachineStatusLineHeight
-                                ),
-                                color = SlockColor.TextMutedGray
-                            )
-                            // web: <span class="font-mono">· {runLabel}</span> -- the separator is
-                            // layout text inside the mono span, not part of any i18n string.
-                            Text(
-                                text = "· " + statusRow.runLabel.localized(),
-                                style = SlockType.Caption.copy(
-                                    fontFamily = SlockMonoFamily,
-                                    fontSize = MembersMachineStatusFontSize,
-                                    lineHeight = MembersMachineStatusLineHeight
-                                ),
-                                color = SlockColor.TextMutedGray
-                            )
-                        }
-                    }
-                }
-            }
-            // Created and Creator sit side by side while they fit and drop to their own
-            // lines when they do not. A fixed two-column Row would keep them side by
-            // side at any width, which is the failure this section is meant to avoid.
-            @OptIn(ExperimentalLayoutApi::class)
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(MembersInfoFieldGapX),
-                verticalArrangement = Arrangement.spacedBy(MembersInfoFieldGapY)
-            ) {
-                summary?.createdAt?.membersAgentCreatedDate(timeContext)?.takeIf { it.isNotBlank() }?.let { createdDate ->
-                    MembersAgentInfoField(label = stringResource(MR.strings.member_label_created)) {
-                        Text(
-                            text = createdDate,
-                            style = SlockType.Body.copy(
-                                fontFamily = SlockMonoFamily,
-                                fontSize = MembersInfoValueFontSize,
-                                lineHeight = MembersInfoValueLineHeight
-                            ),
-                            color = SlockColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-                // Creator value stays a clickable identity chip (web opens the profile).
-                MembersAgentInfoField(label = stringResource(MR.strings.member_label_creator)) {
-                    val creatorProfile = summary?.creator?.toStrictMemberProfile()
-                    if (creatorProfile != null) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            MembersAvatar(
-                                member = creatorProfile,
-                                avatarSize = 22.dp,
-                                statusSize = 0.dp,
-                                memberAvatarResolver = memberAvatarResolver,
-                                showStatusOverlay = false
-                            )
-                            Text(
-                                text = creatorProfile.displayName,
-                                style = SlockType.Body.copy(
-                                    fontSize = MembersInfoValueFontSize,
-                                    lineHeight = MembersInfoValueLineHeight
-                                ).withSlockFontWeight(FontWeight.Bold),
-                                color = SlockColor.TextBlack,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                // fill = false so the name shrinks to its content and the
-                                // handle beside it is not pushed out; without this the
-                                // name would claim the row and squeeze its sibling.
-                                modifier = Modifier.weight(1f, fill = false)
-                            )
-                            Text(
-                                text = creatorProfile.detailHandle,
-                                style = SlockType.Caption.copy(
-                                    fontFamily = SlockMonoFamily,
-                                    fontSize = 11.sp,
-                                    lineHeight = 16.sp
-                                ),
-                                color = SlockColor.TextMutedGray,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    } else {
-                        Text(
-                            text = stringResource(MR.strings.member_state_no_creator_assigned),
-                            style = SlockType.Body.copy(
-                                fontSize = MembersInfoValueFontSize,
-                                lineHeight = MembersInfoValueLineHeight,
-                                fontStyle = FontStyle.Italic
-                            ),
-                            color = SlockColor.TextMutedGray,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
-        }
-
-        // RUNTIME CONFIG section — mirrors React `AgentDetailPanel` runtime block:
-        // key/value rows with brutal semantic chips, env vars embedded in the same
-        // section, and a pencil entry point for the shared runtime-config editor.
-        // No catalog-retry affordance in this read-only view (React parity): a failed
-        // model-catalog prefetch only matters inside the editor dialog, which
-        // re-requests on open and renders its own error + Retry (task #96).
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-        ) {
-            MembersDetailSectionDivider()
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-            ) {
-                MembersEditableSectionTitleRow(
-                    title = stringResource(MR.strings.member_section_runtime_config).uppercase(),
-                    showEdit = canEdit && runtimeEditorReady && !editingRuntimeConfig,
-                    onEditClick = {
-                        runtimeConfigError = null
-                        runtimeEditorAuthority = agentProfileEditAuthority
-                        editingRuntimeConfig = true
-                    }
-                )
-            }
-            MembersAgentRuntimeConfigRows(
-                resolution = runtimeConfigResolution,
-                runtimeModelsCatalog =
-                    canonicalRuntimeId?.let(agentRuntimeModelsByRuntime::get)
-            )
-            MembersAgentRuntimeEnvVars(summary)
-        }
-
-        if (editingRuntimeConfig && canonicalRuntimeConfig != null && runtimeStatusResolved) {
-            MembersAgentRuntimeConfigDialog(
-                initialConfig = canonicalRuntimeConfig,
-                memberId = member.id,
-                activeAgent = activeAgent,
-                machineRuntimeIds = agentMachineRuntimes,
-                runtimeModelsByRuntime = agentRuntimeModelsByRuntime,
-                runtimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
-                runtimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
-                runtimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
-                createAgentFormStore = createAgentFormStore,
-                currentServerId = agentProfileEditAuthority?.serverId?.value,
-                machineId = summary?.machineId ?: member.membersComputerId,
-                openedProfileAuthority = runtimeEditorAuthority,
-                currentProfileAuthority = agentProfileEditAuthority,
-                onRuntimeModelsRequest = onAgentRuntimeModelsRequest,
-                saving = savingRuntimeConfig,
-                error = runtimeConfigError,
-                onDismiss = {
-                    if (!savingRuntimeConfig) {
-                        editingRuntimeConfig = false
-                        runtimeEditorAuthority = null
-                        runtimeConfigError = null
-                    }
-                },
-                onSave = { nextConfig, catalogGeneration, retainBuiltInProviderSecret, kimiSdkFormDefinitionRef ->
-                    saveRuntimeConfig(
-                        nextConfig,
-                        catalogGeneration,
-                        retainBuiltInProviderSecret,
-                        kimiSdkFormDefinitionRef
-                    )
-                }
-            )
-        }
+        MembersAgentProfileFieldsSection(
+            member = member,
+            edit = edit,
+            sharedAgentDetailStore = sharedAgentDetailStore,
+            storeState = storeState
+        )
+        MembersAgentInfoSection(
+            member = member,
+            summary = summary,
+            deleted = deleted,
+            edit = edit,
+            machineStatusRow = machineStatusRow,
+            onOpenComputer = onOpenComputer,
+            timeContext = timeContext,
+            memberAvatarResolver = memberAvatarResolver
+        )
+        MembersAgentRuntimeConfigSection(
+            member = member,
+            summary = summary,
+            agentStatusIndicatorState = agentStatusIndicatorState,
+            edit = edit,
+            runtimeModels = runtimeModels,
+            createAgentFormStore = createAgentFormStore,
+            onApplyAgentRuntimeConfigProjection = onApplyAgentRuntimeConfigProjection
+        )
 
         // Avatar editing is surfaced from the top-left avatar in `MembersDetailHeader`
         // (PUX #49 spec v4 lock). Clicking it opens the floating `MembersAgentAvatarPicker`
