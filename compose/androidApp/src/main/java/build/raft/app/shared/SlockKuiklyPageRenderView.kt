@@ -1,6 +1,9 @@
 package build.raft.app.shared
 
 import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Rect
+import build.raft.app.core.data.diagnostics.SlockAppLog
 import android.util.Size
 import android.view.LayoutInflater
 import android.view.View
@@ -44,6 +47,9 @@ internal class SlockKuiklyPageRenderView(
     private var lastChildRootWidthPx: Int? = null
     private var lastChildRootHeightPx: Int? = null
     private var destroyed = false
+    private var probeRecords = 0
+    private var probeChildGeneration = 0
+    private var probeDrawn = false
     private val lazyChildEvents = mutableListOf<() -> Unit>()
 
     init {
@@ -81,6 +87,7 @@ internal class SlockKuiklyPageRenderView(
             }
 
             override fun onKuiklyRenderContentViewCreated() {
+                traceChildProbe("native_content_created")
                 parentDelegate.onKuiklyRenderContentViewCreated()
             }
 
@@ -94,6 +101,7 @@ internal class SlockKuiklyPageRenderView(
                 parentDelegate.softInputMode()
 
             override fun onGetLaunchData(data: KRLaunchData) {
+                traceChildProbe("engine_launch_receipt", "firstFrameMs=${data.firstFramePaintCost} renderMs=${data.renderCost}")
                 parentDelegate.onGetLaunchData(data)
             }
 
@@ -115,6 +123,7 @@ internal class SlockKuiklyPageRenderView(
                 errorReason: ErrorReason?,
                 executeMode: KuiklyRenderCoreExecuteModeBase
             ) {
+                traceChildProbe("load_complete", "success=$isSucceed reason=${errorReason?.name ?: "none"}")
                 // Release before callbacks: a callback may synchronously update page props and
                 // start a replacement child, which must be allowed to show its own hold.
                 releaseStartupHold()
@@ -204,6 +213,7 @@ internal class SlockKuiklyPageRenderView(
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
+        traceChildProbe("host_layout", "changed=$changed")
         scheduleChildInitIfReady()
         notifyChildRootSizeChangedIfNeeded(width, height)
     }
@@ -214,6 +224,7 @@ internal class SlockKuiklyPageRenderView(
     }
 
     override fun onDestroy() {
+        traceChildProbe("destroy")
         destroyed = true
         childInitPosted = false
         lazyChildEvents.clear()
@@ -225,6 +236,7 @@ internal class SlockKuiklyPageRenderView(
     private fun updatePageName(next: String) {
         if (pageName == next) return
         pageName = next
+        traceChildProbe("page_name")
         invalidateStartupHold()
         resetChildIfAttached()
     }
@@ -232,6 +244,7 @@ internal class SlockKuiklyPageRenderView(
     private fun updatePageData(next: String) {
         if (pageDataText == next) return
         pageDataText = next
+        traceChildProbe("page_data")
         invalidateStartupHold()
         resetChildIfAttached()
     }
@@ -239,7 +252,9 @@ internal class SlockKuiklyPageRenderView(
     private fun updateChildActive(next: Boolean) {
         if (childActive == next) return
         childActive = next
+        traceChildProbe("active_change")
         syncChildVisibility()
+        scheduleProbeSnapshots()
         if (next && !childLoadFinished) {
             showStartupHold()
             scheduleChildInitIfReady()
@@ -264,6 +279,7 @@ internal class SlockKuiklyPageRenderView(
         if (!shouldScheduleSlockKuiklyChildInit(destroyed, childRenderView != null, childInitPosted, pageName, width, height)) {
             return
         }
+        traceChildProbe("init_scheduled")
         childInitPosted = true
         post {
             childInitPosted = false
@@ -275,6 +291,7 @@ internal class SlockKuiklyPageRenderView(
     }
 
     private fun initChildIfReady(width: Int, height: Int) {
+        traceChildProbe("init_enter", "requested=${width}x$height")
         if (destroyed || childRenderView != null || pageName.isBlank() || width <= 0 || height <= 0) {
             return
         }
@@ -283,6 +300,9 @@ internal class SlockKuiklyPageRenderView(
                 addView(it, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
             }
         childRenderView = child
+        probeChildGeneration++
+        probeDrawn = false
+        traceChildProbe("child_created")
         childLoadFinished = false
         showStartupHold()
         child.onAttach(
@@ -292,6 +312,8 @@ internal class SlockKuiklyPageRenderView(
             size = Size(width, height)
         )
         childDidAttach = true
+        traceChildProbe("child_attached")
+        scheduleProbeSnapshots()
         lastChildRootWidthPx = width
         lastChildRootHeightPx = height
         syncChildVisibility()
@@ -323,6 +345,7 @@ internal class SlockKuiklyPageRenderView(
     private fun releaseStartupHold() {
         childLoadFinished = true
         hideStartupHold()
+        traceChildProbe("hold_released")
     }
 
     private fun destroyChild() {
@@ -343,6 +366,7 @@ internal class SlockKuiklyPageRenderView(
     private fun sendEventWithParams(params: String?) {
         val eventData = runCatching { JSONObject(params ?: "{}") }.getOrDefault(JSONObject())
         val event = eventData.optString("event")
+        traceChildProbe("event_received", "event=${event.take(48)}")
         val data = eventData.optJSONObject("data")?.toMap().orEmpty()
         when (event) {
             EVENT_DID_APPEAR -> {
@@ -387,6 +411,7 @@ internal class SlockKuiklyPageRenderView(
             return
         }
         val child = childRenderView ?: return
+        traceChildProbe("root_size_update", "next=${widthPx}x$heightPx")
         lastChildRootWidthPx = widthPx
         lastChildRootHeightPx = heightPx
         child.updateRootViewSize(
@@ -410,12 +435,16 @@ internal class SlockKuiklyPageRenderView(
                 viewDidAppear = viewDidAppear,
                 pageDidAppear = pageDidAppear
             )
+        traceChildProbe("visibility", "render=$shouldBeRendered lifecycle=$shouldBeLifecycleVisible")
         childRenderView?.visibility = slockKuiklyChildRenderVisibility(shouldBeRendered)
         if (childVisible == shouldBeLifecycleVisible) return
         childVisible = shouldBeLifecycleVisible
         if (shouldBeLifecycleVisible) {
+            traceChildProbe("resume_call")
             childRenderView?.onResume()
+            traceChildProbe("resume_return")
         } else {
+            traceChildProbe("pause_call")
             childRenderView?.onPause()
         }
     }
@@ -437,6 +466,69 @@ internal class SlockKuiklyPageRenderView(
         runCatching { JSONObject(pageDataText).toMap().toMutableMap() }
             .getOrElse { mutableMapOf() }
             .apply { put("appId", SLOCK_KUIKLY_APP_ID) }
+
+    // Diagnostic branch only: bounded, content-free records included in feedback ZIPs.
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        traceChildProbe("host_window_attached")
+    }
+
+    override fun dispatchDraw(canvas: Canvas) {
+        super.dispatchDraw(canvas)
+        if (!probeDrawn && childRenderView != null) {
+            probeDrawn = true
+            traceChildProbe("native_draw_completed")
+        }
+    }
+
+    private fun traceChildProbe(stage: String, extra: String = "") {
+        if (probeRecords >= 180) return
+        probeRecords++
+        val tab = runCatching { JSONObject(pageDataText).optString("tab") }
+            .getOrDefault("").takeIf { it in listOf("home", "tasks", "members", "settings") } ?: "other"
+        val child = childRenderView
+        SlockAppLog.w(
+            "SlockChildProbe",
+            "child_probe_native stage=$stage host=${System.identityHashCode(this)} gen=$probeChildGeneration " +
+                "tab=$tab page=${pageName.take(64)} active=$childActive attached=$childDidAttach " +
+                "viewAppear=$viewDidAppear pageAppear=$pageDidAppear resumed=$childVisible " +
+                "loadFinished=$childLoadFinished window=$isAttachedToWindow size=${width}x$height " +
+                "visibility=$visibility alpha=$alpha child=${child?.width}x${child?.height} " +
+                "childVisibility=${child?.visibility} childCount=${child?.childCount} hold=${startupHoldView.visibility} $extra" +
+                if (probeRecords == 180) " budget_exhausted=true" else ""
+        )
+    }
+
+    private fun scheduleProbeSnapshots() {
+        val child = childRenderView ?: return
+        for (delay in listOf(500L, 2500L)) {
+            postDelayed({
+                if (!destroyed && childRenderView === child) {
+                    var remaining = 24
+                    fun visit(view: View, path: String, depth: Int) {
+                        if (remaining-- <= 0) return
+                        val rect = Rect()
+                        val visible = view.getGlobalVisibleRect(rect)
+                        traceChildProbe(
+                            "tree_snapshot",
+                            "delay=$delay node=$path type=${view.javaClass.simpleName} " +
+                                "box=${view.left},${view.top},${view.width},${view.height} " +
+                                "shown=${view.isShown} vis=${view.visibility} a=${view.alpha} " +
+                                "translation=${view.translationX},${view.translationY} " +
+                                "scale=${view.scaleX},${view.scaleY} global=$visible:$rect"
+                        )
+                        if (view is ViewGroup && depth < 4) {
+                            for (index in 0 until view.childCount) {
+                                if (remaining <= 0) break
+                                visit(view.getChildAt(index), "$path.$index", depth + 1)
+                            }
+                        }
+                    }
+                    visit(child, "root", 0)
+                }
+            }, delay)
+        }
+    }
 
     companion object {
         const val VIEW_NAME = "SlockKuiklyPageView"

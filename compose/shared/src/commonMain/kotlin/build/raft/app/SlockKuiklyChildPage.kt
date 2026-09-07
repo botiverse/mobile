@@ -47,6 +47,7 @@ internal class SlockKuiklyChildPageView :
     private var childLifecycleVisible = false
     private var parentAttachmentGeneration = 0L
     private var parentAppearanceDelivered = false
+    private var probeEventRecords = 0
 
     override fun createAttr(): SlockKuiklyChildPageAttr = SlockKuiklyChildPageAttr()
 
@@ -156,6 +157,16 @@ internal class SlockKuiklyChildPageView :
     }
 
     private fun sendPagerEvent(event: String, data: JSONObject? = null) {
+        if (probeEventRecords++ < 80) {
+            val tab = runCatching { JSONObject(appliedPageData ?: "{}").optString("tab") }
+                .getOrDefault("").takeIf { it in listOf("home", "tasks", "members", "settings") } ?: "other"
+            slockLogWarn(
+                "SlockChildProbe",
+                "child_probe_shared_send ref=$nativeRef tab=$tab event=$event active=$active " +
+                    "viewAppeared=$viewAppeared parentAppeared=${getPager().isAppeared} " +
+                    "delivered=$parentAppearanceDelivered generation=$parentAttachmentGeneration"
+            )
+        }
         val params =
             JSONObject().apply {
                 put("event", event)
