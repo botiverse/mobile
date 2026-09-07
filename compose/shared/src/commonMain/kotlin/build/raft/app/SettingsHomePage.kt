@@ -16544,31 +16544,35 @@ private fun SharedMembersScreen(
                     }
                 },
                 canCreateAgents = membersPayload.canCreateAgents,
-                createAgentSubmit = createAgentSubmit,
-                createAgentMachines = computersSlice.machines,
-                createAgentMachinesLoading = computersSlice.initialLoadInFlight,
-                createAgentMachinesErrorMessage = computersSlice.initialLoadError?.userFacingMessage(errorStrings),
-                createAgentCurrentAgentCount = current.members.count { it.kind == MemberKind.Agent },
-                createAgentLoadMachines = loadMachines,
-                createAgentRetryMachines = retryMachines,
-                createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
-                createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
-                createAgentLoadRuntimeModels = loadRuntimeModels,
-                createAgentFormStore = createAgentFormStore,
-                createAgentServerId = serverId,
-                inviteHumanSubmit = inviteHumanSubmit,
-                inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
-                inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
-                inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
-                inviteHumanJoinLinkCopy = { url ->
-                    onForegroundActivity("copy_invite_link")
-                    bridge.copyToPasteboard(url)
-                    inviteJoinLinkCopied = true
-                },
-                inviteHumanLoadJoinLink = {
-                    onForegroundActivity("load_invite_link")
-                    loadInviteJoinLink()
-                },
+                createAgent = MembersCreateAgentInputs(
+                    createAgentSubmit = createAgentSubmit,
+                    createAgentMachines = computersSlice.machines,
+                    createAgentMachinesLoading = computersSlice.initialLoadInFlight,
+                    createAgentMachinesErrorMessage = computersSlice.initialLoadError?.userFacingMessage(errorStrings),
+                    createAgentCurrentAgentCount = current.members.count { it.kind == MemberKind.Agent },
+                    createAgentLoadMachines = loadMachines,
+                    createAgentRetryMachines = retryMachines,
+                    createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
+                    createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
+                    createAgentLoadRuntimeModels = loadRuntimeModels,
+                    createAgentFormStore = createAgentFormStore,
+                    createAgentServerId = serverId
+                ),
+                inviteHuman = MembersInviteHumanInputs(
+                    inviteHumanSubmit = inviteHumanSubmit,
+                    inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
+                    inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
+                    inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
+                    inviteHumanJoinLinkCopy = { url ->
+                        onForegroundActivity("copy_invite_link")
+                        bridge.copyToPasteboard(url)
+                        inviteJoinLinkCopied = true
+                    },
+                    inviteHumanLoadJoinLink = {
+                        onForegroundActivity("load_invite_link")
+                        loadInviteJoinLink()
+                    }
+                ),
                 bottomContentPadding = bottomContentPadding,
                 scrollToTopRequest = scrollToTopRequest,
                 initialListState = initialListState,

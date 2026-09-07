@@ -2247,28 +2247,32 @@ internal fun MembersPageContent() {
         agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = memberAvatarResolver,
         canCreateAgents = payload.canCreateAgents,
-        createAgentSubmit = createAgentSubmit,
-        createAgentMachines = computersSlice.machines,
-        createAgentMachinesLoading = computersSlice.initialLoadInFlight,
-        createAgentMachinesErrorMessage = computersSlice.initialLoadError?.userFacingMessage(errorStrings),
-        createAgentCurrentAgentCount = currentAgentCount,
-        createAgentMaxAgents = maxAgents,
-        createAgentLoadMachines = loadMachines,
-        createAgentRetryMachines = retryMachines,
-        createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
-        createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
-        createAgentLoadRuntimeModels = loadRuntimeModels,
-        createAgentFormStore = createAgentFormStore,
-        createAgentServerId = serverId,
-        inviteHumanSubmit = inviteHumanSubmit,
-        inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
-        inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
-        inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
-        inviteHumanJoinLinkCopy = { url ->
-            bridge.copyToPasteboard(url)
-            inviteJoinLinkCopied = true
-        },
-        inviteHumanLoadJoinLink = { loadInviteJoinLink() },
+        createAgent = MembersCreateAgentInputs(
+            createAgentSubmit = createAgentSubmit,
+            createAgentMachines = computersSlice.machines,
+            createAgentMachinesLoading = computersSlice.initialLoadInFlight,
+            createAgentMachinesErrorMessage = computersSlice.initialLoadError?.userFacingMessage(errorStrings),
+            createAgentCurrentAgentCount = currentAgentCount,
+            createAgentMaxAgents = maxAgents,
+            createAgentLoadMachines = loadMachines,
+            createAgentRetryMachines = retryMachines,
+            createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
+            createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
+            createAgentLoadRuntimeModels = loadRuntimeModels,
+            createAgentFormStore = createAgentFormStore,
+            createAgentServerId = serverId
+        ),
+        inviteHuman = MembersInviteHumanInputs(
+            inviteHumanSubmit = inviteHumanSubmit,
+            inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
+            inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
+            inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
+            inviteHumanJoinLinkCopy = { url ->
+                bridge.copyToPasteboard(url)
+                inviteJoinLinkCopied = true
+            },
+            inviteHumanLoadJoinLink = { loadInviteJoinLink() }
+        ),
         // #89: pass agentsApiClient so Permissions tab can call
         // `agentScopes` / `updateAgentScopes` / `resetAgentScopes` directly.
         agentsApiClient = agentsApiClient
@@ -3700,18 +3704,20 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                     serverMembersState = serverMembersState,
                     agentDetailState = agentDetailState,
                     agentActivityLoadState = agentActivityLoadState,
-                    agentMachineRuntimes =
-                        membersAgentMachineRuntimeIds(
-                            machines = computerPickerSlice.machines,
-                            machineId = selectedAgentDetail.summary?.machineId ?: member.membersComputerId
-                        ),
-                    agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
-                    agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsByRuntime,
-                    agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
-                    agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
+                    runtimeModels = MembersAgentRuntimeModelInputs(
+                        agentMachineRuntimes =
+                            membersAgentMachineRuntimeIds(
+                                machines = computerPickerSlice.machines,
+                                machineId = selectedAgentDetail.summary?.machineId ?: member.membersComputerId
+                            ),
+                        agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
+                        agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsByRuntime,
+                        agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
+                        agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
+                        onAgentRuntimeModelsRequest = loadAgentRuntimeModels
+                    ),
                     createAgentFormStore = provider.createAgentFormStore,
                     agentProfileEditAuthority = agentProfileEditAuthority,
-                    onAgentRuntimeModelsRequest = loadAgentRuntimeModels,
                     canViewPrivateAgentSurfaces = { _, detail ->
                         current.accessMode.allowsPrivateAgentSurfaces &&
                             (current.server.permissions.canManageSettings ||
@@ -3725,138 +3731,144 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                             )
                     },
                     machineStatusRow = machineStatusRow,
-                    onBack = { provider.bridge.closePage() },
-                    onOpenDirectMessage = {
-                        routeScope.launch {
-                            provider.openDirectMessage(member).openMembersDirectMessageResult(
-                                pager = pager,
-                                member = member,
-                                timeContext = timeContext,
-                                unavailableMessage = directMessageOpenError,
-                                errorTemplate = directMessageOpenErrorTemplate,
-                                permissionMessage = directMessagePermissionError,
-                                errorStrings = errorStrings,
-                                onUnavailableAction = { bridge.toast(it) }
-                            )
-                        }
-                    },
-                    onOpenComputer = onOpenComputer,
-                    onCopyMemberId = {
-                        provider.copyMemberId(member, memberIdCopied)
-                    },
-                    onRemoveMember = {
-                        provider.bridge.toast(removeFromSettings)
-                    },
-                    onOpenUrl = { linkNavigator.open(it) },
-                    onOpenReminderMessage = { permalink ->
-                        pager.openMembersReminderMessage(
-                            permalink = permalink,
-                            server = current.server,
-                            conversationIdentityProvider = provider.conversationIdentityProvider,
-                            storeScope = provider.storeScope,
-                            timeContext = timeContext,
-                            onOpenExternal = {
-                                linkNavigator.openMembersReminderForceExternalFallback(it)
-                            },
-                            unavailableMessage = reminderOpenError,
-                            onUnavailableAction = { provider.bridge.toast(it) }
-                        )
-                    },
-                    agentDetailActions = agentDetailActions,
-                    onUpdateAgentProfile = { request ->
-                        agentDetailActions.updateAgentProfile(request)
-                    },
-                    onApplyAgentProfileResult = { updatedMember ->
-                        provider.updateCachedMemberProfile(updatedMember, current.server.id)
-                    },
-                    onApplyAgentRuntimeConfigProjection = provider::applyRuntimeConfigProjection,
-                    onPickAgentAvatarFile = {
-                        provider.pickAgentAvatarFile()
-                    },
-                    onUploadAgentAvatar = { agentId, file ->
-                        val result = provider.uploadAgentAvatar(current.server.id, agentId, file)
-                        if (result is DataResult.Content) {
-                            provider.updateCachedMemberProfile(result.data, current.server.id)
-                        }
-                        result
-                    },
-                    onAgentLifecycleAction = { agentId, action ->
-                        agentDetailActions.runLifecycleAction(agentId, action)
-                    },
-                    agentWorkspaceTreeLoader = { agentId ->
-                        provider.memberRepository.getAgentWorkspaceTree(DataRequestPriority.Visible, agentId)
-                    },
-                    agentWorkspaceChildrenLoader = { agentId, dirPath ->
-                        provider.memberRepository.getAgentWorkspaceChildren(DataRequestPriority.Visible, agentId, dirPath)
-                    },
-                    onCopyAgentDiagnostics = agentDetailActions::copyDiagnostics,
-                    onCopyAgentIssueReference = provider.bridge::copyToPasteboard,
-                    onReportAgentIssue = agentDetailActions::reportIssue,
-                    onUnavailableAction = { bridge.toast(it) },
-                    timeContext = timeContext,
-                    pageVisibleTick = pageVisibleTick,
-                    sharedAgentDetailStore = provider.agentDetailStore,
-                    initialAgentTab =
-                        if (current.accessMode.allowsPrivateAgentSurfaces) {
-                            initialAgentTabForRender
-                        } else {
-                            MembersAgentDetailTab.Profile
-                        },
-                    accessMode = current.accessMode,
-                    agentPanelTabOrder = agentPanelTabOrder,
-                    onAgentPanelTabOrderChange = { orderedTabs ->
-                        val previousOrder = agentPanelTabOrder
-                        val nextOrder = orderedTabs.toMembersAgentPanelTabOrderWireKeys()
-                        if (nextOrder != previousOrder) {
-                            provider.agentPanelTabOrderStore.applyOptimistic(
-                                serverId = statusLookupServerId,
-                                order = nextOrder,
-                                source = "member_detail_user_reorder_optimistic",
-                                logger = { message -> bridge.log(message) }
-                            )
+                    actions = MembersDetailActions(
+                        onBack = { provider.bridge.closePage() },
+                        onOpenDirectMessage = {
                             routeScope.launch {
-                                when (val result = provider.updateAgentPanelTabOrder(orderedTabs)) {
-                                    is DataResult.Content ->
-                                        provider.agentPanelTabOrderStore.applyLoaded(
-                                            serverId = statusLookupServerId,
-                                            order = result.data,
-                                            source = "member_detail_user_reorder_save_success",
-                                            logger = { message -> bridge.log(message) }
-                                        )
-                                    is DataResult.Empty -> {
-                                        provider.agentPanelTabOrderStore.applyLoaded(
-                                            serverId = statusLookupServerId,
-                                            order = previousOrder,
-                                            source = "member_detail_user_reorder_save_empty_rollback",
-                                            logger = { message -> bridge.log(message) }
-                                        )
-                                        bridge.toast(tabOrderSaveError)
-                                    }
-                                    is DataResult.Error -> {
-                                        provider.agentPanelTabOrderStore.applyLoaded(
-                                            serverId = statusLookupServerId,
-                                            order = previousOrder,
-                                            source = "member_detail_user_reorder_save_error_rollback",
-                                            logger = { message -> bridge.log(message) }
-                                        )
-                                        bridge.toast(
-                                            tabOrderSaveErrorTemplate
-                                                .membersFormat(result.error.userFacingMessage(errorStrings))
-                                        )
-                                    }
-                                    is DataResult.NoPermission -> {
-                                        provider.agentPanelTabOrderStore.applyLoaded(
-                                            serverId = statusLookupServerId,
-                                            order = previousOrder,
-                                            source = "member_detail_user_reorder_save_blocked_rollback",
-                                            logger = { message -> bridge.log(message) }
-                                        )
-                                        bridge.toast(tabOrderPermissionError)
+                                provider.openDirectMessage(member).openMembersDirectMessageResult(
+                                    pager = pager,
+                                    member = member,
+                                    timeContext = timeContext,
+                                    unavailableMessage = directMessageOpenError,
+                                    errorTemplate = directMessageOpenErrorTemplate,
+                                    permissionMessage = directMessagePermissionError,
+                                    errorStrings = errorStrings,
+                                    onUnavailableAction = { bridge.toast(it) }
+                                )
+                            }
+                        },
+                        onOpenComputer = onOpenComputer,
+                        onCopyMemberId = {
+                            provider.copyMemberId(member, memberIdCopied)
+                        },
+                        onRemoveMember = {
+                            provider.bridge.toast(removeFromSettings)
+                        },
+                        onOpenUrl = { linkNavigator.open(it) },
+                        onOpenReminderMessage = { permalink ->
+                            pager.openMembersReminderMessage(
+                                permalink = permalink,
+                                server = current.server,
+                                conversationIdentityProvider = provider.conversationIdentityProvider,
+                                storeScope = provider.storeScope,
+                                timeContext = timeContext,
+                                onOpenExternal = {
+                                    linkNavigator.openMembersReminderForceExternalFallback(it)
+                                },
+                                unavailableMessage = reminderOpenError,
+                                onUnavailableAction = { provider.bridge.toast(it) }
+                            )
+                        },
+                        onUnavailableAction = { bridge.toast(it) }
+                    ),
+                    agentDetailActions = agentDetailActions,
+                    agentCallbacks = MembersAgentDetailCallbacks(
+                        onUpdateAgentProfile = { request ->
+                            agentDetailActions.updateAgentProfile(request)
+                        },
+                        onApplyAgentProfileResult = { updatedMember ->
+                            provider.updateCachedMemberProfile(updatedMember, current.server.id)
+                        },
+                        onApplyAgentRuntimeConfigProjection = provider::applyRuntimeConfigProjection,
+                        onPickAgentAvatarFile = {
+                            provider.pickAgentAvatarFile()
+                        },
+                        onUploadAgentAvatar = { agentId, file ->
+                            val result = provider.uploadAgentAvatar(current.server.id, agentId, file)
+                            if (result is DataResult.Content) {
+                                provider.updateCachedMemberProfile(result.data, current.server.id)
+                            }
+                            result
+                        },
+                        onAgentLifecycleAction = { agentId, action ->
+                            agentDetailActions.runLifecycleAction(agentId, action)
+                        },
+                        agentWorkspaceTreeLoader = { agentId ->
+                            provider.memberRepository.getAgentWorkspaceTree(DataRequestPriority.Visible, agentId)
+                        },
+                        agentWorkspaceChildrenLoader = { agentId, dirPath ->
+                            provider.memberRepository.getAgentWorkspaceChildren(DataRequestPriority.Visible, agentId, dirPath)
+                        },
+                        onCopyAgentDiagnostics = agentDetailActions::copyDiagnostics,
+                        onCopyAgentIssueReference = provider.bridge::copyToPasteboard,
+                        onReportAgentIssue = agentDetailActions::reportIssue
+                    ),
+                    timeContext = timeContext,
+                    presentation = MembersAgentDetailPresentation(
+                        pageVisibleTick = pageVisibleTick,
+                        initialAgentTab =
+                            if (current.accessMode.allowsPrivateAgentSurfaces) {
+                                initialAgentTabForRender
+                            } else {
+                                MembersAgentDetailTab.Profile
+                            },
+                        agentPanelTabOrder = agentPanelTabOrder,
+                        onAgentPanelTabOrderChange = { orderedTabs ->
+                            val previousOrder = agentPanelTabOrder
+                            val nextOrder = orderedTabs.toMembersAgentPanelTabOrderWireKeys()
+                            if (nextOrder != previousOrder) {
+                                provider.agentPanelTabOrderStore.applyOptimistic(
+                                    serverId = statusLookupServerId,
+                                    order = nextOrder,
+                                    source = "member_detail_user_reorder_optimistic",
+                                    logger = { message -> bridge.log(message) }
+                                )
+                                routeScope.launch {
+                                    when (val result = provider.updateAgentPanelTabOrder(orderedTabs)) {
+                                        is DataResult.Content ->
+                                            provider.agentPanelTabOrderStore.applyLoaded(
+                                                serverId = statusLookupServerId,
+                                                order = result.data,
+                                                source = "member_detail_user_reorder_save_success",
+                                                logger = { message -> bridge.log(message) }
+                                            )
+                                        is DataResult.Empty -> {
+                                            provider.agentPanelTabOrderStore.applyLoaded(
+                                                serverId = statusLookupServerId,
+                                                order = previousOrder,
+                                                source = "member_detail_user_reorder_save_empty_rollback",
+                                                logger = { message -> bridge.log(message) }
+                                            )
+                                            bridge.toast(tabOrderSaveError)
+                                        }
+                                        is DataResult.Error -> {
+                                            provider.agentPanelTabOrderStore.applyLoaded(
+                                                serverId = statusLookupServerId,
+                                                order = previousOrder,
+                                                source = "member_detail_user_reorder_save_error_rollback",
+                                                logger = { message -> bridge.log(message) }
+                                            )
+                                            bridge.toast(
+                                                tabOrderSaveErrorTemplate
+                                                    .membersFormat(result.error.userFacingMessage(errorStrings))
+                                            )
+                                        }
+                                        is DataResult.NoPermission -> {
+                                            provider.agentPanelTabOrderStore.applyLoaded(
+                                                serverId = statusLookupServerId,
+                                                order = previousOrder,
+                                                source = "member_detail_user_reorder_save_blocked_rollback",
+                                                logger = { message -> bridge.log(message) }
+                                            )
+                                            bridge.toast(tabOrderPermissionError)
+                                        }
                                     }
                                 }
                             }
                         }
-                    },
+                    ),
+                    sharedAgentDetailStore = provider.agentDetailStore,
+                    accessMode = current.accessMode,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
                     agentsApiClient = provider.agentsApiClient
@@ -3889,60 +3901,68 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                 canViewPrivateAgentSurfaces = { _, _ -> false },
                 canManageAgent = { _, _ -> false },
                 machineStatusRow = machineStatusRow,
-                onBack = { provider.bridge.closePage() },
-                onOpenDirectMessage = {
-                    routeScope.launch {
-                        provider.openDirectMessage(current.member).openMembersDirectMessageResult(
-                            pager = pager,
-                            member = current.member,
+                actions = MembersDetailActions(
+                    onBack = { provider.bridge.closePage() },
+                    onOpenDirectMessage = {
+                        routeScope.launch {
+                            provider.openDirectMessage(current.member).openMembersDirectMessageResult(
+                                pager = pager,
+                                member = current.member,
+                                timeContext = timeContext,
+                                unavailableMessage = directMessageOpenError,
+                                errorTemplate = directMessageOpenErrorTemplate,
+                                permissionMessage = directMessagePermissionError,
+                                errorStrings = errorStrings,
+                                onUnavailableAction = { bridge.toast(it) }
+                            )
+                        }
+                    },
+                    onCopyMemberId = {
+                        provider.copyMemberId(current.member, memberIdCopied)
+                    },
+                    onRemoveMember = if (canRemoveHumanMember) ({
+                        provider.bridge.toast(removeFromSettings)
+                    }) else null,
+                    onOpenUrl = { linkNavigator.open(it) },
+                    onOpenReminderMessage = { permalink ->
+                        pager.openMembersReminderMessage(
+                            permalink = permalink,
+                            server = current.server,
+                            conversationIdentityProvider = provider.conversationIdentityProvider,
+                            storeScope = provider.storeScope,
                             timeContext = timeContext,
-                            unavailableMessage = directMessageOpenError,
-                            errorTemplate = directMessageOpenErrorTemplate,
-                            permissionMessage = directMessagePermissionError,
-                            errorStrings = errorStrings,
-                            onUnavailableAction = { bridge.toast(it) }
+                            onOpenExternal = {
+                                linkNavigator.openMembersReminderForceExternalFallback(it)
+                            },
+                            unavailableMessage = reminderOpenError,
+                            onUnavailableAction = { provider.bridge.toast(it) }
                         )
+                    },
+                    onUnavailableAction = { bridge.toast(it) }
+                ),
+                humanRole = MembersHumanRoleInputs(
+                    humanActorRole = current.server.role,
+                    humanOwnerCount = ownerCount.takeIf { it > 0 },
+                    humanAccessMode = current.accessMode,
+                    onUpdateHumanRole = { memberId, role ->
+                        provider.updateHumanRole(current.server.id.value, memberId, role)
                     }
-                },
-                onCopyMemberId = {
-                    provider.copyMemberId(current.member, memberIdCopied)
-                },
-                onRemoveMember = if (canRemoveHumanMember) ({
-                    provider.bridge.toast(removeFromSettings)
-                }) else null,
-                humanActorRole = current.server.role,
-                humanOwnerCount = ownerCount.takeIf { it > 0 },
-                humanAccessMode = current.accessMode,
-                onUpdateHumanRole = { memberId, role ->
-                    provider.updateHumanRole(current.server.id.value, memberId, role)
-                },
-                onOpenUrl = { linkNavigator.open(it) },
-                onOpenReminderMessage = { permalink ->
-                    pager.openMembersReminderMessage(
-                        permalink = permalink,
-                        server = current.server,
-                        conversationIdentityProvider = provider.conversationIdentityProvider,
-                        storeScope = provider.storeScope,
-                        timeContext = timeContext,
-                        onOpenExternal = {
-                            linkNavigator.openMembersReminderForceExternalFallback(it)
-                        },
-                        unavailableMessage = reminderOpenError,
-                        onUnavailableAction = { provider.bridge.toast(it) }
-                    )
-                },
-                onUpdateAgentProfile = null,
-                onUploadAgentAvatar = null,
-                onAgentLifecycleAction = null,
-                agentWorkspaceTreeLoader = null,
-                agentWorkspaceChildrenLoader = null,
-                onCopyAgentDiagnostics = {},
-                onReportAgentIssue = null,
-                onUnavailableAction = { bridge.toast(it) },
+                ),
+                agentCallbacks = MembersAgentDetailCallbacks(
+                    onUpdateAgentProfile = null,
+                    onUploadAgentAvatar = null,
+                    onAgentLifecycleAction = null,
+                    agentWorkspaceTreeLoader = null,
+                    agentWorkspaceChildrenLoader = null,
+                    onCopyAgentDiagnostics = {},
+                    onReportAgentIssue = null
+                ),
                 timeContext = timeContext,
-                pageVisibleTick = pageVisibleTick,
-                initialAgentTab = initialAgentTab,
-                agentPanelTabOrder = payload.agentPanelTabOrder,
+                presentation = MembersAgentDetailPresentation(
+                    pageVisibleTick = pageVisibleTick,
+                    initialAgentTab = initialAgentTab,
+                    agentPanelTabOrder = payload.agentPanelTabOrder
+                ),
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver
             )
@@ -3990,48 +4010,56 @@ private fun MemberDetailVisualSeedContent(
         canViewPrivateAgentSurfaces = { member, _ -> member.kind == MemberKind.Agent },
         canManageAgent = { member, _ -> member.kind == MemberKind.Agent },
         machineStatusRow = membersVisualFixtureMachineStatusRow,
-        onBack = {},
-        onOpenDirectMessage = {},
-        onCopyMemberId = {},
-        humanActorRole = "owner",
-        humanOwnerCount = 2,
-        onUpdateHumanRole = { _, _ -> DataResult.Content(SettingsServerActionResult(success = true)) },
-        onOpenUrl = {},
-        onUpdateAgentProfile = { DataResult.Content(seed.member) },
-        onUploadAgentAvatar = null,
-        onAgentLifecycleAction = { agentId, action ->
-            DataResult.Content(
-                AgentLifecycleActionResult(
-                    agentId = agentId,
-                    action = action.actionKey,
-                    success = true
+        actions = MembersDetailActions(
+            onBack = {},
+            onOpenDirectMessage = {},
+            onCopyMemberId = {},
+            onOpenUrl = {},
+            onUnavailableAction = {}
+        ),
+        humanRole = MembersHumanRoleInputs(
+            humanActorRole = "owner",
+            humanOwnerCount = 2,
+            onUpdateHumanRole = { _, _ -> DataResult.Content(SettingsServerActionResult(success = true)) }
+        ),
+        agentCallbacks = MembersAgentDetailCallbacks(
+            onUpdateAgentProfile = { DataResult.Content(seed.member) },
+            onUploadAgentAvatar = null,
+            onAgentLifecycleAction = { agentId, action ->
+                DataResult.Content(
+                    AgentLifecycleActionResult(
+                        agentId = agentId,
+                        action = action.actionKey,
+                        success = true
+                    )
                 )
-            )
-        },
-        agentWorkspaceTreeLoader = { DataResult.Content(membersAgentDetailVisualWorkspaceTreeSnapshot) },
-        agentWorkspaceChildrenLoader = { _, _ ->
-            DataResult.Content(membersAgentDetailVisualWorkspaceNotesChildren)
-        },
-        onCopyAgentDiagnostics = {},
-        onReportAgentIssue = {
-            DataResult.Content(
-                AgentIssueReportResult(
-                    reportId = "7e91c120-f424-42d7-96e5-21eb816866d0",
-                    artifactId = "95d629bd-3ed7-42ff-97eb-3ed35c6dc6ab",
-                    serverId = "65598229-cd0a-4e92-96f3-c33e7e2e4cc1",
-                    issueDescription = "The agent stopped responding after a long-running command.",
-                    transcriptRequested = true
+            },
+            agentWorkspaceTreeLoader = { DataResult.Content(membersAgentDetailVisualWorkspaceTreeSnapshot) },
+            agentWorkspaceChildrenLoader = { _, _ ->
+                DataResult.Content(membersAgentDetailVisualWorkspaceNotesChildren)
+            },
+            onCopyAgentDiagnostics = {},
+            onReportAgentIssue = {
+                DataResult.Content(
+                    AgentIssueReportResult(
+                        reportId = "7e91c120-f424-42d7-96e5-21eb816866d0",
+                        artifactId = "95d629bd-3ed7-42ff-97eb-3ed35c6dc6ab",
+                        serverId = "65598229-cd0a-4e92-96f3-c33e7e2e4cc1",
+                        issueDescription = "The agent stopped responding after a long-running command.",
+                        transcriptRequested = true
+                    )
                 )
-            )
-        },
-        onUnavailableAction = {},
+            }
+        ),
         timeContext = payload.toSlockTimeContext(),
-        pageVisibleTick = pageVisibleTick,
-        initialVisualMode = visualMode,
-        initialAgentTab = initialAgentTab,
-        agentPanelTabOrder = payload.agentPanelTabOrder,
-        initialAgentScopeSet = seed.agentScopeSet,
-        stableVisualCapture = true
+        presentation = MembersAgentDetailPresentation(
+            pageVisibleTick = pageVisibleTick,
+            initialVisualMode = visualMode,
+            initialAgentTab = initialAgentTab,
+            agentPanelTabOrder = payload.agentPanelTabOrder,
+            initialAgentScopeSet = seed.agentScopeSet,
+            stableVisualCapture = true
+        )
     )
 }
 
@@ -4114,34 +4142,40 @@ internal fun MembersAgentDetailVisualContent() {
                 profileGeneration = 0L
             ),
         machineStatusRow = membersVisualFixtureMachineStatusRow,
-        onBack = {},
-        onOpenDirectMessage = {},
-        onCopyMemberId = {},
-        onOpenUrl = {},
-        onUpdateAgentProfile = { DataResult.Content(membersAgentDetailVisualMember) },
-        onAgentLifecycleAction = { _, action ->
-            DataResult.Content(
-                AgentLifecycleActionResult(
-                    agentId = membersAgentDetailVisualMember.id,
-                    action = action.actionKey,
-                    success = true
+        actions = MembersDetailActions(
+            onBack = {},
+            onOpenDirectMessage = {},
+            onCopyMemberId = {},
+            onOpenUrl = {},
+            onUnavailableAction = {}
+        ),
+        agentCallbacks = MembersAgentDetailCallbacks(
+            onUpdateAgentProfile = { DataResult.Content(membersAgentDetailVisualMember) },
+            onAgentLifecycleAction = { _, action ->
+                DataResult.Content(
+                    AgentLifecycleActionResult(
+                        agentId = membersAgentDetailVisualMember.id,
+                        action = action.actionKey,
+                        success = true
+                    )
                 )
-            )
-        },
-        agentWorkspaceTreeLoader = null,
-        agentWorkspaceChildrenLoader = null,
-        onCopyAgentDiagnostics = {},
-        onReportAgentIssue = null,
-        onUnavailableAction = {},
-        onUploadAgentAvatar = null,
+            },
+            agentWorkspaceTreeLoader = null,
+            agentWorkspaceChildrenLoader = null,
+            onCopyAgentDiagnostics = {},
+            onReportAgentIssue = null,
+            onUploadAgentAvatar = null
+        ),
         timeContext = SlockTimeContext(
             localOffsetMinutes = 480,
             todayEpochDay = 20623,
             nowEpochMillis = 1781872200000,
             timeFormat = SlockTimeFormat24Hour
         ),
-        initialVisualMode = visualMode,
-        stableVisualCapture = true
+        presentation = MembersAgentDetailPresentation(
+            initialVisualMode = visualMode,
+            stableVisualCapture = true
+        )
     )
 }
 
@@ -4370,6 +4404,48 @@ private fun JSONObject.optStringArray(key: String): List<String> =
         }
     }
 
+/**
+ * Parameter holders for [MembersRouteContent] / [MembersListContent] (task #1130): both took 33
+ * parameters, past the 31-per-int `$changed` / `$default` mask boundary. Same caveats as
+ * [MembersAgentRuntimeModelInputs]: plain unstable classes, behaviour unchanged, no
+ * `@Stable` / `@Immutable` later.
+ */
+internal class MembersCreateAgentInputs(
+    /**
+     * Optional create-agent flow. When non-null, the agents section "+" opens a
+     * SharedCreateAgentDialog and submit is forwarded to this host callback.
+     * The host is responsible for the actual API call and refreshing the members
+     * payload.
+     */
+    val createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = null,
+    val createAgentMachines: List<SharedCreateAgentMachineOption> = emptyList(),
+    val createAgentMachinesLoading: Boolean = false,
+    val createAgentMachinesErrorMessage: String? = null,
+    val createAgentCurrentAgentCount: Int = 0,
+    val createAgentMaxAgents: Int = -1,
+    val createAgentLoadMachines: () -> Unit = {},
+    val createAgentRetryMachines: () -> Unit = {},
+    val createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
+    val createAgentRuntimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
+    val createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
+    val createAgentFormStore: build.raft.app.data.SharedCreateAgentFormStore? = null,
+    val createAgentServerId: String? = null
+)
+
+internal class MembersInviteHumanInputs(
+    /**
+     * Optional invite-human flow. When non-null, the humans section "+" opens
+     * a [SharedInviteHumanDialog] and submit is forwarded to this host
+     * callback. Mirrors the [MembersCreateAgentInputs.createAgentSubmit] pattern.
+     */
+    val inviteHumanSubmit: (suspend (emails: List<String>) -> DataResult<Unit>)? = null,
+    val inviteHumanJoinLinkLoading: Boolean = false,
+    val inviteHumanJoinLinkUrl: String? = null,
+    val inviteHumanJoinLinkCopied: Boolean = false,
+    val inviteHumanJoinLinkCopy: (String) -> Unit = {},
+    val inviteHumanLoadJoinLink: () -> Unit = {}
+)
+
 @Composable
 internal fun MembersRouteContent(
     payload: KuiklyMembersPayload,
@@ -4379,41 +4455,13 @@ internal fun MembersRouteContent(
     onOpenMemberDetail: (MemberProfile) -> Unit,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    /**
-     * Optional create-agent flow. When non-null, the agents section "+" opens a
-     * SharedCreateAgentDialog and submit is forwarded to this host callback.
-     * The host is responsible for the actual API call and refreshing the members
-     * payload.
-     */
-    createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = null,
-    createAgentMachines: List<SharedCreateAgentMachineOption> = emptyList(),
-    createAgentMachinesLoading: Boolean = false,
-    createAgentMachinesErrorMessage: String? = null,
-    createAgentCurrentAgentCount: Int = 0,
-    createAgentMaxAgents: Int = -1,
-    createAgentLoadMachines: () -> Unit = {},
-    createAgentRetryMachines: () -> Unit = {},
-    createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
-    createAgentRuntimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
-    createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
-    createAgentFormStore: build.raft.app.data.SharedCreateAgentFormStore? = null,
-    createAgentServerId: String? = null,
+    createAgent: MembersCreateAgentInputs = MembersCreateAgentInputs(),
+    inviteHuman: MembersInviteHumanInputs = MembersInviteHumanInputs(),
     /**
      * Permission gate for showing the agents "+". Defaults to false (no create).
      * When true, the agents "+" is rendered. When false, the "+" is hidden.
      */
     canCreateAgents: Boolean = false,
-    /**
-     * Optional invite-human flow. When non-null, the humans section "+" opens
-     * a [SharedInviteHumanDialog] and submit is forwarded to this host
-     * callback. Mirrors the [createAgentSubmit] pattern.
-     */
-    inviteHumanSubmit: (suspend (emails: List<String>) -> DataResult<Unit>)? = null,
-    inviteHumanJoinLinkLoading: Boolean = false,
-    inviteHumanJoinLinkUrl: String? = null,
-    inviteHumanJoinLinkCopied: Boolean = false,
-    inviteHumanJoinLinkCopy: (String) -> Unit = {},
-    inviteHumanLoadJoinLink: () -> Unit = {},
     agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     scrollToTopRequest: Int = 0,
@@ -4431,25 +4479,8 @@ internal fun MembersRouteContent(
         agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = memberAvatarResolver,
         canCreateAgents = canCreateAgents,
-        createAgentSubmit = createAgentSubmit,
-        createAgentMachines = createAgentMachines,
-        createAgentMachinesLoading = createAgentMachinesLoading,
-        createAgentMachinesErrorMessage = createAgentMachinesErrorMessage,
-        createAgentCurrentAgentCount = createAgentCurrentAgentCount,
-        createAgentMaxAgents = createAgentMaxAgents,
-        createAgentLoadMachines = createAgentLoadMachines,
-        createAgentRetryMachines = createAgentRetryMachines,
-        createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModelsByMachineAndRuntime,
-        createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
-        createAgentLoadRuntimeModels = createAgentLoadRuntimeModels,
-        createAgentFormStore = createAgentFormStore,
-        createAgentServerId = createAgentServerId,
-        inviteHumanSubmit = inviteHumanSubmit,
-        inviteHumanJoinLinkLoading = inviteHumanJoinLinkLoading,
-        inviteHumanJoinLinkUrl = inviteHumanJoinLinkUrl,
-        inviteHumanJoinLinkCopied = inviteHumanJoinLinkCopied,
-        inviteHumanJoinLinkCopy = inviteHumanJoinLinkCopy,
-        inviteHumanLoadJoinLink = { inviteHumanLoadJoinLink() },
+        createAgent = createAgent,
+        inviteHuman = inviteHuman,
         bottomContentPadding = bottomContentPadding,
         scrollToTopRequest = scrollToTopRequest,
         initialListState = initialListState,
@@ -4467,25 +4498,8 @@ internal fun MembersListContent(
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     canCreateAgents: Boolean = false,
-    createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = null,
-    createAgentMachines: List<SharedCreateAgentMachineOption> = emptyList(),
-    createAgentMachinesLoading: Boolean = false,
-    createAgentMachinesErrorMessage: String? = null,
-    createAgentCurrentAgentCount: Int = 0,
-    createAgentMaxAgents: Int = -1,
-    createAgentLoadMachines: () -> Unit = {},
-    createAgentRetryMachines: () -> Unit = {},
-    createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
-    createAgentRuntimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
-    createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
-    createAgentFormStore: build.raft.app.data.SharedCreateAgentFormStore? = null,
-    createAgentServerId: String? = null,
-    inviteHumanSubmit: (suspend (emails: List<String>) -> DataResult<Unit>)? = null,
-    inviteHumanJoinLinkLoading: Boolean = false,
-    inviteHumanJoinLinkUrl: String? = null,
-    inviteHumanJoinLinkCopied: Boolean = false,
-    inviteHumanJoinLinkCopy: (String) -> Unit = {},
-    inviteHumanLoadJoinLink: () -> Unit = {},
+    createAgent: MembersCreateAgentInputs = MembersCreateAgentInputs(),
+    inviteHuman: MembersInviteHumanInputs = MembersInviteHumanInputs(),
     agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     scrollToTopRequest: Int = 0,
@@ -4493,6 +4507,25 @@ internal fun MembersListContent(
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
     onRefresh: () -> Unit = {}
 ) {
+    val createAgentSubmit = createAgent.createAgentSubmit
+    val createAgentMachines = createAgent.createAgentMachines
+    val createAgentMachinesLoading = createAgent.createAgentMachinesLoading
+    val createAgentMachinesErrorMessage = createAgent.createAgentMachinesErrorMessage
+    val createAgentCurrentAgentCount = createAgent.createAgentCurrentAgentCount
+    val createAgentMaxAgents = createAgent.createAgentMaxAgents
+    val createAgentLoadMachines = createAgent.createAgentLoadMachines
+    val createAgentRetryMachines = createAgent.createAgentRetryMachines
+    val createAgentRuntimeModelsByMachineAndRuntime = createAgent.createAgentRuntimeModelsByMachineAndRuntime
+    val createAgentRuntimeModelLoadsInFlight = createAgent.createAgentRuntimeModelLoadsInFlight
+    val createAgentLoadRuntimeModels = createAgent.createAgentLoadRuntimeModels
+    val createAgentFormStore = createAgent.createAgentFormStore
+    val createAgentServerId = createAgent.createAgentServerId
+    val inviteHumanSubmit = inviteHuman.inviteHumanSubmit
+    val inviteHumanJoinLinkLoading = inviteHuman.inviteHumanJoinLinkLoading
+    val inviteHumanJoinLinkUrl = inviteHuman.inviteHumanJoinLinkUrl
+    val inviteHumanJoinLinkCopied = inviteHuman.inviteHumanJoinLinkCopied
+    val inviteHumanJoinLinkCopy = inviteHuman.inviteHumanJoinLinkCopy
+    val inviteHumanLoadJoinLink = inviteHuman.inviteHumanLoadJoinLink
     val errorStrings = localizedErrorPresentationStrings()
     val displayTitle =
         canonicalMembersDisplayText(
@@ -4850,6 +4883,55 @@ internal fun membersLazyItemCount(
     return fixedItems + agentItems + (if (showHumanDirectory && humansExpanded) humansCount else 0)
 }
 
+/**
+ * Parameter holders for [MembersDetailContent] (task #1130): the composable took 53 parameters,
+ * past the same 31-per-int `$changed` / `$default` mask boundary as [MembersAgentProfileTab].
+ * Same shape and same caveats as [MembersAgentRuntimeModelInputs]: plain unstable classes,
+ * behaviour unchanged, no `@Stable` / `@Immutable` later.
+ */
+private class MembersHumanRoleInputs(
+    val humanActorRole: String? = null,
+    val humanOwnerCount: Int? = null,
+    val humanAccessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull,
+    val onUpdateHumanRole: (suspend (String, MembersHumanServerRole) -> DataResult<SettingsServerActionResult>)? = null
+)
+
+private class MembersAgentDetailCallbacks(
+    val onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
+    val onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
+    val onApplyAgentRuntimeConfigProjection:
+        suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
+    val onUploadAgentAvatar: (suspend (MemberId, PlatformFile) -> DataResult<MemberProfile>)?,
+    val onPickAgentAvatarFile: suspend () -> DataResult<PlatformFile> = { DataResult.Empty(EmptyReason.NoMembers) },
+    val onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction) -> DataResult<AgentLifecycleActionResult>)?,
+    val agentWorkspaceTreeLoader: (suspend (MemberId) -> DataResult<AgentWorkspaceTreeSnapshot>)?,
+    val agentWorkspaceChildrenLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceChildrenSnapshot>)?,
+    val onCopyAgentDiagnostics: (String) -> Unit,
+    val onCopyAgentIssueReference: (String) -> Unit = onCopyAgentDiagnostics,
+    val onReportAgentIssue: (suspend (SharedAgentIssueReportRequest) -> DataResult<AgentIssueReportResult>)?
+)
+
+private class MembersDetailActions(
+    val onBack: () -> Unit,
+    val onOpenDirectMessage: () -> Unit,
+    val onOpenComputer: (() -> Unit)? = null,
+    val onCopyMemberId: () -> Unit,
+    val onRemoveMember: (() -> Unit)? = null,
+    val onOpenUrl: (String) -> Unit,
+    val onOpenReminderMessage: (String) -> Unit = {},
+    val onUnavailableAction: (String) -> Unit
+)
+
+private class MembersAgentDetailPresentation(
+    val pageVisibleTick: Int = 0,
+    val initialVisualMode: MembersAgentDetailVisualMode = MembersAgentDetailVisualMode.Profile,
+    val initialAgentTab: MembersAgentDetailTab? = null,
+    val agentPanelTabOrder: List<String> = emptyList(),
+    val onAgentPanelTabOrderChange: ((List<MembersAgentDetailTab>) -> Unit)? = null,
+    val initialAgentScopeSet: AgentScopeSet? = null,
+    val stableVisualCapture: Boolean = false
+)
+
 @Composable
 private fun MembersDetailContent(
     member: MemberProfile,
@@ -4858,60 +4940,64 @@ private fun MembersDetailContent(
     serverMembersState: SharedServerMembersState = SharedServerMembersState(),
     agentDetailState: MembersAgentDetailLoadState,
     agentActivityLoadState: MembersAgentActivityLoadState = MembersAgentActivityLoadState.Idle,
-    agentMachineRuntimes: List<String> = emptyList(),
-    agentRuntimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
-    agentRuntimeModelLoadsInFlight: Set<String> = emptySet(),
-    agentRuntimeModelErrorsByRuntime: Map<String, String> = emptyMap(),
-    agentRuntimeModelGenerationsByRuntime: Map<String, Long> = emptyMap(),
+    runtimeModels: MembersAgentRuntimeModelInputs = MembersAgentRuntimeModelInputs(),
     createAgentFormStore: SharedCreateAgentFormStore? = null,
     agentProfileEditAuthority: MembersAgentProfileEditAuthority? = null,
-    onAgentRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> },
     canViewPrivateAgentSurfaces: (MemberProfile, AgentDetailSnapshot?) -> Boolean,
     canManageAgent: (MemberProfile, AgentDetailSnapshot?) -> Boolean,
-    onBack: () -> Unit,
-    onOpenDirectMessage: () -> Unit,
-    onOpenComputer: (() -> Unit)? = null,
     /** Task #259: resolves the machine status row from the computers store. No default on purpose -- a silent fallback here is the #253 shape. */
     machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
-    onCopyMemberId: () -> Unit,
-    onRemoveMember: (() -> Unit)? = null,
-    humanActorRole: String? = null,
-    humanOwnerCount: Int? = null,
-    humanAccessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull,
-    onUpdateHumanRole: (suspend (String, MembersHumanServerRole) -> DataResult<SettingsServerActionResult>)? = null,
-    onOpenUrl: (String) -> Unit,
-    onOpenReminderMessage: (String) -> Unit = {},
+    actions: MembersDetailActions,
+    humanRole: MembersHumanRoleInputs = MembersHumanRoleInputs(),
     agentDetailActions: SharedAgentDetailActions? = null,
-    onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
-    onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
-    onApplyAgentRuntimeConfigProjection:
-        suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
-    onUploadAgentAvatar: (suspend (MemberId, PlatformFile) -> DataResult<MemberProfile>)?,
-    onPickAgentAvatarFile: suspend () -> DataResult<PlatformFile> = { DataResult.Empty(EmptyReason.NoMembers) },
-    onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction) -> DataResult<AgentLifecycleActionResult>)?,
-    agentWorkspaceTreeLoader: (suspend (MemberId) -> DataResult<AgentWorkspaceTreeSnapshot>)?,
-    agentWorkspaceChildrenLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceChildrenSnapshot>)?,
-    onCopyAgentDiagnostics: (String) -> Unit,
-    onCopyAgentIssueReference: (String) -> Unit = onCopyAgentDiagnostics,
-    onReportAgentIssue: (suspend (SharedAgentIssueReportRequest) -> DataResult<AgentIssueReportResult>)?,
-    onUnavailableAction: (String) -> Unit,
+    agentCallbacks: MembersAgentDetailCallbacks,
     timeContext: SlockTimeContext,
-    pageVisibleTick: Int = 0,
     sharedAgentDetailStore: SharedAgentDetailStore? = null,
-    initialVisualMode: MembersAgentDetailVisualMode = MembersAgentDetailVisualMode.Profile,
-    initialAgentTab: MembersAgentDetailTab? = null,
+    presentation: MembersAgentDetailPresentation = MembersAgentDetailPresentation(),
     accessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull,
-    agentPanelTabOrder: List<String> = emptyList(),
-    onAgentPanelTabOrderChange: ((List<MembersAgentDetailTab>) -> Unit)? = null,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     // #89: forwarded to the Permissions tab so it can call
     // `agentScopes` / `updateAgentScopes` / `resetAgentScopes`. When null
     // the Permissions tab renders an "Agent API not available" error banner.
-    agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
-    initialAgentScopeSet: AgentScopeSet? = null,
-    stableVisualCapture: Boolean = false
+    agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null
 ) {
+    val agentMachineRuntimes = runtimeModels.agentMachineRuntimes
+    val agentRuntimeModelsByRuntime = runtimeModels.agentRuntimeModelsByRuntime
+    val agentRuntimeModelLoadsInFlight = runtimeModels.agentRuntimeModelLoadsInFlight
+    val agentRuntimeModelErrorsByRuntime = runtimeModels.agentRuntimeModelErrorsByRuntime
+    val agentRuntimeModelGenerationsByRuntime = runtimeModels.agentRuntimeModelGenerationsByRuntime
+    val onAgentRuntimeModelsRequest = runtimeModels.onAgentRuntimeModelsRequest
+    val humanActorRole = humanRole.humanActorRole
+    val humanOwnerCount = humanRole.humanOwnerCount
+    val humanAccessMode = humanRole.humanAccessMode
+    val onUpdateHumanRole = humanRole.onUpdateHumanRole
+    val onUpdateAgentProfile = agentCallbacks.onUpdateAgentProfile
+    val onApplyAgentProfileResult = agentCallbacks.onApplyAgentProfileResult
+    val onApplyAgentRuntimeConfigProjection = agentCallbacks.onApplyAgentRuntimeConfigProjection
+    val onUploadAgentAvatar = agentCallbacks.onUploadAgentAvatar
+    val onPickAgentAvatarFile = agentCallbacks.onPickAgentAvatarFile
+    val onAgentLifecycleAction = agentCallbacks.onAgentLifecycleAction
+    val agentWorkspaceTreeLoader = agentCallbacks.agentWorkspaceTreeLoader
+    val agentWorkspaceChildrenLoader = agentCallbacks.agentWorkspaceChildrenLoader
+    val onCopyAgentDiagnostics = agentCallbacks.onCopyAgentDiagnostics
+    val onCopyAgentIssueReference = agentCallbacks.onCopyAgentIssueReference
+    val onReportAgentIssue = agentCallbacks.onReportAgentIssue
+    val onBack = actions.onBack
+    val onOpenDirectMessage = actions.onOpenDirectMessage
+    val onOpenComputer = actions.onOpenComputer
+    val onCopyMemberId = actions.onCopyMemberId
+    val onRemoveMember = actions.onRemoveMember
+    val onOpenUrl = actions.onOpenUrl
+    val onOpenReminderMessage = actions.onOpenReminderMessage
+    val onUnavailableAction = actions.onUnavailableAction
+    val pageVisibleTick = presentation.pageVisibleTick
+    val initialVisualMode = presentation.initialVisualMode
+    val initialAgentTab = presentation.initialAgentTab
+    val agentPanelTabOrder = presentation.agentPanelTabOrder
+    val onAgentPanelTabOrderChange = presentation.onAgentPanelTabOrderChange
+    val initialAgentScopeSet = presentation.initialAgentScopeSet
+    val stableVisualCapture = presentation.stableVisualCapture
     val errorStrings = localizedErrorPresentationStrings()
     val detail = (agentDetailState as? MembersAgentDetailLoadState.Content)?.detail
     val managementUnavailable = stringResource(MR.strings.member_error_action_unavailable)
@@ -5436,14 +5522,16 @@ private fun MembersDetailContent(
                                     MembersAgentProfileTab(
                                         member = member,
                                         detail = detail,
-                                        agentMachineRuntimes = agentMachineRuntimes,
-                                        agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
-                                        agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
-                                        agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
-                                        agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
+                                        runtimeModels = MembersAgentRuntimeModelInputs(
+                                            agentMachineRuntimes = agentMachineRuntimes,
+                                            agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
+                                            agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
+                                            agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
+                                            agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
+                                            onAgentRuntimeModelsRequest = onAgentRuntimeModelsRequest
+                                        ),
                                         createAgentFormStore = createAgentFormStore,
                                         agentProfileEditAuthority = agentProfileEditAuthority,
-                                        onAgentRuntimeModelsRequest = onAgentRuntimeModelsRequest,
                                         canManage = canManage,
                                         agentStatusIndicatorState = agentStatusIndicatorState,
                                         agentStatusObservedState = agentStatusObservedState,
@@ -5481,17 +5569,19 @@ private fun MembersDetailContent(
                                         onApplyAgentProfileResult = onApplyAgentProfileResult,
                                         onApplyAgentRuntimeConfigProjection = onApplyAgentRuntimeConfigProjection,
                                         onUnavailableAction = onUnavailableAction,
-                                        lifecycleInFlight = lifecycleInFlight,
-                                        diagnosticActionState = effectiveDiagnosticActionState,
-                                        onRunLifecycleAction = { runLifecycleAction(it) },
-                                        onOpenRestartReset = { openRestartResetDialog() },
-                                        onCopyDiagnostics = { copyDiagnostics() },
-                                        onReportIssue = {
-                                            issueReportReceipt = null
-                                            issueReportReferenceCopied = false
-                                            reportIssueDialogOpen = true
-                                        },
-                                        onOpenComputer = onOpenComputer,
+                                        lifecycle = MembersAgentLifecycleInputs(
+                                            lifecycleInFlight = lifecycleInFlight,
+                                            diagnosticActionState = effectiveDiagnosticActionState,
+                                            onRunLifecycleAction = { runLifecycleAction(it) },
+                                            onOpenRestartReset = { openRestartResetDialog() },
+                                            onCopyDiagnostics = { copyDiagnostics() },
+                                            onReportIssue = {
+                                                issueReportReceipt = null
+                                                issueReportReferenceCopied = false
+                                                reportIssueDialogOpen = true
+                                            },
+                                            onOpenComputer = onOpenComputer
+                                        ),
                                         machineStatusRow = machineStatusRow,
                                         timeContext = timeContext,
                                         fixtureStatusFallbackEnabled = stableVisualCapture,
@@ -7911,18 +8001,68 @@ private fun MembersAgentProfileHeader(
     }
 }
 
+/**
+ * Parameter holders for [MembersAgentProfileTab]. They are deliberate and must stay.
+ *
+ * Why: the tab used to take 36 parameters, past the Compose compiler's 31-parameters-per-int
+ * packing boundary for the generated `$changed` / `$default` masks (Composer + 4 `$changed`
+ * + 2 `$default` ints), and its body is ~1070 lines, which compiles to one method with
+ * ~270 registers and ~5.6k dex instructions. On release 1.11.0 Android alpha builds this
+ * function crashed on cold entry with a ClassCastException inside [rememberCoroutineScope]
+ * (a Boolean came back from the slot where the scope canceller was expected). Two
+ * diagnostic builds that only added an annotation or one read at the function head were
+ * rejected outright by the ART verifier on this function: the dex showed the live
+ * `$default1` mask register being reused as a reference temporary inside the default
+ * lambda `remember {}` blocks. The generated code for this signature sits on a register
+ * allocation boundary; every probe that changed this function's shape changed the outcome,
+ * while probes on the callers or the lazy list did not.
+ *
+ * Bundling the 6 runtime-model inputs and the 7 lifecycle/diagnostic inputs brings the
+ * signature to 25 parameters (1 `$changed` int fewer, `$default1` gone) and changes the
+ * register allocation of the whole method. This is a mitigation with two effects at once
+ * (a different signature/register shape and holder-based comparison); it does not establish
+ * a safe parameter threshold (26–31 were not tested). The holders are unpacked into same-named locals
+ * at the top of the function so the body is unchanged. Cost: the holders are plain
+ * classes holding Map/List/lambda members, so Compose treats them as unstable, and the
+ * caller builds new instances on each recomposition; the tab therefore no longer skips
+ * (the same cost as `@NonSkippableComposable`). That is acceptable for one screen of
+ * content. Do not add `@Stable` / `@Immutable` to the holders later as an "optimisation":
+ * it changes the comparison semantics. Splitting the function into smaller composables is the
+ * long-term shape and is tracked separately (task #1130), together with the other
+ * >31-parameter composables in this file.
+ *
+ * Verification is device-only (compiler layer): alpha build 1110013 (this exact code on
+ * 8a8ca1b11e) on cloud device vjdp, Members → agent detail, 6 cold starts, 0 crashes,
+ * 0 VerifyError, pid unchanged; the unbundled base crashed 6/6 on the same path in earlier
+ * rounds (1110001–1110005, 1110007), not all on the same device. The other >31-parameter
+ * composables in this file were not exercised by this verification.
+ */
+private class MembersAgentRuntimeModelInputs(
+    val agentMachineRuntimes: List<String> = emptyList(),
+    val agentRuntimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
+    val agentRuntimeModelLoadsInFlight: Set<String> = emptySet(),
+    val agentRuntimeModelErrorsByRuntime: Map<String, String> = emptyMap(),
+    val agentRuntimeModelGenerationsByRuntime: Map<String, Long> = emptyMap(),
+    val onAgentRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> }
+)
+
+private class MembersAgentLifecycleInputs(
+    val lifecycleInFlight: String? = null,
+    val diagnosticActionState: MembersAgentDiagnosticActionState? = null,
+    val onRunLifecycleAction: (MembersAgentLifecycleAction) -> Unit = {},
+    val onOpenRestartReset: () -> Unit = {},
+    val onCopyDiagnostics: () -> Unit = {},
+    val onReportIssue: () -> Unit = {},
+    val onOpenComputer: (() -> Unit)? = null
+)
+
 @Composable
 private fun MembersAgentProfileTab(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
-    agentMachineRuntimes: List<String> = emptyList(),
-    agentRuntimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
-    agentRuntimeModelLoadsInFlight: Set<String> = emptySet(),
-    agentRuntimeModelErrorsByRuntime: Map<String, String> = emptyMap(),
-    agentRuntimeModelGenerationsByRuntime: Map<String, Long> = emptyMap(),
+    runtimeModels: MembersAgentRuntimeModelInputs = MembersAgentRuntimeModelInputs(),
     createAgentFormStore: SharedCreateAgentFormStore? = null,
     agentProfileEditAuthority: MembersAgentProfileEditAuthority? = null,
-    onAgentRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> },
     canManage: Boolean,
     agentStatusObservedState: SlockAgentStatusIndicatorState?,
     agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
@@ -7941,18 +8081,25 @@ private fun MembersAgentProfileTab(
     onApplyAgentRuntimeConfigProjection:
         suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
     onUnavailableAction: (String) -> Unit,
-    lifecycleInFlight: String? = null,
-    diagnosticActionState: MembersAgentDiagnosticActionState? = null,
-    onRunLifecycleAction: (MembersAgentLifecycleAction) -> Unit = {},
-    onOpenRestartReset: () -> Unit = {},
-    onCopyDiagnostics: () -> Unit = {},
-    onReportIssue: () -> Unit = {},
-    onOpenComputer: (() -> Unit)? = null,
+    lifecycle: MembersAgentLifecycleInputs = MembersAgentLifecycleInputs(),
     machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
     timeContext: SlockTimeContext,
     fixtureStatusFallbackEnabled: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val agentMachineRuntimes = runtimeModels.agentMachineRuntimes
+    val agentRuntimeModelsByRuntime = runtimeModels.agentRuntimeModelsByRuntime
+    val agentRuntimeModelLoadsInFlight = runtimeModels.agentRuntimeModelLoadsInFlight
+    val agentRuntimeModelErrorsByRuntime = runtimeModels.agentRuntimeModelErrorsByRuntime
+    val agentRuntimeModelGenerationsByRuntime = runtimeModels.agentRuntimeModelGenerationsByRuntime
+    val onAgentRuntimeModelsRequest = runtimeModels.onAgentRuntimeModelsRequest
+    val lifecycleInFlight = lifecycle.lifecycleInFlight
+    val diagnosticActionState = lifecycle.diagnosticActionState
+    val onRunLifecycleAction = lifecycle.onRunLifecycleAction
+    val onOpenRestartReset = lifecycle.onOpenRestartReset
+    val onCopyDiagnostics = lifecycle.onCopyDiagnostics
+    val onReportIssue = lifecycle.onReportIssue
+    val onOpenComputer = lifecycle.onOpenComputer
     val errorStrings = localizedErrorPresentationStrings()
     val summary = detail?.summary
     val runtimeConfigResolution = remember(summary) { summary.toMembersRuntimeConfigResolution() }
