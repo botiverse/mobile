@@ -401,6 +401,9 @@ internal class SlockKuiklyPageRenderView(
     }
 
     private fun syncChildVisibility() {
+        // Retained hosts are stacked. Hide the entire inactive host, including its
+        // opaque background, so it cannot cover the active sibling's content.
+        visibility = if (childActive) View.VISIBLE else View.INVISIBLE
         val shouldBeRendered =
             slockKuiklyChildShouldRender(childActive = childActive, childAttached = childDidAttach)
         val shouldBeLifecycleVisible =

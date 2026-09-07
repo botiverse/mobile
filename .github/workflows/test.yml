@@ -868,6 +868,7 @@ jobs:
             # docs/instrumented-manual-harnesses.md.)
             adb logcat -c
             # The accepted frame does not exist on readiness failure. Keep its extraction best-effort so terminal evidence and the real instrumentation assertion still run. The retry wrapper runs am instrument + assert first (bounded-retrying infra-abort only); its exit is deferred through RC so terminal evidence is still captured on a real failure before the line exits non-zero.
+            scripts/ci/run-instrumentation-with-retry.sh inactive-host-rendering-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockKuiklyInactiveHostRenderingTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
             scripts/ci/run-instrumentation-with-retry.sh child-page-visibility-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockChildPageVisibilityConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner; RC=$?; adb exec-out run-as build.raft.app.connectedtest cat files/child-page-visibility-accepted.png > child-page-visibility-accepted.png || rm -f child-page-visibility-accepted.png; adb exec-out screencap -p > child-page-visibility-terminal.png; adb logcat -d -v threadtime > child-page-visibility-logcat.txt; exit $RC
             scripts/ci/run-instrumentation-with-retry.sh pager-scroll-probe-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockPagerScrollProbeConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
             scripts/ci/run-instrumentation-with-retry.sh release-notes-section-gap-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockReleaseNotesSectionGapConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
@@ -920,6 +921,7 @@ jobs:
             attachment-atomic-sink-receipt.txt
             attachment-download-runtime-instrumentation.txt
             performance-trace-feedback-instrumentation.txt
+            inactive-host-rendering-instrumentation.txt
             child-page-visibility-instrumentation.txt
             child-page-visibility-accepted.png
             child-page-visibility-terminal.png
