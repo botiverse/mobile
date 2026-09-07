@@ -3,6 +3,8 @@ package build.raft.app.shared
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Rect
+import android.os.Looper
+import android.os.SystemClock
 import build.raft.app.core.data.diagnostics.SlockAppLog
 import android.util.Size
 import android.view.LayoutInflater
@@ -482,6 +484,13 @@ internal class SlockKuiklyPageRenderView(
     }
 
     private fun traceChildProbe(stage: String, extra: String = "") {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            val receiptAt = SystemClock.elapsedRealtime()
+            post {
+                if (!destroyed) traceChildProbe(stage, "$extra receiptAtMs=$receiptAt sampledOnUi=true")
+            }
+            return
+        }
         if (probeRecords >= 180) return
         probeRecords++
         val tab = runCatching { JSONObject(pageDataText).optString("tab") }
