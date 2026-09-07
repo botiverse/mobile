@@ -37,6 +37,7 @@ import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.messageStreamChannelId
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
+import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
@@ -156,6 +157,8 @@ internal class SharedHomeStore(
     private val conversationIdentityRevisionByServer = linkedMapOf<String, Long>()
 
     private var loadJob: Job? = null
+    /** Monotonic fence for non-cooperative loads that outlive an auth/session reset. */
+    private val homeSessionGeneration = atomic(0L)
     private var agentDirectMessageStatusJob: Job? = null
     private var serverOrderLoadJob: Job? = null
     private var notificationRequestGeneration: Long = 0L
@@ -316,6 +319,22 @@ internal class SharedHomeStore(
         }
     }
 
+    /**
+     * Retires the current in-memory Home projection after an auth/session boundary.
+     *
+     * [clear] intentionally only retires jobs and auxiliary indexes for ordinary teardown. A
+     * session reset must also replace the published state, otherwise the old account's rows stay
+     * visible (and can suppress the successor account's first Home load). Durable identity
+     * snapshots are owned by the persistence slice and are deliberately left untouched.
+     */
+    fun reset() {
+        homeSessionGeneration.incrementAndGet()
+        clear()
+        dismissedLocalNotificationIds.clear()
+        homeSurfaceVisible = true
+        _state.value = SharedHomeState()
+    }
+
     suspend fun awaitRealtimeSettled() {
         while (true) {
             val observedLoad = loadJob
@@ -431,7 +450,10 @@ internal class SharedHomeStore(
             SharedHomeIntent.Start ->
                 load(
                     _state.value.serverSwitchState,
-                    showRefreshAffordance = _state.value.content !is SharedHomeContentState.Content,
+                    showRefreshAffordance =
+                        (_state.value.content as? SharedHomeContentState.Content)
+                            ?.needsNetworkRefresh
+                            ?: true,
                 )
             SharedHomeIntent.Refresh -> {
                 val nextSwitch = _state.value.serverSwitchState.refresh()
@@ -600,6 +622,52 @@ internal class SharedHomeStore(
                 handleReadReceiptFailure(intent.request)
         }
         }
+    }
+
+    /**
+     * Hydrates the identity-bound Home snapshot without starting a network request.
+     *
+     * Cold-start callers use this while the auth gate is still reconciling a cached session.
+     * The follow-up [SharedHomeIntent.Start] is deliberately separate so an expired token cannot
+     * make the first paint wait behind the auth refresh. The durable slice remains the sole cache
+     * reader; no product content is transported through route/pageData.
+    */
+    internal suspend fun hydrateCachedHome(serverId: ServerId): Boolean {
+        withStateDiagnosticsContext(SharedHomeIntent.Start) {
+            hydrateCachedHomeForServer(serverId)
+        }
+        val content = _state.value.content as? SharedHomeContentState.Content ?: return false
+        return content.isDurableIdentityCache &&
+            content.needsNetworkRefresh &&
+            content.snapshot.server.id == serverId &&
+            content.snapshot.currentMember.id.value == content.session.user.id
+    }
+
+    private suspend fun hydrateCachedHomeForServer(serverId: ServerId) {
+        val session = authStore.readSession() ?: return
+        val server = session.servers.firstOrNull { it.id == serverId.value } ?: return
+        val sessionForServer =
+            session.copy(
+                selectedServerId = server.id,
+                selectedServerSlug = server.slug
+            )
+        val current = _state.value.content as? SharedHomeContentState.Content
+        if (
+            current != null &&
+                current.snapshot.server.id == serverId &&
+                current.snapshot.currentMember.id.value == sessionForServer.user.id
+        ) {
+            return
+        }
+        reduceState(
+            _state.value.copy(
+                content = SharedHomeContentState.Loading(sessionForServer)
+            )
+        )
+        diagnosticsLogger(
+            "home_cached_hydrate_result serverId=${serverId.value} " +
+                "content=${_state.value.content is SharedHomeContentState.Content}"
+        )
     }
 
     private suspend fun withStateDiagnosticsContext(intent: SharedHomeIntent, block: suspend () -> Unit) {
@@ -1636,6 +1704,7 @@ internal class SharedHomeStore(
         request: HomeServerSwitchState,
         showRefreshAffordance: Boolean
     ) {
+        val sessionGeneration = homeSessionGeneration.value
         diagnosticsLogger("home_ui_load_start refreshAffordance=$showRefreshAffordance")
         val previous = _state.value.content
         reduceState(
@@ -1645,6 +1714,7 @@ internal class SharedHomeStore(
         )
         try {
             val session = authStore.readSession()
+            if (sessionGeneration != homeSessionGeneration.value) return
             if (session == null) {
                 diagnosticsLogger("home_ui_error source=shared_home_load code=unauthenticated mapped=home_error_panel")
                 reduceState(
@@ -1676,6 +1746,7 @@ internal class SharedHomeStore(
             }
 
             val activeSession = authStore.readSession() ?: session
+            if (sessionGeneration != homeSessionGeneration.value) return
             val activeServerId = requestedServerId ?: activeSession.currentServerId
             reconcileNotificationAuthority(activeSession, activeServerId)
             reduceState(
@@ -1696,6 +1767,8 @@ internal class SharedHomeStore(
                         }
                 )
             )
+            markCachedHomeNetworkRefreshStarted()
+            if (sessionGeneration != homeSessionGeneration.value) return
             val activeServer = activeServerId?.let(::ServerId)
             loadHomeFromNetwork(
                 request = request,
@@ -1703,16 +1776,28 @@ internal class SharedHomeStore(
                 activeServer = activeServer,
                 priority = DataRequestPriority.Visible,
                 forceNetwork = false,
-                refreshNotificationsAfterLoad = true
+                refreshNotificationsAfterLoad = true,
+                sessionGeneration = sessionGeneration,
             )
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (throwable: Throwable) {
+            if (sessionGeneration != homeSessionGeneration.value) return
             diagnosticsLogger(
                 "home_ui_exception source=shared_home_load errorType=${throwable.safeHomeStoreDiagnosticsType()} mapped=${_state.value.content.refreshFailureMapping()} code=home_network"
             )
             reduceState(_state.value.copy(content = _state.value.content.asRefreshFailed("home_network")))
         }
+    }
+
+    private fun markCachedHomeNetworkRefreshStarted() {
+        val current = _state.value.content as? SharedHomeContentState.Content ?: return
+        if (!current.needsNetworkRefresh) return
+        reduceState(
+            _state.value.copy(
+                content = current.copy(needsNetworkRefresh = false)
+            )
+        )
     }
 
     private suspend fun loadHomeFromNetwork(
@@ -1721,13 +1806,32 @@ internal class SharedHomeStore(
         activeServer: ServerId?,
         priority: DataRequestPriority,
         forceNetwork: Boolean,
-        refreshNotificationsAfterLoad: Boolean
+        refreshNotificationsAfterLoad: Boolean,
+        sessionGeneration: Long,
     ) {
         val activityUnreadRequestOwner =
             activeServer?.let { server ->
                 readReceiptOwnerFactory?.invoke(server.value, activeSession.user.id)
             }
         val dataResult = dataSource.loadHome(serverId = activeServer, priority = priority, forceNetwork = forceNetwork)
+        if (sessionGeneration != homeSessionGeneration.value) {
+            diagnosticsLogger("home_network_result_drop reason=session_generation_changed")
+            return
+        }
+        val latestSession = authStore.readSession()
+        val expectedServerId = activeServer?.value ?: activeSession.currentServerId
+        if (
+            latestSession == null ||
+                latestSession.user.id != activeSession.user.id ||
+                latestSession.currentServerId != expectedServerId
+        ) {
+            diagnosticsLogger(
+                "home_network_result_drop reason=auth_authority_changed " +
+                    "expectedAccount=${activeSession.user.id} actualAccount=${latestSession?.user?.id ?: "_"} " +
+                    "expectedServer=${expectedServerId ?: "_"} actualServer=${latestSession?.currentServerId ?: "_"}"
+            )
+            return
+        }
         val previousContent = _state.value.content as? SharedHomeContentState.Content
         val preparedHydrates =
             (dataResult as? DataResult.Content)?.data?.let { snapshot ->
@@ -1774,6 +1878,10 @@ internal class SharedHomeStore(
         val resultServerId = (result as? SharedHomeContentState.Content)?.snapshot?.server?.id
             ?: activeServer
         val latestSwitch = _state.value.serverSwitchState
+        if (sessionGeneration != homeSessionGeneration.value) {
+            diagnosticsLogger("home_network_result_drop reason=session_generation_changed")
+            return
+        }
         if (resultServerId == null || latestSwitch.isCurrent(request.requestGeneration, resultServerId)) {
             val liveActivityUnreadOwner =
                 activeServer?.let { server ->
@@ -4182,7 +4290,11 @@ sealed interface SharedHomeContentState {
         val snapshot: HomeSnapshot,
         val session: StoredAuthSession,
         val contentRefreshing: Boolean = false,
-        val baseSnapshot: HomeSnapshot = snapshot
+        val baseSnapshot: HomeSnapshot = snapshot,
+        /** Durable identity cache restored before the first authoritative Home request. */
+        val isDurableIdentityCache: Boolean = false,
+        /** True until the first network-backed Home refresh is admitted. */
+        val needsNetworkRefresh: Boolean = isDurableIdentityCache
     ) : SharedHomeContentState
 }
 
@@ -4191,7 +4303,11 @@ private fun SharedHomeContentState.asRefreshing(
     showRefreshAffordance: Boolean = true
 ): SharedHomeContentState =
     when (this) {
-        is SharedHomeContentState.Content -> copy(contentRefreshing = showRefreshAffordance)
+        is SharedHomeContentState.Content ->
+            copy(
+                contentRefreshing = showRefreshAffordance,
+                needsNetworkRefresh = false
+            )
         is SharedHomeContentState.Empty -> SharedHomeContentState.Loading(session ?: this.session)
         is SharedHomeContentState.Loading -> SharedHomeContentState.Loading(session ?: this.session)
         is SharedHomeContentState.Error -> SharedHomeContentState.Loading(session ?: this.session)

@@ -84,7 +84,13 @@ class SharedAuthGateStore(
                     null
                 }
         if (cachedReady != null) {
-            setGateState(SharedAuthGateState.Ready(cachedReady), source = "restore_cached_ready")
+            setGateState(
+                SharedAuthGateState.Ready(
+                    session = cachedReady,
+                    phase = SharedAuthReadyPhase.CachedRestorePending
+                ),
+                source = "restore_cached_ready"
+            )
             restoreAfterCachedReady(cachedReady)
             return
         }
@@ -118,14 +124,23 @@ class SharedAuthGateStore(
         try {
             when (val result = restoreSession()) {
                 is SharedAuthResult.Success ->
-                    setGateState(result.data.asGateState(), source = "restore_background_result")
+                    setGateState(
+                        result.data.asGateState().withCompletedCachedRestore(),
+                        source = "restore_background_result"
+                    )
                 SharedAuthResult.Unauthenticated ->
                     setGateState(SharedAuthGateState.AuthRequired, source = "restore_background_result")
                 is SharedAuthResult.Failure -> {
                     diagnosticsLogger(
                         "auth_gate_restore_background_failure code=${result.code} message=${result.message.authGateDiagnosticsToken()} keeping_ready=true"
                     )
-                    setGateState(SharedAuthGateState.Ready(previousReady), source = "restore_background_keep_ready")
+                    setGateState(
+                        SharedAuthGateState.Ready(
+                            session = previousReady,
+                            phase = SharedAuthReadyPhase.CachedRestoreCompleted
+                        ),
+                        source = "restore_background_keep_ready"
+                    )
                 }
             }
         } catch (cancellation: CancellationException) {
@@ -134,7 +149,13 @@ class SharedAuthGateStore(
             diagnosticsLogger(
                 "auth_gate_restore_background_exception errorType=${throwable.safeAuthGateDiagnosticsType()} keeping_ready=true"
             )
-            setGateState(SharedAuthGateState.Ready(previousReady), source = "restore_background_exception_keep_ready")
+            setGateState(
+                SharedAuthGateState.Ready(
+                    session = previousReady,
+                    phase = SharedAuthReadyPhase.CachedRestoreCompleted
+                ),
+                source = "restore_background_exception_keep_ready"
+            )
         }
     }
 
@@ -154,7 +175,10 @@ class SharedAuthGateStore(
                     diagnosticsLogger(
                         "auth_gate_silent_refresh_failure code=${result.code} message=${result.message.authGateDiagnosticsToken()} keeping_ready=true"
                     )
-                    setGateState(previousReady, source = "silent_refresh_keep_ready")
+                    setGateState(
+                        previousReady.completedAfterCachedRestore(),
+                        source = "silent_refresh_keep_ready"
+                    )
                 }
             }
         } catch (cancellation: CancellationException) {
@@ -163,7 +187,10 @@ class SharedAuthGateStore(
             diagnosticsLogger(
                 "auth_gate_silent_refresh_exception errorType=${throwable.safeAuthGateDiagnosticsType()} keeping_ready=true"
             )
-            setGateState(previousReady, source = "silent_refresh_exception_keep_ready")
+            setGateState(
+                previousReady.completedAfterCachedRestore(),
+                source = "silent_refresh_exception_keep_ready"
+            )
         }
     }
 
@@ -233,10 +260,33 @@ sealed interface SharedAuthGateState {
     data class EmailVerificationRequired(val session: StoredAuthSession) : SharedAuthGateState
     data class ProfileSetupRequired(val session: StoredAuthSession) : SharedAuthGateState
     data class ServerRequired(val session: StoredAuthSession) : SharedAuthGateState
-    data class Ready(val session: StoredAuthSession) : SharedAuthGateState
+    data class Ready(
+        val session: StoredAuthSession,
+        val phase: SharedAuthReadyPhase = SharedAuthReadyPhase.Confirmed
+    ) : SharedAuthGateState
     data class BootstrapRecoveryRequired(val session: StoredAuthSession) : SharedAuthGateState
     data class Error(val message: String) : SharedAuthGateState
 }
+
+enum class SharedAuthReadyPhase {
+    Confirmed,
+    CachedRestorePending,
+    CachedRestoreCompleted
+}
+
+private fun SharedAuthGateState.withCompletedCachedRestore(): SharedAuthGateState =
+    if (this is SharedAuthGateState.Ready) {
+        copy(phase = SharedAuthReadyPhase.CachedRestoreCompleted)
+    } else {
+        this
+    }
+
+private fun SharedAuthGateState.Ready.completedAfterCachedRestore(): SharedAuthGateState.Ready =
+    if (phase == SharedAuthReadyPhase.CachedRestorePending) {
+        copy(phase = SharedAuthReadyPhase.CachedRestoreCompleted)
+    } else {
+        this
+    }
 
 private fun StoredAuthSession.asGateState(): SharedAuthGateState =
     if (qaBootstrap != null && !qaBootstrapLaunchAuthorized) {
@@ -251,11 +301,12 @@ private fun StoredAuthSession.asGateState(): SharedAuthGateState =
         SharedAuthGateState.Ready(this)
     }
 
-private fun StoredAuthSession.isColdStartCachedReadyEligible(): Boolean =
+internal fun StoredAuthSession.isColdStartCachedReadyEligible(): Boolean =
     qaBootstrap == null &&
     user.id.isNotBlank() &&
         accessToken.isNotBlank() &&
         !selectedServerId.isNullOrBlank() &&
+        servers.any { it.id == selectedServerId } &&
         asGateState() is SharedAuthGateState.Ready
 
 private val SharedAuthGateIntent.logSource: String

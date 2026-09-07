@@ -138,9 +138,11 @@ import build.raft.app.data.InMemorySlockAuthSessionStore
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthErrorCode
 import build.raft.app.data.SharedAuthGateIntent
+import build.raft.app.data.SharedAuthReadyPhase
 import build.raft.app.data.SharedAuthGateState
 import build.raft.app.data.SharedAuthGateViewModel
 import build.raft.app.data.SharedAuthResult
+import build.raft.app.data.isColdStartCachedReadyEligible
 import build.raft.app.data.SlockAuthSessionTerminalSource
 import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersPickerSlice
@@ -1313,9 +1315,6 @@ internal fun appShellForegroundResumePlan(
     }
 }
 
-internal fun appShellDefersReadyGraph(authGateState: SharedAuthGateState): Boolean =
-    authGateState == SharedAuthGateState.Restoring
-
 internal enum class AppShellVisibleRefreshSignal {
     Lifecycle,
     PageDidAppear
@@ -1483,20 +1482,92 @@ internal fun appShellBottomTabsVisible(
     }
 
 internal fun sharedHomeShouldStartOnActive(active: Boolean, sessionReady: Boolean, state: SharedHomeState): Boolean =
-    active && sessionReady && (state.content !is SharedHomeContentState.Content || state.homeRealtimeDirty)
+    active &&
+        sessionReady &&
+        (
+            state.content !is SharedHomeContentState.Content ||
+                state.homeRealtimeDirty ||
+                (state.content as? SharedHomeContentState.Content)?.needsNetworkRefresh == true
+        )
 
 internal fun appShellParentShouldStartHome(
     selectedTab: String,
     selectedHomeDestination: String?,
     readyServerId: String?,
     state: SharedHomeState,
-    pageVisible: Boolean = true
+    pageVisible: Boolean = true,
+    readyAccountId: String? = null
 ): Boolean =
     pageVisible &&
         retainedAppShellSelectedTab(selectedTab) == "home" &&
         selectedHomeDestination == null &&
         !readyServerId.isNullOrBlank() &&
-        sharedHomeShouldStartOnActive(active = true, sessionReady = true, state = state)
+        (
+            state.content.let { content ->
+                content is SharedHomeContentState.Content &&
+                    (
+                        content.snapshot.server.id.value != readyServerId ||
+                            (
+                                readyAccountId != null &&
+                                    content.snapshot.currentMember.id.value != readyAccountId
+                            )
+                    )
+            } ||
+                sharedHomeShouldStartOnActive(active = true, sessionReady = true, state = state)
+        )
+
+internal fun appShellAuthoritativeHomeStartAllowed(
+    authGateState: SharedAuthGateState,
+    setupAdmissionAllowsHome: Boolean
+): Boolean {
+    val ready = authGateState as? SharedAuthGateState.Ready ?: return false
+    return setupAdmissionAllowsHome && ready.phase != SharedAuthReadyPhase.CachedRestorePending
+}
+
+internal fun appShellCanRenderCachedHomePreview(
+    readySession: StoredAuthSession?,
+    readyPhase: SharedAuthReadyPhase?,
+    featureDecision: ServerSetupFeatureDecision,
+    setupAdmissionAllowsHome: Boolean,
+    setupAdmissionState: ServerSetupAdmissionState? = null,
+    readyServerId: String?,
+    selectedTab: String = "home",
+    selectedHomeDestination: String? = null,
+    pageVisible: Boolean = true,
+    state: SharedHomeState
+): Boolean {
+    if (!pageVisible || retainedAppShellSelectedTab(selectedTab) != "home" || selectedHomeDestination != null) {
+        return false
+    }
+    val session = readySession ?: return false
+    val phase = readyPhase ?: return false
+    if (phase == SharedAuthReadyPhase.Confirmed) return false
+    if (
+        phase == SharedAuthReadyPhase.CachedRestoreCompleted &&
+        featureDecision != ServerSetupFeatureDecision.Checking
+    ) {
+        return false
+    }
+    if (setupAdmissionState is ServerSetupAdmissionState.Blocked || setupAdmissionState is ServerSetupAdmissionState.Failed) {
+        return false
+    }
+    if (
+        !setupAdmissionAllowsHome &&
+        featureDecision != ServerSetupFeatureDecision.Checking &&
+        featureDecision != ServerSetupFeatureDecision.Bypassed
+    ) {
+        return false
+    }
+    val serverId = readyServerId?.trim()?.takeIf { it.isNotBlank() } ?: return false
+    val content = state.content as? SharedHomeContentState.Content ?: return false
+    return content.isDurableIdentityCache &&
+        content.needsNetworkRefresh &&
+        content.snapshot.server.id.value == serverId &&
+        content.snapshot.currentMember.id.value == session.user.id &&
+        content.session.user.id == session.user.id &&
+        content.session.currentServerId == serverId &&
+        session.servers.any { it.id == serverId }
+}
 
 internal fun appShellNavigationServerId(
     selectedServerId: String?,
@@ -2010,6 +2081,17 @@ private fun SlockAppShellReadyContent(
             authGateState = nextState
         }
     }
+    var cachedRestoreSession by remember { mutableStateOf<StoredAuthSession?>(null) }
+    LaunchedEffect(shellAuthStore, authGateState) {
+        if (authGateState == SharedAuthGateState.Restoring) {
+            cachedRestoreSession =
+                runCatchingPreservingCancellation { shellAuthStore.readSession() }
+                    .getOrNull()
+                    ?.takeIf { it.isColdStartCachedReadyEligible() }
+        } else if (authGateState is SharedAuthGateState.AuthRequired) {
+            cachedRestoreSession = null
+        }
+    }
     var consumedInitialAuthRestoreTick by remember { mutableStateOf(0) }
     LaunchedEffect(initialAuthRestoreTick) {
         if (
@@ -2261,7 +2343,10 @@ private fun SlockAppShellReadyContent(
             authGateViewModel.dispatch(authDecision.intent)
         }
     }
-    if (appShellDefersReadyGraph(authGateState)) {
+    // Preserve the cheap bootstrap-only path for signed-out/unknown sessions. A valid local
+    // session is discovered by the effect above; once present, the Home graph is allowed to
+    // materialize so its identity-bound durable snapshot can paint before remote auth settles.
+    if (authGateState == SharedAuthGateState.Restoring && cachedRestoreSession == null) {
         if (suppressRestoreLanding) {
             AppShellSilentRestoreContent()
         } else {
@@ -2269,6 +2354,7 @@ private fun SlockAppShellReadyContent(
         }
         return
     }
+    val shellScope = rememberSlockAppShellScope(adaptivePane)
     val appShellNetworkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
     val copiedMessage = stringResource(MR.strings.common_copied)
@@ -2703,8 +2789,19 @@ private fun SlockAppShellReadyContent(
     val tasksState by tasksViewModel.state.collectAsState()
     var tasksFirstRenderLoggedKey by remember { mutableStateOf<String?>(null) }
     var consumedDiagnosticsDeepLinkId by remember { mutableStateOf<String?>(null) }
-    val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
-    val readyServerId = selectedServerId
+    val readyGate = authGateState as? SharedAuthGateState.Ready
+    val readySession = readyGate?.session
+    val homePreviewSession =
+        readySession
+            ?: cachedRestoreSession.takeIf { authGateState == SharedAuthGateState.Restoring }
+    val readyAuthPhase =
+        readyGate?.phase
+            ?: cachedRestoreSession
+                ?.takeIf { authGateState == SharedAuthGateState.Restoring }
+                ?.let { SharedAuthReadyPhase.CachedRestorePending }
+    val readyServerId = selectedServerId?.trim()?.takeIf(String::isNotBlank) ?: readySession?.currentServerId
+    val homePreviewServerId =
+        selectedServerId?.trim()?.takeIf(String::isNotBlank) ?: homePreviewSession?.currentServerId
     val createChannelAgentStatusResolver =
         remember(appShellServerMembersStore, readyServerId) {
             slockScopedAgentStatusResolver(appShellServerMembersStore, readyServerId)
@@ -2713,7 +2810,7 @@ private fun SlockAppShellReadyContent(
     val setupAdmissionHost =
         if (readySession != null && !readyServerId.isNullOrBlank()) {
             rememberServerSetupAdmissionHost(
-                session = readySession,
+                session = requireNotNull(readySession),
                 serverId = readyServerId,
                 environmentId =
                     appShellEnvironment.let { environment ->
@@ -2736,6 +2833,47 @@ private fun SlockAppShellReadyContent(
             null
         }
     val setupAdmissionAllowsHome = setupAdmissionHost?.allowsHome == true
+    val setupAdmissionFeatureDecision =
+        setupAdmissionHost?.featureDecision
+            ?: homePreviewServerId
+                ?.takeIf { it.isNotBlank() }
+                ?.let { serverId ->
+                    serverSetupFeatureDecision(
+                        sharedStores.serverFeatureFlags.snapshotFor(ServerId(serverId))
+                    )
+                }
+            ?: ServerSetupFeatureDecision.Checking
+    val authoritativeHomeStartAllowed =
+        appShellAuthoritativeHomeStartAllowed(
+            authGateState = authGateState,
+            setupAdmissionAllowsHome = setupAdmissionAllowsHome
+        )
+    LaunchedEffect(homeStore, homePreviewSession?.user?.id, homePreviewServerId, readyAuthPhase) {
+        val serverId = homePreviewServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        if (
+            readyAuthPhase == SharedAuthReadyPhase.CachedRestorePending ||
+            readyAuthPhase == SharedAuthReadyPhase.CachedRestoreCompleted
+        ) {
+            val hydrated = homeStore.hydrateCachedHome(ServerId(serverId))
+            bridge.log(
+                "app_shell_cached_home_hydrate serverId=$serverId hydrated=$hydrated " +
+                    "authPhase=${readyAuthPhase.name}"
+            )
+        }
+    }
+    val cachedHomePreview =
+        appShellCanRenderCachedHomePreview(
+            readySession = homePreviewSession,
+            readyPhase = readyAuthPhase,
+            featureDecision = setupAdmissionFeatureDecision,
+            setupAdmissionAllowsHome = setupAdmissionAllowsHome,
+            setupAdmissionState = setupAdmissionHost?.state,
+            readyServerId = homePreviewServerId,
+            selectedTab = selectedTab,
+            selectedHomeDestination = selectedHomeDestination,
+            pageVisible = pageVisible,
+            state = homeState
+        )
     val adaptiveRoomLeaseRegistry =
         remember(sharedStores, storeScope) { sharedStores.realtimeRoomLeaseRegistry(storeScope) }
     fun releaseAdaptiveHandoffLease(expectedGeneration: Long? = null) {
@@ -2783,7 +2921,13 @@ private fun SlockAppShellReadyContent(
         pageVisible,
         selectedTab,
         selectedHomeDestination,
+        authoritativeHomeStartAllowed,
     ) {
+        if (!authoritativeHomeStartAllowed) {
+            releaseAdaptiveHandoffLease()
+            adaptiveDefaultLandingServerId = null
+            return@LaunchedEffect
+        }
         val serverId = readyServerId?.trim()?.takeIf(String::isNotBlank)
         if (!adaptiveHomeWorkspaceEnabled || serverId == null) {
             adaptiveWorkspaceStore.update { current ->
@@ -2923,25 +3067,31 @@ private fun SlockAppShellReadyContent(
             }
     // Forward the process-owned selected-server Activity projection to the host badge. Source is
     // diagnostics-only; hosts display count and must not branch on provenance.
-    LaunchedEffect(homeState.appBadgeCount, activityUnreadSummary) {
+    LaunchedEffect(homeState.appBadgeCount, activityUnreadSummary, authoritativeHomeStartAllowed) {
         val fallback = homeState.appBadgeCount
+        val useActivityProjection = authoritativeHomeStartAllowed && readySession != null
         bridge.appBadge(
-            count = if (activityUnreadSummary.hasValue) activityUnreadSummary.totalUnreadCount else fallback.count,
+            count = if (useActivityProjection && activityUnreadSummary.hasValue) {
+                activityUnreadSummary.totalUnreadCount
+            } else {
+                fallback.count
+            },
             source =
-                if (activityUnreadSummary.hasValue) {
+                if (useActivityProjection && activityUnreadSummary.hasValue) {
                     build.raft.app.data.AppBadgeSource.ACTIVITY_UNREAD_SUMMARY.wire
                 } else {
                     fallback.source.wire
                 },
             isStale =
-                if (activityUnreadSummary.hasValue) {
+                if (useActivityProjection && activityUnreadSummary.hasValue) {
                     activityUnreadSummary.freshness != build.raft.app.data.ActivityUnreadSummaryFreshness.Fresh
                 } else {
                     fallback.isStale
                 }
         )
     }
-    LaunchedEffect(sharedStores.activityUnreadSummaryStore, readyServerId) {
+    LaunchedEffect(sharedStores.activityUnreadSummaryStore, readyServerId, authoritativeHomeStartAllowed) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         val serverId = readyServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         sharedStores.activityUnreadSummaryStore.ensure(ServerId(serverId), reason = "app_shell_server_ready")
     }
@@ -2965,6 +3115,7 @@ private fun SlockAppShellReadyContent(
             )
         }
     val latestReadySession by rememberUpdatedState(readySession)
+    val latestAuthoritativeHomeStartAllowed by rememberUpdatedState(authoritativeHomeStartAllowed)
     LaunchedEffect(renderedHomeServerId, pendingHomeServerSwitchId) {
         val targetServerId = pendingHomeServerSwitchId ?: return@LaunchedEffect
         if (renderedHomeServerId != targetServerId) return@LaunchedEffect
@@ -2987,8 +3138,8 @@ private fun SlockAppShellReadyContent(
     }
     // task #226: fetch the latest active announcement once the session is ready
     // (keyed by server so switching servers re-pulls that server's announcement).
-    LaunchedEffect(announcementsClient, readyServerId) {
-        if (readySession == null) {
+    LaunchedEffect(announcementsClient, readyServerId, authoritativeHomeStartAllowed) {
+        if (readySession == null || !authoritativeHomeStartAllowed) {
             activeAnnouncement = null
             return@LaunchedEffect
         }
@@ -3024,7 +3175,13 @@ private fun SlockAppShellReadyContent(
             homeStoreSelectedConversationId = homeState.selectedConversationId
         )
     )
-    LaunchedEffect(appShellServerMembersStore, readyServerId, foregroundMessageBannersEnabled) {
+    LaunchedEffect(
+        appShellServerMembersStore,
+        readyServerId,
+        foregroundMessageBannersEnabled,
+        authoritativeHomeStartAllowed
+    ) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         if (!foregroundMessageBannersEnabled) return@LaunchedEffect
         appShellServerMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
@@ -3042,12 +3199,13 @@ private fun SlockAppShellReadyContent(
             selectedTab == "home" &&
             selectedHomeDestination == null
     val parentShouldStartHome =
-        setupAdmissionAllowsHome &&
+        authoritativeHomeStartAllowed &&
         appShellParentShouldStartHome(
             pageVisible = pageVisible,
             selectedTab = selectedTab,
             selectedHomeDestination = selectedHomeDestination,
             readyServerId = readyServerId,
+            readyAccountId = readySession?.user?.id,
             state = homeState
         )
     LaunchedEffect(parentShouldStartHome, readyServerId, homeState.content, homeState.homeRealtimeDirty) {
@@ -3065,27 +3223,36 @@ private fun SlockAppShellReadyContent(
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Start))
         }
     }
-    LaunchedEffect(homeSurfaceVisible, readyServerId, setupAdmissionAllowsHome) {
+    LaunchedEffect(
+        homeSurfaceVisible,
+        readyServerId,
+        authoritativeHomeStartAllowed,
+        setupAdmissionAllowsHome,
+        cachedHomePreview
+    ) {
         val delayMs = homeSurfaceVisibilityDispatchDelayMs(homeSurfaceVisible)
         if (delayMs > 0L) {
             delay(delayMs)
         }
         homeShellStore.dispatch(
             SharedHomeShellIntent.SetSurfaceVisible(
-                homeSurfaceVisible && readyServerId != null && setupAdmissionAllowsHome
+                homeSurfaceVisible &&
+                    (readyServerId ?: homePreviewServerId) != null &&
+                    (setupAdmissionAllowsHome || cachedHomePreview)
             )
         )
     }
-    LaunchedEffect(readyServerId, readySession?.accessToken) {
-        if (readyServerId.isNullOrBlank()) return@LaunchedEffect
+    LaunchedEffect(readyServerId, readySession?.accessToken, authoritativeHomeStartAllowed) {
+        if (readyServerId.isNullOrBlank() || !authoritativeHomeStartAllowed) return@LaunchedEffect
         while (true) {
             delay(AppUpdateNotificationRefreshIntervalMs)
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.RefreshNotifications))
         }
     }
-    DisposableEffect(appUpdateEvents) {
+    DisposableEffect(appUpdateEvents, latestAuthoritativeHomeStartAllowed) {
         val callbackRef =
             appUpdateEvents.addStatusListener {
+                if (!latestAuthoritativeHomeStartAllowed) return@addStatusListener
                 appShellCoroutineScope.launch {
                     homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.RefreshNotifications))
                 }
@@ -3118,7 +3285,8 @@ private fun SlockAppShellReadyContent(
         childTabSwitchEpoch = nextEpoch
         selectedTab = retainedTab
     }
-    LaunchedEffect(diagnosticsDeepLinkRequest?.id, readyServerId) {
+    LaunchedEffect(diagnosticsDeepLinkRequest?.id, readyServerId, authoritativeHomeStartAllowed) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         val request = diagnosticsDeepLinkRequest ?: return@LaunchedEffect
         if (readyServerId == null || consumedDiagnosticsDeepLinkId == request.id) {
             return@LaunchedEffect
@@ -3148,7 +3316,6 @@ private fun SlockAppShellReadyContent(
         }
         bridge.log("diagnostics_deeplink_complete id=${request.id} opened=$opened")
     }
-    val shellScope = rememberSlockAppShellScope(adaptivePane)
     val appShellModalHostState = rememberSlockUnifiedDialogHostState()
     val realtimeEventMapper =
         remember(sharedStores) {
@@ -3176,7 +3343,7 @@ private fun SlockAppShellReadyContent(
         appearanceGeneration: Int,
         foregroundEpoch: Long? = null
     ): Boolean {
-        if (latestReadySession == null) return false
+        if (latestReadySession == null || !latestAuthoritativeHomeStartAllowed) return false
         val refreshTarget =
             "${retainedAppShellSelectedTab(latestSelectedTab)}:${latestSelectedHomeDestination.orEmpty()}"
         if (
@@ -3273,6 +3440,10 @@ private fun SlockAppShellReadyContent(
         observedHomeServerSwitchId = null
         tasksListPosition = AppShellLazyListPosition()
         membersListState = AppShellMembersListState()
+        // Retire all in-memory Home rows on an auth/session reset. Durable identity snapshots are
+        // intentionally retained and will be rehydrated only under the successor account/server
+        // key; keeping the old rows here would create an A-account/B-account preview window.
+        homeStore.reset()
         homeShellStore.reset()
     }
     LaunchedEffect(authSessionResetGeneration) {
@@ -3365,10 +3536,11 @@ private fun SlockAppShellReadyContent(
             chatLayout.conversationForwardGestureEnabled
         )
     }
-    LaunchedEffect(conversationForwardGestureEnabled) {
+    LaunchedEffect(conversationForwardGestureEnabled, authoritativeHomeStartAllowed) {
         conversationForwardHistory.setEnabled(conversationForwardGestureEnabled)
         bridge.setConversationForwardGestureEnabled(
             conversationForwardGestureEnabled &&
+                authoritativeHomeStartAllowed &&
                 homeSurfaceVisible &&
                 homeState.content is SharedHomeContentState.Content &&
                 conversationForwardHistory.canForward
@@ -3377,10 +3549,19 @@ private fun SlockAppShellReadyContent(
     val latestForegroundMessageBannersEnabled by rememberUpdatedState(foregroundMessageBannersEnabled)
     when (val gate = authGateState) {
         SharedAuthGateState.Restoring -> {
-            if (suppressRestoreLanding) {
-                AppShellSilentRestoreContent()
+            if (cachedHomePreview) {
+                AppShellCachedHomePreviewContent(
+                    bridge = bridge,
+                    shellScope = shellScope,
+                    state = homeState
+                )
             } else {
-                AppShellRestoreSplashContent()
+                if (suppressRestoreLanding) {
+                    AppShellSilentRestoreContent()
+                } else {
+                    AppShellRestoreSplashContent()
+                }
+                return
             }
             return
         }
@@ -3450,12 +3631,13 @@ private fun SlockAppShellReadyContent(
         is SharedAuthGateState.Ready -> Unit
     }
 
-    if (setupAdmissionHost != null && !setupAdmissionHost.allowsHome) {
+    if (setupAdmissionHost != null && !setupAdmissionHost.allowsHome && !cachedHomePreview) {
         setupAdmissionHost.content()
         return
     }
 
-    LaunchedEffect(readyServerId, authGateState) {
+    LaunchedEffect(readyServerId, authGateState, authoritativeHomeStartAllowed) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         when (
             val request =
@@ -3507,6 +3689,13 @@ private fun SlockAppShellReadyContent(
         recordForwardHistory: Boolean = true,
         originFallback: ThreadLaunchOriginFallback? = null
     ) {
+        if (!latestAuthoritativeHomeStartAllowed) {
+            bridge.logWarn(
+                "home_open_conversation_drop reason=home_authority_pending " +
+                    "threadId=${conversation.threadId.value} source=$source"
+            )
+            return
+        }
         bridge.log(
             "home_open_conversation threadId=${conversation.threadId.value} " +
                 "kind=${conversation.kind.name} source=$source anchorMessageId=${anchorMessageId.orEmpty()}"
@@ -3601,7 +3790,9 @@ private fun SlockAppShellReadyContent(
         readyServerId,
         selectedHomeConversationId,
         homeState.content,
+        authoritativeHomeStartAllowed,
     ) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         val workspace = adaptiveWorkspaceState ?: return@LaunchedEffect
         val serverId = readyServerId?.trim()?.takeIf(String::isNotBlank) ?: return@LaunchedEffect
         if (
@@ -3638,7 +3829,11 @@ private fun SlockAppShellReadyContent(
         }
     }
 
-    LaunchedEffect(pageVisibleTick) {
+    LaunchedEffect(pageVisibleTick, authoritativeHomeStartAllowed) {
+        if (!authoritativeHomeStartAllowed) {
+            bridge.setConversationForwardGestureEnabled(false)
+            return@LaunchedEffect
+        }
         if (pageVisibleTick > handledConversationForwardHomeVisibleTick) {
             handledConversationForwardHomeVisibleTick = pageVisibleTick
             conversationForwardHistory.recordHomeVisible()
@@ -3659,8 +3854,13 @@ private fun SlockAppShellReadyContent(
         homeSurfaceVisible,
         readyServerId,
         renderedHomeServerId,
-        conversationForwardRequestTick
+        conversationForwardRequestTick,
+        authoritativeHomeStartAllowed,
     ) {
+        if (!authoritativeHomeStartAllowed) {
+            bridge.setConversationForwardGestureEnabled(false)
+            return@LaunchedEffect
+        }
         if (conversationForwardRequestTick <= handledConversationForwardRequestTick) {
             bridge.setConversationForwardGestureEnabled(
                 conversationForwardGestureEnabled &&
@@ -3725,8 +3925,10 @@ private fun SlockAppShellReadyContent(
         homeState.content,
         appShellConversationDirectory,
         threadTimeContext,
-        myMessageAlignment
+        myMessageAlignment,
+        authoritativeHomeStartAllowed
     ) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         notificationWindowNavigationIntent?.let(windowNavigationCoordinator::enqueue)
         val content = homeState.content as? SharedHomeContentState.Content
         val readiness =
@@ -3808,7 +4010,9 @@ private fun SlockAppShellReadyContent(
         // must re-reconcile (disconnect old, connect new). Without this key the
         // effect only re-ran on auth-family/token/tick changes.
         canonicalFinalSelectedServerId,
+        authoritativeHomeStartAllowed,
     ) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         val environment = sharedStores.apiEnvironmentStore.current()
         val desired =
             realtimeProcessDesiredSession(
@@ -3905,8 +4109,8 @@ private fun SlockAppShellReadyContent(
         }
     ) { handleAppShellBack() }
 
-    LaunchedEffect(selectedTab) {
-        if (selectedTab == "tasks") {
+    LaunchedEffect(selectedTab, authoritativeHomeStartAllowed) {
+        if (selectedTab == "tasks" && authoritativeHomeStartAllowed) {
             val hasSnapshot = tasksState.hasCompletedTasksSnapshot()
             bridge.performanceMarker(
                 phase = "tasks_screen_enter",
@@ -3922,7 +4126,8 @@ private fun SlockAppShellReadyContent(
             tasksViewModel.dispatch(SharedTasksRouteIntent.Start)
         }
     }
-    LaunchedEffect(selectedTab, readyServerId, appShellServerMembersStore) {
+    LaunchedEffect(selectedTab, readyServerId, appShellServerMembersStore, authoritativeHomeStartAllowed) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         val serverId = readyServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
             ?: return@LaunchedEffect
         if (selectedTab == "tasks") {
@@ -4202,8 +4407,10 @@ private fun SlockAppShellReadyContent(
         homeStore,
         realtimeEventMapper,
         realtimeCallbackGate,
+        authoritativeHomeStartAllowed,
     ) {
         val onRealtimeEvent: (JSONObject) -> Unit = onRealtimeEvent@{ rawEventData ->
+            if (!latestAuthoritativeHomeStartAllowed) return@onRealtimeEvent
             if (
                 rawEventData.optString(SlockRealtimeNotifyContract.KeyAction) ==
                     SlockRealtimeNotifyContract.ActionPresenceTransportConnected
@@ -4558,11 +4765,13 @@ private fun SlockAppShellReadyContent(
     }
     val appShellBottomContentInset = shellScope.contentBottomInset(showAppShellBottomTabs)
     val homeReadyForChildPagePrewarm =
-        readyServerId != null && homeState.content is SharedHomeContentState.Content
+        authoritativeHomeStartAllowed &&
+            readyServerId != null &&
+            homeState.content is SharedHomeContentState.Content
     val computersPrewarmServerId =
         appShellComputersPrewarmServerId(
             readyServerId = readyServerId,
-            sessionReady = readySession != null,
+            sessionReady = readySession != null && authoritativeHomeStartAllowed,
             homeContentReady = homeState.content is SharedHomeContentState.Content
         )
     LaunchedEffect(
@@ -4574,7 +4783,12 @@ private fun SlockAppShellReadyContent(
     ) {
         prewarmAdmissionGate.invalidate("foreground_shell_state")
     }
-    LaunchedEffect(homeReadyForChildPagePrewarm, childTabShellId, childPagePrewarmPolicy) {
+    LaunchedEffect(
+        homeReadyForChildPagePrewarm,
+        childTabShellId,
+        childPagePrewarmPolicy,
+        authoritativeHomeStartAllowed,
+    ) {
         if (!homeReadyForChildPagePrewarm || childPagePrewarmPolicy.maxControllers <= 0) {
             return@LaunchedEffect
         }
@@ -4619,8 +4833,10 @@ private fun SlockAppShellReadyContent(
         computersPrewarmServerId,
         readySession?.user?.id,
         readySession?.accessToken,
-        appShellComputersStore
+        appShellComputersStore,
+        authoritativeHomeStartAllowed,
     ) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         appShellComputersStore.reconcileOwner()
         val serverId = computersPrewarmServerId ?: return@LaunchedEffect
         while (true) {
@@ -4863,6 +5079,7 @@ private fun SlockAppShellReadyContent(
             },
             networkStatus = hostNetworkStatus,
             showBottomTabs = showAppShellBottomTabs,
+            interactionLocked = cachedHomePreview,
             modalHostState = appShellModalHostState
         ) {
                     val tasksTabContent: @Composable (active: Boolean) -> Unit = { active ->
@@ -4916,7 +5133,9 @@ private fun SlockAppShellReadyContent(
                                 state = homeState,
                                 active = listActive,
                                 scrollToTopRequest = tabScrollToTopRequests.home,
-                                sessionReady = readyServerId?.isNotBlank() == true,
+                                sessionReady =
+                                    authoritativeHomeStartAllowed &&
+                                        readyServerId?.isNotBlank() == true,
                                 draftPersistSlice = composerDraftPersistSlice,
                                 conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope),
                                 activityUnreadCount = activityUnreadSummary.totalUnreadCount,
@@ -21890,6 +22109,42 @@ private fun AppShellSilentRestoreContent() {
                 .fillMaxSize()
                 .background(SlockColor.SurfaceWhite)
     )
+}
+
+@Composable
+private fun AppShellCachedHomePreviewContent(
+    bridge: build.raft.app.base.BridgeModule,
+    shellScope: SlockAppShellScope,
+    state: SharedHomeState
+) {
+    SlockAppShellSurface(
+        shellScope = shellScope,
+        bottomTabs = emptyList(),
+        onBottomTabSelected = {},
+        showBottomTabs = false,
+        interactionLocked = true
+    ) {
+        SharedHomeScreen(
+            bridge = bridge,
+            state = state,
+            active = false,
+            sessionReady = false,
+            serverDrawerEnabled = false,
+            homeServerAvatarEnabled = false,
+            onIntent = {},
+            onNotificationDismiss = {},
+            onOpenSearch = {},
+            onOpenActivity = {},
+            onOpenSaved = {},
+            onOpenComputers = {},
+            onOpenUrl = {},
+            onOpenServerSelection = {},
+            onCreateChannel = {},
+            onOpenConversation = {},
+            topSafeAreaOverride = shellScope.topSafeArea,
+            bottomContentPadding = shellScope.contentBottomInset(includeBottomTabBar = false)
+        )
+    }
 }
 
 @Composable

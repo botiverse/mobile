@@ -24,6 +24,9 @@ import com.tencent.kuikly.compose.ui.input.pointer.PointerEventPass
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.input.pointer.positionChangedIgnoreConsumed
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.ExperimentalComposeUiApi
+import com.tencent.kuikly.compose.ui.semantics.clearAndSetSemantics
+import com.tencent.kuikly.compose.ui.semantics.invisibleToUser
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.zIndex
@@ -97,6 +100,7 @@ internal fun SlockAppShellRootBackHandler(
 }
 
 @Composable
+@OptIn(ExperimentalComposeUiApi::class)
 internal fun SlockAppShellSurface(
     shellScope: SlockAppShellScope,
     bottomTabs: List<SlockBottomTabItemPayload>,
@@ -104,6 +108,7 @@ internal fun SlockAppShellSurface(
     modifier: Modifier = Modifier,
     networkStatus: SlockAppShellNetworkStatus = SlockAppShellNetworkStatus.Online,
     showBottomTabs: Boolean = true,
+    interactionLocked: Boolean = false,
     modalHostState: SlockUnifiedDialogHostState? = null,
     content: @Composable () -> Unit
 ) {
@@ -141,6 +146,13 @@ internal fun SlockAppShellSurface(
                             .zIndex(SlockAppContentHostZIndex)
                             .fillMaxSize()
                             .padding(bottom = shellScope.bottomTabBarHostInset(showBottomTabs))
+                            .then(
+                                if (interactionLocked) {
+                                    Modifier.clearAndSetSemantics { invisibleToUser() }
+                                } else {
+                                    Modifier
+                                }
+                            )
                 ) {
                     Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                         CompositionLocalProvider(LocalSlockAppShellBodyTopBanner provides bodyTopBanner) {
@@ -159,6 +171,17 @@ internal fun SlockAppShellSurface(
                         bottomSafeArea = shellScope.bottomSafeArea
                     )
                 }
+                if (interactionLocked) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .zIndex(SlockAppShellInteractionBlockerZIndex)
+                                .slockNativeDispatchCapture()
+                                .slockDialogContentPointerBarrier()
+                                .clearAndSetSemantics { }
+                    )
+                }
                 SlockUnifiedDialogHost(
                     state = effectiveModalHostState,
                     modifier = Modifier.fillMaxSize(),
@@ -168,6 +191,8 @@ internal fun SlockAppShellSurface(
         }
     }
 }
+
+private const val SlockAppShellInteractionBlockerZIndex = SlockGlobalModalHostZIndex - 0.25f
 
 internal data class HomeServerDrawerOpenGestureAdmission(
     val homeSurfaceActive: Boolean = false,

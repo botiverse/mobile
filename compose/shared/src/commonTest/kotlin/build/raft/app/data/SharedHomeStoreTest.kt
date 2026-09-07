@@ -1183,6 +1183,144 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun hydrateCachedHomeDoesNotStartNetworkLoad() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val storage = InMemorySlockKeyValueStore()
+        val persistSlice =
+            createSharedHomeIdentityPersistSlice(
+                storage = SharedPreferencePersistStorage(storage)
+            )
+        val warmStore =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1"))),
+                scope = scope,
+                persistSlices = listOf(persistSlice)
+            )
+        warmStore.accept(SharedHomeIntent.Start)
+
+        val api = RecordingHomeApi()
+        val coldStore =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = source(api = api),
+                scope = scope,
+                persistSlices =
+                    listOf(
+                        createSharedHomeIdentityPersistSlice(
+                            storage = SharedPreferencePersistStorage(storage)
+                        )
+                    )
+            )
+
+        assertTrue(coldStore.hydrateCachedHome(ServerId("server-1")))
+        val content = coldStore.state.value.content
+        assertTrue(content is SharedHomeContentState.Content)
+        assertTrue(content.isDurableIdentityCache)
+        assertTrue(content.needsNetworkRefresh)
+        assertEquals(emptyList(), api.calls)
+        coldStore.accept(SharedHomeIntent.Start)
+        assertFalse((coldStore.state.value.content as SharedHomeContentState.Content).needsNetworkRefresh)
+        scope.cancel()
+    }
+
+    @Test
+    fun hydrateCachedHomeRejectsSnapshotWithMismatchedMemberIdentity() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val storage = InMemorySlockKeyValueStore()
+        val persistSlice =
+            createSharedHomeIdentityPersistSlice(
+                storage = SharedPreferencePersistStorage(storage)
+            )
+        val mismatched =
+            sampleHome(ServerId("server-1")).copy(
+                currentMember = sampleMember().copy(id = MemberId("different-user"))
+            )
+        val warmStore =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(mismatched),
+                scope = scope,
+                persistSlices = listOf(persistSlice)
+            )
+        warmStore.accept(SharedHomeIntent.Start)
+
+        val coldStore =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = source(api = RecordingHomeApi()),
+                scope = scope,
+                persistSlices =
+                    listOf(
+                        createSharedHomeIdentityPersistSlice(
+                            storage = SharedPreferencePersistStorage(storage)
+                        )
+                    )
+            )
+
+        assertFalse(coldStore.hydrateCachedHome(ServerId("server-1")))
+        assertFalse(coldStore.state.value.content is SharedHomeContentState.Content)
+        scope.cancel()
+    }
+
+    @Test
+    fun resetRetiresPublishedHomeProjectionButKeepsDurableIdentitySnapshot() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val storage = InMemorySlockKeyValueStore()
+        val persistSlice =
+            createSharedHomeIdentityPersistSlice(
+                storage = SharedPreferencePersistStorage(storage)
+            )
+        val session = InMemorySlockAuthSessionStore(sampleSession())
+        val store =
+            SharedHomeStore(
+                authStore = session,
+                dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1"))),
+                scope = scope,
+                persistSlices = listOf(persistSlice)
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        assertTrue(store.state.value.content is SharedHomeContentState.Content)
+
+        store.reset()
+
+        assertEquals(SharedHomeState(), store.state.value)
+        val restored =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = source(api = RecordingHomeApi()),
+                scope = scope,
+                persistSlices = listOf(createSharedHomeIdentityPersistSlice(SharedPreferencePersistStorage(storage)))
+            )
+        assertTrue(restored.hydrateCachedHome(ServerId("server-1")))
+        assertTrue(restored.state.value.content is SharedHomeContentState.Content)
+        scope.cancel()
+    }
+
+    @Test
+    fun resetFencesLateNetworkPublicationFromThePriorSession() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = RecordingHomeApi()
+        val blocked = api.blockNextChannels()
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), api = api),
+                scope = scope
+            )
+        val load = launch { store.accept(SharedHomeIntent.Start) }
+        blocked.awaitStarted()
+
+        store.reset()
+        blocked.release()
+        load.join()
+
+        assertEquals(SharedHomeState(), store.state.value)
+        scope.cancel()
+    }
+
+    @Test
     fun selectServerLoadsUnreadSummaryForSelectedServerOnly() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
