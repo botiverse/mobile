@@ -2,6 +2,7 @@ package build.raft.app.shared
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Rect
 import android.os.Looper
 import android.os.SystemClock
@@ -258,6 +259,8 @@ internal class SlockKuiklyPageRenderView(
     private fun updateChildActive(next: Boolean) {
         if (childActive == next) return
         childActive = next
+        // Retained inactive hosts overlap the active page; only their child was hidden.
+        setBackgroundColor(if (next) ContextCompat.getColor(context, R.color.slock_surface_cream) else Color.TRANSPARENT)
         traceChildProbe("active_change")
         syncChildVisibility()
         scheduleProbeSnapshots()
