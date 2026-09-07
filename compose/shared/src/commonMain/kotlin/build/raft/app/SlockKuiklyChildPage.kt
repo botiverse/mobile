@@ -45,6 +45,8 @@ internal class SlockKuiklyChildPageView :
     private var active = true
     private var viewAppeared = false
     private var childLifecycleVisible = false
+    private var parentAttachmentGeneration = 0L
+    private var parentAppearanceDelivered = false
 
     override fun createAttr(): SlockKuiklyChildPageAttr = SlockKuiklyChildPageAttr()
 
@@ -68,15 +70,32 @@ internal class SlockKuiklyChildPageView :
 
     override fun didMoveToParentView() {
         super.didMoveToParentView()
-        getPager().addPagerEventObserver(this)
-        if (getPager().isAppeared) {
+        val parentPager = getPager()
+        val attachmentGeneration = ++parentAttachmentGeneration
+        parentPager.addPagerEventObserver(this)
+        if (parentPager.isAppeared) {
             viewAppeared = true
-            sendPagerEvent("viewDidAppear")
+            onPagerEvent("viewDidAppear", JSONObject())
         }
         syncChildLifecycleVisibility()
+        // Pager snapshots observers before setting isAppeared. A child attached during
+        // that dispatch misses both the event and the immediate state read above.
+        parentPager.addNextTickTask {
+            if (attachmentGeneration != parentAttachmentGeneration || parentPager.isWillDestroy() ||
+                parentAppearanceDelivered || !parentPager.isAppeared
+            ) {
+                return@addNextTickTask
+            }
+            viewAppeared = true
+            onPagerEvent("viewDidAppear", JSONObject())
+            syncChildLifecycleVisibility()
+        }
     }
 
     override fun didRemoveFromParentView() {
+        parentAttachmentGeneration++
+        parentAppearanceDelivered = false
+        viewAppeared = false
         if (childLifecycleVisible) {
             sendPagerEvent("didDisappear")
             childLifecycleVisible = false
@@ -112,6 +131,10 @@ internal class SlockKuiklyChildPageView :
     }
 
     override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
+        when (pagerEvent) {
+            "viewDidAppear" -> parentAppearanceDelivered = true
+            "viewDidDisappear" -> parentAppearanceDelivered = false
+        }
         sendPagerEvent(pagerEvent, eventData)
     }
 
