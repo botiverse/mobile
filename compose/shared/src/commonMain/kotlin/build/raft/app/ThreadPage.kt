@@ -7775,7 +7775,7 @@ internal fun SharedThreadRouteContent(
         )
         threadSendScope.launch {
             fun sendAuthorityStillCurrent(): Boolean =
-                dataSource.isCurrentReplyCacheProvenance(sendProvenance) &&
+                dataSource.isCurrentReplyCacheProvenanceForLocalSend(sendProvenance) &&
                     threadViewModel.state.value.payload
                         .resolveThreadRouteIdentity()
                         .isPendingSendEquivalentTo(sendRoute)
@@ -7984,14 +7984,20 @@ internal fun SharedThreadRouteContent(
                             }
                     }
                 }
-                if (!sendAuthorityStillCurrent()) return@launch
-                if (startedFromComposer) {
-                    composerDraftViewModel.dispatch(
-                        SharedThreadComposerDraftIntent.CompleteSend(pendingMentionActions = pendingMentionActions)
-                    )
+                if (sendAuthorityStillCurrent()) {
+                    if (startedFromComposer) {
+                        composerDraftViewModel.dispatch(
+                            SharedThreadComposerDraftIntent.CompleteSend(pendingMentionActions = pendingMentionActions)
+                        )
+                    } else {
+                        composerDraftViewModel.dispatch(
+                            SharedThreadComposerDraftIntent.ApplyPendingMentionActions(pendingMentionActions)
+                        )
+                    }
                 } else {
-                    composerDraftViewModel.dispatch(
-                        SharedThreadComposerDraftIntent.ApplyPendingMentionActions(pendingMentionActions)
+                    bridge.logWarn(
+                        "thread_send_success_terminal_projection_dropped localMessageId=$localMessageId " +
+                            "channelId=${context.channelId} reason=owner_changed_after_response"
                     )
                 }
                 if (context.ownedTemporaryFileRefs.isNotEmpty()) {
@@ -8611,7 +8617,8 @@ internal fun SharedThreadRouteContent(
         }
 
         // Gallery on this train calls with requireAllFiles=false, so this remaining
-        // path is the 1.10.0 per-file legacy multipart uploader.
+        // per-file multipart path is the 1.10.0-shaped uploader. The aggregate
+        // direct-session branch above stays dormant.
         var launchedCount = 0
         for (file in acceptedFiles) {
             val localAttachmentId = file.id.takeIf { it.isNotBlank() } ?: continue
@@ -9262,9 +9269,9 @@ internal fun SharedThreadRouteContent(
                             withContext(NonCancellable) {
                                 uploadComposerAttachmentFiles(
                                     files = files,
-                                    // This train does not consume R2 direct upload. 1.10.0
-                                    // admitted per file; keep that shape so one oversize
-                                    // image does not reject the rest of the batch.
+                                    // 1.11.0 bleed-stop: 1.10.0 admitted per file. requireAllFiles
+                                    // would reject the whole gallery pick if one image exceeds
+                                    // maxBytes. Replacement ids stay keyed by local file id.
                                     requireAllFiles = false,
                                     replaceAttachmentIdsByLocalId = replaceAttachmentIdsByLocalId
                                 )

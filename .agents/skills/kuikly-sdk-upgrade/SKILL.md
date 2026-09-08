@@ -9,7 +9,7 @@ description: Upgrade and validate Raft Mobile's immutable Kuikly release set acr
 
 Raft Mobile consumes an immutable Kuikly release set. The completion manifest is the authority for source identity, artifact closure and byte digests; a Kuikly source checkout is provenance only, never a consumer fallback.
 
-Current main uses `2.24.0-raft.1` as an example, but every task must discover the live pins instead of copying that value.
+Current main uses `2.24.0-raft.2` as an example, but every task must discover the live pins instead of copying that value.
 
 Normal consumer work must not:
 

@@ -96,10 +96,7 @@ internal class SlockKuiklyChildPageView :
         parentAttachmentGeneration++
         parentAppearanceDelivered = false
         viewAppeared = false
-        if (childLifecycleVisible) {
-            sendPagerEvent("didDisappear")
-            childLifecycleVisible = false
-        }
+        syncChildLifecycleVisibility()
         super.didRemoveFromParentView()
         getPager().removePagerEventObserver(this)
     }
@@ -135,16 +132,27 @@ internal class SlockKuiklyChildPageView :
             "viewDidAppear" -> parentAppearanceDelivered = true
             "viewDidDisappear" -> parentAppearanceDelivered = false
         }
+        val pagerAppeared = slockChildLifecyclePagerAppearState(pagerEvent)
+        if (pagerAppeared != null) {
+            viewAppeared = pagerAppeared
+            syncChildLifecycleVisibility()
+            return
+        }
         sendPagerEvent(pagerEvent, eventData)
     }
 
     private fun syncChildLifecycleVisibility() {
-        val shouldBeVisible = viewAppeared && active
-        if (childLifecycleVisible == shouldBeVisible) {
+        val shouldBeVisible = slockChildLifecycleShouldBeVisible(viewAppeared = viewAppeared, active = active)
+        val events =
+            slockChildLifecycleEvents(
+                previouslyVisible = childLifecycleVisible,
+                shouldBeVisible = shouldBeVisible
+            )
+        if (events.isEmpty()) {
             return
         }
         childLifecycleVisible = shouldBeVisible
-        sendPagerEvent(if (shouldBeVisible) "didAppear" else "didDisappear")
+        events.forEach { sendPagerEvent(it) }
     }
 
     private fun sendPagerEvent(event: String, data: JSONObject? = null) {
@@ -244,6 +252,41 @@ internal fun slockEmbeddedChildPageData(pageData: JSONObject): JSONObject =
     JSONObject(pageData.toString()).apply {
         put(SLOCK_EMBEDDED_CHILD_PAGE_PARAM, true)
     }
+
+internal const val SLOCK_CHILD_LIFECYCLE_DID_APPEAR = "didAppear"
+internal const val SLOCK_CHILD_LIFECYCLE_DID_DISAPPEAR = "didDisappear"
+internal const val SLOCK_CHILD_LIFECYCLE_VIEW_DID_APPEAR = "viewDidAppear"
+internal const val SLOCK_CHILD_LIFECYCLE_VIEW_DID_DISAPPEAR = "viewDidDisappear"
+
+internal fun slockChildLifecycleShouldBeVisible(viewAppeared: Boolean, active: Boolean): Boolean =
+    viewAppeared && active
+
+internal fun slockChildLifecyclePagerAppearState(pagerEvent: String): Boolean? =
+    when (pagerEvent) {
+        SLOCK_CHILD_LIFECYCLE_VIEW_DID_APPEAR -> true
+        SLOCK_CHILD_LIFECYCLE_VIEW_DID_DISAPPEAR -> false
+        else -> null
+    }
+
+/**
+ * Native nested hosts require both the view-visibility event (`didAppear`) and
+ * the pager appear event (`viewDidAppear`) before they call child `onResume`.
+ * The first AppShell child (Home) is created while the parent pager is still
+ * appearing, so sending only one of the pair leaves the native surface blank.
+ */
+internal fun slockChildLifecycleEvents(
+    previouslyVisible: Boolean,
+    shouldBeVisible: Boolean
+): List<String> {
+    if (previouslyVisible == shouldBeVisible) {
+        return emptyList()
+    }
+    return if (shouldBeVisible) {
+        listOf(SLOCK_CHILD_LIFECYCLE_DID_APPEAR, SLOCK_CHILD_LIFECYCLE_VIEW_DID_APPEAR)
+    } else {
+        listOf(SLOCK_CHILD_LIFECYCLE_DID_DISAPPEAR, SLOCK_CHILD_LIFECYCLE_VIEW_DID_DISAPPEAR)
+    }
+}
 
 @Page(SLOCK_CHILD_PAGE_HOST_SMOKE_PAGE, supportInLocal = true)
 internal class SlockKuiklyChildPageHostSmokePage : BasePager() {
