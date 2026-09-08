@@ -33,6 +33,7 @@ import build.raft.app.network.sync.ReadStateV1Fact
 import build.raft.app.network.sync.ReadStateV1ProductionCanary
 import build.raft.app.network.sync.ReadStateV1ProductionOwner
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -376,18 +377,26 @@ class SharedHomeStoreTest {
     @Test
     fun cachedStoreRefreshesRuntimeScopeBeforeDispatch() = runBlocking {
         val storeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val originalLogs = mutableListOf<String>()
-        val refreshedLogs = mutableListOf<String>()
+        // task #1131: the store keeps logging from its Unconfined coroutines on whatever
+        // thread resumed them, so a plain MutableList appended by the logger races the
+        // assertions below (ConcurrentModificationException while iterating). Record
+        // through an unbounded Channel -- trySend is thread-safe and non-suspending on
+        // every target -- and drain a snapshot on the test thread once the awaited state
+        // has been observed. Both asserted entries are emitted before that state
+        // (`home_runtime_integrations_updated` synchronously, `home_dispatch_launch_load`
+        // before the load runs), so the verdict is unchanged.
+        val originalLogs = Channel<String>(Channel.UNLIMITED)
+        val refreshedLogs = Channel<String>(Channel.UNLIMITED)
         val store = SharedHomeStore(
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-old"))),
             scope = storeScope,
-            diagnosticsLogger = originalLogs::add
+            diagnosticsLogger = { originalLogs.trySend(it) }
         )
 
         store.updateRuntimeIntegrations(
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-new"))),
-            diagnosticsLogger = refreshedLogs::add
+            diagnosticsLogger = { refreshedLogs.trySend(it) }
         )
         store.dispatch(SharedHomeIntent.Start)
         // #471: await the launched load deterministically instead of busy-spinning
@@ -409,11 +418,24 @@ class SharedHomeStoreTest {
         val content = store.state.value.content
         assertTrue(content is SharedHomeContentState.Content)
         assertEquals("server-new", content.snapshot.server.id.value)
-        assertContains(refreshedLogs, "home_runtime_integrations_updated")
-        assertTrue(refreshedLogs.any { it.startsWith("home_dispatch_launch_load intent=hydrate:start") })
-        assertEquals(emptyList(), originalLogs)
+        // Stop the store before draining so late diagnostics cannot make the snapshot
+        // drift with timing; everything asserted below was recorded before the awaited state.
         storeScope.cancel()
+        val refreshed = refreshedLogs.drainRecorded()
+        val original = originalLogs.drainRecorded()
+        assertContains(refreshed, "home_runtime_integrations_updated")
+        assertTrue(refreshed.any { it.startsWith("home_dispatch_launch_load intent=hydrate:start") })
+        assertEquals(emptyList(), original)
     }
+
+    /** Snapshot every entry recorded so far without suspending; see task #1131. */
+    private fun Channel<String>.drainRecorded(): List<String> =
+        buildList {
+            while (true) {
+                val next = tryReceive().getOrNull() ?: break
+                add(next)
+            }
+        }
 
     @Test
     fun startHydratesConversationIdentityProviderFromHomeSnapshot() = runBlocking {
