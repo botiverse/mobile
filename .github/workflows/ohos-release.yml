@@ -7,6 +7,7 @@ on:
       - "compose/ohosApp/AppScope/app.json5"
       - "scripts/set_ohos_app_version.mjs"
       - "scripts/stage_ohos_mr_resources.sh"
+      - "scripts/test_stage_ohos_mr_resources.py"
       - "scripts/validate_ohos_hap_resources.sh"
       - "scripts/validate_ohos_app_pack.sh"
       - "docs/ohos-release-ci.md"
@@ -63,6 +64,7 @@ jobs:
           ruby -e 'require "yaml"; YAML.load_file(".github/workflows/ohos-release.yml")'
           bash -n scripts/sign_ohos_app_pack.sh
           bash -n scripts/stage_ohos_mr_resources.sh
+          python3 scripts/test_stage_ohos_mr_resources.py
           bash -n scripts/validate_ohos_hap_resources.sh
           bash -n scripts/validate_ohos_app_pack.sh
           python3 scripts/ci/test_remote_touchlab_ci_contract.py
