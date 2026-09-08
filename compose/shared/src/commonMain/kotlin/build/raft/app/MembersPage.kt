@@ -152,6 +152,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -5517,7 +5518,12 @@ private fun MembersDetailContent(
                         // crash while entering the profile.  Keep each member/tab surface a
                         // distinct lazy item so state is disposed/recreated at the boundary.
                         item(key = membersAgentDetailBodyItemKey(member.id.value, selectedTab)) {
-                            when (selectedTab) {
+                            // Kuikly's lazy item key is not sufficient to fence the nested
+                            // composition on every renderer.  Give each tab surface its own
+                            // Compose group as well, so remember slots from Profile/Chat/etc.
+                            // can never be reused across a tab switch.
+                            key(selectedTab) {
+                                when (selectedTab) {
                                 MembersAgentDetailTab.Profile ->
                                     MembersAgentProfileTab(
                                         member = member,
@@ -5622,7 +5628,8 @@ private fun MembersDetailContent(
                                         onOpenUrl = onOpenUrl,
                                         modifier = Modifier.padding(horizontal = MembersPageInset)
                                     )
-                                MembersAgentDetailTab.Activity -> Unit
+                                    MembersAgentDetailTab.Activity -> Unit
+                                }
                             }
                         }
                     } else {
