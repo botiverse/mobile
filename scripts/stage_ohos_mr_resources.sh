@@ -62,6 +62,26 @@ stage_resource_root "$OWN_RESOURCES"
 stage_kuikly_assets "$MERGED_RESOURCES"
 stage_kuikly_assets "$OWN_RESOURCES"
 
+python3 - "$MR_DEST" <<'PY'
+import json
+from pathlib import Path
+import re
+import sys
+
+escapes = {"n": "\n", "r": "\r", "t": "\t", "\\": "\\"}
+for path in Path(sys.argv[1]).glob("*/element/string.json"):
+    document = json.loads(path.read_text(encoding="utf-8"))
+    changed = False
+    for resource in document.get("string", []):
+        value = resource["value"]
+        decoded = re.sub(r"\\([nrt\\])", lambda match: escapes[match[1]], value)
+        if decoded != value:
+            resource["value"] = decoded
+            changed = True
+    if changed:
+        path.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+
 BASE_STRINGS="$MR_DEST/base/element/string.json"
 [[ -s "$BASE_STRINGS" ]] || {
   echo "Staged OHOS MR base strings are missing" >&2
