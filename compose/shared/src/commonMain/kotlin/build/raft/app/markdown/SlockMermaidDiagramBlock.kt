@@ -1,0 +1,156 @@
+package build.raft.app.markdown
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
+import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.layout.wrapContentHeight
+import com.tencent.kuikly.compose.material3.Text as KuiklyText
+import com.tencent.kuikly.compose.ui.Alignment
+import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.text.TextStyle
+import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
+import build.raft.app.SlockColor
+import build.raft.app.SlockLucideIcon
+import build.raft.app.SlockLucideIconName
+import build.raft.mermaid.core.MermaidParseResult
+import build.raft.mermaid.core.MermaidParser
+import build.raft.mermaid.kuikly.MermaidView
+import build.raft.mermaid.layout.LayoutConfig
+import build.raft.mermaid.layout.LayoutScene
+import build.raft.mermaid.layout.simple.FixedWidthTextMeasurer
+import build.raft.mermaid.layout.simple.SimpleMermaidLayout
+
+/**
+ * Native Kuikly Compose component that renders a Mermaid diagram block.
+ *
+ * If the Mermaid source is successfully parsed and laid out, it renders as a
+ * native [MermaidView] Canvas component with interactive zoom (+ / - / reset) controls.
+ * If parsing fails or syntax is unsupported, it gracefully falls back to [fallback].
+ */
+@Composable
+internal fun SlockMermaidDiagramBlock(
+    code: String,
+    style: TextStyle,
+    fallback: @Composable () -> Unit
+) {
+    val layoutScene: LayoutScene? = remember(code) {
+        try {
+            val parseResult = MermaidParser.parse(code.trim())
+            if (parseResult is MermaidParseResult.Success) {
+                SimpleMermaidLayout.layout(
+                    diagram = parseResult.diagram,
+                    textMeasurer = FixedWidthTextMeasurer,
+                    config = LayoutConfig()
+                )
+            } else {
+                null
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    if (layoutScene != null && layoutScene.width > 0 && layoutScene.height > 0) {
+        var scale by remember { mutableStateOf(1.0f) }
+        val diagramWidthDp = (layoutScene.width * scale).dp
+        val diagramHeightDp = (layoutScene.height * scale).dp
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentHeight()
+                .padding(vertical = 4.dp)
+                .background(Color.White)
+                .border(1.dp, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            MakeKuiklyComposeNode<MermaidView>(
+                factory = { MermaidView() },
+                modifier = Modifier
+                    .width(diagramWidthDp)
+                    .height(diagramHeightDp),
+                viewInit = {
+                    viewAttr.scene = layoutScene
+                    viewAttr.scale = scale
+                    viewAttr.batchDraw = true
+                },
+                viewUpdate = { view ->
+                    view.viewAttr.scene = layoutScene
+                    view.viewAttr.scale = scale
+                    view.viewAttr.batchDraw = true
+                }
+            )
+
+            // Zoom controls overlay at bottom-end
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(6.dp)
+                    .background(Color(0xCCFFFFFF))
+                    .border(1.dp, SlockColor.BorderBlack)
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Zoom Out
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clickable {
+                            if (scale > 0.5f) scale = (scale - 0.25f).coerceAtLeast(0.5f)
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    KuiklyText(
+                        text = "−",
+                        style = TextStyle(fontSize = 14.sp, color = SlockColor.TextBlack)
+                    )
+                }
+
+                // Reset
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 4.dp)
+                        .clickable { scale = 1.0f },
+                    contentAlignment = Alignment.Center
+                ) {
+                    KuiklyText(
+                        text = "${(scale * 100).toInt()}%",
+                        style = TextStyle(fontSize = 11.sp, color = SlockColor.TextBlack)
+                    )
+                }
+
+                // Zoom In
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clickable {
+                            if (scale < 3.0f) scale = (scale + 0.25f).coerceAtMost(3.0f)
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    KuiklyText(
+                        text = "+",
+                        style = TextStyle(fontSize = 14.sp, color = SlockColor.TextBlack)
+                    )
+                }
+            }
+        }
+    } else {
+        fallback()
+    }
+}
