@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.NetworkSlockThreadApi
 import build.raft.app.base.Utils
 import build.raft.app.network.slockNetworkKmmRecoveryEnvironmentId
+import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockBrutalIconButton
@@ -36,6 +37,7 @@ import build.raft.app.data.NetworkSlockHomeApi
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.BridgeSlockAvatarNativeCache
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
+import build.raft.app.data.MOBILE_SLACK_NAV_FEATURE_FLAG_KEY
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.KuiklyHostNetworkEvents
 import build.raft.app.data.KuiklyAppUpdateEvents
@@ -696,22 +698,28 @@ internal class AppShellChildTabEntry(
     initialRenderer: AppShellChildTabRenderer = { _, _ ->
         SlockCenteredLoading()
     },
+    initialTabKeys: List<String> = AppShellChildPageTabKeys,
     initialModalHostState: SlockUnifiedDialogHostState? = null
 ) {
     var selectedTab by mutableStateOf(initialSelectedTab)
     var parentVisible by mutableStateOf(initialParentVisible)
     var retainedTabs by mutableStateOf(initialRetainedTabs)
     private val renderSlots =
-        AppShellChildPageTabKeys.associateWith {
+        initialTabKeys.associateWith {
             AppShellChildTabRenderSlot(initialRenderer)
         }
+    // task #94: when the Slack-nav gate flips, the entry is re-registered with a different tab
+    // key set while retained native child pages may still briefly compose against the previous
+    // entry. Render slots therefore fail closed to the shell renderer (which itself falls back
+    // to home content for unknown keys) instead of throwing on getValue.
+    private val fallbackRenderer: AppShellChildTabRenderer = initialRenderer
     var modalHostState: SlockUnifiedDialogHostState? by mutableStateOf(initialModalHostState)
 
     fun rendererFor(tab: String): AppShellChildTabRenderer =
-        renderSlots.getValue(tab).renderer
+        renderSlots[tab]?.renderer ?: fallbackRenderer
 
     fun updateRenderer(tab: String, renderer: AppShellChildTabRenderer) {
-        renderSlots.getValue(tab).renderer = renderer
+        renderSlots[tab]?.let { slot -> slot.renderer = renderer }
     }
 
     fun updateSelection(
@@ -1158,14 +1166,45 @@ internal fun appShellBottomTabs(
     membersLabel: String,
     settingsLabel: String
 ): List<SlockBottomTabItemPayload> =
-    listOf(
-        SlockBottomTabItemPayload("home", homeLabel, SlockLucideIconName.House, selected = selectedKey == "home"),
-        SlockBottomTabItemPayload("tasks", tasksLabel, SlockLucideIconName.SquareCheckBig, selected = selectedKey == "tasks"),
-        SlockBottomTabItemPayload("members", membersLabel, SlockLucideIconName.Users, selected = selectedKey == "members"),
-        SlockBottomTabItemPayload("settings", settingsLabel, SlockLucideIconName.Settings, selected = selectedKey == "settings")
+    appShellBottomTabs(
+        selectedKey = selectedKey,
+        orderedTabKeys = AppShellChildPageTabKeys,
+        labelFor = { key ->
+            when (key) {
+                "home" -> homeLabel
+                "tasks" -> tasksLabel
+                "members" -> membersLabel
+                "settings" -> settingsLabel
+                else -> key.uppercase()
+            }
+        }
     )
 
-private val retainedAppShellTabKeys = listOf("home", "tasks", "members", "settings")
+/**
+ * task #94: builds bottom-tab payloads from the resolved ordered tab keys (legacy or
+ * Slack-aligned) with per-key labels and icons. Icons follow the Slack-aligned preview:
+ * Home=house, DMs=message circle, Activity=bell, More=ellipsis.
+ */
+internal fun appShellBottomTabs(
+    selectedKey: String,
+    orderedTabKeys: List<String>,
+    labelFor: (String) -> String
+): List<SlockBottomTabItemPayload> =
+    orderedTabKeys.map { key ->
+        SlockBottomTabItemPayload(
+            key = key,
+            label = labelFor(key),
+            iconName = appShellSlackNavTabIcon(key),
+            selected = selectedKey == key
+        )
+    }
+
+// task #94: valid app-shell tab keys = legacy set plus the Slack-aligned set. Slack keys only
+// enter live tab state while the Slack-nav gate is on (or a persisted order exists), so the
+// union keeps legacy clamping behavior unchanged while making the Slack keys first-class for
+// child-page lookup, tap normalization and retained-tab bookkeeping.
+private val retainedAppShellTabKeys =
+    listOf("home", "tasks", "members", "settings") + SlockSlackNavTabs.DefaultOrder
 
 internal fun retainedAppShellSelectedTab(selectedTab: String): String =
     selectedTab.takeIf { it in retainedAppShellTabKeys } ?: "home"
@@ -1205,18 +1244,26 @@ internal fun JSONObject.diagnosticsDeepLinkRequest(): DiagnosticsDeepLinkRequest
     )
 }
 
-internal fun appShellActiveChildPagerTab(selectedTab: String): String? =
-    retainedAppShellSelectedTab(selectedTab).takeIf { it in AppShellChildPageTabKeys }
+internal fun appShellActiveChildPagerTab(
+    selectedTab: String,
+    childPageTabKeys: List<String> = AppShellChildPageTabKeys
+): String? =
+    retainedAppShellSelectedTab(selectedTab).takeIf { it in childPageTabKeys }
 
 // V2 keepalive stack: the ordered set of child tabs to keep composed (alive) at once.
 // Empty when there is no active child tab (non-child surfaces render directly). The
 // active tab is always included even if [mountedTabs] is momentarily stale, so it can
-// never fail to render.
-internal fun appShellRetainedChildTabs(activeChildTab: String?, mountedTabs: Set<String>): List<String> =
+// never fail to render. [childPageTabKeys] is the active ordered key set (legacy while the
+// Slack-nav gate is off, Slack-aligned otherwise).
+internal fun appShellRetainedChildTabs(
+    activeChildTab: String?,
+    mountedTabs: Set<String>,
+    childPageTabKeys: List<String> = AppShellChildPageTabKeys
+): List<String> =
     if (activeChildTab == null) {
         emptyList()
     } else {
-        (AppShellChildPageTabKeys.filter { it in mountedTabs } + activeChildTab).distinct()
+        (childPageTabKeys.filter { it in mountedTabs } + activeChildTab).distinct()
     }
 
 internal fun appShellChildPagePrewarmOrder(
@@ -1462,6 +1509,9 @@ internal fun appShellBottomTabPerformanceRoute(tab: String): String =
         "tasks" -> "kuikly_tasks"
         "members" -> "kuikly_members"
         "settings" -> "kuikly_settings"
+        SlockSlackNavTabs.Dms -> "kuikly_dms"
+        SlockSlackNavTabs.Activity -> "kuikly_activity"
+        SlockSlackNavTabs.More -> "kuikly_more"
         else -> "kuikly_home"
     }
 
@@ -1496,10 +1546,13 @@ internal fun appShellParentShouldStartHome(
     readyServerId: String?,
     state: SharedHomeState,
     pageVisible: Boolean = true,
-    readyAccountId: String? = null
+    readyAccountId: String? = null,
+    homeLikeTabs: Set<String> = emptySet()
 ): Boolean =
     pageVisible &&
-        retainedAppShellSelectedTab(selectedTab) == "home" &&
+        retainedAppShellSelectedTab(selectedTab).let { tab ->
+            tab == "home" || tab in homeLikeTabs
+        } &&
         selectedHomeDestination == null &&
         !readyServerId.isNullOrBlank() &&
         (
@@ -1725,11 +1778,12 @@ private fun AppShellTabs(
     childHostShellId: String,
     mountedTabs: Set<String>,
     childTabSwitchEpoch: Int,
+    childPageTabKeys: List<String> = AppShellChildPageTabKeys,
     log: (String) -> Unit = {},
     content: @Composable (tab: String, active: Boolean) -> Unit
 ) {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
-    val activeChildTab = appShellActiveChildPagerTab(activeTab)
+    val activeChildTab = appShellActiveChildPagerTab(activeTab, childPageTabKeys)
     // Keepalive stack (V2): render every retained child tab, not just the active one,
     // so Home/Tasks/Members/Settings stay alive and switching back is instant with
     // full state. Only the active child is visible; the rest are hard-hidden via the
@@ -1738,7 +1792,8 @@ private fun AppShellTabs(
     // there is no HorizontalPager/scrollToPage, so none of the pager scroll races
     // (overlay / blank / stale native page) can occur. The active tab is always in the
     // list even if mountedTabs is momentarily stale.
-    val retainedChildTabs = appShellRetainedChildTabs(activeChildTab, mountedTabs)
+    val retainedChildTabs =
+        appShellRetainedChildTabs(activeChildTab, mountedTabs, childPageTabKeys)
     LaunchedEffect(activeChildTab, childTabSwitchEpoch, retainedChildTabs) {
         log(
             "app_shell_keepalive_stack active=$activeChildTab epoch=$childTabSwitchEpoch " +
@@ -1915,6 +1970,9 @@ private fun SlockAppShellReadyContent(
         remember { appShellChildPagePrewarmPolicy(slockPlatformAppShellChildPagePrewarmMode()) }
     var settingsHeaderTapCount by remember { mutableStateOf(0) }
     var homeListPositions by remember { mutableStateOf(AppShellServerLazyListPositions()) }
+    // task #94: DMs tab keeps its own server-scoped list positions so its scroll state never
+    // bleeds into (or gets clobbered by) the Home tab's merged list.
+    var dmsListPositions by remember { mutableStateOf(AppShellServerLazyListPositions()) }
     var pendingHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
     var observedHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
     var tasksListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
@@ -2800,6 +2858,57 @@ private fun SlockAppShellReadyContent(
                 ?.takeIf { authGateState == SharedAuthGateState.Restoring }
                 ?.let { SharedAuthReadyPhase.CachedRestorePending }
     val readyServerId = selectedServerId?.trim()?.takeIf(String::isNotBlank) ?: readySession?.currentServerId
+    // task #94: Slack-aligned bottom nav resolution. The gate (server flag + diagnostics
+    // Local Feature Overrides) seeds the default; a persisted tab order always wins (artin's
+    // locked rule). The resolved ordered keys are the single source for the bottom bar,
+    // child-page slots, retained-tab bookkeeping and tab content dispatch.
+    val chatLayoutPreferenceStore =
+        remember(sharedStores) {
+            KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+        }
+    val slackNavOverrideRevision by
+        ProcessDiagnosticFeatureFlagOverrides.registry
+            .revisionFor(MOBILE_SLACK_NAV_FEATURE_FLAG_KEY)
+            .collectAsState()
+    val slackNavEnabled =
+        remember(readyServerId, readySession?.user?.id, slackNavOverrideRevision, sharedStores) {
+            val serverId = readyServerId?.trim()?.takeIf { it.isNotBlank() }
+            val serverEffective =
+                sharedStores.serverFeatureFlags.isEnabled(
+                    serverId?.let(::ServerId),
+                    MOBILE_SLACK_NAV_FEATURE_FLAG_KEY
+                )
+            resolveSlackNavEnabled(
+                registry = ProcessDiagnosticFeatureFlagOverrides.registry,
+                serverEffective = serverEffective,
+                environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+                accountId = readySession?.user?.id.orEmpty(),
+                serverId = serverId.orEmpty()
+            )
+        }
+    val slackNavTabKeys =
+        remember(chatLayoutPreferenceStore, slackNavEnabled, slackNavOverrideRevision) {
+            SlockSlackNavTabs.resolveAppShellTabKeys(
+                slackNavEnabled = slackNavEnabled,
+                persistedRawOrder = chatLayoutPreferenceStore.readSlackNavTabOrderSync()
+            )
+        }
+    val slackNavMode = slackNavTabKeys != SlockSlackNavTabs.LegacyOrder
+    // Clamp a deep link / stale selection onto the active ordered key set: with the gate off
+    // the Slack keys are not child pages, and with the gate on the legacy hidden keys (tasks/
+    // members) are not first-class tabs anymore. Home is the safe anchor in both cases.
+    // Mirrors selectAppShellTab but avoids the local-function ordering constraint.
+    LaunchedEffect(slackNavTabKeys, selectedTab) {
+        if (retainedAppShellSelectedTab(selectedTab) !in slackNavTabKeys) {
+            bridge.log(
+                "app_shell_slack_nav_tab_clamp selectedTab=$selectedTab keys=${slackNavTabKeys.joinToString(",")}"
+            )
+            childTabSwitchEpoch =
+                appShellNextChildTabSwitchEpoch(selectedTab, "home", childTabSwitchEpoch)
+            selectedTab = "home"
+            retainedAppShellTabs = retainedAppShellTabs + "home"
+        }
+    }
     val homePreviewServerId =
         selectedServerId?.trim()?.takeIf(String::isNotBlank) ?: homePreviewSession?.currentServerId
     val createChannelAgentStatusResolver =
@@ -3206,7 +3315,10 @@ private fun SlockAppShellReadyContent(
             selectedHomeDestination = selectedHomeDestination,
             readyServerId = readyServerId,
             readyAccountId = readySession?.user?.id,
-            state = homeState
+            state = homeState,
+            // task #94: the DMs tab renders the same home store; starting the parent home
+            // store must not be gated on the literal "home" tab while Slack nav is active.
+            homeLikeTabs = if (slackNavMode) setOf(SlockSlackNavTabs.Dms) else emptySet()
         )
     LaunchedEffect(parentShouldStartHome, readyServerId, homeState.content, homeState.homeRealtimeDirty) {
         bridge.log(
@@ -3277,7 +3389,7 @@ private fun SlockAppShellReadyContent(
         prewarmAdmissionGate.invalidate("tab_select:$nextTab")
         val retainedTab = retainedAppShellSelectedTab(nextTab)
         val nextEpoch = appShellNextChildTabSwitchEpoch(selectedTab, retainedTab, childTabSwitchEpoch)
-        val direct = directChildSwitch && retainedTab in AppShellChildPageTabKeys
+        val direct = directChildSwitch && retainedTab in slackNavTabKeys
         bridge.log(
             "app_shell_select_tab next=$nextTab retained=$retainedTab from=$selectedTab " +
                 "epoch=$childTabSwitchEpoch->$nextEpoch direct=$direct mode=single_child"
@@ -3373,6 +3485,11 @@ private fun SlockAppShellReadyContent(
                             homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
                     }
                 }
+            // task #94: DMs renders the same home store; Activity self-refreshes through its
+            // own lifecycle effects and More is the settings surface.
+            SlockSlackNavTabs.Dms -> homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+            SlockSlackNavTabs.Activity -> Unit
+            SlockSlackNavTabs.More -> Unit
             "tasks" -> tasksViewModel.dispatch(SharedTasksRouteIntent.Refresh)
             "members" -> {
                 membersListRefreshKey += 1
@@ -4748,19 +4865,35 @@ private fun SlockAppShellReadyContent(
     val tasksTabLabel = stringResource(MR.strings.tab_tasks)
     val membersTabLabel = stringResource(MR.strings.tab_members)
     val settingsTabLabel = stringResource(MR.strings.tab_settings)
+    val dmsTabLabel = stringResource(MR.strings.tab_dms)
+    val activityTabLabel = stringResource(MR.strings.tab_activity)
+    val moreTabLabel = stringResource(MR.strings.tab_more)
     val appShellBottomTabItems = remember(
         selectedTab,
         homeTabLabel,
         tasksTabLabel,
         membersTabLabel,
-        settingsTabLabel
+        settingsTabLabel,
+        dmsTabLabel,
+        activityTabLabel,
+        moreTabLabel,
+        slackNavTabKeys
     ) {
         appShellBottomTabs(
             selectedKey = selectedTab,
-            homeLabel = homeTabLabel,
-            tasksLabel = tasksTabLabel,
-            membersLabel = membersTabLabel,
-            settingsLabel = settingsTabLabel
+            orderedTabKeys = slackNavTabKeys,
+            labelFor = { key ->
+                when (key) {
+                    "home" -> homeTabLabel
+                    "tasks" -> tasksTabLabel
+                    "members" -> membersTabLabel
+                    "settings" -> settingsTabLabel
+                    SlockSlackNavTabs.Dms -> dmsTabLabel
+                    SlockSlackNavTabs.Activity -> activityTabLabel
+                    SlockSlackNavTabs.More -> moreTabLabel
+                    else -> key.uppercase()
+                }
+            }
         )
     }
     val appShellBottomContentInset = shellScope.contentBottomInset(showAppShellBottomTabs)
@@ -4788,14 +4921,21 @@ private fun SlockAppShellReadyContent(
         childTabShellId,
         childPagePrewarmPolicy,
         authoritativeHomeStartAllowed,
+        slackNavTabKeys,
     ) {
         if (!homeReadyForChildPagePrewarm || childPagePrewarmPolicy.maxControllers <= 0) {
+            return@LaunchedEffect
+        }
+        // task #94: legacy prewarm targets (settings/tasks/members) are not child pages in
+        // Slack-nav mode; prewarming them would mount native child hosts for tabs that have
+        // no render slot. Slack-mode prewarm ordering is a follow-up.
+        if (slackNavMode) {
             return@LaunchedEffect
         }
         while (prewarmedAppShellTabs.size < childPagePrewarmPolicy.maxControllers) {
             val tab =
                 appShellChildPagePrewarmOrder(
-                    activeChildTab = appShellActiveChildPagerTab(selectedTab),
+                    activeChildTab = appShellActiveChildPagerTab(selectedTab, slackNavTabKeys),
                     retainedTabs = retainedAppShellTabs,
                     prewarmedTabs = prewarmedAppShellTabs
                 ).firstOrNull() ?: return@LaunchedEffect
@@ -4807,7 +4947,7 @@ private fun SlockAppShellReadyContent(
                     ?: return@withKuiklyIdleContext
                 try {
                     if (
-                        tab != appShellActiveChildPagerTab(selectedTab) &&
+                        tab != appShellActiveChildPagerTab(selectedTab, slackNavTabKeys) &&
                         tab !in retainedAppShellTabs &&
                         tab !in prewarmedAppShellTabs
                     ) {
@@ -5114,7 +5254,15 @@ private fun SlockAppShellReadyContent(
                             }
                         )
                     }
-                    val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                    val homeTabContentBase:
+                        @Composable
+                        (
+                            active: Boolean,
+                            kindFilter: ConversationKind?,
+                            scrollRequest: Int,
+                            positions: AppShellServerLazyListPositions,
+                            onPositionsSnapshot: (AppShellServerLazyListPositions) -> Unit
+                        ) -> Unit = { active, kindFilter, scrollRequest, positions, onPositionsSnapshot ->
                         val homeListServerId =
                             appShellHomeListServerId(
                                 renderedServerId = renderedHomeServerId,
@@ -5132,7 +5280,8 @@ private fun SlockAppShellReadyContent(
                                 bridge = bridge,
                                 state = homeState,
                                 active = listActive,
-                                scrollToTopRequest = tabScrollToTopRequests.home,
+                                scrollToTopRequest = scrollRequest,
+                                conversationKindFilter = kindFilter,
                                 sessionReady =
                                     authoritativeHomeStartAllowed &&
                                         readyServerId?.isNotBlank() == true,
@@ -5233,11 +5382,11 @@ private fun SlockAppShellReadyContent(
                                 initialListPosition =
                                     appShellLazyListPositionForServer(
                                         currentServerId = homeListPositionServerId,
-                                        savedPositions = homeListPositions
+                                        savedPositions = positions
                                     ),
                                 onListPositionSnapshot = { serverId, position ->
                                     prewarmAdmissionGate.invalidate("home_scroll")
-                                    homeListPositions = homeListPositions.withPosition(serverId, position)
+                                    onPositionsSnapshot(positions.withPosition(serverId, position))
                                 },
                                 onContentComposeCommitted = { serverId ->
                                     if (
@@ -5336,6 +5485,53 @@ private fun SlockAppShellReadyContent(
                             homeListPane(active)
                         }
                     }
+                    val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        homeTabContentBase(
+                            active,
+                            // task #94: in Slack-nav mode the Home tab is channels-only; the DMs
+                            // tab owns direct messages. Legacy mode keeps the merged list.
+                            if (slackNavMode) ConversationKind.Channel else null,
+                            tabScrollToTopRequests.home,
+                            homeListPositions,
+                            { homeListPositions = it }
+                        )
+                    }
+                    // task #94: DMs tab = the same home store filtered to direct messages.
+                    // Placeholder until SharedDmsScreen (task #332) lands on main; the slot swap
+                    // is a one-liner per the seam agreed with @沙琪玛 (#proj-mobile:a36c08a4).
+                    val dmsTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        homeTabContentBase(
+                            active,
+                            ConversationKind.DirectMessage,
+                            tabScrollToTopRequests.dms,
+                            dmsListPositions,
+                            { dmsListPositions = it }
+                        )
+                    }
+                    // task #94: Activity tab hosts the shared activity inbox surface directly —
+                    // the same screen the home secondary Activity destination renders.
+                    val activityTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        PerformanceSceneEffect(bridge, "kuikly_activity", active = active)
+                        SharedHomeActivityScreen(
+                            bridge = bridge,
+                            authStore = shellAuthStore,
+                            routeVisibleTick = pageVisibleTick,
+                            onOpenMessage = { request ->
+                                openHomeMessageRequest(
+                                    request = request,
+                                    source = "activity_tab"
+                                )
+                            },
+                            onClose = null,
+                            bottomContentPadding = appShellBottomContentInset,
+                            includeTopSafeArea = true,
+                            timeContext = threadTimeContext,
+                            shellScope = shellScope,
+                            storeScope = navigationStoreScope,
+                            activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                            activitySenderAvatarsEnabled = activitySenderAvatarsEnabled
+                        )
+                    }
                     val membersTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         SharedMembersScreen(
                             bridge = bridge,
@@ -5419,15 +5615,19 @@ private fun SlockAppShellReadyContent(
                         }
                         CompositionLocalProvider(LocalSlockTimeContextProvider provides hostThreadTimeContextProvider) {
                             when (tab) {
+                                "home" -> homeTabContent(active)
                                 "tasks" -> tasksTabContent(active)
                                 "members" -> membersTabContent(active)
                                 "settings" -> settingsTabContent(active)
+                                SlockSlackNavTabs.Dms -> dmsTabContent(active)
+                                SlockSlackNavTabs.Activity -> activityTabContent(active)
+                                SlockSlackNavTabs.More -> settingsTabContent(active)
                                 else -> homeTabContent(active)
                             }
                         }
                     }
                     val childTabRegistration =
-                        remember(childTabShellId) {
+                        remember(childTabShellId, slackNavTabKeys) {
                             val entry = AppShellChildTabEntry(
                                 debugId = AppShellChildTabRegistry.createEntryId(),
                                 timestampDisplayState = timestampDisplayState,
@@ -5435,6 +5635,9 @@ private fun SlockAppShellReadyContent(
                                 initialParentVisible = pageVisible,
                                 initialRetainedTabs = retainedAppShellTabs,
                                 initialRenderer = childTabRenderer,
+                                // task #94: the render-slot map follows the resolved ordered
+                                // keys; a gate flip re-registers the entry with the new set.
+                                initialTabKeys = slackNavTabKeys,
                                 initialModalHostState = appShellModalHostState
                             )
                             val replaced = AppShellChildTabRegistry.register(childTabShellId, entry)
@@ -5472,6 +5675,7 @@ private fun SlockAppShellReadyContent(
                         childHostShellId = childTabShellId,
                         mountedTabs = retainedAppShellTabs + prewarmedAppShellTabs,
                         childTabSwitchEpoch = childTabSwitchEpoch,
+                        childPageTabKeys = slackNavTabKeys,
                         log = { bridge.log(it) }
                     ) { tab, active ->
                         CompositionLocalProvider(LocalSlockTimeContextProvider provides hostThreadTimeContextProvider) {
@@ -16775,6 +16979,7 @@ private fun SharedHomeScreen(
     active: Boolean,
     scrollToTopRequest: Int = 0,
     sessionReady: Boolean = true,
+    conversationKindFilter: ConversationKind? = null,
     draftPersistSlice: SharedThreadComposerDraftPersistSlice? = null,
     conversationIdentityProvider: SharedConversationIdentityProvider? = null,
     activityUnreadCount: Int = 0,
@@ -17097,8 +17302,20 @@ private fun SharedHomeScreen(
                 currentServerName = snapshot.server.name,
                 currentServerId = snapshot.server.id.value,
                 servers = servers,
-                channels = channelItems,
-                directMessages = directMessageItems,
+                // task #94: the Slack-aligned Home tab is channels-only and the DMs tab is
+                // direct-message-only; null keeps the legacy merged list.
+                channels =
+                    if (conversationKindFilter == ConversationKind.DirectMessage) {
+                        emptyList()
+                    } else {
+                        channelItems
+                    },
+                directMessages =
+                    if (conversationKindFilter == ConversationKind.Channel) {
+                        emptyList()
+                    } else {
+                        directMessageItems
+                    },
                 selectedChannelId = selectedConversationId,
                 inboxUnreadCount = homeActivityUnreadCount,
                 inboxTotalCount = homeActivitySidebarTotalCount(

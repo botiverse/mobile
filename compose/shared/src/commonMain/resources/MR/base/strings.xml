@@ -30,6 +30,9 @@
     <string name="tab_tasks">TASKS</string>
     <string name="tab_members">MEMBERS</string>
     <string name="tab_settings">SETTINGS</string>
+    <string name="tab_dms">DMS</string>
+    <string name="tab_activity">ACTIVITY</string>
+    <string name="tab_more">MORE</string>
     <string name="release_notes_title">Release Notes</string>
     <string name="release_notes_loading">Loading...</string>
     <string name="release_notes_error_title">Could not load release notes</string>
