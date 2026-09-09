@@ -28,6 +28,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { createIosDriver } from "./ios_driver.mjs";
 import { redactEditableValues } from "./ios_navigation_matcher.mjs";
+import {
+  lowestRow, anyRowBounds, rowAtY,
+  judgeG4, judgeG5, judgeG6,
+} from "./ios_tabpager_judgement.mjs";
 
 const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 ? process.argv[i + 1] : d; };
 const ioDir = arg("--ios-io-dir", process.env.QA_LOOP_IO_DIR || "");
@@ -57,55 +61,9 @@ const write = (v, reason) => {
 // a recorded number rather than an impression from looking at a picture.
 const seqNumbers = (dump) => (dump.match(/#(\d+)/g) || []).map((s) => Number(s.slice(1)));
 const maxSeq = (dump) => { const n = seqNumbers(dump); return n.length ? Math.max(...n) : null; };
-// Hoisted out of group 7 so group 5 can record the same quantity. Group 5's retention
-// criterion is about row positions, and it had no way to state one.
-const lowestRow = (dump) => {
-  const ns = (dump.match(/row (\d+)/g) || []).map((s) => Number(s.slice(4)));
-  return ns.length ? Math.min(...ns) : null;
-};
-
-// Which row does a y (in PIXELS) fall on, read from the dump's own bounds? Recording
-// this at tap time is what makes `rowTap Alpha <n>` self-attributing without any
-// inference about row height, visible-row count, or scroll state between groups
-// (@LiBai: an arithmetic attribution rests on premises nobody verified; a recorded
-// expectation is a lookup). Returns null when no row's bounds contain y — which is
-// itself worth recording, because it means the tap was not aimed at a row at all.
-const rowBoundsFromDump = (dump) => {
-  const out = [];
-  for (const line of dump.split("\n")) {
-    const m = /Alpha row (\d+)"?.*\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(line);
-    if (m) out.push({ row: Number(m[1]), y1: Number(m[3]), y2: Number(m[5]) });
-  }
-  return out.sort((a, b) => a.y1 - b.y1);
-};
-// Tab-agnostic sibling of rowBoundsFromDump. That one hardcodes "Alpha row", which is right
-// for group 6 (pinned to Alpha) and wrong for group 4, which runs on whatever tab the earlier
-// groups left selected — Gamma, in run 33385954957. Kept separate rather than generalising the
-// original: a HorizontalPager can render an adjacent page, so a tab-agnostic match could mix
-// two tabs' rows together and perturb group 6, which currently passes.
-const anyRowBounds = (dump) => {
-  const out = [];
-  for (const line of dump.split("\n")) {
-    const m = /"(\w+) row (\d+)"?.*\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(line);
-    if (m) out.push({ tab: m[1], row: Number(m[2]), y1: Number(m[4]), y2: Number(m[6]) });
-  }
-  return out.sort((a, b) => a.y1 - b.y1);
-};
-
-const rowAtY = (dump, yPx) => {
-  const rows = rowBoundsFromDump(dump);
-  const exact = rows.find((r) => yPx >= r.y1 && yPx <= r.y2);
-  if (exact) return { row: exact.row, containment: "inside-text-bounds" };
-  // Text bounds are inset by the row's padding, so a y can fall in a row's clickable
-  // area yet outside its text. Attribute to the nearest row and SAY it was nearest,
-  // so the distinction survives into the evidence instead of being smoothed over.
-  let best = null;
-  for (const r of rows) {
-    const d = yPx < r.y1 ? r.y1 - yPx : yPx > r.y2 ? yPx - r.y2 : 0;
-    if (!best || d < best.d) best = { row: r.row, d };
-  }
-  return best ? { row: best.row, containment: `nearest(+${best.d}px)` } : { row: null, containment: "no-rows-in-dump" };
-};
+// Dump parsers and the g4/g5/g6 judgement live in ios_tabpager_judgement.mjs so they can
+// be unit-tested: this file has no exports and no main-guard, so importing it would drive
+// a device (task #251). Behaviour is unchanged except G5's no-starting-tab branch.
 
 let lastMaxSeq = null;
 const capture = async (label) => {
@@ -300,18 +258,7 @@ try {
       freshRowTaps: rowTapsPost4 - rowTapsPre4,
     };
     const alive4 = liveness4.advanced === true || (liveness4.freshRowTaps ?? 0) > 0;
-    verdict.g4 = {
-      selBefore: selBefore4, selAfter: selAfter4,
-      pagerMoved: selBefore4 !== null && selAfter4 !== null ? selBefore4 !== selAfter4 : null,
-      gesture: g4, liveness: liveness4, judgeable: alive4,
-      reading: !alive4
-        ? "UNJUDGEABLE — nothing in this window proves the app was processing input, so " +
-          "'the slow short drag did not turn the page' cannot be distinguished from " +
-          "'the drag never arrived'"
-        : (selBefore4 === selAfter4
-            ? "slow short drag did NOT turn the page, and the window is proven live"
-            : "page TURNED on a slow short drag — below-threshold drag was treated as a page change"),
-    };
+    verdict.g4 = judgeG4({ selBefore: selBefore4, selAfter: selAfter4, gesture: g4, liveness: liveness4 });
     rec("group 4: result", verdict.g4);
     verdict.performed.push(4);
   }
@@ -375,24 +322,11 @@ try {
     // `left5` is the one that turns "we came back to the same place" from an assumption into
     // a reading. Without it the cell asserts "nothing changed across two drags", which is
     // trivially true whenever the drags do nothing.
-    verdict.g5 = {
+    verdict.g5 = judgeG5({
       startTab: startSel ?? null,
       lowestRowStart: rowStart5, lowestRowAfterScroll: rowA, lowestRowOnReturn: rowC,
       selectedAtOtherTab: selB, selectedOnReturn: selC,
-      scrolled: scrolled5, leftTheTab: left5, returnedToStartTab: returned5,
-      retained: rowA !== null && rowC !== null ? rowA === rowC : null,
-      judgeable: scrolled5 === true && left5 === true && returned5 === true,
-      reading: scrolled5 !== true
-        ? "UNJUDGEABLE — the list never scrolled, so there is no position to retain"
-        : left5 !== true
-          ? "UNJUDGEABLE — the pager never left the starting tab, so 'position retained' cannot " +
-            "be distinguished from 'we never went anywhere'"
-          : returned5 !== true
-            ? "UNJUDGEABLE — did not return to the starting tab, so the comparison is against a different tab"
-            : (rowA === rowC
-                ? "scroll position retained across leaving and returning, and the round trip is proven"
-                : `scroll position LOST — row ${rowA} before leaving, row ${rowC} on return`),
-    };
+    });
     rec("group 5: result", verdict.g5);
     verdict.performed.push(5);
   }
@@ -518,48 +452,13 @@ try {
     // Two distinct rows => both taps landed. One row => whichever row it is tells us which
     // tap landed. Zero => nothing landed at all and the window is unjudgeable.
     const outsideWorked = producedThisGroup.length > 0;
-    verdict.g6 = {
+    verdict.g6 = judgeG6({
       insetPt, normX: inset24, pointScale: pt.scale,
       insideExpectedRow: insideExpected,
-      freshRowTaps: fresh, freshCount: fresh.length,
+      freshRowTaps: fresh,
       seqBefore, seqAfter, logAdvanced: advanced,
       liveness: g6Liveness,
-      judgeable: g6Liveness.distinctRows ? g6Liveness.distinctRows.length > 0 : false,
-      // Attribution is now a LOOKUP against the row each tap was aimed at, recorded from
-      // the dump at tap time. No inference about row height, visible-row count, or
-      // whether anything scrolled between groups.
-      attribution: (() => {
-        const rows = (g6Liveness.distinctRows || []).map(Number);
-        const inR = insideExpected?.row, prR = g6Liveness.probeExpectedRow?.row;
-        if (!rows.length) return "none — no rowTap at all";
-        // A missing aim record must not degrade into a confident label. Previously prR was
-        // silently null (see the object-replacement note above) and every run fell through
-        // to "inside only", which reads as a finding rather than as a broken instrument.
-        // Name the missing input instead: an unmeasured cell is not a measured negative.
-        if (inR == null || prR == null) {
-          return `INSTRUMENT INCOMPLETE — cannot attribute: ${inR == null ? "insideExpectedRow" : ""}` +
-            `${inR == null && prR == null ? " and " : ""}${prR == null ? "probeExpectedRow" : ""}` +
-            ` missing. Saw rows ${rows.join(",")}; judge from distinctRows, not from this field.`;
-        }
-        const hitInside = rows.includes(inR);
-        const hitProbe = rows.includes(prR);
-        if (hitInside && hitProbe) return `both (inside=${inR}, probe=${prR})`;
-        if (hitInside) return `inside only (row ${inR}) — the guard let the tap through`;
-        if (hitProbe) return `probe only (row ${prR}) — input was live, the inside tap was swallowed`;
-        return `unattributable — saw ${rows.join(",")}, expected inside=${inR} probe=${prR}`;
-      })(),
-      reading: !g6Liveness.distinctRows || g6Liveness.distinctRows.length === 0
-        ? "UNJUDGEABLE — neither tap produced a rowTap line, so 'the guard swallowed it' " +
-          "cannot be separated from 'no touch was delivered at all'"
-        : g6Liveness.distinctRows.length >= 2
-          ? "BOTH taps landed (two distinct rows) => the guard does not swallow a stationary " +
-            "tap inside the inset"
-          : "ONLY ONE tap landed — row " + g6Liveness.distinctRows[0] + ". Attribute it by row: " +
-            "the inside tap was at y=0.60, the probe at y=0.35. If the single row is the PROBE's, " +
-            "input was being delivered and the inside tap was swallowed (blocker 2 NOT fixed); " +
-            "if it is the INSIDE tap's, the guard is fine and the probe is what failed to land. " +
-            "Do not infer from timing.",
-    };
+    });
     rec("group 6: result", verdict.g6);
     await capture("step-06-after-inset-tap");
     verdict.performed.push(6);
