@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.app.data.MOBILE_SLACK_NAV_FEATURE_FLAG_KEY
+import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
+import build.raft.app.network.sync.DiagnosticFeatureFlagScope
+
 /**
  * #94 Slack-aligned bottom navigation tab model, gated by
  * [build.raft.app.data.MOBILE_SLACK_NAV_FEATURE_FLAG_KEY].
@@ -62,3 +66,41 @@ internal object SlockSlackNavTabs {
         }
     }
 }
+
+/**
+ * Per-key bottom-tab icon for both legacy and Slack-aligned tab sets. Slack-aligned icons
+ * mirror the #94 preview fixture: Home=house, DMs=message circle, Activity=bell, More=ellipsis.
+ */
+internal fun appShellSlackNavTabIcon(key: String): SlockLucideIconName =
+    when (key) {
+        SlockSlackNavTabs.Home -> SlockLucideIconName.House
+        SlockSlackNavTabs.Dms -> SlockLucideIconName.MessageCircle
+        SlockSlackNavTabs.Activity -> SlockLucideIconName.Bell
+        SlockSlackNavTabs.More -> SlockLucideIconName.Ellipsis
+        "tasks" -> SlockLucideIconName.SquareCheckBig
+        "members" -> SlockLucideIconName.Users
+        "settings" -> SlockLucideIconName.Settings
+        else -> SlockLucideIconName.Circle
+    }
+
+/**
+ * Effective on-device value of the Slack-nav gate: the server evaluation plus any diagnostics
+ * "Local Feature Overrides" latch (mirrors resolveActivityStableOrderEnabled).
+ */
+internal fun resolveSlackNavEnabled(
+    registry: DiagnosticFeatureFlagOverrideRegistry,
+    serverEffective: Boolean,
+    environmentId: String,
+    accountId: String,
+    serverId: String
+): Boolean =
+    registry.decide(
+        key = MOBILE_SLACK_NAV_FEATURE_FLAG_KEY,
+        serverEffective = serverEffective,
+        scope =
+            DiagnosticFeatureFlagScope(
+                environmentId = environmentId.trim().trimEnd('/'),
+                accountId = accountId,
+                serverId = serverId
+            )
+    ).finalEffective

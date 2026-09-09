@@ -1076,14 +1076,18 @@ class SlockAppShellTest {
         val requested =
             initial
                 .request("home")
+                .request("dms")
                 .request("tasks")
                 .request("members")
                 .request("settings")
 
         assertEquals(1, requested.forTab("home"))
+        assertEquals(1, requested.forTab("dms"))
         assertEquals(1, requested.forTab("tasks"))
         assertEquals(1, requested.forTab("members"))
         assertEquals(0, requested.forTab("settings"))
+        assertEquals(0, requested.forTab("activity"))
+        assertEquals(0, requested.forTab("more"))
     }
 
     @Test
@@ -1350,6 +1354,9 @@ class SlockAppShellTest {
         assertEquals("kuikly_tasks", appShellBottomTabPerformanceRoute("tasks"))
         assertEquals("kuikly_members", appShellBottomTabPerformanceRoute("members"))
         assertEquals("kuikly_settings", appShellBottomTabPerformanceRoute("settings"))
+        assertEquals("kuikly_dms", appShellBottomTabPerformanceRoute("dms"))
+        assertEquals("kuikly_activity", appShellBottomTabPerformanceRoute("activity"))
+        assertEquals("kuikly_more", appShellBottomTabPerformanceRoute("more"))
         assertEquals("kuikly_home", appShellBottomTabPerformanceRoute("unknown"))
         assertEquals("bottom_tab_home", appShellBottomTabPerformancePhase("unknown"))
     }
@@ -1370,6 +1377,113 @@ class SlockAppShellTest {
             tabs.map { it.label }
         )
         assertEquals(listOf(false, false, true, false), tabs.map { it.selected })
+    }
+
+    @Test
+    fun appShellBottomTabsFollowOrderedKeysWithSlackIconsAndLabels() {
+        // task #94: the ordered overload drives the Slack-aligned bar; order, labels,
+        // selection and the preview-fixture icon set are all pinned.
+        val tabs =
+            appShellBottomTabs(
+                selectedKey = "dms",
+                orderedTabKeys = listOf("more", "dms", "activity", "home"),
+                labelFor = { key -> "label-$key" }
+            )
+        assertEquals(listOf("more", "dms", "activity", "home"), tabs.map { it.key })
+        assertEquals(
+            listOf("label-more", "label-dms", "label-activity", "label-home"),
+            tabs.map { it.label }
+        )
+        assertEquals(listOf(false, true, false, false), tabs.map { it.selected })
+        assertEquals(
+            listOf(
+                SlockLucideIconName.Ellipsis,
+                SlockLucideIconName.MessageCircle,
+                SlockLucideIconName.Bell,
+                SlockLucideIconName.House
+            ),
+            tabs.map { it.iconName }
+        )
+    }
+
+    @Test
+    fun appShellActiveChildTabFollowsSlackOrderedKeys() {
+        // task #94: with Slack-aligned ordered keys, the Slack tabs are child pages and the
+        // legacy hidden keys are not; the legacy default still applies without the param.
+        val slackKeys = SlockSlackNavTabs.DefaultOrder
+        assertEquals("home", appShellActiveChildPagerTab("home", slackKeys))
+        assertEquals("dms", appShellActiveChildPagerTab("dms", slackKeys))
+        assertEquals("activity", appShellActiveChildPagerTab("activity", slackKeys))
+        assertEquals("more", appShellActiveChildPagerTab("more", slackKeys))
+        assertNull(appShellActiveChildPagerTab("tasks", slackKeys))
+        assertNull(appShellActiveChildPagerTab("members", slackKeys))
+        assertNull(appShellActiveChildPagerTab("settings", slackKeys))
+        // Unknown keys clamp to home, which is a valid child key in both modes.
+        assertEquals("home", appShellActiveChildPagerTab("unknown", slackKeys))
+    }
+
+    @Test
+    fun appShellRetainedChildTabsRespectSlackOrderedKeys() {
+        val slackKeys = listOf("dms", "home", "activity", "more")
+        assertEquals(
+            listOf("dms", "home", "activity", "more"),
+            appShellRetainedChildTabs(
+                activeChildTab = "dms",
+                mountedTabs = setOf("home", "activity", "more", "dms", "tasks"),
+                childPageTabKeys = slackKeys
+            )
+        )
+        // Legacy keys present in mountedTabs are NOT retained while Slack order is active.
+        assertEquals(
+            listOf("dms"),
+            appShellRetainedChildTabs(
+                activeChildTab = "dms",
+                mountedTabs = setOf("dms", "tasks", "members"),
+                childPageTabKeys = slackKeys
+            )
+        )
+    }
+
+    @Test
+    fun retainedAppShellSelectedTabAcceptsSlackKeys() {
+        assertEquals("dms", retainedAppShellSelectedTab("dms"))
+        assertEquals("activity", retainedAppShellSelectedTab("activity"))
+        assertEquals("more", retainedAppShellSelectedTab("more"))
+    }
+
+    @Test
+    fun appShellParentShouldStartHomeTreatsDmsAsHomeLikeInSlackMode() {
+        // task #94: the DMs tab renders the same home store, so the parent home start must
+        // not be gated on the literal "home" tab while Slack nav is active.
+        val state = SharedHomeState()
+        assertTrue(
+            appShellParentShouldStartHome(
+                selectedTab = "dms",
+                selectedHomeDestination = null,
+                readyServerId = "server-a",
+                state = state,
+                homeLikeTabs = setOf("dms")
+            )
+        )
+        // Without the home-like set (legacy mode), the same state does not start home.
+        assertFalse(
+            appShellParentShouldStartHome(
+                selectedTab = "dms",
+                selectedHomeDestination = null,
+                readyServerId = "server-a",
+                state = state
+            )
+        )
+        // Non-home-like Slack tabs still do not start home.
+        assertFalse(
+            appShellParentShouldStartHome(
+                selectedTab = "activity",
+                selectedHomeDestination = null,
+                readyServerId = "server-a",
+                state = state,
+                homeLikeTabs = setOf("dms")
+            )
+        )
     }
 
     @Test

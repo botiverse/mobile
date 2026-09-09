@@ -1,7 +1,9 @@
 package build.raft.app
 
+import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.MOBILE_SLACK_NAV_FEATURE_FLAG_KEY
 import build.raft.app.data.REGISTERED_SERVER_FEATURE_FLAG_KEYS
+import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideMode
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideMutationResult
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
@@ -11,7 +13,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
 
 /**
  * Locks the #94 Slack-aligned tab model semantics (task #94, gated by mobile_slack_nav_v0):
@@ -171,5 +175,103 @@ class SlockSlackNavTabsTest {
             SlockSlackNavTabs.DefaultOrder,
             SlockSlackNavTabs.resolveAppShellTabKeys(slackNavEnabled = false, persistedRawOrder = "home,dms,activity,more")
         )
+    }
+
+    @Test
+    fun slackNavTabOrderPreferenceRoundTripsAndClears() = runBlocking {
+        val prefs = KeyValueChatLayoutPreferenceStore(InMemoryPreferenceStore())
+        assertNull(prefs.readSlackNavTabOrderSync(), "untouched preference reads absent")
+
+        prefs.saveSlackNavTabOrder("more,dms,activity,home")
+        assertEquals("more,dms,activity,home", prefs.readSlackNavTabOrderSync())
+
+        // Persisted value feeds the model directly: setting wins over any flag state.
+        val persisted = prefs.readSlackNavTabOrderSync()
+        assertEquals(
+            listOf("more", "dms", "activity", "home"),
+            SlockSlackNavTabs.resolveAppShellTabKeys(slackNavEnabled = false, persistedRawOrder = persisted)
+        )
+
+        // Blank/ cleared values read as absent again (flag-seeded default resumes).
+        prefs.saveSlackNavTabOrder("")
+        assertNull(prefs.readSlackNavTabOrderSync())
+        prefs.saveSlackNavTabOrder(null)
+        assertNull(prefs.readSlackNavTabOrderSync())
+    }
+
+    @Test
+    fun slackNavGateFollowsServerUnlessLocallyOverridden() {
+        val registry =
+            DiagnosticFeatureFlagOverrideRegistry(
+                nowMillis = { 1_000L },
+                readStateController = ReadStateV1DiagnosticOverrideController { 1_000L },
+            )
+        registry.configureEntitlement(true)
+        val scope =
+            DiagnosticFeatureFlagScope(
+                environmentId = "https://api.example/",
+                accountId = "account-a",
+                serverId = "server-a",
+            )
+        val resolve = { serverEffective: Boolean ->
+            resolveSlackNavEnabled(
+                registry = registry,
+                serverEffective = serverEffective,
+                environmentId = scope.environmentId,
+                accountId = scope.accountId,
+                serverId = scope.serverId
+            )
+        }
+
+        assertFalse(resolve(false))
+        assertTrue(resolve(true))
+        registry.setMode(MOBILE_SLACK_NAV_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
+        assertTrue(resolve(false), "ForceOn beats a server-off evaluation")
+        registry.setMode(MOBILE_SLACK_NAV_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOff)
+        assertFalse(resolve(true), "ForceOff beats a server-on evaluation")
+
+        // Effective tabs: an untouched setting follows the locally-forced default too.
+        assertEquals(
+            SlockSlackNavTabs.LegacyOrder,
+            SlockSlackNavTabs.resolveAppShellTabKeys(
+                slackNavEnabled = resolveSlackNavEnabled(registry, false, scope.environmentId, scope.accountId, scope.serverId),
+                persistedRawOrder = null
+            ),
+            "ForceOff + untouched setting -> legacy"
+        )
+        registry.setMode(MOBILE_SLACK_NAV_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
+        assertEquals(
+            SlockSlackNavTabs.DefaultOrder,
+            SlockSlackNavTabs.resolveAppShellTabKeys(
+                slackNavEnabled = resolveSlackNavEnabled(registry, false, scope.environmentId, scope.accountId, scope.serverId),
+                persistedRawOrder = null
+            ),
+            "ForceOn + untouched setting -> Slack default order"
+        )
+    }
+
+    @Test
+    fun slackNavTabIconsMatchThePreviewFixture() {
+        // Icons are pinned to the #94 Slack-aligned preview fixture
+        // (compose_slack_nav_preview_visual): Home=house, DMs=message circle, Activity=bell,
+        // More=ellipsis; legacy keys keep their existing icons.
+        assertEquals(SlockLucideIconName.House, appShellSlackNavTabIcon("home"))
+        assertEquals(SlockLucideIconName.MessageCircle, appShellSlackNavTabIcon("dms"))
+        assertEquals(SlockLucideIconName.Bell, appShellSlackNavTabIcon("activity"))
+        assertEquals(SlockLucideIconName.Ellipsis, appShellSlackNavTabIcon("more"))
+        assertEquals(SlockLucideIconName.SquareCheckBig, appShellSlackNavTabIcon("tasks"))
+        assertEquals(SlockLucideIconName.Users, appShellSlackNavTabIcon("members"))
+        assertEquals(SlockLucideIconName.Settings, appShellSlackNavTabIcon("settings"))
+        assertEquals(SlockLucideIconName.Circle, appShellSlackNavTabIcon("unknown"))
+    }
+
+    private class InMemoryPreferenceStore : SharedPreferenceStore {
+        private val values = mutableMapOf<String, String>()
+
+        override fun getString(key: String): String? = values[key]
+
+        override fun putString(key: String, value: String?) {
+            if (value == null) values.remove(key) else values[key] = value
+        }
     }
 }

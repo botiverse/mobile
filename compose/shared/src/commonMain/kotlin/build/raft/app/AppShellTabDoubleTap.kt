@@ -59,16 +59,18 @@ internal class AppShellBottomTabTapTracker(
     }
 }
 
-internal val AppShellScrollToTopTabs: Set<String> = setOf("home", "tasks", "members")
+internal val AppShellScrollToTopTabs: Set<String> = setOf("home", "dms", "tasks", "members")
 
 internal data class AppShellTabScrollToTopRequests(
     val home: Int = 0,
+    val dms: Int = 0,
     val tasks: Int = 0,
     val members: Int = 0,
 ) {
     fun request(tab: String): AppShellTabScrollToTopRequests =
         when (retainedAppShellSelectedTab(tab)) {
             "home" -> copy(home = home + 1)
+            "dms" -> copy(dms = dms + 1)
             "tasks" -> copy(tasks = tasks + 1)
             "members" -> copy(members = members + 1)
             else -> this
@@ -77,6 +79,7 @@ internal data class AppShellTabScrollToTopRequests(
     fun forTab(tab: String): Int =
         when (retainedAppShellSelectedTab(tab)) {
             "home" -> home
+            "dms" -> dms
             "tasks" -> tasks
             "members" -> members
             else -> 0
