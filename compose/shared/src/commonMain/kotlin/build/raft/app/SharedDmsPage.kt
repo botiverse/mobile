@@ -1,0 +1,494 @@
+package build.raft.app
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MillisPerDay
+import build.raft.app.model.MillisPerHour
+import build.raft.app.model.MillisPerMinute
+import build.raft.app.model.SlockTimeContext
+import build.raft.app.model.SlockTimeFormat24Hour
+import build.raft.app.model.ThreadId
+import build.raft.app.model.civilDateFromEpochDay
+import build.raft.app.model.floorDiv
+import build.raft.app.model.floorMod
+import build.raft.app.model.formatSlockClock
+import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
+import build.raft.app.model.twoDigits
+import build.raft.app.resources.MR
+import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
+import com.tencent.kuikly.compose.foundation.Image
+import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.layout.Arrangement
+import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.PaddingValues
+import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.Spacer
+import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
+import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
+import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.foundation.layout.offset
+import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.layout.widthIn
+import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
+import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
+import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.ui.Alignment
+import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.layout.ContentScale
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.style.TextAlign
+import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Dp
+import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.tmm.kmmresource.compose.stringResource
+
+private val WeChatDmRowHeight = 72.dp
+private val WeChatDmRowHorizontalPadding = 16.dp
+private val WeChatDmAvatarSize = 48.dp
+private val WeChatDmStatusDotSize = 10.dp
+private val WeChatDmContentGap = 12.dp
+private val WeChatDmBadgeHeight = 18.dp
+private val WeChatDmMutedDotSize = 9.dp
+private val WeChatDmDividerStartPadding = 76.dp // 16.dp + 48.dp + 12.dp
+private val WeChatRedBadgeColor = Color(0xFFFA5151)
+private val WeChatDividerColor = SlockColor.BorderBlack.copy(alpha = 0.1f)
+
+/**
+ * WeChat-style Direct Messages page for Slack bottom bar navigation mode (Task #332).
+ *
+ * Displays a list of DM conversations with 48dp avatars, status indicators, unread badges,
+ * contact names, relative timestamps, and last message previews or drafts.
+ */
+@Composable
+internal fun SharedDmsScreen(
+    active: Boolean = true,
+    directMessages: List<SlockHomeConversationItem>,
+    onOpenConversation: (ThreadLaunchConversationIdentity) -> Unit,
+    modifier: Modifier = Modifier,
+    showHeader: Boolean = true,
+    scrollToTopRequest: Int = 0,
+    bottomContentPadding: Dp = 0.dp,
+    currentServerId: String? = null,
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    timeContext: SlockTimeContext? = null,
+    refreshing: Boolean = false,
+    onRefresh: (() -> Unit)? = null,
+) {
+    val listState = rememberLazyListState()
+    val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
+    LaunchedEffect(scrollToTopRequest) {
+        if (scrollToTopRequestFence.consume(scrollToTopRequest)) {
+            listState.animateScrollToTopExpressive()
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(SlockColor.SurfaceWhite)
+    ) {
+        if (showHeader) {
+            SharedDmsHeader(refreshing = refreshing)
+        }
+
+        if (directMessages.isEmpty()) {
+            SlockEmptyState(
+                title = stringResource(MR.strings.home_section_direct_messages),
+                detail = stringResource(MR.strings.empty_no_messages),
+                iconName = SlockLucideIconName.MessageSquare,
+                modifier = Modifier.weight(1f)
+            )
+        } else {
+            val sortedItems = remember(directMessages) { directMessages.sortedForWeChatDms() }
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentPadding = PaddingValues(bottom = bottomContentPadding)
+            ) {
+                items(sortedItems.size, key = { i -> sortedItems[i].id }) { index ->
+                    val item = sortedItems[index]
+                    SlockWeChatDirectMessageRow(
+                        item = item,
+                        onClick = {
+                            val identity = item.toWeChatDmLaunchIdentity()
+                            if (identity != null) {
+                                onOpenConversation(identity)
+                            }
+                        },
+                        currentServerId = currentServerId,
+                        agentStatusResolver = agentStatusResolver,
+                        memberAvatarResolver = memberAvatarResolver,
+                        timeContext = timeContext,
+                    )
+                    if (index < sortedItems.lastIndex) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(SlockStroke.Thin)
+                                .background(SlockColor.SurfaceWhite)
+                        ) {
+                            Spacer(Modifier.width(WeChatDmDividerStartPadding))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(SlockStroke.Thin)
+                                    .background(WeChatDividerColor)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SharedDmsHeader(
+    refreshing: Boolean = false
+) {
+    SlockMainTabPageHeader(
+        surface = SlockMainTabHeaderSurface.Dms,
+        title = stringResource(MR.strings.home_section_direct_messages),
+        refreshing = refreshing
+    )
+}
+
+/**
+ * WeChat-style single Direct Message row.
+ *
+ * Visual hierarchy:
+ * - Left: 48dp rounded avatar with presence status dot at bottom-end and unread badge at top-end.
+ * - Center/Right:
+ *   - Top line: Display name (truncated) + right-aligned relative timestamp.
+ *   - Bottom line: Red draft prefix (if applicable) or last message snippet + right-aligned mute icon.
+ */
+@Composable
+internal fun SlockWeChatDirectMessageRow(
+    item: SlockHomeConversationItem,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    currentServerId: String? = null,
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    timeContext: SlockTimeContext? = null,
+) {
+    val isAgent = item.peerType == "agent" || item.peerType == "bot"
+    val memberId = item.presenceMemberId ?: item.id
+    val agentStatus = rememberSlockAgentStatusIndicatorState(agentStatusResolver, memberId)
+    val presenceState = projectHomeAgentStatusIndicatorState(
+        showPresence = isAgent,
+        memberId = memberId,
+        canonicalState = agentStatus
+    )
+    val avatarWireValue = rememberSlockMemberAvatarWireValue(
+        memberAvatarResolver = memberAvatarResolver,
+        memberId = memberId
+    ) ?: item.avatarWireValue
+
+    val inheritedTimeContext = LocalSlockTimeContextProvider.current?.current
+    val effectiveTimeContext = timeContext ?: inheritedTimeContext
+    val yesterdayLabel = stringResource(MR.strings.relative_time_day_yesterday)
+    val timestampText = formatWeChatConversationTimestamp(
+        timestamp = item.lastMessageAt ?: item.createdAt,
+        timeContext = effectiveTimeContext,
+        yesterdayLabel = yesterdayLabel
+    )
+    val previewText = formatWeChatConversationPreview(item)
+    val draftLabel = stringResource(MR.strings.thread_inline_draft)
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(WeChatDmRowHeight)
+            .background(SlockColor.SurfaceWhite)
+            .clickable(onClick = onClick)
+            .padding(horizontal = WeChatDmRowHorizontalPadding),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 48dp Avatar container with status dot and unread badge
+        Box(
+            modifier = Modifier.size(WeChatDmAvatarSize)
+        ) {
+            SlockAvatarWithStatus(
+                statusColor = presenceState?.color,
+                avatarSize = WeChatDmAvatarSize,
+                statusSize = WeChatDmStatusDotSize,
+                statusPulsing = presenceState?.pulsing == true
+            ) {
+                SlockWeChatDmAvatar(
+                    avatarWireValue = avatarWireValue,
+                    label = item.avatarLabel,
+                    avatarSize = WeChatDmAvatarSize
+                )
+            }
+
+            // Unread badge at TopEnd
+            if (item.unreadCount > 0) {
+                if (item.activityMuted) {
+                    // Muted unread: small red dot
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 3.dp, y = (-3).dp)
+                            .size(WeChatDmMutedDotSize)
+                            .borderRadius(WeChatDmMutedDotSize / 2)
+                            .background(WeChatRedBadgeColor)
+                    )
+                } else {
+                    // Unmuted unread: numeric pill/circle
+                    val countLabel = if (item.unreadCount > 99) "99+" else item.unreadCount.toString()
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 6.dp, y = (-4).dp)
+                            .height(WeChatDmBadgeHeight)
+                            .widthIn(min = WeChatDmBadgeHeight)
+                            .borderRadius(WeChatDmBadgeHeight / 2)
+                            .background(WeChatRedBadgeColor)
+                            .padding(horizontal = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = countLabel,
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(
+                                fontSize = 11.sp,
+                                lineHeight = 11.sp
+                            ),
+                            color = SlockColor.SurfaceWhite,
+                            maxLines = 1,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.width(WeChatDmContentGap))
+
+        // Right-side message content column
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight(),
+            verticalArrangement = Arrangement.Center
+        ) {
+            // Top row: Name + Timestamp
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = item.name,
+                    style = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp).withSlockFontWeight(FontWeight.Medium),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (timestampText.isNotBlank()) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = timestampText,
+                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(4.dp))
+
+            // Bottom row: Draft + Preview + Muted Icon
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (item.hasDraft) {
+                        Text(
+                            text = "[$draftLabel] ",
+                            style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                            color = SlockColor.AccentRed,
+                            maxLines = 1
+                        )
+                    }
+                    if (previewText.isNotBlank()) {
+                        Text(
+                            text = previewText,
+                            style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                            color = SlockColor.TextMutedGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                if (item.activityMuted) {
+                    Spacer(Modifier.width(6.dp))
+                    SlockLucideIcon(
+                        SlockLucideIconName.BellOff,
+                        modifier = Modifier.size(14.dp),
+                        color = SlockColor.TextMutedGrayArgb
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Sorts direct messages by most recent activity descending (WeChat conversational recency).
+ * Fallback to createdAt, then name, then ID.
+ */
+internal fun List<SlockHomeConversationItem>.sortedForWeChatDms(): List<SlockHomeConversationItem> =
+    sortedWith(
+        compareByDescending<SlockHomeConversationItem> {
+            parseSlockTimestampEpochMillisOrNull(it.lastMessageAt)
+                ?: parseSlockTimestampEpochMillisOrNull(it.createdAt)
+                ?: Long.MIN_VALUE
+        }.thenBy { it.name.trim().lowercase() }.thenBy { it.id }
+    )
+
+/**
+ * Formats timestamps in WeChat conversation list style:
+ * - Today: 24h clock time (e.g. "14:25")
+ * - Yesterday: localized yesterday label (e.g. "Yesterday" / "昨天")
+ * - Same year: "MM-DD" (e.g. "03-15")
+ * - Earlier years: "YYYY-MM-DD" (e.g. "2025-11-20")
+ */
+internal fun formatWeChatConversationTimestamp(
+    timestamp: String?,
+    timeContext: SlockTimeContext? = null,
+    yesterdayLabel: String = "Yesterday"
+): String {
+    val trimmed = timestamp?.trim().orEmpty()
+    if (trimmed.isEmpty()) return ""
+    val offsetMinutes = timeContext?.localOffsetMinutes ?: 0
+    val epochMillis = parseSlockTimestampEpochMillisOrNull(trimmed, offsetMinutes) ?: return trimmed
+    val localMillis = epochMillis + offsetMinutes * MillisPerMinute
+    val localEpochDay = floorDiv(localMillis, MillisPerDay)
+    val todayEpochDay = timeContext?.todayEpochDay
+        ?: timeContext?.nowEpochMillis?.let { floorDiv(it + offsetMinutes * MillisPerMinute, MillisPerDay) }
+    val millisOfDay = floorMod(localMillis, MillisPerDay)
+    val hour = (millisOfDay / MillisPerHour).toInt()
+    val minute = ((millisOfDay % MillisPerHour) / MillisPerMinute).toInt()
+    val timeStr = formatSlockClock(hour, minute, null, timeContext?.timeFormat ?: SlockTimeFormat24Hour)
+    val date = civilDateFromEpochDay(localEpochDay)
+
+    return when {
+        todayEpochDay != null && localEpochDay == todayEpochDay -> timeStr
+        todayEpochDay != null && localEpochDay == todayEpochDay - 1L -> yesterdayLabel
+        todayEpochDay != null && civilDateFromEpochDay(todayEpochDay).year == date.year -> {
+            "${date.month.twoDigits()}-${date.day.twoDigits()}"
+        }
+        else -> {
+            "${date.year}-${date.month.twoDigits()}-${date.day.twoDigits()}"
+        }
+    }
+}
+
+/**
+ * Formats the conversation preview text:
+ * Prefers lastMessagePreview, falling back to description (peer bio/subtitle).
+ * If lastMessageSenderName is present and distinct from the conversation name, it prefixes the snippet.
+ */
+internal fun formatWeChatConversationPreview(item: SlockHomeConversationItem): String {
+    val preview = item.lastMessagePreview?.takeIf { it.isNotBlank() }
+        ?: item.description?.takeIf { it.isNotBlank() }
+        ?: ""
+    val sender = item.lastMessageSenderName?.takeIf { it.isNotBlank() }
+    return if (sender != null && preview.isNotBlank() && sender != item.name) {
+        "$sender: $preview"
+    } else {
+        preview
+    }
+}
+
+/**
+ * Resolves a [ThreadLaunchConversationIdentity] from a DM conversation row, guaranteeing
+ * [ConversationKind.DirectMessage] surface binding even when the row's kind tag is empty.
+ */
+internal fun SlockHomeConversationItem.toWeChatDmLaunchIdentity(): ThreadLaunchConversationIdentity? {
+    val cleanId = id.takeIf { it.isNotBlank() } ?: return null
+    val parsedChannelType = channelType?.takeIf { it.isNotBlank() }
+    return ThreadLaunchConversationIdentity(
+        threadId = ThreadId(cleanId),
+        channelId = ChannelId(cleanId),
+        channelType = parsedChannelType,
+        threadStreamChannelIdHint = null,
+        kind = ConversationKind.DirectMessage,
+        dmPeerIdentity = memberDetailIdentityFromWire(
+            memberId = presenceMemberId,
+            kindWireValue = peerType,
+            source = MemberDetailIdentitySource.DirectoryDmPeer
+        )
+    )
+}
+
+@Composable
+internal fun SlockWeChatDmAvatar(
+    avatarWireValue: String?,
+    label: String,
+    modifier: Modifier = Modifier,
+    avatarSize: Dp = WeChatDmAvatarSize
+) {
+    val cleanWire = avatarWireValue?.trim()?.takeIf { it.isNotBlank() }
+    val isHttp = cleanWire != null && (cleanWire.startsWith("http://") || cleanWire.startsWith("https://"))
+
+    Box(
+        modifier = modifier
+            .size(avatarSize)
+            .background(SlockColor.AccentLavender)
+            .border(SlockStroke.Thin, SlockColor.BorderBlack),
+        contentAlignment = Alignment.Center
+    ) {
+        if (isHttp) {
+            val painter = rememberAsyncImagePainter(cleanWire!!)
+            Image(
+                painter = painter,
+                contentDescription = label,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else if (label.isNotBlank()) {
+            Text(
+                text = label.take(2).uppercase(),
+                style = SlockType.PageTitle.withSlockFontWeight(FontWeight.Bold).copy(
+                    fontSize = 16.sp,
+                    lineHeight = 16.sp
+                ),
+                color = SlockColor.TextBlack,
+                textAlign = TextAlign.Center
+            )
+        } else {
+            SlockLucideIcon(
+                name = SlockLucideIconName.User,
+                modifier = Modifier.size((avatarSize.value * 0.5f).dp),
+                color = SlockColor.TextBlackArgb
+            )
+        }
+    }
+}
+
+private fun String?.weChatDmPeerMemberKindOrNull(): MemberKind? =
+    parsedMemberKindOrNull(MemberKindWireContract.InternalActor)
+        ?: projectedMemberKindOrNull()?.takeIf { it != MemberKind.System }

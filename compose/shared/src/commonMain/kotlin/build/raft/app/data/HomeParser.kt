@@ -77,6 +77,8 @@ data class HomeDirectMessageWireDto(
     val activityMuteSupported: Boolean = false,
     val maxReadSeq: Long? = null,
     val readStateVersion: Long? = null,
+    val lastMessagePreview: String? = null,
+    val lastMessageSenderName: String? = null,
 )
 
 @Serializable
@@ -381,6 +383,8 @@ private fun HomeDirectMessageWireDto.toDirectMessageRow(warningLogger: (String) 
         directMessagePeerAvatarWireValue = peerAvatarUrl?.takeIf { it.isNotBlank() },
         presenceMemberId = MemberId(peerId),
         lastMessageAt = lastMessageAt,
+        lastMessagePreview = lastMessagePreview,
+        lastMessageSenderName = lastMessageSenderName,
         readStateV1Hydrate = readStateV1HydrateCarrier(),
         activityNotificationPreference =
             ChannelActivityNotificationPreference(
