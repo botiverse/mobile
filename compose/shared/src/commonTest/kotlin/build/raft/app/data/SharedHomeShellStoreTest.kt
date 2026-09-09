@@ -34,7 +34,7 @@ class SharedHomeShellStoreTest {
 
         assertEquals(SharedHomeShellDestinationActivity, store.state.value.destination)
         assertNull(store.state.value.selectedConversationId)
-        assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.Refresh), fixture.activityIntents)
+        assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.RefreshOnVisible), fixture.activityIntents)
         fixture.cancel()
     }
 
@@ -112,7 +112,7 @@ class SharedHomeShellStoreTest {
         )
         assertEquals(
             listOf<SharedActivityIntent>(
-                SharedActivityIntent.Refresh,
+                SharedActivityIntent.RefreshOnVisible,
                 SharedActivityIntent.RefreshOnVisible
             ),
             fixture.activityIntents
@@ -267,7 +267,7 @@ class SharedHomeShellStoreTest {
         assertEquals(
             listOf<SharedActivityIntent>(
                 SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null),
-                SharedActivityIntent.Refresh,
+                SharedActivityIntent.RefreshOnVisible,
                 SharedActivityIntent.ApplyRealtimeEvent(event)
             ),
             fixture.activityIntents

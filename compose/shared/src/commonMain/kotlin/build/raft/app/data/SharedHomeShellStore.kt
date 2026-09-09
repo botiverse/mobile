@@ -207,7 +207,7 @@ class SharedHomeShellStore(
                 selectedConversationId = null
             )
         when (destination) {
-            SharedHomeShellDestinationActivity -> dispatchActivity(SharedActivityIntent.Refresh)
+            SharedHomeShellDestinationActivity -> dispatchActivity(SharedActivityIntent.RefreshOnVisible)
             SharedHomeShellDestinationSaved -> dispatchSearchSaved(SharedHomeSearchSavedIntent.OpenSaved)
             SharedHomeShellDestinationSearch -> dispatchSearchSaved(SharedHomeSearchSavedIntent.OpenSearch)
         }

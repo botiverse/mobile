@@ -16,6 +16,7 @@ import build.raft.app.data.ActivityUpdateTrackingState
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
+import build.raft.app.data.KuiklyRealtimeEvents
 import build.raft.app.data.activityVisibleSummaryCounts
 import build.raft.app.data.hasUnopenableInternalJointParentSource
 import build.raft.app.data.isUnfollowedActivityThread
@@ -101,6 +102,7 @@ import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -344,12 +346,12 @@ internal fun SharedHomeActivityScreen(
     }
     val lifecycleScope = rememberCoroutineScope()
     val latestStandalonePageVisible by rememberUpdatedState(standalonePageVisible)
-    val lifecycleEvents = remember(sharedStores) { build.raft.app.data.KuiklyRealtimeEvents(sharedStores.eventBus) }
+    val lifecycleEvents = remember(sharedStores) { KuiklyRealtimeEvents(sharedStores.eventBus) }
     DisposableEffect(lifecycleEvents, activityStore, storeScope, lifecycleScope) {
         val subscription = lifecycleEvents.addListener { eventData ->
             val eventSnapshot = eventData.toString()
             lifecycleScope.launch {
-                val data = com.tencent.kuikly.core.nvi.serialization.json.JSONObject(eventSnapshot)
+                val data = JSONObject(eventSnapshot)
                 if (activityLifecycleShouldRefresh(data, storeScope.shellInstanceId, latestStandalonePageVisible)) {
                     activityStore.dispatch(SharedActivityIntent.RefreshOnVisible)
                 }
