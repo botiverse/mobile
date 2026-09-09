@@ -2803,14 +2803,14 @@ open class SlockKuiklyActivity :
 
         private fun resolvedPageName(intent: Intent?): String =
                 if (intent.isDiagnosticsDeepLinkIntent()) {
-                    PAGE_APP_SHELL
+                    intent?.getStringExtra(KEY_PAGE_NAME).takeUnless { it.isNullOrBlank() } ?: PAGE_APP_SHELL
                 } else {
                     intent?.getStringExtra(KEY_PAGE_NAME).takeUnless { it.isNullOrBlank() } ?: PAGE_ROUTER
                 }
 
         private fun resolvedPageData(intent: Intent?): SlockKuiklyPageData {
             val rawPageData =
-                    if (intent.isDiagnosticsDeepLinkIntent()) {
+                    if (intent.isDiagnosticsDeepLinkIntent() && intent?.getStringExtra(KEY_PAGE_NAME).isNullOrBlank()) {
                         diagnosticsDeepLinkPageData(intent)
                     } else {
                         JSONObject(SlockKuiklyPageData.fromText(intent?.getStringExtra(KEY_PAGE_DATA)).text)
