@@ -219,7 +219,8 @@ internal fun HomeSecondaryRouterContent(
     routeVisibleTick: Int = 0,
     initialSearchChannelId: String? = null,
     initialSearchOpenFilterId: String? = null,
-    initialSearchFocusInput: Boolean = false
+    initialSearchFocusInput: Boolean = false,
+    standalonePageVisible: Boolean = false
 ) {
     val environment = rememberHomeSecondaryRouteEnvironment(routeVisibleTick)
     val retainedDestination = retainedHomeSecondaryDestination(destination)
@@ -230,7 +231,7 @@ internal fun HomeSecondaryRouterContent(
     )
     CompositionLocalProvider(LocalSlockTimeContextProvider provides environment.timeContextProvider) {
         when (retainedDestination) {
-            HomeDestinationActivity -> HomeActivityRouterContent(environment, routeVisibleTick)
+            HomeDestinationActivity -> HomeActivityRouterContent(environment, routeVisibleTick, standalonePageVisible)
             HomeDestinationSearch ->
                 HomeSearchRouterContent(
                     environment,
@@ -248,12 +249,14 @@ internal fun HomeSecondaryRouterContent(
 @Composable
 private fun HomeActivityRouterContent(
     environment: HomeSecondaryRouteEnvironment,
-    routeVisibleTick: Int = 0
+    routeVisibleTick: Int = 0,
+    standalonePageVisible: Boolean = false
 ) {
     SharedHomeActivityScreen(
         bridge = environment.bridge,
         authStore = environment.authStore,
         routeVisibleTick = routeVisibleTick,
+        standalonePageVisible = standalonePageVisible,
         onOpenMessage = { request ->
             environment.pager.openStandaloneHomeMessageRequest(
                 bridge = environment.bridge,

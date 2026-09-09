@@ -219,7 +219,7 @@ class SharedHomeShellStore(
                 dispatchHome(SharedHomeIntent.ForegroundRefresh)
                 refreshSavedSummary()
             }
-            SharedHomeShellDestinationActivity -> dispatchActivity(SharedActivityIntent.Refresh)
+            SharedHomeShellDestinationActivity -> dispatchActivity(SharedActivityIntent.RefreshOnVisible)
             SharedHomeShellDestinationSaved -> dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSaved)
             SharedHomeShellDestinationSearch -> dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSearch)
         }

@@ -115,5 +115,13 @@ class AppShellForegroundResumePolicyTest {
                 selectedHomeDestination = "search"
             )
         )
+        assertEquals(
+            AppShellForegroundResumePlan(true, false, false),
+            appShellForegroundResumePlan(
+                pageVisible = true,
+                selectedTab = "home",
+                selectedHomeDestination = HomeDestinationActivity
+            )
+        )
     }
 }

@@ -3733,7 +3733,7 @@ class SlockAppShellTest {
     @Test
     fun rootLifecycleRefreshDoesNotDuplicateNativeHomeChildRefreshes() {
         assertEquals(true, homeDestinationRefreshesOnLifecycleResume(null))
-        assertEquals(false, homeDestinationRefreshesOnLifecycleResume("activity"))
+        assertEquals(true, homeDestinationRefreshesOnLifecycleResume("activity"))
         assertEquals(false, homeDestinationRefreshesOnLifecycleResume("saved"))
         assertEquals(false, homeDestinationRefreshesOnLifecycleResume("search"))
         assertEquals(true, homeDestinationRefreshesOnLifecycleResume("unknown"))

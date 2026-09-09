@@ -7,7 +7,12 @@ import com.tencent.kuikly.core.annotations.Page
 internal class ComposeHomeActivityPage : AuthenticatedProductPager(AuthenticatedProductRoute.HomeActivity) {
     override fun willInit() {
         super.willInit()
-        setAuthenticatedContent { HomeSecondaryRouterContent(HomeDestinationActivity, slockPageVisibleResumeTick) }
+        setAuthenticatedContent {
+            HomeSecondaryRouterContent(
+                HomeDestinationActivity,
+                slockPageVisibleResumeTick,
+                standalonePageVisible = slockPageVisible
+            )
+        }
     }
 }
-

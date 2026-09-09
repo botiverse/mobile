@@ -123,6 +123,7 @@ internal fun SharedHomeActivityScreen(
     bridge: BridgeModule,
     authStore: SlockAuthSessionStore,
     routeVisibleTick: Int = 0,
+    standalonePageVisible: Boolean = false,
     onOpenMessage: (HomeMessageOpenRequest) -> Unit,
     onClose: (() -> Unit)? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
@@ -321,7 +322,7 @@ internal fun SharedHomeActivityScreen(
         // "not observed": delivery crosses two bounded queues that drop silently,
         // so it never establishes that the load failed to start or to terminate.
         activityDiagnosticsLogger("store_load domain=activity phase=probe channel=live")
-        activityStore.dispatch(SharedActivityIntent.LoadInitial)
+        activityStore.dispatch(SharedActivityIntent.RefreshOnVisible)
     }
     LaunchedEffect(sharedStores.activityUnreadSummaryStore, activitySummaryServerId) {
         if (activitySummaryServerId.value.isNotBlank()) {
@@ -338,8 +339,23 @@ internal fun SharedHomeActivityScreen(
     }
     LaunchedEffect(routeVisibleTick) {
         if (activityPageDidAppearShouldRefresh(routeVisibleTick)) {
-            activityStore.dispatch(SharedActivityIntent.Refresh)
+            activityStore.dispatch(SharedActivityIntent.RefreshOnVisible)
         }
+    }
+    val lifecycleScope = rememberCoroutineScope()
+    val latestStandalonePageVisible by rememberUpdatedState(standalonePageVisible)
+    val lifecycleEvents = remember(sharedStores) { build.raft.app.data.KuiklyRealtimeEvents(sharedStores.eventBus) }
+    DisposableEffect(lifecycleEvents, activityStore, storeScope, lifecycleScope) {
+        val subscription = lifecycleEvents.addListener { eventData ->
+            val eventSnapshot = eventData.toString()
+            lifecycleScope.launch {
+                val data = com.tencent.kuikly.core.nvi.serialization.json.JSONObject(eventSnapshot)
+                if (activityLifecycleShouldRefresh(data, storeScope.shellInstanceId, latestStandalonePageVisible)) {
+                    activityStore.dispatch(SharedActivityIntent.RefreshOnVisible)
+                }
+            }
+        }
+        onDispose { lifecycleEvents.removeListener(subscription) }
     }
     SharedActivityPanelContent(
         state = safeOpenProjectedState,

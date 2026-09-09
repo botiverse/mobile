@@ -113,7 +113,7 @@ class SharedHomeShellStoreTest {
         assertEquals(
             listOf<SharedActivityIntent>(
                 SharedActivityIntent.Refresh,
-                SharedActivityIntent.Refresh
+                SharedActivityIntent.RefreshOnVisible
             ),
             fixture.activityIntents
         )

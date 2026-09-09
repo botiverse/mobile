@@ -1251,7 +1251,7 @@ internal fun retainedHomeSecondaryDestination(destination: String?): String? =
     destination?.takeIf { it in homeSecondaryDestinationKeys }
 
 internal fun homeDestinationRefreshesOnLifecycleResume(destination: String?): Boolean =
-    retainedHomeSecondaryDestination(destination) == null
+    retainedHomeSecondaryDestination(destination).let { it == null || it == HomeDestinationActivity }
 
 internal fun appShellAppearanceGeneration(
     pageVisibleTick: Int,
@@ -1304,7 +1304,15 @@ internal fun appShellForegroundResumePlan(
                     refreshServerMembers = true
                 )
             } else {
-                null
+                if (selectedHomeDestination == HomeDestinationActivity) {
+                    AppShellForegroundResumePlan(
+                        refreshVisibleRoute = true,
+                        refreshActivityUnreadSummary = false,
+                        refreshServerMembers = false
+                    )
+                } else {
+                    null
+                }
             }
         else ->
             AppShellForegroundResumePlan(

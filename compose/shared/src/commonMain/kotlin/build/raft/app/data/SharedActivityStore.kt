@@ -100,7 +100,10 @@ class SharedActivityStore internal constructor(
     private val realtimeBackgroundReconcileDelayMillis: Long = SharedActivityRealtimeBackgroundReconcileDelayMillis,
     private val beforeRealtimeHighWaterFold: () -> Unit = {},
     private val onRealtimePatchOwnerEntered: () -> Unit = {},
-    private val onReadReceiptPredictionOwnerEntered: () -> Unit = {}
+    private val onReadReceiptPredictionOwnerEntered: () -> Unit = {},
+    private val automaticRefreshNowMillis: () -> Long = TimeSource.Monotonic.markNow().let { mark ->
+        { mark.elapsedNow().inWholeMilliseconds }
+    }
 ) {
     private val _state = MutableStateFlow(SharedActivityState())
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
@@ -108,6 +111,7 @@ class SharedActivityStore internal constructor(
 
     private var loadJob: Job? = null
     private var loadGeneration: Long = 0L
+    private var lastSuccessfulRefreshMillis: Long? = null
     private var onUnreadCountsChanged: () -> Unit = onUnreadCountsChanged
     private var onSummaryFact: (ActivityUnreadSummaryFact) -> Unit = onSummaryFact
     private var onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = onSummaryInvalidated
@@ -197,6 +201,7 @@ class SharedActivityStore internal constructor(
         when (intent) {
             SharedActivityIntent.ClearSummary -> clearSummary()
             SharedActivityIntent.LoadInitial -> load(refresh = true, intent = intent)
+            SharedActivityIntent.RefreshOnVisible -> load(refresh = true, intent = intent)
             SharedActivityIntent.Refresh -> load(refresh = true, pullRefresh = false, intent = intent)
             SharedActivityIntent.PullRefresh -> load(refresh = true, pullRefresh = true, intent = intent)
             SharedActivityIntent.LoadMore -> load(refresh = false, intent = intent)
@@ -241,6 +246,7 @@ class SharedActivityStore internal constructor(
         val ownerServerId = synchronized(realtimeOwnerLock) {
             val owner = _state.value.ownerServerId
             loadGeneration += 1L
+            lastSuccessfulRefreshMillis = null
             loadJob?.cancel()
             loadJob = null
             realtimeBackgroundReconcileJob?.cancel()
@@ -954,6 +960,8 @@ class SharedActivityStore internal constructor(
             synchronized(realtimeOwnerLock) {
                 val current = _state.value
                 val inFlightLoad = loadJob?.takeUnless { job -> job.isCompleted }
+                val automaticRefresh = intent == SharedActivityIntent.RefreshOnVisible
+                if (automaticRefresh && inFlightLoad != null) return@synchronized null
                 if (backgroundRefresh && inFlightLoad != null) return@synchronized null
                 if (
                     refresh &&
@@ -1040,6 +1048,16 @@ class SharedActivityStore internal constructor(
                                 pullRefresh = pullRefresh
                             )
                             return@launch
+                        }
+                        if (automaticRefresh) {
+                            val fresh = synchronized(realtimeOwnerLock) {
+                                val lastRefresh = lastSuccessfulRefreshMillis
+                                val currentState = _state.value
+                                lastRefresh != null && currentState.ownerServerId == serverId.value &&
+                                    currentState.ownerUserId == userId && currentState.errorCode == null &&
+                                    automaticRefreshNowMillis() - lastRefresh in 0L until 5_000L
+                            }
+                            if (fresh) return@launch
                         }
                         synchronized(realtimeOwnerLock) {
                             val stateBeforeOwner = _state.value
@@ -1156,6 +1174,9 @@ class SharedActivityStore internal constructor(
                                         intent = intent,
                                         backgroundRefresh = backgroundRefresh
                                     )
+                                    if (refresh && (result is DataResult.Content || result is DataResult.Empty)) {
+                                        lastSuccessfulRefreshMillis = automaticRefreshNowMillis()
+                                    }
                                     true
                                 }
                             }
@@ -2419,6 +2440,7 @@ private fun InboxFilter.keepsReadActivityRows(): Boolean =
 sealed interface SharedActivityIntent {
     data object ClearSummary : SharedActivityIntent
     data object LoadInitial : SharedActivityIntent
+    data object RefreshOnVisible : SharedActivityIntent
     data object Refresh : SharedActivityIntent
     data object PullRefresh : SharedActivityIntent
     data object LoadMore : SharedActivityIntent
@@ -2452,6 +2474,7 @@ private fun SharedActivityIntent.activitySummarySource(): String =
     when (this) {
         SharedActivityIntent.ClearSummary -> "clear_summary"
         SharedActivityIntent.LoadInitial -> "load_initial"
+        SharedActivityIntent.RefreshOnVisible -> "refresh_on_visible"
         SharedActivityIntent.Refresh -> "refresh"
         SharedActivityIntent.PullRefresh -> "pull_refresh"
         SharedActivityIntent.LoadMore -> "load_more"
@@ -2485,6 +2508,7 @@ private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> true
         SharedActivityIntent.ClearSummary,
         SharedActivityIntent.LoadInitial,
+        SharedActivityIntent.RefreshOnVisible,
         SharedActivityIntent.Refresh,
         SharedActivityIntent.PullRefresh,
         SharedActivityIntent.LoadMore,
