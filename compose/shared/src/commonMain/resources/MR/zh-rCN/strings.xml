@@ -14,6 +14,7 @@
     <string name="error_item_not_found">找不到此内容。它可能已被移动或删除。</string>
     <string name="error_permission_denied">你没有权限查看此页面。</string>
     <string name="error_attachment_too_large">附件过大。请选择较小的文件后重试。</string>
+<string name="error_storage_quota_exceeded">上传额度已用尽，请联系服务器所有者查看账单并调整上传额度。</string>
     <string name="error_too_many_attempts">尝试次数过多。请稍候再试。</string>
     <string name="error_response_unreadable">无法读取服务器响应。请重试。</string>
     <string name="error_generic">出了点问题。请重试。</string>
@@ -286,6 +287,7 @@
     <string name="thread_error_reason_server_unavailable">服务器暂时不可用，请稍后重试。</string>
     <string name="thread_error_reason_not_found">找不到此内容，它可能已被移动或删除。</string>
     <string name="thread_error_reason_attachment_too_large">附件过大，请选择更小的文件后重试。</string>
+    <string name="thread_error_reason_storage_quota_exceeded">上传额度已用尽，请联系服务器所有者查看账单并调整上传额度。</string>
     <string name="thread_error_reason_attachment_image_compression_failed">图片压缩失败，请重新选择，或勾选“原图”。</string>
     <string name="thread_error_reason_rate_limited">操作过于频繁，请稍后重试。</string>
     <string name="thread_error_reason_response_unreadable">无法读取服务器响应，请重试。</string>

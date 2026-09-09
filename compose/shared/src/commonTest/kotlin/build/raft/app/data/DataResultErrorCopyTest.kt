@@ -9,6 +9,20 @@ class DataResultErrorCopyTest {
     private val errorStrings = englishErrorPresentationStringsForTest()
 
     @Test
+    fun quotaCodeTakesPriorityOverGeneric403WithoutMatchingUnrelatedQuotaErrors() {
+        listOf("FILE_UPLOAD_QUOTA_EXCEEDED", "storage_quota_exceeded", "quota_exceeded").forEach { code ->
+            assertEquals(ErrorPresentationKey.StorageQuotaExceeded, ScreenError(code).errorPresentation().key)
+            assertEquals(
+                ErrorPresentationKey.StorageQuotaExceeded,
+                ScreenError("http_403", serverCode = code).errorPresentation().key,
+            )
+        }
+        assertEquals(ErrorPresentationKey.PermissionDenied, ScreenError("http_403").errorPresentation().key)
+        assertEquals(ErrorPresentationKey.PermissionDenied, ScreenError("quota_admin_required").errorPresentation().key)
+        assertEquals(ErrorPresentationKey.Generic, ScreenError("quota_lookup_failed").errorPresentation().key)
+    }
+
+    @Test
     fun screenErrorCopyMapsNetworkAndDnsCodesToUserFacingMessages() {
         assertEquals(
             "The server could not be reached. Check your connection and try again.",

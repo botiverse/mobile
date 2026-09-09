@@ -14,6 +14,7 @@
     <string name="error_item_not_found">この項目は見つかりませんでした。移動または削除された可能性があります。</string>
     <string name="error_permission_denied">このページを表示する権限がありません。</string>
     <string name="error_attachment_too_large">添付ファイルが大きすぎます。小さいファイルを選んで、もう一度お試しください。</string>
+<string name="error_storage_quota_exceeded">アップロード上限を超えました。サーバー所有者に請求設定とアップロード上限の確認を依頼してください。</string>
     <string name="error_too_many_attempts">試行回数が多すぎます。しばらくしてからもう一度お試しください。</string>
     <string name="error_response_unreadable">応答を読み取れませんでした。もう一度お試しください。</string>
     <string name="error_generic">問題が発生しました。もう一度お試しください。</string>
@@ -286,6 +287,7 @@
     <string name="thread_error_reason_server_unavailable">サーバーは現在利用できません。しばらくしてから、もう一度お試しください。</string>
     <string name="thread_error_reason_not_found">この項目が見つかりませんでした。移動または削除された可能性があります。</string>
     <string name="thread_error_reason_attachment_too_large">添付ファイルが大きすぎます。より小さいファイルを選択して、もう一度お試しください。</string>
+    <string name="thread_error_reason_storage_quota_exceeded">アップロード上限を超えました。サーバー所有者に請求設定とアップロード上限の確認を依頼してください。</string>
     <string name="thread_error_reason_attachment_image_compression_failed">画像を圧縮できませんでした。もう一度選択するか、「元画像」を選択してください。</string>
     <string name="thread_error_reason_rate_limited">試行回数が多すぎます。しばらく待ってから、もう一度お試しください。</string>
     <string name="thread_error_reason_response_unreadable">応答を読み取れませんでした。もう一度お試しください。</string>

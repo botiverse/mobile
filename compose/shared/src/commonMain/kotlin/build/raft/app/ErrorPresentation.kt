@@ -38,6 +38,7 @@ internal fun localizedErrorPresentationStrings(): ErrorPresentationStrings =
             ErrorPresentationKey.NetworkConnectionFailed to stringResource(MR.strings.error_network_connection_failed),
             ErrorPresentationKey.ServerUnavailable to stringResource(MR.strings.error_server_unavailable),
             ErrorPresentationKey.ItemNotFound to stringResource(MR.strings.error_item_not_found),
+            ErrorPresentationKey.StorageQuotaExceeded to stringResource(MR.strings.error_storage_quota_exceeded),
             ErrorPresentationKey.PermissionDenied to stringResource(MR.strings.error_permission_denied),
             ErrorPresentationKey.AttachmentTooLarge to stringResource(MR.strings.error_attachment_too_large),
             ErrorPresentationKey.TooManyAttempts to stringResource(MR.strings.error_too_many_attempts),

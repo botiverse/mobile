@@ -11,6 +11,7 @@ internal fun englishErrorPresentationStringsForTest(): ErrorPresentationStrings 
             ErrorPresentationKey.NetworkConnectionFailed to "The network connection failed. Check your connection and try again.",
             ErrorPresentationKey.ServerUnavailable to "The server is unavailable right now. Please try again shortly.",
             ErrorPresentationKey.ItemNotFound to "This item could not be found. It may have been moved or deleted.",
+ErrorPresentationKey.StorageQuotaExceeded to "The upload quota has been exceeded. Ask a server owner to check Billing and increase the upload allowance.",
             ErrorPresentationKey.PermissionDenied to "You do not have permission to view this page.",
             ErrorPresentationKey.AttachmentTooLarge to "The attachment is too large. Choose a smaller file and try again.",
             ErrorPresentationKey.TooManyAttempts to "Too many attempts. Please wait a moment and try again.",

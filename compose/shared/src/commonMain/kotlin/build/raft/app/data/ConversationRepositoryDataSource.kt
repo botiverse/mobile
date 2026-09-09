@@ -1941,6 +1941,16 @@ private suspend fun <T> executeConversationWithDiagnostics(
 private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
     val serverMessage = conversationRouteErrorTextOrNull()
     val serverCode = conversationRouteStructuredErrorCodeOrNull()
+    if (code == 403 && serverCode.isUploadQuotaExceededCode()) {
+        return DataResult.Error(
+            ScreenError(
+                code = checkNotNull(serverCode),
+                retryable = false,
+                serverMessage = serverMessage,
+                serverCode = serverCode,
+            )
+        )
+    }
     return when (code) {
         0 ->
             DataResult.Error(

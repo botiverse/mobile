@@ -11,6 +11,7 @@ import build.raft.app.model.ThreadId
 import build.raft.app.network.MultipartFile
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -1002,6 +1003,26 @@ class ConversationRepositoryDataSourceTest {
         val result = RealConversationRepository(sampleStore(), network).getAttachmentUploadCapabilities()
 
         assertEquals("network_parse_failed", assertIs<DataResult.Error>(result).error.code)
+    }
+
+    @Test
+    fun uploadQuotaPreservesStructuredCodeInsteadOfPermissionFailure() = runTest {
+        val response = HomeNetworkResponse(
+            code = 403,
+            bodyText = null,
+            errorBodyText = """{"error":"Monthly file upload quota exceeded","errorCode":"FILE_UPLOAD_QUOTA_EXCEEDED"}""",
+        )
+        val repository = RealConversationRepository(sampleStore(), FakeConversationNetworkClient(uploadResponse = response))
+        val result = repository.uploadAttachments(
+            AttachmentUploadRequest(
+                channelId = ChannelId("channel-1"),
+                files = listOf(PlatformFile(id = "quota-file", fileName = "photo.png", sizeBytes = 1024)),
+            )
+        )
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals("FILE_UPLOAD_QUOTA_EXCEEDED", error.code)
+        assertFalse(error.retryable)
+        assertEquals(ErrorPresentationKey.StorageQuotaExceeded, error.errorPresentation().key)
     }
 
     @Test

@@ -75,6 +75,7 @@ enum class ErrorPresentationKey {
     NetworkConnectionFailed,
     ServerUnavailable,
     ItemNotFound,
+    StorageQuotaExceeded,
     PermissionDenied,
     AttachmentTooLarge,
     TooManyAttempts,
@@ -114,7 +115,11 @@ fun String?.isAuthSessionErrorCode(): Boolean =
     this == "auth_required" || this == "auth_session" || this == "unauthenticated"
 
 internal fun ScreenError.errorPresentation(): ErrorPresentation {
-    val key = code.errorPresentationKeyOrNull()
+    val key = if (!isAuthSessionError() && serverCode.isUploadQuotaExceededCode()) {
+        ErrorPresentationKey.StorageQuotaExceeded
+    } else {
+        code.errorPresentationKeyOrNull()
+    }
     return ErrorPresentation(
         key = key ?: ErrorPresentationKey.Generic,
         rawServerMessage = serverMessage,
@@ -189,6 +194,7 @@ internal fun String?.errorPresentationKeyOrNull(): ErrorPresentationKey? {
             ErrorPresentationKey.ServerUnavailable
         "not_found" in lower || "http_404" in lower ->
             ErrorPresentationKey.ItemNotFound
+        lower.isUploadQuotaExceededCode() -> ErrorPresentationKey.StorageQuotaExceeded
         lower.isHttpStatusPresentationCode(403) || "permission" in lower || "forbidden" in lower ||
             "admin_required" in lower || "no_permission" in lower -> ErrorPresentationKey.PermissionDenied
         lower == "attachment_too_large" || lower == "upload_too_large" ->
@@ -203,6 +209,9 @@ internal fun String?.errorPresentationKeyOrNull(): ErrorPresentationKey? {
 
 private fun String.isHttpStatusPresentationCode(status: Int): Boolean =
     this == status.toString() || this == "http_$status" || endsWith("_$status")
+
+internal fun String?.isUploadQuotaExceededCode(): Boolean =
+    this?.trim()?.lowercase() in setOf("file_upload_quota_exceeded", "storage_quota_exceeded", "quota_exceeded")
 
 private fun String.looksLikeErrorCode(): Boolean =
     matches(Regex("[a-z0-9_]+")) ||

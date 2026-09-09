@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import build.raft.app.network.SlockRequestTimeoutException
+import build.raft.app.data.isUploadQuotaExceededCode
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
@@ -34,6 +35,7 @@ internal enum class ThreadUserFacingErrorReason {
     NetworkFailed,
     ServerUnavailable,
     ItemNotFound,
+    StorageQuotaExceeded,
     AttachmentTooLarge,
     AttachmentImageCompressionFailed,
     RateLimited,
@@ -114,6 +116,7 @@ internal fun threadUserFacingErrorCodeReason(errorCode: String?): ThreadUserFaci
             normalized.endsWith("_503") -> ThreadUserFacingErrorReason.ServerUnavailable
         "not_found" in normalized ||
             "http_404" in normalized -> ThreadUserFacingErrorReason.ItemNotFound
+        normalized.isUploadQuotaExceededCode() -> ThreadUserFacingErrorReason.StorageQuotaExceeded
         "permission" in normalized ||
             "forbidden" in normalized ||
             "admin_required" in normalized ||
@@ -140,6 +143,7 @@ internal fun ThreadUserFacingErrorReason.stringDesc(): StringDesc =
         ThreadUserFacingErrorReason.NetworkFailed -> MR.strings.thread_error_reason_network.desc()
         ThreadUserFacingErrorReason.ServerUnavailable -> MR.strings.thread_error_reason_server_unavailable.desc()
         ThreadUserFacingErrorReason.ItemNotFound -> MR.strings.thread_error_reason_not_found.desc()
+        ThreadUserFacingErrorReason.StorageQuotaExceeded -> MR.strings.thread_error_reason_storage_quota_exceeded.desc()
         ThreadUserFacingErrorReason.AttachmentTooLarge -> MR.strings.thread_error_reason_attachment_too_large.desc()
         ThreadUserFacingErrorReason.AttachmentImageCompressionFailed ->
             MR.strings.thread_error_reason_attachment_image_compression_failed.desc()
@@ -182,6 +186,8 @@ internal fun threadUserFacingErrorLabels(): ThreadUserFacingErrorLabels =
                 ThreadUserFacingErrorReason.ServerUnavailable.stringDesc().localized(),
             ThreadUserFacingErrorReason.ItemNotFound to
                 ThreadUserFacingErrorReason.ItemNotFound.stringDesc().localized(),
+            ThreadUserFacingErrorReason.StorageQuotaExceeded to
+                ThreadUserFacingErrorReason.StorageQuotaExceeded.stringDesc().localized(),
             ThreadUserFacingErrorReason.AttachmentTooLarge to
                 ThreadUserFacingErrorReason.AttachmentTooLarge.stringDesc().localized(),
             ThreadUserFacingErrorReason.AttachmentImageCompressionFailed to

@@ -14,6 +14,7 @@
     <string name="error_item_not_found">This item could not be found. It may have been moved or deleted.</string>
     <string name="error_permission_denied">You do not have permission to view this page.</string>
     <string name="error_attachment_too_large">The attachment is too large. Choose a smaller file and try again.</string>
+<string name="error_storage_quota_exceeded">The upload quota has been exceeded. Ask a server owner to check Billing and increase the upload allowance.</string>
     <string name="error_too_many_attempts">Too many attempts. Please wait a moment and try again.</string>
     <string name="error_response_unreadable">The response could not be read. Please try again.</string>
     <string name="error_generic">Something went wrong. Please try again.</string>
@@ -286,6 +287,7 @@
     <string name="thread_error_reason_server_unavailable">The server is unavailable right now. Please try again shortly.</string>
     <string name="thread_error_reason_not_found">This item could not be found. It may have been moved or deleted.</string>
     <string name="thread_error_reason_attachment_too_large">The attachment is too large. Choose a smaller file and try again.</string>
+    <string name="thread_error_reason_storage_quota_exceeded">The upload quota has been exceeded. Ask a server owner to check Billing and increase the upload allowance.</string>
     <string name="thread_error_reason_attachment_image_compression_failed">The image could not be compressed. Choose it again or select Original image.</string>
     <string name="thread_error_reason_rate_limited">Too many attempts. Please wait a moment and try again.</string>
     <string name="thread_error_reason_response_unreadable">The response could not be read. Please try again.</string>
