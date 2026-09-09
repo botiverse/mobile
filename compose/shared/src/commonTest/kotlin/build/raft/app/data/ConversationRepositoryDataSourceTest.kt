@@ -11,7 +11,6 @@ import build.raft.app.model.ThreadId
 import build.raft.app.network.MultipartFile
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -1006,7 +1005,7 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
-    fun uploadQuotaPreservesStructuredCodeInsteadOfPermissionFailure() = runTest {
+    fun uploadQuotaPreservesStructuredCodeInsteadOfPermissionFailure() = runBlocking {
         val response = HomeNetworkResponse(
             code = 403,
             bodyText = null,
