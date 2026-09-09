@@ -147,6 +147,24 @@ CI always registers the signed IPA and dSYM in a Hands draft before any
 server-side submission. Hands remains the sole TestFlight delivery boundary
 after CI has uploaded those artifacts.
 
+When the release plan (or a standing owner directive for that train) says
+iOS drafts go to TestFlight internal, do this immediately after the Hands
+draft succeeds, without waiting for a per-build go:
+
+1. `POST /api/apps/:appId/builds/:buildId/testflight-upload`.
+2. Poll until the exact build is `processing_state=VALID`.
+3. `hands builds testflight-publish` with `--distribution internal` and the
+   named internal group id (Raft Mobile: Botiverse
+   `e10b6b3e-000d-4cbe-a160-2a9275f76977`). Write What to Test. Do **not**
+   pass `--notify-testers` (Hands returns `NOTIFY_EXTERNAL_ONLY` on
+   internal).
+4. Fresh-read `internal_build_state=IN_BETA_TESTING`. An internal
+   all-builds group may already list the build; still write What to Test
+   and record the readback.
+
+Insiders, external testers, App Store, and Hands activation stay out of
+this default.
+
 ## TestFlight Distribution And Tester Notification
 
 An ASC build being `VALID` is upload/processing success, not TestFlight

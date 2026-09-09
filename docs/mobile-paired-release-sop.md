@@ -73,6 +73,16 @@ must remain separate for the exact being reviewed.
    intermediate states. A narrower instruction such as `upload only`,
    `internal only`, `submit for review`, or `do not notify` overrides this
    default and must be repeated in the receipt.
+9a. A standing owner directive may make **TestFlight internal** the default
+    after every successful iOS Hands draft. Record the named internal group
+    in the release plan. Each later iOS rebuild on that train is uploaded and
+    assigned to that internal group without a per-build go. This still does
+    not authorize Insiders, external testers, App Store production, Hands
+    activation, or a community announcement. For internal groups, Hands
+    `notify_testers` is `NOTIFY_EXTERNAL_ONLY`; completion is
+    `processing_state=VALID`, the named internal group assigned, and
+    `internal_build_state=IN_BETA_TESTING` (Apple `auto_notify_enabled` may
+    be the only notify path).
 10. Starting a release train requires a Raft **interval reminder**. As soon as
     the first platform draft is dispatched, the operator schedules a recurring
     10-minute reminder on the release thread. Each firing must fresh-read every
@@ -249,10 +259,43 @@ For iOS, record and independently verify:
 - app binary UUID equals dSYM UUID;
 - byte equality between GitHub and Hands IPA/dSYM assets.
 
-Then run the plan's acceptance matrix. At minimum cover fresh install, supported
-upgrade paths, authentication/session, Home/Activity/Thread, attachments,
-composer/IME, crash scans, and every accepted changeset. Mark unrun cases
-`NOT RUN`; never infer physical-device behavior from Simulator or compile.
+Then run **release smoke**. The QA Acceptance workflow default goal is login +
+home channels + open one channel. That default is **not** release smoke. A
+login/home pass must never be recorded as a complete smoke pass.
+
+Release smoke is a hard gate before activation:
+
+1. Bind every identity and functional receipt to `versionName` + `versionCode` +
+   source commit + artifact SHA-256 + signature + CI/run id. A PASS on one
+   versionCode does not transfer to a later build of the same marketing version.
+2. Freeze a case manifest/revision. Each case needs a terminal assertion.
+   Testbed's case library is a dispatch list, not an automated suite.
+   `testbed run` creates a pending ticket; a device seat or CI agent still has
+   to execute it. Unrun, un-dispatched, or harness-blocked core cases are
+   `NOT RUN` or blocked — they do not aggregate into PASS.
+3. Required every train, on the exact release APK/IPA/HAP: image
+   picker → Done → composer preview → send → server or message-row readback
+   (`select-and-upload-image` or the platform equivalent). Also prove upload
+   size limits are readable and that an oversized sibling is dropped while
+   remaining files still upload. A file-attachment path is separate; an image
+   PASS does not cover it.
+4. Keep platform/carrier grids separate (Android cloud device, iOS Simulator,
+   OHOS emulator, physical device). Do not infer across them. Record
+   preconditions, duration, fixture/device capability, and failure class.
+
+A broader matrix (fresh install, upgrades, auth, Home/Activity/Thread,
+composer/IME, crash scans, accepted changesets) remains in the plan. Until a
+named seat has timed one image-upload case on the release carrier, do not treat
+the full testbed table as a hard time-box. Physical OHOS stays `NOT RUN` unless
+a physical seat exists.
+
+A **hotfix** train may skip the full smoke matrix only with a recorded owner
+exception. Record `release_mode=hotfix`, waiver owner, scope, expiry or
+follow-up date, skipped cases, compensating checks on the affected path, and
+risk. Skipped cases are `NOT RUN · hotfix waiver`. Never record a waiver as
+PASS. Identity/signature receipts on the exact versionCode + SHA-256 are
+**not** waivable. An affected core path (for example image upload on an upload
+hotfix) is not silently skipped.
 
 ## 7. Apply Notes With Revision Preconditions
 
@@ -273,8 +316,8 @@ The release plan names each platform's intended boundary. Examples:
 | --- | --- | --- |
 | Android Hands | Activate exact draft and scope | Yes |
 | iOS Hands | Activate exact draft | Yes |
-| TestFlight upload | Upload verified Hands IPA | Yes |
-| TestFlight internal | Assign named internal group | Yes |
+| TestFlight upload | Upload verified Hands IPA | Yes, unless the plan has standing internal-after-draft |
+| TestFlight internal | Assign named internal group | Yes, unless the plan has standing internal-after-draft for that named group |
 | TestFlight external | Assign named group, What to Test, Beta Review, notification | Yes |
 | App Store production | Submit/publish production version | Yes |
 | Community | Post approved announcement | Yes |
