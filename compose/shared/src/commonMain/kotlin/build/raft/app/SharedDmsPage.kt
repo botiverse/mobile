@@ -19,8 +19,6 @@ import build.raft.app.model.formatSlockClock
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.twoDigits
 import build.raft.app.resources.MR
-import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
-import com.tencent.kuikly.compose.foundation.Image
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -45,7 +43,6 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -54,14 +51,14 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
 
-private val WeChatDmRowHeight = 72.dp
+private val WeChatDmRowHeight = 64.dp
 private val WeChatDmRowHorizontalPadding = 16.dp
-private val WeChatDmAvatarSize = 48.dp
+private val WeChatDmAvatarSize = 40.dp
 private val WeChatDmStatusDotSize = 10.dp
 private val WeChatDmContentGap = 12.dp
 private val WeChatDmBadgeHeight = 18.dp
 private val WeChatDmMutedDotSize = 9.dp
-private val WeChatDmDividerStartPadding = 76.dp // 16.dp + 48.dp + 12.dp
+private val WeChatDmDividerStartPadding = 68.dp // 16.dp + 40.dp + 12.dp
 private val WeChatRedBadgeColor = Color(0xFFFA5151)
 private val WeChatDividerColor = SlockColor.BorderBlack.copy(alpha = 0.1f)
 
@@ -220,7 +217,7 @@ internal fun SlockWeChatDirectMessageRow(
             .padding(horizontal = WeChatDmRowHorizontalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 48dp Avatar container with status dot and unread badge
+        // 40dp Avatar container with status dot and unread badge
         Box(
             modifier = Modifier.size(WeChatDmAvatarSize)
         ) {
@@ -230,10 +227,12 @@ internal fun SlockWeChatDirectMessageRow(
                 statusSize = WeChatDmStatusDotSize,
                 statusPulsing = presenceState?.pulsing == true
             ) {
-                SlockWeChatDmAvatar(
+                SlockAvatar(
                     avatarWireValue = avatarWireValue,
                     label = item.avatarLabel,
-                    avatarSize = WeChatDmAvatarSize
+                    avatarSize = WeChatDmAvatarSize,
+                    cacheSubject = slockMemberAvatarCacheSubject(item.peerType.weChatDmPeerMemberKindOrNull(), memberId),
+                    cacheServerId = currentServerId
                 )
             }
 
@@ -442,51 +441,6 @@ internal fun SlockHomeConversationItem.toWeChatDmLaunchIdentity(): ThreadLaunchC
             source = MemberDetailIdentitySource.DirectoryDmPeer
         )
     )
-}
-
-@Composable
-internal fun SlockWeChatDmAvatar(
-    avatarWireValue: String?,
-    label: String,
-    modifier: Modifier = Modifier,
-    avatarSize: Dp = WeChatDmAvatarSize
-) {
-    val cleanWire = avatarWireValue?.trim()?.takeIf { it.isNotBlank() }
-    val isHttp = cleanWire != null && (cleanWire.startsWith("http://") || cleanWire.startsWith("https://"))
-
-    Box(
-        modifier = modifier
-            .size(avatarSize)
-            .background(SlockColor.AccentLavender)
-            .border(SlockStroke.Thin, SlockColor.BorderBlack),
-        contentAlignment = Alignment.Center
-    ) {
-        if (isHttp) {
-            val painter = rememberAsyncImagePainter(cleanWire!!)
-            Image(
-                painter = painter,
-                contentDescription = label,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-        } else if (label.isNotBlank()) {
-            Text(
-                text = label.take(2).uppercase(),
-                style = SlockType.PageTitle.withSlockFontWeight(FontWeight.Bold).copy(
-                    fontSize = 16.sp,
-                    lineHeight = 16.sp
-                ),
-                color = SlockColor.TextBlack,
-                textAlign = TextAlign.Center
-            )
-        } else {
-            SlockLucideIcon(
-                name = SlockLucideIconName.User,
-                modifier = Modifier.size((avatarSize.value * 0.5f).dp),
-                color = SlockColor.TextBlackArgb
-            )
-        }
-    }
 }
 
 private fun String?.weChatDmPeerMemberKindOrNull(): MemberKind? =
