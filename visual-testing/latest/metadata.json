@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-10T22:12:26.667Z",
+  "generatedAt": "2026-09-10T22:17:31.745Z",
   "runId": "18dff553-20260910220915",
   "commit": "18dff553-20260910220915",
   "commitSubject": "fix(android): split ThreadPage giant composables to pass dex verification (task #346) (#2453)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 99,
-        "ready": 79,
-        "pending": 20
+        "ready": 91,
+        "pending": 8
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 99,
-        "ready": 69,
-        "pending": 30
+        "ready": 81,
+        "pending": 18
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 99,
-        "ready": 78,
-        "pending": 21
+        "ready": 81,
+        "pending": 18
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 99,
-    "ready": 79,
-    "pending": 20
+    "ready": 91,
+    "pending": 8
   },
   "componentMatrixSummary": {
     "total": 127,

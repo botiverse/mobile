@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>18dff553-20260910220915</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-09-10T22:12:26.667Z" data-timestamp="2026-09-10T22:12:26.667Z" title="2026-09-10T22:12:26.667Z">2026-09-10 22:12:26 UTC</time></p>
+    <p class="runMeta"><code>18dff553-20260910220915</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-09-10T22:17:31.745Z" data-timestamp="2026-09-10T22:17:31.745Z" title="2026-09-10T22:17:31.745Z">2026-09-10 22:17:31 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <a href="react__ios.html">React vs iOS</a> · <strong>Android vs iOS</strong></p>
     <div class="summary">
       <span class="pill">Total 99</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 20</span>
       <span class="pill">Different 45</span>
       <span class="pill">Missing 18</span>
-      <span class="pill">AI 78/99 ready</span>
+      <span class="pill">AI 81/99 ready</span>
       <span class="pill">Matrix 108/127 active</span>
       <span class="pill">Components Parity 90/94 active</span><span class="pill">Screens Parity 18/33 active</span>
     </div>
@@ -1028,7 +1028,12 @@
       <p><code>RGB 98.0%</code><br/><code>Pixel 99.70%</code><br/><code>Mismatch 0.30%</code><br/><code>Raw 1026×276 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">pass: pixel perfect 99.70% &gt; 99% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×92 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · kuikly-render / ui-platform</summary>
+    <ul><li>Both renders show the same Raft UI Status Dot component with identical structure: four status dots (green, orange, gray, blue) in a row followed by a larger pink 'Waiting pulse' dot with label text.</li><li>Dot colors, ordering, shape (circular), and stroke outline weight appear visually isomorphic between Android (left) and iOS (right).</li><li>Typography of the 'Raft UI Status Dot' header and 'Waiting pulse' label matches in weight, size, and color across both sides.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>No action required — divergences are within the configured antialiasing tolerance and do not represent a real UI defect.</li><li>If exact dot diameters or stroke widths are critical, verify that dp-based sizes are honored identically on both targets; current visual parity suggests they are.</li><li>Re-run with a tighter layoutDp tolerance only if a regression is reported by a downstream consumer.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.ui.status-dot.states.png" data-current-src="ios/components.ui.status-dot.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -3016,7 +3021,12 @@
       <p><code>RGB 90.6%</code><br/><code>Pixel 71.02%</code><br/><code>Mismatch 28.98%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · kuikly-markdown-renderer</summary>
+    <ul><li>Inline code spans on iOS render with visibly larger character glyphs and taller line-height than Android for the same `CODE_SPAN` content, producing a noticeably bigger inline code block at the top of the message body.</li><li>Long inline path on iOS fills nearly the full text width per wrap line and produces many more wrap lines than Android, where the same content wraps to fewer, narrower lines — iOS code span appears to ignore a max-width / content-width constraint that Android respects.</li><li>Mention line on iOS (`@KMP-专家`) wraps to a second line earlier than on Android; iOS version breaks after `专家` while Android keeps the entire mention on one line, indicating a narrower effective text column on iOS in this message body.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Unify the inline code span TextStyle (fontSize, lineHeight, fontFamily metrics) between Android and iOS so `CODE_SPAN` blocks have the same glyph size and leading.</li><li>Apply a shared max-width / content-width to inline code spans so the gray background wraps consistently with the surrounding text column on both platforms.</li><li>Audit text-column width and mention-breaking logic for the message body on iOS to ensure `@KMP-专家` and similar mentions don't break prematurely versus Android.</li><li>Make the iOS capture use a matching crop rect (`contract: component-bounds`) so both sides compare the same vertical extent of the message row.</li><li>Align header truncation/ellipsis rendering (including trailing space and ellipsis glyph metrics) across platforms.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.thread.message-row.long-inline-code.png" data-current-src="ios/components.thread.message-row.long-inline-code.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -4110,7 +4120,12 @@
       <p><code>RGB 85.7%</code><br/><code>Pixel 63.80%</code><br/><code>Mismatch 36.20%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · mobile-platform / ui-engineering</summary>
+    <ul><li>iOS shows an on-screen keyboard covering the lower half of the dialog; Android does not (keyboard dismissed), revealing Runtime, Model, Reasoning, and Mode fields plus the Cancel/Create buttons at the bottom.</li><li>On iOS the Cancel and Create Agent buttons are repositioned to overlap directly below the Description field (around the keyboard's top edge), whereas on Android they sit at the natural bottom of the form below the Mode field.</li><li>Form field content is clipped on iOS: Runtime, Model, Reasoning, and Mode rows are entirely hidden behind the keyboard; the Description counter (72/3000) is not visible on iOS.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Implement keyboard-aware layout for iOS: pin the Cancel / Create Agent buttons in a footer and ensure the form area scrolls when the keyboard opens.</li><li>Ensure KeyboardAvoidingView (or equivalent Kuikly primitive) is applied to the dialog root and that safe-area / keyboard insets are respected on iOS.</li><li>Force the dialog content to be scrollable (ScrollView) with a constrained height so all fields (Runtime, Model, Reasoning, Mode) remain reachable when the keyboard is visible.</li><li>Normalize field/counter visibility by scrolling to the focused field on input focus (Name field currently appears focused on iOS).</li><li>Verify on both Android and iOS that the action button group remains anchored to the dialog bottom regardless of keyboard state.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.members.create-agent.dialog.png" data-current-src="ios/components.members.create-agent.dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
