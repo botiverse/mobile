@@ -141,3 +141,73 @@ class TasksPaginationSentinelTest {
         assertTrue(shouldRequestNextTasksPage(totalItems = 3, lastVisibleIndex = 0, hasMore = true, loadingMore = false))
     }
 }
+
+/**
+ * Task #345 — the parser must accept the REAL production `detail=summary` item
+ * shape, which carries extra task fields beyond the minimal summary projection
+ * (`channelType`, `claimedAt/ById/ByType`, `completedAt`, `createdById/ByType`,
+ * `revision`, `isLegacy`) and, crucially, NO `description` body.
+ *
+ * The captured shape is from a real production response
+ * (`GET https://api.raft.build/api/tasks/server?detail=summary&limit=200`).
+ */
+class TasksSummaryProductionShapeTest {
+    private val productionPage =
+        """
+        {
+          "tasks": [
+            {
+              "id": "e3c07075-d37b-4b9e-8a3b-c6b6579493ac",
+              "messageId": "d5ffa252-72e3-4cf6-89df-83984179906e",
+              "channelId": "522bfaf6-f795-4e0e-8bc4-c78e80bc8220",
+              "channelName": "McDonalds_Club",
+              "channelType": "channel",
+              "taskNumber": 1,
+              "title": "Fixture task 1",
+              "revision": 1,
+              "status": "done",
+              "createdByType": "user",
+              "createdById": "6807454d-d743-4a5c-8eb2-b50ed75ac3a4",
+              "createdByName": "Amida",
+              "claimedByType": "agent",
+              "claimedById": "a4232306-5653-41e6-bd8c-d6e964ac90e4",
+              "claimedByName": "McNuggets",
+              "claimedAt": "2026-05-11T08:14:56.745Z",
+              "completedAt": "2026-08-10T05:27:24.701Z",
+              "createdAt": "2026-05-11T08:14:32.438Z",
+              "updatedAt": "2026-08-10T05:27:24.701Z",
+              "source": "tasks",
+              "hasDescription": false,
+              "descriptionBytes": 0,
+              "isLegacy": false
+            }
+          ],
+          "next_cursor": "eyJjIjoiZDE4ZDlkYWQtOGE1Yy00NGVmLThkODUtMmMwNTcwYmFmOTM5IiwibiI6MjN9"
+        }
+        """.trimIndent()
+
+    @Test
+    fun parsesTheProductionSummaryShapeAndKeepsTheCursor() {
+        val page = parseSharedServerTasksPagePayload(productionPage, diagnostics = {})
+            ?: error("production summary shape must parse")
+        assertEquals(1, page.tasks.size)
+        val task = page.tasks.single()
+        assertEquals("e3c07075-d37b-4b9e-8a3b-c6b6579493ac", task.id.value)
+        assertEquals("McDonalds_Club", task.channelName)
+        assertEquals("Fixture task 1", task.title)
+        // No description body on the summary shape.
+        assertNull(task.description)
+        // The opaque cursor is carried through verbatim.
+        assertEquals("eyJjIjoiZDE4ZDlkYWQtOGE1Yy00NGVmLThkODUtMmMwNTcwYmFmOTM5IiwibiI6MjN9", page.nextCursor)
+    }
+
+    @OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+    @Test
+    fun decodesTheProductionCursorAsChannelAndTaskNumber() {
+        val raw = "eyJjIjoiZDE4ZDlkYWQtOGE1Yy00NGVmLThkODUtMmMwNTcwYmFmOTM5IiwibiI6MjN9"
+        val decoded = kotlin.io.encoding.Base64.UrlSafe.decode(raw)
+            .decodeToString()
+        assertTrue(decoded.contains("\"c\":\"d18d9dad-8a5c-44ef-8d85-2c0570baf939\""), "cursor carries channelId")
+        assertTrue(decoded.contains("\"n\":23"), "cursor carries taskNumber")
+    }
+}
