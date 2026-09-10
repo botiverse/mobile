@@ -494,29 +494,39 @@ internal class SharedTasksViewModel(
             // the legacy unpaginated full read is what produced the ~22.8 MiB
             // response. Use it for the unfiltered server scope only; filtered
             // reads keep the existing (bounded) path.
+            // The server Tasks panel reads the paginated summary page (#345):
+            // the unpaginated full read produced a ~22.8 MiB response. This
+            // applies to BOTH the shared-snapshot path (the real production
+            // wiring, always used when sharedTasksDataStore is present) and the
+            // direct path — the fetch itself must be paginated, or the panel
+            // silently falls back to the full read. Filtered reads keep the
+            // existing (bounded) path.
             val usesPaginatedServerRead =
-                scope == SharedTasksScope.Server && request.filter.statuses.isEmpty() && !usesSharedSnapshotLoad
+                scope == SharedTasksScope.Server && request.filter.statuses.isEmpty()
             var firstPageCursor: String? = null
             var firstPageHadMore = false
-            val result =
-                if (usesPaginatedServerRead) {
-                    when (val page = useCase.loadServerTasksPage(limit = TASKS_SERVER_PAGE_LIMIT, cursor = null)) {
-                        is TasksPageResult.Page -> {
-                            firstPageCursor = page.nextCursor
-                            firstPageHadMore = page.nextCursor != null
-                            DataResult.Content(TaskSnapshot(tasks = page.tasks, summaryCounts = page.tasks.summaryCounts()))
-                        }
-                        TasksPageResult.InvalidCursor -> DataResult.Error(ScreenError(code = "tasks_page_invalid_cursor", retryable = false))
-                        is TasksPageResult.Error -> DataResult.Error(ScreenError(code = page.code, retryable = true))
+            val paginatedFetch: suspend () -> DataResult<TaskSnapshot> = {
+                when (val page = useCase.loadServerTasksPage(limit = TASKS_SERVER_PAGE_LIMIT, cursor = null)) {
+                    is TasksPageResult.Page -> {
+                        firstPageCursor = page.nextCursor
+                        firstPageHadMore = page.nextCursor != null
+                        DataResult.Content(TaskSnapshot(tasks = page.tasks, summaryCounts = page.tasks.summaryCounts()))
                     }
-                } else if (sharedStore != null && sharedServerId != null) {
+                    TasksPageResult.InvalidCursor -> DataResult.Error(ScreenError(code = "tasks_page_invalid_cursor", retryable = false))
+                    is TasksPageResult.Error -> DataResult.Error(ScreenError(code = page.code, retryable = true))
+                }
+            }
+            val result =
+                if (sharedStore != null && sharedServerId != null) {
                     sharedStore.loadSnapshot(
                         serverId = sharedServerId.value,
                         scope = scope,
                         forceRefresh = forceSharedRefresh
                     ) {
-                        useCase.refreshTasks(request)
+                        if (usesPaginatedServerRead) paginatedFetch() else useCase.refreshTasks(request)
                     }
+                } else if (usesPaginatedServerRead) {
+                    paginatedFetch()
                 } else {
                     useCase.refreshTasks(request)
                 }
