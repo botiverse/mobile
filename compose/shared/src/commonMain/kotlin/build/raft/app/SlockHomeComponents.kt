@@ -1376,6 +1376,101 @@ private data class HomePayloadParseTrace(
     val result: String
 )
 
+/**
+ * task #336: state payload of [SlockStructuralHomeShell]. Grouping the shell's data parameters
+ * keeps the composable's register frame small so Android 16's dex verifier accepts the
+ * un-minified debug build (the 79-parameter flat signature was rejected with a register-type
+ * conflict: "register v327 has type Reference ... but expected Boolean").
+ */
+internal data class SlockStructuralHomeShellData(
+    val currentServerName: String = "Raft Android",
+    val currentServerId: String = "slock-android",
+    val servers: List<SlockServerSwitcherItem> = emptyList(),
+    val channels: List<SlockHomeConversationItem> = emptyList(),
+    val directMessages: List<SlockHomeConversationItem> = emptyList(),
+    val selectedChannelId: String? = null,
+    val selectedConversationSection: SlockHomeConversationSection? = null,
+    val inboxUnreadCount: Int = 0,
+    val inboxTotalCount: Int = 0,
+    val savedCount: Int = 0,
+    val notifications: List<SlockHomeNotificationItem> = emptyList(),
+    val inlineError: SlockHomeInlineError? = null,
+    val contentRefreshing: Boolean = false,
+    val contentRefreshEnabled: Boolean = true,
+    val serverSwitcherExpanded: Boolean = false,
+    val serverDrawerEnabled: Boolean = false,
+    val homeServerAvatarEnabled: Boolean = false,
+    val serverDrawerSections: List<SlockHomeServerDrawerSection> = emptyList(),
+    val pendingServerId: String? = null,
+    val prefersChineseCommunity: Boolean = false,
+    val applyTopSafeArea: Boolean = true,
+    val topSafeAreaOverride: Dp? = null,
+    val activitySelected: Boolean = false,
+    val searchSelected: Boolean = false,
+    val savedSelected: Boolean = false,
+    val channelOrder: List<String> = emptyList(),
+    val channelSortMode: String = "manual",
+    val dmOrder: List<String> = emptyList(),
+    val dmSortMode: String = "manual",
+    val pinnedChannelIds: List<String> = emptyList(),
+    val pinnedAgentIds: List<String> = emptyList(),
+    val pinnedOrder: List<String> = emptyList(),
+    val pinnedItems: List<SettingsServerSidebarPinnedItem> = emptyList(),
+    val pinnedSortMode: String = "manual",
+    val hiddenDmIds: List<String> = emptyList(),
+    val canArchiveChannels: Boolean = false,
+    val showLoadingSkeletons: Boolean = false,
+    val selectedTabKey: String = "home",
+    val showBottomBar: Boolean = true,
+    val externalFocusLossDismissEpoch: Int = 0,
+    val outerPadding: Dp = SlockSpacing.Md,
+    val labels: SlockHomeShellLabels = SlockHomeShellLabels(),
+    val scrollToTopRequest: Int = 0,
+    val initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
+)
+
+/**
+ * task #336: callback payload of [SlockStructuralHomeShell]. See [SlockStructuralHomeShellData]
+ * for why the flat parameter list had to be grouped.
+ */
+internal class SlockStructuralHomeShellCallbacks(
+    val onServerBadgeClick: () -> Unit = {},
+    val onServerSwitcherDismiss: () -> Unit = {},
+    val onServerDrawerSectionToggle: (String) -> Unit = {},
+    val onServerDrawerRetry: (String) -> Unit = {},
+    val onServerSelected: (String) -> Unit = {},
+    val onServerOrderChange: (List<String>) -> Unit = {},
+    val onCreateServerClick: () -> Unit = {},
+    val onCreateChannelClick: () -> Unit = {},
+    val onTabSelected: (String) -> Unit = {},
+    val onInboxClick: () -> Unit = {},
+    val onFollowedThreadsClick: () -> Unit = {},
+    val onSavedClick: () -> Unit = {},
+    val onSearchClick: () -> Unit = {},
+    val onNotificationView: (SlockHomeNotificationItem) -> Unit = {},
+    val onNotificationDismiss: (SlockHomeNotificationItem) -> Unit = {},
+    val onInlineErrorAction: () -> Unit = {},
+    val onRefresh: () -> Unit = {},
+    val onChannelSortModeChange: (SlockSidebarSortMode) -> Unit = {},
+    val onSidebarOrderChange: (target: SlockSidebarSortTarget, order: List<String>) -> Unit = { _, _ -> },
+    val onDmSortModeChange: (SlockSidebarSortMode) -> Unit = {},
+    val onPinnedSortModeChange: (SlockSidebarSortMode) -> Unit = {},
+    val onChannelClick: (String) -> Unit = {},
+    val onPinnedMemberClick: (MemberDetailIdentity) -> Unit = {},
+    val onChannelLongPress: (String, SlockPopoverAnchor) -> Unit = { _, _ -> },
+    val onPinToggle: (String) -> Unit = {},
+    val onReadToggle: (conversationId: String, markUnread: Boolean) -> Unit = { _, _ -> },
+    val onChannelActivityMuteToggle: (conversationId: String, muted: Boolean) -> Unit = { _, _ -> },
+    val onCloseDirectMessage: (String) -> Unit = {},
+    val onArchiveChannel: (String) -> Unit = {},
+    val agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    val memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    val pinnedMemberProfileResolver: (String) -> SlockHomePinnedMemberItem? = { null },
+    val diagnosticsLogger: (String) -> Unit = {},
+    val onPinMenuDismiss: () -> Unit = {},
+    val onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> },
+)
+
 @Composable
 internal fun SlockStructuralHomeShell(
     modifier: Modifier = Modifier,
@@ -1464,6 +1559,188 @@ internal fun SlockStructuralHomeShell(
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> }
 ) {
+    // task #336: thin delegation to the payload-based implementation keeps every call site
+    // (named arguments) unchanged while the verifier-relevant frame lives on the small
+    // SlockStructuralHomeShellContent signature below.
+    SlockStructuralHomeShellContent(
+        modifier = modifier,
+        data =
+            SlockStructuralHomeShellData(
+                currentServerName = currentServerName,
+                currentServerId = currentServerId,
+                servers = servers,
+                channels = channels,
+                directMessages = directMessages,
+                selectedChannelId = selectedChannelId,
+                selectedConversationSection = selectedConversationSection,
+                inboxUnreadCount = inboxUnreadCount,
+                inboxTotalCount = inboxTotalCount,
+                savedCount = savedCount,
+                notifications = notifications,
+                inlineError = inlineError,
+                contentRefreshing = contentRefreshing,
+                contentRefreshEnabled = contentRefreshEnabled,
+                serverSwitcherExpanded = serverSwitcherExpanded,
+                serverDrawerEnabled = serverDrawerEnabled,
+                homeServerAvatarEnabled = homeServerAvatarEnabled,
+                serverDrawerSections = serverDrawerSections,
+                pendingServerId = pendingServerId,
+                prefersChineseCommunity = prefersChineseCommunity,
+                applyTopSafeArea = applyTopSafeArea,
+                topSafeAreaOverride = topSafeAreaOverride,
+                activitySelected = activitySelected,
+                searchSelected = searchSelected,
+                savedSelected = savedSelected,
+                channelOrder = channelOrder,
+                channelSortMode = channelSortMode,
+                dmOrder = dmOrder,
+                dmSortMode = dmSortMode,
+                pinnedChannelIds = pinnedChannelIds,
+                pinnedAgentIds = pinnedAgentIds,
+                pinnedOrder = pinnedOrder,
+                pinnedItems = pinnedItems,
+                pinnedSortMode = pinnedSortMode,
+                hiddenDmIds = hiddenDmIds,
+                canArchiveChannels = canArchiveChannels,
+                showLoadingSkeletons = showLoadingSkeletons,
+                selectedTabKey = selectedTabKey,
+                showBottomBar = showBottomBar,
+                externalFocusLossDismissEpoch = externalFocusLossDismissEpoch,
+                outerPadding = outerPadding,
+                labels = labels,
+                scrollToTopRequest = scrollToTopRequest,
+                initialListPosition = initialListPosition,
+            ),
+        callbacks =
+            SlockStructuralHomeShellCallbacks(
+                onServerBadgeClick = onServerBadgeClick,
+                onServerSwitcherDismiss = onServerSwitcherDismiss,
+                onServerDrawerSectionToggle = onServerDrawerSectionToggle,
+                onServerDrawerRetry = onServerDrawerRetry,
+                onServerSelected = onServerSelected,
+                onServerOrderChange = onServerOrderChange,
+                onCreateServerClick = onCreateServerClick,
+                onCreateChannelClick = onCreateChannelClick,
+                onTabSelected = onTabSelected,
+                onInboxClick = onInboxClick,
+                onFollowedThreadsClick = onFollowedThreadsClick,
+                onSavedClick = onSavedClick,
+                onSearchClick = onSearchClick,
+                onNotificationView = onNotificationView,
+                onNotificationDismiss = onNotificationDismiss,
+                onInlineErrorAction = onInlineErrorAction,
+                onRefresh = onRefresh,
+                onChannelSortModeChange = onChannelSortModeChange,
+                onSidebarOrderChange = onSidebarOrderChange,
+                onDmSortModeChange = onDmSortModeChange,
+                onPinnedSortModeChange = onPinnedSortModeChange,
+                onChannelClick = onChannelClick,
+                onPinnedMemberClick = onPinnedMemberClick,
+                onChannelLongPress = onChannelLongPress,
+                onPinToggle = onPinToggle,
+                onReadToggle = onReadToggle,
+                onChannelActivityMuteToggle = onChannelActivityMuteToggle,
+                onCloseDirectMessage = onCloseDirectMessage,
+                onArchiveChannel = onArchiveChannel,
+                agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver,
+                pinnedMemberProfileResolver = pinnedMemberProfileResolver,
+                diagnosticsLogger = diagnosticsLogger,
+                onPinMenuDismiss = onPinMenuDismiss,
+                onListPositionSnapshot = onListPositionSnapshot,
+            ),
+        bottomContentPadding = bottomContentPadding,
+        listPositionServerId = listPositionServerId,
+    )
+}
+
+@Composable
+private fun SlockStructuralHomeShellContent(
+    modifier: Modifier,
+    data: SlockStructuralHomeShellData,
+    callbacks: SlockStructuralHomeShellCallbacks,
+    bottomContentPadding: Dp,
+    listPositionServerId: String,
+) {
+    val currentServerName = data.currentServerName
+    val currentServerId = data.currentServerId
+    val servers = data.servers
+    val channels = data.channels
+    val directMessages = data.directMessages
+    val selectedChannelId = data.selectedChannelId
+    val selectedConversationSection = data.selectedConversationSection
+    val inboxUnreadCount = data.inboxUnreadCount
+    val inboxTotalCount = data.inboxTotalCount
+    val savedCount = data.savedCount
+    val notifications = data.notifications
+    val inlineError = data.inlineError
+    val contentRefreshing = data.contentRefreshing
+    val contentRefreshEnabled = data.contentRefreshEnabled
+    val serverSwitcherExpanded = data.serverSwitcherExpanded
+    val serverDrawerEnabled = data.serverDrawerEnabled
+    val homeServerAvatarEnabled = data.homeServerAvatarEnabled
+    val serverDrawerSections = data.serverDrawerSections
+    val pendingServerId = data.pendingServerId
+    val prefersChineseCommunity = data.prefersChineseCommunity
+    val applyTopSafeArea = data.applyTopSafeArea
+    val topSafeAreaOverride = data.topSafeAreaOverride
+    val activitySelected = data.activitySelected
+    val searchSelected = data.searchSelected
+    val savedSelected = data.savedSelected
+    val channelOrder = data.channelOrder
+    val channelSortMode = data.channelSortMode
+    val dmOrder = data.dmOrder
+    val dmSortMode = data.dmSortMode
+    val pinnedChannelIds = data.pinnedChannelIds
+    val pinnedAgentIds = data.pinnedAgentIds
+    val pinnedOrder = data.pinnedOrder
+    val pinnedItems = data.pinnedItems
+    val pinnedSortMode = data.pinnedSortMode
+    val hiddenDmIds = data.hiddenDmIds
+    val canArchiveChannels = data.canArchiveChannels
+    val showLoadingSkeletons = data.showLoadingSkeletons
+    val selectedTabKey = data.selectedTabKey
+    val showBottomBar = data.showBottomBar
+    val externalFocusLossDismissEpoch = data.externalFocusLossDismissEpoch
+    val outerPadding = data.outerPadding
+    val labels = data.labels
+    val scrollToTopRequest = data.scrollToTopRequest
+    val initialListPosition = data.initialListPosition
+    val onServerBadgeClick = callbacks.onServerBadgeClick
+    val onServerSwitcherDismiss = callbacks.onServerSwitcherDismiss
+    val onServerDrawerSectionToggle = callbacks.onServerDrawerSectionToggle
+    val onServerDrawerRetry = callbacks.onServerDrawerRetry
+    val onServerSelected = callbacks.onServerSelected
+    val onServerOrderChange = callbacks.onServerOrderChange
+    val onCreateServerClick = callbacks.onCreateServerClick
+    val onCreateChannelClick = callbacks.onCreateChannelClick
+    val onTabSelected = callbacks.onTabSelected
+    val onInboxClick = callbacks.onInboxClick
+    val onFollowedThreadsClick = callbacks.onFollowedThreadsClick
+    val onSavedClick = callbacks.onSavedClick
+    val onSearchClick = callbacks.onSearchClick
+    val onNotificationView = callbacks.onNotificationView
+    val onNotificationDismiss = callbacks.onNotificationDismiss
+    val onInlineErrorAction = callbacks.onInlineErrorAction
+    val onRefresh = callbacks.onRefresh
+    val onChannelSortModeChange = callbacks.onChannelSortModeChange
+    val onSidebarOrderChange = callbacks.onSidebarOrderChange
+    val onDmSortModeChange = callbacks.onDmSortModeChange
+    val onPinnedSortModeChange = callbacks.onPinnedSortModeChange
+    val onChannelClick = callbacks.onChannelClick
+    val onPinnedMemberClick = callbacks.onPinnedMemberClick
+    val onChannelLongPress = callbacks.onChannelLongPress
+    val onPinToggle = callbacks.onPinToggle
+    val onReadToggle = callbacks.onReadToggle
+    val onChannelActivityMuteToggle = callbacks.onChannelActivityMuteToggle
+    val onCloseDirectMessage = callbacks.onCloseDirectMessage
+    val onArchiveChannel = callbacks.onArchiveChannel
+    val agentStatusResolver = callbacks.agentStatusResolver
+    val memberAvatarResolver = callbacks.memberAvatarResolver
+    val pinnedMemberProfileResolver = callbacks.pinnedMemberProfileResolver
+    val diagnosticsLogger = callbacks.diagnosticsLogger
+    val onPinMenuDismiss = callbacks.onPinMenuDismiss
+    val onListPositionSnapshot = callbacks.onListPositionSnapshot
     var channelsExpanded by remember { mutableStateOf(true) }
     var jointChannelsExpanded by remember { mutableStateOf(true) }
     var directMessagesExpanded by remember { mutableStateOf(true) }
