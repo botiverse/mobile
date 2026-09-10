@@ -484,6 +484,7 @@ internal fun ThreadMessageVisualScreenContent() {
                         selectedForShare = true,
                         onToggleShareSelection = {},
                         alignOwnMessageRight = payload.alignOwnMessagesRight && selectedMessage.isOwn,
+                        messageAlignmentModeEnabled = payload.alignOwnMessagesRight,
                         showReplyAction = payload.showReplyActions,
                         taskOpenEnabled = payload.showTaskOpenActions,
                         taskStatusActionsEnabled = payload.showTaskStatusActions,
@@ -827,6 +828,7 @@ internal fun ThreadMessageVisualScreenContent() {
                     inlineReplyParticipantsById = payload.members.associateBy(KuiklyThreadMemberItem::id),
                     hasReplyDraft = visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES,
                     alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
+                    messageAlignmentModeEnabled = payload.alignOwnMessagesRight,
                     showReplyAction = payload.showReplyActions,
                     singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                     resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(
