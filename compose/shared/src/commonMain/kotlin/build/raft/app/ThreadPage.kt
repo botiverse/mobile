@@ -12745,8 +12745,104 @@ private class ThreadEventHandler(
     }
 }
 
-@Composable
-private fun ThreadPageContent(
+/**
+ * task #346: state payload of [ThreadPageContent]. See SlockStructuralHomeShellData for why
+ * the flat parameter list had to be grouped (Android dex verifier rejects the
+ * un-minified giant composable frame on API 34/36 builds).
+ */
+private data class ThreadPageContentData(
+    val threadInstanceKey: String,
+    val threadReadAnchorOwner: ThreadReadAnchorOwner?,
+    val threadReadAnchorStore: ThreadReadAnchorStore,
+    val threadReadAnchorSessionGeneration: Long,
+    val routeActive: Boolean,
+    val hostForeground: Boolean,
+    val payload: KuiklyThreadScreenPayload,
+    val messageBodyTextStyle: TextStyle,
+    val timelineSlice: ThreadTimelineSlice,
+    val accessResolution: ThreadAccessResolution,
+    val canonicalAccessResolved: Boolean,
+    val replyParentAuthority: ReplyParentAuthorityStatus,
+    val writeActionsEnabled: Boolean,
+    val channelProfileUpdateStatus: ChannelProfileUpdateStatus,
+    val channelProfileUpdateErrorCode: String?,
+    val replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
+    val headerDisplay: ThreadHeaderDisplayModel,
+    val composerSurface: ThreadComposerSurface,
+    val baseComposerState: KuiklyThreadComposerPayload,
+    val composerDraftViewModel: SharedThreadComposerDraftViewModel,
+    val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
+    val resolvedAuxiliaryThreadId: String?,
+    val tasksViewModel: SharedTasksViewModel?,
+    val taskChannelId: ChannelId?,
+    val taskIdentityOptions: List<MemberProfile>,
+    val linkedTasksProjection: ThreadLinkedTasksProjection,
+    val filesViewModel: SharedThreadFilesViewModel?,
+    val memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
+    val channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
+    val selectedTab: KuiklyThreadTab,
+    val availableTabs: List<KuiklyThreadTab>,
+    val activityMuteState: ThreadActivityMuteUiState?,
+    val activityMutedIndicatorVisible: Boolean,
+    val conversationPinState: ThreadConversationPinUiState?,
+    val forwardServerId: ServerId?,
+    val forwardTargetRepository: ForwardMessageTargetRepository?,
+    val contentExtrasVisible: Boolean,
+    val highlightedMentions: Set<String>,
+    val pendingActionCardIds: Set<String>,
+    val pendingTaskConvertMessageIds: Set<String>,
+    val markdownReferencePendingActionId: String?,
+    val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
+    val attachmentCommentsEnabled: Boolean,
+    val composerSendKeyEnabled: Boolean,
+    val longMessageCollapseEnabled: Boolean,
+    val singleTapOpensThreadEnabled: Boolean,
+    val threadUnreadJumpEnabled: Boolean,
+    val newMessageMenuEnabled: Boolean,
+    val currentServerSlug: String?,
+    val translationStore: SharedMessageTranslationStore?,
+    val visibleReadTailIndex: Int?,
+    val onThreadEvent: ThreadEventHandler,
+)
+
+/** task #346: callback payload of [ThreadPageContent]. See ThreadPageContentData. */
+private class ThreadPageContentCallbacks(
+    val scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
+    val onSelectedTabChanged: (KuiklyThreadTab) -> Unit,
+    val onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit,
+    val onToggleActivityMute: (() -> Unit)?,
+    val onToggleConversationPin: (() -> Unit)?,
+    val onOpenTaskSummary: (TaskSummary, String) -> Unit,
+    val onTasksIntent: (SharedTasksRouteIntent) -> Unit,
+    val onFilesAuthRequired: (String?) -> Unit,
+    val onOpenFilesAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
+    val onDownloadFilesAttachment: (KuiklyThreadAttachmentItem) -> Unit,
+    val onOpenMemberProfile: (MemberDetailIdentity) -> Unit,
+    val agentStatusResolver: SlockAgentStatusResolver,
+    val memberAvatarResolver: SlockMemberAvatarResolver,
+    val diagnosticsLogger: (String) -> Unit,
+    val onLayoutGeneration: (width: Int, height: Int) -> Unit,
+    val onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit,
+    val onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject?,
+    val newDesignSettingsEnabled: () -> Boolean,
+    val mentionHandleResolver: (KuiklyThreadMessageItem) -> String?,
+    val onExportShareImage: suspend (ThreadShareCaptureRect?) -> JSONObject?,
+    val onSaveShareImage: suspend (String) -> JSONObject?,
+    val onFirstContentReady: () -> Unit,
+    val onVisibleReadTailChange: (Int?) -> Unit,
+    val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
+    val onJumpToLatest: suspend () -> Boolean,
+    val onBack: () -> Unit,
+    val onUpdateChannelProfile: (String, String, String, String, String) -> Unit,
+    val onClearChannelProfileUpdateStatus: () -> Unit,
+    val onForwardMessagesDelivered: (ForwardMessageBatchResult) -> Unit,
+    val onOpenForwardDestination: (ThreadForwardSuccessBanner) -> Unit,
+    val onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
+    val onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+)
+
+private @Composable
+fun ThreadPageContent(
     scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
     threadInstanceKey: String,
     threadReadAnchorOwner: ThreadReadAnchorOwner?,
@@ -12831,7 +12927,193 @@ private fun ThreadPageContent(
     onThreadEvent: ThreadEventHandler,
     onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
+)
+ {
+    ThreadPageContentContent(
+        modifier = Modifier,
+        data =
+            ThreadPageContentData(
+                threadInstanceKey = threadInstanceKey,
+                threadReadAnchorOwner = threadReadAnchorOwner,
+                threadReadAnchorStore = threadReadAnchorStore,
+                threadReadAnchorSessionGeneration = threadReadAnchorSessionGeneration,
+                routeActive = routeActive,
+                hostForeground = hostForeground,
+                payload = payload,
+                messageBodyTextStyle = messageBodyTextStyle,
+                timelineSlice = timelineSlice,
+                accessResolution = accessResolution,
+                canonicalAccessResolved = canonicalAccessResolved,
+                replyParentAuthority = replyParentAuthority,
+                writeActionsEnabled = writeActionsEnabled,
+                channelProfileUpdateStatus = channelProfileUpdateStatus,
+                channelProfileUpdateErrorCode = channelProfileUpdateErrorCode,
+                replyMetadataByParentId = replyMetadataByParentId,
+                headerDisplay = headerDisplay,
+                composerSurface = composerSurface,
+                baseComposerState = baseComposerState,
+                composerDraftViewModel = composerDraftViewModel,
+                composerDraftPersistSlice = composerDraftPersistSlice,
+                resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
+                tasksViewModel = tasksViewModel,
+                taskChannelId = taskChannelId,
+                taskIdentityOptions = taskIdentityOptions,
+                linkedTasksProjection = linkedTasksProjection,
+                filesViewModel = filesViewModel,
+                memberSuggestionsFlow = memberSuggestionsFlow,
+                channelSuggestionsFlow = channelSuggestionsFlow,
+                selectedTab = selectedTab,
+                availableTabs = availableTabs,
+                activityMuteState = activityMuteState,
+                activityMutedIndicatorVisible = activityMutedIndicatorVisible,
+                conversationPinState = conversationPinState,
+                forwardServerId = forwardServerId,
+                forwardTargetRepository = forwardTargetRepository,
+                contentExtrasVisible = contentExtrasVisible,
+                highlightedMentions = highlightedMentions,
+                pendingActionCardIds = pendingActionCardIds,
+                pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
+                markdownReferencePendingActionId = markdownReferencePendingActionId,
+                attachmentOpenStates = attachmentOpenStates,
+                attachmentCommentsEnabled = attachmentCommentsEnabled,
+                composerSendKeyEnabled = composerSendKeyEnabled,
+                longMessageCollapseEnabled = longMessageCollapseEnabled,
+                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                threadUnreadJumpEnabled = threadUnreadJumpEnabled,
+                newMessageMenuEnabled = newMessageMenuEnabled,
+                currentServerSlug = currentServerSlug,
+                translationStore = translationStore,
+                visibleReadTailIndex = visibleReadTailIndex,
+                onThreadEvent = onThreadEvent,
+            ),
+        callbacks =
+            ThreadPageContentCallbacks(
+                scaffold = scaffold,
+                onSelectedTabChanged = onSelectedTabChanged,
+                onSuggestionDemandChanged = onSuggestionDemandChanged,
+                onToggleActivityMute = onToggleActivityMute,
+                onToggleConversationPin = onToggleConversationPin,
+                onOpenTaskSummary = onOpenTaskSummary,
+                onTasksIntent = onTasksIntent,
+                onFilesAuthRequired = onFilesAuthRequired,
+                onOpenFilesAttachment = onOpenFilesAttachment,
+                onDownloadFilesAttachment = onDownloadFilesAttachment,
+                onOpenMemberProfile = onOpenMemberProfile,
+                agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver,
+                diagnosticsLogger = diagnosticsLogger,
+                onLayoutGeneration = onLayoutGeneration,
+                onComposerLayoutProbe = onComposerLayoutProbe,
+                onComposerPixelProbe = onComposerPixelProbe,
+                newDesignSettingsEnabled = newDesignSettingsEnabled,
+                mentionHandleResolver = mentionHandleResolver,
+                onExportShareImage = onExportShareImage,
+                onSaveShareImage = onSaveShareImage,
+                onFirstContentReady = onFirstContentReady,
+                onVisibleReadTailChange = onVisibleReadTailChange,
+                onLoadNewer = onLoadNewer,
+                onJumpToLatest = onJumpToLatest,
+                onBack = onBack,
+                onUpdateChannelProfile = onUpdateChannelProfile,
+                onClearChannelProfileUpdateStatus = onClearChannelProfileUpdateStatus,
+                onForwardMessagesDelivered = onForwardMessagesDelivered,
+                onOpenForwardDestination = onOpenForwardDestination,
+                onComposerSendRequest = onComposerSendRequest,
+                onComposerEvent = onComposerEvent,
+            ),
+    )
+}
+
+@Composable
+private fun ThreadPageContentContent(
+    modifier: Modifier = Modifier,
+    data: ThreadPageContentData,
+    callbacks: ThreadPageContentCallbacks,
 ) {
+    val scaffold = callbacks.scaffold
+    val threadInstanceKey = data.threadInstanceKey
+    val threadReadAnchorOwner = data.threadReadAnchorOwner
+    val threadReadAnchorStore = data.threadReadAnchorStore
+    val threadReadAnchorSessionGeneration = data.threadReadAnchorSessionGeneration
+    val routeActive = data.routeActive
+    val hostForeground = data.hostForeground
+    val payload = data.payload
+    val messageBodyTextStyle = data.messageBodyTextStyle
+    val timelineSlice = data.timelineSlice
+    val accessResolution = data.accessResolution
+    val canonicalAccessResolved = data.canonicalAccessResolved
+    val replyParentAuthority = data.replyParentAuthority
+    val writeActionsEnabled = data.writeActionsEnabled
+    val channelProfileUpdateStatus = data.channelProfileUpdateStatus
+    val channelProfileUpdateErrorCode = data.channelProfileUpdateErrorCode
+    val replyMetadataByParentId = data.replyMetadataByParentId
+    val headerDisplay = data.headerDisplay
+    val composerSurface = data.composerSurface
+    val baseComposerState = data.baseComposerState
+    val composerDraftViewModel = data.composerDraftViewModel
+    val composerDraftPersistSlice = data.composerDraftPersistSlice
+    val resolvedAuxiliaryThreadId = data.resolvedAuxiliaryThreadId
+    val tasksViewModel = data.tasksViewModel
+    val taskChannelId = data.taskChannelId
+    val taskIdentityOptions = data.taskIdentityOptions
+    val linkedTasksProjection = data.linkedTasksProjection
+    val filesViewModel = data.filesViewModel
+    val memberSuggestionsFlow = data.memberSuggestionsFlow
+    val channelSuggestionsFlow = data.channelSuggestionsFlow
+    val selectedTab = data.selectedTab
+    val availableTabs = data.availableTabs
+    val onSelectedTabChanged = callbacks.onSelectedTabChanged
+    val onSuggestionDemandChanged = callbacks.onSuggestionDemandChanged
+    val activityMuteState = data.activityMuteState
+    val activityMutedIndicatorVisible = data.activityMutedIndicatorVisible
+    val onToggleActivityMute = callbacks.onToggleActivityMute
+    val conversationPinState = data.conversationPinState
+    val onToggleConversationPin = callbacks.onToggleConversationPin
+    val forwardServerId = data.forwardServerId
+    val forwardTargetRepository = data.forwardTargetRepository
+    val contentExtrasVisible = data.contentExtrasVisible
+    val onOpenTaskSummary = callbacks.onOpenTaskSummary
+    val onTasksIntent = callbacks.onTasksIntent
+    val onFilesAuthRequired = callbacks.onFilesAuthRequired
+    val onOpenFilesAttachment = callbacks.onOpenFilesAttachment
+    val onDownloadFilesAttachment = callbacks.onDownloadFilesAttachment
+    val onOpenMemberProfile = callbacks.onOpenMemberProfile
+    val highlightedMentions = data.highlightedMentions
+    val agentStatusResolver = callbacks.agentStatusResolver
+    val memberAvatarResolver = callbacks.memberAvatarResolver
+    val diagnosticsLogger = callbacks.diagnosticsLogger
+    val onLayoutGeneration = callbacks.onLayoutGeneration
+    val onComposerLayoutProbe = callbacks.onComposerLayoutProbe
+    val onComposerPixelProbe = callbacks.onComposerPixelProbe
+    val pendingActionCardIds = data.pendingActionCardIds
+    val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
+    val markdownReferencePendingActionId = data.markdownReferencePendingActionId
+    val attachmentOpenStates = data.attachmentOpenStates
+    val attachmentCommentsEnabled = data.attachmentCommentsEnabled
+    val composerSendKeyEnabled = data.composerSendKeyEnabled
+    val newDesignSettingsEnabled = callbacks.newDesignSettingsEnabled
+    val longMessageCollapseEnabled = data.longMessageCollapseEnabled
+    val singleTapOpensThreadEnabled = data.singleTapOpensThreadEnabled
+    val threadUnreadJumpEnabled = data.threadUnreadJumpEnabled
+    val newMessageMenuEnabled = data.newMessageMenuEnabled
+    val currentServerSlug = data.currentServerSlug
+    val translationStore = data.translationStore
+    val mentionHandleResolver = callbacks.mentionHandleResolver
+    val onExportShareImage = callbacks.onExportShareImage
+    val onSaveShareImage = callbacks.onSaveShareImage
+    val onFirstContentReady = callbacks.onFirstContentReady
+    val visibleReadTailIndex = data.visibleReadTailIndex
+    val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
+    val onLoadNewer = callbacks.onLoadNewer
+    val onJumpToLatest = callbacks.onJumpToLatest
+    val onBack = callbacks.onBack
+    val onUpdateChannelProfile = callbacks.onUpdateChannelProfile
+    val onClearChannelProfileUpdateStatus = callbacks.onClearChannelProfileUpdateStatus
+    val onForwardMessagesDelivered = callbacks.onForwardMessagesDelivered
+    val onOpenForwardDestination = callbacks.onOpenForwardDestination
+    val onThreadEvent = data.onThreadEvent
+    val onComposerSendRequest = callbacks.onComposerSendRequest
+    val onComposerEvent = callbacks.onComposerEvent
     val inlineReplyParticipantsById =
         remember(payload.members, payload.memberCandidates) {
             (payload.members + payload.memberCandidates)
@@ -14877,8 +15159,82 @@ internal fun consumeThreadHeaderScrollToTopRequest(
         threadHeaderScrollToTopTargetIndex(lazyItemCount) != null &&
         fence.consume(request)
 
-@Composable
-private fun ThreadChatTab(
+/**
+ * task #346: state payload of [ThreadChatTab]. See SlockStructuralHomeShellData for why
+ * the flat parameter list had to be grouped (Android dex verifier rejects the
+ * un-minified giant composable frame on API 34/36 builds).
+ */
+private data class ThreadChatTabData(
+    val threadInstanceKey: String,
+    val readAnchorOwner: ThreadReadAnchorOwner?,
+    val readAnchorStore: ThreadReadAnchorStore,
+    val readAnchorSessionGeneration: Long,
+    val routeActive: Boolean,
+    val hostForeground: Boolean,
+    val renderConfig: ThreadTimelineRenderConfig,
+    val messageBodyTextStyle: TextStyle,
+    val timelineSlice: ThreadTimelineSlice,
+    val replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
+    val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
+    val composerKeyboardInsetDp: Float,
+    val linkedTasksProjection: ThreadLinkedTasksProjection, // Task #258: pass-through to ThreadMessagesList's task detail panel.,
+    val taskAssigneeOptions: List<MemberProfile>,
+    val highlightedMentions: Set<String>,
+    val inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem>,
+    val pendingActionCardIds: Set<String>,
+    val pendingTaskConvertMessageIds: Set<String>,
+    val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
+    val attachmentCommentsEnabled: Boolean,
+    val writeActionsEnabled: Boolean,
+    val currentServerSlug: String?,
+    val contentExtrasVisible: Boolean,
+    val longMessageCollapseEnabled: Boolean,
+    val singleTapOpensThreadEnabled: Boolean,
+    val threadUnreadJumpEnabled: Boolean,
+    val newMessageMenuEnabled: Boolean,
+    val inlineSearchVisible: Boolean,
+    val markdownTagContextSignature: String,
+    val activeMarkdownTagKey: String?,
+    val onThreadEvent: ThreadEventHandler,
+    val shareSelectionActive: Boolean,
+    val shareSelectionCaptureActive: Boolean,
+    val shareSelectionCaptureAnchorMessageId: String?,
+    val shareSelectionCaptureAnchorBeforeTarget: Boolean,
+    val shareSelectionCaptureTailPaddingActive: Boolean,
+    val shareSelectionCaptureScrollOffsetPx: Int,
+    val headerScrollToTopRequest: Int,
+    val selectedShareMessageIds: Set<String>,
+    val translationStore: SharedMessageTranslationStore?,
+    val visibleReadTailIndex: Int?,
+)
+
+/** task #346: callback payload of [ThreadChatTab]. See ThreadChatTabData. */
+private class ThreadChatTabCallbacks(
+    val agentStatusResolver: SlockAgentStatusResolver,
+    val memberAvatarResolver: SlockMemberAvatarResolver,
+    val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
+    val resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
+    val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
+    val onJumpToLatest: suspend () -> Boolean,
+    val onOpenMember: (MemberDetailIdentity) -> Unit,
+    val onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
+    val onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
+    val onOpenMarkdownUrl: (String) -> Unit,
+    val quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)?,
+    val diagnosticsLogger: (String) -> Unit,
+    val onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit,
+    val onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject?,
+    val onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit,
+    val onEnterShareSelection: (String) -> Unit,
+    val onForwardMessage: (String) -> Unit,
+    val onToggleShareSelection: (String) -> Unit,
+    val onOpenForwardBundle: (String) -> Unit,
+    val onThreadContentReady: () -> Unit,
+    val onVisibleReadTailChange: (Int?) -> Unit,
+)
+
+private @Composable
+fun ThreadChatTab(
     threadInstanceKey: String,
     readAnchorOwner: ThreadReadAnchorOwner?,
     readAnchorStore: ThreadReadAnchorStore,
@@ -14942,7 +15298,149 @@ private fun ThreadChatTab(
     onThreadContentReady: () -> Unit = {},
     visibleReadTailIndex: Int? = null,
     onVisibleReadTailChange: (Int?) -> Unit = {}
+)
+ {
+    ThreadChatTabContent(
+        modifier = Modifier,
+        data =
+            ThreadChatTabData(
+                threadInstanceKey = threadInstanceKey,
+                readAnchorOwner = readAnchorOwner,
+                readAnchorStore = readAnchorStore,
+                readAnchorSessionGeneration = readAnchorSessionGeneration,
+                routeActive = routeActive,
+                hostForeground = hostForeground,
+                renderConfig = renderConfig,
+                messageBodyTextStyle = messageBodyTextStyle,
+                timelineSlice = timelineSlice,
+                replyMetadataByParentId = replyMetadataByParentId,
+                composerDraftPersistSlice = composerDraftPersistSlice,
+                composerKeyboardInsetDp = composerKeyboardInsetDp,
+                linkedTasksProjection = linkedTasksProjection,
+                taskAssigneeOptions = taskAssigneeOptions,
+                highlightedMentions = highlightedMentions,
+                inlineReplyParticipantsById = inlineReplyParticipantsById,
+                pendingActionCardIds = pendingActionCardIds,
+                pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
+                attachmentOpenStates = attachmentOpenStates,
+                attachmentCommentsEnabled = attachmentCommentsEnabled,
+                writeActionsEnabled = writeActionsEnabled,
+                currentServerSlug = currentServerSlug,
+                contentExtrasVisible = contentExtrasVisible,
+                longMessageCollapseEnabled = longMessageCollapseEnabled,
+                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                threadUnreadJumpEnabled = threadUnreadJumpEnabled,
+                newMessageMenuEnabled = newMessageMenuEnabled,
+                inlineSearchVisible = inlineSearchVisible,
+                markdownTagContextSignature = markdownTagContextSignature,
+                activeMarkdownTagKey = activeMarkdownTagKey,
+                onThreadEvent = onThreadEvent,
+                shareSelectionActive = shareSelectionActive,
+                shareSelectionCaptureActive = shareSelectionCaptureActive,
+                shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
+                shareSelectionCaptureAnchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget,
+                shareSelectionCaptureTailPaddingActive = shareSelectionCaptureTailPaddingActive,
+                shareSelectionCaptureScrollOffsetPx = shareSelectionCaptureScrollOffsetPx,
+                headerScrollToTopRequest = headerScrollToTopRequest,
+                selectedShareMessageIds = selectedShareMessageIds,
+                translationStore = translationStore,
+                visibleReadTailIndex = visibleReadTailIndex,
+            ),
+        callbacks =
+            ThreadChatTabCallbacks(
+                agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver,
+                isMarkdownTagValid = isMarkdownTagValid,
+                resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                onLoadNewer = onLoadNewer,
+                onJumpToLatest = onJumpToLatest,
+                onOpenMember = onOpenMember,
+                onMentionAuthor = onMentionAuthor,
+                onOpenMarkdownTag = onOpenMarkdownTag,
+                onOpenMarkdownUrl = onOpenMarkdownUrl,
+                quotedPermalinkLoader = quotedPermalinkLoader,
+                diagnosticsLogger = diagnosticsLogger,
+                onComposerLayoutProbe = onComposerLayoutProbe,
+                onComposerPixelProbe = onComposerPixelProbe,
+                onShareSelectionBounds = onShareSelectionBounds,
+                onEnterShareSelection = onEnterShareSelection,
+                onForwardMessage = onForwardMessage,
+                onToggleShareSelection = onToggleShareSelection,
+                onOpenForwardBundle = onOpenForwardBundle,
+                onThreadContentReady = onThreadContentReady,
+                onVisibleReadTailChange = onVisibleReadTailChange,
+            ),
+    )
+}
+
+@Composable
+private fun ThreadChatTabContent(
+    modifier: Modifier = Modifier,
+    data: ThreadChatTabData,
+    callbacks: ThreadChatTabCallbacks,
 ) {
+    val threadInstanceKey = data.threadInstanceKey
+    val readAnchorOwner = data.readAnchorOwner
+    val readAnchorStore = data.readAnchorStore
+    val readAnchorSessionGeneration = data.readAnchorSessionGeneration
+    val routeActive = data.routeActive
+    val hostForeground = data.hostForeground
+    val renderConfig = data.renderConfig
+    val messageBodyTextStyle = data.messageBodyTextStyle
+    val timelineSlice = data.timelineSlice
+    val replyMetadataByParentId = data.replyMetadataByParentId
+    val composerDraftPersistSlice = data.composerDraftPersistSlice
+    val composerKeyboardInsetDp = data.composerKeyboardInsetDp
+    val linkedTasksProjection = data.linkedTasksProjection
+    val taskAssigneeOptions = data.taskAssigneeOptions
+    val highlightedMentions = data.highlightedMentions
+    val agentStatusResolver = callbacks.agentStatusResolver
+    val memberAvatarResolver = callbacks.memberAvatarResolver
+    val inlineReplyParticipantsById = data.inlineReplyParticipantsById
+    val pendingActionCardIds = data.pendingActionCardIds
+    val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
+    val attachmentOpenStates = data.attachmentOpenStates
+    val attachmentCommentsEnabled = data.attachmentCommentsEnabled
+    val writeActionsEnabled = data.writeActionsEnabled
+    val currentServerSlug = data.currentServerSlug
+    val contentExtrasVisible = data.contentExtrasVisible
+    val longMessageCollapseEnabled = data.longMessageCollapseEnabled
+    val singleTapOpensThreadEnabled = data.singleTapOpensThreadEnabled
+    val threadUnreadJumpEnabled = data.threadUnreadJumpEnabled
+    val newMessageMenuEnabled = data.newMessageMenuEnabled
+    val inlineSearchVisible = data.inlineSearchVisible
+    val isMarkdownTagValid = callbacks.isMarkdownTagValid
+    val markdownTagContextSignature = data.markdownTagContextSignature
+    val resolveMarkdownTagLabel = callbacks.resolveMarkdownTagLabel
+    val activeMarkdownTagKey = data.activeMarkdownTagKey
+    val onThreadEvent = data.onThreadEvent
+    val onLoadNewer = callbacks.onLoadNewer
+    val onJumpToLatest = callbacks.onJumpToLatest
+    val onOpenMember = callbacks.onOpenMember
+    val onMentionAuthor = callbacks.onMentionAuthor
+    val onOpenMarkdownTag = callbacks.onOpenMarkdownTag
+    val onOpenMarkdownUrl = callbacks.onOpenMarkdownUrl
+    val quotedPermalinkLoader = callbacks.quotedPermalinkLoader
+    val diagnosticsLogger = callbacks.diagnosticsLogger
+    val onComposerLayoutProbe = callbacks.onComposerLayoutProbe
+    val onComposerPixelProbe = callbacks.onComposerPixelProbe
+    val shareSelectionActive = data.shareSelectionActive
+    val shareSelectionCaptureActive = data.shareSelectionCaptureActive
+    val shareSelectionCaptureAnchorMessageId = data.shareSelectionCaptureAnchorMessageId
+    val shareSelectionCaptureAnchorBeforeTarget = data.shareSelectionCaptureAnchorBeforeTarget
+    val shareSelectionCaptureTailPaddingActive = data.shareSelectionCaptureTailPaddingActive
+    val shareSelectionCaptureScrollOffsetPx = data.shareSelectionCaptureScrollOffsetPx
+    val headerScrollToTopRequest = data.headerScrollToTopRequest
+    val selectedShareMessageIds = data.selectedShareMessageIds
+    val onShareSelectionBounds = callbacks.onShareSelectionBounds
+    val onEnterShareSelection = callbacks.onEnterShareSelection
+    val onForwardMessage = callbacks.onForwardMessage
+    val onToggleShareSelection = callbacks.onToggleShareSelection
+    val onOpenForwardBundle = callbacks.onOpenForwardBundle
+    val translationStore = data.translationStore
+    val onThreadContentReady = callbacks.onThreadContentReady
+    val visibleReadTailIndex = data.visibleReadTailIndex
+    val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
     val activeReplyDraftParentMessageIds =
@@ -15442,8 +15940,82 @@ private fun emptyThreadMarkdownVisiblePreparsePlan(): ThreadMarkdownVisiblePrepa
 
 private const val ThreadOriginListItemIndex = 0
 
-@Composable
-private fun ThreadMessagesList(
+/**
+ * task #346: state payload of [ThreadMessagesList]. See SlockStructuralHomeShellData for why
+ * the flat parameter list had to be grouped (Android dex verifier rejects the
+ * un-minified giant composable frame on API 34/36 builds).
+ */
+private data class ThreadMessagesListData(
+    val threadInstanceKey: String,
+    val readAnchorOwner: ThreadReadAnchorOwner?,
+    val readAnchorStore: ThreadReadAnchorStore,
+    val readAnchorSessionGeneration: Long,
+    val routeActive: Boolean,
+    val hostForeground: Boolean,
+    val renderConfig: ThreadTimelineRenderConfig,
+    val messageBodyTextStyle: TextStyle,
+    val timelineSlice: ThreadTimelineSlice,
+    val replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
+    val activeReplyDraftParentMessageIds: Set<String>,
+    val composerKeyboardInsetDp: Float,
+    val linkedTasksProjection: ThreadLinkedTasksProjection, // Task #258: server-scoped identity directory for the inline task detail // panel's assignee row (same pool the thread Tasks tab filters use).,
+    val taskAssigneeOptions: List<MemberProfile>,
+    val highlightedMentions: Set<String>,
+    val inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem>,
+    val pendingActionCardIds: Set<String>,
+    val pendingTaskConvertMessageIds: Set<String>,
+    val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
+    val attachmentCommentsEnabled: Boolean,
+    val writeActionsEnabled: Boolean,
+    val currentServerSlug: String?,
+    val contentExtrasVisible: Boolean,
+    val longMessageCollapseEnabled: Boolean,
+    val singleTapOpensThreadEnabled: Boolean,
+    val threadUnreadJumpEnabled: Boolean,
+    val newMessageMenuEnabled: Boolean,
+    val inlineSearchVisible: Boolean,
+    val markdownTagContextSignature: String,
+    val activeMarkdownTagKey: String?,
+    val onThreadEvent: ThreadEventHandler,
+    val shareSelectionActive: Boolean,
+    val shareSelectionCaptureActive: Boolean,
+    val shareSelectionCaptureAnchorMessageId: String?,
+    val shareSelectionCaptureAnchorBeforeTarget: Boolean,
+    val shareSelectionCaptureTailPaddingActive: Boolean,
+    val shareSelectionCaptureScrollOffsetPx: Int,
+    val headerScrollToTopRequest: Int,
+    val selectedShareMessageIds: Set<String>,
+    val translationStore: SharedMessageTranslationStore?,
+    val visibleReadTailIndex: Int?,
+)
+
+/** task #346: callback payload of [ThreadMessagesList]. See ThreadMessagesListData. */
+private class ThreadMessagesListCallbacks(
+    val agentStatusResolver: SlockAgentStatusResolver,
+    val memberAvatarResolver: SlockMemberAvatarResolver,
+    val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
+    val resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
+    val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
+    val onJumpToLatest: suspend () -> Boolean,
+    val onOpenMember: (MemberDetailIdentity) -> Unit,
+    val onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
+    val onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
+    val onOpenMarkdownUrl: (String) -> Unit,
+    val quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)?,
+    val diagnosticsLogger: (String) -> Unit,
+    val onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit,
+    val onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject?,
+    val onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit,
+    val onEnterShareSelection: (String) -> Unit,
+    val onForwardMessage: (String) -> Unit,
+    val onToggleShareSelection: (String) -> Unit,
+    val onOpenForwardBundle: (String) -> Unit,
+    val onThreadContentReady: () -> Unit,
+    val onVisibleReadTailChange: (Int?) -> Unit,
+)
+
+private @Composable
+fun ThreadMessagesList(
     threadInstanceKey: String,
     readAnchorOwner: ThreadReadAnchorOwner?,
     readAnchorStore: ThreadReadAnchorStore,
@@ -15508,7 +16080,149 @@ private fun ThreadMessagesList(
     onThreadContentReady: () -> Unit = {},
     visibleReadTailIndex: Int? = null,
     onVisibleReadTailChange: (Int?) -> Unit = {}
+)
+ {
+    ThreadMessagesListContent(
+        modifier = Modifier,
+        data =
+            ThreadMessagesListData(
+                threadInstanceKey = threadInstanceKey,
+                readAnchorOwner = readAnchorOwner,
+                readAnchorStore = readAnchorStore,
+                readAnchorSessionGeneration = readAnchorSessionGeneration,
+                routeActive = routeActive,
+                hostForeground = hostForeground,
+                renderConfig = renderConfig,
+                messageBodyTextStyle = messageBodyTextStyle,
+                timelineSlice = timelineSlice,
+                replyMetadataByParentId = replyMetadataByParentId,
+                activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
+                composerKeyboardInsetDp = composerKeyboardInsetDp,
+                linkedTasksProjection = linkedTasksProjection,
+                taskAssigneeOptions = taskAssigneeOptions,
+                highlightedMentions = highlightedMentions,
+                inlineReplyParticipantsById = inlineReplyParticipantsById,
+                pendingActionCardIds = pendingActionCardIds,
+                pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
+                attachmentOpenStates = attachmentOpenStates,
+                attachmentCommentsEnabled = attachmentCommentsEnabled,
+                writeActionsEnabled = writeActionsEnabled,
+                currentServerSlug = currentServerSlug,
+                contentExtrasVisible = contentExtrasVisible,
+                longMessageCollapseEnabled = longMessageCollapseEnabled,
+                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                threadUnreadJumpEnabled = threadUnreadJumpEnabled,
+                newMessageMenuEnabled = newMessageMenuEnabled,
+                inlineSearchVisible = inlineSearchVisible,
+                markdownTagContextSignature = markdownTagContextSignature,
+                activeMarkdownTagKey = activeMarkdownTagKey,
+                onThreadEvent = onThreadEvent,
+                shareSelectionActive = shareSelectionActive,
+                shareSelectionCaptureActive = shareSelectionCaptureActive,
+                shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
+                shareSelectionCaptureAnchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget,
+                shareSelectionCaptureTailPaddingActive = shareSelectionCaptureTailPaddingActive,
+                shareSelectionCaptureScrollOffsetPx = shareSelectionCaptureScrollOffsetPx,
+                headerScrollToTopRequest = headerScrollToTopRequest,
+                selectedShareMessageIds = selectedShareMessageIds,
+                translationStore = translationStore,
+                visibleReadTailIndex = visibleReadTailIndex,
+            ),
+        callbacks =
+            ThreadMessagesListCallbacks(
+                agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver,
+                isMarkdownTagValid = isMarkdownTagValid,
+                resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                onLoadNewer = onLoadNewer,
+                onJumpToLatest = onJumpToLatest,
+                onOpenMember = onOpenMember,
+                onMentionAuthor = onMentionAuthor,
+                onOpenMarkdownTag = onOpenMarkdownTag,
+                onOpenMarkdownUrl = onOpenMarkdownUrl,
+                quotedPermalinkLoader = quotedPermalinkLoader,
+                diagnosticsLogger = diagnosticsLogger,
+                onComposerLayoutProbe = onComposerLayoutProbe,
+                onComposerPixelProbe = onComposerPixelProbe,
+                onShareSelectionBounds = onShareSelectionBounds,
+                onEnterShareSelection = onEnterShareSelection,
+                onForwardMessage = onForwardMessage,
+                onToggleShareSelection = onToggleShareSelection,
+                onOpenForwardBundle = onOpenForwardBundle,
+                onThreadContentReady = onThreadContentReady,
+                onVisibleReadTailChange = onVisibleReadTailChange,
+            ),
+    )
+}
+
+@Composable
+private fun ThreadMessagesListContent(
+    modifier: Modifier = Modifier,
+    data: ThreadMessagesListData,
+    callbacks: ThreadMessagesListCallbacks,
 ) {
+    val threadInstanceKey = data.threadInstanceKey
+    val readAnchorOwner = data.readAnchorOwner
+    val readAnchorStore = data.readAnchorStore
+    val readAnchorSessionGeneration = data.readAnchorSessionGeneration
+    val routeActive = data.routeActive
+    val hostForeground = data.hostForeground
+    val renderConfig = data.renderConfig
+    val messageBodyTextStyle = data.messageBodyTextStyle
+    val timelineSlice = data.timelineSlice
+    val replyMetadataByParentId = data.replyMetadataByParentId
+    val activeReplyDraftParentMessageIds = data.activeReplyDraftParentMessageIds
+    val composerKeyboardInsetDp = data.composerKeyboardInsetDp
+    val linkedTasksProjection = data.linkedTasksProjection
+    val taskAssigneeOptions = data.taskAssigneeOptions
+    val highlightedMentions = data.highlightedMentions
+    val agentStatusResolver = callbacks.agentStatusResolver
+    val memberAvatarResolver = callbacks.memberAvatarResolver
+    val inlineReplyParticipantsById = data.inlineReplyParticipantsById
+    val pendingActionCardIds = data.pendingActionCardIds
+    val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
+    val attachmentOpenStates = data.attachmentOpenStates
+    val attachmentCommentsEnabled = data.attachmentCommentsEnabled
+    val writeActionsEnabled = data.writeActionsEnabled
+    val currentServerSlug = data.currentServerSlug
+    val contentExtrasVisible = data.contentExtrasVisible
+    val longMessageCollapseEnabled = data.longMessageCollapseEnabled
+    val singleTapOpensThreadEnabled = data.singleTapOpensThreadEnabled
+    val threadUnreadJumpEnabled = data.threadUnreadJumpEnabled
+    val newMessageMenuEnabled = data.newMessageMenuEnabled
+    val inlineSearchVisible = data.inlineSearchVisible
+    val isMarkdownTagValid = callbacks.isMarkdownTagValid
+    val markdownTagContextSignature = data.markdownTagContextSignature
+    val resolveMarkdownTagLabel = callbacks.resolveMarkdownTagLabel
+    val activeMarkdownTagKey = data.activeMarkdownTagKey
+    val onThreadEvent = data.onThreadEvent
+    val onLoadNewer = callbacks.onLoadNewer
+    val onJumpToLatest = callbacks.onJumpToLatest
+    val onOpenMember = callbacks.onOpenMember
+    val onMentionAuthor = callbacks.onMentionAuthor
+    val onOpenMarkdownTag = callbacks.onOpenMarkdownTag
+    val onOpenMarkdownUrl = callbacks.onOpenMarkdownUrl
+    val quotedPermalinkLoader = callbacks.quotedPermalinkLoader
+    val diagnosticsLogger = callbacks.diagnosticsLogger
+    val onComposerLayoutProbe = callbacks.onComposerLayoutProbe
+    val onComposerPixelProbe = callbacks.onComposerPixelProbe
+    val shareSelectionActive = data.shareSelectionActive
+    val shareSelectionCaptureActive = data.shareSelectionCaptureActive
+    val shareSelectionCaptureAnchorMessageId = data.shareSelectionCaptureAnchorMessageId
+    val shareSelectionCaptureAnchorBeforeTarget = data.shareSelectionCaptureAnchorBeforeTarget
+    val shareSelectionCaptureTailPaddingActive = data.shareSelectionCaptureTailPaddingActive
+    val shareSelectionCaptureScrollOffsetPx = data.shareSelectionCaptureScrollOffsetPx
+    val headerScrollToTopRequest = data.headerScrollToTopRequest
+    val selectedShareMessageIds = data.selectedShareMessageIds
+    val onShareSelectionBounds = callbacks.onShareSelectionBounds
+    val onEnterShareSelection = callbacks.onEnterShareSelection
+    val onForwardMessage = callbacks.onForwardMessage
+    val onToggleShareSelection = callbacks.onToggleShareSelection
+    val onOpenForwardBundle = callbacks.onOpenForwardBundle
+    val translationStore = data.translationStore
+    val onThreadContentReady = callbacks.onThreadContentReady
+    val visibleReadTailIndex = data.visibleReadTailIndex
+    val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
     if (timelineSlice.messages.isEmpty() && timelineSlice.originStatus == "none") {
         LaunchedEffect(threadInstanceKey, timelineSlice.status) {
             onThreadContentReady()
@@ -20771,8 +21485,86 @@ private fun ThreadQuotedPermalinkCard(
     }
 }
 
-@Composable
-internal fun ThreadMessageCard(
+/**
+ * task #346: state payload of [ThreadMessageCard]. See SlockStructuralHomeShellData for why
+ * the flat parameter list had to be grouped (Android dex verifier rejects the
+ * un-minified giant composable frame on API 34/36 builds).
+ */
+private data class ThreadMessageCardData(
+    val message: KuiklyThreadMessageItem,
+    val messageBodyTextStyle: TextStyle,
+    val replyMetadata: ThreadReplyMetadata,
+    val hasReplyDraft: Boolean,
+    val actionCard: ThreadActionCard?,
+    val messageIndex: Int,
+    val highlightedMentions: Set<String>,
+    val alignOwnMessageRight: Boolean,
+    val compactConsecutiveMessages: Boolean,
+    val suppressRepeatedAuthor: Boolean,
+    val showReplyAction: Boolean,
+    val singleTapOpensThreadEnabled: Boolean,
+    val resolvedTaskAssigneeName: String?,
+    val markdownTagContextSignature: String,
+    val taskOpenEnabled: Boolean,
+    val taskStatusActionsEnabled: Boolean,
+    val showSaveAction: Boolean,
+    val showReactionAddAction: Boolean,
+    val activeMarkdownTagKey: String?,
+    val timestampLabel: String,
+    val compactTimestampLabel: String,
+    val attachmentCommentsEnabled: Boolean,
+    val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
+    val pendingActionCardIds: Set<String>,
+    val writeActionsEnabled: Boolean,
+    val currentServerSlug: String?,
+    val richContentEnabled: Boolean,
+    val focused: Boolean,
+    val inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem>,
+    val shareSelectionActive: Boolean,
+    val selectedForShare: Boolean,
+    val translation: ThreadMessageTranslationUi?,
+    val longMessageCollapseEnabled: Boolean,
+    val longMessageExpanded: Boolean,
+    val longPressGestureInstanceKey: Any,
+    val outerPadding: com.tencent.kuikly.compose.ui.unit.Dp,
+)
+
+/** task #346: callback payload of [ThreadMessageCard]. See ThreadMessageCardData. */
+private class ThreadMessageCardCallbacks(
+    val diagnosticsLogger: (String) -> Unit,
+    val agentStatusResolver: SlockAgentStatusResolver,
+    val resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
+    val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
+    val onShowActions: (SlockPopoverAnchor) -> Unit,
+    val onOpenMember: (MemberDetailIdentity) -> Unit,
+    val onOpenThread: (String) -> Unit,
+    val onOpenTask: (String) -> Unit,
+    val onOpenTaskStatusMenu: (SlockPopoverAnchor) -> Unit,
+    val onToggleReaction: (String) -> Unit,
+    val onShowReactionDetails: ((KuiklyThreadReactionItem, SlockPopoverAnchor) -> Unit)?,
+    val onOpenCommentHost: (KuiklyThreadMessageCommentRef) -> Unit,
+    val onOpenAttachment: (String) -> Unit,
+    val onDownloadAttachment: (String) -> Unit,
+    val onOpenAttachmentComments: (String) -> Unit,
+    val onRetryLocalSend: () -> Unit,
+    val onCopyLocalSendFailureDetails: () -> Unit,
+    val onCommitActionCard: (String) -> Unit,
+    val onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
+    val onOpenMarkdownUrl: (String) -> Unit,
+    val onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
+    val isMessageListScrolling: () -> Boolean,
+    val memberAvatarResolver: SlockMemberAvatarResolver,
+    val onToggleShareSelection: () -> Unit,
+    val onToggleTranslationOriginal: () -> Unit,
+    val onRetryTranslation: () -> Unit,
+    val onOpenForwardBundle: (String) -> Unit,
+    val onToggleLongMessage: () -> Unit,
+    val onLongPressInputReady: ((String) -> Unit)?,
+    val quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)?,
+)
+
+internal @Composable
+fun ThreadMessageCard(
     message: KuiklyThreadMessageItem,
     messageBodyTextStyle: TextStyle,
     replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
@@ -20839,7 +21631,157 @@ internal fun ThreadMessageCard(
     longPressGestureInstanceKey: Any = message.id,
     quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)? = null,
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
+)
+ {
+    ThreadMessageCardContent(
+        modifier = Modifier,
+        data =
+            ThreadMessageCardData(
+                message = message,
+                messageBodyTextStyle = messageBodyTextStyle,
+                replyMetadata = replyMetadata,
+                hasReplyDraft = hasReplyDraft,
+                actionCard = actionCard,
+                messageIndex = messageIndex,
+                highlightedMentions = highlightedMentions,
+                alignOwnMessageRight = alignOwnMessageRight,
+                compactConsecutiveMessages = compactConsecutiveMessages,
+                suppressRepeatedAuthor = suppressRepeatedAuthor,
+                showReplyAction = showReplyAction,
+                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                resolvedTaskAssigneeName = resolvedTaskAssigneeName,
+                markdownTagContextSignature = markdownTagContextSignature,
+                taskOpenEnabled = taskOpenEnabled,
+                taskStatusActionsEnabled = taskStatusActionsEnabled,
+                showSaveAction = showSaveAction,
+                showReactionAddAction = showReactionAddAction,
+                activeMarkdownTagKey = activeMarkdownTagKey,
+                timestampLabel = timestampLabel,
+                compactTimestampLabel = compactTimestampLabel,
+                attachmentCommentsEnabled = attachmentCommentsEnabled,
+                attachmentOpenStates = attachmentOpenStates,
+                pendingActionCardIds = pendingActionCardIds,
+                writeActionsEnabled = writeActionsEnabled,
+                currentServerSlug = currentServerSlug,
+                richContentEnabled = richContentEnabled,
+                focused = focused,
+                inlineReplyParticipantsById = inlineReplyParticipantsById,
+                shareSelectionActive = shareSelectionActive,
+                selectedForShare = selectedForShare,
+                translation = translation,
+                longMessageCollapseEnabled = longMessageCollapseEnabled,
+                longMessageExpanded = longMessageExpanded,
+                longPressGestureInstanceKey = longPressGestureInstanceKey,
+                outerPadding = outerPadding,
+            ),
+        callbacks =
+            ThreadMessageCardCallbacks(
+                diagnosticsLogger = diagnosticsLogger,
+                agentStatusResolver = agentStatusResolver,
+                resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                isMarkdownTagValid = isMarkdownTagValid,
+                onShowActions = onShowActions,
+                onOpenMember = onOpenMember,
+                onOpenThread = onOpenThread,
+                onOpenTask = onOpenTask,
+                onOpenTaskStatusMenu = onOpenTaskStatusMenu,
+                onToggleReaction = onToggleReaction,
+                onShowReactionDetails = onShowReactionDetails,
+                onOpenCommentHost = onOpenCommentHost,
+                onOpenAttachment = onOpenAttachment,
+                onDownloadAttachment = onDownloadAttachment,
+                onOpenAttachmentComments = onOpenAttachmentComments,
+                onRetryLocalSend = onRetryLocalSend,
+                onCopyLocalSendFailureDetails = onCopyLocalSendFailureDetails,
+                onCommitActionCard = onCommitActionCard,
+                onOpenMarkdownTag = onOpenMarkdownTag,
+                onOpenMarkdownUrl = onOpenMarkdownUrl,
+                onMentionAuthor = onMentionAuthor,
+                isMessageListScrolling = isMessageListScrolling,
+                memberAvatarResolver = memberAvatarResolver,
+                onToggleShareSelection = onToggleShareSelection,
+                onToggleTranslationOriginal = onToggleTranslationOriginal,
+                onRetryTranslation = onRetryTranslation,
+                onOpenForwardBundle = onOpenForwardBundle,
+                onToggleLongMessage = onToggleLongMessage,
+                onLongPressInputReady = onLongPressInputReady,
+                quotedPermalinkLoader = quotedPermalinkLoader,
+            ),
+    )
+}
+
+@Composable
+private fun ThreadMessageCardContent(
+    modifier: Modifier = Modifier,
+    data: ThreadMessageCardData,
+    callbacks: ThreadMessageCardCallbacks,
 ) {
+    val message = data.message
+    val messageBodyTextStyle = data.messageBodyTextStyle
+    val replyMetadata = data.replyMetadata
+    val hasReplyDraft = data.hasReplyDraft
+    val actionCard = data.actionCard
+    val messageIndex = data.messageIndex
+    val diagnosticsLogger = callbacks.diagnosticsLogger
+    val highlightedMentions = data.highlightedMentions
+    val agentStatusResolver = callbacks.agentStatusResolver
+    val alignOwnMessageRight = data.alignOwnMessageRight
+    val compactConsecutiveMessages = data.compactConsecutiveMessages
+    val suppressRepeatedAuthor = data.suppressRepeatedAuthor
+    val showReplyAction = data.showReplyAction
+    val singleTapOpensThreadEnabled = data.singleTapOpensThreadEnabled
+    val resolvedTaskAssigneeName = data.resolvedTaskAssigneeName
+    val resolveMarkdownTagLabel = callbacks.resolveMarkdownTagLabel
+    val markdownTagContextSignature = data.markdownTagContextSignature
+    val taskOpenEnabled = data.taskOpenEnabled
+    val taskStatusActionsEnabled = data.taskStatusActionsEnabled
+    val showSaveAction = data.showSaveAction
+    val showReactionAddAction = data.showReactionAddAction
+    val isMarkdownTagValid = callbacks.isMarkdownTagValid
+    val activeMarkdownTagKey = data.activeMarkdownTagKey
+    val timestampLabel = data.timestampLabel
+    val compactTimestampLabel = data.compactTimestampLabel
+    val onShowActions = callbacks.onShowActions
+    val onOpenMember = callbacks.onOpenMember
+    val onOpenThread = callbacks.onOpenThread
+    val onOpenTask = callbacks.onOpenTask
+    val onOpenTaskStatusMenu = callbacks.onOpenTaskStatusMenu
+    val onToggleReaction = callbacks.onToggleReaction
+    val onShowReactionDetails = callbacks.onShowReactionDetails
+    val onOpenCommentHost = callbacks.onOpenCommentHost
+    val onOpenAttachment = callbacks.onOpenAttachment
+    val onDownloadAttachment = callbacks.onDownloadAttachment
+    val attachmentCommentsEnabled = data.attachmentCommentsEnabled
+    val onOpenAttachmentComments = callbacks.onOpenAttachmentComments
+    val onRetryLocalSend = callbacks.onRetryLocalSend
+    val onCopyLocalSendFailureDetails = callbacks.onCopyLocalSendFailureDetails
+    val attachmentOpenStates = data.attachmentOpenStates
+    val pendingActionCardIds = data.pendingActionCardIds
+    val writeActionsEnabled = data.writeActionsEnabled
+    val onCommitActionCard = callbacks.onCommitActionCard
+    val currentServerSlug = data.currentServerSlug
+    val onOpenMarkdownTag = callbacks.onOpenMarkdownTag
+    val onOpenMarkdownUrl = callbacks.onOpenMarkdownUrl
+    val onMentionAuthor = callbacks.onMentionAuthor
+    val richContentEnabled = data.richContentEnabled
+    val focused = data.focused
+    val isMessageListScrolling = callbacks.isMessageListScrolling
+    val memberAvatarResolver = callbacks.memberAvatarResolver
+    val inlineReplyParticipantsById = data.inlineReplyParticipantsById
+    val shareSelectionActive = data.shareSelectionActive
+    val selectedForShare = data.selectedForShare
+    val onToggleShareSelection = callbacks.onToggleShareSelection
+    val translation = data.translation
+    val onToggleTranslationOriginal = callbacks.onToggleTranslationOriginal
+    val onRetryTranslation = callbacks.onRetryTranslation
+    val onOpenForwardBundle = callbacks.onOpenForwardBundle
+    val longMessageCollapseEnabled = data.longMessageCollapseEnabled
+    val longMessageExpanded = data.longMessageExpanded
+    val onToggleLongMessage = callbacks.onToggleLongMessage
+    val onLongPressInputReady = callbacks.onLongPressInputReady
+    val longPressGestureInstanceKey = data.longPressGestureInstanceKey
+    val quotedPermalinkLoader = callbacks.quotedPermalinkLoader
+    val outerPadding = data.outerPadding
     val localizedAuthorName =
         if (message.isOwn && message.authorName == "You") {
             stringResource(MR.strings.thread_author_you)

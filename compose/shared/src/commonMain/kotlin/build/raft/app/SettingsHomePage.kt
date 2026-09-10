@@ -6964,8 +6964,69 @@ private fun SharedSettingsServerContent(
     }
 }
 
-@Composable
-private fun SettingsConnectedAppsContent(
+/**
+ * task #346: state payload of [SettingsConnectedAppsContent]. See SlockStructuralHomeShellData for why
+ * the flat parameter list had to be grouped (Android dex verifier rejects the
+ * un-minified giant composable frame on API 34/36 builds).
+ */
+private data class SettingsConnectedAppsContentData(
+    val state: ScreenLoadState<SettingsConnectedAppsSnapshot>,
+    val selectedTab: String,
+    val editingId: String,
+    val name: String,
+    val clientId: String,
+    val description: TextFieldValue,
+    val homepageUrl: String,
+    val returnUrl: String,
+    val manifestUrl: String,
+    val publishCategory: String,
+    val publishDataAccess: TextFieldValue,
+    val marketplaceSearch: String,
+    val marketplaceCategory: String,
+    val selectedMarketplaceId: String?,
+    val selectedBuiltInId: String?,
+    val confirmTarget: SettingsConnectedAppsConfirmTarget?,
+    val actionState: SharedSettingsActionState?,
+    val bottomContentPadding: Dp,
+)
+
+/** task #346: callback payload of [SettingsConnectedAppsContent]. See SettingsConnectedAppsContentData. */
+private class SettingsConnectedAppsContentCallbacks(
+    val onSelectedTabChange: (String) -> Unit,
+    val onNameChange: (String) -> Unit,
+    val onClientIdChange: (String) -> Unit,
+    val onDescriptionChange: (TextFieldValue) -> Unit,
+    val onHomepageUrlChange: (String) -> Unit,
+    val onReturnUrlChange: (String) -> Unit,
+    val onManifestUrlChange: (String) -> Unit,
+    val onPublishCategoryChange: (String) -> Unit,
+    val onPublishDataAccessChange: (TextFieldValue) -> Unit,
+    val onMarketplaceSearchChange: (String) -> Unit,
+    val onMarketplaceCategoryChange: (String) -> Unit,
+    val onOpenMarketplaceDetail: (String) -> Unit,
+    val onDismissMarketplaceDetail: () -> Unit,
+    val onOpenBuiltInDetail: (String) -> Unit,
+    val onDismissBuiltInDetail: () -> Unit,
+    val onStartEdit: (SettingsConnectedAppClientSnapshot) -> Unit,
+    val onCancelEdit: () -> Unit,
+    val onRegister: (SettingsConnectedAppRegisterRequest) -> Unit,
+    val onUpdate: (SettingsConnectedAppUpdateRequest) -> Unit,
+    val onUploadLogo: (String) -> Unit,
+    val onClearLogo: (String) -> Unit,
+    val onRequestDelete: (String) -> Unit,
+    val onConfirmDelete: (String) -> Unit,
+    val onPublish: (SettingsConnectedAppPublishRequest) -> Unit,
+    val onInstall: (String) -> Unit,
+    val onRequestUninstall: (String) -> Unit,
+    val onConfirmUninstall: (String) -> Unit,
+    val onDismissConfirm: () -> Unit,
+    val onCopySecret: (String) -> Unit,
+    val onOpenUrl: (String) -> Unit,
+    val onRefresh: () -> Unit,
+)
+
+private @Composable
+fun SettingsConnectedAppsContent(
     state: ScreenLoadState<SettingsConnectedAppsSnapshot>,
     selectedTab: String,
     onSelectedTabChange: (String) -> Unit,
@@ -7015,7 +7076,123 @@ private fun SettingsConnectedAppsContent(
     onCopySecret: (String) -> Unit,
     onOpenUrl: (String) -> Unit,
     onRefresh: () -> Unit
+)
+ {
+    SettingsConnectedAppsContentContent(
+        modifier = Modifier,
+        data =
+            SettingsConnectedAppsContentData(
+                state = state,
+                selectedTab = selectedTab,
+                editingId = editingId,
+                name = name,
+                clientId = clientId,
+                description = description,
+                homepageUrl = homepageUrl,
+                returnUrl = returnUrl,
+                manifestUrl = manifestUrl,
+                publishCategory = publishCategory,
+                publishDataAccess = publishDataAccess,
+                marketplaceSearch = marketplaceSearch,
+                marketplaceCategory = marketplaceCategory,
+                selectedMarketplaceId = selectedMarketplaceId,
+                selectedBuiltInId = selectedBuiltInId,
+                confirmTarget = confirmTarget,
+                actionState = actionState,
+                bottomContentPadding = bottomContentPadding,
+            ),
+        callbacks =
+            SettingsConnectedAppsContentCallbacks(
+                onSelectedTabChange = onSelectedTabChange,
+                onNameChange = onNameChange,
+                onClientIdChange = onClientIdChange,
+                onDescriptionChange = onDescriptionChange,
+                onHomepageUrlChange = onHomepageUrlChange,
+                onReturnUrlChange = onReturnUrlChange,
+                onManifestUrlChange = onManifestUrlChange,
+                onPublishCategoryChange = onPublishCategoryChange,
+                onPublishDataAccessChange = onPublishDataAccessChange,
+                onMarketplaceSearchChange = onMarketplaceSearchChange,
+                onMarketplaceCategoryChange = onMarketplaceCategoryChange,
+                onOpenMarketplaceDetail = onOpenMarketplaceDetail,
+                onDismissMarketplaceDetail = onDismissMarketplaceDetail,
+                onOpenBuiltInDetail = onOpenBuiltInDetail,
+                onDismissBuiltInDetail = onDismissBuiltInDetail,
+                onStartEdit = onStartEdit,
+                onCancelEdit = onCancelEdit,
+                onRegister = onRegister,
+                onUpdate = onUpdate,
+                onUploadLogo = onUploadLogo,
+                onClearLogo = onClearLogo,
+                onRequestDelete = onRequestDelete,
+                onConfirmDelete = onConfirmDelete,
+                onPublish = onPublish,
+                onInstall = onInstall,
+                onRequestUninstall = onRequestUninstall,
+                onConfirmUninstall = onConfirmUninstall,
+                onDismissConfirm = onDismissConfirm,
+                onCopySecret = onCopySecret,
+                onOpenUrl = onOpenUrl,
+                onRefresh = onRefresh,
+            ),
+    )
+}
+
+@Composable
+private fun SettingsConnectedAppsContentContent(
+    modifier: Modifier = Modifier,
+    data: SettingsConnectedAppsContentData,
+    callbacks: SettingsConnectedAppsContentCallbacks,
 ) {
+    val state = data.state
+    val selectedTab = data.selectedTab
+    val onSelectedTabChange = callbacks.onSelectedTabChange
+    val editingId = data.editingId
+    val name = data.name
+    val clientId = data.clientId
+    val description = data.description
+    val homepageUrl = data.homepageUrl
+    val returnUrl = data.returnUrl
+    val manifestUrl = data.manifestUrl
+    val publishCategory = data.publishCategory
+    val publishDataAccess = data.publishDataAccess
+    val marketplaceSearch = data.marketplaceSearch
+    val marketplaceCategory = data.marketplaceCategory
+    val selectedMarketplaceId = data.selectedMarketplaceId
+    val selectedBuiltInId = data.selectedBuiltInId
+    val confirmTarget = data.confirmTarget
+    val actionState = data.actionState
+    val bottomContentPadding = data.bottomContentPadding
+    val onNameChange = callbacks.onNameChange
+    val onClientIdChange = callbacks.onClientIdChange
+    val onDescriptionChange = callbacks.onDescriptionChange
+    val onHomepageUrlChange = callbacks.onHomepageUrlChange
+    val onReturnUrlChange = callbacks.onReturnUrlChange
+    val onManifestUrlChange = callbacks.onManifestUrlChange
+    val onPublishCategoryChange = callbacks.onPublishCategoryChange
+    val onPublishDataAccessChange = callbacks.onPublishDataAccessChange
+    val onMarketplaceSearchChange = callbacks.onMarketplaceSearchChange
+    val onMarketplaceCategoryChange = callbacks.onMarketplaceCategoryChange
+    val onOpenMarketplaceDetail = callbacks.onOpenMarketplaceDetail
+    val onDismissMarketplaceDetail = callbacks.onDismissMarketplaceDetail
+    val onOpenBuiltInDetail = callbacks.onOpenBuiltInDetail
+    val onDismissBuiltInDetail = callbacks.onDismissBuiltInDetail
+    val onStartEdit = callbacks.onStartEdit
+    val onCancelEdit = callbacks.onCancelEdit
+    val onRegister = callbacks.onRegister
+    val onUpdate = callbacks.onUpdate
+    val onUploadLogo = callbacks.onUploadLogo
+    val onClearLogo = callbacks.onClearLogo
+    val onRequestDelete = callbacks.onRequestDelete
+    val onConfirmDelete = callbacks.onConfirmDelete
+    val onPublish = callbacks.onPublish
+    val onInstall = callbacks.onInstall
+    val onRequestUninstall = callbacks.onRequestUninstall
+    val onConfirmUninstall = callbacks.onConfirmUninstall
+    val onDismissConfirm = callbacks.onDismissConfirm
+    val onCopySecret = callbacks.onCopySecret
+    val onOpenUrl = callbacks.onOpenUrl
+    val onRefresh = callbacks.onRefresh
     val snapshot = state.currentContent()
     val selectedMarketplace = snapshot?.marketplace?.firstOrNull { it.id == selectedMarketplaceId }
     val selectedBuiltIn = snapshot?.builtIn?.firstOrNull { it.id == selectedBuiltInId }
