@@ -1970,9 +1970,6 @@ private fun SlockAppShellReadyContent(
         remember { appShellChildPagePrewarmPolicy(slockPlatformAppShellChildPagePrewarmMode()) }
     var settingsHeaderTapCount by remember { mutableStateOf(0) }
     var homeListPositions by remember { mutableStateOf(AppShellServerLazyListPositions()) }
-    // task #94: DMs tab keeps its own server-scoped list positions so its scroll state never
-    // bleeds into (or gets clobbered by) the Home tab's merged list.
-    var dmsListPositions by remember { mutableStateOf(AppShellServerLazyListPositions()) }
     var pendingHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
     var observedHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
     var tasksListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
@@ -5496,16 +5493,39 @@ private fun SlockAppShellReadyContent(
                             { homeListPositions = it }
                         )
                     }
-                    // task #94: DMs tab = the same home store filtered to direct messages.
-                    // Placeholder until SharedDmsScreen (task #332) lands on main; the slot swap
-                    // is a one-liner per the seam agreed with @沙琪玛 (#proj-mobile:a36c08a4).
+                    // task #337: DMs tab = SharedDmsScreen (WeChat-style rows, task #332) fed by
+                    // the same projection chain the home shell uses. Replaces the PR2 placeholder
+                    // (home store filtered to ConversationKind.DirectMessage).
                     val dmsTabContent: @Composable (active: Boolean) -> Unit = { active ->
-                        homeTabContentBase(
-                            active,
-                            ConversationKind.DirectMessage,
-                            tabScrollToTopRequests.dms,
-                            dmsListPositions,
-                            { dmsListPositions = it }
+                        PerformanceSceneEffect(bridge, "kuikly_dms", active = active)
+                        val projectedDirectMessages =
+                            rememberProjectedDirectMessageItems(
+                                state = homeState,
+                                conversationIdentityProvider =
+                                    sharedStores.conversationIdentityProvider(storeScope),
+                                draftPersistSlice = composerDraftPersistSlice
+                            )
+                        val dmsMemberAvatarResolver =
+                            remember(appShellServerMembersStore, readyServerId) {
+                                slockMemberAvatarResolver(appShellServerMembersStore, readyServerId)
+                            }
+                        SharedDmsScreen(
+                            active = active,
+                            directMessages = projectedDirectMessages,
+                            onOpenConversation = { identity ->
+                                openHomeConversation(identity, "dms")
+                            },
+                            showHeader = true,
+                            scrollToTopRequest = tabScrollToTopRequests.dms,
+                            bottomContentPadding = appShellBottomContentInset,
+                            currentServerId = readyServerId,
+                            agentStatusResolver = createChannelAgentStatusResolver,
+                            memberAvatarResolver = dmsMemberAvatarResolver,
+                            timeContext = threadTimeContext,
+                            refreshing = sharedHomeHeaderRefreshing(homeState),
+                            onRefresh = {
+                                homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+                            }
                         )
                     }
                     // task #94: Activity tab hosts the shared activity inbox surface directly —
@@ -16971,6 +16991,59 @@ private fun JsonObject.avatarWireValue(): String? =
         "profileAvatar",
         "pictureUrl"
     )
+
+/**
+ * task #337: projects the shared home snapshot's direct messages into [SlockHomeConversationItem]
+ * for the Slack-nav DMs tab, reusing the exact projection chain SharedHomeScreen uses
+ * (directory identity + draft projections). Null-safe: empty until home content is ready.
+ */
+@Composable
+private fun rememberProjectedDirectMessageItems(
+    state: SharedHomeState,
+    conversationIdentityProvider: SharedConversationIdentityProvider?,
+    draftPersistSlice: SharedThreadComposerDraftPersistSlice?,
+): List<SlockHomeConversationItem> {
+    val snapshot = (state.content as? SharedHomeContentState.Content)?.snapshot
+    val activeDraftRecords by (draftPersistSlice?.activeDraftRecordsState ?: EmptyComposerDraftRecordsFlow)
+        .collectAsState(emptySet())
+    val draftProjection =
+        remember(activeDraftRecords, draftPersistSlice) {
+            if (draftPersistSlice != null) {
+                activeDraftRecords.toSharedThreadComposerDraftProjection()
+            } else {
+                SharedThreadComposerDraftProjection.Empty
+            }
+        }
+    val conversationDirectoryIds =
+        remember(snapshot?.channels, snapshot?.directMessages) {
+            val channels = snapshot?.channels.orEmpty()
+            val directMessages = snapshot?.directMessages.orEmpty()
+            (channels + directMessages).map { it.threadId.value }
+        }
+    val conversationDirectoryFlow =
+        remember(conversationIdentityProvider, snapshot?.server?.id, conversationDirectoryIds) {
+            val serverId = snapshot?.server?.id
+            if (conversationIdentityProvider == null || serverId == null) {
+                EmptyConversationDirectoryProjectionFlow
+            } else {
+                conversationIdentityProvider.projectionFlow(serverId, conversationDirectoryIds)
+            }
+        }
+    val conversationDirectoryProjections by conversationDirectoryFlow.collectAsState(emptyMap())
+    val conversationRowProjector =
+        remember(conversationDirectoryProjections, draftProjection) {
+            SharedHomeConversationRowProjector(
+                directoryProjections = conversationDirectoryProjections,
+                draftProjection = draftProjection
+            )
+        }
+    return remember(snapshot?.directMessages, conversationRowProjector) {
+        snapshot
+            ?.directMessages
+            ?.map { conversation -> conversationRowProjector.project(conversation) }
+            .orEmpty()
+    }
+}
 
 @Composable
 private fun SharedHomeScreen(
