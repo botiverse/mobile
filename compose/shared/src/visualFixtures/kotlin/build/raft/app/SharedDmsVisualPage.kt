@@ -104,9 +104,9 @@ internal fun SharedDmsVisualContent() {
                 name = "沙琪玛",
                 kind = "dm",
                 peerType = "agent",
-                unreadCount = 125, // Tests "99+"
+                unreadCount = 28,
                 lastMessageAt = "2026-04-10T11:00:00Z", // Earlier this year
-                lastMessagePreview = "All 5 unit tests passed for SharedDmsPageTest",
+                lastMessagePreview = "All unit tests passed for SharedDmsPageTest",
                 avatarWireValue = "pixel:robot",
                 avatarLabel = "SQ"
             ),

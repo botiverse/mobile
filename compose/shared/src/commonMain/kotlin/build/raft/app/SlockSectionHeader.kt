@@ -230,6 +230,7 @@ internal fun SlockMainTabPageHeader(
     subtitle: String? = null,
     modifier: Modifier = Modifier,
     applyTopSafeArea: Boolean = true,
+    contentStartPadding: Dp = SlockMainTabHeaderStartPadding,
     refreshing: Boolean = false,
     leadingContent: (@Composable BoxScope.() -> Unit)? = null
 ) {
@@ -239,7 +240,7 @@ internal fun SlockMainTabPageHeader(
         iconName = surface.iconName,
         modifier = modifier,
         applyTopSafeArea = applyTopSafeArea,
-        contentStartPadding = SlockMainTabHeaderStartPadding,
+        contentStartPadding = contentStartPadding,
         titleStyle = SlockMainTabHeaderTitleStyle,
         refreshing = refreshing,
         leadingContent = leadingContent
