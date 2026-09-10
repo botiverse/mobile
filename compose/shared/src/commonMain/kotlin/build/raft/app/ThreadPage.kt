@@ -18931,6 +18931,7 @@ private fun ThreadMessagesListContent(
                                 // card boundary invalidates every visible message while anchoring.
                                 isMessageListScrolling = { listState.isScrollInProgress },
                                 alignOwnMessageRight = renderPayload.alignOwnMessagesRight && message.isOwn,
+                                messageAlignmentModeEnabled = renderPayload.alignOwnMessagesRight,
                                 compactConsecutiveMessages = renderPayload.compactConsecutiveMessages,
                                 suppressRepeatedAuthor = suppressRepeatedAuthor,
                                 showReplyAction = renderPayload.showReplyActions,
@@ -21499,6 +21500,7 @@ private data class ThreadMessageCardData(
     val messageIndex: Int,
     val highlightedMentions: Set<String>,
     val alignOwnMessageRight: Boolean,
+    val messageAlignmentModeEnabled: Boolean,
     val compactConsecutiveMessages: Boolean,
     val suppressRepeatedAuthor: Boolean,
     val showReplyAction: Boolean,
@@ -21575,6 +21577,7 @@ fun ThreadMessageCard(
     highlightedMentions: Set<String> = emptySet(),
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     alignOwnMessageRight: Boolean = false,
+    messageAlignmentModeEnabled: Boolean = alignOwnMessageRight,
     compactConsecutiveMessages: Boolean = false,
     suppressRepeatedAuthor: Boolean = false,
     showReplyAction: Boolean = true,
@@ -21645,6 +21648,7 @@ fun ThreadMessageCard(
                 messageIndex = messageIndex,
                 highlightedMentions = highlightedMentions,
                 alignOwnMessageRight = alignOwnMessageRight,
+                messageAlignmentModeEnabled = messageAlignmentModeEnabled,
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 suppressRepeatedAuthor = suppressRepeatedAuthor,
                 showReplyAction = showReplyAction,
@@ -21726,6 +21730,7 @@ private fun ThreadMessageCardContent(
     val highlightedMentions = data.highlightedMentions
     val agentStatusResolver = callbacks.agentStatusResolver
     val alignOwnMessageRight = data.alignOwnMessageRight
+    val messageAlignmentModeEnabled = data.messageAlignmentModeEnabled
     val compactConsecutiveMessages = data.compactConsecutiveMessages
     val suppressRepeatedAuthor = data.suppressRepeatedAuthor
     val showReplyAction = data.showReplyAction
@@ -21792,7 +21797,11 @@ private fun ThreadMessageCardContent(
     val horizontalArrangement =
         if (alignOwnMessageRight) Arrangement.spacedBy(12.dp, Alignment.End) else Arrangement.spacedBy(12.dp)
     val contentAlignment = if (alignOwnMessageRight) Alignment.End else Alignment.Start
-    val messageMaxWidthFraction = if (alignOwnMessageRight) 0.82f else 1f
+    // task #278: in the left/right conversation layout both sides are capped to the same
+    // fraction of the row's content width, so the other party's messages leave the right
+    // side free just as own messages leave the left. Outside that mode every message keeps
+    // the full width, as before.
+    val messageMaxWidthFraction = if (messageAlignmentModeEnabled) 0.82f else 1f
     val geometryTints = LocalThreadMessageGeometryTints.current
     val agentStatus =
         if (message.showsAgentStatusIndicator()) {
