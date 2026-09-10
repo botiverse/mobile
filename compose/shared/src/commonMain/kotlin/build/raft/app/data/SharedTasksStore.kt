@@ -20,6 +20,9 @@ import kotlinx.coroutines.withContext
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
+/** Page size for the paginated server Tasks read (task #345), matching Web. */
+internal const val TASKS_SERVER_PAGE_LIMIT = 200
+
 data class TasksUiState(
     val loadState: ScreenLoadState<TasksContent>,
     val selectedFilter: TaskStatus? = null,
@@ -31,7 +34,13 @@ data class TasksUiState(
     val createPendingChannelId: String? = null,
     val createErrorCode: String? = null,
     val createAttempt: Long = 0L,
-    val createTerminalAttempt: Long? = null
+    val createTerminalAttempt: Long? = null,
+    // Pagination (task #345): the opaque server cursor for the next page and
+    // whether one exists. `nextCursor == null` means the walk is exhausted.
+    val nextCursor: String? = null,
+    val hasMore: Boolean = false,
+    val loadingMore: Boolean = false,
+    val loadMoreErrorCode: String? = null
 )
 
 fun TasksUiState.isCreatingTasksFor(channelId: ChannelId): Boolean =
@@ -129,6 +138,23 @@ sealed interface SharedTasksIntent {
         val operation: TasksCreateOperationId,
         val errorCode: String
     ) : SharedTasksIntent
+
+    /** Pagination (task #345): request the next page of the current filter. */
+    data object LoadMore : SharedTasksIntent
+
+    /** Next page appended: [tasks] carry a server `nextCursor` (null = exhausted). */
+    data class LoadMoreSucceeded(
+        val tasks: List<TaskSummary>,
+        val nextCursor: String?,
+        val selectedFilter: TaskStatus? = null
+    ) : SharedTasksIntent
+
+    /** Next page failed: fail-open (keep existing items); [invalidCursor] asks the
+     *  host to refresh from the head instead of retrying the same cursor. */
+    data class LoadMoreFailed(
+        val errorCode: String,
+        val invalidCursor: Boolean = false
+    ) : SharedTasksIntent
 }
 
 sealed interface SharedTasksRouteIntent {
@@ -143,6 +169,8 @@ sealed interface SharedTasksRouteIntent {
     data class ApplyTaskStatus(val taskId: String, val status: TaskStatus) : SharedTasksRouteIntent
     data class ApplyTaskUpdate(val task: TaskSummary) : SharedTasksRouteIntent
     data object ClearNavigationError : SharedTasksRouteIntent
+    /** Pagination (task #345): follow the server cursor for the current filter. */
+    data object LoadMore : SharedTasksRouteIntent
     data class SeedContent(val snapshot: TaskSnapshot) : SharedTasksRouteIntent
 
     /**
@@ -221,6 +249,41 @@ internal class SharedTasksViewModel(
 
     private var createJob: Job? = null
 
+    private var loadMoreJob: Job? = null
+
+    /**
+     * Follow the server cursor for one more page (task #345). Single-flight and
+     * fail-open: a transient failure keeps what is loaded; an invalid cursor
+     * drops the cursor so the next entry refreshes from the head.
+     */
+    private fun loadMore() {
+        val current = state.value
+        val cursor = current.nextCursor
+        // Server scope only: the paginated server read is the server Tasks panel.
+        if (scope != SharedTasksScope.Server || !current.hasMore || cursor == null || loadMoreJob?.isActive == true) {
+            return
+        }
+        loadMoreJob =
+            runtimeScope.launch {
+                diagnosticsLogger("tasks_load_more_start filter=${current.selectedFilter?.name.orEmpty()}")
+                store.accept(SharedTasksIntent.LoadMore)
+                when (val page = useCase.loadServerTasksPage(limit = TASKS_SERVER_PAGE_LIMIT, cursor = cursor)) {
+                    is TasksPageResult.Page ->
+                        store.accept(
+                            SharedTasksIntent.LoadMoreSucceeded(
+                                tasks = page.tasks,
+                                nextCursor = page.nextCursor,
+                                selectedFilter = state.value.selectedFilter
+                            )
+                        )
+                    TasksPageResult.InvalidCursor ->
+                        store.accept(SharedTasksIntent.LoadMoreFailed(errorCode = "invalid_cursor", invalidCursor = true))
+                    is TasksPageResult.Error ->
+                        store.accept(SharedTasksIntent.LoadMoreFailed(errorCode = page.code))
+                }
+            }
+    }
+
     override fun dispatch(action: SharedTasksRouteIntent) {
         when (action) {
             SharedTasksRouteIntent.Start,
@@ -286,6 +349,8 @@ internal class SharedTasksViewModel(
             }
             SharedTasksRouteIntent.ClearNavigationError ->
                 store.dispatch(SharedTasksIntent.NavigationFailed(null))
+            SharedTasksRouteIntent.LoadMore ->
+                loadMore()
             is SharedTasksRouteIntent.SeedContent -> {
                 if (store.accept(SharedTasksIntent.SeedContent(action.snapshot, state.value.selectedFilter))) {
                     runtimeScope.launch {
@@ -425,8 +490,26 @@ internal class SharedTasksViewModel(
                     null
                 }
             val usesSharedSnapshotLoad = sharedStore != null && sharedServerId != null
+            // Server Tasks panel reads the paginated summary page (task #345):
+            // the legacy unpaginated full read is what produced the ~22.8 MiB
+            // response. Use it for the unfiltered server scope only; filtered
+            // reads keep the existing (bounded) path.
+            val usesPaginatedServerRead =
+                scope == SharedTasksScope.Server && request.filter.statuses.isEmpty() && !usesSharedSnapshotLoad
+            var firstPageCursor: String? = null
+            var firstPageHadMore = false
             val result =
-                if (sharedStore != null && sharedServerId != null) {
+                if (usesPaginatedServerRead) {
+                    when (val page = useCase.loadServerTasksPage(limit = TASKS_SERVER_PAGE_LIMIT, cursor = null)) {
+                        is TasksPageResult.Page -> {
+                            firstPageCursor = page.nextCursor
+                            firstPageHadMore = page.nextCursor != null
+                            DataResult.Content(TaskSnapshot(tasks = page.tasks, summaryCounts = page.tasks.summaryCounts()))
+                        }
+                        TasksPageResult.InvalidCursor -> DataResult.Error(ScreenError(code = "tasks_page_invalid_cursor", retryable = false))
+                        is TasksPageResult.Error -> DataResult.Error(ScreenError(code = page.code, retryable = true))
+                    }
+                } else if (sharedStore != null && sharedServerId != null) {
                     sharedStore.loadSnapshot(
                         serverId = sharedServerId.value,
                         scope = scope,
@@ -457,6 +540,19 @@ internal class SharedTasksViewModel(
                             "tasks_snapshot_commit source=refresh_result ${result.tasksDiagnosticsSummary()}"
                         )
                     }
+                }
+                if (usesPaginatedServerRead) {
+                    store.accept(
+                        SharedTasksIntent.LoadMoreSucceeded(
+                            tasks = emptyList(),
+                            nextCursor = firstPageCursor,
+                            selectedFilter = selectedFilter
+                        )
+                    )
+                    diagnosticsLogger(
+                        "tasks_paginated_first_page filter=${selectedFilter?.name.orEmpty()} " +
+                            "tasks=${result.data.tasks.size} hasMore=$firstPageHadMore"
+                    )
                 }
             } else {
                 result.failureCodeOrNull()?.let { events.emit(SharedTasksEvent.OperationFailed(it)) }
@@ -858,6 +954,7 @@ internal class SharedTasksViewModel(
         observeJob?.cancel()
         statusJob?.cancel()
         createJob?.cancel()
+        loadMoreJob?.cancel()
         super.onCleared()
     }
 }
@@ -906,6 +1003,7 @@ private fun SharedTasksRouteIntent.tasksRefreshReason(): String =
         is SharedTasksRouteIntent.AssignTask -> "assign"
         is SharedTasksRouteIntent.ApplyTaskStatus -> "apply_task_status"
         is SharedTasksRouteIntent.ApplyTaskUpdate -> "apply_task_update"
+        SharedTasksRouteIntent.LoadMore -> "load_more"
         SharedTasksRouteIntent.ClearNavigationError -> "navigation"
         is SharedTasksRouteIntent.SeedContent -> "seed"
         is SharedTasksRouteIntent.CreateTasks -> "create"
@@ -1023,7 +1121,70 @@ fun TasksUiState.reduce(intent: SharedTasksIntent): TasksUiState =
                     createTerminalAttempt = intent.operation.attempt
                 )
             }
+        SharedTasksIntent.LoadMore ->
+            if (!hasMore || loadingMore || nextCursor == null) {
+                this
+            } else {
+                copy(loadingMore = true, loadMoreErrorCode = null)
+            }
+        is SharedTasksIntent.LoadMoreSucceeded ->
+            withAppendedTasks(intent.tasks, intent.nextCursor)
+                .copy(loadingMore = false, loadMoreErrorCode = null)
+        is SharedTasksIntent.LoadMoreFailed ->
+            // Fail-open: keep whatever is already loaded; only record the error
+            // (and, for a stale cursor, drop it so the host refreshes the head).
+            copy(
+                loadingMore = false,
+                loadMoreErrorCode = intent.errorCode,
+                nextCursor = if (intent.invalidCursor) null else nextCursor,
+                hasMore = if (intent.invalidCursor) false else hasMore
+            )
     }
+
+/** Append a page of tasks, merging by id: existing rows are replaced in place
+ *  (so an updated row does not duplicate), new rows are appended, and the
+ *  currently loaded items are never dropped (no reset). Summary counts are
+ *  recomputed over the merged set. Cursor/`hasMore` come from the server. */
+internal fun TasksUiState.withAppendedTasks(
+    incoming: List<TaskSummary>,
+    nextCursor: String?
+): TasksUiState {
+    if (incoming.isEmpty()) {
+        return copy(nextCursor = nextCursor, hasMore = nextCursor != null)
+    }
+    val content = (loadState as? ScreenLoadState.Content) ?: return this
+    val merged = mergeTasksById(current = content.data.tasks, incoming = incoming)
+    return copy(
+        loadState = ScreenLoadState.Content(
+            content.data.copy(tasks = merged, summaryCounts = merged.summaryCounts())
+        ),
+        nextCursor = nextCursor,
+        hasMore = nextCursor != null
+    )
+}
+
+/** Merge [incoming] into [current] keeping first-seen order; an id present in
+ *  both is replaced by the incoming row (same position, no duplicate). */
+internal fun mergeTasksById(
+    current: List<TaskSummary>,
+    incoming: List<TaskSummary>
+): List<TaskSummary> {
+    if (incoming.isEmpty()) return current
+    val incomingById = incoming.associateBy { it.id.value }
+    val merged = ArrayList<TaskSummary>(current.size + incoming.size)
+    val seen = HashSet<String>(current.size + incoming.size)
+    for (task in current) {
+        val replacement = incomingById[task.id.value]
+        merged.add(replacement ?: task)
+        seen.add(task.id.value)
+    }
+    for (task in incoming) {
+        if (seen.add(task.id.value)) {
+            merged.add(task)
+        }
+    }
+    return merged
+}
 
 private fun TasksUiState.withCreateOperationFrom(previous: TasksUiState): TasksUiState =
     copy(
