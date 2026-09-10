@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-06T22:04:00.013Z",
+  "generatedAt": "2026-09-10T22:12:23.966Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 99,
-    "ready": 81,
-    "pending": 18
+    "ready": 78,
+    "pending": 21
   },
   "cases": [
     {
@@ -457,31 +457,15 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03f407fe43fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-09-03T22:10:13.773Z",
-      "severity": "low",
-      "summary": [
-        "Status dot palette (green, orange, gray, blue) and pink 'Waiting pulse' indicator match across both renders with identical shape and order",
-        "Header/title typography weight and size are visually consistent between Android and iOS renders",
-        "Overall component layout, spacing, and alignment are isomorphic at the design-content level"
-      ],
-      "likelyCauses": [
-        "Minor pixel-level differences within the 0.30% mismatch ratio are attributable to platform-specific font rasterization and antialiasing rather than layout divergence",
-        "DPI scaling between the 1026x276 Android crop and the 1170x2532 iOS canvas is handled correctly"
-      ],
-      "suggestedOwner": "kuikly-render",
-      "suggestedFixes": [
-        "No action required; mismatch ratio (0.30%) is well below the 2% pixel tolerance threshold",
-        "If stricter parity is desired, normalize the body font family on iOS to the same SF/Roboto fallback chain used on Android"
-      ],
-      "intentional": [
-        "Platform-default font rendering (SF Pro on iOS vs Roboto on Android) may produce sub-pixel glyph differences without representing a real layout defect",
-        "Status-dot color sampling may show negligible RGB variance from anti-aliasing along circle edges"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffebffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "generatedAt": "2026-09-10T22:12:21.883Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.002999216861776066
     },
     {
@@ -1141,7 +1125,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05947833542620273
+      "metricMismatch": 0.05947901054536131
     },
     {
       "id": "components.thread.header.states",
@@ -1274,7 +1258,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3693445268089818
+      "metricMismatch": 0.36934317657066473
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1307,7 +1291,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3719268575903647
+      "metricMismatch": 0.37183706674228
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1699,45 +1683,22 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000000007ffc7ffc7ffc7ffc3ffc7ffc21fc41fc7ffc7ffc7ffc7ffc3ffc7ffc7ffc7ffc3ffc7ffc3ffc7ffc7ffc7ffc3ffc7ffc3ffc7ffc3ffc7ffc7ffc7f7c7ffc7cfc7ffc00007dfcce630000ffff0000ffff0000ffff0000ffff0000bffd0000bffd00008ff100008ff00000ffff00009ffb0000ffffffffffff",
-      "generatedAt": "2026-09-06T22:02:37.220Z",
-      "severity": "medium",
-      "summary": [
-        "iOS shows the soft keyboard occupying roughly the bottom 40% of the screen, compressing the dialog and pushing Cancel/Create Agent buttons up to overlap the Description field area; Android has no keyboard visible and the dialog sits comfortably above an empty gray area.",
-        "On iOS the Description textarea is visibly shorter (fewer visible lines) than on Android because the dialog has been resized/shrunk to fit above the keyboard.",
-        "Cancel and Create Agent buttons are right-aligned on iOS but centered on Android, changing the action group layout.",
-        "The iOS Name input shows a trailing text-cursor caret after 'Product-QA-Bot' indicating the field is focused; Android shows no caret, suggesting the field is not focused on that side.",
-        "Overall dialog scale/proportions differ because the iOS canvas (1170x2532) renders the same dialog at a different density than the Android canvas (390x844) — spacing between COMPUTER/NAME/DESCRIPTION labels and their fields is tighter on iOS."
-      ],
-      "likelyCauses": [
-        "iOS dialog does not apply adjustResize / keyboard-avoiding behavior, so the open soft keyboard overlays the dialog instead of shrinking it.",
-        "TextField auto-focus on iOS triggers keyboard show on dialog open, whereas Android does not auto-focus or its IME is not surfaced in the screenshot.",
-        "Button group uses different alignment rules (e.g., justify-content: flex-end on iOS vs center on Android) or inherits platform-native button-bar styling.",
-        "Kuikly layout density/scaling differs between Android and iOS runtimes, causing label-to-field gap compression on iOS."
-      ],
-      "suggestedOwner": "Kuikly mobile-platform / dialog component owner",
-      "suggestedFixes": [
-        "Apply KeyboardAvoidingView (or equivalent) so the dialog shrinks/scrolls when the IME shows on iOS, keeping Cancel/Create Agent visible.",
-        "Ensure the Name TextField is not auto-focused on dialog open, or only focus it after the user explicitly taps the field.",
-        "Unify action-bar alignment across platforms (recommend right-aligned with consistent spacing) and verify Cancel/Create Agent width tokens match.",
-        "Audit Kuikly spacing/scale tokens for label→input gap and textarea min-height so both platforms render identical vertical rhythm.",
-        "Re-capture iOS screenshot with keyboard dismissed (or use a non-focused initial state) before pixel-diffing to remove IME-related noise."
-      ],
-      "intentional": [
-        "Platform-native button alignment conventions could justify right-aligned actions on iOS, but it should be confirmed with design.",
-        "iOS keyboard appearance is a runtime artifact rather than a styling divergence and may not represent a real product bug."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.47259691335520715
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003ffc7dfc3df86df83f6c3ffc01ec00cc3ffc3ffc3ffc3ffc3ffc39fc3ffc3ffc3ffc1ffc3ffc31fc3ffc03fc03fc07fc3ffc3ffc3ffc7ffc3ff47f7c3ffc78743ffc000027fc80013ffcdef33ffcffff27fcffff27fcffff3ffcbff82ffc1ff83ffc8ff03ffc0ff03f7c80013800800100008001ffffffff",
+      "generatedAt": "2026-09-10T22:12:23.078Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3620100322706957
     },
     {
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-06T22:03:59.331Z",
+      "generatedAt": "2026-09-10T22:12:22.842Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1750,7 +1711,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-06T22:03:59.331Z",
+      "generatedAt": "2026-09-10T22:12:22.842Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2166,7 +2127,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-06T22:03:59.600Z",
+      "generatedAt": "2026-09-10T22:12:23.405Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2179,7 +2140,7 @@
       "id": "screens.members.agent-detail.profile.computer-offline",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-06T22:03:59.600Z",
+      "generatedAt": "2026-09-10T22:12:23.405Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2192,7 +2153,7 @@
       "id": "screens.members.agent-detail.profile.computer-missing",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-06T22:03:59.600Z",
+      "generatedAt": "2026-09-10T22:12:23.405Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2205,7 +2166,7 @@
       "id": "screens.members.agent-detail.profile.no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-06T22:03:59.600Z",
+      "generatedAt": "2026-09-10T22:12:23.405Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2218,7 +2179,7 @@
       "id": "screens.members.agent-detail.profile.long-machine-name",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-06T22:03:59.600Z",
+      "generatedAt": "2026-09-10T22:12:23.405Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2231,7 +2192,7 @@
       "id": "screens.members.agent-detail.profile.daemon-only",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-06T22:03:59.600Z",
+      "generatedAt": "2026-09-10T22:12:23.405Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2244,7 +2205,7 @@
       "id": "screens.members.agent-detail.profile.no-membership",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-06T22:03:59.600Z",
+      "generatedAt": "2026-09-10T22:12:23.405Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2257,7 +2218,7 @@
       "id": "screens.members.agent-detail.profile.loading-state",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-06T22:03:59.600Z",
+      "generatedAt": "2026-09-10T22:12:23.405Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2270,7 +2231,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-06T22:03:59.600Z",
+      "generatedAt": "2026-09-10T22:12:23.405Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2283,7 +2244,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-06T22:03:59.600Z",
+      "generatedAt": "2026-09-10T22:12:23.405Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2296,7 +2257,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-06T22:03:59.600Z",
+      "generatedAt": "2026-09-10T22:12:23.405Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2309,7 +2270,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-06T22:03:59.600Z",
+      "generatedAt": "2026-09-10T22:12:23.405Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2514,37 +2475,16 @@
     },
     {
       "id": "components.thread.message-row.long-inline-code",
-      "status": "ready",
-      "imageHash": "p1:07fe07feffffffff87ff87ff801f801fe1ffe1f7e007e00fe1ffe1ffe00fe00be4c3e7c3e807e007e007e00fe01fe01fe06be043e00fe00fe7f3e7fbe7ffe7ffe3ffe3ffe01fe00fe40fe00fe00fe7ffe0ffe001e3d3e001efffe001e003e001e003e3fbe3fbe3ffe7ffe03fe03fe001e41fe001e7ffe003e002601effffffff",
-      "generatedAt": "2026-08-13T22:15:32.973Z",
-      "severity": "medium",
-      "summary": [
-        "Long inline code path wrapping point differs between platforms: Android wraps at '/' boundaries with each path segment becoming its own highlighted inline code span; iOS wraps mid-segment after a fixed character width, breaking a path like 'realtime-receipt' across two spans ('read-rec' / 'eipt').",
-        "Heading metadata in the top-left differs: Android shows '1170x2532' beneath the title, iOS shows '1170x2532' in the same place, matching; platform badge label on iOS reads 'IOS' (uppercase) vs 'ANDROID' on Android — cosmetic but observable.",
-        "Bold/'#520' task chip divergence: Android renders '#520' as a yellow task chip while iOS renders it as plain text — but this matches the documented intentional platform-difference (keep Android tag-everything).",
-        "Tag chip styling for '@artin' is consistent (yellow self-mention) on both; '#markdown专修' pink chip and '#markdown专修:692d9e88' blue channel chip render with similar fills but slightly different corner radius/height between platforms.",
-        "Line metrics for the bold Chinese sample differ: Android's '粗体 Bold: 中文粗体 markdown bold sample 123.' breaks after 'sample' onto a new line with '123.' indented; iOS keeps the same wrap point but the bold weight/glyph stroke looks slightly heavier on iOS."
-      ],
-      "likelyCauses": [
-        "Wrap/break algorithm for inline code spans is implemented per-platform (Android TextView vs iOS TextKit) with different break-iterator boundaries — neither side shares the Kuikly markdown layout pass",
-        "Inline-code styled span wrapping does not use a shared max-width policy; Android breaks on '/' characters while iOS breaks on character-fit width",
-        "Minor font weight mapping divergence between Android Roboto and iOS system Chinese/Hans glyphs causing subtle bold-stroke differences"
-      ],
-      "suggestedOwner": "kuikly-markdown / message-row layout",
-      "suggestedFixes": [
-        "Unify inline-code wrap policy so both platforms break at the same boundaries (e.g., always on '/' or always on visual width) — pin in a shared layout helper used by Android and iOS renderers",
-        "Force inline-code spans to be unbreakable except at explicit break characters so the visible span boundaries line up across platforms",
-        "Normalize font weights and Chinese glyph metrics via a shared font asset or documented fallback list to reduce bold-stroke delta",
-        "Confirm '#520' task-chip behavior on iOS matches the documented 'tag-everything' rule from task #416 — if not, iOS should also tag bare #numbers",
-        "Make the canvas header label casing consistent (e.g., always uppercase 'ANDROID' / 'IOS') or extract it to a constant"
-      ],
-      "intentional": [
-        "Android renders bare '#520' as a yellow task chip while iOS renders it as plain text — accepted platform-difference per task #416 (keep Android tag-everything behavior)."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2905128880247364
+      "status": "pending",
+      "imageHash": "p1:07fe07feffffffff87ff87ff801f801fe1ffe1f7e007e00fe1ffe1ffe00fe00be4c3e7c3e807e007e007e00fe01fe01fe06be043e00fe00fe7f3e7fbe7ffe7dfe3ffe3ffe00fe00fe40fe00fe00fe7ffe0ffe003e2f3e001efffe001e003e001e003e3fbe3fbe3ffe7ffe03fe03fe003e41fe001e7ffe003e002601effffffff",
+      "generatedAt": "2026-09-10T22:12:23.792Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.28984013178325974
     },
     {
       "id": "components.thread.message-row.md-link-ref",
@@ -2580,7 +2520,7 @@
     {
       "id": "components.thread.message-row.md-latest-release",
       "status": "ready",
-      "imageHash": "p1:00fc00fcfffe7ffe87fe07fe80000000e0006000e0006002e002600ee0126002e0026002e01e601efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "imageHash": "p1:00fc00fcfffe7ffe87fe07fe80000000e0006000e0006000e002600ee0126002e0026002e01e601efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
       "generatedAt": "2026-08-02T22:46:51.290Z",
       "severity": "high",
       "summary": [
@@ -2611,12 +2551,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.718234630912356
+      "metricMismatch": 0.7188776819108573
     },
     {
       "id": "components.thread.message-row.md-wrap-slice1",
       "status": "ready",
-      "imageHash": "p1:01e00ffcfff7fffe83f41bfe803401fef0d786fef01780fef81780fef01780fef01780fef03781fef01780fef01780fef01780fef01780fef03781fef0f789fef09781fef3f783fef17780fef01781fef03781fef017c0fef81781fef07780fef01780fef017807ef0778dfef01780fef1d781fef01781fe701381fefffe7fff",
+      "imageHash": "p1:01e00ffcfff7fffe83f41bfe803401fef0d786fef01780fef817c07ef01780fef01780fef03781fef01780fef01780fef01780fef01780fef03781fef0f789fef09781fef3f783fef07780fef01781fef03781fef017c0fef81781fef07780fef01780fef017807ef0778dfef01780fef1d781fef01781fe701381fefffe7fff",
       "generatedAt": "2026-08-02T22:46:51.663Z",
       "severity": "medium",
       "summary": [
@@ -2645,12 +2585,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1253206816003024
+      "metricMismatch": 0.12503038036213387
     },
     {
       "id": "components.thread.message-row.md-wrap-clarify",
       "status": "ready",
-      "imageHash": "p1:00e007fcfff3fffe821410fe821400fef03704fee1d700fee01703fef057807ef00700fee017007ee00780fef01700fee01700fee01700fee01701fee03700fee0173ffee7f7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffe00020000fffc1fff",
+      "imageHash": "p1:00e007fcfff3fffe821410fe821400fef03704fee1d700fee01703fef057007ef00700fee017007ee00780fef01700fee01700fee01700fee01701fee03700fee0173ffee7f7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffe00020000fffc1fff",
       "generatedAt": "2026-08-02T22:46:53.466Z",
       "severity": "high",
       "summary": [
@@ -2679,7 +2619,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3493306193543161
+      "metricMismatch": 0.3489539028638555
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",
@@ -2744,7 +2684,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.6489090074398132
+      "metricMismatch": 0.648772970929369
     },
     {
       "id": "components.thread.message-row.md-wrap-task607",
@@ -2787,7 +2727,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-06T22:03:59.921Z",
+      "generatedAt": "2026-09-10T22:12:23.867Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2800,7 +2740,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-06T22:03:59.921Z",
+      "generatedAt": "2026-09-10T22:12:23.868Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2813,7 +2753,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-06T22:03:59.921Z",
+      "generatedAt": "2026-09-10T22:12:23.868Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2826,7 +2766,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-06T22:03:59.921Z",
+      "generatedAt": "2026-09-10T22:12:23.868Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
