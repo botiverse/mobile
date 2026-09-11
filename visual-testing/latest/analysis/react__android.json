@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-10T22:17:22.667Z",
+  "generatedAt": "2026-09-11T22:11:23.324Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 99,
-    "ready": 91,
-    "pending": 8
+    "ready": 88,
+    "pending": 11
   },
   "cases": [
     {
@@ -460,7 +460,7 @@
     {
       "id": "components.ui.status-dot.states",
       "status": "ready",
-      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe0ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
+      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe9ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
       "generatedAt": "2026-07-10T22:11:45.609Z",
       "severity": "low",
       "summary": [
@@ -552,7 +552,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41497942386831277
+      "metricMismatch": 0.4149707602339181
     },
     {
       "id": "components.ui.spinner.states",
@@ -1323,7 +1323,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4139918445605649
+      "metricMismatch": 0.4139925196797235
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1776,45 +1776,22 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff0000000000007ffc3ffc7df83ffc3e5c246c00fc20fc7ffc07fc3ffc3ffc3ffc307c3ffc3ffc1ffc1ffc3ffc3dfc7ffc3ffc03fc2ffc3ffc3dfc3ffc3ffc7ff42ffc7ffc3ffc3ffc2ffc07fc3ffc3ffc3ffc3ffc3ffc07fc3ffc27fc2ffc3ffc3ffc0ffc3ffc3ffc3f047ffc3ffc7f7c0000380000000000ffffffff",
-      "generatedAt": "2026-09-10T22:15:02.223Z",
-      "severity": "high",
-      "summary": [
-        "Android renders additional fields (DESCRIPTION, RUNTIME, MODEL, REASONING, MODE) that React lacks; React shows only fields down to MODEL plus an expandable 'MORE' section.",
-        "Android MODEL select shows 'GPT-5.6 Sol' (or similar) with a refresh icon at top-right; React shows 'opus' with a 'Could not load models from this Computer. Retry' message instead.",
-        "Android shows REASONING and MODE fields visible by default; React keeps these hidden behind the '> MORE' disclosure.",
-        "Android RUNTIME is preselected to 'Codex CLI' (no asterisk); React shows required 'RUNTIME *' with empty 'Select...' placeholder.",
-        "Dialog content on Android starts ~24px higher with tighter top padding, pushing the title closer to the modal top edge."
-      ],
-      "likelyCauses": [
-        "Android component is rendering the expanded/advanced state while React captures a collapsed state with 'MORE' closed.",
-        "Android is using different default form values and a different model list (mock data divergence).",
-        "Modal padding/spacing tokens differ between Android and React implementations (e.g., dialog padding, field gap).",
-        "Required-field indicator logic differs: Android omits '*' on RUNTIME while React marks it required."
-      ],
-      "suggestedOwner": "android-eng",
-      "suggestedFixes": [
-        "Normalize the screenshot capture state on both platforms: collapse Android's 'MORE'/advanced section to match React's default collapsed state, or update the baseline to capture expanded state.",
-        "Align modal inner padding, field vertical spacing, and button sizing tokens across Android and React dialog components.",
-        "Unify required-field marker behavior (apply '*' to RUNTIME on Android) and harmonize select placeholder styling.",
-        "Ensure model dropdown uses identical mock values (or both pull from the same test fixture) so 'opus' vs 'GPT-5.6 Sol' and error state vs refresh icon align.",
-        "Match error/empty-state component: React shows inline 'Could not load models… Retry'; Android should show the equivalent inline error or hide both refresh icon and error consistently."
-      ],
-      "intentional": [
-        "Platform-specific default form values",
-        "Refresh icon on Model select"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.29148911032797287
+      "status": "pending",
+      "imageHash": "p1:ffffffff0000000024007ffc7ffc7ffc7ffc7ffc7ffe41fc6ffc7ffc6ffe7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffe7cfc7ffc00007ffe00007ffe00007ffc00007ffc00007ffe00007ffe00007ffe00007ffe00000000000000000000ffffffff",
+      "generatedAt": "2026-09-11T22:11:22.537Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.5070155007358799
     },
     {
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-10T22:17:21.713Z",
+      "generatedAt": "2026-09-11T22:11:22.421Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1827,7 +1804,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-10T22:17:21.713Z",
+      "generatedAt": "2026-09-11T22:11:22.422Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2150,39 +2127,16 @@
     },
     {
       "id": "components.settings.appearance.page",
-      "status": "ready",
-      "imageHash": "p1:0ffe1ffc9fff1ffe81fe01fe97fe1efe83ff007c81fc4ffc81fc4ff0800401fcbffc8000807c83fca1fc3d8cbffc007c9ffc007c807400008004007cb3fc0004800020008000000081f0ffffbfdcffffa3fcffff8000ffff81f0ffff81f8ffffbffcffff83fcffff8000fffffffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-09-10T22:15:08.171Z",
-      "severity": "high",
-      "summary": [
-        "Android version shows an 'Activity sender avatars' section at the top that is absent in the React baseline",
-        "React baseline includes 'Live agent activity' and 'Show agent model' toggles at the bottom which are missing from the Android version",
-        "Order of sections is inverted: Android starts with Activity sender avatars then Appearance, while React starts with Appearance",
-        "Message font size description text differs: React says 'Adjust rendered message text on this device…' while Android says 'Adjusts message body text only…'",
-        "Preview block in Android uses a tinted/cream background and a generic person icon avatar labeled 'Onboarding Assistant', whereas React uses a green pixel-art avatar labeled 'Cindy' with timestamp '20:30'"
-      ],
-      "likelyCauses": [
-        "Android implementation diverges from the design spec by reordering sections and omitting toggle settings",
-        "Missing localization or copy sync between React and Android feature flags",
-        "Different preview component used on Android with hardcoded placeholder content",
-        "Section list/order not derived from a shared design contract"
-      ],
-      "suggestedOwner": "android-settings",
-      "suggestedFixes": [
-        "Align section order with React baseline: Appearance → (sender avatars if retained) → Live agent activity → Show agent model",
-        "Add the missing 'Live agent activity' and 'Show agent model' toggle cards to the Android Appearance screen",
-        "Update the 'Message font size' description copy to match the React wording ('Adjust rendered message text on this device…')",
-        "Replace the Android preview placeholder avatar/label with the React-equivalent pixel-art avatar, sender name, and timestamp",
-        "Remove the Android-only 'Activity sender avatars' section or confirm intent via design and gate with a feature flag visible in both platforms"
-      ],
-      "intentional": [
-        "Small/Medium/Large segmented control styling and 'Medium' selected state match across both platforms",
-        "Top app bar with back arrow and 'Appearance' title is consistent between React and Android"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.21757976532858048
+      "status": "pending",
+      "imageHash": "p1:0ffe1ffc9fff1fff81ff01fe9ffe1efec3ff00fc81fc4ffc81fc4ff0820c23fcbffc8000807c87fca1fc3f8cbffc007c9ffc007c807c00008004007cb3fc0004800020048000000081f8ffffbffcffffbbfcffff8000ffff81f0ffff81f8ffffbffcffff83fcffff8000ffff8070ffff8030ffffbffcffff000c7ffeffffffff",
+      "generatedAt": "2026-09-11T22:11:22.739Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.23284859777750777
     },
     {
       "id": "components.settings.notifications.page",
@@ -2500,7 +2454,7 @@
       "id": "screens.members.agent-detail.profile.no-membership",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-10T22:17:22.149Z",
+      "generatedAt": "2026-09-11T22:11:22.843Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2513,7 +2467,7 @@
       "id": "screens.members.agent-detail.profile.loading-state",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-10T22:17:22.149Z",
+      "generatedAt": "2026-09-11T22:11:22.843Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2629,7 +2583,7 @@
     {
       "id": "screens.members.agent-detail.activity",
       "status": "ready",
-      "imageHash": "p1:17fe17fc80100030801000000000000000000000010043e0000073fef3fe73fee00253fef3fe7002f1fe71fefc02507ee032707ef20270bafffe403ee03e7002f00e7002f3fe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
+      "imageHash": "p1:17fe17fc80100030801000000000000000000000010043e0000063fef3fe73fee00253fef3fe7002f1fe71fefc02407ee032707ef20270bafffe403ee03e7002f00e7002f3fe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
       "generatedAt": "2026-09-03T22:08:44.087Z",
       "severity": "medium",
       "summary": [
@@ -2763,7 +2717,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.25309407110354976
+      "metricMismatch": 0.25309373354397047
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2802,39 +2756,16 @@
     },
     {
       "id": "screens.home.loading",
-      "status": "ready",
-      "imageHash": "p1:3ffe7ffc0000000000000000000006000000cfffcffecffedfffcfffcfffcfffdfffcfffdfffbfffdfff9fffcfff9fffffff9fffc3ffdfff83ffc3ffbfff9fffbfff9fffcfff9fffbfffffffbfffffffbfffffffbfffffffbfffffffc1ffffff83ffffffbfffffffbffeffffbfff00000000008b011b000000007266ffffffff",
-      "generatedAt": "2026-09-10T22:15:10.743Z",
-      "severity": "high",
-      "summary": [
-        "Section ordering differs: React shows PINNED, JOINT CHANNELS, CHANNELS, DIRECT MESSAGES in that order; Android shows CHANNELS first then DIRECT MESSAGES (PINNED and JOINT CHANNELS missing).",
-        "Search input rendered as a filled bordered box with placeholder 'Find a conversation…' on React; on Android it is plain text only with no input container or placeholder.",
-        "Section header typography is uppercase on Android ('CHANNELS', 'DIRECT MESSAGES') while React uses normal case ('Channels', 'Direct messages').",
-        "Text labels under bottom nav are mixed-case on React ('Home','Tasks','Members','Settings') vs ALL-CAPS on Android ('HOME','TASKS','MEMBERS','SETTINGS').",
-        "Bottom nav active state on Android fills the entire tab cell with the yellow brand color and a black border; React uses a yellow fill only behind the icon and 'Home' wordmark without a full cell border."
-      ],
-      "likelyCauses": [
-        "Android Compose components default to uppercase text style for section headers and tab labels where React uses the design system's lowercase variants.",
-        "Android variant renders the Search control as a static Text instead of a TextField/OutlinedTextField, dropping the surrounding bordered container and placeholder.",
-        "Section list ordering on Android omits the Pinned and Joint Channels groups (or collapses them when empty).",
-        "Active-tab styling on Android applies a full-cell background plus border instead of React's icon-only highlight treatment.",
-        "Dropdown caret on the server header rendered slightly larger/heavier on Android, and the notification bell icon is shifted left further from the right edge on React."
-      ],
-      "suggestedOwner": "android-ui",
-      "suggestedFixes": [
-        "Add a TextField wrapper for Search so the bordered input box and 'Find a conversation…' placeholder render on Android.",
-        "Override textTransform so 'Channels' and 'Direct Messages' (and tab labels) render in normal case matching the React design tokens.",
-        "Ensure the Pinned and Joint Channels section headers are included in the Android layout even when their counts are 0, or hide the entire section consistently with React.",
-        "Constrain the active-tab background to the icon/label area on Android to match React's selection indicator.",
-        "Align the notification bell's right padding and the server dropdown caret stroke weight with React's measurements."
-      ],
-      "intentional": [
-        "The skew/rotation of the 'Visual Server' header card is an intentional brand stylization and matches between variants."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.18751603408001516
+      "status": "pending",
+      "imageHash": "p1:3ffe3ffc000000000000000000000600dffecffecffecffecffecffecffecffedffecfffcffe9ffefffe9ffed3fe9ffe83fe9ffebffed7ffbffec3ffcffe9ffe8ffe9ffebffe9ffebffefffebffefffebffefffec1fefffe83fefffebffefffebffefffebffe7ffefffefffeffff00000000008b0109000000006044fffe7fff",
+      "generatedAt": "2026-09-11T22:11:23.168Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.16914941737216616
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -3154,7 +3085,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-10T22:17:22.573Z",
+      "generatedAt": "2026-09-11T22:11:23.237Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -3167,7 +3098,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-10T22:17:22.573Z",
+      "generatedAt": "2026-09-11T22:11:23.237Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -3180,7 +3111,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-10T22:17:22.573Z",
+      "generatedAt": "2026-09-11T22:11:23.237Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -3193,7 +3124,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-10T22:17:22.573Z",
+      "generatedAt": "2026-09-11T22:11:23.237Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

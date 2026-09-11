@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-09-10T22:17:31.745Z",
-  "latestRunId": "18dff553-20260910220915",
+  "generatedAt": "2026-09-11T22:11:32.023Z",
+  "latestRunId": "d78af8ed-20260911220901",
   "latest": {
-    "runId": "18dff553-20260910220915",
-    "commit": "18dff553-20260910220915",
-    "commitSubject": "fix(android): split ThreadPage giant composables to pass dex verification (task #346) (#2453)",
-    "generatedAt": "2026-09-10T22:17:31.745Z",
+    "runId": "d78af8ed-20260911220901",
+    "commit": "d78af8ed-20260911220901",
+    "commitSubject": "fix(nav): align DM list visual tokens and standardize avatar rendering (task #344) (#2454)",
+    "generatedAt": "2026-09-11T22:11:32.023Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 99,
-      "ready": 91,
-      "pending": 8
+      "ready": 88,
+      "pending": 11
     },
     "comparisons": [
       "react__android",
@@ -74,9 +74,9 @@
         }
       }
     },
-    "href": "runs/18dff553-20260910220915/",
-    "componentMatrix": "runs/18dff553-20260910220915/component-matrix.json",
-    "llms": "runs/18dff553-20260910220915/metadata.json"
+    "href": "runs/d78af8ed-20260911220901/",
+    "componentMatrix": "runs/d78af8ed-20260911220901/component-matrix.json",
+    "llms": "runs/d78af8ed-20260911220901/metadata.json"
   },
   "componentMatrixSummary": {
     "total": 127,
@@ -125,6 +125,81 @@
     }
   },
   "runs": [
+    {
+      "runId": "d78af8ed-20260911220901",
+      "commit": "d78af8ed-20260911220901",
+      "commitSubject": "fix(nav): align DM list visual tokens and standardize avatar rendering (task #344) (#2454)",
+      "generatedAt": "2026-09-11T22:11:32.023Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 99,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 0,
+        "different": 91,
+        "missing": 8
+      },
+      "analysisSummary": {
+        "total": 99,
+        "ready": 88,
+        "pending": 11
+      },
+      "comparisons": [
+        "react__android",
+        "react__ios",
+        "android__ios"
+      ],
+      "componentMatrixSummary": {
+        "total": 127,
+        "active": 108,
+        "pending": 16,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 94,
+            "active": 90,
+            "pending": 2,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 33,
+            "active": 18,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 97,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 110
+          },
+          "android": {
+            "active": 89,
+            "pending": 19,
+            "unsupported": 0,
+            "total": 108
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 82,
+            "unsupported": 0,
+            "total": 82
+          },
+          "ios": {
+            "active": 0,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 1
+          }
+        }
+      },
+      "href": "runs/d78af8ed-20260911220901/",
+      "componentMatrix": "runs/d78af8ed-20260911220901/component-matrix.json",
+      "llms": "runs/d78af8ed-20260911220901/metadata.json"
+    },
     {
       "runId": "18dff553-20260910220915",
       "commit": "18dff553-20260910220915",
