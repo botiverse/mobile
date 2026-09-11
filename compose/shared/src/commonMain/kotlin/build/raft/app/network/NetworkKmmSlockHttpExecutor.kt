@@ -41,6 +41,16 @@ private const val SLOCK_REQUEST_TIMEOUT_MILLIS = 30_000L
 internal const val SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS = 180_000L
 
 /**
+ * task #321 / #783 follow-up (human ruling by @artin on 2026-09-11 in
+ * `#proj-mobile:aaad615a`): the presigned direct-upload PUT carries the same
+ * file stream as multipart, but a 160 MiB cross-region PUT can legitimately
+ * outlive the multipart 3-minute budget. Direct-upload streaming file bodies
+ * therefore get a 30-minute total budget; multipart streaming keeps
+ * [SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS] unchanged.
+ */
+internal const val SLOCK_DIRECT_UPLOAD_TOTAL_TIMEOUT_MILLIS = 1_800_000L
+
+/**
  * Only multipart requests that stream a fileRef body get the upload budget;
  * a part without both an opener and a fileRef maps to NetworkBody.Bytes and
  * keeps the ordinary bound.
@@ -309,7 +319,7 @@ internal class NetworkKmmSlockHttpExecutor(
                 openStreamBlock = { _ -> body.openStream() },
             ),
             requestBytes = body.contentLength,
-            totalTimeoutMillis = SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS,
+            totalTimeoutMillis = SLOCK_DIRECT_UPLOAD_TOTAL_TIMEOUT_MILLIS,
             bodyKind = "file",
             onUploadProgress = onUploadProgress,
         )
