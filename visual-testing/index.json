@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-09-11T22:11:32.023Z",
+  "generatedAt": "2026-09-11T22:15:38.040Z",
   "latestRunId": "d78af8ed-20260911220901",
   "latest": {
     "runId": "d78af8ed-20260911220901",
     "commit": "d78af8ed-20260911220901",
     "commitSubject": "fix(nav): align DM list visual tokens and standardize avatar rendering (task #344) (#2454)",
-    "generatedAt": "2026-09-11T22:11:32.023Z",
+    "generatedAt": "2026-09-11T22:15:38.040Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 99,
-      "ready": 88,
-      "pending": 11
+      "ready": 91,
+      "pending": 8
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "d78af8ed-20260911220901",
       "commit": "d78af8ed-20260911220901",
       "commitSubject": "fix(nav): align DM list visual tokens and standardize avatar rendering (task #344) (#2454)",
-      "generatedAt": "2026-09-11T22:11:32.023Z",
+      "generatedAt": "2026-09-11T22:15:38.040Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 99,
-        "ready": 88,
-        "pending": 11
+        "ready": 91,
+        "pending": 8
       },
       "comparisons": [
         "react__android",

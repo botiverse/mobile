@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-11T22:11:32.023Z",
+  "generatedAt": "2026-09-11T22:15:38.040Z",
   "runId": "d78af8ed-20260911220901",
   "commit": "d78af8ed-20260911220901",
   "commitSubject": "fix(nav): align DM list visual tokens and standardize avatar rendering (task #344) (#2454)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 99,
-        "ready": 88,
-        "pending": 11
+        "ready": 91,
+        "pending": 8
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 99,
-        "ready": 79,
-        "pending": 20
+        "ready": 81,
+        "pending": 18
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 99,
-        "ready": 79,
-        "pending": 20
+        "ready": 81,
+        "pending": 18
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 99,
-    "ready": 88,
-    "pending": 11
+    "ready": 91,
+    "pending": 8
   },
   "componentMatrixSummary": {
     "total": 127,

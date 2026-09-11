@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>d78af8ed-20260911220901</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-09-11T22:11:32.023Z" data-timestamp="2026-09-11T22:11:32.023Z" title="2026-09-11T22:11:32.023Z">2026-09-11 22:11:32 UTC</time></p>
+    <p class="runMeta"><code>d78af8ed-20260911220901</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-09-11T22:15:38.040Z" data-timestamp="2026-09-11T22:15:38.040Z" title="2026-09-11T22:15:38.040Z">2026-09-11 22:15:38 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 99</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 0</span>
       <span class="pill">Different 91</span>
       <span class="pill">Missing 8</span>
-      <span class="pill">AI 88/99 ready</span>
+      <span class="pill">AI 91/99 ready</span>
       <span class="pill">Matrix 108/127 active</span>
       <span class="pill">Components Parity 90/94 active</span><span class="pill">Screens Parity 18/33 active</span>
     </div>
@@ -4118,7 +4118,12 @@
       <p><code>RGB 73.1%</code><br/><code>Pixel 49.30%</code><br/><code>Mismatch 50.70%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android</summary>
+    <ul><li>Android dialog is missing Runtime, Model fields, and the '&gt; MORE' disclosure section present in React</li><li>Cancel and Create Agent buttons are positioned mid-form (next to Description) on Android instead of at the bottom on React</li><li>Android renders a larger modal scaled to fit more of the viewport while React modal is narrower with side gutters</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Re-introduce the Runtime, Model, and '&gt; MORE' fields in the Android Create Agent dialog to match the React spec</li><li>Move Cancel and Create Agent buttons to the dialog footer aligned right, matching React layout</li><li>Unify modal max-width, padding, and gutter spacing between Android and React implementations</li><li>Normalize typography sizes (title, labels, input text) to the same scale tokens across platforms</li><li>Drop the '(optional)' suffix from DESCRIPTION label on Android to match React, or apply consistently</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.dialog.png" data-current-src="android/components.members.create-agent.dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -5061,7 +5066,12 @@
       <p><code>RGB 89.0%</code><br/><code>Pixel 76.72%</code><br/><code>Mismatch 23.28%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-settings</summary>
+    <ul><li>Android version is missing the 'Live agent activity', 'Show agent model', and 'Hide empty sidebar sections' settings that exist in the React version.</li><li>Android renders 'Activity sender avatars' setting at the top, pushing 'Message font size' (renamed to 'Appearance') below it, while React orders Message font size first under the APPEARANCE header.</li><li>Android uses a different preview card design: cream/peach background with generic 'Onboarding Assistant' avatar vs. React's white preview with green pixel avatar, 'Cindy' username, 'preview' tag, and '20:30' timestamp.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Add the missing 'Live agent activity', 'Show agent model', and 'Hide empty sidebar sections' toggle settings to the Android Appearance page, matching React's order and copy.</li><li>Reorder Android layout to match React: 'Message font size' first under APPEARANCE header, with other toggles following.</li><li>Update Android preview card to use themed avatar, username ('Cindy'), preview tag, and timestamp to match React baseline.</li><li>Replace Android toggles with custom-styled toggles matching React's yellow-on-black track design and consistent sizing.</li><li>Standardize the Small/Medium/Large selector button dimensions, border weight, and selected state styling between platforms.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.appearance.page.png" data-current-src="android/components.settings.appearance.page.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -6099,7 +6109,12 @@
       <p><code>RGB 95.5%</code><br/><code>Pixel 83.09%</code><br/><code>Mismatch 16.91%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-with-portal 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-ui</summary>
+    <ul><li>Android renders the Home sidebar with a different vertical section order and omits several React sections: 'PINNED' (with placeholder copy) and 'JOINT CHANNELS' are missing on Android, and the order is CHANNELS then DIRECT MESSAGES on Android vs PINNED, JOINT CHANNELS, CHANNELS, DIRECT MESSAGES on React.</li><li>On Android, 'Activity' and 'Saved' are styled as a single bordered card/group with reduced vertical spacing, while on React they appear as standalone rows with larger gaps.</li><li>Bottom tab labels are uppercase ('HOME','TASKS','MEMBERS','SETTINGS') on Android but title-case ('Home','Tasks','Members','Settings') on React; the active 'Home/HOME' tab also uses a smaller pill height on Android.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align Android sidebar section order to React: PINNED → JOINT CHANNELS → CHANNELS → DIRECT MESSAGES, and restore the PINNED empty-state copy.</li><li>Render 'Activity' and 'Saved' as separate full-width rows matching React spacing instead of a grouped card.</li><li>Apply title-case to bottom tab labels on Android to match React ('Home','Tasks','Members','Settings').</li><li>Unify section header typography weight/size and caret icon weight with the React design tokens.</li><li>Verify server-header pill geometry so the 'Visual Server' black tile alignment matches React.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/screens.home.loading.png" data-current-src="android/screens.home.loading.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

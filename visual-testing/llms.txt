@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-09-11 22:11:32 UTC
+Generated: 2026-09-11 22:15:38 UTC
 Latest run: d78af8ed-20260911220901
 Latest commit: d78af8ed-20260911220901
 Commit subject: fix(nav): align DM list visual tokens and standardize avatar rendering (task #344) (#2454)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 99, same 0, pass 0, basic-pass 0, different 91, missing 8
-AI analysis: ready 88 / total 99, pending 11
+AI analysis: ready 91 / total 99, pending 8
 Visual coverage matrix: active 108 / total 127, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

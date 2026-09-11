@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>d78af8ed-20260911220901</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-09-11T22:11:32.023Z" data-timestamp="2026-09-11T22:11:32.023Z" title="2026-09-11T22:11:32.023Z">2026-09-11 22:11:32 UTC</time></p>
+    <p class="runMeta"><code>d78af8ed-20260911220901</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-09-11T22:15:38.040Z" data-timestamp="2026-09-11T22:15:38.040Z" title="2026-09-11T22:15:38.040Z">2026-09-11 22:15:38 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <a href="react__ios.html">React vs iOS</a> · <strong>Android vs iOS</strong></p>
     <div class="summary">
       <span class="pill">Total 99</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 20</span>
       <span class="pill">Different 45</span>
       <span class="pill">Missing 18</span>
-      <span class="pill">AI 79/99 ready</span>
+      <span class="pill">AI 81/99 ready</span>
       <span class="pill">Matrix 108/127 active</span>
       <span class="pill">Components Parity 90/94 active</span><span class="pill">Screens Parity 18/33 active</span>
     </div>
@@ -1028,7 +1028,12 @@
       <p><code>RGB 98.0%</code><br/><code>Pixel 99.70%</code><br/><code>Mismatch 0.30%</code><br/><code>Raw 1026×276 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">pass: pixel perfect 99.70% &gt; 99% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×92 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · ui-components</summary>
+    <ul><li>Both Android and iOS renders show identical layout: four colored dots (green, orange, gray, cyan) in a row followed by a pink dot with 'Waiting pulse' label</li><li>Typography for 'Waiting pulse' matches in weight and size across both ends</li><li>Dot colors and order are consistent between the two platforms</li></ul>
+    <strong>Suggested fixes</strong><ul><li>No fixes required; renders are effectively isomorphic</li><li>If higher fidelity is desired, align dp/sp units explicitly in Kuikly Status Dot component for both Android and iOS backends</li><li>Confirm pulse animation timing is consistent across platforms (not visible in static snapshot)</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.ui.status-dot.states.png" data-current-src="ios/components.ui.status-dot.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -4115,7 +4120,12 @@
       <p><code>RGB 77.8%</code><br/><code>Pixel 52.61%</code><br/><code>Mismatch 47.39%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · Kuikly mobile platform / dialog component owner</summary>
+    <ul><li>iOS shows a virtual keyboard occupying the bottom half of the screen, compressing the dialog into the top portion; Android does not.</li><li>Description textarea is shorter on iOS (~2 lines visible) vs Android (~5 lines visible) due to keyboard-driven layout shift.</li><li>Character counter '72/3000' is visible on Android but absent on iOS.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize viewport/keyboard insets so the dialog reflows identically on both platforms (or keep layout static and only translate).</li><li>Ensure NAME input is not auto-focused on iOS by default, or apply keyboardAvoidingView-equivalent on Android as well.</li><li>Keep character counter visible regardless of keyboard state by reserving its slot in the layout.</li><li>Pin a minimum height for the Description textarea so it doesn't collapse when the keyboard appears.</li><li>Align Cancel/Create Agent button row to a fixed position relative to the dialog (not the viewport) so it doesn't shift under the keyboard.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.members.create-agent.dialog.png" data-current-src="ios/components.members.create-agent.dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">

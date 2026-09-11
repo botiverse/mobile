@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>d78af8ed-20260911220901</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-09-11T22:11:32.023Z" data-timestamp="2026-09-11T22:11:32.023Z" title="2026-09-11T22:11:32.023Z">2026-09-11 22:11:32 UTC</time></p>
+    <p class="runMeta"><code>d78af8ed-20260911220901</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-09-11T22:15:38.040Z" data-timestamp="2026-09-11T22:15:38.040Z" title="2026-09-11T22:15:38.040Z">2026-09-11 22:15:38 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <strong>React vs iOS</strong> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 99</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 13</span>
       <span class="pill">Different 57</span>
       <span class="pill">Missing 18</span>
-      <span class="pill">AI 79/99 ready</span>
+      <span class="pill">AI 81/99 ready</span>
       <span class="pill">Matrix 108/127 active</span>
       <span class="pill">Components Parity 90/94 active</span><span class="pill">Screens Parity 18/33 active</span>
     </div>
@@ -5066,7 +5066,12 @@
       <p><code>RGB 89.1%</code><br/><code>Pixel 76.95%</code><br/><code>Mismatch 23.05%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · ios-settings</summary>
+    <ul><li>iOS page shows a different set of appearance settings (Activity sender avatars and reordered Appearance group) compared to React (Message font size, Live agent activity, Show agent model, Hide empty sidebar sections).</li><li>The Message font size section in React is replaced/missing in iOS; instead iOS has a 'Hidden' toggle for Activity sender avatars and a shorter 'Adjusts message body text only' description without the full React copy.</li><li>Section order and grouping differ: iOS leads with an Activity sender avatars group and places a single 'Appearance' card afterward, whereas React lists four separate setting cards in a different vertical sequence.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Reconcile the iOS Appearance page with the React baseline: ensure Message font size, Live agent activity, Show agent model, and Hide empty sidebar sections are present.</li><li>Move/reorder sections so iOS order matches React (or vice versa) and unify section grouping under a single APPEARANCE heading.</li><li>Use the same preview sample (Cindy / @Joy / #proj-uiux / git pull) with mention and code chip styling on iOS.</li><li>Align toggle off/on visual states (color and knob position) with the React baseline (yellow=off, black=off variants should be consistent).</li><li>Verify any iOS-only 'Activity sender avatars' toggle is intentional and, if not, remove it to match React.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.appearance.page.png" data-current-src="ios/components.settings.appearance.page.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -5754,7 +5759,12 @@
       <p><code>RGB 96.2%</code><br/><code>Pixel 80.67%</code><br/><code>Mismatch 19.33%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-with-portal 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · iOS engineer</summary>
+    <ul><li>iOS version is missing the PINNED section with its 'Drag channels or DMs here to pin' placeholder</li><li>iOS version is missing the JOINT CHANNELS section entirely</li><li>iOS bottom tab bar labels overlap with icons (text rendered on top of icons with no spacing/background)</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Render empty Pinned and Joint Channels sections on iOS with same placeholder text and section headers</li><li>Add vertical spacing between tab bar icons and labels (or use separate stacked layout) to prevent overlap</li><li>Apply yellow background fill to the active 'Home' tab in iOS bottom bar to match React</li><li>Port the black-filled dropdown button style for the server selector on iOS</li><li>Verify iOS section ordering matches React: Pinned → Joint Channels → Channels → Direct Messages</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/screens.home.loading.png" data-current-src="ios/screens.home.loading.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">

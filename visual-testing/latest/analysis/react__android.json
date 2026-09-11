@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-11T22:11:23.324Z",
+  "generatedAt": "2026-09-11T22:15:29.500Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 99,
-    "ready": 88,
-    "pending": 11
+    "ready": 91,
+    "pending": 8
   },
   "cases": [
     {
@@ -1776,22 +1776,43 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff0000000024007ffc7ffc7ffc7ffc7ffc7ffe41fc6ffc7ffc6ffe7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffe7cfc7ffc00007ffe00007ffe00007ffc00007ffc00007ffe00007ffe00007ffe00007ffe00000000000000000000ffffffff",
-      "generatedAt": "2026-09-11T22:11:22.537Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-09-11T22:13:43.205Z",
+      "severity": "high",
+      "summary": [
+        "Android dialog is missing Runtime, Model fields, and the '> MORE' disclosure section present in React",
+        "Cancel and Create Agent buttons are positioned mid-form (next to Description) on Android instead of at the bottom on React",
+        "Android renders a larger modal scaled to fit more of the viewport while React modal is narrower with side gutters",
+        "Typography sizing is visually larger on Android (header, labels, input text) compared to React",
+        "Description label includes '(optional)' suffix only on Android; React shows 'DESCRIPTION' alone"
+      ],
+      "likelyCauses": [
+        "Android implementation appears to render a different/older version of the Create Agent dialog lacking Runtime/Model/More fields",
+        "Modal container on Android uses different max-width and padding tokens than the React web modal",
+        "Button placement logic differs: Android anchors Cancel/Create next to description area instead of dialog footer",
+        "Text scale on Android follows Material/dp font scaling rather than matching React's px-based type ramp",
+        "Disabled-state styling for Create Agent not propagated identically across platforms"
+      ],
+      "suggestedOwner": "android",
+      "suggestedFixes": [
+        "Re-introduce the Runtime, Model, and '> MORE' fields in the Android Create Agent dialog to match the React spec",
+        "Move Cancel and Create Agent buttons to the dialog footer aligned right, matching React layout",
+        "Unify modal max-width, padding, and gutter spacing between Android and React implementations",
+        "Normalize typography sizes (title, labels, input text) to the same scale tokens across platforms",
+        "Drop the '(optional)' suffix from DESCRIPTION label on Android to match React, or apply consistently"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.5070155007358799
     },
     {
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-11T22:11:22.421Z",
+      "generatedAt": "2026-09-11T22:15:28.651Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1804,7 +1825,7 @@
       "id": "components.members.create-agent.dialog-onboarding",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-11T22:11:22.422Z",
+      "generatedAt": "2026-09-11T22:15:28.651Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2127,15 +2148,35 @@
     },
     {
       "id": "components.settings.appearance.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe1ffc9fff1fff81ff01fe9ffe1efec3ff00fc81fc4ffc81fc4ff0820c23fcbffc8000807c87fca1fc3f8cbffc007c9ffc007c807c00008004007cb3fc0004800020048000000081f8ffffbffcffffbbfcffff8000ffff81f0ffff81f8ffffbffcffff83fcffff8000ffff8070ffff8030ffffbffcffff000c7ffeffffffff",
-      "generatedAt": "2026-09-11T22:11:22.739Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-09-11T22:13:43.487Z",
+      "severity": "high",
+      "summary": [
+        "Android version is missing the 'Live agent activity', 'Show agent model', and 'Hide empty sidebar sections' settings that exist in the React version.",
+        "Android renders 'Activity sender avatars' setting at the top, pushing 'Message font size' (renamed to 'Appearance') below it, while React orders Message font size first under the APPEARANCE header.",
+        "Android uses a different preview card design: cream/peach background with generic 'Onboarding Assistant' avatar vs. React's white preview with green pixel avatar, 'Cindy' username, 'preview' tag, and '20:30' timestamp.",
+        "Toggle switches differ visually: React uses larger toggles with yellow track and black thumb; Android uses smaller square toggle indicators.",
+        "Both sides select 'Medium' font size but Android's selector buttons appear slightly smaller with thinner borders."
+      ],
+      "likelyCauses": [
+        "Android Settings/Appearance screen was implemented with a different information architecture, omitting several settings present in the React baseline.",
+        "The preview component was reimplemented on Android with simplified assets (generic avatar instead of themed Cindy preview).",
+        "Toggle component was ported using Android's native Switch style rather than matching the React custom toggle design.",
+        "Component ordering was changed when porting settings to Android."
+      ],
+      "suggestedOwner": "android-settings",
+      "suggestedFixes": [
+        "Add the missing 'Live agent activity', 'Show agent model', and 'Hide empty sidebar sections' toggle settings to the Android Appearance page, matching React's order and copy.",
+        "Reorder Android layout to match React: 'Message font size' first under APPEARANCE header, with other toggles following.",
+        "Update Android preview card to use themed avatar, username ('Cindy'), preview tag, and timestamp to match React baseline.",
+        "Replace Android toggles with custom-styled toggles matching React's yellow-on-black track design and consistent sizing.",
+        "Standardize the Small/Medium/Large selector button dimensions, border weight, and selected state styling between platforms."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.23284859777750777
     },
     {
@@ -2454,7 +2495,7 @@
       "id": "screens.members.agent-detail.profile.no-membership",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-11T22:11:22.843Z",
+      "generatedAt": "2026-09-11T22:15:29.033Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2467,7 +2508,7 @@
       "id": "screens.members.agent-detail.profile.loading-state",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-11T22:11:22.843Z",
+      "generatedAt": "2026-09-11T22:15:29.033Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2756,15 +2797,37 @@
     },
     {
       "id": "screens.home.loading",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe3ffc000000000000000000000600dffecffecffecffecffecffecffecffedffecfffcffe9ffefffe9ffed3fe9ffe83fe9ffebffed7ffbffec3ffcffe9ffe8ffe9ffebffe9ffebffefffebffefffebffefffec1fefffe83fefffebffefffebffefffebffe7ffefffefffeffff00000000008b0109000000006044fffe7fff",
-      "generatedAt": "2026-09-11T22:11:23.168Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-09-11T22:13:43.862Z",
+      "severity": "medium",
+      "summary": [
+        "Android renders the Home sidebar with a different vertical section order and omits several React sections: 'PINNED' (with placeholder copy) and 'JOINT CHANNELS' are missing on Android, and the order is CHANNELS then DIRECT MESSAGES on Android vs PINNED, JOINT CHANNELS, CHANNELS, DIRECT MESSAGES on React.",
+        "On Android, 'Activity' and 'Saved' are styled as a single bordered card/group with reduced vertical spacing, while on React they appear as standalone rows with larger gaps.",
+        "Bottom tab labels are uppercase ('HOME','TASKS','MEMBERS','SETTINGS') on Android but title-case ('Home','Tasks','Members','Settings') on React; the active 'Home/HOME' tab also uses a smaller pill height on Android.",
+        "Section header typography on Android (CHANNELS, DIRECT MESSAGES) is lighter weight and slightly smaller than the heavier uppercase headers on React; the caret icons are thinner on Android.",
+        "The yellow header 'Visual Server' bar on Android appears slightly shorter in height with the black background tile offset further right, suggesting a different server-header pill alignment."
+      ],
+      "likelyCauses": [
+        "Android implementation diverged from the React component spec for the Home sidebar section list and bottom tab bar styling.",
+        "Bottom navigation label text-transform was not ported (uppercase applied on Android only).",
+        "Section order and grouping (Activity/Saved card, CHANNELS before DIRECT MESSAGES) were restructured on Android, dropping PINNED and JOINT CHANNELS placeholders.",
+        "Typography token mapping for section headers and icons differs between platforms (different font weight/scale)."
+      ],
+      "suggestedOwner": "android-ui",
+      "suggestedFixes": [
+        "Align Android sidebar section order to React: PINNED → JOINT CHANNELS → CHANNELS → DIRECT MESSAGES, and restore the PINNED empty-state copy.",
+        "Render 'Activity' and 'Saved' as separate full-width rows matching React spacing instead of a grouped card.",
+        "Apply title-case to bottom tab labels on Android to match React ('Home','Tasks','Members','Settings').",
+        "Unify section header typography weight/size and caret icon weight with the React design tokens.",
+        "Verify server-header pill geometry so the 'Visual Server' black tile alignment matches React."
+      ],
+      "intentional": [
+        "Different section ordering or absence of PINNED/JOINT CHANNELS could be intentional if the Android build targets a server without those features."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.16914941737216616
     },
     {
@@ -3085,7 +3148,7 @@
       "id": "components.members.create-agent.dialog-no-computer",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-11T22:11:23.237Z",
+      "generatedAt": "2026-09-11T22:15:29.417Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -3098,7 +3161,7 @@
       "id": "components.members.create-agent.dialog-empty",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-11T22:11:23.237Z",
+      "generatedAt": "2026-09-11T22:15:29.417Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -3111,7 +3174,7 @@
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-11T22:11:23.237Z",
+      "generatedAt": "2026-09-11T22:15:29.417Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -3124,7 +3187,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-09-11T22:11:23.237Z",
+      "generatedAt": "2026-09-11T22:15:29.417Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-11T22:11:32.023Z",
+  "generatedAt": "2026-09-11T22:15:38.040Z",
   "runId": "d78af8ed-20260911220901",
   "cases": [
     {
@@ -5473,17 +5473,31 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.520Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-11T22:14:05.574Z",
+            "severity": "low",
+            "summary": [
+              "Both Android and iOS renders show identical layout: four colored dots (green, orange, gray, cyan) in a row followed by a pink dot with 'Waiting pulse' label",
+              "Typography for 'Waiting pulse' matches in weight and size across both ends",
+              "Dot colors and order are consistent between the two platforms",
+              "No clipping, missing elements, or state indicator differences detected"
+            ],
+            "likelyCauses": [
+              "Pixel-level differences of 0.30% are within antialiasing/rendering tolerance (RGB similarity 98.0%, pixel perfect 99.70%)",
+              "No structural or visual divergence attributable to platform-specific rendering"
+            ],
+            "suggestedOwner": "ui-components",
+            "suggestedFixes": [
+              "No fixes required; renders are effectively isomorphic",
+              "If higher fidelity is desired, align dp/sp units explicitly in Kuikly Status Dot component for both Android and iOS backends",
+              "Confirm pulse animation timing is consistent across platforms (not visible in static snapshot)"
+            ],
+            "intentional": [
+              "iOS canvas is 1170×2532 vs Android 342×92 due to natural device pixel differences; content area remains isomorphic"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -5559,17 +5573,31 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.520Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-11T22:14:05.574Z",
+            "severity": "low",
+            "summary": [
+              "Both Android and iOS renders show identical layout: four colored dots (green, orange, gray, cyan) in a row followed by a pink dot with 'Waiting pulse' label",
+              "Typography for 'Waiting pulse' matches in weight and size across both ends",
+              "Dot colors and order are consistent between the two platforms",
+              "No clipping, missing elements, or state indicator differences detected"
+            ],
+            "likelyCauses": [
+              "Pixel-level differences of 0.30% are within antialiasing/rendering tolerance (RGB similarity 98.0%, pixel perfect 99.70%)",
+              "No structural or visual divergence attributable to platform-specific rendering"
+            ],
+            "suggestedOwner": "ui-components",
+            "suggestedFixes": [
+              "No fixes required; renders are effectively isomorphic",
+              "If higher fidelity is desired, align dp/sp units explicitly in Kuikly Status Dot component for both Android and iOS backends",
+              "Confirm pulse animation timing is consistent across platforms (not visible in static snapshot)"
+            ],
+            "intentional": [
+              "iOS canvas is 1170×2532 vs Android 342×92 due to natural device pixel differences; content area remains isomorphic"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -20147,17 +20175,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-09-11T22:11:23.979Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-09-11T22:13:43.205Z",
+        "severity": "high",
+        "summary": [
+          "Android dialog is missing Runtime, Model fields, and the '> MORE' disclosure section present in React",
+          "Cancel and Create Agent buttons are positioned mid-form (next to Description) on Android instead of at the bottom on React",
+          "Android renders a larger modal scaled to fit more of the viewport while React modal is narrower with side gutters",
+          "Typography sizing is visually larger on Android (header, labels, input text) compared to React",
+          "Description label includes '(optional)' suffix only on Android; React shows 'DESCRIPTION' alone"
+        ],
+        "likelyCauses": [
+          "Android implementation appears to render a different/older version of the Create Agent dialog lacking Runtime/Model/More fields",
+          "Modal container on Android uses different max-width and padding tokens than the React web modal",
+          "Button placement logic differs: Android anchors Cancel/Create next to description area instead of dialog footer",
+          "Text scale on Android follows Material/dp font scaling rather than matching React's px-based type ramp",
+          "Disabled-state styling for Create Agent not propagated identically across platforms"
+        ],
+        "suggestedOwner": "android",
+        "suggestedFixes": [
+          "Re-introduce the Runtime, Model, and '> MORE' fields in the Android Create Agent dialog to match the React spec",
+          "Move Cancel and Create Agent buttons to the dialog footer aligned right, matching React layout",
+          "Unify modal max-width, padding, and gutter spacing between Android and React implementations",
+          "Normalize typography sizes (title, labels, input text) to the same scale tokens across platforms",
+          "Drop the '(optional)' suffix from DESCRIPTION label on Android to match React, or apply consistently"
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -20244,17 +20290,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-11T22:11:23.979Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-09-11T22:13:43.205Z",
+            "severity": "high",
+            "summary": [
+              "Android dialog is missing Runtime, Model fields, and the '> MORE' disclosure section present in React",
+              "Cancel and Create Agent buttons are positioned mid-form (next to Description) on Android instead of at the bottom on React",
+              "Android renders a larger modal scaled to fit more of the viewport while React modal is narrower with side gutters",
+              "Typography sizing is visually larger on Android (header, labels, input text) compared to React",
+              "Description label includes '(optional)' suffix only on Android; React shows 'DESCRIPTION' alone"
+            ],
+            "likelyCauses": [
+              "Android implementation appears to render a different/older version of the Create Agent dialog lacking Runtime/Model/More fields",
+              "Modal container on Android uses different max-width and padding tokens than the React web modal",
+              "Button placement logic differs: Android anchors Cancel/Create next to description area instead of dialog footer",
+              "Text scale on Android follows Material/dp font scaling rather than matching React's px-based type ramp",
+              "Disabled-state styling for Create Agent not propagated identically across platforms"
+            ],
+            "suggestedOwner": "android",
+            "suggestedFixes": [
+              "Re-introduce the Runtime, Model, and '> MORE' fields in the Android Create Agent dialog to match the React spec",
+              "Move Cancel and Create Agent buttons to the dialog footer aligned right, matching React layout",
+              "Unify modal max-width, padding, and gutter spacing between Android and React implementations",
+              "Normalize typography sizes (title, labels, input text) to the same scale tokens across platforms",
+              "Drop the '(optional)' suffix from DESCRIPTION label on Android to match React, or apply consistently"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -20331,17 +20395,37 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-11T22:11:31.392Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-11T22:14:06.424Z",
+            "severity": "high",
+            "summary": [
+              "iOS shows a virtual keyboard occupying the bottom half of the screen, compressing the dialog into the top portion; Android does not.",
+              "Description textarea is shorter on iOS (~2 lines visible) vs Android (~5 lines visible) due to keyboard-driven layout shift.",
+              "Character counter '72/3000' is visible on Android but absent on iOS.",
+              "Create Agent button position differs: Android right-aligned under counter, iOS right-aligned but vertically lower and overlapping dialog bottom border region.",
+              "Optional hint '(optional)' font weight/position differs slightly relative to the DESCRIPTION label between sides."
+            ],
+            "likelyCauses": [
+              "iOS auto-focuses the NAME input on dialog open, raising the soft keyboard and triggering a viewport resize/inset adjustment not mirrored on Android.",
+              "Kuikly layout container not applying equal keyboard-avoiding insets across platforms; Android keyguard state leaves layout untouched.",
+              "Character counter element conditionally rendered or hidden when keyboard is active on iOS due to layout overflow.",
+              "Description multiline TextInput not enforcing a min/max height across platforms, allowing shrink under keyboard."
+            ],
+            "suggestedOwner": "Kuikly mobile platform / dialog component owner",
+            "suggestedFixes": [
+              "Normalize viewport/keyboard insets so the dialog reflows identically on both platforms (or keep layout static and only translate).",
+              "Ensure NAME input is not auto-focused on iOS by default, or apply keyboardAvoidingView-equivalent on Android as well.",
+              "Keep character counter visible regardless of keyboard state by reserving its slot in the layout.",
+              "Pin a minimum height for the Description textarea so it doesn't collapse when the keyboard appears.",
+              "Align Cancel/Create Agent button row to a fixed position relative to the dialog (not the viewport) so it doesn't shift under the keyboard."
+            ],
+            "intentional": [
+              "Platform-native virtual keyboard rendering on iOS vs no keyboard on Android (OS behavior, not a bug).",
+              "Underlying viewport sizes differ (390×844 vs 1170×2532) — DPR scaling expected."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -20422,17 +20506,37 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-11T22:11:31.392Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-11T22:14:06.424Z",
+            "severity": "high",
+            "summary": [
+              "iOS shows a virtual keyboard occupying the bottom half of the screen, compressing the dialog into the top portion; Android does not.",
+              "Description textarea is shorter on iOS (~2 lines visible) vs Android (~5 lines visible) due to keyboard-driven layout shift.",
+              "Character counter '72/3000' is visible on Android but absent on iOS.",
+              "Create Agent button position differs: Android right-aligned under counter, iOS right-aligned but vertically lower and overlapping dialog bottom border region.",
+              "Optional hint '(optional)' font weight/position differs slightly relative to the DESCRIPTION label between sides."
+            ],
+            "likelyCauses": [
+              "iOS auto-focuses the NAME input on dialog open, raising the soft keyboard and triggering a viewport resize/inset adjustment not mirrored on Android.",
+              "Kuikly layout container not applying equal keyboard-avoiding insets across platforms; Android keyguard state leaves layout untouched.",
+              "Character counter element conditionally rendered or hidden when keyboard is active on iOS due to layout overflow.",
+              "Description multiline TextInput not enforcing a min/max height across platforms, allowing shrink under keyboard."
+            ],
+            "suggestedOwner": "Kuikly mobile platform / dialog component owner",
+            "suggestedFixes": [
+              "Normalize viewport/keyboard insets so the dialog reflows identically on both platforms (or keep layout static and only translate).",
+              "Ensure NAME input is not auto-focused on iOS by default, or apply keyboardAvoidingView-equivalent on Android as well.",
+              "Keep character counter visible regardless of keyboard state by reserving its slot in the layout.",
+              "Pin a minimum height for the Description textarea so it doesn't collapse when the keyboard appears.",
+              "Align Cancel/Create Agent button row to a fixed position relative to the dialog (not the viewport) so it doesn't shift under the keyboard."
+            ],
+            "intentional": [
+              "Platform-native virtual keyboard rendering on iOS vs no keyboard on Android (OS behavior, not a bug).",
+              "Underlying viewport sizes differ (390×844 vs 1170×2532) — DPR scaling expected."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -20463,7 +20567,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-11T22:11:23.331Z",
+        "generatedAt": "2026-09-11T22:15:29.508Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20524,7 +20628,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:23.331Z",
+            "generatedAt": "2026-09-11T22:15:29.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20546,7 +20650,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20568,7 +20672,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20593,7 +20697,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20616,7 +20720,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20656,7 +20760,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-11T22:11:23.331Z",
+        "generatedAt": "2026-09-11T22:15:29.508Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -20717,7 +20821,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:23.331Z",
+            "generatedAt": "2026-09-11T22:15:29.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20739,7 +20843,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20761,7 +20865,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20786,7 +20890,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -20809,7 +20913,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -24335,17 +24439,34 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-09-11T22:11:24.173Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-09-11T22:13:43.487Z",
+        "severity": "high",
+        "summary": [
+          "Android version is missing the 'Live agent activity', 'Show agent model', and 'Hide empty sidebar sections' settings that exist in the React version.",
+          "Android renders 'Activity sender avatars' setting at the top, pushing 'Message font size' (renamed to 'Appearance') below it, while React orders Message font size first under the APPEARANCE header.",
+          "Android uses a different preview card design: cream/peach background with generic 'Onboarding Assistant' avatar vs. React's white preview with green pixel avatar, 'Cindy' username, 'preview' tag, and '20:30' timestamp.",
+          "Toggle switches differ visually: React uses larger toggles with yellow track and black thumb; Android uses smaller square toggle indicators.",
+          "Both sides select 'Medium' font size but Android's selector buttons appear slightly smaller with thinner borders."
+        ],
+        "likelyCauses": [
+          "Android Settings/Appearance screen was implemented with a different information architecture, omitting several settings present in the React baseline.",
+          "The preview component was reimplemented on Android with simplified assets (generic avatar instead of themed Cindy preview).",
+          "Toggle component was ported using Android's native Switch style rather than matching the React custom toggle design.",
+          "Component ordering was changed when porting settings to Android."
+        ],
+        "suggestedOwner": "android-settings",
+        "suggestedFixes": [
+          "Add the missing 'Live agent activity', 'Show agent model', and 'Hide empty sidebar sections' toggle settings to the Android Appearance page, matching React's order and copy.",
+          "Reorder Android layout to match React: 'Message font size' first under APPEARANCE header, with other toggles following.",
+          "Update Android preview card to use themed avatar, username ('Cindy'), preview tag, and timestamp to match React baseline.",
+          "Replace Android toggles with custom-styled toggles matching React's yellow-on-black track design and consistent sizing.",
+          "Standardize the Small/Medium/Large selector button dimensions, border weight, and selected state styling between platforms."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -24432,17 +24553,34 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-11T22:11:24.173Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-09-11T22:13:43.487Z",
+            "severity": "high",
+            "summary": [
+              "Android version is missing the 'Live agent activity', 'Show agent model', and 'Hide empty sidebar sections' settings that exist in the React version.",
+              "Android renders 'Activity sender avatars' setting at the top, pushing 'Message font size' (renamed to 'Appearance') below it, while React orders Message font size first under the APPEARANCE header.",
+              "Android uses a different preview card design: cream/peach background with generic 'Onboarding Assistant' avatar vs. React's white preview with green pixel avatar, 'Cindy' username, 'preview' tag, and '20:30' timestamp.",
+              "Toggle switches differ visually: React uses larger toggles with yellow track and black thumb; Android uses smaller square toggle indicators.",
+              "Both sides select 'Medium' font size but Android's selector buttons appear slightly smaller with thinner borders."
+            ],
+            "likelyCauses": [
+              "Android Settings/Appearance screen was implemented with a different information architecture, omitting several settings present in the React baseline.",
+              "The preview component was reimplemented on Android with simplified assets (generic avatar instead of themed Cindy preview).",
+              "Toggle component was ported using Android's native Switch style rather than matching the React custom toggle design.",
+              "Component ordering was changed when porting settings to Android."
+            ],
+            "suggestedOwner": "android-settings",
+            "suggestedFixes": [
+              "Add the missing 'Live agent activity', 'Show agent model', and 'Hide empty sidebar sections' toggle settings to the Android Appearance page, matching React's order and copy.",
+              "Reorder Android layout to match React: 'Message font size' first under APPEARANCE header, with other toggles following.",
+              "Update Android preview card to use themed avatar, username ('Cindy'), preview tag, and timestamp to match React baseline.",
+              "Replace Android toggles with custom-styled toggles matching React's yellow-on-black track design and consistent sizing.",
+              "Standardize the Small/Medium/Large selector button dimensions, border weight, and selected state styling between platforms."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -24465,17 +24603,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-11T22:11:27.990Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-11T22:13:56.034Z",
+            "severity": "high",
+            "summary": [
+              "iOS page shows a different set of appearance settings (Activity sender avatars and reordered Appearance group) compared to React (Message font size, Live agent activity, Show agent model, Hide empty sidebar sections).",
+              "The Message font size section in React is replaced/missing in iOS; instead iOS has a 'Hidden' toggle for Activity sender avatars and a shorter 'Adjusts message body text only' description without the full React copy.",
+              "Section order and grouping differ: iOS leads with an Activity sender avatars group and places a single 'Appearance' card afterward, whereas React lists four separate setting cards in a different vertical sequence.",
+              "Preview card contents differ: React shows 'Cindy preview 20:30' with an avatar, mention, code chip styling and inline 'git pull' code rendering; iOS shows 'Preview / Onboarding Assistant' with a single avatar and flattened plain text (no mention or code chip styling).",
+              "Live agent activity, Show agent model, and Hide empty sidebar sections cards are present on React but absent on iOS; iOS toggle states and card chrome also differ (toggle colors/positions, card borders)."
+            ],
+            "likelyCauses": [
+              "iOS implementation renders a different (likely older or platform-specific) subset of appearance settings.",
+              "Settings list/grouping is hardcoded per platform rather than driven from a shared schema.",
+              "The 'Activity sender avatars' setting exists only on iOS or has been mis-ordered during component composition.",
+              "Preview block uses different sample data between platforms (different sender name/handle and no syntax highlighting on iOS)."
+            ],
+            "suggestedOwner": "ios-settings",
+            "suggestedFixes": [
+              "Reconcile the iOS Appearance page with the React baseline: ensure Message font size, Live agent activity, Show agent model, and Hide empty sidebar sections are present.",
+              "Move/reorder sections so iOS order matches React (or vice versa) and unify section grouping under a single APPEARANCE heading.",
+              "Use the same preview sample (Cindy / @Joy / #proj-uiux / git pull) with mention and code chip styling on iOS.",
+              "Align toggle off/on visual states (color and knob position) with the React baseline (yellow=off, black=off variants should be consistent).",
+              "Verify any iOS-only 'Activity sender avatars' toggle is intentional and, if not, remove it to match React."
+            ],
+            "intentional": [
+              "Activity sender avatars toggle may be an iOS-only feature intentionally absent from the React web build."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -24549,17 +24706,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-11T22:11:27.990Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-11T22:13:56.034Z",
+            "severity": "high",
+            "summary": [
+              "iOS page shows a different set of appearance settings (Activity sender avatars and reordered Appearance group) compared to React (Message font size, Live agent activity, Show agent model, Hide empty sidebar sections).",
+              "The Message font size section in React is replaced/missing in iOS; instead iOS has a 'Hidden' toggle for Activity sender avatars and a shorter 'Adjusts message body text only' description without the full React copy.",
+              "Section order and grouping differ: iOS leads with an Activity sender avatars group and places a single 'Appearance' card afterward, whereas React lists four separate setting cards in a different vertical sequence.",
+              "Preview card contents differ: React shows 'Cindy preview 20:30' with an avatar, mention, code chip styling and inline 'git pull' code rendering; iOS shows 'Preview / Onboarding Assistant' with a single avatar and flattened plain text (no mention or code chip styling).",
+              "Live agent activity, Show agent model, and Hide empty sidebar sections cards are present on React but absent on iOS; iOS toggle states and card chrome also differ (toggle colors/positions, card borders)."
+            ],
+            "likelyCauses": [
+              "iOS implementation renders a different (likely older or platform-specific) subset of appearance settings.",
+              "Settings list/grouping is hardcoded per platform rather than driven from a shared schema.",
+              "The 'Activity sender avatars' setting exists only on iOS or has been mis-ordered during component composition.",
+              "Preview block uses different sample data between platforms (different sender name/handle and no syntax highlighting on iOS)."
+            ],
+            "suggestedOwner": "ios-settings",
+            "suggestedFixes": [
+              "Reconcile the iOS Appearance page with the React baseline: ensure Message font size, Live agent activity, Show agent model, and Hide empty sidebar sections are present.",
+              "Move/reorder sections so iOS order matches React (or vice versa) and unify section grouping under a single APPEARANCE heading.",
+              "Use the same preview sample (Cindy / @Joy / #proj-uiux / git pull) with mention and code chip styling on iOS.",
+              "Align toggle off/on visual states (color and knob position) with the React baseline (yellow=off, black=off variants should be consistent).",
+              "Verify any iOS-only 'Activity sender avatars' toggle is intentional and, if not, remove it to match React."
+            ],
+            "intentional": [
+              "Activity sender avatars toggle may be an iOS-only feature intentionally absent from the React web build."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -25945,7 +26121,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25967,7 +26143,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -25992,7 +26168,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26015,7 +26191,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26221,7 +26397,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26243,7 +26419,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26268,7 +26444,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26291,7 +26467,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26487,7 +26663,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26509,7 +26685,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26534,7 +26710,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26557,7 +26733,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26757,7 +26933,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26779,7 +26955,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26804,7 +26980,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -26827,7 +27003,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27023,7 +27199,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27045,7 +27221,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27070,7 +27246,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27093,7 +27269,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27287,7 +27463,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27309,7 +27485,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27334,7 +27510,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27357,7 +27533,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27394,7 +27570,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-11T22:11:23.331Z",
+        "generatedAt": "2026-09-11T22:15:29.508Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -27455,7 +27631,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:23.331Z",
+            "generatedAt": "2026-09-11T22:15:29.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27477,7 +27653,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27499,7 +27675,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27524,7 +27700,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27547,7 +27723,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27584,7 +27760,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-11T22:11:23.331Z",
+        "generatedAt": "2026-09-11T22:15:29.508Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -27645,7 +27821,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:23.331Z",
+            "generatedAt": "2026-09-11T22:15:29.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27667,7 +27843,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27689,7 +27865,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27714,7 +27890,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27737,7 +27913,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27937,7 +28113,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27959,7 +28135,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27984,7 +28160,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28007,7 +28183,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28205,7 +28381,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28227,7 +28403,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28252,7 +28428,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28275,7 +28451,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28469,7 +28645,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28491,7 +28667,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28516,7 +28692,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28539,7 +28715,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28731,7 +28907,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28753,7 +28929,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28778,7 +28954,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28801,7 +28977,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -30380,17 +30556,36 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-09-11T22:11:24.607Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-09-11T22:13:43.862Z",
+        "severity": "medium",
+        "summary": [
+          "Android renders the Home sidebar with a different vertical section order and omits several React sections: 'PINNED' (with placeholder copy) and 'JOINT CHANNELS' are missing on Android, and the order is CHANNELS then DIRECT MESSAGES on Android vs PINNED, JOINT CHANNELS, CHANNELS, DIRECT MESSAGES on React.",
+          "On Android, 'Activity' and 'Saved' are styled as a single bordered card/group with reduced vertical spacing, while on React they appear as standalone rows with larger gaps.",
+          "Bottom tab labels are uppercase ('HOME','TASKS','MEMBERS','SETTINGS') on Android but title-case ('Home','Tasks','Members','Settings') on React; the active 'Home/HOME' tab also uses a smaller pill height on Android.",
+          "Section header typography on Android (CHANNELS, DIRECT MESSAGES) is lighter weight and slightly smaller than the heavier uppercase headers on React; the caret icons are thinner on Android.",
+          "The yellow header 'Visual Server' bar on Android appears slightly shorter in height with the black background tile offset further right, suggesting a different server-header pill alignment."
+        ],
+        "likelyCauses": [
+          "Android implementation diverged from the React component spec for the Home sidebar section list and bottom tab bar styling.",
+          "Bottom navigation label text-transform was not ported (uppercase applied on Android only).",
+          "Section order and grouping (Activity/Saved card, CHANNELS before DIRECT MESSAGES) were restructured on Android, dropping PINNED and JOINT CHANNELS placeholders.",
+          "Typography token mapping for section headers and icons differs between platforms (different font weight/scale)."
+        ],
+        "suggestedOwner": "android-ui",
+        "suggestedFixes": [
+          "Align Android sidebar section order to React: PINNED → JOINT CHANNELS → CHANNELS → DIRECT MESSAGES, and restore the PINNED empty-state copy.",
+          "Render 'Activity' and 'Saved' as separate full-width rows matching React spacing instead of a grouped card.",
+          "Apply title-case to bottom tab labels on Android to match React ('Home','Tasks','Members','Settings').",
+          "Unify section header typography weight/size and caret icon weight with the React design tokens.",
+          "Verify server-header pill geometry so the 'Visual Server' black tile alignment matches React."
+        ],
+        "intentional": [
+          "Different section ordering or absence of PINNED/JOINT CHANNELS could be intentional if the Android build targets a server without those features."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -30477,17 +30672,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-11T22:11:24.607Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-09-11T22:13:43.862Z",
+            "severity": "medium",
+            "summary": [
+              "Android renders the Home sidebar with a different vertical section order and omits several React sections: 'PINNED' (with placeholder copy) and 'JOINT CHANNELS' are missing on Android, and the order is CHANNELS then DIRECT MESSAGES on Android vs PINNED, JOINT CHANNELS, CHANNELS, DIRECT MESSAGES on React.",
+              "On Android, 'Activity' and 'Saved' are styled as a single bordered card/group with reduced vertical spacing, while on React they appear as standalone rows with larger gaps.",
+              "Bottom tab labels are uppercase ('HOME','TASKS','MEMBERS','SETTINGS') on Android but title-case ('Home','Tasks','Members','Settings') on React; the active 'Home/HOME' tab also uses a smaller pill height on Android.",
+              "Section header typography on Android (CHANNELS, DIRECT MESSAGES) is lighter weight and slightly smaller than the heavier uppercase headers on React; the caret icons are thinner on Android.",
+              "The yellow header 'Visual Server' bar on Android appears slightly shorter in height with the black background tile offset further right, suggesting a different server-header pill alignment."
+            ],
+            "likelyCauses": [
+              "Android implementation diverged from the React component spec for the Home sidebar section list and bottom tab bar styling.",
+              "Bottom navigation label text-transform was not ported (uppercase applied on Android only).",
+              "Section order and grouping (Activity/Saved card, CHANNELS before DIRECT MESSAGES) were restructured on Android, dropping PINNED and JOINT CHANNELS placeholders.",
+              "Typography token mapping for section headers and icons differs between platforms (different font weight/scale)."
+            ],
+            "suggestedOwner": "android-ui",
+            "suggestedFixes": [
+              "Align Android sidebar section order to React: PINNED → JOINT CHANNELS → CHANNELS → DIRECT MESSAGES, and restore the PINNED empty-state copy.",
+              "Render 'Activity' and 'Saved' as separate full-width rows matching React spacing instead of a grouped card.",
+              "Apply title-case to bottom tab labels on Android to match React ('Home','Tasks','Members','Settings').",
+              "Unify section header typography weight/size and caret icon weight with the React design tokens.",
+              "Verify server-header pill geometry so the 'Visual Server' black tile alignment matches React."
+            ],
+            "intentional": [
+              "Different section ordering or absence of PINNED/JOINT CHANNELS could be intentional if the Android build targets a server without those features."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -30510,17 +30724,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-11T22:11:28.170Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-09-11T22:13:56.256Z",
+            "severity": "high",
+            "summary": [
+              "iOS version is missing the PINNED section with its 'Drag channels or DMs here to pin' placeholder",
+              "iOS version is missing the JOINT CHANNELS section entirely",
+              "iOS bottom tab bar labels overlap with icons (text rendered on top of icons with no spacing/background)",
+              "React has a solid yellow filled 'Home' tab indicator; iOS tab bar has no fill/highlight for the active state",
+              "React nav shows 'Visual Server' dropdown with a black highlighted button area; iOS has the dropdown label without the black button treatment"
+            ],
+            "likelyCauses": [
+              "iOS implementation skipped rendering of empty Pinned and Joint Channels sections",
+              "iOS bottom tab bar uses icon+label without proper layout container, causing overlap",
+              "Active tab state styling (yellow background fill) not ported to iOS",
+              "Server dropdown component lacks the black button background variant on iOS",
+              "List section rendering order diverged between platforms"
+            ],
+            "suggestedOwner": "iOS engineer",
+            "suggestedFixes": [
+              "Render empty Pinned and Joint Channels sections on iOS with same placeholder text and section headers",
+              "Add vertical spacing between tab bar icons and labels (or use separate stacked layout) to prevent overlap",
+              "Apply yellow background fill to the active 'Home' tab in iOS bottom bar to match React",
+              "Port the black-filled dropdown button style for the server selector on iOS",
+              "Verify iOS section ordering matches React: Pinned → Joint Channels → Channels → Direct Messages"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -30600,17 +30832,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-09-11T22:11:28.170Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-09-11T22:13:56.256Z",
+            "severity": "high",
+            "summary": [
+              "iOS version is missing the PINNED section with its 'Drag channels or DMs here to pin' placeholder",
+              "iOS version is missing the JOINT CHANNELS section entirely",
+              "iOS bottom tab bar labels overlap with icons (text rendered on top of icons with no spacing/background)",
+              "React has a solid yellow filled 'Home' tab indicator; iOS tab bar has no fill/highlight for the active state",
+              "React nav shows 'Visual Server' dropdown with a black highlighted button area; iOS has the dropdown label without the black button treatment"
+            ],
+            "likelyCauses": [
+              "iOS implementation skipped rendering of empty Pinned and Joint Channels sections",
+              "iOS bottom tab bar uses icon+label without proper layout container, causing overlap",
+              "Active tab state styling (yellow background fill) not ported to iOS",
+              "Server dropdown component lacks the black button background variant on iOS",
+              "List section rendering order diverged between platforms"
+            ],
+            "suggestedOwner": "iOS engineer",
+            "suggestedFixes": [
+              "Render empty Pinned and Joint Channels sections on iOS with same placeholder text and section headers",
+              "Add vertical spacing between tab bar icons and labels (or use separate stacked layout) to prevent overlap",
+              "Apply yellow background fill to the active 'Home' tab in iOS bottom bar to match React",
+              "Port the black-filled dropdown button style for the server selector on iOS",
+              "Verify iOS section ordering matches React: Pinned → Joint Channels → Channels → Direct Messages"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -34151,7 +34401,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-11T22:11:23.331Z",
+        "generatedAt": "2026-09-11T22:15:29.508Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -34212,7 +34462,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:23.331Z",
+            "generatedAt": "2026-09-11T22:15:29.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -34234,7 +34484,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -34256,7 +34506,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -34281,7 +34531,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -34304,7 +34554,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -34344,7 +34594,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-11T22:11:23.331Z",
+        "generatedAt": "2026-09-11T22:15:29.508Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -34405,7 +34655,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:23.331Z",
+            "generatedAt": "2026-09-11T22:15:29.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -34427,7 +34677,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -34449,7 +34699,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -34474,7 +34724,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -34497,7 +34747,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -34537,7 +34787,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-11T22:11:23.331Z",
+        "generatedAt": "2026-09-11T22:15:29.508Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -34598,7 +34848,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:23.331Z",
+            "generatedAt": "2026-09-11T22:15:29.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -34620,7 +34870,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -34642,7 +34892,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -34667,7 +34917,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -34690,7 +34940,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -34730,7 +34980,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-09-11T22:11:23.331Z",
+        "generatedAt": "2026-09-11T22:15:29.508Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -34791,7 +35041,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:23.331Z",
+            "generatedAt": "2026-09-11T22:15:29.508Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -34813,7 +35063,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -34835,7 +35085,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -34860,7 +35110,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:26.577Z",
+            "generatedAt": "2026-09-11T22:15:32.623Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -34883,7 +35133,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-09-11T22:11:30.176Z",
+            "generatedAt": "2026-09-11T22:15:36.192Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
