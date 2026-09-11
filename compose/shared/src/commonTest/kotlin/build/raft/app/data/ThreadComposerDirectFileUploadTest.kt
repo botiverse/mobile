@@ -620,6 +620,7 @@ class ThreadComposerDirectFileUploadTest {
         override suspend fun put(
             upload: AttachmentUploadSessionPut,
             file: PlatformFile,
+            onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
         ): DataResult<Unit> {
             putCalls += 1
             putAccepted?.complete(Unit)

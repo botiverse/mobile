@@ -328,6 +328,7 @@ internal class NetworkKmmSlockHttpExecutor(
         method: String,
         headers: Map<String, String>,
         bodyBytes: ByteArray,
+        onUploadProgress: ((SlockTransferProgress) -> Unit)?,
     ): SlockHttpExecutorResponse =
         executeBinary(
             priority = priority,
@@ -340,6 +341,7 @@ internal class NetworkKmmSlockHttpExecutor(
             connectTimeoutMillis = SLOCK_BYTES_CONNECT_TIMEOUT_MILLIS,
             bodyKind = "bytes",
             http1Only = true,
+            onUploadProgress = onUploadProgress,
         )
 
     override suspend fun executeFile(
@@ -348,6 +350,7 @@ internal class NetworkKmmSlockHttpExecutor(
         method: String,
         headers: Map<String, String>,
         body: SlockHttpFileBody,
+        onUploadProgress: ((SlockTransferProgress) -> Unit)?,
     ): SlockHttpExecutorResponse =
         executeBinary(
             priority = priority,
@@ -365,6 +368,7 @@ internal class NetworkKmmSlockHttpExecutor(
             connectTimeoutMillis = SLOCK_UPLOAD_CONNECT_TIMEOUT_MILLIS,
             bodyKind = "file",
             http1Only = true,
+            onUploadProgress = onUploadProgress,
         )
 
     private suspend fun executeBinary(
@@ -378,6 +382,7 @@ internal class NetworkKmmSlockHttpExecutor(
         connectTimeoutMillis: Long,
         bodyKind: String,
         http1Only: Boolean = false,
+        onUploadProgress: ((SlockTransferProgress) -> Unit)?,
     ): SlockHttpExecutorResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         // Presigned URLs are bearer capabilities.  Never include the URL (or its query) in
@@ -406,6 +411,19 @@ internal class NetworkKmmSlockHttpExecutor(
                 request.flagHttp1Only(warningLogger)
             }
             traceHeaders.forEach { (name, value) -> request.setHeader(name, value) }
+            if (onUploadProgress != null) {
+                request.progress =
+                    NetworkProgressCallbacks(
+                        uploadProgress = { progress ->
+                            onUploadProgress(
+                                SlockTransferProgress(
+                                    bytesTransferred = progress.bytesTransferred,
+                                    bytesTotal = progress.bytesTotal,
+                                )
+                            )
+                        }
+                    )
+            }
             val response = executeNetworkRequest(
                 request = request,
                 methodClass = SlockNetworkMethodClass.ProcessMutation,

@@ -34,7 +34,8 @@ internal interface DirectAttachmentUploadSessionGateway {
     ): DataResult<AttachmentUploadSessionCreateResult>
     suspend fun put(
         upload: AttachmentUploadSessionPut,
-        file: PlatformFile
+        file: PlatformFile,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
     ): DataResult<Unit>
     suspend fun complete(uploadId: String): DataResult<AttachmentUploadSessionCompleteResult>
     suspend fun cancel(uploadId: String): DataResult<AttachmentUploadSessionView>
@@ -139,8 +140,9 @@ internal class DirectAttachmentUploadOperation(
         file: PlatformFile,
         clientRequestId: String,
         onPhase: (ThreadComposerDirectUploadPhase) -> Unit = {},
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
     ): DataResult<Attachment> =
-        coordinator.uploadOneThreadFile(channelId, file, clientRequestId, onPhase)
+        coordinator.uploadOneThreadFile(channelId, file, clientRequestId, onPhase, onUploadProgress)
 }
 
 private class ConversationRepositoryDirectAttachmentUploadSessionGateway(
@@ -159,7 +161,8 @@ private class ConversationRepositoryDirectAttachmentUploadSessionGateway(
 
     override suspend fun put(
         upload: AttachmentUploadSessionPut,
-        file: PlatformFile
+        file: PlatformFile,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
     ): DataResult<Unit> {
         val hasFileRef = file.fileRef?.trim()?.isNotBlank() == true
         if (hasFileRef && file.bytes.isNotEmpty()) {
@@ -174,8 +177,8 @@ private class ConversationRepositoryDirectAttachmentUploadSessionGateway(
             )
         }
         return when {
-            hasFileRef -> repository.putAttachmentUploadFile(upload, file)
-            file.bytes.isNotEmpty() -> repository.putAttachmentUploadBytes(upload, file.bytes)
+            hasFileRef -> repository.putAttachmentUploadFile(upload, file, onUploadProgress)
+            file.bytes.isNotEmpty() -> repository.putAttachmentUploadBytes(upload, file.bytes, onUploadProgress)
             else ->
                 DataResult.Error(
                     ScreenError(
@@ -473,8 +476,9 @@ internal class DirectAttachmentUploadCoordinator(
         file: PlatformFile,
         clientRequestId: String,
         onPhase: (ThreadComposerDirectUploadPhase) -> Unit = {},
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
     ): DataResult<Attachment> =
-        gateway.uploadOneThreadFile(channelId, file, clientRequestId, onPhase)
+        gateway.uploadOneThreadFile(channelId, file, clientRequestId, onPhase, onUploadProgress)
 
     private suspend fun completeWithWhitelistedRetry(
         uploadId: String,

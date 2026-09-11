@@ -8816,6 +8816,25 @@ internal fun SharedThreadRouteContent(
                                                             file = uploadFile,
                                                             clientRequestId = clientRequestId,
                                                             onPhase = ::publishPhaseProgress,
+                                                            onUploadProgress = { progress ->
+                                                                coroutineScope.launch {
+                                                                    attachmentUploadOrchestrator.publishIfAccepted(
+                                                                        localAttachmentId,
+                                                                        draftKey,
+                                                                        uploadAttemptToken
+                                                                    ) {
+                                                                        composerDraftViewModel.accept(
+                                                                            SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
+                                                                                attachmentId = localAttachmentId,
+                                                                                bytesTransferred = progress.bytesTransferred,
+                                                                                bytesTotal = progress.bytesTotal,
+                                                                                expectedDraftKey = draftKey,
+                                                                                expectedAdmission = admission
+                                                                            )
+                                                                        )
+                                                                    }
+                                                                }
+                                                            },
                                                         )
                                                 ) {
                                                     is DataResult.Content ->
