@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -194,5 +195,109 @@ class TasksPaginatedSharedStoreMergeTest {
             projected.containsAll(listOf("a1", "a2", "b1", "b2")),
             "shared projection must include the appended page; got $projected",
         )
+    }
+}
+
+/**
+ * Task #345 — a LoadMore page must be fenced to the server it was requested
+ * for. If the session switches from server A to server B while the page is in
+ * flight, A's rows must NOT be folded into B's shared store.
+ */
+class TasksPaginatedServerSwitchTest {
+
+    private fun pageJson(prefix: String): String =
+        """{"tasks":[{"id":"${prefix}1","messageId":"m-$prefix","channelId":"c1","channelName":"alpha",
+           "taskNumber":1,"title":"T","status":"todo","createdByName":"x","createdAt":"2026-01-01T00:00:00Z",
+           "updatedAt":"2026-01-01T00:00:00Z","source":"tasks","hasDescription":false,"descriptionBytes":0}],
+           "next_cursor":null}"""
+
+    private class GatedApi(
+        private val firstPage: String,
+        private val secondPage: String,
+        private val allowSecondPage: CompletableDeferred<Unit>,
+    ) : SlockTasksApi {
+        override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority) =
+            HomeNetworkResponse(code = 500, bodyText = null)
+
+        override suspend fun serverTasksPage(
+            serverId: ServerId,
+            priority: DataRequestPriority,
+            detail: String?,
+            limit: Int?,
+            cursor: String?,
+        ): HomeNetworkResponse {
+            if (cursor == null) return HomeNetworkResponse(code = 200, bodyText = firstPage)
+            allowSecondPage.await() // hold the page-2 response until the test switches server
+            return HomeNetworkResponse(code = 200, bodyText = secondPage)
+        }
+
+        override suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus) =
+            HomeNetworkResponse(code = 500, bodyText = null)
+    }
+
+    @Test
+    fun aPageFetchedForServerAIsNotFoldedIntoServerB() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        // page 1 for A advertises a follow-up cursor so LoadMore can run.
+        val firstA =
+            """{"tasks":[{"id":"a1","messageId":"m-a1","channelId":"c1","channelName":"alpha","taskNumber":1,
+               "title":"A1","status":"todo","createdByName":"x","createdAt":"2026-01-01T00:00:00Z",
+               "updatedAt":"2026-01-01T00:00:00Z","source":"tasks","hasDescription":false,"descriptionBytes":0}],
+               "next_cursor":"curA"}"""
+        val api = GatedApi(firstPage = firstA, secondPage = pageJson("a2"), allowSecondPage = gate)
+        val authStore =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "u", email = "u@slock.ai"),
+                    accessToken = "t",
+                    refreshToken = "r",
+                    selectedServerId = "server-A",
+                )
+            )
+        // Production-like: the shared store refuses writes for a non-current
+        // server via its own provider (defense in depth) — the ViewModel fence
+        // is the first layer.
+        val shared =
+            SharedTasksDataStore(
+                ownerIdentityProvider = { "test-owner" },
+                currentServerIdProvider = { authStore.readSession()?.currentServerId },
+            )
+        val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val viewModel =
+            SharedTasksViewModel(
+                authStore = authStore,
+                dataSource = SharedTasksDataSource(api = api),
+                sharedTasksDataStore = shared,
+                runtimeScopeOverride = runtimeScope,
+            )
+
+        viewModel.dispatch(SharedTasksRouteIntent.Start)
+        withTimeout(5_000) {
+            viewModel.state.first { it.loadState is ScreenLoadState.Content && it.nextCursor != null }
+        }
+
+        // Start the page-2 load (it blocks on the gate), then switch server.
+        viewModel.dispatch(SharedTasksRouteIntent.LoadMore)
+        kotlinx.coroutines.yield()
+        // Switch servers while the page is in flight.
+        authStore.saveSession(
+            authStore.readSession()!!.copy(selectedServerId = "server-B")
+        )
+        kotlinx.coroutines.yield()
+        // Release the held page-2 response.
+        gate.complete(Unit)
+        withTimeout(5_000) {
+            viewModel.state.first { !it.loadingMore }
+        }
+
+        // The stale page must have been discarded: it must not appear in the
+        // ViewModel state, and the store must not hold it under ANY server.
+        val vmIds = ((viewModel.state.value.loadState as? ScreenLoadState.Content)?.data?.tasks ?: emptyList())
+            .map { it.id.value }
+        assertTrue(vmIds.none { it == "a2" }, "stale page row must not be appended to the ViewModel; got $vmIds")
+        for (server in listOf("server-A", "server-B")) {
+            val projected = shared.projection(server, SharedTasksScope.Server).tasks.map { it.id.value }
+            assertTrue(projected.none { it == "a2" }, "$server projection must not contain the stale page row; got $projected")
+        }
     }
 }

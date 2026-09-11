@@ -211,3 +211,23 @@ class TasksSummaryProductionShapeTest {
         assertTrue(decoded.contains("\"n\":23"), "cursor carries taskNumber")
     }
 }
+
+/**
+ * Task #345 — the server-switch fence (pure). A page must only be applied when
+ * the server it was fetched for is still current; otherwise the page is stale
+ * and must be discarded (not folded into the new server's projection).
+ */
+class TasksPaginationServerFenceTest {
+    @Test
+    fun aPageIsAppliedOnlyWhenItsServerIsStillCurrent() {
+        // Same server -> apply.
+        assertTrue(tasksPageServerStillCurrent("server-A", "server-A"))
+        // Switched A -> B while in flight -> discard.
+        assertFalse(tasksPageServerStillCurrent("server-A", "server-B"))
+        // Unknown request server -> discard (fail closed).
+        assertFalse(tasksPageServerStillCurrent(null, "server-A"))
+        // No current server -> discard.
+        assertFalse(tasksPageServerStillCurrent("server-A", null))
+        assertFalse(tasksPageServerStillCurrent(null, null))
+    }
+}

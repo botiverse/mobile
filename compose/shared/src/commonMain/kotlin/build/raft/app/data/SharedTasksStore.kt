@@ -23,6 +23,16 @@ import kotlin.time.TimeSource
 /** Page size for the paginated server Tasks read (task #345), matching Web. */
 internal const val TASKS_SERVER_PAGE_LIMIT = 200
 
+/**
+ * Whether a paginated page fetched for [requestServerId] may still be applied
+ * to the store: only when the request server is known and is STILL the current
+ * server. A server switch while a page is in flight must discard the page
+ * instead of folding it into the new server's projection (task #345). Pure so
+ * the fence is unit-testable and mutation-demonstrable.
+ */
+internal fun tasksPageServerStillCurrent(requestServerId: String?, currentServerId: String?): Boolean =
+    requestServerId != null && requestServerId == currentServerId
+
 data class TasksUiState(
     val loadState: ScreenLoadState<TasksContent>,
     val selectedFilter: TaskStatus? = null,
@@ -266,8 +276,29 @@ internal class SharedTasksViewModel(
         loadMoreJob =
             runtimeScope.launch {
                 diagnosticsLogger("tasks_load_more_start filter=${current.selectedFilter?.name.orEmpty()}")
+                // Fence the request against a server switch: capture the request
+                // server identity BEFORE the read, and re-verify it AFTER the
+                // response. Without this, a page fetched from server A can be
+                // folded into server B's store if the user switches mid-request,
+                // polluting B's projection with A's rows.
+                val requestServerId = useCase.currentServerId()?.value
                 store.accept(SharedTasksIntent.LoadMore)
-                when (val page = useCase.loadServerTasksPage(limit = TASKS_SERVER_PAGE_LIMIT, cursor = cursor)) {
+                val page = useCase.loadServerTasksPage(limit = TASKS_SERVER_PAGE_LIMIT, cursor = cursor)
+                val currentServerId = useCase.currentServerId()?.value
+                val serverStillCurrent = tasksPageServerStillCurrent(requestServerId, currentServerId)
+                if (!serverStillCurrent || requestServerId == null) {
+                    // Server changed while the page was in flight: discard the
+                    // page, clear the loading flag, and refresh from the new
+                    // server's head.
+                    diagnosticsLogger(
+                        "tasks_load_more_discard reason=server_changed requestServer=${requestServerId.orEmpty()} " +
+                            "currentServer=${currentServerId.orEmpty()}"
+                    )
+                    store.accept(SharedTasksIntent.LoadMoreFailed(errorCode = "server_changed", invalidCursor = true))
+                    runtimeScope.launch { load(SharedTasksRouteIntent.Refresh) }
+                    return@launch
+                }
+                when (page) {
                     is TasksPageResult.Page -> {
                         // In the shared-store server scope the authoritative source
                         // is the shared store's projection: fold each page row in
@@ -276,9 +307,8 @@ internal class SharedTasksViewModel(
                         // ViewModel's private state would be overwritten by the
                         // next projection emission and lost.
                         val sharedStore = sharedTasksDataStore
-                        val sharedServerId =
-                            if (sharedStore != null) useCase.currentServerId()?.value else null
-                        if (sharedStore != null && sharedServerId != null) {
+                        val sharedServerId = requestServerId
+                        if (sharedStore != null) {
                             page.tasks.forEach { task ->
                                 sharedStore.upsertTaskForCurrentServer(sharedServerId, task)
                             }
