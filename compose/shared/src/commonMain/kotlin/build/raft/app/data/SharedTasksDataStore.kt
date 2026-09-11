@@ -553,6 +553,17 @@ internal class SharedTasksDataStore(
         }
     }
 
+    /**
+     * The owner identity the store is currently bound to (server + API base +
+     * principal, per [ownerIdentityProvider]), or null when unbound. LoadMore
+     * fences a page request against this so a page fetched for one owner is
+     * never folded into a different owner's freshly cleared store (task #345).
+     */
+    suspend fun currentOwnerIdentity(): String? {
+        bindCurrentOwnerIdentity()
+        return ownerIdentity
+    }
+
     suspend fun clearOwnerData() {
         loadMutex.withLock {
             clearOwnerDataLocked()

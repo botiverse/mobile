@@ -230,4 +230,18 @@ class TasksPaginationServerFenceTest {
         assertFalse(tasksPageServerStillCurrent("server-A", null))
         assertFalse(tasksPageServerStillCurrent(null, null))
     }
+
+    @Test
+    fun aPageIsDiscardedOnASameServerOwnerSwitch() {
+        // Same server, same owner -> apply.
+        assertTrue(tasksPageOwnerStillCurrent("base|user-A", "base|user-A"))
+        // Same server, user A logged out and user B logged in -> discard
+        // (a server-ID-only fence would WRONGLY apply this page).
+        assertFalse(tasksPageOwnerStillCurrent("base|user-A", "base|user-B"))
+        // Owner cleared (logout) -> discard.
+        assertFalse(tasksPageOwnerStillCurrent("base|user-A", null))
+        assertFalse(tasksPageOwnerStillCurrent(null, "base|user-B"))
+        // No owner provider at all (both null) -> unchanged, apply.
+        assertTrue(tasksPageOwnerStillCurrent(null, null))
+    }
 }

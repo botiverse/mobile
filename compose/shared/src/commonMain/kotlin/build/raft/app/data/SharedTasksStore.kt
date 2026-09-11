@@ -33,6 +33,15 @@ internal const val TASKS_SERVER_PAGE_LIMIT = 200
 internal fun tasksPageServerStillCurrent(requestServerId: String?, currentServerId: String?): Boolean =
     requestServerId != null && requestServerId == currentServerId
 
+/**
+ * Whether a paginated page still belongs to the store's current owner. The
+ * owner identity is server + API base + principal, so this catches a
+ * same-server logout/login that a server-ID-only fence would miss (task #345).
+ * When the store has no owner provider (both null) it is treated as unchanged.
+ */
+internal fun tasksPageOwnerStillCurrent(requestOwnerIdentity: String?, currentOwnerIdentity: String?): Boolean =
+    requestOwnerIdentity == currentOwnerIdentity
+
 data class TasksUiState(
     val loadState: ScreenLoadState<TasksContent>,
     val selectedFilter: TaskStatus? = null,
@@ -282,17 +291,23 @@ internal class SharedTasksViewModel(
                 // folded into server B's store if the user switches mid-request,
                 // polluting B's projection with A's rows.
                 val requestServerId = useCase.currentServerId()?.value
+                // Owner fence: the store is bound to an owner identity (server +
+                // API base + principal). A same-server logout/login must also
+                // discard an in-flight page, not just a server switch.
+                val requestOwnerIdentity = sharedTasksDataStore?.currentOwnerIdentity()
                 store.accept(SharedTasksIntent.LoadMore)
                 val page = useCase.loadServerTasksPage(limit = TASKS_SERVER_PAGE_LIMIT, cursor = cursor)
                 val currentServerId = useCase.currentServerId()?.value
+                val currentOwnerIdentity = sharedTasksDataStore?.currentOwnerIdentity()
                 val serverStillCurrent = tasksPageServerStillCurrent(requestServerId, currentServerId)
-                if (!serverStillCurrent || requestServerId == null) {
+                val ownerStillCurrent = tasksPageOwnerStillCurrent(requestOwnerIdentity, currentOwnerIdentity)
+                if (!serverStillCurrent || !ownerStillCurrent || requestServerId == null) {
                     // Server changed while the page was in flight: discard the
                     // page, clear the loading flag, and refresh from the new
                     // server's head.
                     diagnosticsLogger(
-                        "tasks_load_more_discard reason=server_changed requestServer=${requestServerId.orEmpty()} " +
-                            "currentServer=${currentServerId.orEmpty()}"
+                        "tasks_load_more_discard reason=owner_or_server_changed requestServer=${requestServerId.orEmpty()} " +
+                            "currentServer=${currentServerId.orEmpty()} ownerChanged=${requestOwnerIdentity != currentOwnerIdentity}"
                     )
                     store.accept(SharedTasksIntent.LoadMoreFailed(errorCode = "server_changed", invalidCursor = true))
                     runtimeScope.launch { load(SharedTasksRouteIntent.Refresh) }
