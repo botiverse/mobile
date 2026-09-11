@@ -743,6 +743,16 @@ private fun SharedTasksLoadedBodyContent(
                                         statusMenuTask = task
                                         statusMenuAnchor = anchor
                                     },
+                                    onReachedEnd = {
+                                        // A column reaching its end means more
+                                        // global pages may add rows: request the
+                                        // next page. The host's single-flight
+                                        // LoadMore makes concurrent column
+                                        // triggers safe.
+                                        if (state.hasMore && !state.loadingMore) {
+                                            onIntent(SharedTasksRouteIntent.LoadMore)
+                                        }
+                                    },
                                     bottomContentPadding = bottomContentPadding,
                                     draftProjection = draftProjection,
                                     scrollToTopRequest = scrollToTopRequest,
@@ -1226,6 +1236,7 @@ private fun SharedTasksBoardColumn(
     bottomContentPadding: Dp,
     draftProjection: SharedThreadComposerDraftProjection,
     scrollToTopRequest: Int,
+    onReachedEnd: () -> Unit,
 ) {
     val columnListState = rememberLazyListState()
     val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
@@ -1233,6 +1244,20 @@ private fun SharedTasksBoardColumn(
         if (scrollToTopRequestFence.consume(scrollToTopRequest) && !collapsed) {
             columnListState.animateScrollToTopExpressive()
         }
+    }
+    // Board pagination sentinel (#345): the board has no single list state, so
+    // each column reports when its own viewport reaches the end. The host
+    // guards with the shared single-flight predicate, so only one request is in
+    // flight regardless of how many columns fire.
+    LaunchedEffect(columnListState, tasks.size, collapsed) {
+        if (collapsed) return@LaunchedEffect
+        snapshotFlow { columnListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+            .distinctUntilChanged()
+            .collect { lastVisibleIndex ->
+                if (lastVisibleIndex >= 0 && lastVisibleIndex >= tasks.lastIndex - SharedTasksLoadMoreThreshold) {
+                    onReachedEnd()
+                }
+            }
     }
     // fillMaxHeight pins each board column to the LazyRow's height, giving the inner
     // LazyColumn a bounded constraint to scroll within. Without this, the inner list

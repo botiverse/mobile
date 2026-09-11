@@ -102,3 +102,97 @@ class TasksPaginatedWiringTest {
         assertEquals(0, api.serverTasksCalls, "the unpaginated full read must NOT be used in the server scope")
     }
 }
+
+/**
+ * Task #345 — a LoadMore page must be merged into the SHARED store, not only
+ * the ViewModel's private state. The shared store's long-lived projectionFlow
+ * is authoritative and would otherwise overwrite (or never show) the appended
+ * page.
+ */
+class TasksPaginatedSharedStoreMergeTest {
+
+    private fun pageJson(prefix: String, count: Int, next: String?): String {
+        val items =
+            (1..count).joinToString(",") { n ->
+                """{"id":"$prefix$n","messageId":"m-$prefix$n","channelId":"c1","channelName":"alpha",
+                   "taskNumber":$n,"title":"T$n","status":"todo","createdByName":"x",
+                   "createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z",
+                   "source":"tasks","hasDescription":false,"descriptionBytes":0}"""
+            }
+        val cursor = next?.let { """"next_cursor":"$it"""" } ?: """"next_cursor":null"""
+        return """{"tasks":[$items],$cursor}"""
+    }
+
+    private class PagingApi(private val first: String, private val second: String) : SlockTasksApi {
+        var pages = 0
+        override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority) =
+            HomeNetworkResponse(code = 500, bodyText = null)
+
+        override suspend fun serverTasksPage(
+            serverId: ServerId,
+            priority: DataRequestPriority,
+            detail: String?,
+            limit: Int?,
+            cursor: String?,
+        ): HomeNetworkResponse {
+            pages++
+            return HomeNetworkResponse(code = 200, bodyText = if (cursor == null) first else second)
+        }
+
+        override suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus) =
+            HomeNetworkResponse(code = 500, bodyText = null)
+    }
+
+    @Test
+    fun aLoadMorePageLandsInTheSharedProjectionWithoutDuplicates() = runBlocking {
+        val api = PagingApi(first = pageJson("a", 2, "cur1"), second = pageJson("b", 2, null))
+        val authStore =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "u", email = "u@slock.ai"),
+                    accessToken = "t",
+                    refreshToken = "r",
+                    selectedServerId = "server-1",
+                )
+            )
+        val shared = SharedTasksDataStore()
+        val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val viewModel =
+            SharedTasksViewModel(
+                authStore = authStore,
+                dataSource = SharedTasksDataSource(api = api),
+                sharedTasksDataStore = shared,
+                runtimeScopeOverride = runtimeScope,
+                diagnosticsLogger = { line -> if (line.startsWith("tasks_refresh") || line.startsWith("tasks_paginated")) println("DIAGLOG $line") },
+            )
+
+        viewModel.dispatch(SharedTasksRouteIntent.Start)
+        // Wait for BOTH the first page content and the pagination seed: the
+        // content commit and the cursor seed are separate state emissions.
+        withTimeout(5_000) {
+            viewModel.state.first { it.loadState is ScreenLoadState.Content && it.nextCursor != null }
+        }
+
+        // Trigger the next page.
+        viewModel.dispatch(SharedTasksRouteIntent.LoadMore)
+        withTimeout(5_000) {
+            viewModel.state.first {
+                val content = it.loadState as? ScreenLoadState.Content
+                (content?.data?.tasks?.size ?: 0) == 4
+            }
+        }
+
+        val content = viewModel.state.value.loadState as ScreenLoadState.Content
+        val ids = content.data.tasks.map { it.id.value }
+        assertEquals(listOf("a1", "a2", "b1", "b2"), ids, "both pages present in order")
+        assertEquals(ids.toSet().size, ids.size, "no duplicate rows")
+
+        // The shared store's authoritative projection must carry the second page
+        // too (not just the ViewModel's private state).
+        val projected = shared.projection("server-1", SharedTasksScope.Server).tasks.map { it.id.value }
+        assertTrue(
+            projected.containsAll(listOf("a1", "a2", "b1", "b2")),
+            "shared projection must include the appended page; got $projected",
+        )
+    }
+}

@@ -268,14 +268,37 @@ internal class SharedTasksViewModel(
                 diagnosticsLogger("tasks_load_more_start filter=${current.selectedFilter?.name.orEmpty()}")
                 store.accept(SharedTasksIntent.LoadMore)
                 when (val page = useCase.loadServerTasksPage(limit = TASKS_SERVER_PAGE_LIMIT, cursor = cursor)) {
-                    is TasksPageResult.Page ->
-                        store.accept(
-                            SharedTasksIntent.LoadMoreSucceeded(
-                                tasks = page.tasks,
-                                nextCursor = page.nextCursor,
-                                selectedFilter = state.value.selectedFilter
+                    is TasksPageResult.Page -> {
+                        // In the shared-store server scope the authoritative source
+                        // is the shared store's projection: fold each page row in
+                        // first, so the long-lived projectionFlow includes it and
+                        // other Tasks consumers see it. Appending only to the
+                        // ViewModel's private state would be overwritten by the
+                        // next projection emission and lost.
+                        val sharedStore = sharedTasksDataStore
+                        val sharedServerId =
+                            if (sharedStore != null) useCase.currentServerId()?.value else null
+                        if (sharedStore != null && sharedServerId != null) {
+                            page.tasks.forEach { task ->
+                                sharedStore.upsertTaskForCurrentServer(sharedServerId, task)
+                            }
+                            store.accept(
+                                SharedTasksIntent.LoadMoreSucceeded(
+                                    tasks = page.tasks,
+                                    nextCursor = page.nextCursor,
+                                    selectedFilter = state.value.selectedFilter
+                                )
                             )
-                        )
+                        } else {
+                            store.accept(
+                                SharedTasksIntent.LoadMoreSucceeded(
+                                    tasks = page.tasks,
+                                    nextCursor = page.nextCursor,
+                                    selectedFilter = state.value.selectedFilter
+                                )
+                            )
+                        }
+                    }
                     TasksPageResult.InvalidCursor ->
                         store.accept(SharedTasksIntent.LoadMoreFailed(errorCode = "invalid_cursor", invalidCursor = true))
                     is TasksPageResult.Error ->
@@ -503,13 +526,14 @@ internal class SharedTasksViewModel(
             // existing (bounded) path.
             val usesPaginatedServerRead =
                 scope == SharedTasksScope.Server && request.filter.statuses.isEmpty()
-            var firstPageCursor: String? = null
-            var firstPageHadMore = false
+            // The fetch may run in a different coroutine (the shared store's
+            // deferred snapshot load), so the page cursor is captured through a
+            // CompletableDeferred rather than a plain local var.
+            val firstPageCursorRef = kotlinx.coroutines.CompletableDeferred<String?>(null)
             val paginatedFetch: suspend () -> DataResult<TaskSnapshot> = {
                 when (val page = useCase.loadServerTasksPage(limit = TASKS_SERVER_PAGE_LIMIT, cursor = null)) {
                     is TasksPageResult.Page -> {
-                        firstPageCursor = page.nextCursor
-                        firstPageHadMore = page.nextCursor != null
+                        firstPageCursorRef.complete(page.nextCursor)
                         DataResult.Content(TaskSnapshot(tasks = page.tasks, summaryCounts = page.tasks.summaryCounts()))
                     }
                     TasksPageResult.InvalidCursor -> DataResult.Error(ScreenError(code = "tasks_page_invalid_cursor", retryable = false))
@@ -552,16 +576,13 @@ internal class SharedTasksViewModel(
                     }
                 }
                 if (usesPaginatedServerRead) {
+                    val firstPageCursor = firstPageCursorRef.await()
                     store.accept(
                         SharedTasksIntent.LoadMoreSucceeded(
                             tasks = emptyList(),
                             nextCursor = firstPageCursor,
                             selectedFilter = selectedFilter
                         )
-                    )
-                    diagnosticsLogger(
-                        "tasks_paginated_first_page filter=${selectedFilter?.name.orEmpty()} " +
-                            "tasks=${result.data.tasks.size} hasMore=$firstPageHadMore"
                     )
                 }
             } else {
@@ -1059,6 +1080,11 @@ fun TasksUiState.reduce(intent: SharedTasksIntent): TasksUiState =
             intent.result
                 .toTasksUiState(intent.selectedFilter)
                 .withCreateOperationFrom(this)
+
+                // Pagination position is owned by the walk (LoadMore), not by a
+                // snapshot/projection emission: preserve it so a shared
+                // projectionFlow emission does not silently reset the cursor.
+                .copy(nextCursor = nextCursor, hasMore = hasMore, loadingMore = loadingMore)
         is SharedTasksIntent.MergeRefreshResult -> mergeTasksRefreshResult(intent.result, intent.selectedFilter)
         is SharedTasksIntent.SetContent ->
             copy(
