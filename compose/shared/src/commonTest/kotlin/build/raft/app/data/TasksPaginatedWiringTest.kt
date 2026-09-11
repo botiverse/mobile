@@ -289,3 +289,97 @@ class TasksPaginatedOwnerSwitchTest {
         assertTrue(vmIds.none { it == "a2" }, "stale owner's page row must not be appended; got $vmIds")
     }
 }
+
+/**
+ * Task #345 — the Board sentinel must be single-flight at the HOST level: many
+ * columns (uneven / short / empty) reaching their end, plus repeated callbacks,
+ * must produce exactly ONE follow-up page request while one is in flight.
+ *
+ * Each column's `onReachedEnd` is a plain callback; the single-flight gate is
+ * the host's `loadMoreJob?.isActive`. This counts the actual page requests, so a
+ * repeated/uneven trigger that leaked a second request goes RED.
+ */
+class TasksPaginatedSentinelSingleFlightTest {
+
+    private class CountedGatedApi(
+        private val firstPage: String,
+        private val gate: CompletableDeferred<Unit>,
+        private val secondPage: String,
+    ) : SlockTasksApi {
+        var pageCalls = 0
+            private set
+
+        override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority) =
+            HomeNetworkResponse(code = 500, bodyText = null)
+
+        override suspend fun serverTasksPage(
+            serverId: ServerId,
+            priority: DataRequestPriority,
+            detail: String?,
+            limit: Int?,
+            cursor: String?,
+        ): HomeNetworkResponse {
+            pageCalls++
+            if (cursor == null) return HomeNetworkResponse(code = 200, bodyText = firstPage)
+            gate.await() // hold page 2 in flight
+            return HomeNetworkResponse(code = 200, bodyText = secondPage)
+        }
+
+        override suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus) =
+            HomeNetworkResponse(code = 500, bodyText = null)
+    }
+
+    private fun page(prefix: String, count: Int, next: String?): String {
+        val items = (1..count).joinToString(",") { n ->
+            """{"id":"$prefix$n","messageId":"m-$prefix$n","channelId":"c1","channelName":"alpha",
+               "taskNumber":$n,"title":"T","status":"todo","createdByName":"x",
+               "createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z",
+               "source":"tasks","hasDescription":false,"descriptionBytes":0}"""
+        }
+        return """{"tasks":[$items],${next?.let { "\"next_cursor\":\"$it\"" } ?: "\"next_cursor\":null"}}"""
+    }
+
+    @Test
+    fun repeatedAndUnevenColumnEndCallbacksIssueExactlyOnePageRequest() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val api = CountedGatedApi(firstPage = page("a", 2, "cur1"), gate = gate, secondPage = page("b", 1, null))
+        val authStore =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "u", email = "u@slock.ai"),
+                    accessToken = "t",
+                    refreshToken = "r",
+                    selectedServerId = "server-1",
+                )
+            )
+        val viewModel =
+            SharedTasksViewModel(
+                authStore = authStore,
+                dataSource = SharedTasksDataSource(api = api),
+                sharedTasksDataStore = SharedTasksDataStore(
+                    ownerIdentityProvider = { "base|u" },
+                    currentServerIdProvider = { "server-1" },
+                ),
+                runtimeScopeOverride = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+            )
+
+        viewModel.dispatch(SharedTasksRouteIntent.Start)
+        withTimeout(5_000) {
+            viewModel.state.first { it.loadState is ScreenLoadState.Content && it.nextCursor != null }
+        }
+        assertEquals(1, api.pageCalls, "first page fetched once")
+
+        // Simulate many columns (uneven/short/empty) reaching their end, with
+        // repeated callbacks while the page request is in flight.
+        repeat(6) { viewModel.dispatch(SharedTasksRouteIntent.LoadMore) }
+        kotlinx.coroutines.yield()
+        repeat(4) { viewModel.dispatch(SharedTasksRouteIntent.LoadMore) }
+
+        // Exactly one follow-up page request, despite 10 triggers.
+        assertEquals(2, api.pageCalls, "single-flight: only one page-2 request despite repeated/uneven triggers")
+
+        gate.complete(Unit)
+        withTimeout(5_000) { viewModel.state.first { !it.loadingMore } }
+        assertEquals(2, api.pageCalls, "no extra request after completion")
+    }
+}
