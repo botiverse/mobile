@@ -42,6 +42,21 @@ internal fun tasksPageServerStillCurrent(requestServerId: String?, currentServer
 internal fun tasksPageOwnerStillCurrent(requestOwnerIdentity: String?, currentOwnerIdentity: String?): Boolean =
     requestOwnerIdentity == currentOwnerIdentity
 
+/**
+ * Owner fence for an in-flight page request (task #345, round 5): the owner
+ * identity AND the owner generation must both be unchanged.
+ *
+ * The generation is load-bearing: the same principal logging out and back in
+ * restores an EQUAL identity string, so an identity-only fence would let a page
+ * fetched before logout be folded into the new session. [SharedTasksDataStore.clearOwnerData]
+ * bumps the generation, so the stale page is rejected.
+ */
+internal fun tasksPageOwnerSnapshotStillCurrent(
+    request: SharedTasksOwnerSnapshot?,
+    current: SharedTasksOwnerSnapshot?
+): Boolean =
+    request?.identity == current?.identity && request?.generation == current?.generation
+
 data class TasksUiState(
     val loadState: ScreenLoadState<TasksContent>,
     val selectedFilter: TaskStatus? = null,
@@ -294,20 +309,23 @@ internal class SharedTasksViewModel(
                 // Owner fence: the store is bound to an owner identity (server +
                 // API base + principal). A same-server logout/login must also
                 // discard an in-flight page, not just a server switch.
-                val requestOwnerIdentity = sharedTasksDataStore?.currentOwnerIdentity()
+                val requestOwner = sharedTasksDataStore?.currentOwnerSnapshot()
                 store.accept(SharedTasksIntent.LoadMore)
                 val page = useCase.loadServerTasksPage(limit = TASKS_SERVER_PAGE_LIMIT, cursor = cursor)
                 val currentServerId = useCase.currentServerId()?.value
-                val currentOwnerIdentity = sharedTasksDataStore?.currentOwnerIdentity()
+                val currentOwner = sharedTasksDataStore?.currentOwnerSnapshot()
                 val serverStillCurrent = tasksPageServerStillCurrent(requestServerId, currentServerId)
-                val ownerStillCurrent = tasksPageOwnerStillCurrent(requestOwnerIdentity, currentOwnerIdentity)
+                // Fence on identity AND generation: an identity-only fence misses a
+                // same-principal logout/login, whose identity string is restored.
+                val ownerStillCurrent = tasksPageOwnerSnapshotStillCurrent(requestOwner, currentOwner)
                 if (!serverStillCurrent || !ownerStillCurrent || requestServerId == null) {
                     // Server changed while the page was in flight: discard the
                     // page, clear the loading flag, and refresh from the new
                     // server's head.
                     diagnosticsLogger(
                         "tasks_load_more_discard reason=owner_or_server_changed requestServer=${requestServerId.orEmpty()} " +
-                            "currentServer=${currentServerId.orEmpty()} ownerChanged=${requestOwnerIdentity != currentOwnerIdentity}"
+                            "currentServer=${currentServerId.orEmpty()} ownerChanged=${requestOwner?.identity != currentOwner?.identity} " +
+                            "generationChanged=${requestOwner?.generation != currentOwner?.generation}"
                     )
                     store.accept(SharedTasksIntent.LoadMoreFailed(errorCode = "server_changed", invalidCursor = true))
                     runtimeScope.launch { load(SharedTasksRouteIntent.Refresh) }

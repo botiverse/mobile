@@ -288,6 +288,78 @@ class TasksPaginatedOwnerSwitchTest {
             .map { it.id.value }
         assertTrue(vmIds.none { it == "a2" }, "stale owner's page row must not be appended; got $vmIds")
     }
+
+    /**
+     * Task #345 round 5 — the owner fence must include the owner GENERATION, not
+     * just the identity string.
+     *
+     * Same principal, same server, but a logout -> login cycle: the identity
+     * string is restored IDENTICAL, so an identity-only fence passes and a page
+     * fetched before logout would be folded into the new session. The generation
+     * bump on clearOwnerData is what must reject it.
+     */
+    @Test
+    fun aPageFetchedBeforeLogoutIsDiscardedAfterTheSamePrincipalLogsBackIn() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val first =
+            """{"tasks":[{"id":"a1","messageId":"m-a1","channelId":"c1","channelName":"alpha","taskNumber":1,
+               "title":"A1","status":"todo","createdByName":"x","createdAt":"2026-01-01T00:00:00Z",
+               "updatedAt":"2026-01-01T00:00:00Z","source":"tasks","hasDescription":false,"descriptionBytes":0}],
+               "next_cursor":"curA"}"""
+        val stale =
+            """{"tasks":[{"id":"a2","messageId":"m-a2","channelId":"c1","channelName":"alpha","taskNumber":2,
+               "title":"A2","status":"todo","createdByName":"x","createdAt":"2026-01-01T00:00:00Z",
+               "updatedAt":"2026-01-01T00:00:00Z","source":"tasks","hasDescription":false,"descriptionBytes":0}],
+               "next_cursor":null}"""
+        val api = GatedApi(firstPage = first, secondPage = stale, allowSecondPage = gate)
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "user-A", email = "a@slock.ai"),
+                accessToken = "t",
+                refreshToken = "r",
+                selectedServerId = "server-1",
+            )
+        val authStore = InMemorySlockAuthSessionStore(session)
+        // Identity is derived from the SAME principal both times, so the identity
+        // string is identical across the logout/login; only the generation moves.
+        val shared =
+            SharedTasksDataStore(
+                ownerIdentityProvider = { authStore.readSession()?.let { s -> "base|${s.user.id}" } },
+                currentServerIdProvider = { authStore.readSession()?.currentServerId },
+            )
+        val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val viewModel =
+            SharedTasksViewModel(
+                authStore = authStore,
+                dataSource = SharedTasksDataSource(api = api),
+                sharedTasksDataStore = shared,
+                runtimeScopeOverride = runtimeScope,
+            )
+
+        viewModel.dispatch(SharedTasksRouteIntent.Start)
+        withTimeout(5_000) {
+            viewModel.state.first { it.loadState is ScreenLoadState.Content && it.nextCursor != null }
+        }
+
+        viewModel.dispatch(SharedTasksRouteIntent.LoadMore)
+        kotlinx.coroutines.yield()
+        // Logout: clear the owner's data (bumps the generation). Then the SAME
+        // principal logs back in — the identity string is restored identical.
+        shared.clearOwnerData()
+        kotlinx.coroutines.yield()
+        val identityBefore = shared.currentOwnerIdentity()
+        assertEquals("base|user-A", identityBefore, "same principal restores the same identity string")
+
+        gate.complete(Unit)
+        withTimeout(5_000) { viewModel.state.first { !it.loadingMore } }
+
+        val vmIds = ((viewModel.state.value.loadState as? ScreenLoadState.Content)?.data?.tasks ?: emptyList())
+            .map { it.id.value }
+        assertTrue(
+            vmIds.none { it == "a2" },
+            "a page fetched before logout must not be folded into the re-login session; got $vmIds"
+        )
+    }
 }
 
 /**
