@@ -364,7 +364,8 @@ class RealConversationRepository private constructor(
 
     override suspend fun putAttachmentUploadBytes(
         upload: AttachmentUploadSessionPut,
-        bytes: ByteArray
+        bytes: ByteArray,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
     ): DataResult<Unit> {
         if (directSessionAuthority == null) return directSessionAuthorityRequired()
         currentContext() ?: return authRequired()
@@ -378,6 +379,7 @@ class RealConversationRepository private constructor(
                     priority = DataRequestPriority.Foreground,
                     upload = upload,
                     bytes = bytes,
+                    onUploadProgress = onUploadProgress,
                 )
             }
         )
@@ -385,7 +387,8 @@ class RealConversationRepository private constructor(
 
     override suspend fun putAttachmentUploadFile(
         upload: AttachmentUploadSessionPut,
-        file: PlatformFile
+        file: PlatformFile,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
     ): DataResult<Unit> {
         if (directSessionAuthority == null) return directSessionAuthorityRequired()
         currentContext() ?: return authRequired()
@@ -399,6 +402,7 @@ class RealConversationRepository private constructor(
                     priority = DataRequestPriority.Foreground,
                     upload = upload,
                     file = file,
+                    onUploadProgress = onUploadProgress,
                 )
             }
         )

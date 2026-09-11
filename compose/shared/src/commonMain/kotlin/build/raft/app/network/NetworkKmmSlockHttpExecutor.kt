@@ -275,6 +275,7 @@ internal class NetworkKmmSlockHttpExecutor(
         method: String,
         headers: Map<String, String>,
         bodyBytes: ByteArray,
+        onUploadProgress: ((SlockTransferProgress) -> Unit)?,
     ): SlockHttpExecutorResponse =
         executeBinary(
             priority = priority,
@@ -285,6 +286,7 @@ internal class NetworkKmmSlockHttpExecutor(
             requestBytes = bodyBytes.size.toLong(),
             totalTimeoutMillis = SLOCK_REQUEST_TIMEOUT_MILLIS,
             bodyKind = "bytes",
+            onUploadProgress = onUploadProgress,
         )
 
     override suspend fun executeFile(
@@ -293,6 +295,7 @@ internal class NetworkKmmSlockHttpExecutor(
         method: String,
         headers: Map<String, String>,
         body: SlockHttpFileBody,
+        onUploadProgress: ((SlockTransferProgress) -> Unit)?,
     ): SlockHttpExecutorResponse =
         executeBinary(
             priority = priority,
@@ -308,6 +311,7 @@ internal class NetworkKmmSlockHttpExecutor(
             requestBytes = body.contentLength,
             totalTimeoutMillis = SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS,
             bodyKind = "file",
+            onUploadProgress = onUploadProgress,
         )
 
     private suspend fun executeBinary(
@@ -319,6 +323,7 @@ internal class NetworkKmmSlockHttpExecutor(
         requestBytes: Long,
         totalTimeoutMillis: Long,
         bodyKind: String,
+        onUploadProgress: ((SlockTransferProgress) -> Unit)?,
     ): SlockHttpExecutorResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         // Presigned URLs are bearer capabilities.  Never include the URL (or its query) in
@@ -341,6 +346,19 @@ internal class NetworkKmmSlockHttpExecutor(
                 )
             )
             traceHeaders.forEach { (name, value) -> request.setHeader(name, value) }
+            if (onUploadProgress != null) {
+                request.progress =
+                    NetworkProgressCallbacks(
+                        uploadProgress = { progress ->
+                            onUploadProgress(
+                                SlockTransferProgress(
+                                    bytesTransferred = progress.bytesTransferred,
+                                    bytesTotal = progress.bytesTotal,
+                                )
+                            )
+                        }
+                    )
+            }
             val response = executeNetworkRequest(
                 request = request,
                 methodClass = SlockNetworkMethodClass.ProcessMutation,
