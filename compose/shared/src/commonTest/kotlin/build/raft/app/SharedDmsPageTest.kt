@@ -117,12 +117,12 @@ class SharedDmsPageTest {
         )
         assertEquals("Let's catch up", formatWeChatConversationPreview(item3))
 
-        // 4. Fallback to description when lastMessagePreview is absent
+        // 4. When lastMessagePreview is absent, do NOT fall back to description (must be empty)
         val item4 = SlockHomeConversationItem(
             name = "Charlie",
             description = "AI Research Engineer"
         )
-        assertEquals("AI Research Engineer", formatWeChatConversationPreview(item4))
+        assertEquals("", formatWeChatConversationPreview(item4))
 
         // 5. Both absent: empty string
         val item5 = SlockHomeConversationItem(name = "David")
@@ -186,5 +186,31 @@ class SharedDmsPageTest {
         assertEquals("Alice", projectedItem.lastMessageSenderName)
         assertEquals("https://example.com/alice.png", projectedItem.avatarWireValue)
         assertEquals(true, projectedItem.activityMuted)
+    }
+
+    @Test
+    fun testWeChatDmHeaderTitleAndUnreadCount() {
+        val baseTitle = "私信"
+        assertEquals("私信", formatWeChatDmHeaderTitle(baseTitle, 0))
+        assertEquals("私信", formatWeChatDmHeaderTitle(baseTitle, -1))
+        assertEquals("私信 (1)", formatWeChatDmHeaderTitle(baseTitle, 1))
+        assertEquals("私信 (32)", formatWeChatDmHeaderTitle(baseTitle, 32))
+
+        val items = listOf(
+            SlockHomeConversationItem(id = "1", unreadCount = 5, activityMuted = false),
+            SlockHomeConversationItem(id = "2", unreadCount = 10, activityMuted = true), // muted should be excluded
+            SlockHomeConversationItem(id = "3", unreadCount = 27, activityMuted = false),
+            SlockHomeConversationItem(id = "4", unreadCount = -5, activityMuted = false)
+        )
+        // 5 + 27 = 32
+        assertEquals(32, totalWeChatDmUnreadCount(items))
+        assertEquals("私信 (32)", formatWeChatDmHeaderTitle(baseTitle, totalWeChatDmUnreadCount(items)))
+
+        val noUnreadItems = listOf(
+            SlockHomeConversationItem(id = "1", unreadCount = 0, activityMuted = false),
+            SlockHomeConversationItem(id = "2", unreadCount = 4, activityMuted = true) // only muted unread
+        )
+        assertEquals(0, totalWeChatDmUnreadCount(noUnreadItems))
+        assertEquals("私信", formatWeChatDmHeaderTitle(baseTitle, totalWeChatDmUnreadCount(noUnreadItems)))
     }
 }

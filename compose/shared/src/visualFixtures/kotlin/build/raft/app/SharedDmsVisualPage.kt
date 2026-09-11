@@ -70,6 +70,7 @@ internal fun SharedDmsVisualContent() {
                 lastMessageAt = "2026-05-20T14:25:00Z", // Today
                 lastMessagePreview = "Slack 底栏模式下的 DM 列表视觉需要对齐微信单行规范",
                 lastMessageSenderName = "artin",
+                avatarWireValue = "pixel:random:artin",
                 avatarLabel = "AR"
             ),
             SlockHomeConversationItem(
@@ -83,6 +84,7 @@ internal fun SharedDmsVisualContent() {
                 lastMessageAt = "2026-05-19T22:18:00Z", // Yesterday
                 lastMessagePreview = "PR2 已交付：PR #2447，SharedDmsScreen 落地后一行替换",
                 lastMessageSenderName = "辣条",
+                avatarWireValue = "pixel:random:latiao",
                 avatarLabel = "LT"
             ),
             SlockHomeConversationItem(
@@ -94,6 +96,7 @@ internal fun SharedDmsVisualContent() {
                 unreadCount = 0,
                 lastMessageAt = "2026-05-12T09:30:00Z", // Earlier this year
                 lastMessagePreview = "I've reviewed the task assignee handler changes.",
+                avatarWireValue = "pixel:random:nathan",
                 avatarLabel = "NA"
             ),
             SlockHomeConversationItem(
@@ -101,9 +104,10 @@ internal fun SharedDmsVisualContent() {
                 name = "沙琪玛",
                 kind = "dm",
                 peerType = "agent",
-                unreadCount = 125, // Tests "99+"
+                unreadCount = 28,
                 lastMessageAt = "2026-04-10T11:00:00Z", // Earlier this year
-                lastMessagePreview = "All 5 unit tests passed for SharedDmsPageTest",
+                lastMessagePreview = "All unit tests passed for SharedDmsPageTest",
+                avatarWireValue = "pixel:robot",
                 avatarLabel = "SQ"
             ),
             SlockHomeConversationItem(
@@ -115,6 +119,7 @@ internal fun SharedDmsVisualContent() {
                 lastMessageAt = "2025-11-20T18:00:00Z", // Previous year
                 lastMessagePreview = "Please check the KMP launch boundary RFC",
                 lastMessageSenderName = "Mahua", // Sender prefix
+                avatarWireValue = null,
                 avatarLabel = "MA"
             ),
             SlockHomeConversationItem(
@@ -125,6 +130,7 @@ internal fun SharedDmsVisualContent() {
                 unreadCount = 0,
                 description = "Android / Performance Engineer",
                 createdAt = "2025-01-01T00:00:00Z",
+                avatarWireValue = "pixel:random:guaiweihudou",
                 avatarLabel = "GW"
             )
         )
