@@ -7,6 +7,7 @@ import build.raft.app.network.HEADER_AUTHORIZATION
 import build.raft.app.network.HEADER_SERVER_ID
 import build.raft.app.network.MultipartFile
 import build.raft.app.network.MultipartFileStreamOpener
+import build.raft.app.network.SLOCK_DIRECT_UPLOAD_TOTAL_TIMEOUT_MILLIS
 import build.raft.app.network.SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS
 import build.raft.app.network.SlockHttpExecutor
 import build.raft.app.network.SlockHttpExecutorResponse
@@ -589,11 +590,17 @@ internal class SharedSlockNetworkClient(
         }
         val key = "attachments/upload-sessions/presigned-put"
         return try {
+            val schedulerTimeoutMillis =
+                if (bodyFile != null) {
+                    SLOCK_DIRECT_UPLOAD_TOTAL_TIMEOUT_MILLIS + SLOCK_UPLOAD_SCHEDULER_DISPATCH_MARGIN_MILLIS
+                } else {
+                    SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS + SLOCK_UPLOAD_SCHEDULER_DISPATCH_MARGIN_MILLIS
+                }
             requestScheduler.run(
                 priority = priority.toNetworkPriority(),
                 key = key,
                 reason = "PUT",
-                timeoutMillis = SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS + SLOCK_UPLOAD_SCHEDULER_DISPATCH_MARGIN_MILLIS,
+                timeoutMillis = schedulerTimeoutMillis,
             ) {
                 if (!expectedAuthority.isCurrentForPresignedPut()) {
                     return@run routeEnvironmentChangedResponse()
