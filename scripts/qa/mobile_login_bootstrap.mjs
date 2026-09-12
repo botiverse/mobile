@@ -104,6 +104,14 @@ function installPrivateEnvelope(applicationId, requestId, bytes) {
   // exec-out is intended for the opposite direction and can keep the remote
   // reader waiting after Node has supplied its input buffer on hosted runners.
   run("adb", adbRunAsShellArgs("exec-in", applicationId, script), { input: bytes });
+  // The verify and the location diagnostics ride in ONE run-as command: the
+  // checks first (set -e stops on the first failure), then the run-as view of
+  // where the file landed (cwd, id, inbox realpath, ls -laZ). On the hosted
+  // emulator the activity has reported `inbox_consume code=missing` right after
+  // this verify passed (2026-07-26 x18, 2026-09-12 runs 34680965276 and
+  // 34682135471) while a real Android 14 device reads the file; the reader's
+  // QA_BOOTSTRAP_DIAG path is printed next to this on timeout. No file
+  // contents, no credentials.
   const verifyScript = [
     "set -eu",
     `dst=files/qa-bootstrap/inbox/${requestId}.session`,
@@ -111,24 +119,14 @@ function installPrivateEnvelope(applicationId, requestId, bytes) {
     "test \"$(stat -c %a \"$dst\")\" = 600",
     `test "$(wc -c <\"$dst\")" = ${bytes.length}`,
     `test "$(sha256sum \"$dst\" | cut -d' ' -f1)" = ${expectedDigest}`,
-  ].join("; ");
-  run("adb", adbRunAsShellArgs("exec-out", applicationId, verifyScript));
-  // Where did the file actually land? On the hosted emulator the activity has
-  // reported `inbox_consume code=missing` right after this verify passed
-  // (2026-07-26 x18, 2026-09-12 run 34680965276), while the same flow reads
-  // the file on a real Android 14 device. Print the run-as view (cwd, uid,
-  // SELinux labels) and the device's user/SDK facts so the next failure names
-  // the path. Nothing here is secret: no file contents, no credentials.
-  const whereScript = [
-    "set -u",
     "printf 'run-as pwd=%s\\n' \"$(pwd)\"",
     "printf 'run-as id=%s\\n' \"$(id)\"",
-    "readlink -f files/qa-bootstrap/inbox 2>/dev/null | sed 's/^/inbox realpath=/'",
-    "ls -laZ files/qa-bootstrap/inbox 2>&1 | sed 's/^/inbox: /'",
+    "printf 'inbox realpath=%s\\n' \"$(readlink -f files/qa-bootstrap/inbox)\"",
+    "ls -laZ files/qa-bootstrap/inbox | sed 's/^/inbox: /'",
   ].join("; ");
-  const where = run("adb", adbRunAsShellArgs("exec-out", applicationId, whereScript), { allowFailure: true }).stdout;
+  const where = run("adb", adbRunAsShellArgs("exec-out", applicationId, verifyScript)).stdout;
   const facts = run("adb", ["shell", "am get-current-user; getprop ro.build.version.sdk; getprop ro.build.product; id"], { allowFailure: true }).stdout;
-  console.log(`qa-login-bootstrap: envelope location diagnostics\n${where.trim()}\ndevice: ${facts.trim().split("\n").join(" | ")}`);
+  console.log(`qa-login-bootstrap: envelope verified; location diagnostics\n${where.trim()}\ndevice: ${facts.trim().split("\n").join(" | ")}`);
 }
 
 function expectedLogin(responseFile, bindingFile, runCaseId, ciJobRef) {
