@@ -77,6 +77,18 @@ function binding() {
   const badging = run(buildTool("aapt"), ["dump", "badging", apk]).stdout;
   const applicationId = badging.match(/package: name='([^']+)'/)?.[1];
   if (!applicationId) throw new Error("APK package id is unavailable");
+  // Pre-flight, before any device work: QaSessionBootstrapActivity refuses with
+  // `runtime_gate disabled` unless the package is debuggable AND built with
+  // QA_SESSION_BOOTSTRAP_ENABLED (only the `alpha` and `connectedTest` build
+  // types set it). A release/Hands-main package therefore can never bootstrap,
+  // and every alpha-qa run pinned to one died 120s later as "aborted before
+  // READY" (18/18 in production through 2026-07-26). Fail here, by name.
+  if (!/application-debuggable/.test(badging)) {
+    throw new Error(`auth-bootstrap needs a debuggable QA build (alpha build type, package build.raft.app.alpha, an android-alpha.yml artifact); ${applicationId} is not debuggable`);
+  }
+  if (!/\.(alpha|connectedtest)$/.test(applicationId)) {
+    console.warn(`qa-login-bootstrap: WARNING ${applicationId} is debuggable but not an alpha/connectedTest package; QA_SESSION_BOOTSTRAP_ENABLED is only set for those build types, expect runtime_gate=disabled`);
+  }
   const deviceSdkText = run("adb", ["shell", "getprop", "ro.build.version.sdk"]).stdout.trim();
   if (!/^[1-9][0-9]*$/.test(deviceSdkText)) throw new Error("Android device SDK is unavailable");
   const deviceSdk = Number(deviceSdkText);
