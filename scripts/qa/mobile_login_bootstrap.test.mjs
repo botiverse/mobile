@@ -59,7 +59,9 @@ test("a hung pre-READY ADB command is killed before the outer fuse", () => {
   fs.mkdirSync(tools, { recursive: true });
   const apk = path.join(root, "app.apk");
   fs.writeFileSync(apk, "apk");
-  writeExecutable(path.join(tools, "aapt"), "printf \"package: name='build.raft.app.alpha'\\n\"");
+  // The binding pre-flight (#2462) refuses a non-debuggable APK; these fake
+  // badgings stand in for the alpha build type, so they carry the flag.
+  writeExecutable(path.join(tools, "aapt"), "printf \"package: name='build.raft.app.alpha'\\napplication-debuggable\\n\"");
   writeExecutable(path.join(bin, "adb"), "sleep 5");
   const started = Date.now();
   const result = spawnSync(process.execPath, [
@@ -187,7 +189,7 @@ function runBindingWithBuildTools37(deviceSdk, signerOutput) {
   fs.writeFileSync(apk, "fixture");
   writeExecutable(
     path.join(buildTools, "aapt"),
-    "printf \"package: name='build.raft.app' versionCode='1' versionName='1.0'\\n\"",
+    "printf \"package: name='build.raft.app' versionCode='1' versionName='1.0'\\napplication-debuggable\\n\"",
   );
   writeExecutable(
     path.join(buildTools, "apksigner"),
