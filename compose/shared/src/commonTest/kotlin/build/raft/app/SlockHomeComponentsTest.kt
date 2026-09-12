@@ -2414,6 +2414,24 @@ class SlockHomeComponentsTest {
             serverId = "server-1",
         )
 
+    @Test
+    fun pinnedChannelsAreMergedIntoChannelsAndPinnedKeepsDirectMessages() {
+        val channels =
+            listOf(
+                SlockHomeConversationItem(id = "regular", name = "Regular", kind = KuiklyThreadSurfaceKind.Channel),
+                SlockHomeConversationItem(id = "pinned", name = "Pinned", kind = KuiklyThreadSurfaceKind.Channel),
+            )
+        val merged = mergePinnedChannelsIntoSidebar(
+            channels = channels,
+            pinnedRows = listOf(SlockHomePinnedRow("channel:pinned", conversation = channels[1])),
+            pinnedChannelIds = listOf("pinned"),
+            pinnedOrder = listOf("channel:pinned"),
+            channelOrder = listOf("regular", "pinned"),
+            mode = SlockSidebarSortMode.Manual,
+        )
+        assertEquals(listOf("pinned", "regular"), merged.map { it.id })
+    }
+
     private fun testServerSwitcherSession(): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = "account-1", email = "artin@example.com", displayName = "Artin"),

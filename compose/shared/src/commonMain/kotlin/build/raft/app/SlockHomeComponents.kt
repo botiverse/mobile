@@ -1831,7 +1831,6 @@ private fun SlockStructuralHomeShellContent(
             .orderedBySidebarIds(channelOrder, pinnedFirstId = allChannelId)
             .sortedForSidebar(channelSortModeState, pinnedFirstId = allChannelId) { it.name }
     }
-    val displayedChannels = baseDisplayedChannels
     val sortableDisplayedChannels = remember(baseDisplayedChannels, allChannelId) {
         baseDisplayedChannels.withoutSidebarPinnedItem(allChannelId)
     }
@@ -1859,6 +1858,23 @@ private fun SlockStructuralHomeShellContent(
             pinnedMemberProfileResolver = pinnedMemberProfileResolver,
             mode = pinnedSortModeState
         )
+    }
+    val displayedChannels = remember(
+        baseDisplayedChannels, displayedPinned, pinnedChannelIds, pinnedOrder, channelOrder, channelSortModeState
+    ) {
+        mergePinnedChannelsIntoSidebar(
+            channels = baseDisplayedChannels,
+            pinnedRows = displayedPinned,
+            pinnedChannelIds = pinnedChannelIds,
+            pinnedOrder = pinnedOrder,
+            channelOrder = channelOrder,
+            mode = channelSortModeState,
+        )
+    }
+    val displayedPinnedNonChannels = remember(displayedPinned) {
+        displayedPinned.filter { row ->
+            row.member != null || row.conversation?.isDirectMessageConversation() == true
+        }
     }
     LaunchedEffect(currentServerId, pinnedItems, displayedPinned) {
         val resolvedKeys = displayedPinned.mapTo(mutableSetOf()) { it.key }
@@ -1929,7 +1945,7 @@ private fun SlockStructuralHomeShellContent(
             channelsCount = displayedChannels.size,
             jointCount = displayedJointChannels.size,
             directMessagesCount = displayedDirectMessages.size,
-            pinnedCount = displayedPinned.size,
+            pinnedCount = displayedPinnedNonChannels.size,
             channelsExpanded = channelsExpanded,
             jointChannelsExpanded = jointChannelsExpanded,
             directMessagesExpanded = directMessagesExpanded,
@@ -1946,7 +1962,7 @@ private fun SlockStructuralHomeShellContent(
         lazyKeyRegistry.keysFor(
             serverId = currentServerId,
             section = "pinned",
-            identities = displayedPinned.map { it.key }
+            identities = displayedPinnedNonChannels.map { it.key }
         )
     val jointChannelLazyKeys =
         lazyKeyRegistry.keysFor(
@@ -2237,12 +2253,12 @@ private fun SlockStructuralHomeShellContent(
                                     )
                                 }
                             }
-                            if (displayedPinned.isNotEmpty()) {
+                            if (displayedPinnedNonChannels.isNotEmpty()) {
                                 item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                                 item {
                                     SlockCollapsibleSectionHeader(
                                         label = labels.pinned,
-                                        count = displayedPinned.size,
+                                        count = displayedPinnedNonChannels.size,
                                         expanded = pinnedExpanded,
                                         onExpandedChange = { if (sidebarInteractionsEnabled) pinnedExpanded = it },
                                         showCollapsedUnreadDot = pinnedSectionHasUnread,
@@ -2257,8 +2273,8 @@ private fun SlockStructuralHomeShellContent(
                                     )
                                 }
                                 if (pinnedExpanded) {
-                                    items(displayedPinned.size, key = { index -> pinnedLazyKeys[index] }) { index ->
-                                        val pinnedRow = displayedPinned[index]
+                                    items(displayedPinnedNonChannels.size, key = { index -> pinnedLazyKeys[index] }) { index ->
+                                        val pinnedRow = displayedPinnedNonChannels[index]
                                         val pinned = pinnedRow.conversation
                                         val pinnedMember = pinnedRow.member
                                         val isDirectMessage = pinned?.isDirectMessageConversation() == true || pinnedMember != null
@@ -3382,6 +3398,34 @@ internal fun List<SlockHomeConversationItem>.withoutSidebarPinnedItem(
 ): List<SlockHomeConversationItem> {
     if (pinnedFirstId.isNullOrBlank()) return this
     return filterNot { it.id == pinnedFirstId }
+}
+
+/** Merges pinned channel rows into the ordinary Channels section without duplicating them. */
+internal fun mergePinnedChannelsIntoSidebar(
+    channels: List<SlockHomeConversationItem>,
+    pinnedRows: List<SlockHomePinnedRow>,
+    pinnedChannelIds: List<String>,
+    pinnedOrder: List<String>,
+    channelOrder: List<String>,
+    mode: SlockSidebarSortMode,
+): List<SlockHomeConversationItem> {
+    val pinnedIds = buildList {
+        pinnedOrder.forEach { key ->
+            if (key.startsWith("channel:")) add(key.removePrefix("channel:"))
+            else if (key in pinnedChannelIds) add(key)
+        }
+        pinnedChannelIds.forEach { if (it !in this) add(it) }
+        pinnedRows.forEach { row ->
+            row.conversation?.takeUnless { it.isDirectMessageConversation() }?.id?.let { if (it !in this) add(it) }
+        }
+    }
+    val byId = channels.associateBy { it.id }
+    val pinned = pinnedIds.mapNotNull(byId::get)
+    val remaining = channels.filter { it.id !in pinnedIds }
+    if (mode != SlockSidebarSortMode.Manual) {
+        return (pinned + remaining).sortedForSidebar(mode) { it.name }
+    }
+    return pinned + remaining.orderedBySidebarIds(channelOrder)
 }
 
 internal fun homeServerDrawerRows(
