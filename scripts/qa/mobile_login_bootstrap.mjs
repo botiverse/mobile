@@ -192,8 +192,12 @@ async function prepare() {
   }
   const diagnosticLog = run("adb", ["logcat", "-d", "-v", "brief", "SlockQaBootstrap:I", "*:S"]).stdout;
   const diagnostics = parseBootstrapDiagnostics(diagnosticLog);
+  // The app's reader-side coordinates (QA_BOOTSTRAP_DIAG filesDir/dataDir/uid/user/path,
+  // paths and ids only). Printed raw next to the stage summary so the writer's
+  // realpath above and the reader's path can be compared in one log.
+  const readerDiag = [...String(diagnosticLog).matchAll(/QA_BOOTSTRAP_DIAG [^\r\n]*/g)].map((m) => m[0]);
   throw new Error(
-    `exact-bound QA_BOOTSTRAP_READY was not observed before timeout; stages=${diagnostics.join(",") || "none"}`,
+    `exact-bound QA_BOOTSTRAP_READY was not observed before timeout; stages=${diagnostics.join(",") || "none"}; reader=${readerDiag.join(" || ") || "none"}`,
   );
 }
 
