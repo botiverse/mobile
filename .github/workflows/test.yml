@@ -1178,6 +1178,7 @@ jobs:
             -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/ios-build" \
+            ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO \
             build-for-testing > "$log" 2>&1
           status=$?
