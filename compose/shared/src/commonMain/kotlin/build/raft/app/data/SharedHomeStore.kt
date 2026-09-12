@@ -1832,7 +1832,17 @@ internal class SharedHomeStore(
             )
             return
         }
-        val previousContent = _state.value.content as? SharedHomeContentState.Content
+        val activeServerId = expectedServerId?.let(::ServerId)
+        val candidatePrevious = _state.value.content as? SharedHomeContentState.Content
+        val previousContent =
+            candidatePrevious?.takeIf {
+                it.snapshot.server.id == activeServerId &&
+                    it.session.user.id == activeSession.user.id &&
+                    it.snapshot.currentMember.id.value == activeSession.user.id
+            } ?: activeServerId?.let { contentByServer[it] }?.takeIf {
+                it.session.user.id == activeSession.user.id &&
+                    it.snapshot.currentMember.id.value == activeSession.user.id
+            }
         val preparedHydrates =
             (dataResult as? DataResult.Content)?.data?.let { snapshot ->
                 prepareReadStateV1Hydrates(snapshot)
@@ -2108,6 +2118,7 @@ internal class SharedHomeStore(
      * of a fake zero.
      */
     private fun HomeSnapshot.frozenUnreadFrom(prior: HomeSnapshot): HomeSnapshot {
+        if (prior.server.id != server.id || prior.currentMember.id != currentMember.id) return this
         val priorChannels = prior.channels.associateBy { it.channelId }
         val priorDirectMessages = prior.directMessages.associateBy { it.channelId }
         return copy(
@@ -2148,6 +2159,12 @@ internal class SharedHomeStore(
         contentRefreshing: Boolean,
         previousContent: SharedHomeContentState.Content?
     ): SharedHomeContentState.Content {
+        val compatiblePreviousContent =
+            previousContent?.takeIf {
+                it.snapshot.server.id == snapshot.server.id &&
+                    it.session.user.id == session.user.id &&
+                    it.snapshot.currentMember.id == snapshot.currentMember.id
+            }
         val strippedSnapshot = snapshot.withoutReadStateV1Hydrates()
         val sidebarOrder = strippedSnapshot.sidebarOrder ?: sidebarOrderByServer[strippedSnapshot.server.id]
         val snapshotWithSidebarOrder =
@@ -2159,9 +2176,9 @@ internal class SharedHomeStore(
         val baseSnapshot =
             snapshotWithSidebarOrder
                 .withAcceptedReadStateCursors()
-                .preserveStableRowsFrom(previousContent?.baseSnapshot)
+                .preserveStableRowsFrom(compatiblePreviousContent?.baseSnapshot)
         return SharedHomeContentState.Content(
-            snapshot = baseSnapshot.preserveStableRowsFrom(previousContent?.snapshot),
+            snapshot = baseSnapshot.preserveStableRowsFrom(compatiblePreviousContent?.snapshot),
             session = session,
             contentRefreshing = contentRefreshing,
             baseSnapshot = baseSnapshot

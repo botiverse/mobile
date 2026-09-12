@@ -1607,6 +1607,103 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun directMessageRealtimePreviewPreservedAcrossNetworkRefresh() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val home =
+            sampleHome(ServerId("server-1")).copy(
+                directMessages =
+                    listOf(
+                        directMessage("dm-1", "Alice", "member-2", Presence.Active)
+                    )
+            )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(home),
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+        val initialDm = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages.single()
+        assertNull(initialDm.lastMessagePreview)
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    MessageNew(
+                        Message(
+                            id = MessageId("msg-dm-1"),
+                            threadId = ThreadId("dm-1"),
+                            channelId = ChannelId("dm-1"),
+                            seq = 1,
+                            author = sampleMember().copy(id = MemberId("member-2"), displayName = "Alice"),
+                            timestampLabel = "12:05",
+                            body = "Hello via DM!"
+                        )
+                    )
+            )
+        )
+
+        val afterRealtime = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages.single()
+        assertEquals("Hello via DM!", afterRealtime.lastMessagePreview)
+
+        // Trigger a network refresh where the server returns the original snapshot without preview
+        store.accept(SharedHomeIntent.Refresh)
+
+        val afterRefresh = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages.single()
+        assertEquals("Hello via DM!", afterRefresh.lastMessagePreview)
+        assertEquals("Alice", afterRefresh.lastMessageSenderName)
+        assertEquals(MessageId("msg-dm-1"), afterRefresh.lastMessageId)
+        scope.cancel()
+    }
+
+    @Test
+    fun serverSwitchDoesNotLeakDirectMessagePreviewAcrossServersWithIdenticalRowKey() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val api = RecordingHomeApi()
+        val server1Home =
+            sampleHome(ServerId("server-1")).copy(
+                directMessages = listOf(
+                    directMessage("shared-dm", "Alice", "member-2", Presence.Active).copy(
+                        lastMessagePreview = "Secret preview on server 1"
+                    )
+                )
+            )
+        val server2Home =
+            sampleHome(ServerId("server-2")).copy(
+                directMessages = listOf(
+                    directMessage("shared-dm", "Alice", "member-2", Presence.Active).copy(
+                        lastMessagePreview = null
+                    )
+                )
+            )
+        val dataSource = SharedHomeDataSource(
+            sessionStore = sessionStore,
+            api = api,
+            parseHome = { payload, _ ->
+                val snapshot = if (payload.serverId.value == "server-2") server2Home else server1Home
+                DataResult.Content(snapshot)
+            }
+        )
+        val store = SharedHomeStore(
+            authStore = sessionStore,
+            dataSource = dataSource,
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+        val initialDm = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages.single()
+        assertEquals("Secret preview on server 1", initialDm.lastMessagePreview)
+
+        store.accept(SharedHomeIntent.SelectServer("server-2"))
+
+        val content = store.state.value.content as SharedHomeContentState.Content
+        assertEquals("server-2", content.snapshot.server.id.value)
+        val server2Dm = content.snapshot.directMessages.single()
+        assertNull(server2Dm.lastMessagePreview)
+        scope.cancel()
+    }
+
+    @Test
     fun heartbeatDoesNotReloadOrWriteVisibleHomeSnapshot() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
