@@ -184,6 +184,10 @@ kotlin {
             dependencies {
                 implementation("app.cash.sqldelight:sqlite-driver:2.1.0")
                 implementation("org.robolectric:robolectric:4.14.1")
+                implementation("build.raft.mermaid:mermaid-core:0.1.2")
+                implementation("build.raft.mermaid:mermaid-layout-api:0.1.2")
+                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.2")
+                implementation("build.raft.mermaid:mermaid-kuikly:0.1.2")
             }
         }
         val androidInstrumentedTest by getting {
