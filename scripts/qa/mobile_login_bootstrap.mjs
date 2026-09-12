@@ -123,11 +123,30 @@ function installPrivateEnvelope(applicationId, requestId, bytes) {
     `dst=files/qa-bootstrap/inbox/${requestId}.session`,
     "trap 'rm -f \"$tmp\"' EXIT", "cat > \"$tmp\"", "chmod 600 \"$tmp\"",
     "mv -f \"$tmp\" \"$dst\"", "trap - EXIT",
+    // Success sentinel on stdout. `adb exec-in`/`exec-out` never return the
+    // remote exit status (HuaTuo, cloud phone; canary 96e256d5, hosted
+    // emulator: `exit 7` reads as 0 on both), so `set -e` alone proved nothing
+    // since July. Under set -e this line prints only if every step succeeded.
+    `printf 'INSTALL_OK %s\\n' "$(sha256sum \"$dst\" | cut -d' ' -f1)"`,
   ].join("; ");
   // exec-in is the ADB service whose contract is host stdin -> remote stdin.
   // exec-out is intended for the opposite direction and can keep the remote
   // reader waiting after Node has supplied its input buffer on hosted runners.
-  run("adb", adbRunAsShellArgs("exec-in", applicationId, script), { input: bytes });
+  // Hard precondition: the plain shell channel must carry the remote exit
+  // status (it is the only status-bearing channel; exec-in/exec-out drop it).
+  const statusProbe = run("adb", ["shell", "exit 7"], { allowFailure: true });
+  if (statusProbe.status !== 7) {
+    throw new Error(`adb shell does not propagate the remote exit status (exit 7 read as ${statusProbe.status}); every status-based check on this host is void (task #188)`);
+  }
+  const installed = run("adb", adbRunAsShellArgs("exec-in", applicationId, script), { input: bytes });
+  // Judge the install by a READBACK on the plain shell channel (stdout proven
+  // to arrive there; exec-in's stdout return is unmeasured — LiBai). The
+  // exec-in sentinel is kept as an informational second witness.
+  const readback = run("adb", ["shell", `run-as ${applicationId} sh -c 'sha256sum files/qa-bootstrap/inbox/${requestId}.session 2>/dev/null | cut -d" " -f1'`], { allowFailure: true });
+  const readbackSha = readback.stdout.trim().split(/\s+/)[0] ?? "";
+  if (readbackSha !== expectedDigest) {
+    throw new Error(`private envelope install did not report INSTALL_OK ${expectedDigest.slice(0, 12)}… on readback (shell sha256sum=${JSON.stringify(readbackSha).slice(0, 80)} status=${readback.status}; exec-in sentinel seen=${installed.stdout.includes(`INSTALL_OK ${expectedDigest}`)}; exec-in stderr=${JSON.stringify(installed.stderr.trim()).slice(0, 300)})`);
+  }
   // Does run-as EXECUTE on this device at all? Canary 440581cc (hosted API 34
   // emulator) passed the set -e verify below yet printed none of its trailing
   // pwd/id/ls output, while the same command prints on a real Android 14
@@ -139,29 +158,37 @@ function installPrivateEnvelope(applicationId, requestId, bytes) {
   const probeShell = run("adb", ["shell", `run-as ${applicationId} sh -c 'echo RUNAS_MARK_SHELL; id; pwd; ls -laZ files/qa-bootstrap/inbox; exit 7'`], { allowFailure: true });
   const show = (label, r) => `${label}: status=${r.status} stdout=${JSON.stringify(r.stdout.trim()).slice(0, 600)} stderr=${JSON.stringify(r.stderr.trim()).slice(0, 300)}`;
   console.log(`qa-login-bootstrap: run-as channel probes\n${show("exec-out", probeOut)}\n${show("shell", probeShell)}`);
-  // The verify and the location diagnostics ride in ONE run-as command: the
-  // checks first (set -e stops on the first failure), then the run-as view of
-  // where the file landed (cwd, id, inbox realpath, ls -laZ). On the hosted
-  // emulator the activity has reported `inbox_consume code=missing` right after
-  // this verify passed (2026-07-26 x18, 2026-09-12 runs 34680965276 and
-  // 34682135471) while a real Android 14 device reads the file; the reader's
-  // QA_BOOTSTRAP_DIAG path is printed next to this on timeout. No file
-  // contents, no credentials.
+  // Verify with EXPLICIT sentinels. `adb exec-out` never returns the remote
+  // exit status, so a `set -e` script that fails early looks exactly like one
+  // that passed. Every check appends its name to $fail; the script always ends
+  // by printing VERIFY_OK or VERIFY_FAIL <steps>. Three outcomes, none of
+  // them silent: OK, FAIL with the failing steps, or neither = the command did
+  // not run to its end. The run-as view (cwd, id, ls -laZ) follows for the
+  // reader-side comparison. No file contents, no credentials.
   const verifyScript = [
-    "set -eu",
+    "set -u",
     `dst=files/qa-bootstrap/inbox/${requestId}.session`,
-    "test -f \"$dst\"",
-    "test \"$(stat -c %a \"$dst\")\" = 600",
-    `test "$(wc -c <\"$dst\")" = ${bytes.length}`,
-    `test "$(sha256sum \"$dst\" | cut -d' ' -f1)" = ${expectedDigest}`,
+    "fail=''",
+    "[ -f \"$dst\" ] || fail=\"$fail missing\"",
+    "[ \"$(stat -c %a \"$dst\" 2>/dev/null)\" = 600 ] || fail=\"$fail mode\"",
+    `[ "$(wc -c <\"$dst\" 2>/dev/null)" = ${bytes.length} ] || fail="$fail size"`,
+    `[ "$(sha256sum \"$dst\" 2>/dev/null | cut -d' ' -f1)" = ${expectedDigest} ] || fail="$fail sha"`,
+    "if [ -z \"$fail\" ]; then printf 'VERIFY_OK\\n'; else printf 'VERIFY_FAIL%s\\n' \"$fail\"; fi",
     "printf 'run-as pwd=%s\\n' \"$(pwd)\"",
     "printf 'run-as id=%s\\n' \"$(id)\"",
-    "printf 'inbox realpath=%s\\n' \"$(readlink -f files/qa-bootstrap/inbox)\"",
-    "ls -laZ files/qa-bootstrap/inbox | sed 's/^/inbox: /'",
+    "ls -laZ files/qa-bootstrap/inbox 2>&1 | sed 's/^/inbox: /'",
   ].join("; ");
-  const where = run("adb", adbRunAsShellArgs("exec-out", applicationId, verifyScript)).stdout;
+  const verify = run("adb", adbRunAsShellArgs("exec-out", applicationId, verifyScript), { allowFailure: true });
+  const verifyOut = verify.stdout;
+  if (!verifyOut.includes("VERIFY_OK")) {
+    const failLine = verifyOut.match(/VERIFY_FAIL[^\r\n]*/)?.[0];
+    throw new Error(`private envelope verify ${failLine ? `failed: ${failLine}` : "did not run to its end (neither VERIFY_OK nor VERIFY_FAIL)"}; status=${verify.status} stdout=${JSON.stringify(verifyOut.trim()).slice(0, 1500)} stderr=${JSON.stringify(verify.stderr.trim()).slice(0, 400)}`);
+  }
+  // Reinforcement on the status-bearing channel (informational; the sentinel
+  // above is the judgement, independent of channel behaviour).
+  const shellCheck = run("adb", ["shell", `run-as ${applicationId} sh -c 'test -f files/qa-bootstrap/inbox/${requestId}.session'`], { allowFailure: true });
   const facts = run("adb", ["shell", "am get-current-user; getprop ro.build.version.sdk; getprop ro.build.product; id"], { allowFailure: true }).stdout;
-  console.log(`qa-login-bootstrap: envelope verified; location diagnostics\n${where.trim()}\ndevice: ${facts.trim().split("\n").join(" | ")}`);
+  console.log(`qa-login-bootstrap: envelope verified (VERIFY_OK; shell-channel test -f status=${shellCheck.status})\n${verifyOut.trim().slice(0, 3000)}\ndevice: ${facts.trim().split("\n").join(" | ")}`);
 }
 
 function expectedLogin(responseFile, bindingFile, runCaseId, ciJobRef) {
