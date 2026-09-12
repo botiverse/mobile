@@ -105,6 +105,18 @@ function binding() {
 
 function installPrivateEnvelope(applicationId, requestId, bytes) {
   const expectedDigest = sha256Digest(bytes).slice("sha256:".length);
+  // Side-effect probe (HuaTuo): stdout cannot tell "run-as did not run" from
+  // "output swallowed" because stdout is the suspect. Write a token through
+  // the same exec-in run-as channel the envelope uses, read it back through
+  // plain shell run-as. Token present → run-as ran and only the output path
+  // is broken; absent → run-as did not run (or the write failed). Placed
+  // before the envelope install so the last exec-in stays the envelope.
+  const markToken = `probe-${Date.now()}`;
+  const markWrite = run("adb", adbRunAsShellArgs("exec-in", applicationId, `umask 077; mkdir -p files/qa-bootstrap; printf '%s' "${markToken}" > files/qa-bootstrap/qa-mark.txt`), { input: Buffer.alloc(0), allowFailure: true });
+  const markRead = run("adb", ["shell", `run-as ${applicationId} sh -c 'cat files/qa-bootstrap/qa-mark.txt; echo; ls -laZ files/qa-bootstrap 2>&1'`], { allowFailure: true });
+  const markSeen = markRead.stdout.includes(markToken);
+  const showProbe = (label, r) => `${label}: status=${r.status} stdout=${JSON.stringify(r.stdout.trim()).slice(0, 600)} stderr=${JSON.stringify(r.stderr.trim()).slice(0, 300)}`;
+  console.log(`qa-login-bootstrap: run-as side-effect probe token=${markToken} seen_via_shell=${markSeen}\n${showProbe("exec-in write", markWrite)}\n${showProbe("shell read", markRead)}`);
   const script = [
     "set -eu", "umask 077", "mkdir -p files/qa-bootstrap/inbox",
     `tmp=files/qa-bootstrap/inbox/${requestId}.session.tmp`,
