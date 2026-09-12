@@ -2503,6 +2503,36 @@ private fun SlockFilePreviewStandalonePageContent() {
                 }
         }
     }
+    /** task #360: hand the short-lived disposition=attachment URL to the system browser, so
+     * very large files (or files the in-app exporter cannot materialize) can still be fetched
+     * outside the app. Read-only: no download state, MediaStore write, or upload-chain change. */
+    fun requestExternalBrowserOpen() {
+        if (exportInProgress || !slockFilePreviewCanStartExternalOperation(downloadStatus)) return
+        val requestPayload = payload
+        externalOperation = "open_browser"
+        downloadMessage = ""
+        coroutineScope.launch(start = CoroutineStart.LAZY) {
+            val url =
+                try {
+                    resolveRemoteExternalUrl(requestPayload)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    null
+                }
+            if (url.isNullOrBlank()) {
+                downloadStatus = "failed"
+                downloadMessage = downloadFailed
+                externalOperation = ""
+            } else {
+                bridge.openUrl(url)
+                downloadStatus = "idle"
+                downloadMessage = ""
+                externalOperation = ""
+            }
+        }.start()
+    }
+
     fun requestExternalSave(toPhotos: Boolean = false, exportPrivateDownload: Boolean = false) {
         if (!canOpenWith || exportInProgress || !slockFilePreviewCanStartExternalOperation(downloadStatus)) return
         if (toPhotos && !payload.supportsSaveToPhotos()) return
@@ -3517,6 +3547,15 @@ private fun SlockFilePreviewStandalonePageContent() {
                 SlockFilePreviewPayloadContent(
                     payload = payload,
                     onOpenUrl = {},
+                    onExternalBrowserOpen =
+                        if (
+                            payload.source == SlockFilePreviewSourceThreadAttachment &&
+                            payload.attachmentId.isNotBlank()
+                        ) {
+                            ::requestExternalBrowserOpen
+                        } else {
+                            null
+                        },
                     downloadStatusLabel =
                         when (downloadStatus) {
                             "downloading", "paused" ->
@@ -6514,6 +6553,7 @@ internal fun SlockFilePreviewPayloadContent(
     onResumeDownload: (() -> Unit)? = null,
     onStopDownload: (() -> Unit)? = null,
     onImageGalleryIndexChange: ((Int) -> Unit)? = null,
+    onExternalBrowserOpen: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val onToggleDownload = if (downloadPaused) onResumeDownload else onPauseDownload
@@ -6605,6 +6645,11 @@ internal fun SlockFilePreviewPayloadContent(
                         name = payload.name.ifBlank { payload.path },
                         meta = payload.meta,
                         message = payload.localizedMessage().ifBlank { stringResource(MR.strings.file_preview_no_preview) },
+                        secondaryActionLabel =
+                            onExternalBrowserOpen?.let { stringResource(MR.strings.file_preview_action_open_in_browser) },
+                        secondaryActionIcon = SlockLucideIconName.ExternalLink,
+                        secondaryActionEnabled = !downloadInProgress,
+                        onSecondaryAction = onExternalBrowserOpen,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -6645,6 +6690,11 @@ internal fun SlockFilePreviewPayloadContent(
                         statusLabel = downloadStatusLabel,
                         showProgress = downloadInProgress,
                         progressPercent = downloadProgressPercent,
+                        secondaryActionLabel =
+                            onExternalBrowserOpen?.let { stringResource(MR.strings.file_preview_action_open_in_browser) },
+                        secondaryActionIcon = SlockLucideIconName.ExternalLink,
+                        secondaryActionEnabled = !downloadInProgress,
+                        onSecondaryAction = onExternalBrowserOpen,
                         actionLabel =
                             onDownload
                                 ?.takeIf { !downloadInProgress }
@@ -6740,6 +6790,11 @@ internal fun SlockFilePreviewPayloadContent(
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
                 progressPercent = downloadProgressPercent,
+                secondaryActionLabel =
+                    onExternalBrowserOpen?.let { stringResource(MR.strings.file_preview_action_open_in_browser) },
+                secondaryActionIcon = SlockLucideIconName.ExternalLink,
+                secondaryActionEnabled = !downloadInProgress,
+                onSecondaryAction = onExternalBrowserOpen,
                 actionLabel =
                     onDownload
                         ?.takeIf { !downloadInProgress }
@@ -8520,6 +8575,10 @@ internal fun SlockFilePreviewGenericCard(
     actionIcon: SlockLucideIconName? = null,
     actionEnabled: Boolean = true,
     onAction: (() -> Unit)? = null,
+    secondaryActionLabel: String? = null,
+    secondaryActionIcon: SlockLucideIconName? = null,
+    secondaryActionEnabled: Boolean = true,
+    onSecondaryAction: (() -> Unit)? = null,
     downloadPaused: Boolean = false,
     onToggleDownload: (() -> Unit)? = null,
     onStopDownload: (() -> Unit)? = null,
@@ -8596,6 +8655,17 @@ internal fun SlockFilePreviewGenericCard(
                 onClick = onAction,
                 enabled = actionEnabled,
                 leadingIcon = actionIcon,
+                minWidth = 132.dp,
+                minHeight = 40.dp
+            )
+        }
+        if (!showProgress && secondaryActionLabel != null && onSecondaryAction != null) {
+            Box(modifier = Modifier.height(SlockSpacing.Sm))
+            SlockBrutalActionButton(
+                label = secondaryActionLabel,
+                onClick = onSecondaryAction,
+                enabled = secondaryActionEnabled,
+                leadingIcon = secondaryActionIcon,
                 minWidth = 132.dp,
                 minHeight = 40.dp
             )

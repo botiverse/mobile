@@ -1115,6 +1115,7 @@
     <string name="file_preview_action_open">打开</string>
     <string name="file_preview_action_open_with">打开方式…</string>
     <string name="file_preview_action_save_to_files">保存</string>
+    <string name="file_preview_action_open_in_browser">在浏览器中打开</string>
     <string name="file_preview_action_saving_to_files">保存中…</string>
     <string name="file_preview_action_delete_downloaded">清除缓存副本</string>
     <string name="file_preview_placeholder_tap_to_add_text">点击图片添加文字</string>

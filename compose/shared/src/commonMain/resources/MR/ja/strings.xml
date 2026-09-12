@@ -1110,6 +1110,7 @@
     <string name="file_preview_action_open">開く</string>
     <string name="file_preview_action_open_with">アプリで開く…</string>
     <string name="file_preview_action_save_to_files">保存</string>
+    <string name="file_preview_action_open_in_browser">ブラウザで開く</string>
     <string name="file_preview_action_saving_to_files">保存中…</string>
     <string name="file_preview_action_delete_downloaded">キャッシュコピーを削除</string>
     <string name="file_preview_placeholder_tap_to_add_text">画像をタップしてテキストを配置</string>
