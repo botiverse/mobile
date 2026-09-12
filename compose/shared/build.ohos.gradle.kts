@@ -167,6 +167,10 @@ kotlin {
                 // Unified network infra (task #12): all platforms' HTTP goes
                 // through NetworkKMM behind the SlockHttpExecutor seam.
                 implementation("com.tencent.kuiklybase:network:0.1.0-raft.36-ohos")
+                implementation("build.raft.mermaid:mermaid-core:0.1.0-SNAPSHOT")
+                implementation("build.raft.mermaid:mermaid-layout-api:0.1.0-SNAPSHOT")
+                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.0-SNAPSHOT")
+                implementation("build.raft.mermaid:mermaid-kuikly:0.1.0-SNAPSHOT")
             }
         }
         val commonTest by getting {
@@ -198,14 +202,6 @@ kotlin {
             kotlin.srcDir(generatedTmmResourceDir.map { it.dir("ohosArm64Main/src") })
             dependencies {
                 implementation("app.cash.sqldelight:native-driver-ohosarm64:2.1.0-KBA-001")
-                // task #329: mermaid OHOS plane. Mermaid lives here (ohosArm64Main),
-                // not commonMain, so the OHOS build's androidTarget never tries to
-                // resolve the `-ohos` coordinate's android variant (which does not
-                // exist — `-ohos` is OHOS-only per the plane-split convention).
-                implementation("build.raft.mermaid:mermaid-core:0.1.2-ohos")
-                implementation("build.raft.mermaid:mermaid-layout-api:0.1.2-ohos")
-                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.2-ohos")
-                implementation("build.raft.mermaid:mermaid-kuikly:0.1.2-ohos")
             }
         }
 
