@@ -1900,8 +1900,8 @@ private fun SlockStructuralHomeShellContent(
                 "unresolved=$unresolvedTypedCount sample=$sample"
         )
     }
-    val pinnedItemsForSort = remember(displayedPinned) { displayedPinned.mapNotNull { it.toSidebarSortItem() } }
-    val pinnedSectionHasUnread = remember(displayedPinned) { displayedPinned.any { it.conversation?.homeConversationBadgeProjection()?.hasUnread == true } }
+    val pinnedItemsForSort = remember(displayedPinnedNonChannels) { displayedPinnedNonChannels.mapNotNull { it.toSidebarSortItem() } }
+    val pinnedSectionHasUnread = remember(displayedPinnedNonChannels) { displayedPinnedNonChannels.any { it.conversation?.homeConversationBadgeProjection()?.hasUnread == true } }
     val channelSectionHasUnread = remember(displayedChannels) { displayedChannels.any { it.homeConversationBadgeProjection().hasUnread } }
     val jointChannelSectionHasUnread = remember(displayedJointChannels) { displayedJointChannels.any { it.homeConversationBadgeProjection().hasUnread } }
     val directMessageSectionHasUnread = remember(displayedDirectMessages) { displayedDirectMessages.any { it.homeConversationBadgeProjection().hasUnread } }
