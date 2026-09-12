@@ -34,8 +34,16 @@ internal class ComposeMarkdownRerenderVisualPage : BasePager() {
 
 @Composable
 private fun MarkdownRerenderVisualScreen() {
+    val localPager = LocalActivity.current.getPager() as? BasePager
     val statusBarHeight = LocalActivity.current.pageData.statusBarHeight
-    val bodies = remember { MarkdownRerenderBodies }
+    val customMarkdown = localPager?.pageData?.params?.optString("rawMarkdown")?.takeIf { it.isNotBlank() }
+    val bodies = remember(customMarkdown) {
+        if (customMarkdown != null) {
+            listOf(customMarkdown)
+        } else {
+            MarkdownRerenderBodies
+        }
+    }
 
     Box(
         modifier =

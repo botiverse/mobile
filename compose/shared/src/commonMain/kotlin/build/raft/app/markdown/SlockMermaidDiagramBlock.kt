@@ -29,7 +29,8 @@ import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
 import build.raft.mermaid.core.MermaidParseResult
 import build.raft.mermaid.core.MermaidParser
-import build.raft.mermaid.kuikly.MermaidView
+import build.raft.mermaid.kuikly.MermaidKuiklyRenderer
+import com.tencent.kuikly.core.views.CanvasView
 import build.raft.mermaid.layout.LayoutConfig
 import build.raft.mermaid.layout.LayoutScene
 import build.raft.mermaid.layout.simple.FixedWidthTextMeasurer
@@ -79,20 +80,30 @@ internal fun SlockMermaidDiagramBlock(
                 .border(1.dp, SlockColor.BorderBlack),
             contentAlignment = Alignment.Center
         ) {
-            MakeKuiklyComposeNode<MermaidView>(
-                factory = { MermaidView() },
+            MakeKuiklyComposeNode<CanvasView>(
+                factory = { CanvasView() },
                 modifier = Modifier
                     .width(diagramWidthDp)
                     .height(diagramHeightDp),
                 viewInit = {
-                    viewAttr.scene = layoutScene
-                    viewAttr.scale = scale
-                    viewAttr.batchDraw = true
+                    drawCallback = { context, _, _ ->
+                        MermaidKuiklyRenderer.render(
+                            scene = layoutScene,
+                            context = context,
+                            scale = scale,
+                            batchDraw = true,
+                        )
+                    }
                 },
                 viewUpdate = { view ->
-                    view.viewAttr.scene = layoutScene
-                    view.viewAttr.scale = scale
-                    view.viewAttr.batchDraw = true
+                    view.drawCallback = { context, _, _ ->
+                        MermaidKuiklyRenderer.render(
+                            scene = layoutScene,
+                            context = context,
+                            scale = scale,
+                            batchDraw = true,
+                        )
+                    }
                 }
             )
 
