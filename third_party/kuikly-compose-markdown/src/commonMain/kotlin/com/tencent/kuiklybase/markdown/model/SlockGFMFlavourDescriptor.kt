@@ -246,14 +246,16 @@ private fun List<SlockLexerSegment>.withResolvedAutolinkBoundaries(
     }
 }
 
-private enum class SlockInlineDelimiterKind(val delimiter: String) {
-    StrongStar("**"),
-    StrongUnderscore("__"),
-    EmphStar("*"),
-    EmphUnderscore("_"),
-    Strikethrough("~~"),
-    Bracket("["),
+private enum class SlockInlineDelimiterKind(val openDelimiter: String, val closeDelimiter: String) {
+    StrongStar("**", "**"),
+    StrongUnderscore("__", "__"),
+    EmphStar("*", "*"),
+    EmphUnderscore("_", "_"),
+    Strikethrough("~~", "~~"),
+    Bracket("[", "]"),
 }
+
+private const val MAX_SCANNER_RECURSION_DEPTH: Int = 32
 
 private class SlockRecursiveDescentInlineScanner(
     private val content: String,
@@ -264,11 +266,11 @@ private class SlockRecursiveDescentInlineScanner(
     private val autolinks = mutableListOf<Pair<Int, Int>>()
 
     fun scan(): List<Pair<Int, Int>> {
-        parseInlines(openScopes = emptyList())
+        parseInlines(openScopes = emptyList(), depth = 0)
         return autolinks
     }
 
-    private fun parseInlines(openScopes: List<SlockInlineDelimiterKind>) {
+    private fun parseInlines(openScopes: List<SlockInlineDelimiterKind>, depth: Int) {
         while (pos < end) {
             val closer = openScopes.firstOrNull { scope -> isClosingDelimiterAt(pos, scope) }
             if (closer != null) {
@@ -287,54 +289,78 @@ private class SlockRecursiveDescentInlineScanner(
             }
 
             if (isOpeningDelimiterAt(pos, SlockInlineDelimiterKind.StrongStar)) {
-                pos += 2
-                parseInlines(listOf(SlockInlineDelimiterKind.StrongStar) + openScopes)
-                if (pos + 2 <= end && content.startsWith("**", pos)) {
+                if (depth < MAX_SCANNER_RECURSION_DEPTH) {
+                    pos += 2
+                    parseInlines(listOf(SlockInlineDelimiterKind.StrongStar) + openScopes, depth + 1)
+                    if (pos + 2 <= end && content.startsWith("**", pos)) {
+                        pos += 2
+                    }
+                } else {
                     pos += 2
                 }
                 continue
             }
 
             if (isOpeningDelimiterAt(pos, SlockInlineDelimiterKind.Strikethrough)) {
-                pos += 2
-                parseInlines(listOf(SlockInlineDelimiterKind.Strikethrough) + openScopes)
-                if (pos + 2 <= end && content.startsWith("~~", pos)) {
+                if (depth < MAX_SCANNER_RECURSION_DEPTH) {
+                    pos += 2
+                    parseInlines(listOf(SlockInlineDelimiterKind.Strikethrough) + openScopes, depth + 1)
+                    if (pos + 2 <= end && content.startsWith("~~", pos)) {
+                        pos += 2
+                    }
+                } else {
                     pos += 2
                 }
                 continue
             }
 
             if (isOpeningDelimiterAt(pos, SlockInlineDelimiterKind.StrongUnderscore)) {
-                pos += 2
-                parseInlines(listOf(SlockInlineDelimiterKind.StrongUnderscore) + openScopes)
-                if (pos + 2 <= end && content.startsWith("__", pos)) {
+                if (depth < MAX_SCANNER_RECURSION_DEPTH) {
+                    pos += 2
+                    parseInlines(listOf(SlockInlineDelimiterKind.StrongUnderscore) + openScopes, depth + 1)
+                    if (pos + 2 <= end && content.startsWith("__", pos)) {
+                        pos += 2
+                    }
+                } else {
                     pos += 2
                 }
                 continue
             }
 
             if (isOpeningDelimiterAt(pos, SlockInlineDelimiterKind.EmphStar)) {
-                pos += 1
-                parseInlines(listOf(SlockInlineDelimiterKind.EmphStar) + openScopes)
-                if (pos < end && content[pos] == '*' && !content.startsWith("**", pos)) {
+                if (depth < MAX_SCANNER_RECURSION_DEPTH) {
+                    pos += 1
+                    parseInlines(listOf(SlockInlineDelimiterKind.EmphStar) + openScopes, depth + 1)
+                    if (pos < end && content[pos] == '*' && !content.startsWith("**", pos)) {
+                        pos += 1
+                    }
+                } else {
                     pos += 1
                 }
                 continue
             }
 
             if (isOpeningDelimiterAt(pos, SlockInlineDelimiterKind.EmphUnderscore)) {
-                pos += 1
-                parseInlines(listOf(SlockInlineDelimiterKind.EmphUnderscore) + openScopes)
-                if (pos < end && content[pos] == '_' && !content.startsWith("__", pos)) {
+                if (depth < MAX_SCANNER_RECURSION_DEPTH) {
+                    pos += 1
+                    parseInlines(listOf(SlockInlineDelimiterKind.EmphUnderscore) + openScopes, depth + 1)
+                    if (pos < end && content[pos] == '_' && !content.startsWith("__", pos)) {
+                        pos += 1
+                    }
+                } else {
                     pos += 1
                 }
                 continue
             }
 
             if (content[pos] == '[') {
-                pos += 1
-                parseInlines(listOf(SlockInlineDelimiterKind.Bracket) + openScopes)
-                if (pos < end && content[pos] == ']') {
+                if (depth < MAX_SCANNER_RECURSION_DEPTH) {
+                    pos += 1
+                    parseInlines(listOf(SlockInlineDelimiterKind.Bracket) + openScopes, depth + 1)
+                    if (pos < end && content[pos] == ']') {
+                        pos += 1
+                    }
+                } else {
                     pos += 1
                 }
                 continue
@@ -393,28 +419,43 @@ private class SlockRecursiveDescentInlineScanner(
     }
 
     private fun isOpeningDelimiterAt(index: Int, kind: SlockInlineDelimiterKind): Boolean {
-        if (!content.startsWith(kind.delimiter, index)) return false
-        val len = kind.delimiter.length
+        if (!content.startsWith(kind.openDelimiter, index)) return false
+        val len = kind.openDelimiter.length
         if (len == 1) {
-            val char = kind.delimiter[0]
+            val char = kind.openDelimiter[0]
             if (index + 1 < end && content[index + 1] == char) return false
             if (index > start && content[index - 1] == char) return false
         }
         val prevChar = if (index > start) content[index - 1] else ' '
         val nextChar = if (index + len < end) content[index + len] else ' '
+        // CommonMark intra-word underscore cannot open emphasis
+        if ((kind == SlockInlineDelimiterKind.EmphUnderscore || kind == SlockInlineDelimiterKind.StrongUnderscore) &&
+            prevChar.isLetterOrDigit()
+        ) {
+            return false
+        }
         return isLeftFlanking(prevChar, nextChar)
     }
 
     private fun isClosingDelimiterAt(index: Int, kind: SlockInlineDelimiterKind): Boolean {
-        if (!content.startsWith(kind.delimiter, index)) return false
-        val len = kind.delimiter.length
+        if (kind == SlockInlineDelimiterKind.Bracket) {
+            return content.startsWith("]", index)
+        }
+        if (!content.startsWith(kind.closeDelimiter, index)) return false
+        val len = kind.closeDelimiter.length
         if (len == 1) {
-            val char = kind.delimiter[0]
+            val char = kind.closeDelimiter[0]
             if (index + 1 < end && content[index + 1] == char) return false
             if (index > start && content[index - 1] == char) return false
         }
         val prevChar = if (index > start) content[index - 1] else ' '
         val nextChar = if (index + len < end) content[index + len] else ' '
+        // CommonMark intra-word underscore cannot close emphasis
+        if ((kind == SlockInlineDelimiterKind.EmphUnderscore || kind == SlockInlineDelimiterKind.StrongUnderscore) &&
+            nextChar.isLetterOrDigit()
+        ) {
+            return false
+        }
         return isRightFlanking(prevChar, nextChar)
     }
 

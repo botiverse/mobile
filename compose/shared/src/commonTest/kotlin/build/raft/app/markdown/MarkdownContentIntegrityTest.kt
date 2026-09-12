@@ -309,6 +309,17 @@ class MarkdownContentIntegrityTest {
     }
 
     @Test
+    fun deeplyNestedBracketsDoNotThrowStackOverflow() {
+        val depth = 200
+        val source = "[".repeat(depth) + "https://xxxx.com/path" + "]".repeat(depth)
+        val rendered = renderTopParagraphsWithLinks(source).single()
+        assertTrue(
+            rendered.text.contains("https://xxxx.com/path"),
+            "URL text must survive deeply nested brackets without StackOverflowError",
+        )
+    }
+
+    @Test
     fun generatedUrlBoundariesConserveTextAndExactLinkTarget() {
         generatedUrlBoundaryCases().forEach { case ->
             val rendered = renderTopParagraphsWithLinks(case.source).single()
