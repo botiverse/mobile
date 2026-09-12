@@ -105,71 +105,57 @@ function binding() {
 
 function installPrivateEnvelope(applicationId, requestId, bytes) {
   const expectedDigest = sha256Digest(bytes).slice("sha256:".length);
-  // Side-effect probe (HuaTuo): stdout cannot tell "run-as did not run" from
-  // "output swallowed" because stdout is the suspect. Write a token through
-  // the same exec-in run-as channel the envelope uses, read it back through
-  // plain shell run-as. Token present → run-as ran and only the output path
-  // is broken; absent → run-as did not run (or the write failed). Placed
-  // before the envelope install so the last exec-in stays the envelope.
+  const text = (r) => (Buffer.isBuffer(r.stdout) ? r.stdout.toString("utf8") : String(r.stdout ?? ""));
+  const errText = (r) => (Buffer.isBuffer(r.stderr) ? r.stderr.toString("utf8") : String(r.stderr ?? ""));
+  // Hard precondition: the plain shell channel must carry the remote exit
+  // status. It is the only channel measured to do so (exec-in/exec-out drop
+  // it: HuaTuo on the cloud phone, canary 96e256d5 on the hosted emulator).
+  const statusProbe = run("adb", ["shell", "exit 7"], { allowFailure: true });
+  if (statusProbe.status !== 7) {
+    throw new Error(`adb shell does not propagate the remote exit status (exit 7 read as ${statusProbe.status}); every status-based check on this host is void (task #188)`);
+  }
+  // Transport: `adb shell -T` with the envelope on stdin. canary-14 (run
+  // 7cf1eef7, CI 34683983775, hosted API 34 emulator, script 49324c024): the
+  // same run-as helper over exec-in with NO stdin landed a probe file that the
+  // shell channel read back; with the envelope on stdin, exec-in returned in
+  // 0.1 s with no file, no sentinel and no stderr. exec-in is the legacy
+  // unframed `exec:` service: host stdin EOF closes the socket and the remote
+  // shell dies before its `mv`. On the cloud phone the same pipe is sound
+  // (HuaTuo), so this is a channel difference, not a script difference. The
+  // shell-v2 channel sends EOF as a packet, so nothing enters argv, no
+  // staging path, no shared storage; umask 077, .tmp then mv, trap cleanup
+  // as before. Stdin-over-shell measurement, same channel, one token:
   const markToken = `probe-${Date.now()}`;
-  const markWrite = run("adb", adbRunAsShellArgs("exec-in", applicationId, `umask 077; mkdir -p files/qa-bootstrap; printf '%s' "${markToken}" > files/qa-bootstrap/qa-mark.txt`), { input: Buffer.alloc(0), allowFailure: true });
-  const markRead = run("adb", ["shell", `run-as ${applicationId} sh -c 'cat files/qa-bootstrap/qa-mark.txt; echo; ls -laZ files/qa-bootstrap 2>&1'`], { allowFailure: true });
-  const markSeen = markRead.stdout.includes(markToken);
-  const showProbe = (label, r) => `${label}: status=${r.status} stdout=${JSON.stringify(r.stdout.trim()).slice(0, 600)} stderr=${JSON.stringify(r.stderr.trim()).slice(0, 300)}`;
-  console.log(`qa-login-bootstrap: run-as side-effect probe token=${markToken} seen_via_shell=${markSeen}\n${showProbe("exec-in write", markWrite)}\n${showProbe("shell read", markRead)}`);
+  const markWrite = run("adb", adbRunAsShellArgs("shell", applicationId, "umask 077; mkdir -p files/qa-bootstrap; cat > files/qa-bootstrap/qa-mark.txt; echo WROTE"), { input: Buffer.from(markToken, "utf8"), allowFailure: true });
+  const markRead = run("adb", ["shell", `run-as ${applicationId} sh -c 'cat files/qa-bootstrap/qa-mark.txt 2>&1'`], { allowFailure: true });
+  console.log(`qa-login-bootstrap: shell -T stdin probe token=${markToken} write_status=${markWrite.status} wrote=${text(markWrite).includes("WROTE")} seen_via_shell=${text(markRead).includes(markToken)} stderr=${JSON.stringify(errText(markWrite).trim()).slice(0, 300)}`);
   const script = [
     "set -eu", "umask 077", "mkdir -p files/qa-bootstrap/inbox",
     `tmp=files/qa-bootstrap/inbox/${requestId}.session.tmp`,
     `dst=files/qa-bootstrap/inbox/${requestId}.session`,
     "trap 'rm -f \"$tmp\"' EXIT", "cat > \"$tmp\"", "chmod 600 \"$tmp\"",
     "mv -f \"$tmp\" \"$dst\"", "trap - EXIT",
-    // Trailing line kept for symmetry with the verify script only: exec-in
-    // returns neither stdout nor the remote exit status (HuaTuo's measurement,
-    // matched on the hosted emulator), so this line is never observed. The
-    // install is judged by the shell-channel sha readback below.
+    // Success sentinel on stdout; under set -e it prints only if every step
+    // succeeded, and on this channel the exit status arrives as well.
     `printf 'INSTALL_OK %s\\n' "$(sha256sum \"$dst\" | cut -d' ' -f1)"`,
   ].join("; ");
-  // exec-in is the ADB service whose contract is host stdin -> remote stdin.
-  // exec-out is intended for the opposite direction and can keep the remote
-  // reader waiting after Node has supplied its input buffer on hosted runners.
-  // Hard precondition: the plain shell channel must carry the remote exit
-  // status (it is the only status-bearing channel; exec-in/exec-out drop it).
-  const statusProbe = run("adb", ["shell", "exit 7"], { allowFailure: true });
-  if (statusProbe.status !== 7) {
-    throw new Error(`adb shell does not propagate the remote exit status (exit 7 read as ${statusProbe.status}); every status-based check on this host is void (task #188)`);
+  const installed = run("adb", adbRunAsShellArgs("shell", applicationId, script), { input: bytes, allowFailure: true });
+  if (installed.status !== 0 || !text(installed).includes(`INSTALL_OK ${expectedDigest}`)) {
+    throw new Error(`private envelope install failed on the shell channel (status=${installed.status} expected INSTALL_OK ${expectedDigest.slice(0, 12)}… bytes=${bytes.length} stdout=${JSON.stringify(text(installed).trim()).slice(0, 300)} stderr=${JSON.stringify(errText(installed).trim()).slice(0, 300)})`);
   }
-  const installed = run("adb", adbRunAsShellArgs("exec-in", applicationId, script), { input: bytes });
-  // Judge the install by a READBACK on the plain shell channel. Measured by
-  // HuaTuo (adb 34.0.4, SDK 34) and matched on the hosted emulator:
-  //   printf '' | adb exec-in  "echo HELLO"  -> stdout empty, status 0
-  //              adb exec-out "echo HELLO"  -> HELLO,        status 0
-  //              adb exec-in  "exit 7"      ->               status 0
-  //   payload   | adb exec-in  "cat > f"    -> file correct  (write side effect is sound)
-  // So exec-in returns NO stdout and NO exit status: nothing from it is read
-  // here. And exec-out cannot replace exec-in for stdin — it hangs.
+  // Judgement: an independent READBACK on the same channel must return the
+  // expected digest. The INSTALL_OK line above is a witness, not the judge.
   const readback = run("adb", ["shell", `run-as ${applicationId} sh -c 'sha256sum files/qa-bootstrap/inbox/${requestId}.session 2>/dev/null | cut -d" " -f1'`], { allowFailure: true });
   const readbackSha = readback.stdout.trim().split(/\s+/)[0] ?? "";
   if (readbackSha !== expectedDigest) {
-    throw new Error(`private envelope install did not report INSTALL_OK ${expectedDigest.slice(0, 12)}… on readback (shell sha256sum=${JSON.stringify(readbackSha).slice(0, 80)} status=${readback.status}; exec-in stderr=${JSON.stringify(installed.stderr.trim()).slice(0, 300)}; exec-in stdout is never returned and is not read)`);
+    throw new Error(`private envelope shell sha readback mismatch: expected ${expectedDigest.slice(0, 12)}… got ${JSON.stringify(readbackSha).slice(0, 80)} (status=${readback.status} bytes=${bytes.length})`);
   }
-  // Does run-as EXECUTE on this device at all? Canary 440581cc (hosted API 34
-  // emulator) passed the set -e verify below yet printed none of its trailing
-  // pwd/id/ls output, while the same command prints on a real Android 14
-  // device. A run-as that exits 0 without executing would make the exec-in
-  // write above a no-op and the verify an empty pass. Two channels, one
-  // sentinel each, stderr and exit status kept: exec-out (as used above) and
-  // plain shell. Nothing secret: no file contents, no credentials.
-  const probeOut = run("adb", adbRunAsShellArgs("exec-out", applicationId, "echo RUNAS_MARK_EXECOUT; id; pwd; exit 7"), { allowFailure: true });
-  const probeShell = run("adb", ["shell", `run-as ${applicationId} sh -c 'echo RUNAS_MARK_SHELL; id; pwd; ls -laZ files/qa-bootstrap/inbox; exit 7'`], { allowFailure: true });
-  const show = (label, r) => `${label}: status=${r.status} stdout=${JSON.stringify(r.stdout.trim()).slice(0, 600)} stderr=${JSON.stringify(r.stderr.trim()).slice(0, 300)}`;
-  console.log(`qa-login-bootstrap: run-as channel probes\n${show("exec-out", probeOut)}\n${show("shell", probeShell)}`);
-  // Verify with EXPLICIT sentinels. `adb exec-out` never returns the remote
-  // exit status, so a `set -e` script that fails early looks exactly like one
-  // that passed. Every check appends its name to $fail; the script always ends
-  // by printing VERIFY_OK or VERIFY_FAIL <steps>. Three outcomes, none of
-  // them silent: OK, FAIL with the failing steps, or neither = the command did
-  // not run to its end. The run-as view (cwd, id, ls -laZ) follows for the
-  // reader-side comparison. No file contents, no credentials.
+  // Verify with EXPLICIT sentinels on the same status-bearing channel. Every
+  // check appends its name to $fail; the script always ends by printing
+  // VERIFY_OK or VERIFY_FAIL <steps>. Three outcomes, none of them silent:
+  // OK, FAIL with the failing steps, or neither = the command did not run to
+  // its end. The run-as view (cwd, id, ls -laZ) follows for the reader-side
+  // comparison. No file contents, no credentials.
   const verifyScript = [
     "set -u",
     `dst=files/qa-bootstrap/inbox/${requestId}.session`,
@@ -183,17 +169,14 @@ function installPrivateEnvelope(applicationId, requestId, bytes) {
     "printf 'run-as id=%s\\n' \"$(id)\"",
     "ls -laZ files/qa-bootstrap/inbox 2>&1 | sed 's/^/inbox: /'",
   ].join("; ");
-  const verify = run("adb", adbRunAsShellArgs("exec-out", applicationId, verifyScript), { allowFailure: true });
+  const verify = run("adb", adbRunAsShellArgs("shell", applicationId, verifyScript), { allowFailure: true });
   const verifyOut = verify.stdout;
-  if (!verifyOut.includes("VERIFY_OK")) {
+  if (verify.status !== 0 || !verifyOut.includes("VERIFY_OK")) {
     const failLine = verifyOut.match(/VERIFY_FAIL[^\r\n]*/)?.[0];
-    throw new Error(`private envelope verify ${failLine ? `failed: ${failLine}` : "did not run to its end (neither VERIFY_OK nor VERIFY_FAIL)"}; status=${verify.status} stdout=${JSON.stringify(verifyOut.trim()).slice(0, 1500)} stderr=${JSON.stringify(verify.stderr.trim()).slice(0, 400)}`);
+    throw new Error(`private envelope verify ${failLine ? `failed: ${failLine}` : "did not run to its end (neither VERIFY_OK nor VERIFY_FAIL)"}; status=${verify.status} stdout=${JSON.stringify(verifyOut.trim()).slice(0, 1500)} stderr=${JSON.stringify(verify.stderr.trim()).slice(0, 500)}`);
   }
-  // Reinforcement on the status-bearing channel (informational; the sentinel
-  // above is the judgement, independent of channel behaviour).
-  const shellCheck = run("adb", ["shell", `run-as ${applicationId} sh -c 'test -f files/qa-bootstrap/inbox/${requestId}.session'`], { allowFailure: true });
   const facts = run("adb", ["shell", "am get-current-user; getprop ro.build.version.sdk; getprop ro.build.product; id"], { allowFailure: true }).stdout;
-  console.log(`qa-login-bootstrap: envelope verified (VERIFY_OK; shell-channel test -f status=${shellCheck.status})\n${verifyOut.trim().slice(0, 3000)}\ndevice: ${facts.trim().split("\n").join(" | ")}`);
+  console.log(`qa-login-bootstrap: envelope verified (VERIFY_OK, shell channel status=${verify.status})\n${verifyOut.trim().slice(0, 3000)}\ndevice: ${facts.trim().split("\n").join(" | ")}`);
 }
 
 function expectedLogin(responseFile, bindingFile, runCaseId, ciJobRef) {
