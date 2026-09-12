@@ -143,10 +143,10 @@ kotlin {
                 // Unified network infra (task #12): all platforms' HTTP goes
                 // through NetworkKMM behind the SlockHttpExecutor seam.
                 implementation("com.tencent.kuiklybase:network:0.1.0-raft.37")
-                implementation("build.raft.mermaid:mermaid-core:0.1.1")
-                implementation("build.raft.mermaid:mermaid-layout-api:0.1.1")
-                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.1")
-                implementation("build.raft.mermaid:mermaid-kuikly:0.1.1")
+                implementation("build.raft.mermaid:mermaid-core:0.1.2")
+                implementation("build.raft.mermaid:mermaid-layout-api:0.1.2")
+                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.2")
+                implementation("build.raft.mermaid:mermaid-kuikly:0.1.2")
             }
         }
         val commonTest by getting {
