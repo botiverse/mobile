@@ -123,10 +123,10 @@ function installPrivateEnvelope(applicationId, requestId, bytes) {
     `dst=files/qa-bootstrap/inbox/${requestId}.session`,
     "trap 'rm -f \"$tmp\"' EXIT", "cat > \"$tmp\"", "chmod 600 \"$tmp\"",
     "mv -f \"$tmp\" \"$dst\"", "trap - EXIT",
-    // Success sentinel on stdout. `adb exec-in`/`exec-out` never return the
-    // remote exit status (HuaTuo, cloud phone; canary 96e256d5, hosted
-    // emulator: `exit 7` reads as 0 on both), so `set -e` alone proved nothing
-    // since July. Under set -e this line prints only if every step succeeded.
+    // Trailing line kept for symmetry with the verify script only: exec-in
+    // returns neither stdout nor the remote exit status (HuaTuo's measurement,
+    // matched on the hosted emulator), so this line is never observed. The
+    // install is judged by the shell-channel sha readback below.
     `printf 'INSTALL_OK %s\\n' "$(sha256sum \"$dst\" | cut -d' ' -f1)"`,
   ].join("; ");
   // exec-in is the ADB service whose contract is host stdin -> remote stdin.
@@ -139,13 +139,18 @@ function installPrivateEnvelope(applicationId, requestId, bytes) {
     throw new Error(`adb shell does not propagate the remote exit status (exit 7 read as ${statusProbe.status}); every status-based check on this host is void (task #188)`);
   }
   const installed = run("adb", adbRunAsShellArgs("exec-in", applicationId, script), { input: bytes });
-  // Judge the install by a READBACK on the plain shell channel (stdout proven
-  // to arrive there; exec-in's stdout return is unmeasured — LiBai). The
-  // exec-in sentinel is kept as an informational second witness.
+  // Judge the install by a READBACK on the plain shell channel. Measured by
+  // HuaTuo (adb 34.0.4, SDK 34) and matched on the hosted emulator:
+  //   printf '' | adb exec-in  "echo HELLO"  -> stdout empty, status 0
+  //              adb exec-out "echo HELLO"  -> HELLO,        status 0
+  //              adb exec-in  "exit 7"      ->               status 0
+  //   payload   | adb exec-in  "cat > f"    -> file correct  (write side effect is sound)
+  // So exec-in returns NO stdout and NO exit status: nothing from it is read
+  // here. And exec-out cannot replace exec-in for stdin — it hangs.
   const readback = run("adb", ["shell", `run-as ${applicationId} sh -c 'sha256sum files/qa-bootstrap/inbox/${requestId}.session 2>/dev/null | cut -d" " -f1'`], { allowFailure: true });
   const readbackSha = readback.stdout.trim().split(/\s+/)[0] ?? "";
   if (readbackSha !== expectedDigest) {
-    throw new Error(`private envelope install did not report INSTALL_OK ${expectedDigest.slice(0, 12)}… on readback (shell sha256sum=${JSON.stringify(readbackSha).slice(0, 80)} status=${readback.status}; exec-in sentinel seen=${installed.stdout.includes(`INSTALL_OK ${expectedDigest}`)}; exec-in stderr=${JSON.stringify(installed.stderr.trim()).slice(0, 300)})`);
+    throw new Error(`private envelope install did not report INSTALL_OK ${expectedDigest.slice(0, 12)}… on readback (shell sha256sum=${JSON.stringify(readbackSha).slice(0, 80)} status=${readback.status}; exec-in stderr=${JSON.stringify(installed.stderr.trim()).slice(0, 300)}; exec-in stdout is never returned and is not read)`);
   }
   // Does run-as EXECUTE on this device at all? Canary 440581cc (hosted API 34
   // emulator) passed the set -e verify below yet printed none of its trailing
