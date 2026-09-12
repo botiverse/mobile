@@ -125,6 +125,22 @@ function installPrivateEnvelope(applicationId, requestId, bytes) {
     `test "$(sha256sum \"$dst\" | cut -d' ' -f1)" = ${expectedDigest}`,
   ].join("; ");
   run("adb", adbRunAsShellArgs("exec-out", applicationId, verifyScript));
+  // Where did the file actually land? On the hosted emulator the activity has
+  // reported `inbox_consume code=missing` right after this verify passed
+  // (2026-07-26 x18, 2026-09-12 run 34680965276), while the same flow reads
+  // the file on a real Android 14 device. Print the run-as view (cwd, uid,
+  // SELinux labels) and the device's user/SDK facts so the next failure names
+  // the path. Nothing here is secret: no file contents, no credentials.
+  const whereScript = [
+    "set -u",
+    "printf 'run-as pwd=%s\\n' \"$(pwd)\"",
+    "printf 'run-as id=%s\\n' \"$(id)\"",
+    "readlink -f files/qa-bootstrap/inbox 2>/dev/null | sed 's/^/inbox realpath=/'",
+    "ls -laZ files/qa-bootstrap/inbox 2>&1 | sed 's/^/inbox: /'",
+  ].join("; ");
+  const where = run("adb", adbRunAsShellArgs("exec-out", applicationId, whereScript), { allowFailure: true }).stdout;
+  const facts = run("adb", ["shell", "am get-current-user; getprop ro.build.version.sdk; getprop ro.build.product; id"], { allowFailure: true }).stdout;
+  console.log(`qa-login-bootstrap: envelope location diagnostics\n${where.trim()}\ndevice: ${facts.trim().split("\n").join(" | ")}`);
 }
 
 function expectedLogin(responseFile, bindingFile, runCaseId, ciJobRef) {
