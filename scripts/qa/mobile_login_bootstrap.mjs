@@ -116,6 +116,17 @@ function installPrivateEnvelope(applicationId, requestId, bytes) {
   // exec-out is intended for the opposite direction and can keep the remote
   // reader waiting after Node has supplied its input buffer on hosted runners.
   run("adb", adbRunAsShellArgs("exec-in", applicationId, script), { input: bytes });
+  // Does run-as EXECUTE on this device at all? Canary 440581cc (hosted API 34
+  // emulator) passed the set -e verify below yet printed none of its trailing
+  // pwd/id/ls output, while the same command prints on a real Android 14
+  // device. A run-as that exits 0 without executing would make the exec-in
+  // write above a no-op and the verify an empty pass. Two channels, one
+  // sentinel each, stderr and exit status kept: exec-out (as used above) and
+  // plain shell. Nothing secret: no file contents, no credentials.
+  const probeOut = run("adb", adbRunAsShellArgs("exec-out", applicationId, "echo RUNAS_MARK_EXECOUT; id; pwd; exit 7"), { allowFailure: true });
+  const probeShell = run("adb", ["shell", `run-as ${applicationId} sh -c 'echo RUNAS_MARK_SHELL; id; pwd; ls -laZ files/qa-bootstrap/inbox; exit 7'`], { allowFailure: true });
+  const show = (label, r) => `${label}: status=${r.status} stdout=${JSON.stringify(r.stdout.trim()).slice(0, 600)} stderr=${JSON.stringify(r.stderr.trim()).slice(0, 300)}`;
+  console.log(`qa-login-bootstrap: run-as channel probes\n${show("exec-out", probeOut)}\n${show("shell", probeShell)}`);
   // The verify and the location diagnostics ride in ONE run-as command: the
   // checks first (set -e stops on the first failure), then the run-as view of
   // where the file landed (cwd, id, inbox realpath, ls -laZ). On the hosted
