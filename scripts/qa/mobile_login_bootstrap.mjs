@@ -139,8 +139,13 @@ function installPrivateEnvelope(applicationId, requestId, bytes) {
     throw new Error(`adb shell does not propagate the remote exit status (exit 7 read as ${statusProbe.status}); every status-based check on this host is void (task #188)`);
   }
   const installed = run("adb", adbRunAsShellArgs("exec-in", applicationId, script), { input: bytes });
-  if (!installed.stdout.includes(`INSTALL_OK ${expectedDigest}`)) {
-    throw new Error(`private envelope install did not report INSTALL_OK ${expectedDigest.slice(0, 12)}…; stdout=${JSON.stringify(installed.stdout.trim()).slice(0, 400)} stderr=${JSON.stringify(installed.stderr.trim()).slice(0, 400)}`);
+  // Judge the install by a READBACK on the plain shell channel (stdout proven
+  // to arrive there; exec-in's stdout return is unmeasured — LiBai). The
+  // exec-in sentinel is kept as an informational second witness.
+  const readback = run("adb", ["shell", `run-as ${applicationId} sh -c 'sha256sum files/qa-bootstrap/inbox/${requestId}.session 2>/dev/null | cut -d" " -f1'`], { allowFailure: true });
+  const readbackSha = readback.stdout.trim().split(/\s+/)[0] ?? "";
+  if (readbackSha !== expectedDigest) {
+    throw new Error(`private envelope install did not report INSTALL_OK ${expectedDigest.slice(0, 12)}… on readback (shell sha256sum=${JSON.stringify(readbackSha).slice(0, 80)} status=${readback.status}; exec-in sentinel seen=${installed.stdout.includes(`INSTALL_OK ${expectedDigest}`)}; exec-in stderr=${JSON.stringify(installed.stderr.trim()).slice(0, 300)})`);
   }
   // Does run-as EXECUTE on this device at all? Canary 440581cc (hosted API 34
   // emulator) passed the set -e verify below yet printed none of its trailing
