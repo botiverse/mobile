@@ -130,7 +130,11 @@ function captureAndroidQaBoundary(imageSha256) {
   const installScript =
     `umask 077; mkdir -p files/qa-bootstrap/inbox; tmp='${relative}.tmp'; ` +
     `cat >\"$tmp\"; chmod 600 \"$tmp\"; mv \"$tmp\" '${relative}'`;
-  adb(adbRunAsShellArgs("exec-in", opts.appPackage, installScript), {
+  // adb shell -T + stdin, not exec-in: canary-15 (CI 34684737549, hosted
+  // emulator) reached READY through the same helper on "shell" and then this
+  // exec-in injection was torn at stdin EOF, so no request file, no App ack
+  // (timed out below). Same channel difference as mobile#2476.
+  adb(adbRunAsShellArgs("shell", opts.appPackage, installScript), {
     input: request,
     encoding: "utf8",
   });
