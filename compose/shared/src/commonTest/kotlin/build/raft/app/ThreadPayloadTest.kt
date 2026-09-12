@@ -1330,6 +1330,102 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadAttachmentItemMatchesAudioAttachmentsByMimeOrExtension() {
+        val mp3ByMime =
+            KuiklyThreadAttachmentItem(
+                id = "att-mp3-mime",
+                name = "recording.bin",
+                mimeType = "audio/mpeg"
+            )
+        val wavByName =
+            KuiklyThreadAttachmentItem(
+                id = "att-wav-name",
+                name = "recording.wav",
+                mimeType = "application/octet-stream"
+            )
+        val m4aByMime =
+            KuiklyThreadAttachmentItem(
+                id = "att-m4a-mime",
+                name = "voice.bin",
+                mimeType = "audio/x-m4a"
+            )
+        val oggByName =
+            KuiklyThreadAttachmentItem(
+                id = "att-ogg-name",
+                name = "music.ogg",
+                mimeType = ""
+            )
+        val flacByName =
+            KuiklyThreadAttachmentItem(
+                id = "att-flac-name",
+                name = "lossless.flac",
+                mimeType = ""
+            )
+        val nonAudio =
+            KuiklyThreadAttachmentItem(
+                id = "att-archive",
+                name = "demo.zip",
+                mimeType = "application/zip"
+            )
+
+        assertTrue(mp3ByMime.isPreviewableAudioAttachment())
+        assertTrue(wavByName.isPreviewableAudioAttachment())
+        assertTrue(m4aByMime.isPreviewableAudioAttachment())
+        assertTrue(oggByName.isPreviewableAudioAttachment())
+        assertTrue(flacByName.isPreviewableAudioAttachment())
+        assertFalse(nonAudio.isPreviewableAudioAttachment())
+    }
+
+    @Test
+    fun inlineAudioPreviewRequestsAreDeduplicatedUntilFailure() {
+        val attachmentId = "att-audio"
+
+        assertTrue(emptyMap<String, ThreadInlineAudioPreviewUiState>().canRequestInlineAudioPreview(attachmentId))
+        assertFalse(
+            mapOf(
+                attachmentId to
+                    ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Loading)
+            ).canRequestInlineAudioPreview(attachmentId)
+        )
+        assertFalse(
+            mapOf(
+                attachmentId to
+                    ThreadInlineAudioPreviewUiState(
+                        status = ThreadInlineAudioPreviewStatus.Ready,
+                        url = "https://example.test/audio.mp3"
+                    )
+            ).canRequestInlineAudioPreview(attachmentId)
+        )
+        assertTrue(
+            mapOf(
+                attachmentId to
+                    ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Error)
+            ).canRequestInlineAudioPreview(attachmentId)
+        )
+        assertFalse(emptyMap<String, ThreadInlineAudioPreviewUiState>().canRequestInlineAudioPreview(""))
+    }
+
+    @Test
+    fun inlineAudioPreviewTreatsMissingStateAsLoadingUntilTheAutomaticSourceArrives() {
+        assertEquals(ThreadInlineAudioRenderMode.Loading, (null as ThreadInlineAudioPreviewUiState?).audioRenderMode())
+        assertEquals(
+            ThreadInlineAudioRenderMode.Loading,
+            ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Loading).audioRenderMode()
+        )
+        assertEquals(
+            ThreadInlineAudioRenderMode.Ready,
+            ThreadInlineAudioPreviewUiState(
+                status = ThreadInlineAudioPreviewStatus.Ready,
+                url = "https://example.test/audio.mp3"
+            ).audioRenderMode()
+        )
+        assertEquals(
+            ThreadInlineAudioRenderMode.Error,
+            ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Ready).audioRenderMode()
+        )
+    }
+
+    @Test
     fun inlineVideoPreviewRequestsAreDeduplicatedUntilFailure() {
         val attachmentId = "att-video"
 

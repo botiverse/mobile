@@ -6044,6 +6044,9 @@ internal fun SharedThreadRouteContent(
     var inlineVideoPreviewStates by remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadInlineVideoPreviewUiState>>(emptyMap())
     }
+    var inlineAudioPreviewStates by remember(threadInstanceKey) {
+        mutableStateOf<Map<String, ThreadInlineAudioPreviewUiState>>(emptyMap())
+    }
     val attachmentUploadOrchestrator = remember(threadInstanceKey, threadSendScope) {
         ThreadAttachmentUploadOrchestrator(threadSendScope)
     }
@@ -7459,6 +7462,7 @@ internal fun SharedThreadRouteContent(
                 attachment.isMarkdownAttachment() -> "markdown"
                 attachment.isTextLikeAttachment() || attachment.isHtmlAttachment() -> "text"
                 attachment.isPreviewableVideoAttachment() -> "video"
+                attachment.isPreviewableAudioAttachment() -> "audio"
                 else -> "file"
             }
         pager.openSlockFilePreviewPage(
@@ -7467,6 +7471,41 @@ internal fun SharedThreadRouteContent(
                 attachmentCommentsEnabled = attachmentCommentsEnabled
             )
         )
+    }
+    fun requestInlineAudioPreview(attachmentId: String, force: Boolean = false) {
+        if (attachmentId.isBlank()) return
+        if (inlineAudioPreviewStates[attachmentId]?.status == ThreadInlineAudioPreviewStatus.Loading) return
+        if (!force && !inlineAudioPreviewStates.canRequestInlineAudioPreview(attachmentId)) return
+        inlineAudioPreviewStates =
+            inlineAudioPreviewStates +
+                (attachmentId to ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Loading))
+        coroutineScope.launch {
+            when (val response = dataSource.attachmentUrl(attachmentId, disposition = "inline")) {
+                is ThreadApiResult.Success -> {
+                    val url = response.data.url.trim()
+                    inlineAudioPreviewStates =
+                        inlineAudioPreviewStates +
+                            (attachmentId to
+                                if (url.isNotBlank()) {
+                                    ThreadInlineAudioPreviewUiState(
+                                        status = ThreadInlineAudioPreviewStatus.Ready,
+                                        url = url,
+                                        expiresAt = response.data.expiresAt
+                                    )
+                                } else {
+                                    ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Error)
+                                })
+                }
+                is ThreadApiResult.Failure -> {
+                    inlineAudioPreviewStates =
+                        inlineAudioPreviewStates +
+                            (attachmentId to ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Error))
+                    if (response.code == 401) {
+                        routeAuthRequired("auth_required")
+                    }
+                }
+            }
+        }
     }
     fun requestInlineVideoPreview(attachmentId: String, force: Boolean = false) {
         if (attachmentId.isBlank()) return
@@ -9476,6 +9515,11 @@ internal fun SharedThreadRouteContent(
                     ThreadInlineVideoPreviewHost(
                         states = inlineVideoPreviewStates,
                         requestPreview = ::requestInlineVideoPreview
+                    ),
+                LocalThreadInlineAudioPreviewHost provides
+                    ThreadInlineAudioPreviewHost(
+                        states = inlineAudioPreviewStates,
+                        requestPreview = ::requestInlineAudioPreview
                     ),
                 LocalThreadInlineImageFallbackHost provides
                     ThreadInlineImageFallbackHost(
@@ -26511,6 +26555,9 @@ internal fun KuiklyThreadAttachmentItem.isMarkdownAttachment(): Boolean =
 internal fun KuiklyThreadAttachmentItem.isTextLikeAttachment(): Boolean =
     !isMarkdownAttachment() && slockFilePreviewIsTextLikeAttachment(fileName = name, mimeType = mimeType)
 
+internal fun KuiklyThreadAttachmentItem.isPreviewableAudioAttachment(): Boolean =
+    slockFilePreviewIsAudioAttachment(fileName = name, mimeType = mimeType)
+
 internal fun KuiklyThreadAttachmentItem.isPreviewableVideoAttachment(): Boolean =
     slockFilePreviewIsPreviewableVideoAttachment(fileName = name, mimeType = mimeType)
 
@@ -26523,7 +26570,7 @@ internal fun KuiklyThreadAttachmentItem.isHtmlAttachment(): Boolean =
     normalizedMimeType() == "text/html" || name.endsWith(".html", ignoreCase = true) || name.endsWith(".htm", ignoreCase = true)
 
 private fun KuiklyThreadAttachmentItem.threadAttachmentUsesPreviewAffordance(): Boolean =
-    isPreviewableDocumentAttachment() || isHtmlAttachment() || isPreviewableVideoAttachment()
+    isPreviewableDocumentAttachment() || isHtmlAttachment() || isPreviewableVideoAttachment() || isPreviewableAudioAttachment()
 
 internal fun KuiklyThreadAttachmentItem.genericAttachmentMetaLine(): String =
     displaySizeLabel()
@@ -26546,6 +26593,7 @@ internal fun KuiklyThreadAttachmentItem.threadAttachmentChipMetaLine(htmlPreview
 
 internal fun KuiklyThreadAttachmentItem.threadAttachmentSummaryLine(): StringDesc? =
     when {
+        isPreviewableAudioAttachment() -> MR.strings.file_preview_audio.desc()
         isPreviewableVideoAttachment() -> MR.strings.file_preview_video.desc()
         isTextLikeAttachment() || isHtmlAttachment() -> MR.strings.file_preview_text.desc()
         isPreviewableDocumentAttachment() -> MR.strings.file_preview_document.desc()
@@ -26831,6 +26879,15 @@ private fun ThreadAttachmentChip(
 ) {
     if (attachment.isPreviewableVideoAttachment()) {
         ThreadInlineVideoAttachmentCard(
+            attachment = attachment,
+            commentsEnabled = commentsEnabled,
+            onDownload = onDownload,
+            onOpenComments = onOpenComments
+        )
+        return
+    }
+    if (attachment.isPreviewableAudioAttachment()) {
+        ThreadInlineAudioAttachmentCard(
             attachment = attachment,
             commentsEnabled = commentsEnabled,
             onDownload = onDownload,

@@ -1730,6 +1730,51 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun audioClassifierMatchesFullWebAudioAttachmentContract() {
+        val audioMimes =
+            listOf(
+                "audio/mpeg",
+                "audio/mp3",
+                "audio/wav",
+                "audio/x-wav",
+                "audio/wave",
+                "audio/aac",
+                "audio/mp4",
+                "audio/x-m4a",
+                "audio/ogg",
+                "audio/opus",
+                "audio/webm",
+                "audio/flac",
+                "audio/x-flac"
+            )
+        for (mime in audioMimes) {
+            assertEquals(true, slockFilePreviewIsAudioAttachment(fileName = "file.bin", mimeType = mime))
+            assertEquals(true, slockFilePreviewIsAudioAttachment(fileName = "file.bin", mimeType = "$mime; charset=binary"))
+        }
+
+        val audioExtensions =
+            listOf(
+                "mp3",
+                "wav",
+                "m4a",
+                "aac",
+                "ogg",
+                "oga",
+                "opus",
+                "weba",
+                "flac"
+            )
+        for (ext in audioExtensions) {
+            assertEquals(true, slockFilePreviewIsAudioAttachment(fileName = "track.$ext", mimeType = ""))
+            assertEquals(true, slockFilePreviewIsAudioAttachment(fileName = "track.${ext.uppercase()}?token=xyz", mimeType = "application/octet-stream"))
+        }
+
+        assertEquals(false, slockFilePreviewIsAudioAttachment(fileName = "clip.mp4", mimeType = "video/mp4"))
+        assertEquals(false, slockFilePreviewIsAudioAttachment(fileName = "archive.zip", mimeType = "application/zip"))
+        assertEquals(false, slockFilePreviewIsAudioAttachment(fileName = "doc.pdf", mimeType = "application/pdf"))
+    }
+
+    @Test
     fun mp3AudioClassifierAcceptsOnlyMp3ForMobilePreview() {
         // task #556: mp3 plays through the same player panel as mp4 video.
         assertEquals(true, slockFilePreviewIsMp3AudioAttachment(fileName = "song.mp3", mimeType = ""))
