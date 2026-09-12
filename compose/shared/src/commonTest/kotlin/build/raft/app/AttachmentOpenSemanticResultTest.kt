@@ -16,6 +16,7 @@ class AttachmentOpenSemanticResultTest {
             unableToDownloadAttachment = "无法下载附件",
             noAppCanOpenFile = "没有应用可以打开此文件",
             storageUnavailable = "存储空间不可用",
+            downloadFailed = "下载失败",
             unableToOpenAttachment = "无法打开附件"
         )
 
@@ -28,6 +29,7 @@ class AttachmentOpenSemanticResultTest {
         assertEquals("无法下载附件", slockAttachmentOpenResultMessage("missing", localizedTerms))
         assertEquals("没有应用可以打开此文件", slockAttachmentOpenResultMessage("no_app", localizedTerms))
         assertEquals("存储空间不可用", slockAttachmentOpenResultMessage("storage_failed", localizedTerms))
+        assertEquals("下载失败", slockAttachmentOpenResultMessage("download_failed", localizedTerms))
         assertEquals("无法打开附件", slockAttachmentOpenResultMessage("failed", localizedTerms))
         assertEquals("无法打开附件", slockAttachmentOpenResultMessage("unexpected", localizedTerms))
     }
@@ -36,6 +38,7 @@ class AttachmentOpenSemanticResultTest {
     fun diagnosticStatusAllowsOnlyFixedCategories() {
         assertEquals("opened", slockAttachmentOpenDiagnosticStatus(" OPENED "))
         assertEquals("failed", slockAttachmentOpenDiagnosticStatus("failed"))
+        assertEquals("download_failed", slockAttachmentOpenDiagnosticStatus("download_failed"))
         assertEquals("none", slockAttachmentOpenDiagnosticStatus(null))
         assertEquals("none", slockAttachmentOpenDiagnosticStatus(""))
         assertEquals("other", slockAttachmentOpenDiagnosticStatus("private-upstream-detail"))
@@ -198,6 +201,7 @@ class AttachmentOpenSemanticResultTest {
             "missing" to MR.strings.file_preview_error_download_attachment,
             "no_app" to MR.strings.file_preview_error_no_app,
             "storage_failed" to MR.strings.file_preview_error_storage_unavailable,
+            "download_failed" to MR.strings.file_preview_download_failed,
             "failed" to MR.strings.file_preview_error_open_attachment
         ).forEach { (status, expectedResource) ->
             assertEquals(
@@ -218,7 +222,7 @@ class AttachmentOpenSemanticResultTest {
 
     @Test
     fun threadOpenPreservesKnownSemanticStatusesAndFailsClosedOtherwise() {
-        listOf("opened", "cancelled", "save_cancelled", "missing", "no_app", "storage_failed").forEach { status ->
+        listOf("opened", "cancelled", "save_cancelled", "missing", "no_app", "storage_failed", "download_failed").forEach { status ->
             assertEquals(status, slockThreadAttachmentOpenStatus(status))
         }
         assertEquals("failed", slockThreadAttachmentOpenStatus("failed"))

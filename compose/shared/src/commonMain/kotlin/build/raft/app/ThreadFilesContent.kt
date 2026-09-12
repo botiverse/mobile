@@ -168,6 +168,7 @@ internal fun ThreadAttachmentOpenUiState?.threadAttachmentTerminalStatusResource
         "missing" -> MR.strings.file_preview_error_download_attachment
         "no_app" -> MR.strings.file_preview_error_no_app
         "storage_failed" -> MR.strings.file_preview_error_storage_unavailable
+        "download_failed" -> MR.strings.file_preview_download_failed
         "failed" -> MR.strings.file_preview_error_open_attachment
         else -> null
     }

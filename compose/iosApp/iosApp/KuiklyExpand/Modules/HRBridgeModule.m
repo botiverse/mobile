@@ -4106,9 +4106,18 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
             return;
         }
         if (![result.status isEqualToString:@"complete"]) {
+            NSString *errorKind = result.errorKind ?: @"";
+            BOOL storageFailure =
+                [errorKind isEqualToString:@"storage_write"] ||
+                [errorKind isEqualToString:@"storage_prepare"] ||
+                [errorKind isEqualToString:@"storage_publish"];
+            NSString *status = [result.status isEqualToString:@"cancelled"]
+                ? @"cancelled"
+                : (storageFailure ? @"storage_failed" : @"download_failed");
             [strongSelf slock_finishAttachmentExport:@{
-                @"status" : result.status ?: @"failed",
-                @"message" : result.message ?: @"Unable to download attachment"
+                @"status" : status,
+                @"message" : result.message ?: @"Unable to download attachment",
+                @"errorKind" : errorKind
             }];
             return;
         }

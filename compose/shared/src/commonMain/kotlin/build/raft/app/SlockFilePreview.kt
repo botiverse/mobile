@@ -1774,6 +1774,7 @@ private fun SlockFilePreviewStandalonePageContent() {
             unableToDownloadAttachment = unableToDownloadAttachment,
             noAppCanOpenFile = noAppCanOpenFile,
             storageUnavailable = storageUnavailable,
+            downloadFailed = downloadFailed,
             unableToOpenAttachment = unableToOpenAttachment
         )
     val imageEditorLoading = stringResource(MR.strings.file_preview_error_editor_loading)
@@ -2376,6 +2377,7 @@ private fun SlockFilePreviewStandalonePageContent() {
             }
             "no_app" -> slockAttachmentOpenResultMessage("no_app", attachmentOpenResultTerms)
             "storage_failed" -> slockAttachmentOpenResultMessage("storage_failed", attachmentOpenResultTerms)
+            "download_failed" -> slockAttachmentOpenResultMessage("download_failed", attachmentOpenResultTerms)
             else -> slockAttachmentOpenResultMessage("failed", attachmentOpenResultTerms)
         }
     }
@@ -2486,6 +2488,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                 } else {
                     result?.optString("message").orEmpty().ifBlank { storageUnavailable }
                 }
+            "download_failed" -> downloadFailed
             "permission_denied" -> imagePhotosPermissionDenied
             "permission_restricted" -> imagePhotosPermissionRestricted
             "unsupported_image" -> imagePhotosUnsupported
@@ -7878,6 +7881,7 @@ internal data class SlockAttachmentOpenResultTerms(
     val unableToDownloadAttachment: String,
     val noAppCanOpenFile: String,
     val storageUnavailable: String,
+    val downloadFailed: String,
     val unableToOpenAttachment: String
 )
 
@@ -7893,13 +7897,14 @@ internal fun slockAttachmentOpenResultMessage(
         "missing" -> terms.unableToDownloadAttachment
         "no_app" -> terms.noAppCanOpenFile
         "storage_failed" -> terms.storageUnavailable
+        "download_failed" -> terms.downloadFailed
         else -> terms.unableToOpenAttachment
     }
 
 internal fun slockAttachmentOpenDiagnosticStatus(status: String?): String {
     val normalized = status?.trim()?.lowercase().orEmpty()
     return when (normalized) {
-        "opened", "cancelled", "missing", "no_app", "storage_failed", "failed" -> normalized
+        "opened", "cancelled", "missing", "no_app", "storage_failed", "download_failed", "failed" -> normalized
         "" -> "none"
         else -> "other"
     }
