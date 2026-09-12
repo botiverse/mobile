@@ -143,10 +143,6 @@ kotlin {
                 // Unified network infra (task #12): all platforms' HTTP goes
                 // through NetworkKMM behind the SlockHttpExecutor seam.
                 implementation("com.tencent.kuiklybase:network:0.1.0-raft.37")
-                implementation("build.raft.mermaid:mermaid-core:0.1.2")
-                implementation("build.raft.mermaid:mermaid-layout-api:0.1.2")
-                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.2")
-                implementation("build.raft.mermaid:mermaid-kuikly:0.1.2")
             }
         }
         val commonTest by getting {
@@ -178,6 +174,10 @@ kotlin {
                     isChanging = true
                 }
                 implementation("app.cash.sqldelight:android-driver:2.1.0")
+                implementation("build.raft.mermaid:mermaid-core:0.1.2")
+                implementation("build.raft.mermaid:mermaid-layout-api:0.1.2")
+                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.2")
+                implementation("build.raft.mermaid:mermaid-kuikly:0.1.2")
             }
         }
         val androidUnitTest by getting {
@@ -204,6 +204,10 @@ kotlin {
             iosSimulatorArm64Main.dependsOn(this)
             dependencies {
                 implementation("app.cash.sqldelight:native-driver:2.1.0")
+                implementation("build.raft.mermaid:mermaid-core:0.1.2")
+                implementation("build.raft.mermaid:mermaid-layout-api:0.1.2")
+                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.2")
+                implementation("build.raft.mermaid:mermaid-kuikly:0.1.2")
             }
         }
         val iosX64Test by getting
