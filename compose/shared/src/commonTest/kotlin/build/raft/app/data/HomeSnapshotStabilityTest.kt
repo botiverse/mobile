@@ -95,6 +95,112 @@ class HomeSnapshotStabilityTest {
         assertSame(priorDm, result.directMessages.single())
     }
 
+    @Test
+    fun preserveStableRowsRejectsPreviewInheritanceAcrossDifferentServers() {
+        val priorDm = HomeDirectMessageRow(
+            threadId = ThreadId("shared-key"),
+            channelId = ChannelId("shared-key"),
+            name = "Alice",
+            lastMessagePreview = "Secret server 1 preview",
+            lastMessageSenderName = "Alice",
+            lastMessageId = MessageId("msg-1"),
+            lastMessageAt = "12:00"
+        )
+        val priorChannel = HomeChannelRow(
+            threadId = ThreadId("general"),
+            channelId = ChannelId("general"),
+            name = "general",
+            lastMessagePreview = "Secret channel preview"
+        )
+        val priorSnapshot = sampleHome().copy(
+            server = ServerSummary(ServerId("server-1"), "Server 1"),
+            channels = listOf(priorChannel),
+            directMessages = listOf(priorDm)
+        )
+
+        val incomingDm = HomeDirectMessageRow(
+            threadId = ThreadId("shared-key"),
+            channelId = ChannelId("shared-key"),
+            name = "Alice",
+            lastMessagePreview = null
+        )
+        val incomingChannel = HomeChannelRow(
+            threadId = ThreadId("general"),
+            channelId = ChannelId("general"),
+            name = "general",
+            lastMessagePreview = null
+        )
+        val incomingSnapshot = sampleHome().copy(
+            server = ServerSummary(ServerId("server-2"), "Server 2"),
+            channels = listOf(incomingChannel),
+            directMessages = listOf(incomingDm)
+        )
+
+        val result = incomingSnapshot.preserveStableRowsFrom(priorSnapshot)
+        assertNull(result.directMessages.single().lastMessagePreview)
+        assertNull(result.channels.single().lastMessagePreview)
+        assertSame(incomingSnapshot, result)
+    }
+
+    @Test
+    fun preserveStableRowsRejectsPreviewInheritanceAcrossDifferentPrincipals() {
+        val priorDm = HomeDirectMessageRow(
+            threadId = ThreadId("shared-key"),
+            channelId = ChannelId("shared-key"),
+            name = "Alice",
+            lastMessagePreview = "Confidential user 1 preview",
+            lastMessageSenderName = "Alice",
+            lastMessageId = MessageId("msg-1"),
+            lastMessageAt = "12:00"
+        )
+        val priorChannel = HomeChannelRow(
+            threadId = ThreadId("general"),
+            channelId = ChannelId("general"),
+            name = "general",
+            lastMessagePreview = "User 1 channel preview"
+        )
+        val priorSnapshot = sampleHome().copy(
+            currentMember = MemberProfile(
+                id = MemberId("user-1"),
+                displayName = "User 1",
+                handle = "u1",
+                kind = MemberKind.Human,
+                presence = Presence.Active
+            ),
+            channels = listOf(priorChannel),
+            directMessages = listOf(priorDm)
+        )
+
+        val incomingDm = HomeDirectMessageRow(
+            threadId = ThreadId("shared-key"),
+            channelId = ChannelId("shared-key"),
+            name = "Alice",
+            lastMessagePreview = null
+        )
+        val incomingChannel = HomeChannelRow(
+            threadId = ThreadId("general"),
+            channelId = ChannelId("general"),
+            name = "general",
+            lastMessagePreview = null
+        )
+        val incomingSnapshot = sampleHome().copy(
+            currentMember = MemberProfile(
+                id = MemberId("user-2"),
+                displayName = "User 2",
+                handle = "u2",
+                kind = MemberKind.Human,
+                presence = Presence.Active
+            ),
+            channels = listOf(incomingChannel),
+            directMessages = listOf(incomingDm)
+        )
+
+        val result = incomingSnapshot.preserveStableRowsFrom(priorSnapshot)
+        assertNull(result.directMessages.single().lastMessagePreview)
+        assertNull(result.channels.single().lastMessagePreview)
+        assertSame(incomingSnapshot, result)
+    }
+
     private fun sampleHome(): HomeSnapshot =
         HomeSnapshot(
             server = ServerSummary(ServerId("server-1"), "Slock"),

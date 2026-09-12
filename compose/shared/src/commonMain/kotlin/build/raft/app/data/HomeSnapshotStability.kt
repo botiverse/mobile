@@ -2,6 +2,10 @@ package build.raft.app.data
 
 internal fun HomeSnapshot.preserveStableRowsFrom(previous: HomeSnapshot?): HomeSnapshot {
     previous ?: return this
+    if (this === previous) return this
+    if (previous.server.id != this.server.id || previous.currentMember.id != this.currentMember.id) {
+        return this
+    }
     val previousChannelsByKey = previous.channels.associateBy { it.homeRowKey() }
     val channelsWithMergedPreview = channels.map { incoming ->
         incoming.preserveStablePreviewFrom(previousChannelsByKey[incoming.homeRowKey()])

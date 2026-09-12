@@ -1657,6 +1657,53 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun serverSwitchDoesNotLeakDirectMessagePreviewAcrossServersWithIdenticalRowKey() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val api = RecordingHomeApi()
+        val server1Home =
+            sampleHome(ServerId("server-1")).copy(
+                directMessages = listOf(
+                    directMessage("shared-dm", "Alice", "member-2", Presence.Active).copy(
+                        lastMessagePreview = "Secret preview on server 1"
+                    )
+                )
+            )
+        val server2Home =
+            sampleHome(ServerId("server-2")).copy(
+                directMessages = listOf(
+                    directMessage("shared-dm", "Alice", "member-2", Presence.Active).copy(
+                        lastMessagePreview = null
+                    )
+                )
+            )
+        val dataSource = SharedHomeDataSource(
+            sessionStore = sessionStore,
+            api = api,
+            parseHome = { payload, _ ->
+                val snapshot = if (payload.serverId.value == "server-2") server2Home else server1Home
+                DataResult.Content(snapshot)
+            }
+        )
+        val store = SharedHomeStore(
+            authStore = sessionStore,
+            dataSource = dataSource,
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+        val initialDm = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages.single()
+        assertEquals("Secret preview on server 1", initialDm.lastMessagePreview)
+
+        store.accept(SharedHomeIntent.SelectServer("server-2"))
+
+        val content = store.state.value.content as SharedHomeContentState.Content
+        assertEquals("server-2", content.snapshot.server.id.value)
+        val server2Dm = content.snapshot.directMessages.single()
+        assertNull(server2Dm.lastMessagePreview)
+        scope.cancel()
+    }
+
+    @Test
     fun heartbeatDoesNotReloadOrWriteVisibleHomeSnapshot() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
