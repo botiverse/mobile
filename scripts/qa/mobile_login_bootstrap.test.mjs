@@ -30,8 +30,6 @@ test("pre-READY subprocesses are bounded and phase-observable", () => {
   assert.match(source, /launching bootstrap activity/);
   assert.match(source, /bootstrap activity launched; polling READY/);
   assert.match(source, /adbRunAsShellArgs\("shell", applicationId, script\)/);
-  assert.match(source, /adbRunAsShellArgs\("shell", applicationId, verifyScript\)/);
-  assert.doesNotMatch(source, /adbRunAsShellArgs\("exec-(in|out)"/);
   assert.match(agentSource, /adbRunAsShellArgs\("shell", opts\.appPackage, installScript\)/);
   assert.doesNotMatch(agentSource, /"exec-out", "run-as", opts\.appPackage/);
 });

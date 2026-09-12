@@ -173,7 +173,16 @@ function installPrivateEnvelope(applicationId, requestId, bytes) {
   const verifyOut = verify.stdout;
   if (verify.status !== 0 || !verifyOut.includes("VERIFY_OK")) {
     const failLine = verifyOut.match(/VERIFY_FAIL[^\r\n]*/)?.[0];
-    throw new Error(`private envelope verify ${failLine ? `failed: ${failLine}` : "did not run to its end (neither VERIFY_OK nor VERIFY_FAIL)"}; status=${verify.status} stdout=${JSON.stringify(verifyOut.trim()).slice(0, 1500)} stderr=${JSON.stringify(verify.stderr.trim()).slice(0, 500)}`);
+    // Three branches, each named for what was actually observed (LiBai):
+    // a VERIFY_FAIL line = checks failed; VERIFY_OK present but a non-zero
+    // status = the script passed its checks and then exited non-zero; neither
+    // sentinel = the script did not run to its end.
+    const branch = failLine
+      ? `failed: ${failLine}`
+      : verifyOut.includes("VERIFY_OK")
+        ? `printed VERIFY_OK but the shell channel returned status ${verify.status}`
+        : "did not run to its end (neither VERIFY_OK nor VERIFY_FAIL)";
+    throw new Error(`private envelope verify ${branch}; status=${verify.status} stdout=${JSON.stringify(verifyOut.trim()).slice(0, 1500)} stderr=${JSON.stringify(verify.stderr.trim()).slice(0, 500)}`);
   }
   const facts = run("adb", ["shell", "am get-current-user; getprop ro.build.version.sdk; getprop ro.build.product; id"], { allowFailure: true }).stdout;
   console.log(`qa-login-bootstrap: envelope verified (VERIFY_OK, shell channel status=${verify.status})\n${verifyOut.trim().slice(0, 3000)}\ndevice: ${facts.trim().split("\n").join(" | ")}`);
