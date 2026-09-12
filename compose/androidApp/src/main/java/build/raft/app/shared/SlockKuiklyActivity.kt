@@ -8489,12 +8489,12 @@ internal class SlockKuiklyBridgeModule(
 
 private class AttachmentDownloadStoppedException : RuntimeException()
 
-private class AttachmentDownloadFailedException(
+internal class AttachmentDownloadFailedException(
         val errorKind: String?,
         message: String
 ) : RuntimeException(message)
 
-private fun attachmentDownloadFailurePayload(
+internal fun attachmentDownloadFailurePayload(
         failure: AttachmentDownloadFailedException
 ): Map<String, Any> {
     val storageFailure =

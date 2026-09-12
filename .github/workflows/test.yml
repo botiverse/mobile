@@ -75,6 +75,9 @@ jobs:
       - name: Validate OHOS attachment-open diagnostic production wiring
         run: node compose/ohosApp/scripts/test_attachment_open_diagnostics_source_contract.mjs
 
+      - name: Validate attachment save failure mapping across native bridges
+        run: python3 scripts/ci/test_attachment_save_mapping_contract.py
+
       - name: Validate Kuikly immutable-Raft consumer contract
         run: python3 scripts/ci/test_kuikly_raft_consumer_contract.py
 
