@@ -43,7 +43,10 @@ class QaSessionBootstrapActivity : ComponentActivity() {
                     " uid=${android.os.Process.myUid()}" +
                     " user=${android.os.Process.myUserHandle().hashCode()}" +
                     " path=${java.io.File(inbox, "$requestId.session").absolutePath}" +
-                    " inboxExists=${inbox.exists()}",
+                    " inboxExists=${inbox.exists()}" +
+                    // Names only (request ids), never contents: is the file the harness
+                    // verified through run-as visible to THIS process before consume?
+                    " inboxEntries=${inbox.list()?.joinToString(",") ?: "null"}",
             )
         }
         lifecycleScope.launch {
