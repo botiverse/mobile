@@ -155,6 +155,15 @@ internal sealed interface AttachmentPreviewContent {
         val rowCount: Int,
         val columnCount: Int,
     ) : AttachmentPreviewContent
+    /**
+     * Bounded server-parsed XLSX preview (web #7168 contract): first row is the header,
+     * middle empty rows retain their position, formulas/macros are not evaluated.
+     */
+    data class Xlsx(
+        val sheets: List<XlsxSheetPreview>,
+        val sheetCount: Int,
+        val truncated: Boolean,
+    ) : AttachmentPreviewContent
     data class Diff(
         val files: Int,
         val hunks: Int,
@@ -172,6 +181,15 @@ internal data class AttachmentPreview(
     val isOk: Boolean
         get() = status == "ok"
 }
+
+internal data class XlsxSheetPreview(
+    val name: String,
+    val headers: List<String>,
+    val rows: List<List<String>>,
+    val rowCount: Int,
+    val columnCount: Int,
+    val truncated: Boolean,
+)
 internal data class MessageSearchPage(val resultCount: Int, val hasMore: Boolean)
 internal data class MessageContextSummary(
     val channelId: String,
@@ -270,8 +288,22 @@ private data class AttachmentPreviewDataDto(
     val rows: List<List<String>>? = null,
     val rowCount: Int? = null,
     val columnCount: Int? = null,
+    // xlsx
+    val sheets: List<XlsxSheetPreviewDto>? = null,
+    val sheetCount: Int? = null,
     // diff
     val stats: AttachmentPreviewDiffStatsDto? = null,
+    val truncated: Boolean? = null,
+)
+
+@Serializable
+private data class XlsxSheetPreviewDto(
+    val name: String? = null,
+    val headers: List<String>? = null,
+    val rows: List<List<String>>? = null,
+    val rowCount: Int? = null,
+    val columnCount: Int? = null,
+    val truncated: Boolean? = null,
 )
 
 @Serializable
@@ -311,9 +343,35 @@ private fun AttachmentPreviewDataDto.toAttachmentPreviewContent(): AttachmentPre
                 additions = stats?.additions ?: 0,
                 deletions = stats?.deletions ?: 0,
             )
+        "xlsx" -> {
+            val parsedSheets = sheets?.mapNotNull { it.toXlsxSheetPreview() }.orEmpty()
+            if (parsedSheets.isEmpty()) {
+                // A sheet-less xlsx payload is not renderable; fall back to the legacy path.
+                null
+            } else {
+                AttachmentPreviewContent.Xlsx(
+                    sheets = parsedSheets,
+                    sheetCount = sheetCount ?: parsedSheets.size,
+                    truncated = truncated ?: false,
+                )
+            }
+        }
         "pdf" -> AttachmentPreviewContent.Pdf
         else -> null
     }
+
+private fun XlsxSheetPreviewDto.toXlsxSheetPreview(): XlsxSheetPreview? {
+    val sheetName = name?.takeIf { it.isNotBlank() } ?: return null
+    val sheetHeaders = headers ?: return null
+    return XlsxSheetPreview(
+        name = sheetName,
+        headers = sheetHeaders,
+        rows = rows.orEmpty(),
+        rowCount = rowCount ?: rows.orEmpty().size,
+        columnCount = columnCount ?: sheetHeaders.size,
+        truncated = truncated ?: false,
+    )
+}
 
 @Serializable
 private data class AttachmentHtmlPreviewUrlDto(

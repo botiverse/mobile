@@ -1080,6 +1080,7 @@
     <string name="file_preview_hidden">预览已隐藏</string>
     <string name="file_preview_image">图片预览</string>
     <string name="file_preview_text">文本预览</string>
+    <string name="file_preview_xlsx">表格预览</string>
     <string name="file_preview_markdown">Markdown 预览</string>
     <string name="file_preview_markdown_unavailable">Markdown 预览不可用</string>
     <string name="file_preview_html">HTML 预览</string>

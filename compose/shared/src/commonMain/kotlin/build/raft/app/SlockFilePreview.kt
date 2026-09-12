@@ -133,6 +133,7 @@ import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.launch
@@ -1390,6 +1391,8 @@ internal data class SlockFilePreviewPayload(
     val content: String = "",
     val markdown: Boolean = false,
     val imageUrl: String? = null,
+    /** task #351: serialized [SlockFilePreviewXlsxCarrier] payload for the xlsx preview panel. */
+    val xlsxSheetsJson: String = "",
     val message: String = "",
     val messageDesc: StringDesc? = MR.strings.file_preview_no_preview.desc(),
     val error: String? = null,
@@ -5780,16 +5783,24 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
                 fileName = previewFileName,
                 mimeType = externalMimeType
             )
+    val wantsXlsx =
+        requestedKind == "xlsx" ||
+            slockFilePreviewIsXlsxAttachment(
+                fileName = previewFileName,
+                mimeType = externalMimeType
+            )
     val wantsText =
         requestedKind == "text" ||
             (!wantsMarkdown &&
             !wantsHtml &&
+            !wantsXlsx &&
             slockFilePreviewIsTextLikeAttachment(
                 fileName = name.ifBlank { path.ifBlank { externalFileName } },
                 mimeType = externalMimeType
             ))
     return when {
         wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient, truncatedPreviewHint)
+        wantsXlsx -> loadThreadXlsxAttachmentPreview(networkClient)
         wantsImage -> loadThreadImageAttachmentPreview(threadApi)
         wantsVideo -> loadThreadVideoAttachmentPreview(threadApi)
         wantsMp3Audio -> loadThreadVideoAttachmentPreview(threadApi, title = MR.strings.file_preview_audio.desc(), audioOnly = true)
@@ -6077,6 +6088,79 @@ private suspend fun SlockFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
     )
 }
 
+/** task #351: server-parsed XLSX preview (web #7168 contract). Reuses the shared
+ * `attachments/:id/preview` endpoint; the payload carries the bounded sheets as JSON. */
+private suspend fun SlockFilePreviewPayload.loadThreadXlsxAttachmentPreview(
+    networkClient: SlockNetworkClient,
+): SlockFilePreviewPayload {
+    val serverPreview = fetchServerAttachmentPreview(networkClient, attachmentId)
+    val xlsx = serverPreview?.content as? AttachmentPreviewContent.Xlsx
+    if (xlsx != null) {
+        return copy(
+            kind = "xlsx",
+            titleDesc = MR.strings.file_preview_xlsx.desc(),
+            content = "",
+            markdown = false,
+            message = "",
+            messageDesc = null,
+            error = null,
+            xlsxSheetsJson = encodeSlockFilePreviewXlsx(xlsx),
+        )
+    }
+    return copy(
+        kind = "unsupported",
+        titleDesc = MR.strings.file_preview_title.desc(),
+        message = "",
+        messageDesc = MR.strings.file_preview_no_preview.desc(),
+        error = null,
+    )
+}
+
+@Serializable
+internal data class SlockFilePreviewXlsxSheetCarrier(
+    val name: String,
+    val headers: List<String>,
+    val rows: List<List<String>>,
+    val rowCount: Int,
+    val columnCount: Int,
+    val truncated: Boolean,
+)
+
+@Serializable
+internal data class SlockFilePreviewXlsxCarrier(
+    val sheets: List<SlockFilePreviewXlsxSheetCarrier>,
+    val sheetCount: Int,
+    val truncated: Boolean,
+)
+
+internal fun encodeSlockFilePreviewXlsx(xlsx: AttachmentPreviewContent.Xlsx): String =
+    runCatching {
+        SlockFilePreviewJson.encodeToString(
+            SlockFilePreviewXlsxCarrier.serializer(),
+            SlockFilePreviewXlsxCarrier(
+                sheets =
+                    xlsx.sheets.map { sheet ->
+                        SlockFilePreviewXlsxSheetCarrier(
+                            name = sheet.name,
+                            headers = sheet.headers,
+                            rows = sheet.rows,
+                            rowCount = sheet.rowCount,
+                            columnCount = sheet.columnCount,
+                            truncated = sheet.truncated,
+                        )
+                    },
+                sheetCount = xlsx.sheetCount,
+                truncated = xlsx.truncated,
+            )
+        )
+    }.getOrDefault("")
+
+internal fun parseSlockFilePreviewXlsx(json: String): SlockFilePreviewXlsxCarrier? =
+    runCatching {
+        SlockFilePreviewJson.decodeFromString(SlockFilePreviewXlsxCarrier.serializer(), json)
+    }.getOrNull()
+
+
 private suspend fun SlockFilePreviewPayload.threadAttachmentExternalUrl(
     threadApi: SlockThreadApiClient
 ): String? {
@@ -6145,6 +6229,16 @@ internal fun slockFilePreviewIsHtmlAttachment(fileName: String, mimeType: String
     return normalizedMime.equals("text/html", ignoreCase = true) ||
         normalizedName.endsWith(".html", ignoreCase = true) ||
         normalizedName.endsWith(".htm", ignoreCase = true)
+}
+
+/** task #351: server-parsed XLSX preview applies to the zip-based xlsx/xlsm family only
+ * (web #7168 contract; legacy .xls and ODS stay on the download fallback). */
+internal fun slockFilePreviewIsXlsxAttachment(fileName: String, mimeType: String): Boolean {
+    val normalizedMime = mimeType.substringBefore(';').trim().lowercase()
+    val normalizedName = fileName.substringBefore('?').substringBefore('#')
+    return normalizedName.endsWith(".xlsx", ignoreCase = true) ||
+        normalizedName.endsWith(".xlsm", ignoreCase = true) ||
+        normalizedMime == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 }
 
 internal enum class SlockPreviewableVideoContainer {
@@ -6486,6 +6580,36 @@ internal fun SlockFilePreviewPayloadContent(
                     showChrome = false
                 )
             }
+        "xlsx" -> {
+            val xlsxCarrier = remember(payload.xlsxSheetsJson) { parseSlockFilePreviewXlsx(payload.xlsxSheetsJson) }
+            SlockFilePreviewDownloadStatusOverlay(
+                statusLabel = downloadStatusLabel,
+                showProgress = downloadInProgress,
+                progressPercent = downloadProgressPercent,
+                downloadPaused = downloadPaused,
+                onToggleDownload = onToggleDownload,
+                onStopDownload = onStopDownload,
+                modifier = modifier.fillMaxSize()
+            ) {
+                if (xlsxCarrier != null && xlsxCarrier.sheets.isNotEmpty()) {
+                    SlockFilePreviewXlsxPanel(
+                        name = payload.name.ifBlank { payload.path },
+                        meta = payload.meta,
+                        sheets = xlsxCarrier.sheets,
+                        truncated = xlsxCarrier.truncated,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    SlockFilePreviewGenericCard(
+                        iconName = SlockLucideIconName.FileSpreadsheet,
+                        name = payload.name.ifBlank { payload.path },
+                        meta = payload.meta,
+                        message = payload.localizedMessage().ifBlank { stringResource(MR.strings.file_preview_no_preview) },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+        }
         "image" ->
             SlockFilePreviewImageGallerySurface(
                 payload = payload,
@@ -8755,6 +8879,149 @@ internal fun SlockFilePreviewTextPanel(
                 maxLines = 28,
                 overflow = TextOverflow.Ellipsis
             )
+        }
+    }
+}
+
+@Composable
+internal fun SlockFilePreviewXlsxPanel(
+    name: String,
+    meta: String,
+    sheets: List<SlockFilePreviewXlsxSheetCarrier>,
+    truncated: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    var selectedSheetName by remember(sheets) { mutableStateOf(sheets.firstOrNull()?.name.orEmpty()) }
+    val selectedSheet =
+        remember(sheets, selectedSheetName) {
+            sheets.firstOrNull { it.name == selectedSheetName } ?: sheets.firstOrNull()
+        }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+    ) {
+        SlockFilePreviewPanelHeader(
+            name = name.ifBlank { stringResource(MR.strings.file_preview_fallback_file) },
+            meta = meta,
+            statusLabel = null
+        )
+        if (sheets.size > 1) {
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .background(SlockColor.SurfaceCream)
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            ) {
+                sheets.forEach { sheet ->
+                    val selected = sheet.name == selectedSheet?.name
+                    Box(
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .background(if (selected) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
+                                .border(
+                                    width = if (selected) SlockStroke.Default else SlockStroke.Thin,
+                                    color = SlockColor.BorderBlack
+                                )
+                                .clickable { selectedSheetName = sheet.name }
+                                .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Sm)
+                    ) {
+                        Text(
+                            text = sheet.name,
+                            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        if (selectedSheet == null) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 280.dp, max = 560.dp)
+                        .background(SlockColor.SurfaceCream)
+                        .padding(SlockSpacing.Sm)
+            ) {
+                Text(
+                    text = stringResource(MR.strings.file_preview_no_preview),
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextMutedGray
+                )
+            }
+        } else {
+            val columnCount = selectedSheet.columnCount.coerceIn(1, 20)
+            LazyColumn(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 280.dp, max = 560.dp)
+                        .background(SlockColor.SurfaceCream),
+                contentPadding = PaddingValues(SlockSpacing.Sm)
+            ) {
+                item(key = "xlsx-header") {
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        repeat(columnCount) { column ->
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .weight(1f)
+                                        .background(SlockColor.SurfaceWhite)
+                                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                                        .padding(horizontal = SlockSpacing.Xs, vertical = SlockSpacing.Sm)
+                            ) {
+                                Text(
+                                    text = selectedSheet.headers.getOrNull(column).orEmpty(),
+                                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold),
+                                    color = SlockColor.TextBlack,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+                items(selectedSheet.rows.size, key = { index -> "xlsx-row-$index" }) { rowIndex ->
+                    val row = selectedSheet.rows.getOrNull(rowIndex).orEmpty()
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        repeat(columnCount) { column ->
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .weight(1f)
+                                        .background(SlockColor.SurfaceWhite)
+                                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                                        .padding(horizontal = SlockSpacing.Xs, vertical = SlockSpacing.Sm)
+                            ) {
+                                Text(
+                                    text = row.getOrNull(column).orEmpty(),
+                                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                                    color = SlockColor.TextBlack,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+                if (truncated || selectedSheet.truncated) {
+                    item(key = "xlsx-truncated-hint") {
+                        Text(
+                            text = stringResource(MR.strings.file_preview_truncated_open_with_hint),
+                            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                            color = SlockColor.TextMutedGray,
+                            modifier = Modifier.padding(top = SlockSpacing.Sm)
+                        )
+                    }
+                }
+            }
         }
     }
 }
