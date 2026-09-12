@@ -7131,17 +7131,12 @@ internal class SlockKuiklyBridgeModule(
                                                     }
                                     if (preparationAttempt.isFailure) {
                                         val throwable = preparationAttempt.exceptionOrNull()
+                                        val payload = attachmentSavePreparationFailurePayload(throwable)
                                         SlockAppLog.record(
                                                 "SlockAttachmentExport",
-                                                "phase=download status=failed type=${throwable?.javaClass?.simpleName}"
+                                                "phase=download status=${payload["status"]} type=${throwable?.javaClass?.simpleName}"
                                         )
-                                        return@withIdentityLock mapOf(
-                                                "status" to "download_failed",
-                                                "cached" to false,
-                                                "message" to (throwable?.message
-                                                        ?: throwable?.javaClass?.simpleName
-                                                        ?: "Attachment download failed")
-                                        )
+                                        return@withIdentityLock payload
                                     }
                                     val preparation = preparationAttempt.getOrThrow()
                                     when (preparation) {
@@ -8487,12 +8482,31 @@ internal class SlockKuiklyBridgeModule(
     }
 }
 
-private class AttachmentDownloadStoppedException : RuntimeException()
+internal class AttachmentDownloadStoppedException : RuntimeException()
 
 internal class AttachmentDownloadFailedException(
         val errorKind: String?,
         message: String
 ) : RuntimeException(message)
+
+internal fun attachmentSavePreparationFailurePayload(
+        throwable: Throwable?
+): Map<String, Any> =
+        when (throwable) {
+            is AttachmentDownloadStoppedException ->
+                    mapOf(
+                            "status" to "cancelled",
+                            "cached" to false,
+                            "message" to (throwable.message ?: "Download stopped")
+                    )
+            is AttachmentDownloadFailedException -> attachmentDownloadFailurePayload(throwable)
+            else ->
+                    mapOf(
+                            "status" to "storage_failed",
+                            "cached" to false,
+                            "message" to "Unable to prepare attachment storage"
+                    )
+        }
 
 internal fun attachmentDownloadFailurePayload(
         failure: AttachmentDownloadFailedException

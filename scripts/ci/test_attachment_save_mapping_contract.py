@@ -14,6 +14,9 @@ retry affordance.
 The Android mapping additionally has an executable JVM regression:
   compose/androidApp/src/test/java/build/raft/app/shared/
       AttachmentDownloadFailurePayloadTest.kt
+and a wrapper-level regression:
+  compose/androidApp/src/test/java/build/raft/app/shared/
+      AttachmentSavePreparationFailurePayloadTest.kt
 This source contract locks the production mapping expressions on all three
 hosts so the iOS/OHOS bridges (which are not JVM-unit-testable here) still fail
 closed when the mapping drifts.
@@ -44,6 +47,8 @@ MARKERS = {
         'if (storageFailure) "storage_failed" else "download_failed"',
         '"status" to "cancelled"',
         '"message" to "Download stopped"',
+        'attachmentSavePreparationFailurePayload(throwable)',
+        'is AttachmentDownloadStoppedException ->',
     ],
     "ios": [
         'BOOL storageFailure =',
