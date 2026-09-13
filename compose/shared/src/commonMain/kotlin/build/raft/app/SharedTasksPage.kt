@@ -42,6 +42,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -86,6 +87,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.core.pager.Pager
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 private const val TasksListMaxBeyondBoundsItemCount = 4
 
@@ -524,6 +526,28 @@ private fun SharedTasksLoadedBodyContent(
         onDispose { latestOnListPositionSnapshot(listModeListState.toAppShellLazyListPosition()) }
     }
 
+    // Pagination sentinel (task #345): when the list-mode viewport scrolls near
+    // the end and another page is available, ask the host for it. Keyed on the
+    // list state and the current page's total/loading flags so it re-arms after
+    // each page lands; `shouldRequestNextTasksPage` is pure and unit-tested.
+    LaunchedEffect(listModeListState, listColumns, state.hasMore, state.loadingMore) {
+        val totalItems = listColumns.sumOf { if (it.status in collapsedStatuses) 0 else it.tasks.size }
+        snapshotFlow { listModeListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+            .distinctUntilChanged()
+            .collect { lastVisibleIndex ->
+                if (
+                    shouldRequestNextTasksPage(
+                        totalItems = totalItems,
+                        lastVisibleIndex = lastVisibleIndex,
+                        hasMore = state.hasMore,
+                        loadingMore = state.loadingMore
+                    )
+                ) {
+                    onIntent(SharedTasksRouteIntent.LoadMore)
+                }
+            }
+    }
+
     // Filter popover anchors. Resolved from each chip's live coordinates when opened.
     var channelAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     var creatorAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
@@ -718,6 +742,16 @@ private fun SharedTasksLoadedBodyContent(
                                     onLongPressTask = { task, anchor ->
                                         statusMenuTask = task
                                         statusMenuAnchor = anchor
+                                    },
+                                    onReachedEnd = {
+                                        // A column reaching its end means more
+                                        // global pages may add rows: request the
+                                        // next page. The host's single-flight
+                                        // LoadMore makes concurrent column
+                                        // triggers safe.
+                                        if (state.hasMore && !state.loadingMore) {
+                                            onIntent(SharedTasksRouteIntent.LoadMore)
+                                        }
                                     },
                                     bottomContentPadding = bottomContentPadding,
                                     draftProjection = draftProjection,
@@ -985,6 +1019,30 @@ internal fun sharedTasksLazyItemCount(
 internal fun sharedTasksBeyondBoundsItemCount(itemCount: Int): Int =
     itemCount.coerceAtLeast(0).coerceAtMost(TasksListMaxBeyondBoundsItemCount)
 
+/**
+ * How close (in items) to the end the list must scroll before the next page is
+ * requested (task #345). Small enough to feel seamless, large enough that a
+ * fast flick still triggers before the user hits the bottom.
+ */
+internal const val SharedTasksLoadMoreThreshold = 5
+
+/**
+ * Whether scrolling to [lastVisibleIndex] over [totalItems] items should request
+ * the next page. Pure so it can be unit-tested: requests when a page is
+ * available, not already loading, and the visible window has reached the
+ * threshold. A single-item/short list always qualifies (index 0 over <threshold
+ * items).
+ */
+internal fun shouldRequestNextTasksPage(
+    totalItems: Int,
+    lastVisibleIndex: Int,
+    hasMore: Boolean,
+    loadingMore: Boolean,
+): Boolean {
+    if (!hasMore || loadingMore || totalItems <= 0) return false
+    return totalItems - 1 - lastVisibleIndex < SharedTasksLoadMoreThreshold
+}
+
 private fun defaultTasksViewMode(maxWidth: Dp): TasksViewMode =
     if (maxWidth < 768.dp) TasksViewMode.List else TasksViewMode.Board
 
@@ -1178,6 +1236,7 @@ private fun SharedTasksBoardColumn(
     bottomContentPadding: Dp,
     draftProjection: SharedThreadComposerDraftProjection,
     scrollToTopRequest: Int,
+    onReachedEnd: () -> Unit,
 ) {
     val columnListState = rememberLazyListState()
     val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
@@ -1185,6 +1244,20 @@ private fun SharedTasksBoardColumn(
         if (scrollToTopRequestFence.consume(scrollToTopRequest) && !collapsed) {
             columnListState.animateScrollToTopExpressive()
         }
+    }
+    // Board pagination sentinel (#345): the board has no single list state, so
+    // each column reports when its own viewport reaches the end. The host
+    // guards with the shared single-flight predicate, so only one request is in
+    // flight regardless of how many columns fire.
+    LaunchedEffect(columnListState, tasks.size, collapsed) {
+        if (collapsed) return@LaunchedEffect
+        snapshotFlow { columnListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+            .distinctUntilChanged()
+            .collect { lastVisibleIndex ->
+                if (lastVisibleIndex >= 0 && lastVisibleIndex >= tasks.lastIndex - SharedTasksLoadMoreThreshold) {
+                    onReachedEnd()
+                }
+            }
     }
     // fillMaxHeight pins each board column to the LazyRow's height, giving the inner
     // LazyColumn a bounded constraint to scroll within. Without this, the inner list
