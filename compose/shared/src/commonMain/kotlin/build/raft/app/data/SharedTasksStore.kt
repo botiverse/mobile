@@ -74,6 +74,19 @@ data class TasksUiState(
     val nextCursor: String? = null,
     val hasMore: Boolean = false,
     val loadingMore: Boolean = false,
+    val loadMoreErrorCode: String? = null,
+    // Per-status pagination (task #363): independent cursor/hasMore per status
+    // column. Consulted ONLY in per-status mode; the global triple above stays
+    // the authoritative walk for the default (non-per-status) path, so #345's
+    // behaviour is unchanged when this map is unused.
+    val statusPages: Map<TaskStatus, TasksStatusPageState> = emptyMap()
+)
+
+/** One status column's independent pagination position (task #363). */
+data class TasksStatusPageState(
+    val nextCursor: String? = null,
+    val hasMore: Boolean = false,
+    val loadingMore: Boolean = false,
     val loadMoreErrorCode: String? = null
 )
 
@@ -189,6 +202,24 @@ sealed interface SharedTasksIntent {
         val errorCode: String,
         val invalidCursor: Boolean = false
     ) : SharedTasksIntent
+
+    /** Per-status pagination (task #363): request one more page for [status]. */
+    data class LoadMoreStatus(val status: TaskStatus) : SharedTasksIntent
+
+    /** One status column's next page was appended (task #363). */
+    data class LoadMoreStatusSucceeded(
+        val status: TaskStatus,
+        val tasks: List<TaskSummary>,
+        val nextCursor: String?
+    ) : SharedTasksIntent
+
+    /** One status column's page failed (task #363): fail-open for THAT column only
+     *  — other columns' cursors are untouched. */
+    data class LoadMoreStatusFailed(
+        val status: TaskStatus,
+        val errorCode: String,
+        val invalidCursor: Boolean = false
+    ) : SharedTasksIntent
 }
 
 sealed interface SharedTasksRouteIntent {
@@ -205,6 +236,8 @@ sealed interface SharedTasksRouteIntent {
     data object ClearNavigationError : SharedTasksRouteIntent
     /** Pagination (task #345): follow the server cursor for the current filter. */
     data object LoadMore : SharedTasksRouteIntent
+    /** Per-status pagination (task #363): follow ONE status column's cursor. */
+    data class LoadMoreStatus(val status: TaskStatus) : SharedTasksRouteIntent
     data class SeedContent(val snapshot: TaskSnapshot) : SharedTasksRouteIntent
 
     /**
@@ -284,6 +317,10 @@ internal class SharedTasksViewModel(
     private var createJob: Job? = null
 
     private var loadMoreJob: Job? = null
+
+    /** Per-status single-flight (task #363): one in-flight page per status column,
+     *  mirroring the global [loadMoreJob] gate. Columns never block each other. */
+    private val statusLoadJobs = mutableMapOf<TaskStatus, Job>()
 
     /**
      * Follow the server cursor for one more page (task #345). Single-flight and
@@ -370,6 +407,81 @@ internal class SharedTasksViewModel(
             }
     }
 
+    /**
+     * Follow ONE status column's cursor for one more page (task #363). Mirrors
+     * [loadMore] exactly — same owner/server fence, same fail-open semantics —
+     * but is scoped to a single status: it reads/writes only `statusPages[status]`
+     * and its own single-flight job, so concurrent columns cannot interfere and a
+     * stale page from one column can never advance another's cursor.
+     */
+    private fun loadMoreStatus(status: TaskStatus) {
+        val current = state.value
+        val page = current.statusPages[status] ?: TasksStatusPageState()
+        val cursor = page.nextCursor
+        if (scope != SharedTasksScope.Server || !page.hasMore || cursor == null ||
+            page.loadingMore || statusLoadJobs[status]?.isActive == true
+        ) {
+            return
+        }
+        statusLoadJobs[status] =
+            runtimeScope.launch {
+                diagnosticsLogger("tasks_load_more_status_start status=${status.name}")
+                val requestServerId = useCase.currentServerId()?.value
+                val requestOwner = sharedTasksDataStore?.currentOwnerSnapshot()
+                store.accept(SharedTasksIntent.LoadMoreStatus(status))
+                val result = useCase.loadServerTasksPage(
+                    limit = TASKS_SERVER_PAGE_LIMIT,
+                    cursor = cursor,
+                    status = status.name
+                )
+                val currentServerId = useCase.currentServerId()?.value
+                val currentOwner = sharedTasksDataStore?.currentOwnerSnapshot()
+                val serverStillCurrent = tasksPageServerStillCurrent(requestServerId, currentServerId)
+                val ownerStillCurrent = tasksPageOwnerSnapshotStillCurrent(requestOwner, currentOwner)
+                if (!serverStillCurrent || !ownerStillCurrent || requestServerId == null) {
+                    diagnosticsLogger(
+                        "tasks_load_more_status_discard status=${status.name} reason=owner_or_server_changed"
+                    )
+                    store.accept(
+                        SharedTasksIntent.LoadMoreStatusFailed(
+                            status = status,
+                            errorCode = "server_changed",
+                            invalidCursor = true
+                        )
+                    )
+                    return@launch
+                }
+                when (result) {
+                    is TasksPageResult.Page -> {
+                        sharedTasksDataStore?.let { sharedStore ->
+                            result.tasks.forEach { task ->
+                                sharedStore.upsertTaskForCurrentServer(requestServerId, task)
+                            }
+                        }
+                        store.accept(
+                            SharedTasksIntent.LoadMoreStatusSucceeded(
+                                status = status,
+                                tasks = result.tasks,
+                                nextCursor = result.nextCursor
+                            )
+                        )
+                    }
+                    TasksPageResult.InvalidCursor ->
+                        store.accept(
+                            SharedTasksIntent.LoadMoreStatusFailed(
+                                status = status,
+                                errorCode = "invalid_cursor",
+                                invalidCursor = true
+                            )
+                        )
+                    is TasksPageResult.Error ->
+                        store.accept(
+                            SharedTasksIntent.LoadMoreStatusFailed(status = status, errorCode = result.code)
+                        )
+                }
+            }
+    }
+
     override fun dispatch(action: SharedTasksRouteIntent) {
         when (action) {
             SharedTasksRouteIntent.Start,
@@ -437,6 +549,8 @@ internal class SharedTasksViewModel(
                 store.dispatch(SharedTasksIntent.NavigationFailed(null))
             SharedTasksRouteIntent.LoadMore ->
                 loadMore()
+            is SharedTasksRouteIntent.LoadMoreStatus ->
+                loadMoreStatus(action.status)
             is SharedTasksRouteIntent.SeedContent -> {
                 if (store.accept(SharedTasksIntent.SeedContent(action.snapshot, state.value.selectedFilter))) {
                     runtimeScope.launch {
@@ -1098,6 +1212,7 @@ private fun SharedTasksRouteIntent.tasksRefreshReason(): String =
         is SharedTasksRouteIntent.ApplyTaskStatus -> "apply_task_status"
         is SharedTasksRouteIntent.ApplyTaskUpdate -> "apply_task_update"
         SharedTasksRouteIntent.LoadMore -> "load_more"
+        is SharedTasksRouteIntent.LoadMoreStatus -> "load_more_status_${status.name}"
         SharedTasksRouteIntent.ClearNavigationError -> "navigation"
         is SharedTasksRouteIntent.SeedContent -> "seed"
         is SharedTasksRouteIntent.CreateTasks -> "create"
@@ -1238,7 +1353,71 @@ fun TasksUiState.reduce(intent: SharedTasksIntent): TasksUiState =
                 nextCursor = if (intent.invalidCursor) null else nextCursor,
                 hasMore = if (intent.invalidCursor) false else hasMore
             )
+        // ---- Per-status pagination (task #363) --------------------------------
+        // Only this status' entry changes; the global triple and every OTHER
+        // status' cursor are untouched, so columns cannot corrupt each other.
+        is SharedTasksIntent.LoadMoreStatus -> {
+            val page = statusPages[intent.status] ?: TasksStatusPageState()
+            if (!page.hasMore || page.loadingMore || page.nextCursor == null) {
+                this
+            } else {
+                copy(statusPages = statusPages + (intent.status to page.copy(loadingMore = true, loadMoreErrorCode = null)))
+            }
+        }
+        is SharedTasksIntent.LoadMoreStatusSucceeded ->
+            withAppendedStatusPage(intent.status, intent.tasks, intent.nextCursor)
+                .copy(
+                    statusPages = (statusPages + (intent.status to
+                        (statusPages[intent.status] ?: TasksStatusPageState()).copy(
+                            loadingMore = false,
+                            loadMoreErrorCode = null
+                        )))
+                )
+        is SharedTasksIntent.LoadMoreStatusFailed -> {
+            val page = statusPages[intent.status] ?: TasksStatusPageState()
+            copy(
+                statusPages = statusPages + (intent.status to page.copy(
+                    loadingMore = false,
+                    loadMoreErrorCode = intent.errorCode,
+                    // A stale cursor drops ONLY this column's cursor.
+                    nextCursor = if (intent.invalidCursor) null else page.nextCursor,
+                    hasMore = if (intent.invalidCursor) false else page.hasMore
+                ))
+            )
+        }
     }
+
+/** Append one status column's page (task #363): the SAME merge-by-id semantics as
+ *  [withAppendedTasks] (never drops loaded rows, no duplicate ids), but only this
+ *  status' cursor is advanced — every other column is left alone. */
+internal fun TasksUiState.withAppendedStatusPage(
+    status: TaskStatus,
+    incoming: List<TaskSummary>,
+    nextCursor: String?
+): TasksUiState {
+    val page = statusPages[status] ?: TasksStatusPageState()
+    val merged = if (incoming.isEmpty()) {
+        this
+    } else {
+        val content = (loadState as? ScreenLoadState.Content)
+        if (content == null) {
+            this
+        } else {
+            val tasks = mergeTasksById(current = content.data.tasks, incoming = incoming)
+            copy(
+                loadState = ScreenLoadState.Content(
+                    content.data.copy(tasks = tasks, summaryCounts = tasks.summaryCounts())
+                )
+            )
+        }
+    }
+    return merged.copy(
+        statusPages = merged.statusPages + (status to page.copy(
+            nextCursor = nextCursor,
+            hasMore = nextCursor != null
+        ))
+    )
+}
 
 /** Append a page of tasks, merging by id: existing rows are replaced in place
  *  (so an updated row does not duplicate), new rows are appended, and the

@@ -57,10 +57,11 @@ class SharedTasksDataSource(
         serverId: ServerId,
         limit: Int,
         cursor: String?,
-        priority: DataRequestPriority
+        priority: DataRequestPriority,
+        status: String?
     ): TasksPageResult =
         try {
-            typedApi.serverTasksPage(serverId, priority, limit, cursor)
+            typedApi.serverTasksPage(serverId, priority, limit, cursor, status)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
@@ -271,9 +272,12 @@ private suspend fun SlockNetworkClient.serverTasksPage(
     detail: String?,
     limit: Int?,
     cursor: String?,
+    status: String? = null,
 ): HomeNetworkResponse {
     val query = buildList {
         detail?.let { add("detail" to it) }
+        // An optional status filter composes with limit/cursor server-side.
+        status?.takeIf { it.isNotBlank() }?.let { add("status" to it) }
         limit?.let { add("limit" to it.toString()) }
         // A cursor without a limit is invalid server-side; never send it alone.
         cursor?.takeIf { it.isNotBlank() && limit != null }?.let { add("cursor" to it) }
@@ -313,8 +317,9 @@ internal class NetworkSlockTasksApi(
         detail: String?,
         limit: Int?,
         cursor: String?,
+        status: String?,
     ): HomeNetworkResponse =
-        networkClient.serverTasksPage(priority, serverId, detail, limit, cursor)
+        networkClient.serverTasksPage(priority, serverId, detail, limit, cursor, status)
 
     override suspend fun channelTasks(channelId: ChannelId, priority: DataRequestPriority): HomeNetworkResponse =
         networkClient.request(priority, "tasks/channel/${channelId.value}")
@@ -526,6 +531,7 @@ interface SlockTasksApi {
         detail: String?,
         limit: Int?,
         cursor: String?,
+        status: String? = null,
     ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun channelTasks(channelId: ChannelId, priority: DataRequestPriority): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
@@ -692,14 +698,18 @@ internal class SlockTasksApiClient(
         serverId: ServerId,
         priority: DataRequestPriority,
         limit: Int,
-        cursor: String?
+        cursor: String?,
+        status: String? = null
     ): TasksPageResult =
+        // The optional status filter rides the SAME transport + the SAME parser
+        // (task #363): no second cursor/response codec for the per-status walk.
         transport.serverTasksPage(
             serverId = serverId,
             priority = priority,
             detail = "summary",
             limit = limit,
-            cursor = cursor
+            cursor = cursor,
+            status = status
         ).toTasksPageResult(source = "tasks_server_page", diagnosticsLogger = diagnosticsLogger)
 
     suspend fun channelTasks(
