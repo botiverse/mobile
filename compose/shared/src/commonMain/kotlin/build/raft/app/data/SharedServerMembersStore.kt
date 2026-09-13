@@ -1270,6 +1270,81 @@ class SharedServerMembersStore internal constructor(
         return result
     }
 
+    /**
+     * Atomic batch add (task #352): the same owner-fence / capability gate as the
+     * single add, but one request for mixed humans + agents. No per-member
+     * fallback — the server validates the whole batch and rolls back on failure.
+     */
+    suspend fun addChannelMembersBatch(
+        serverId: ServerId,
+        request: AddChannelMembersBatchRequest,
+        priority: DataRequestPriority = DataRequestPriority.Foreground
+    ): DataResult<AddChannelMembersBatchResult> =
+        addChannelMembersBatch(serverId, request, priority, expectedOwner = null)
+
+    internal suspend fun addChannelMembersBatch(
+        owner: AuthenticatedRouteOwner,
+        request: AddChannelMembersBatchRequest,
+        priority: DataRequestPriority = DataRequestPriority.Foreground
+    ): DataResult<AddChannelMembersBatchResult> {
+        val normalizedOwner = owner.normalizedOrNull() ?: return staleChannelMembersOwnerResult()
+        return addChannelMembersBatch(
+            serverId = ServerId(normalizedOwner.serverId),
+            request = request,
+            priority = priority,
+            expectedOwner = normalizedOwner
+        )
+    }
+
+    private suspend fun addChannelMembersBatch(
+        serverId: ServerId,
+        request: AddChannelMembersBatchRequest,
+        priority: DataRequestPriority,
+        expectedOwner: AuthenticatedRouteOwner?
+    ): DataResult<AddChannelMembersBatchResult> {
+        val serverKey = serverId.value.trim()
+        val channelKey = request.channelId.value.trim()
+        if (request.userIds.isEmpty() && request.agentIds.isEmpty()) {
+            return DataResult.Error(ScreenError(code = "empty_member_batch", retryable = false))
+        }
+        val binding = currentChannelMembersOwner(ServerId(serverKey)) ?: return authSessionRequiredResult()
+        if (expectedOwner != null && !binding.matches(expectedOwner)) return staleChannelMembersOwnerResult()
+        if (expectedOwner != null) {
+            val permission = _state.value.channelMemberSlice(binding, ChannelId(channelKey))
+            if (!permission.canAddMembersKnown || !permission.canAddMembers) {
+                return DataResult.NoPermission(
+                    PermissionBlocker(
+                        code = "channel_member_add_not_allowed",
+                        requiredCapability = "add_channel_members"
+                    )
+                )
+            }
+        }
+        val result =
+            try {
+                memberRepository.addChannelMembersBatch(priority, request)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                logger(
+                    "shared_server_channel_member_batch_add_result serverId=$serverKey channelId=$channelKey " +
+                        "users=${request.userIds.size} agents=${request.agentIds.size} " +
+                        "result=exception type=${throwable::class.simpleName}"
+                )
+                return DataResult.Error(ScreenError(code = "channel_member_batch_add_exception", retryable = true))
+            }
+        if (result is DataResult.Content) {
+            if (currentChannelMembersOwner(ServerId(serverKey)) != binding) return staleChannelMembersOwnerResult()
+            val addedIds = result.data.addedUserIds + result.data.addedAgentIds
+            for (memberIdValue in addedIds) {
+                val member = currentMemberProfile(serverId, memberIdValue) ?: continue
+                patchChannelMemberSlice(binding, channelKey, member, inMentionChannel = true)
+                patchMentionChannelMemberSuggestionSlices(serverKey, channelKey, member, inMentionChannel = true)
+            }
+        }
+        return result
+    }
+
     suspend fun removeChannelMember(
         serverId: ServerId,
         request: RemoveChannelMemberRequest,

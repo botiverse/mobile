@@ -30,6 +30,7 @@ import build.raft.app.data.SlockExpectedAuthBinding
 import build.raft.app.data.matchesExpectedAuthority
 import build.raft.app.data.normalizedEnvironmentId
 import build.raft.app.data.AddChannelMemberRequest
+import build.raft.app.data.AddChannelMembersBatchRequest
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.ChannelProfileUpdateRequest
 import build.raft.app.data.ChannelProfileUpdateResult
@@ -2980,46 +2981,38 @@ internal class SharedThreadDataSource(
                 ?: return DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
         val channelId = ChannelId(targetChannelId)
         val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
-        val addedHumans = mutableListOf<String>()
-        val addedAgents = mutableListOf<String>()
-        var firstFailure: DataResult<ChannelMemberActionResult>? = null
 
-        for (humanId in humanIds) {
-            val request = AddChannelMemberRequest(channelId = channelId, memberId = MemberId(humanId), kind = MemberKind.Human)
-            val result =
-                if (serverMembersStore != null && serverId != null) {
-                    serverMembersStore.addChannelMember(serverId, request, DataRequestPriority.Foreground)
-                } else {
-                    repository.addChannelMember(DataRequestPriority.Foreground, request)
-                }
-            if (result is DataResult.Content) {
-                addedHumans += humanId
-            } else if (firstFailure == null) {
-                firstFailure = result
+        // task #352 (Web #7209): ONE atomic batch instead of per-member loops. The
+        // server dedupes and validates the whole batch, rolling back on any failure,
+        // so there is no partial success and we never accumulate a half-applied set
+        // here. `alreadyMembers`-only is a success (idempotent re-send).
+        val batchRequest =
+            AddChannelMembersBatchRequest(
+                channelId = channelId,
+                userIds = humanIds.map(::MemberId),
+                agentIds = agentIds.map(::MemberId)
+            )
+        val batchResult =
+            if (serverMembersStore != null && serverId != null) {
+                serverMembersStore.addChannelMembersBatch(serverId, batchRequest, DataRequestPriority.Foreground)
+            } else {
+                repository.addChannelMembersBatch(DataRequestPriority.Foreground, batchRequest)
             }
-        }
-        for (agentId in agentIds) {
-            val request = AddChannelMemberRequest(channelId = channelId, memberId = MemberId(agentId), kind = MemberKind.Agent)
-            val result =
-                if (serverMembersStore != null && serverId != null) {
-                    serverMembersStore.addChannelMember(serverId, request, DataRequestPriority.Foreground)
-                } else {
-                    repository.addChannelMember(DataRequestPriority.Foreground, request)
-                }
-            if (result is DataResult.Content) {
-                addedAgents += agentId
-            } else if (firstFailure == null) {
-                firstFailure = result
+        val addedHumans: List<String>
+        val addedAgents: List<String>
+        when (batchResult) {
+            is DataResult.Content -> {
+                addedHumans = batchResult.data.addedUserIds
+                addedAgents = batchResult.data.addedAgentIds
             }
+            is DataResult.Empty -> return DataResult.Empty(batchResult.reason)
+            is DataResult.Error -> return batchResult
+            is DataResult.NoPermission -> return batchResult
         }
-        if (addedHumans.isEmpty() && addedAgents.isEmpty()) {
-            return when (val failure = firstFailure) {
-                is DataResult.Empty -> DataResult.Empty(failure.reason)
-                is DataResult.Error -> failure
-                is DataResult.NoPermission -> failure
-                else -> DataResult.Error(ScreenError(code = "channel_members_add_failed", retryable = true))
-            }
-        }
+        // `added` may be empty when every requested member was ALREADY present: the
+        // server contract defines that as an idempotent SUCCESS (added:[] with the
+        // ids under alreadyMembers), so we must NOT fail the action card here. The
+        // card still advances to executed; only the recorded added-ids stay empty.
         val channelName =
             payload.title.takeIf { targetChannelId == payload.sourceThreadId && it.isNotBlank() }
                 ?: card.resultChannelName?.takeIf { it.isNotBlank() }

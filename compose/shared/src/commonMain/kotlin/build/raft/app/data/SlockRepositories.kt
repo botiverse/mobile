@@ -399,6 +399,17 @@ interface MemberRepository {
         priority: DataRequestPriority,
         request: AddChannelMemberRequest
     ): DataResult<ChannelMemberActionResult>
+
+    /**
+     * Atomic batch add of channel members (task #352): mixed humans + agents in
+     * one request. Default implementation is unsupported so existing fakes keep
+     * compiling; RealMemberRepository overrides it.
+     */
+    suspend fun addChannelMembersBatch(
+        priority: DataRequestPriority,
+        request: AddChannelMembersBatchRequest
+    ): DataResult<AddChannelMembersBatchResult> =
+        DataResult.Error(ScreenError(code = "channel_member_batch_unsupported"))
     suspend fun removeChannelMember(
         priority: DataRequestPriority,
         request: RemoveChannelMemberRequest
@@ -805,6 +816,36 @@ data class AddChannelMemberRequest(
     val memberId: MemberId,
     val kind: MemberKind
 )
+
+/**
+ * Atomic batch add of channel members (task #352, Web #7209).
+ *
+ * One request carries BOTH humans and agents (server dedupes, validates the
+ * whole batch, then writes; a later failure rolls back earlier members, so there
+ * is no partial success). This is the preferred path for multi-select add;
+ * [AddChannelMemberRequest] remains for single adds.
+ */
+data class AddChannelMembersBatchRequest(
+    val channelId: ChannelId,
+    val userIds: List<MemberId>,
+    val agentIds: List<MemberId>
+)
+
+/**
+ * Result of an atomic batch add. [addedUserIds]/[addedAgentIds] were newly added;
+ * [alreadyMemberUserIds]/[alreadyMemberAgentIds] were requested but already
+ * members. Re-sending the same batch is idempotent: `added` is empty and
+ * everything requested shows up under `alreadyMembers`.
+ */
+data class AddChannelMembersBatchResult(
+    val addedUserIds: List<String>,
+    val addedAgentIds: List<String>,
+    val alreadyMemberUserIds: List<String>,
+    val alreadyMemberAgentIds: List<String>
+) {
+    /** True when nothing was newly added (idempotent re-send): still a success. */
+    val addedNothing: Boolean get() = addedUserIds.isEmpty() && addedAgentIds.isEmpty()
+}
 
 data class RemoveChannelMemberRequest(
     val channelId: ChannelId,

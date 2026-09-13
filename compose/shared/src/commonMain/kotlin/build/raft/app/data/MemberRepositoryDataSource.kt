@@ -399,6 +399,13 @@ private suspend fun SlockNetworkClient.addChannelMember(
 ): HomeNetworkResponse =
     request(priority, "channels/${channelId.value}/members", method = "POST", bodyText = bodyText)
 
+private suspend fun SlockNetworkClient.addChannelMembersBatch(
+    priority: DataRequestPriority,
+    channelId: ChannelId,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "channels/${channelId.value}/members/batch", method = "POST", bodyText = bodyText)
+
 private suspend fun SlockNetworkClient.removeChannelMember(
     priority: DataRequestPriority,
     channelId: ChannelId,
@@ -954,6 +961,25 @@ class RealMemberRepository(
         )
     }
 
+    override suspend fun addChannelMembersBatch(
+        priority: DataRequestPriority,
+        request: AddChannelMembersBatchRequest
+    ): DataResult<AddChannelMembersBatchResult> {
+        currentContext() ?: return authRequired()
+        if (request.userIds.isEmpty() && request.agentIds.isEmpty()) {
+            return DataResult.Error(ScreenError(code = "empty_member_batch", retryable = false))
+        }
+        return executeMember(
+            emptyReason = EmptyReason.NoMembers,
+            block = { networkClient.addChannelMembersBatch(priority, request.channelId, request.toBodyText()) },
+            source = "channel_member_batch_add",
+            mapper = { bodyText ->
+                parseSharedChannelMembersBatchResult(bodyText)
+                    ?: throw IllegalStateException("Channel member batch response missing ok")
+            }
+        )
+    }
+
     override suspend fun removeChannelMember(
         priority: DataRequestPriority,
         request: RemoveChannelMemberRequest
@@ -1174,6 +1200,51 @@ data class AddAgentChannelMemberRequestBody(val agentId: String)
 
 @Serializable
 data class AddUserChannelMemberRequestBody(val userId: String)
+
+private fun AddChannelMembersBatchRequest.toBodyText(): String =
+    memberRepositoryJson.encodeToString(
+        AddChannelMembersBatchRequestBody(
+            userIds = userIds.map { it.value },
+            agentIds = agentIds.map { it.value }
+        )
+    )
+
+/**
+ * Parse the atomic batch-add response. Returns null only when the envelope is
+ * malformed (missing `ok`), mirroring [parseSharedChannelMemberActionResult].
+ * The server dedupes and is idempotent, so `alreadyMembers`-only is a success.
+ */
+internal fun parseSharedChannelMembersBatchResult(bodyText: String): AddChannelMembersBatchResult? {
+    val body = runCatching { memberRepositoryJson.decodeFromString<AddChannelMembersBatchResponseBody>(bodyText) }
+        .getOrNull()
+        ?: return null
+    if (!body.ok) return null
+    return AddChannelMembersBatchResult(
+        addedUserIds = body.added?.userIds.orEmpty(),
+        addedAgentIds = body.added?.agentIds.orEmpty(),
+        alreadyMemberUserIds = body.alreadyMembers?.userIds.orEmpty(),
+        alreadyMemberAgentIds = body.alreadyMembers?.agentIds.orEmpty()
+    )
+}
+
+@Serializable
+private data class AddChannelMembersBatchRequestBody(
+    val userIds: List<String>,
+    val agentIds: List<String>
+)
+
+@Serializable
+private data class AddChannelMembersBatchResponseBody(
+    val ok: Boolean = false,
+    val added: AddChannelMembersBatchIds? = null,
+    val alreadyMembers: AddChannelMembersBatchIds? = null
+)
+
+@Serializable
+private data class AddChannelMembersBatchIds(
+    val userIds: List<String> = emptyList(),
+    val agentIds: List<String> = emptyList()
+)
 
 private fun AddChannelMemberRequest.toBodyText(): String =
     when (kind) {
