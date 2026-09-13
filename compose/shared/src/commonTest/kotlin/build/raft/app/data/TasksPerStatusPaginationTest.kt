@@ -1,0 +1,147 @@
+package build.raft.app.data
+
+import build.raft.app.model.ChannelId
+import build.raft.app.model.MessageId
+import build.raft.app.model.TaskId
+import build.raft.app.model.TaskStatus
+import build.raft.app.model.TaskSummary
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+/**
+ * Task #363 — per-status pagination semantics (the load-bearing teeth).
+ *
+ * The store holds BOTH the #345 global cursor triple (unchanged) and a per-status
+ * map. These tests pin the properties that make the per-status walk safe:
+ *  - a column's page advances ONLY that column's cursor;
+ *  - an exhausted column is a no-op (a short column cannot spin);
+ *  - an invalid cursor resets ONLY that column (never the global walk);
+ *  - two columns walking concurrently never consume each other's pages;
+ *  - the global triple is untouched by any per-status operation.
+ */
+class TasksPerStatusPaginationTest {
+
+    private fun task(id: String, status: TaskStatus = TaskStatus.Todo) =
+        TaskSummary(
+            id = TaskId(id),
+            title = "Task $id",
+            status = status,
+            taskNumber = id.filter { it.isDigit() }.toIntOrNull(),
+            messageId = MessageId("message-$id"),
+            channelId = ChannelId("channel-1"),
+            updatedAtLabel = "now",
+        )
+
+    private fun content(vararg tasks: TaskSummary) = TasksUiState(
+        loadState = ScreenLoadState.Content(
+            TasksContent(summaryCounts = tasks.toList().summaryCounts(), tasks = tasks.toList())
+        )
+    )
+
+    private fun seeded(status: TaskStatus, cursor: String?) =
+        content().copy(statusPages = mapOf(status to TasksStatusPageState(nextCursor = cursor, hasMore = cursor != null)))
+
+    @Test
+    fun aStatusPageAdvancesOnlyItsOwnCursor() {
+        // M1: if every status shared the global cursor, advancing one column would
+        // move the other's position. Each column keeps its own.
+        val state = seeded(TaskStatus.Todo, "todo-2")
+            .copy(statusPages = mapOf(
+                TaskStatus.Todo to TasksStatusPageState(nextCursor = "todo-2", hasMore = true),
+                TaskStatus.InProgress to TasksStatusPageState(nextCursor = "wip-2", hasMore = true),
+            ))
+        val afterTodo = state.withAppendedStatusPage(TaskStatus.Todo, listOf(task("task-9")), "todo-3")
+
+        assertEquals("todo-3", afterTodo.statusPages[TaskStatus.Todo]?.nextCursor)
+        assertEquals("wip-2", afterTodo.statusPages[TaskStatus.InProgress]?.nextCursor, "the other column must not move")
+        assertNull(afterTodo.nextCursor, "the global walk cursor must stay untouched")
+    }
+
+    @Test
+    fun anExhaustedStatusPageIsANoOp() {
+        // M2-adjacent: a short column (hasMore=false) must not fire.
+        val exhausted = seeded(TaskStatus.Done, null)
+        val reducerNext = exhausted.reduce(SharedTasksIntent.LoadMoreStatus(TaskStatus.Done))
+        assertEquals(exhausted, reducerNext, "an exhausted column must not start a load")
+    }
+
+    @Test
+    fun anAlreadyLoadingStatusPageIsANoOp() {
+        // M2: single-flight. A second trigger while one is in flight must not
+        // start another (the reducer refuses).
+        val loading = seeded(TaskStatus.Todo, "todo-2").copy(
+            statusPages = mapOf(TaskStatus.Todo to TasksStatusPageState(nextCursor = "todo-2", hasMore = true, loadingMore = true))
+        )
+        val reducerNext = loading.reduce(SharedTasksIntent.LoadMoreStatus(TaskStatus.Todo))
+        assertEquals(loading, reducerNext, "single-flight must refuse a second in-flight page")
+    }
+
+    @Test
+    fun anInvalidCursorResetsOnlyThatColumn() {
+        // M4: an invalid cursor for one column must NOT clear the global cursor
+        // (that would stop the List walk) nor any other column.
+        val state = seeded(TaskStatus.Todo, "todo-2").copy(
+            nextCursor = "global-2",
+            hasMore = true,
+            statusPages = mapOf(
+                TaskStatus.Todo to TasksStatusPageState(nextCursor = "todo-2", hasMore = true, loadingMore = true),
+                TaskStatus.InProgress to TasksStatusPageState(nextCursor = "wip-2", hasMore = true),
+            ),
+        )
+        val after = state.reduce(
+            SharedTasksIntent.LoadMoreStatusFailed(TaskStatus.Todo, errorCode = "invalid_cursor", invalidCursor = true)
+        )
+
+        assertEquals(null, after.statusPages[TaskStatus.Todo]?.nextCursor, "the failing column resets")
+        assertEquals(false, after.statusPages[TaskStatus.Todo]?.hasMore)
+        assertEquals("wip-2", after.statusPages[TaskStatus.InProgress]?.nextCursor, "other columns are untouched")
+        assertEquals("global-2", after.nextCursor, "the GLOBAL cursor must survive")
+        assertTrue(after.hasMore)
+    }
+
+    @Test
+    fun twoColumnsWalkingConcurrentlyKeepSeparatePages() {
+        // M1 (the core): both columns advance; each page lands in its own column's
+        // rows and cursor. Sharing the global cursor would make one consume the
+        // other's page (duplicate rows / skipped rows).
+        var state = content().copy(
+            nextCursor = "global-1",
+            hasMore = true,
+            statusPages = mapOf(
+                TaskStatus.Todo to TasksStatusPageState(nextCursor = "todo-1", hasMore = true),
+                TaskStatus.InProgress to TasksStatusPageState(nextCursor = "wip-1", hasMore = true),
+            ),
+        )
+        state = state.withAppendedStatusPage(TaskStatus.Todo, listOf(task("todo-a", TaskStatus.Todo)), "todo-2")
+        state = state.withAppendedStatusPage(TaskStatus.InProgress, listOf(task("wip-a", TaskStatus.InProgress)), "wip-2")
+
+        assertEquals("todo-2", state.statusPages[TaskStatus.Todo]?.nextCursor)
+        assertEquals("wip-2", state.statusPages[TaskStatus.InProgress]?.nextCursor)
+        val rows = (state.loadState as ScreenLoadState.Content).data.tasks.map { it.id.value }
+        assertEquals(listOf("todo-a", "wip-a"), rows, "each page appended exactly once")
+        assertEquals("global-1", state.nextCursor, "the global walk is unaffected")
+    }
+
+    @Test
+    fun aStatusPageMergesByIdWithoutDuplicating() {
+        val first = content(task("t1")).withAppendedStatusPage(TaskStatus.Todo, listOf(task("t2")), "todo-2")
+        val merged = first.withAppendedStatusPage(TaskStatus.Todo, listOf(task("t1", TaskStatus.Todo), task("t3")), null)
+        val rows = (merged.loadState as ScreenLoadState.Content).data.tasks.map { it.id.value }
+        assertEquals(listOf("t1", "t2", "t3"), rows, "overlap merges by id, no duplicate")
+        assertEquals(false, merged.statusPages[TaskStatus.Todo]?.hasMore, "null cursor terminates that column")
+    }
+
+    @Test
+    fun aTransientStatusFailureKeepsThatColumnsCursor() {
+        val state = seeded(TaskStatus.Todo, "todo-2").copy(
+            statusPages = mapOf(TaskStatus.Todo to TasksStatusPageState(nextCursor = "todo-2", hasMore = true, loadingMore = true))
+        )
+        val after = state.reduce(SharedTasksIntent.LoadMoreStatusFailed(TaskStatus.Todo, errorCode = "network"))
+        assertEquals("todo-2", after.statusPages[TaskStatus.Todo]?.nextCursor, "fail-open: still walkable")
+        assertTrue(after.statusPages[TaskStatus.Todo]?.hasMore == true)
+        assertEquals("network", after.statusPages[TaskStatus.Todo]?.loadMoreErrorCode)
+    }
+}

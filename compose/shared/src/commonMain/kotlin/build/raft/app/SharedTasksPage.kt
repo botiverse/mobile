@@ -743,14 +743,23 @@ private fun SharedTasksLoadedBodyContent(
                                         statusMenuTask = task
                                         statusMenuAnchor = anchor
                                     },
-                                    onReachedEnd = {
-                                        // A column reaching its end means more
-                                        // global pages may add rows: request the
-                                        // next page. The host's single-flight
-                                        // LoadMore makes concurrent column
-                                        // triggers safe.
-                                        if (state.hasMore && !state.loadingMore) {
-                                            onIntent(SharedTasksRouteIntent.LoadMore)
+                                    onReachedEnd = { columnStatus ->
+                                        // task #363: per-status pagination. A
+                                        // column reaching its end advances ITS
+                                        // OWN cursor when the column has more
+                                        // pages (single-flight per status), and
+                                        // only falls back to the global walk when
+                                        // that column is exhausted — so a short
+                                        // column cannot spin, and columns never
+                                        // consume each other's pages.
+                                        val page = state.statusPages[columnStatus]
+                                        when {
+                                            page != null && page.hasMore && !page.loadingMore ->
+                                                onIntent(SharedTasksRouteIntent.LoadMoreStatus(columnStatus))
+                                            page != null -> Unit // exhausted: no-op
+                                            state.hasMore && !state.loadingMore ->
+                                                onIntent(SharedTasksRouteIntent.LoadMore)
+                                            else -> Unit
                                         }
                                     },
                                     bottomContentPadding = bottomContentPadding,
@@ -1236,7 +1245,7 @@ private fun SharedTasksBoardColumn(
     bottomContentPadding: Dp,
     draftProjection: SharedThreadComposerDraftProjection,
     scrollToTopRequest: Int,
-    onReachedEnd: () -> Unit,
+    onReachedEnd: (TaskStatus) -> Unit,
 ) {
     val columnListState = rememberLazyListState()
     val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
@@ -1255,7 +1264,7 @@ private fun SharedTasksBoardColumn(
             .distinctUntilChanged()
             .collect { lastVisibleIndex ->
                 if (lastVisibleIndex >= 0 && lastVisibleIndex >= tasks.lastIndex - SharedTasksLoadMoreThreshold) {
-                    onReachedEnd()
+                    onReachedEnd(status)
                 }
             }
     }
