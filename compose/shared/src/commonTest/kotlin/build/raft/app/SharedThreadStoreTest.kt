@@ -7370,6 +7370,52 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun channelAddMembersActionCardAlreadyMembersOnlyIsIdempotentSuccess() = runBlocking {
+        // task #352 / #361 blocker: the server defines an all-already-members batch
+        // as an idempotent SUCCESS (added:[], ids under alreadyMembers). The action
+        // card must therefore advance to executed, not fail — so a re-send never
+        // blocks card completion.
+        val memberRepository =
+            FakeMemberRepository(
+                channelMembers = listOf(member("u3", "Existing Human"), member("agent-3", "Existing Agent"))
+            )
+        val actionCardsApi = RecordingActionCardsApi()
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                memberRepository = memberRepository,
+                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
+            )
+        val card =
+            ThreadActionCard(
+                type = "channel:add_member",
+                channel = "channel-2",
+                humans = listOf("u3"),
+                agents = listOf("agent-3"),
+                draftHint = "Bring owners in."
+            )
+
+        val result = dataSource.commitThreadActionCard(basePayload(), "m-card", card)
+        val executedCard = (result as DataResult.Content).data
+        assertEquals(
+            listOf(
+                AddChannelMembersBatchRequest(
+                    channelId = ChannelId("channel-2"),
+                    userIds = listOf(MemberId("u3")),
+                    agentIds = listOf(MemberId("agent-3"))
+                )
+            ),
+            memberRepository.batchRequests
+        )
+        assertEquals("executed", executedCard.state)
+        // Nothing new was added; the card still completes with empty added-ids.
+        assertEquals(listOf(), executedCard.resultAddedHumanIds)
+        assertEquals(listOf(), executedCard.resultAddedAgentIds)
+    }
+
+    @Test
     fun integrationApproveLoginActionCardExecutesInlineAction() = runBlocking {
         val actionCardsApi = RecordingActionCardsApi()
         val dataSource =

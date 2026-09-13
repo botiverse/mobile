@@ -3009,11 +3009,10 @@ internal class SharedThreadDataSource(
             is DataResult.Error -> return batchResult
             is DataResult.NoPermission -> return batchResult
         }
-        if (addedHumans.isEmpty() && addedAgents.isEmpty()) {
-            // Everything was already a member: still a success (idempotent), but
-            // there is nothing new to record on the card.
-            return DataResult.Error(ScreenError(code = "channel_members_add_failed", retryable = true))
-        }
+        // `added` may be empty when every requested member was ALREADY present: the
+        // server contract defines that as an idempotent SUCCESS (added:[] with the
+        // ids under alreadyMembers), so we must NOT fail the action card here. The
+        // card still advances to executed; only the recorded added-ids stay empty.
         val channelName =
             payload.title.takeIf { targetChannelId == payload.sourceThreadId && it.isNotBlank() }
                 ?: card.resultChannelName?.takeIf { it.isNotBlank() }
