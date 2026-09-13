@@ -1087,6 +1087,7 @@
     <string name="file_preview_hidden">Preview hidden</string>
     <string name="file_preview_image">Image preview</string>
     <string name="file_preview_text">Text preview</string>
+    <string name="file_preview_xlsx">Spreadsheet preview</string>
     <string name="file_preview_markdown">Markdown preview</string>
     <string name="file_preview_markdown_unavailable">Markdown preview unavailable</string>
     <string name="file_preview_html">HTML preview</string>
@@ -1121,6 +1122,7 @@
     <string name="file_preview_action_open">Open</string>
     <string name="file_preview_action_open_with">Open with…</string>
     <string name="file_preview_action_save_to_files">Save</string>
+    <string name="file_preview_action_open_in_browser">Open in browser</string>
     <string name="file_preview_action_saving_to_files">Saving…</string>
     <string name="file_preview_action_delete_downloaded">Clear cached copy</string>
     <string name="file_preview_placeholder_tap_to_add_text">Tap image to place text</string>
