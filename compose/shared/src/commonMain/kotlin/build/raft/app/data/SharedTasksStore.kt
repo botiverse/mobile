@@ -206,9 +206,14 @@ sealed interface SharedTasksIntent {
     /** Per-status pagination (task #363): request one more page for [status]. */
     data class LoadMoreStatus(val status: TaskStatus) : SharedTasksIntent
 
-    /** Per-status seed (task #363): a column's first page told us whether it has
-     *  more — publish only that column's cursor. */
-    data class SeedStatusPage(val status: TaskStatus, val nextCursor: String?) : SharedTasksIntent
+    /** Per-status seed (task #363): a column's FIRST page. Its rows and its
+     *  cursor land together — publishing only the cursor would silently drop the
+     *  rows and start the column at page 2 (@LoveArk's blocker). */
+    data class SeedStatusPage(
+        val status: TaskStatus,
+        val tasks: List<TaskSummary>,
+        val nextCursor: String?
+    ) : SharedTasksIntent
 
     /** One status column's next page was appended (task #363). */
     data class LoadMoreStatusSucceeded(
@@ -242,6 +247,10 @@ sealed interface SharedTasksRouteIntent {
     data object LoadMore : SharedTasksRouteIntent
     /** Per-status pagination (task #363): follow ONE status column's cursor. */
     data class LoadMoreStatus(val status: TaskStatus) : SharedTasksRouteIntent
+    /** The per-status Board became the active view: seed each column's first page
+     *  on the next completed load. List mode never dispatches this, so the #345
+     *  global path issues no extra requests. */
+    data object EnterBoard : SharedTasksRouteIntent
     data class SeedContent(val snapshot: TaskSnapshot) : SharedTasksRouteIntent
 
     /**
@@ -285,10 +294,6 @@ internal class SharedTasksViewModel(
     private val diagnosticsLogger: (String) -> Unit = {},
     private val staleWindowMs: Long = 15_000L,
     private val runtimeScopeOverride: CoroutineScope? = null,
-    // Task #363: per-status pagination is OPT-IN. When OFF (the default) nothing
-    // reads or writes `statusPages` and no per-column seed fires, so the #345
-    // global walk is byte-identical. The Board view turns it on.
-    private val perStatusPagination: Boolean = false,
     private val useCase: SharedTasksUseCase =
         SharedTasksUseCase(
             authStore = authStore,
@@ -331,6 +336,8 @@ internal class SharedTasksViewModel(
     private val statusLoadJobs = mutableMapOf<TaskStatus, Job>()
     /** Single-flight for the per-status cursor seed (task #363). */
     private var statusSeedJob: Job? = null
+    /** Set by the Board entering; consumed by the next completed load (task #363). */
+    private var seedStatusPagesOnNext = false
 
     /**
      * Follow the server cursor for one more page (task #345). Single-flight and
@@ -526,9 +533,18 @@ internal class SharedTasksViewModel(
                         return@launch
                     }
                     if (result is TasksPageResult.Page) {
+                        // Fold the first page's rows into the shared projection
+                        // (same as a page append) so they are visible and other
+                        // Tasks consumers see them, then land rows+cursor.
+                        sharedTasksDataStore?.let { sharedStore ->
+                            result.tasks.forEach { task ->
+                                sharedStore.upsertTaskForCurrentServer(requestServerId, task)
+                            }
+                        }
                         store.accept(
                             SharedTasksIntent.SeedStatusPage(
                                 status = status,
+                                tasks = result.tasks,
                                 nextCursor = result.nextCursor
                             )
                         )
@@ -606,6 +622,19 @@ internal class SharedTasksViewModel(
                 loadMore()
             is SharedTasksRouteIntent.LoadMoreStatus ->
                 loadMoreStatus(action.status)
+            SharedTasksRouteIntent.EnterBoard -> {
+                seedStatusPagesOnNext = true
+                // If content is already loaded (Board toggled after a List load),
+                // seed now instead of waiting for an unrelated refresh.
+                if (state.value.hasCompletedTasksSnapshot()) {
+                    seedStatusPagesOnNext = false
+                    seedStatusPages(
+                        (state.value.loadState as? ScreenLoadState.Content)
+                            ?.data?.tasks?.map { it.status }?.distinct()
+                            ?: TaskStatus.entries.toList()
+                    )
+                }
+            }
             is SharedTasksRouteIntent.SeedContent -> {
                 if (store.accept(SharedTasksIntent.SeedContent(action.snapshot, state.value.selectedFilter))) {
                     runtimeScope.launch {
@@ -816,11 +845,11 @@ internal class SharedTasksViewModel(
                             selectedFilter = selectedFilter
                         )
                     )
-                    // task #363: seed each board column's own cursor so the
-                    // per-column sentinel has something to advance. Only in
-                    // per-status mode — otherwise this would issue extra
-                    // requests on the #345 global path.
-                    if (perStatusPagination) {
+                    // task #363: per-status seeding is driven by the ACTIVE view
+                    // (see SharedTasksRouteIntent.EnterBoard), never by a
+                    // construction flag — so List mode cannot seed.
+                    if (seedStatusPagesOnNext) {
+                        seedStatusPagesOnNext = false
                         seedStatusPages(
                             request.filter.statuses.ifEmpty { TaskStatus.entries.toList() }.toList()
                         )
@@ -1277,6 +1306,7 @@ private fun SharedTasksRouteIntent.tasksRefreshReason(): String =
         is SharedTasksRouteIntent.ApplyTaskUpdate -> "apply_task_update"
         SharedTasksRouteIntent.LoadMore -> "load_more"
         is SharedTasksRouteIntent.LoadMoreStatus -> "load_more_status_${status.name}"
+        SharedTasksRouteIntent.EnterBoard -> "enter_board"
         SharedTasksRouteIntent.ClearNavigationError -> "navigation"
         is SharedTasksRouteIntent.SeedContent -> "seed"
         is SharedTasksRouteIntent.CreateTasks -> "create"
@@ -1420,13 +1450,10 @@ fun TasksUiState.reduce(intent: SharedTasksIntent): TasksUiState =
         // ---- Per-status pagination (task #363) --------------------------------
         // Only this status' entry changes; the global triple and every OTHER
         // status' cursor are untouched, so columns cannot corrupt each other.
-        is SharedTasksIntent.SeedStatusPage -> {
-            val page = statusPages[intent.status] ?: TasksStatusPageState()
-            copy(statusPages = statusPages + (intent.status to page.copy(
-                nextCursor = intent.nextCursor,
-                hasMore = intent.nextCursor != null
-            )))
-        }
+        is SharedTasksIntent.SeedStatusPage ->
+            // Rows and cursor are ONE update: the column's first page becomes
+            // visible and its cursor is where the NEXT page continues from.
+            withAppendedStatusPage(intent.status, intent.tasks, intent.nextCursor)
         is SharedTasksIntent.LoadMoreStatus -> {
             val page = statusPages[intent.status] ?: TasksStatusPageState()
             if (!page.hasMore || page.loadingMore || page.nextCursor == null) {

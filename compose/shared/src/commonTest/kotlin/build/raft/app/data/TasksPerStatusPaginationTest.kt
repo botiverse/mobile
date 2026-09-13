@@ -126,6 +126,37 @@ class TasksPerStatusPaginationTest {
     }
 
     @Test
+    fun theSeedLandsItsFirstPageRowsAndCursorTogether() {
+        // @LoveArk's blocker: the seed used to publish ONLY the cursor, so the
+        // column's first page rows were silently lost and the column started at
+        // page 2. Rows and cursor must land in one update.
+        val seeded = content().reduce(
+            SharedTasksIntent.SeedStatusPage(
+                status = TaskStatus.Todo,
+                tasks = listOf(task("seed-1"), task("seed-2")),
+                nextCursor = "todo-2"
+            )
+        )
+        val rows = (seeded.loadState as ScreenLoadState.Content).data.tasks.map { it.id.value }
+        assertEquals(listOf("seed-1", "seed-2"), rows, "the seed's FIRST-PAGE rows must be visible")
+        assertEquals("todo-2", seeded.statusPages[TaskStatus.Todo]?.nextCursor, "and its cursor lands with them")
+    }
+
+    @Test
+    fun theSeedDeduplicatesAgainstRowsAlreadyLoaded() {
+        val seeded = content(task("seed-1", TaskStatus.Todo), task("other"))
+            .reduce(
+                SharedTasksIntent.SeedStatusPage(
+                    status = TaskStatus.Todo,
+                    tasks = listOf(task("seed-1", TaskStatus.Todo), task("seed-2", TaskStatus.Todo)),
+                    nextCursor = "todo-2"
+                )
+            )
+        val rows = (seeded.loadState as ScreenLoadState.Content).data.tasks.map { it.id.value }
+        assertEquals(listOf("seed-1", "other", "seed-2"), rows, "an overlapping seed row merges, no duplicate")
+    }
+
+    @Test
     fun aStatusPageMergesByIdWithoutDuplicating() {
         val first = content(task("t1")).withAppendedStatusPage(TaskStatus.Todo, listOf(task("t2")), "todo-2")
         val merged = first.withAppendedStatusPage(TaskStatus.Todo, listOf(task("t1", TaskStatus.Todo), task("t3")), null)

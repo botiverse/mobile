@@ -17,6 +17,7 @@ import build.raft.app.data.TasksUiState
 import build.raft.app.data.TasksUnassignedAssigneeFilterId
 import build.raft.app.data.TasksVisibleContent
 import build.raft.app.data.TasksViewMode
+import build.raft.app.data.hasCompletedTasksSnapshot
 import build.raft.app.data.boardColumns
 import build.raft.app.data.isCreatingTasksFor
 import build.raft.app.data.reduce
@@ -707,6 +708,17 @@ private fun SharedTasksLoadedBodyContent(
                         createDialogOpen = true
                     }
                 )
+                // Task #363: the per-status Board seeds each column's first page
+                // (its rows AND cursor) once it becomes the active view. List mode
+                // never dispatches this, so the global walk issues no extra
+                // requests and the #345 path stays byte-identical.
+                LaunchedEffect(presentationState.selectedMode, state.hasCompletedTasksSnapshot()) {
+                    if (presentationState.selectedMode == TasksViewMode.Board &&
+                        state.hasCompletedTasksSnapshot()
+                    ) {
+                        onIntent(SharedTasksRouteIntent.EnterBoard)
+                    }
+                }
                 when (presentationState.selectedMode) {
                     TasksViewMode.Board -> {
                         // Horizontal board: each TaskStatus is a fixed-width column the user can
