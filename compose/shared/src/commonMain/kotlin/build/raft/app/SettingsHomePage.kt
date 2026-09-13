@@ -2838,6 +2838,9 @@ private fun SlockAppShellReadyContent(
                 authStore = shellAuthStore,
                 dataSource = tasksDataSource,
                 sharedTasksDataStore = sharedStores.tasksDataStore,
+                // The Tasks panel renders the per-status Board, so each column
+                // walks its own cursor (task #363).
+                perStatusPagination = true,
                 diagnosticsLogger = slockLogger("SlockTasks", "shared_tasks")
             )
         }

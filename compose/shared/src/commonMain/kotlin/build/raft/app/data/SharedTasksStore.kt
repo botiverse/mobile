@@ -285,6 +285,10 @@ internal class SharedTasksViewModel(
     private val diagnosticsLogger: (String) -> Unit = {},
     private val staleWindowMs: Long = 15_000L,
     private val runtimeScopeOverride: CoroutineScope? = null,
+    // Task #363: per-status pagination is OPT-IN. When OFF (the default) nothing
+    // reads or writes `statusPages` and no per-column seed fires, so the #345
+    // global walk is byte-identical. The Board view turns it on.
+    private val perStatusPagination: Boolean = false,
     private val useCase: SharedTasksUseCase =
         SharedTasksUseCase(
             authStore = authStore,
@@ -813,11 +817,14 @@ internal class SharedTasksViewModel(
                         )
                     )
                     // task #363: seed each board column's own cursor so the
-                    // per-column sentinel has something to advance. Runs after
-                    // the initial snapshot lands; harmless if the view is List.
-                    seedStatusPages(
-                        request.filter.statuses.ifEmpty { TaskStatus.entries.toList() }.toList()
-                    )
+                    // per-column sentinel has something to advance. Only in
+                    // per-status mode — otherwise this would issue extra
+                    // requests on the #345 global path.
+                    if (perStatusPagination) {
+                        seedStatusPages(
+                            request.filter.statuses.ifEmpty { TaskStatus.entries.toList() }.toList()
+                        )
+                    }
                 }
             } else {
                 result.failureCodeOrNull()?.let { events.emit(SharedTasksEvent.OperationFailed(it)) }
