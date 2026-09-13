@@ -449,7 +449,9 @@ internal class SharedTasksViewModel(
                 val result = useCase.loadServerTasksPage(
                     limit = TASKS_SERVER_PAGE_LIMIT,
                     cursor = cursor,
-                    status = status.name
+                    // The server filter uses the WIRE value (snake_case), not the
+                    // enum name -- `InProgress` is not a valid server filter.
+                    status = status.toWireValue()
                 )
                 val currentServerId = useCase.currentServerId()?.value
                 val currentOwner = sharedTasksDataStore?.currentOwnerSnapshot()
@@ -500,6 +502,16 @@ internal class SharedTasksViewModel(
     }
 
     /**
+     * The statuses a Board seeds: EVERY column it renders, including one whose
+     * first page is empty (@LoveArk). Seeding only the statuses present in the
+     * loaded rows would leave an empty column with no page state, and its
+     * sentinel would then fall back to the GLOBAL cursor — neither per-status nor
+     * safe.
+     */
+    private fun boardSeedStatuses(): List<TaskStatus> =
+        state.value.availableFilters.ifEmpty { TaskStatus.entries.toList() }.toList()
+
+    /**
      * Seed every board column's own cursor (task #363). Called after a load that
      * used the per-status walk: the initial page for a column is what tells the
      * store whether that column has more pages at all — without it, a column's
@@ -521,7 +533,7 @@ internal class SharedTasksViewModel(
                     val result = useCase.loadServerTasksPage(
                         limit = TASKS_SERVER_PAGE_LIMIT,
                         cursor = null,
-                        status = status.name
+                        status = status.toWireValue()
                     )
                     // Fence each seed like any other page: a server/owner change
                     // while seeding must not publish a stale column cursor.
@@ -628,11 +640,7 @@ internal class SharedTasksViewModel(
                 // seed now instead of waiting for an unrelated refresh.
                 if (state.value.hasCompletedTasksSnapshot()) {
                     seedStatusPagesOnNext = false
-                    seedStatusPages(
-                        (state.value.loadState as? ScreenLoadState.Content)
-                            ?.data?.tasks?.map { it.status }?.distinct()
-                            ?: TaskStatus.entries.toList()
-                    )
+                    seedStatusPages(boardSeedStatuses())
                 }
             }
             is SharedTasksRouteIntent.SeedContent -> {
@@ -850,9 +858,7 @@ internal class SharedTasksViewModel(
                     // construction flag — so List mode cannot seed.
                     if (seedStatusPagesOnNext) {
                         seedStatusPagesOnNext = false
-                        seedStatusPages(
-                            request.filter.statuses.ifEmpty { TaskStatus.entries.toList() }.toList()
-                        )
+                        seedStatusPages(boardSeedStatuses())
                     }
                 }
             } else {

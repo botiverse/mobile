@@ -756,22 +756,19 @@ private fun SharedTasksLoadedBodyContent(
                                         statusMenuAnchor = anchor
                                     },
                                     onReachedEnd = { columnStatus ->
-                                        // task #363: per-status pagination. A
-                                        // column reaching its end advances ITS
-                                        // OWN cursor when the column has more
-                                        // pages (single-flight per status), and
-                                        // only falls back to the global walk when
-                                        // that column is exhausted — so a short
-                                        // column cannot spin, and columns never
-                                        // consume each other's pages.
+                                        // task #363: per-status pagination is the
+                                        // ONLY walk for a Board column. A column
+                                        // advances its own cursor (single-flight
+                                        // per status); an exhausted column is a
+                                        // no-op. It never falls back to the global
+                                        // cursor — that would consume another
+                                        // column's page (@LoveArk). Every column
+                                        // is seeded, including empty ones, so a
+                                        // missing entry means "not seeded yet"
+                                        // (no-op), never "use the global walk".
                                         val page = state.statusPages[columnStatus]
-                                        when {
-                                            page != null && page.hasMore && !page.loadingMore ->
-                                                onIntent(SharedTasksRouteIntent.LoadMoreStatus(columnStatus))
-                                            page != null -> Unit // exhausted: no-op
-                                            state.hasMore && !state.loadingMore ->
-                                                onIntent(SharedTasksRouteIntent.LoadMore)
-                                            else -> Unit
+                                        if (page != null && page.hasMore && !page.loadingMore) {
+                                            onIntent(SharedTasksRouteIntent.LoadMoreStatus(columnStatus))
                                         }
                                     },
                                     bottomContentPadding = bottomContentPadding,

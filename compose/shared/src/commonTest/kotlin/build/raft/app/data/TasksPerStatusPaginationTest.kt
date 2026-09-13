@@ -1,6 +1,15 @@
 package build.raft.app.data
 
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ServerId
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.yield
+import kotlinx.coroutines.flow.first
 import build.raft.app.model.MessageId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
@@ -126,6 +135,38 @@ class TasksPerStatusPaginationTest {
     }
 
     @Test
+    fun anEmptyColumnGetsItsOwnSeededStateAndNeverUsesTheGlobalCursor() {
+        // @LoveArk: a column whose first page is EMPTY must still get its own
+        // page state. Otherwise statusPages[status] == null and the sentinel
+        // would fall back to the global cursor, consuming another column's page.
+        val seeded = content().reduce(
+            SharedTasksIntent.SeedStatusPage(TaskStatus.Done, tasks = emptyList(), nextCursor = null)
+        )
+        assertTrue(seeded.statusPages.containsKey(TaskStatus.Done), "an empty column is still seeded")
+        assertFalse(seeded.statusPages[TaskStatus.Done]?.hasMore == true, "an empty column has no more")
+
+        // And it must not advance the global cursor even when the global walk has
+        // more pages: the column is exhausted, so its sentinel is a no-op.
+        val withGlobal = seeded.copy(nextCursor = "global-2", hasMore = true)
+        val afterTrigger = withGlobal.reduce(SharedTasksIntent.LoadMoreStatus(TaskStatus.Done))
+        assertEquals(withGlobal, afterTrigger, "an empty column must not start a load")
+        assertEquals("global-2", afterTrigger.nextCursor, "the global cursor is untouched")
+    }
+
+    @Test
+    fun aColumnWithAPageButNoRowsStillReportsItsCursor() {
+        // A status-filtered first page can carry a cursor with zero rows (the
+        // column is empty on page 1 but has more). Rows parse to nothing; the
+        // cursor still lands so the column can continue.
+        val seeded = content().reduce(
+            SharedTasksIntent.SeedStatusPage(TaskStatus.InProgress, tasks = emptyList(), nextCursor = "wip-2")
+        )
+        assertEquals("wip-2", seeded.statusPages[TaskStatus.InProgress]?.nextCursor)
+        assertTrue(seeded.statusPages[TaskStatus.InProgress]?.hasMore == true)
+        assertEquals(emptyList(), (seeded.loadState as ScreenLoadState.Content).data.tasks.map { it.id.value })
+    }
+
+    @Test
     fun theSeedLandsItsFirstPageRowsAndCursorTogether() {
         // @LoveArk's blocker: the seed used to publish ONLY the cursor, so the
         // column's first page rows were silently lost and the column started at
@@ -174,5 +215,105 @@ class TasksPerStatusPaginationTest {
         assertEquals("todo-2", after.statusPages[TaskStatus.Todo]?.nextCursor, "fail-open: still walkable")
         assertTrue(after.statusPages[TaskStatus.Todo]?.hasMore == true)
         assertEquals("network", after.statusPages[TaskStatus.Todo]?.loadMoreErrorCode)
+    }
+}
+
+/**
+ * The Board WIRING half (@LoveArk): entering the Board must seed EVERY rendered
+ * column — including one whose first page is empty — through its OWN
+ * status-filtered request, and List mode must issue none.
+ */
+class TasksPerStatusBoardSeedWiringTest {
+
+    private class RecordingApi(val emptyStatuses: Set<String>) : SlockTasksApi {
+        val requests = mutableListOf<Pair<String?, String?>>() // (cursor, status)
+        override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority) =
+            HomeNetworkResponse(code = 500, bodyText = null)
+
+        override suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus) =
+            HomeNetworkResponse(code = 500, bodyText = null)
+
+        override suspend fun serverTasksPage(
+            serverId: ServerId,
+            priority: DataRequestPriority,
+            detail: String?,
+            limit: Int?,
+            cursor: String?,
+            status: String?,
+        ): HomeNetworkResponse {
+            requests += cursor to status
+            if (cursor != null) return HomeNetworkResponse(code = 200, bodyText = page("p", 1, null))
+            // An "empty" status returns zero rows but still has no more pages.
+            val rows = if (status in emptyStatuses) "" else
+                """{"id":"$status-1","messageId":"m","channelId":"c1","channelName":"alpha","taskNumber":1,
+                    "title":"T","status":"${(status ?: "todo").lowercase()}","createdByName":"x","createdAt":"2026-01-01T00:00:00Z",
+                    "updatedAt":"2026-01-01T00:00:00Z","source":"tasks","hasDescription":false,"descriptionBytes":0}"""
+            return HomeNetworkResponse(code = 200, bodyText = """{"tasks":[$rows],"next_cursor":null}""")
+        }
+
+        private fun page(prefix: String, count: Int, next: String?): String {
+            val items = (1..count).joinToString(",") { n ->
+                """{"id":"$prefix$n","messageId":"m-$prefix$n","channelId":"c1","channelName":"alpha","taskNumber":$n,"title":"T","status":"todo","createdByName":"x","createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z","source":"tasks","hasDescription":false,"descriptionBytes":0}"""
+            }
+            return """{"tasks":[$items],${next?.let { "\"next_cursor\":\"$it\"" } ?: "\"next_cursor\":null"}}"""
+        }
+    }
+
+    private fun viewModel(api: RecordingApi) = SharedTasksViewModel(
+        authStore = InMemorySlockAuthSessionStore(
+            StoredAuthSession(
+                user = StoredAuthUser(id = "u", email = "u@slock.ai"),
+                accessToken = "t", refreshToken = "r", selectedServerId = "server-1",
+            )
+        ),
+        dataSource = SharedTasksDataSource(api = api),
+        sharedTasksDataStore = SharedTasksDataStore(
+            ownerIdentityProvider = { "base|u" }, currentServerIdProvider = { "server-1" },
+        ),
+        runtimeScopeOverride = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+    )
+
+    @Test
+    fun enteringTheBoardSeedsEveryColumnIncludingEmptyOnes() = runBlocking {
+        val api = RecordingApi(emptyStatuses = setOf("done", "closed"))
+        val vm = viewModel(api)
+        vm.dispatch(SharedTasksRouteIntent.Start)
+        withTimeout(5_000) { vm.state.first { it.loadState is ScreenLoadState.Content } }
+        val callsBeforeBoard = api.requests.size
+
+        vm.dispatch(SharedTasksRouteIntent.EnterBoard)
+        // The observable contract (@LoveArk): one first-page request PER rendered
+        // column, each with its OWN status filter (wire value), never a cursor.
+        // Columns that are EMPTY are included -- that is the fix: otherwise their
+        // later column-end would fall back to the global cursor.
+        withTimeout(5_000) {
+            while (api.requests.drop(callsBeforeBoard).mapNotNull { it.second }.toSet() !=
+                TaskStatus.entries.map { it.toWireValue() }.toSet()
+            ) {
+                kotlinx.coroutines.delay(5)
+            }
+        }
+        val seeded = api.requests.drop(callsBeforeBoard)
+        assertEquals(TaskStatus.entries.map { it.toWireValue() }.toSet(),
+            seeded.mapNotNull { it.second }.toSet(),
+            "every rendered column (incl. empty ones) is seeded with its own status filter")
+        assertTrue(seeded.all { it.first == null }, "each seed is a first page (cursor=null)")
+        assertEquals(seeded.size, seeded.mapNotNull { it.second }.toSet().size,
+            "exactly one first-page request per column")
+    }
+
+    @Test
+    fun listModeNeverSeeds() = runBlocking {
+        val api = RecordingApi(emptyStatuses = emptySet())
+        val vm = viewModel(api)
+        vm.dispatch(SharedTasksRouteIntent.Start)
+        withTimeout(5_000) { vm.state.first { it.loadState is ScreenLoadState.Content } }
+        val calls = api.requests.size
+        // A global page request must not seed any column.
+        vm.dispatch(SharedTasksRouteIntent.LoadMore)
+        kotlinx.coroutines.yield()
+        assertTrue(vm.state.value.statusPages.isEmpty(),
+            "the global walk must not create per-status page state: ${vm.state.value.statusPages.keys}")
+        assertTrue(api.requests.size >= calls)
     }
 }
