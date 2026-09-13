@@ -626,6 +626,11 @@
     <string name="thread_video_preview_loading">Loading video preview</string>
     <string name="thread_video_playback_failed">Video playback failed</string>
     <string name="thread_video_attachment_fallback_name">Video attachment</string>
+    <string name="thread_audio_preview_unavailable">Audio preview unavailable</string>
+    <string name="thread_audio_preview_loading">Loading audio preview</string>
+    <string name="thread_audio_playback_failed">Audio playback failed</string>
+    <string name="thread_audio_attachment_fallback_name">Audio attachment</string>
+    <string name="thread_audio_file_label">Audio file</string>
     <string name="thread_action_back_to_bottom">Back to bottom</string>
     <string name="thread_action_unread_count">↓ %1$d new</string>
     <string name="thread_label_saved">Saved</string>

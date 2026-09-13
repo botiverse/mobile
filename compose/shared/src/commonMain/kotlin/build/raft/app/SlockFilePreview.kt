@@ -5709,6 +5709,7 @@ internal fun KuiklyThreadAttachmentItem.toThreadAttachmentCommentsPreviewPayload
 ): SlockFilePreviewPayload? {
     if (!commentsEnabled) return null
     if (isPreviewableVideoAttachment()) return null
+    if (isPreviewableAudioAttachment()) return null
     val kind =
         when {
             isImageAttachment() -> "image"
@@ -5726,7 +5727,8 @@ internal fun SlockFilePreviewPayload.supportsAttachmentComments(): Boolean =
     source == SlockFilePreviewSourceThreadAttachment &&
         attachmentId.isNotBlank() &&
         attachmentCommentsEnabled &&
-        !slockFilePreviewIsPreviewableVideoAttachment(externalFileName, externalMimeType)
+        !slockFilePreviewIsPreviewableVideoAttachment(externalFileName, externalMimeType) &&
+        !slockFilePreviewIsAudioAttachment(externalFileName, externalMimeType)
 
 private fun SlockFilePreviewPayload.supportsSaveToPhotos(): Boolean =
     source == SlockFilePreviewSourceThreadAttachment &&
@@ -5768,9 +5770,9 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
                 fileName = previewFileName,
                 mimeType = externalMimeType
             )
-    val wantsMp3Audio =
+    val wantsAudio =
         requestedKind == "audio" ||
-            slockFilePreviewIsMp3AudioAttachment(
+            slockFilePreviewIsAudioAttachment(
                 fileName = previewFileName,
                 mimeType = externalMimeType
             )
@@ -5792,7 +5794,7 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
         wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient, truncatedPreviewHint)
         wantsImage -> loadThreadImageAttachmentPreview(threadApi)
         wantsVideo -> loadThreadVideoAttachmentPreview(threadApi)
-        wantsMp3Audio -> loadThreadVideoAttachmentPreview(threadApi, title = MR.strings.file_preview_audio.desc(), audioOnly = true)
+        wantsAudio -> loadThreadVideoAttachmentPreview(threadApi, title = MR.strings.file_preview_audio.desc(), audioOnly = true)
         wantsHtml -> loadThreadHtmlAttachmentPreview(threadApi)
         wantsText -> loadThreadTextAttachmentPreview(threadApi, networkClient, truncatedPreviewHint)
         else ->
@@ -6252,6 +6254,44 @@ internal fun slockFilePreviewIsMp3AudioAttachment(fileName: String, mimeType: St
     if (normalizedMime.equals("audio/mpeg", ignoreCase = true)) return true
     if (normalizedMime.equals("audio/mp3", ignoreCase = true)) return true
     return fileName.substringBefore('?').substringBefore('#').endsWith(".mp3", ignoreCase = true)
+}
+
+private val SlockFilePreviewAudioMimeTypes =
+    setOf(
+        "audio/mpeg",
+        "audio/mp3",
+        "audio/wav",
+        "audio/x-wav",
+        "audio/wave",
+        "audio/aac",
+        "audio/mp4",
+        "audio/x-m4a",
+        "audio/ogg",
+        "audio/opus",
+        "audio/webm",
+        "audio/flac",
+        "audio/x-flac"
+    )
+
+private val SlockFilePreviewSupportedAudioExtensions =
+    setOf(
+        "mp3",
+        "wav",
+        "m4a",
+        "aac",
+        "ogg",
+        "oga",
+        "opus",
+        "weba",
+        "flac"
+    )
+
+internal fun slockFilePreviewIsAudioAttachment(fileName: String, mimeType: String): Boolean {
+    val normalizedMime = mimeType.substringBefore(';').trim().lowercase()
+    if (normalizedMime in SlockFilePreviewAudioMimeTypes) return true
+    val cleanName = fileName.substringBefore('?').substringBefore('#').lowercase()
+    val extension = cleanName.substringAfterLast('.', missingDelimiterValue = "")
+    return extension in SlockFilePreviewSupportedAudioExtensions
 }
 
 internal fun slockFilePreviewIsTextLikeAttachment(fileName: String, mimeType: String): Boolean {
