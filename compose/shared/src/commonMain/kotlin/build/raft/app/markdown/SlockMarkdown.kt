@@ -2510,6 +2510,25 @@ private fun SlockMarkdownCodeBlockWithCopy(
     language: String?,
     style: TextStyle
 ) {
+    if (language.equals("mermaid", ignoreCase = true)) {
+        SlockMermaidDiagramBlock(
+            code = code,
+            style = style,
+            fallback = {
+                SlockMarkdownCodeBlockContent(code, language, style)
+            }
+        )
+    } else {
+        SlockMarkdownCodeBlockContent(code, language, style)
+    }
+}
+
+@Composable
+private fun SlockMarkdownCodeBlockContent(
+    code: String,
+    language: String?,
+    style: TextStyle
+) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     var copied by remember { mutableStateOf(false) }
