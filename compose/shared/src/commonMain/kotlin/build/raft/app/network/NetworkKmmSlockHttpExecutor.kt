@@ -7,6 +7,7 @@ import com.tencent.kmm.network.export.NetworkRequest
 import com.tencent.kmm.network.export.NetworkRequestPolicy
 import com.tencent.kmm.network.export.NetworkProgressCallbacks
 import com.tencent.kmm.network.export.NetworkResponse
+import com.tencent.kmm.network.export.NetworkStreamTimeoutPolicy
 import com.tencent.kmm.network.export.VBTransportResultCode
 import com.tencent.kmm.network.export.VBTransportMethod
 import com.tencent.kmm.network.export.IVBPBLog
@@ -39,6 +40,8 @@ private const val SLOCK_REQUEST_TIMEOUT_MILLIS = 30_000L
  * Tap to retry, draft preserved, zero send side effects) stays as-is.
  */
 internal const val SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS = 180_000L
+
+private const val SLOCK_UPLOAD_CONNECT_TIMEOUT_MILLIS = 30_000L
 
 /**
  * Only multipart requests that stream a fileRef body get the upload budget;
@@ -285,6 +288,7 @@ internal class NetworkKmmSlockHttpExecutor(
             requestBytes = bodyBytes.size.toLong(),
             totalTimeoutMillis = SLOCK_REQUEST_TIMEOUT_MILLIS,
             bodyKind = "bytes",
+            http1Only = true,
         )
 
     override suspend fun executeFile(
@@ -308,6 +312,7 @@ internal class NetworkKmmSlockHttpExecutor(
             requestBytes = body.contentLength,
             totalTimeoutMillis = SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS,
             bodyKind = "file",
+            http1Only = true,
         )
 
     private suspend fun executeBinary(
@@ -319,6 +324,7 @@ internal class NetworkKmmSlockHttpExecutor(
         requestBytes: Long,
         totalTimeoutMillis: Long,
         bodyKind: String,
+        http1Only: Boolean = false,
     ): SlockHttpExecutorResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         // Presigned URLs are bearer capabilities.  Never include the URL (or its query) in
@@ -337,9 +343,16 @@ internal class NetworkKmmSlockHttpExecutor(
                 body = body,
                 policy = NetworkRequestPolicy(
                     timeoutMillis = totalTimeoutMillis,
-                    priority = priority.toNetworkKmmPriority()
+                    priority = priority.toNetworkKmmPriority(),
+                    streamTimeouts =
+                        NetworkStreamTimeoutPolicy(
+                            connectTimeoutMillis = SLOCK_UPLOAD_CONNECT_TIMEOUT_MILLIS
+                        )
                 )
             )
+            if (http1Only) {
+                request.flagHttp1Only()
+            }
             traceHeaders.forEach { (name, value) -> request.setHeader(name, value) }
             val response = executeNetworkRequest(
                 request = request,
