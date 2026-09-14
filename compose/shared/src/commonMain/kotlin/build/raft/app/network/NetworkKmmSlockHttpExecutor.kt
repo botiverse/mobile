@@ -42,10 +42,12 @@ private const val SLOCK_REQUEST_TIMEOUT_MILLIS = 30_000L
 internal const val SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS = 180_000L
 
 /**
- * task #1135: Ktor has no Happy Eyeballs, so a connect timeout is the
- * decision to abandon the whole address family. A 30s connect would drag an
- * IPv6-blackholed user's cold connect to 30s; keep connect at 10s and leave
- * the total upload budget unchanged.
+ * task #1135: keep connect at 10s and leave the total upload budget
+ * unchanged. This presigned PUT path is normally pinned to curl via
+ * http1Only, but Android's allowedEngines can fall back to Ktor; Ktor has no
+ * Happy Eyeballs, so a connect timeout is the decision to abandon the whole
+ * address family, and 30s would drag an IPv6-blackholed user's cold connect
+ * to 30s.
  */
 private const val SLOCK_UPLOAD_CONNECT_TIMEOUT_MILLIS = 10_000L
 
