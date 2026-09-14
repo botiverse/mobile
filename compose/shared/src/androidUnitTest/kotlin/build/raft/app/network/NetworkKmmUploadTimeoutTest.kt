@@ -135,9 +135,9 @@ class NetworkKmmUploadTimeoutTest {
         val request = assertNotNull(captured)
         assertTrue(request.isHttp1Only(), "presigned direct-upload PUT must opt out of HTTP/3")
         assertEquals(
-            30_000L,
+            10_000L,
             request.policy.streamTimeouts.connectTimeoutMillis,
-            "presigned direct-upload PUT must not use NetworkKMM's 3s connect default"
+            "presigned direct-upload PUT must keep connect at 10s (task #1135)"
         )
         assertEquals(200, response.code)
     }
