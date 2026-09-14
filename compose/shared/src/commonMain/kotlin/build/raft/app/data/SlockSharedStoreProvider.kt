@@ -71,6 +71,7 @@ import build.raft.app.network.sync.SqlDelightStrictMessageScopeSnapshotReader
 import build.raft.app.network.sync.ReadStateV1ProductionCanary
 import build.raft.app.network.sync.ReadStateV1DestinationPublication
 import build.raft.app.network.sync.ProcessReadStateV1DiagnosticOverride
+import build.raft.app.network.sync.DiagnosticFeatureFlagScope
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.network.sync.SqlDelightReadStateV1Store
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
@@ -1883,6 +1884,28 @@ internal class SlockSharedStoreProvider private constructor(
                 SharedServerFeatureFlags(
                     api = SlockFeatureFlagsNetworkApi(networkClient),
                     diagnosticsLogger = sharedInfoLogger("SlockFeatureFlags", "feature_flags"),
+                    // Diagnostics "Local Feature Overrides" seam for `sync_core_messages_v0` ONLY: internal
+                    // builds can ForceOn/ForceOff the whole offline-cache line on one binary. Not entitled
+                    // (release, or the page never opened) => the registry returns the server value unchanged.
+                    diagnosticOverride = { serverId, key, serverEffective ->
+                        if (key != SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY) {
+                            serverEffective
+                        } else {
+                            val auth = presenceAuthContext.value
+                            ProcessDiagnosticFeatureFlagOverrides.registry
+                                .decide(
+                                    key = key,
+                                    serverEffective = serverEffective,
+                                    scope =
+                                        DiagnosticFeatureFlagScope(
+                                            environmentId = auth?.environmentId.orEmpty(),
+                                            accountId = auth?.accountId.orEmpty(),
+                                            serverId = serverId?.value.orEmpty(),
+                                        ),
+                                )
+                                .finalEffective
+                        }
+                    },
                     onEvaluation = { serverId, key, enabled, reason, variant, environmentId, evaluationGeneration ->
                         if (key == ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY && environmentId != null) {
                             SlockNetworkKmmRecoveryRemoteFlagBridge
