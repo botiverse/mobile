@@ -21,6 +21,29 @@ class SlockNetworkTransportControllerTest {
     }
 
     @Test
+    fun presignedUploadHttp1OnlyOverridesGlobalCurlH3() {
+        val controller = readyController(curlRequired = false)
+
+        val request = NetworkRequest(url = "https://example.test/presigned").apply { flagHttp1Only {} }
+
+        assertEquals(NetworkTransportEngine.CURL, controller.selectionFor(request).requestedEngine)
+        assertEquals(false, request.curlHttp3EnabledOverride)
+    }
+
+    @Test
+    fun presignedUploadHttp1OnlyAlsoOverridesExplicitCurlH3RemoteVariant() {
+        val controller = readyController(curlRequired = false)
+        controller.updateRemoteEnvironment("production")
+        controller.updateRemoteActiveSelection("shell-a", "server-a")
+        controller.applyRemoteEvaluation("production", 1L, "server-a", true, "curl_h3")
+
+        val request = NetworkRequest(url = "https://example.test/presigned").apply { flagHttp1Only {} }
+
+        assertEquals(NetworkTransportEngine.CURL, controller.selectionFor(request).requestedEngine)
+        assertEquals(false, request.curlHttp3EnabledOverride)
+    }
+
+    @Test
     fun androidRemoteVariantsMapToExactEngineAndHttp3Policy() {
         val controller = readyController(curlRequired = false)
         controller.updateRemoteEnvironment("production")
