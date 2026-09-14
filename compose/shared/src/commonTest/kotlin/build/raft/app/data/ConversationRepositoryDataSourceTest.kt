@@ -1024,6 +1024,7 @@ class ConversationRepositoryDataSourceTest {
 
     @Test
     fun attachmentUploadCapabilitiesRejectThresholdAboveContractLimit() = runBlocking {
+        val logs = mutableListOf<String>()
         val network =
             FakeConversationNetworkClient(
                 responses =
@@ -1033,9 +1034,17 @@ class ConversationRepositoryDataSourceTest {
                     )
             )
 
-        val result = RealConversationRepository(sampleStore(), network).getAttachmentUploadCapabilities()
+        val result =
+            RealConversationRepository(sampleStore(), network, warningLogger = logs::add)
+                .getAttachmentUploadCapabilities()
 
         assertEquals("network_parse_failed", assertIs<DataResult.Error>(result).error.code)
+        assertTrue(
+            logs.any { line ->
+                line.contains("conversation_network_body_received source=attachment_upload_capabilities") &&
+                    line.contains("attachmentUploadCapabilitiesParseError=true")
+            }
+        )
     }
 
     @Test
