@@ -360,6 +360,8 @@ internal class NetworkKmmSlockHttpExecutor(
         warningLogger(
             "slock_networkkmm_binary_start category=presigned_upload bodyKind=$bodyKind " +
                 "method=${method.uppercase()} priority=$priority requestBytes=$requestBytes " +
+                "configTotalTimeoutMillis=$totalTimeoutMillis " +
+                "configConnectTimeoutMillis=$connectTimeoutMillis " +
                 "clientRequestId=$clientRequestId headers=${traceHeaders.toSafeHeaderDiagnostics()}"
         )
         return try {

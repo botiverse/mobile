@@ -1885,6 +1885,16 @@ private fun PlatformFile.toMultipartFile(): MultipartFile =
         sizeBytes = sizeBytes
     )
 
+
+private fun attachmentUploadCapabilitiesBodyTelemetry(body: String): String =
+    runCatching {
+        val capabilities = parseSharedAttachmentUploadCapabilities(body)
+        " maxBytes=${capabilities.maxBytes} " +
+            "directUploadThresholdBytes=${capabilities.directUploadThresholdBytes ?: "null"} " +
+            "directUploadEnabled=${capabilities.directUploadEnabled}"
+    }.getOrElse {
+        " attachmentUploadCapabilitiesParseError=true"
+    }
 private suspend fun <T> executeConversationWithDiagnostics(
     emptyReason: EmptyReason,
     block: suspend () -> HomeNetworkResponse,
