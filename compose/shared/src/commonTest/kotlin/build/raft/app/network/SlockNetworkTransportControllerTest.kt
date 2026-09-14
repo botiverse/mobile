@@ -24,7 +24,7 @@ class SlockNetworkTransportControllerTest {
     fun presignedUploadHttp1OnlyOverridesGlobalCurlH3() {
         val controller = readyController(curlRequired = false)
 
-        val request = NetworkRequest(url = "https://example.test/presigned").apply { flagHttp1Only() }
+        val request = NetworkRequest(url = "https://example.test/presigned").apply { flagHttp1Only {} }
 
         assertEquals(NetworkTransportEngine.CURL, controller.selectionFor(request).requestedEngine)
         assertEquals(false, request.curlHttp3EnabledOverride)
@@ -37,7 +37,7 @@ class SlockNetworkTransportControllerTest {
         controller.updateRemoteActiveSelection("shell-a", "server-a")
         controller.applyRemoteEvaluation("production", 1L, "server-a", true, "curl_h3")
 
-        val request = NetworkRequest(url = "https://example.test/presigned").apply { flagHttp1Only() }
+        val request = NetworkRequest(url = "https://example.test/presigned").apply { flagHttp1Only {} }
 
         assertEquals(NetworkTransportEngine.CURL, controller.selectionFor(request).requestedEngine)
         assertEquals(false, request.curlHttp3EnabledOverride)

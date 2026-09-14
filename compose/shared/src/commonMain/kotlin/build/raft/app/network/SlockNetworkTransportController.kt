@@ -28,11 +28,15 @@ internal data class SlockNetworkTransportPlatformPolicy(
 internal const val SLOCK_HTTP1_ONLY_METADATA_KEY = "com.raft.mobile.transport.http1_only"
 internal const val SLOCK_HTTP1_ONLY_METADATA_VALUE = "true"
 
-internal fun NetworkRequest.flagHttp1Only() {
-    (metadata as? MutableMap<String, String>)?.set(
-        SLOCK_HTTP1_ONLY_METADATA_KEY,
-        SLOCK_HTTP1_ONLY_METADATA_VALUE
-    )
+internal fun NetworkRequest.flagHttp1Only(warningLogger: (String) -> Unit) {
+    val metadata = metadata
+    if (metadata is MutableMap<String, String>) {
+        metadata[SLOCK_HTTP1_ONLY_METADATA_KEY] = SLOCK_HTTP1_ONLY_METADATA_VALUE
+    } else {
+        warningLogger(
+            "slock_networkkmm_http1_only_flag_failed metadata=${metadata::class.simpleName}"
+        )
+    }
 }
 
 internal fun NetworkRequest.isHttp1Only(): Boolean =

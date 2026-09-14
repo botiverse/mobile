@@ -126,7 +126,7 @@ class NetworkKmmUploadTimeoutTest {
         val response =
             executor.executeFile(
                 priority = SlockRequestPriority.Foreground,
-                url = "https://a084c4564dfdce5a7775b08ece638a79.r2.cloudflarestorage.com/key",
+                url = "https://example.test/r2-bucket/key",
                 method = "PUT",
                 headers = emptyMap(),
                 body = fileBody()
@@ -157,7 +157,7 @@ class NetworkKmmUploadTimeoutTest {
 
         executor.executeBytes(
             priority = SlockRequestPriority.Foreground,
-            url = "https://a084c4564dfdce5a7775b08ece638a79.r2.cloudflarestorage.com/key",
+            url = "https://example.test/r2-bucket/key",
             method = "PUT",
             headers = emptyMap(),
             bodyBytes = "hello".encodeToByteArray()
@@ -166,9 +166,9 @@ class NetworkKmmUploadTimeoutTest {
         val request = assertNotNull(captured)
         assertTrue(request.isHttp1Only(), "in-memory presigned PUT must also opt out of HTTP/3")
         assertEquals(
-            30_000L,
+            10_000L,
             request.policy.streamTimeouts.connectTimeoutMillis,
-            "presigned PUT must not use NetworkKMM's 3s connect default"
+            "in-memory presigned PUT must keep connect below its 30s total budget"
         )
     }
 

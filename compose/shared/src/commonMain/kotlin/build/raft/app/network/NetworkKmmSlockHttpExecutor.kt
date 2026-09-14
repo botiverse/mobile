@@ -44,6 +44,14 @@ internal const val SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS = 180_000L
 private const val SLOCK_UPLOAD_CONNECT_TIMEOUT_MILLIS = 30_000L
 
 /**
+ * In-memory bytes presigned PUTs keep the ordinary 30s total budget, so their
+ * connect phase must stay well below that bound or a slow connect consumes the
+ * whole deadline and connection failures become indistinguishable from
+ * transfer failures.
+ */
+private const val SLOCK_BYTES_CONNECT_TIMEOUT_MILLIS = 10_000L
+
+/**
  * Only multipart requests that stream a fileRef body get the upload budget;
  * a part without both an opener and a fileRef maps to NetworkBody.Bytes and
  * keeps the ordinary bound.
@@ -287,6 +295,7 @@ internal class NetworkKmmSlockHttpExecutor(
             body = NetworkBody.Bytes(bodyBytes),
             requestBytes = bodyBytes.size.toLong(),
             totalTimeoutMillis = SLOCK_REQUEST_TIMEOUT_MILLIS,
+            connectTimeoutMillis = SLOCK_BYTES_CONNECT_TIMEOUT_MILLIS,
             bodyKind = "bytes",
             http1Only = true,
         )
@@ -311,6 +320,7 @@ internal class NetworkKmmSlockHttpExecutor(
             ),
             requestBytes = body.contentLength,
             totalTimeoutMillis = SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS,
+            connectTimeoutMillis = SLOCK_UPLOAD_CONNECT_TIMEOUT_MILLIS,
             bodyKind = "file",
             http1Only = true,
         )
@@ -323,6 +333,7 @@ internal class NetworkKmmSlockHttpExecutor(
         body: NetworkBody,
         requestBytes: Long,
         totalTimeoutMillis: Long,
+        connectTimeoutMillis: Long,
         bodyKind: String,
         http1Only: Boolean = false,
     ): SlockHttpExecutorResponse {
@@ -346,12 +357,12 @@ internal class NetworkKmmSlockHttpExecutor(
                     priority = priority.toNetworkKmmPriority(),
                     streamTimeouts =
                         NetworkStreamTimeoutPolicy(
-                            connectTimeoutMillis = SLOCK_UPLOAD_CONNECT_TIMEOUT_MILLIS
+                            connectTimeoutMillis = connectTimeoutMillis
                         )
                 )
             )
             if (http1Only) {
-                request.flagHttp1Only()
+                request.flagHttp1Only(warningLogger)
             }
             traceHeaders.forEach { (name, value) -> request.setHeader(name, value) }
             val response = executeNetworkRequest(
