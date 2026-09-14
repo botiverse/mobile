@@ -126,6 +126,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Apply Gradle cache policy
         uses: ./.github/actions/gradle-cache-policy
@@ -218,6 +220,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Download APK
         if: ${{ inputs.apk_run_id == '' && inputs.apk_url == '' }}

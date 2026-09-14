@@ -789,6 +789,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Download connected-test APKs
         uses: actions/download-artifact@v7
@@ -976,6 +978,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Download connected-test APKs
         uses: actions/download-artifact@v7
@@ -1052,6 +1056,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Download connected-test APKs
         uses: actions/download-artifact@v7
