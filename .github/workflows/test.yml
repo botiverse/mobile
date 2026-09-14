@@ -99,6 +99,15 @@ jobs:
           python3 scripts/ci/check_commontest_crossplatform_deps.py --self-test
           python3 scripts/ci/check_commontest_crossplatform_deps.py
 
+      # Task #373 / PR #2497: mermaid consumer confinement. Three platform
+      # actuals must stay source-byte-identical; mermaid types stay out of
+      # commonMain/commonTest; OHOS mermaid GAVs stay on ohosArm64* with -ohos.
+      # Source identity, not KBA vs 2.1.21 ABI identity.
+      - name: Validate mermaid plane confinement contract
+        run: |
+          python3 scripts/ci/check_mermaid_plane_confinement.py --self-test
+          python3 scripts/ci/check_mermaid_plane_confinement.py
+
       # Task #34: Kuikly release completion-manifest gate (contract v0.3).
       # Self-test only until the release set lands; the production gate runs
       # against the registry once task #93 publishes the release set.
