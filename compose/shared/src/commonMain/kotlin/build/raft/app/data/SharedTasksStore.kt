@@ -74,6 +74,19 @@ data class TasksUiState(
     val nextCursor: String? = null,
     val hasMore: Boolean = false,
     val loadingMore: Boolean = false,
+    val loadMoreErrorCode: String? = null,
+    // Per-status pagination (task #363): independent cursor/hasMore per status
+    // column. Consulted ONLY in per-status mode; the global triple above stays
+    // the authoritative walk for the default (non-per-status) path, so #345's
+    // behaviour is unchanged when this map is unused.
+    val statusPages: Map<TaskStatus, TasksStatusPageState> = emptyMap()
+)
+
+/** One status column's independent pagination position (task #363). */
+data class TasksStatusPageState(
+    val nextCursor: String? = null,
+    val hasMore: Boolean = false,
+    val loadingMore: Boolean = false,
     val loadMoreErrorCode: String? = null
 )
 
@@ -189,6 +202,33 @@ sealed interface SharedTasksIntent {
         val errorCode: String,
         val invalidCursor: Boolean = false
     ) : SharedTasksIntent
+
+    /** Per-status pagination (task #363): request one more page for [status]. */
+    data class LoadMoreStatus(val status: TaskStatus) : SharedTasksIntent
+
+    /** Per-status seed (task #363): a column's FIRST page. Its rows and its
+     *  cursor land together — publishing only the cursor would silently drop the
+     *  rows and start the column at page 2 (@LoveArk's blocker). */
+    data class SeedStatusPage(
+        val status: TaskStatus,
+        val tasks: List<TaskSummary>,
+        val nextCursor: String?
+    ) : SharedTasksIntent
+
+    /** One status column's next page was appended (task #363). */
+    data class LoadMoreStatusSucceeded(
+        val status: TaskStatus,
+        val tasks: List<TaskSummary>,
+        val nextCursor: String?
+    ) : SharedTasksIntent
+
+    /** One status column's page failed (task #363): fail-open for THAT column only
+     *  — other columns' cursors are untouched. */
+    data class LoadMoreStatusFailed(
+        val status: TaskStatus,
+        val errorCode: String,
+        val invalidCursor: Boolean = false
+    ) : SharedTasksIntent
 }
 
 sealed interface SharedTasksRouteIntent {
@@ -205,6 +245,12 @@ sealed interface SharedTasksRouteIntent {
     data object ClearNavigationError : SharedTasksRouteIntent
     /** Pagination (task #345): follow the server cursor for the current filter. */
     data object LoadMore : SharedTasksRouteIntent
+    /** Per-status pagination (task #363): follow ONE status column's cursor. */
+    data class LoadMoreStatus(val status: TaskStatus) : SharedTasksRouteIntent
+    /** The per-status Board became the active view: seed each column's first page
+     *  on the next completed load. List mode never dispatches this, so the #345
+     *  global path issues no extra requests. */
+    data object EnterBoard : SharedTasksRouteIntent
     data class SeedContent(val snapshot: TaskSnapshot) : SharedTasksRouteIntent
 
     /**
@@ -284,6 +330,14 @@ internal class SharedTasksViewModel(
     private var createJob: Job? = null
 
     private var loadMoreJob: Job? = null
+
+    /** Per-status single-flight (task #363): one in-flight page per status column,
+     *  mirroring the global [loadMoreJob] gate. Columns never block each other. */
+    private val statusLoadJobs = mutableMapOf<TaskStatus, Job>()
+    /** Single-flight for the per-status cursor seed (task #363). */
+    private var statusSeedJob: Job? = null
+    /** Set by the Board entering; consumed by the next completed load (task #363). */
+    private var seedStatusPagesOnNext = false
 
     /**
      * Follow the server cursor for one more page (task #345). Single-flight and
@@ -370,6 +424,147 @@ internal class SharedTasksViewModel(
             }
     }
 
+    /**
+     * Follow ONE status column's cursor for one more page (task #363). Mirrors
+     * [loadMore] exactly — same owner/server fence, same fail-open semantics —
+     * but is scoped to a single status: it reads/writes only `statusPages[status]`
+     * and its own single-flight job, so concurrent columns cannot interfere and a
+     * stale page from one column can never advance another's cursor.
+     */
+    private fun loadMoreStatus(status: TaskStatus) {
+        val current = state.value
+        val page = current.statusPages[status] ?: TasksStatusPageState()
+        val cursor = page.nextCursor
+        if (scope != SharedTasksScope.Server || !page.hasMore || cursor == null ||
+            page.loadingMore || statusLoadJobs[status]?.isActive == true
+        ) {
+            return
+        }
+        statusLoadJobs[status] =
+            runtimeScope.launch {
+                diagnosticsLogger("tasks_load_more_status_start status=${status.name}")
+                val requestServerId = useCase.currentServerId()?.value
+                val requestOwner = sharedTasksDataStore?.currentOwnerSnapshot()
+                store.accept(SharedTasksIntent.LoadMoreStatus(status))
+                val result = useCase.loadServerTasksPage(
+                    limit = TASKS_SERVER_PAGE_LIMIT,
+                    cursor = cursor,
+                    // The server filter uses the WIRE value (snake_case), not the
+                    // enum name -- `InProgress` is not a valid server filter.
+                    status = status.toWireValue()
+                )
+                val currentServerId = useCase.currentServerId()?.value
+                val currentOwner = sharedTasksDataStore?.currentOwnerSnapshot()
+                val serverStillCurrent = tasksPageServerStillCurrent(requestServerId, currentServerId)
+                val ownerStillCurrent = tasksPageOwnerSnapshotStillCurrent(requestOwner, currentOwner)
+                if (!serverStillCurrent || !ownerStillCurrent || requestServerId == null) {
+                    diagnosticsLogger(
+                        "tasks_load_more_status_discard status=${status.name} reason=owner_or_server_changed"
+                    )
+                    store.accept(
+                        SharedTasksIntent.LoadMoreStatusFailed(
+                            status = status,
+                            errorCode = "server_changed",
+                            invalidCursor = true
+                        )
+                    )
+                    return@launch
+                }
+                when (result) {
+                    is TasksPageResult.Page -> {
+                        sharedTasksDataStore?.let { sharedStore ->
+                            result.tasks.forEach { task ->
+                                sharedStore.upsertTaskForCurrentServer(requestServerId, task)
+                            }
+                        }
+                        store.accept(
+                            SharedTasksIntent.LoadMoreStatusSucceeded(
+                                status = status,
+                                tasks = result.tasks,
+                                nextCursor = result.nextCursor
+                            )
+                        )
+                    }
+                    TasksPageResult.InvalidCursor ->
+                        store.accept(
+                            SharedTasksIntent.LoadMoreStatusFailed(
+                                status = status,
+                                errorCode = "invalid_cursor",
+                                invalidCursor = true
+                            )
+                        )
+                    is TasksPageResult.Error ->
+                        store.accept(
+                            SharedTasksIntent.LoadMoreStatusFailed(status = status, errorCode = result.code)
+                        )
+                }
+            }
+    }
+
+    /**
+     * The statuses a Board seeds: EVERY column it renders, including one whose
+     * first page is empty (@LoveArk). Seeding only the statuses present in the
+     * loaded rows would leave an empty column with no page state, and its
+     * sentinel would then fall back to the GLOBAL cursor — neither per-status nor
+     * safe.
+     */
+    private fun boardSeedStatuses(): List<TaskStatus> =
+        state.value.availableFilters.ifEmpty { TaskStatus.entries.toList() }.toList()
+
+    /**
+     * Seed every board column's own cursor (task #363). Called after a load that
+     * used the per-status walk: the initial page for a column is what tells the
+     * store whether that column has more pages at all — without it, a column's
+     * first `onReachedEnd` would have no cursor to advance (and a column whose
+     * first page is short must never fire).
+     *
+     * One page per status, sequential (cheap: the seed runs once per load, and
+     * the columns are few). Any failure simply leaves that column unpublished
+     * (hasMore=false) — fail-closed, matching the global path's behaviour.
+     */
+    private fun seedStatusPages(statuses: List<TaskStatus>) {
+        if (scope != SharedTasksScope.Server || statuses.isEmpty()) return
+        statusSeedJob?.cancel()
+        statusSeedJob =
+            runtimeScope.launch {
+                val requestServerId = useCase.currentServerId()?.value ?: return@launch
+                val requestOwner = sharedTasksDataStore?.currentOwnerSnapshot()
+                for (status in statuses) {
+                    val result = useCase.loadServerTasksPage(
+                        limit = TASKS_SERVER_PAGE_LIMIT,
+                        cursor = null,
+                        status = status.toWireValue()
+                    )
+                    // Fence each seed like any other page: a server/owner change
+                    // while seeding must not publish a stale column cursor.
+                    val currentServerId = useCase.currentServerId()?.value
+                    val currentOwner = sharedTasksDataStore?.currentOwnerSnapshot()
+                    if (!tasksPageServerStillCurrent(requestServerId, currentServerId) ||
+                        !tasksPageOwnerSnapshotStillCurrent(requestOwner, currentOwner)
+                    ) {
+                        return@launch
+                    }
+                    if (result is TasksPageResult.Page) {
+                        // Fold the first page's rows into the shared projection
+                        // (same as a page append) so they are visible and other
+                        // Tasks consumers see them, then land rows+cursor.
+                        sharedTasksDataStore?.let { sharedStore ->
+                            result.tasks.forEach { task ->
+                                sharedStore.upsertTaskForCurrentServer(requestServerId, task)
+                            }
+                        }
+                        store.accept(
+                            SharedTasksIntent.SeedStatusPage(
+                                status = status,
+                                tasks = result.tasks,
+                                nextCursor = result.nextCursor
+                            )
+                        )
+                    }
+                }
+            }
+    }
+
     override fun dispatch(action: SharedTasksRouteIntent) {
         when (action) {
             SharedTasksRouteIntent.Start,
@@ -437,6 +632,17 @@ internal class SharedTasksViewModel(
                 store.dispatch(SharedTasksIntent.NavigationFailed(null))
             SharedTasksRouteIntent.LoadMore ->
                 loadMore()
+            is SharedTasksRouteIntent.LoadMoreStatus ->
+                loadMoreStatus(action.status)
+            SharedTasksRouteIntent.EnterBoard -> {
+                seedStatusPagesOnNext = true
+                // If content is already loaded (Board toggled after a List load),
+                // seed now instead of waiting for an unrelated refresh.
+                if (state.value.hasCompletedTasksSnapshot()) {
+                    seedStatusPagesOnNext = false
+                    seedStatusPages(boardSeedStatuses())
+                }
+            }
             is SharedTasksRouteIntent.SeedContent -> {
                 if (store.accept(SharedTasksIntent.SeedContent(action.snapshot, state.value.selectedFilter))) {
                     runtimeScope.launch {
@@ -647,6 +853,13 @@ internal class SharedTasksViewModel(
                             selectedFilter = selectedFilter
                         )
                     )
+                    // task #363: per-status seeding is driven by the ACTIVE view
+                    // (see SharedTasksRouteIntent.EnterBoard), never by a
+                    // construction flag — so List mode cannot seed.
+                    if (seedStatusPagesOnNext) {
+                        seedStatusPagesOnNext = false
+                        seedStatusPages(boardSeedStatuses())
+                    }
                 }
             } else {
                 result.failureCodeOrNull()?.let { events.emit(SharedTasksEvent.OperationFailed(it)) }
@@ -1098,6 +1311,8 @@ private fun SharedTasksRouteIntent.tasksRefreshReason(): String =
         is SharedTasksRouteIntent.ApplyTaskStatus -> "apply_task_status"
         is SharedTasksRouteIntent.ApplyTaskUpdate -> "apply_task_update"
         SharedTasksRouteIntent.LoadMore -> "load_more"
+        is SharedTasksRouteIntent.LoadMoreStatus -> "load_more_status_${status.name}"
+        SharedTasksRouteIntent.EnterBoard -> "enter_board"
         SharedTasksRouteIntent.ClearNavigationError -> "navigation"
         is SharedTasksRouteIntent.SeedContent -> "seed"
         is SharedTasksRouteIntent.CreateTasks -> "create"
@@ -1238,7 +1453,75 @@ fun TasksUiState.reduce(intent: SharedTasksIntent): TasksUiState =
                 nextCursor = if (intent.invalidCursor) null else nextCursor,
                 hasMore = if (intent.invalidCursor) false else hasMore
             )
+        // ---- Per-status pagination (task #363) --------------------------------
+        // Only this status' entry changes; the global triple and every OTHER
+        // status' cursor are untouched, so columns cannot corrupt each other.
+        is SharedTasksIntent.SeedStatusPage ->
+            // Rows and cursor are ONE update: the column's first page becomes
+            // visible and its cursor is where the NEXT page continues from.
+            withAppendedStatusPage(intent.status, intent.tasks, intent.nextCursor)
+        is SharedTasksIntent.LoadMoreStatus -> {
+            val page = statusPages[intent.status] ?: TasksStatusPageState()
+            if (!page.hasMore || page.loadingMore || page.nextCursor == null) {
+                this
+            } else {
+                copy(statusPages = statusPages + (intent.status to page.copy(loadingMore = true, loadMoreErrorCode = null)))
+            }
+        }
+        is SharedTasksIntent.LoadMoreStatusSucceeded ->
+            withAppendedStatusPage(intent.status, intent.tasks, intent.nextCursor)
+                .copy(
+                    statusPages = (statusPages + (intent.status to
+                        (statusPages[intent.status] ?: TasksStatusPageState()).copy(
+                            loadingMore = false,
+                            loadMoreErrorCode = null
+                        )))
+                )
+        is SharedTasksIntent.LoadMoreStatusFailed -> {
+            val page = statusPages[intent.status] ?: TasksStatusPageState()
+            copy(
+                statusPages = statusPages + (intent.status to page.copy(
+                    loadingMore = false,
+                    loadMoreErrorCode = intent.errorCode,
+                    // A stale cursor drops ONLY this column's cursor.
+                    nextCursor = if (intent.invalidCursor) null else page.nextCursor,
+                    hasMore = if (intent.invalidCursor) false else page.hasMore
+                ))
+            )
+        }
     }
+
+/** Append one status column's page (task #363): the SAME merge-by-id semantics as
+ *  [withAppendedTasks] (never drops loaded rows, no duplicate ids), but only this
+ *  status' cursor is advanced — every other column is left alone. */
+internal fun TasksUiState.withAppendedStatusPage(
+    status: TaskStatus,
+    incoming: List<TaskSummary>,
+    nextCursor: String?
+): TasksUiState {
+    val page = statusPages[status] ?: TasksStatusPageState()
+    val merged = if (incoming.isEmpty()) {
+        this
+    } else {
+        val content = (loadState as? ScreenLoadState.Content)
+        if (content == null) {
+            this
+        } else {
+            val tasks = mergeTasksById(current = content.data.tasks, incoming = incoming)
+            copy(
+                loadState = ScreenLoadState.Content(
+                    content.data.copy(tasks = tasks, summaryCounts = tasks.summaryCounts())
+                )
+            )
+        }
+    }
+    return merged.copy(
+        statusPages = merged.statusPages + (status to page.copy(
+            nextCursor = nextCursor,
+            hasMore = nextCursor != null
+        ))
+    )
+}
 
 /** Append a page of tasks, merging by id: existing rows are replaced in place
  *  (so an updated row does not duplicate), new rows are appended, and the

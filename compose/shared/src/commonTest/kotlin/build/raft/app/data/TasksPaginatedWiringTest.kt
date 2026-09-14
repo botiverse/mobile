@@ -43,6 +43,7 @@ class TasksPaginatedWiringTest {
             detail: String?,
             limit: Int?,
             cursor: String?,
+            status: String?,
         ): HomeNetworkResponse {
             pageCalls += detail to limit
             // One page, two tasks, no further cursor.
@@ -135,6 +136,7 @@ class TasksPaginatedSharedStoreMergeTest {
             detail: String?,
             limit: Int?,
             cursor: String?,
+            status: String?,
         ): HomeNetworkResponse {
             pages++
             return HomeNetworkResponse(code = 200, bodyText = if (cursor == null) first else second)
@@ -220,6 +222,7 @@ class TasksPaginatedOwnerSwitchTest {
             detail: String?,
             limit: Int?,
             cursor: String?,
+            status: String?,
         ): HomeNetworkResponse {
             if (cursor == null) return HomeNetworkResponse(code = 200, bodyText = firstPage)
             allowSecondPage.await()
@@ -390,6 +393,7 @@ class TasksPaginatedSentinelSingleFlightTest {
             detail: String?,
             limit: Int?,
             cursor: String?,
+            status: String?,
         ): HomeNetworkResponse {
             pageCalls++
             if (cursor == null) return HomeNetworkResponse(code = 200, bodyText = firstPage)

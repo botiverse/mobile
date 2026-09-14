@@ -17,6 +17,7 @@ import build.raft.app.data.TasksUiState
 import build.raft.app.data.TasksUnassignedAssigneeFilterId
 import build.raft.app.data.TasksVisibleContent
 import build.raft.app.data.TasksViewMode
+import build.raft.app.data.hasCompletedTasksSnapshot
 import build.raft.app.data.boardColumns
 import build.raft.app.data.isCreatingTasksFor
 import build.raft.app.data.reduce
@@ -707,6 +708,17 @@ private fun SharedTasksLoadedBodyContent(
                         createDialogOpen = true
                     }
                 )
+                // Task #363: the per-status Board seeds each column's first page
+                // (its rows AND cursor) once it becomes the active view. List mode
+                // never dispatches this, so the global walk issues no extra
+                // requests and the #345 path stays byte-identical.
+                LaunchedEffect(presentationState.selectedMode, state.hasCompletedTasksSnapshot()) {
+                    if (presentationState.selectedMode == TasksViewMode.Board &&
+                        state.hasCompletedTasksSnapshot()
+                    ) {
+                        onIntent(SharedTasksRouteIntent.EnterBoard)
+                    }
+                }
                 when (presentationState.selectedMode) {
                     TasksViewMode.Board -> {
                         // Horizontal board: each TaskStatus is a fixed-width column the user can
@@ -743,14 +755,20 @@ private fun SharedTasksLoadedBodyContent(
                                         statusMenuTask = task
                                         statusMenuAnchor = anchor
                                     },
-                                    onReachedEnd = {
-                                        // A column reaching its end means more
-                                        // global pages may add rows: request the
-                                        // next page. The host's single-flight
-                                        // LoadMore makes concurrent column
-                                        // triggers safe.
-                                        if (state.hasMore && !state.loadingMore) {
-                                            onIntent(SharedTasksRouteIntent.LoadMore)
+                                    onReachedEnd = { columnStatus ->
+                                        // task #363: per-status pagination is the
+                                        // ONLY walk for a Board column. A column
+                                        // advances its own cursor (single-flight
+                                        // per status); an exhausted column is a
+                                        // no-op. It never falls back to the global
+                                        // cursor — that would consume another
+                                        // column's page (@LoveArk). Every column
+                                        // is seeded, including empty ones, so a
+                                        // missing entry means "not seeded yet"
+                                        // (no-op), never "use the global walk".
+                                        val page = state.statusPages[columnStatus]
+                                        if (page != null && page.hasMore && !page.loadingMore) {
+                                            onIntent(SharedTasksRouteIntent.LoadMoreStatus(columnStatus))
                                         }
                                     },
                                     bottomContentPadding = bottomContentPadding,
@@ -1236,7 +1254,7 @@ private fun SharedTasksBoardColumn(
     bottomContentPadding: Dp,
     draftProjection: SharedThreadComposerDraftProjection,
     scrollToTopRequest: Int,
-    onReachedEnd: () -> Unit,
+    onReachedEnd: (TaskStatus) -> Unit,
 ) {
     val columnListState = rememberLazyListState()
     val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
@@ -1255,7 +1273,7 @@ private fun SharedTasksBoardColumn(
             .distinctUntilChanged()
             .collect { lastVisibleIndex ->
                 if (lastVisibleIndex >= 0 && lastVisibleIndex >= tasks.lastIndex - SharedTasksLoadMoreThreshold) {
-                    onReachedEnd()
+                    onReachedEnd(status)
                 }
             }
     }

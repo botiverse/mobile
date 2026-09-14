@@ -39,7 +39,8 @@ interface SharedTasksRepository {
         serverId: ServerId,
         limit: Int,
         cursor: String?,
-        priority: DataRequestPriority = DataRequestPriority.Visible
+        priority: DataRequestPriority = DataRequestPriority.Visible,
+        status: String? = null
     ): TasksPageResult = TasksPageResult.Error(code = "tasks_page_unsupported")
 
     suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult>
@@ -96,8 +97,9 @@ class SharedTasksDataRepository(
         serverId: ServerId,
         limit: Int,
         cursor: String?,
-        priority: DataRequestPriority
-    ): TasksPageResult = remoteDataSource.loadServerTasksPage(serverId, limit, cursor, priority)
+        priority: DataRequestPriority,
+        status: String?
+    ): TasksPageResult = remoteDataSource.loadServerTasksPage(serverId, limit, cursor, priority, status)
 
     override suspend fun updateTaskStatus(
         serverId: ServerId,
@@ -165,7 +167,8 @@ interface SharedTasksRemoteDataSource {
         serverId: ServerId,
         limit: Int,
         cursor: String?,
-        priority: DataRequestPriority = DataRequestPriority.Visible
+        priority: DataRequestPriority = DataRequestPriority.Visible,
+        status: String? = null
     ): TasksPageResult = TasksPageResult.Error(code = "tasks_page_unsupported")
 
     suspend fun loadChannelTasks(
