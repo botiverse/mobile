@@ -208,7 +208,7 @@ jobs:
           "${BT}/aapt" dump badging "$APK" | tee aapt-badging.log
           grep -q "package: name='build.raft.app.alpha'" aapt-badging.log
           grep -q "application-label:'Raft Alpha'" aapt-badging.log
-          grep -q "versionName='[^']*-alpha'" aapt-badging.log
+          grep -q "versionName='[^']*-alpha[^']*'" aapt-badging.log
           SOURCE_SHA="${{ steps.source.outputs.sha }}"
           EXPECTED_MIN_SDK=29
           # The approved 1.7.0 QA source predates the API 29 floor. Keep this
