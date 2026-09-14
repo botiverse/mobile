@@ -41,6 +41,52 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
+    fun diagnosticOverrideHookReceivesServerValueAndDecidesBothReadShapes() = runBlocking {
+        val api = FakeApi(ok("""{"evaluations":[{"key":"sync_core_messages_v0","enabled":false}]}"""))
+        val seen = mutableListOf<Triple<ServerId?, String, Boolean>>()
+        val flags =
+            SharedServerFeatureFlags(
+                api,
+                diagnosticOverride = { serverId, key, serverEffective ->
+                    seen += Triple(serverId, key, serverEffective)
+                    if (key == SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY) true else serverEffective
+                },
+            )
+
+        // Before any resolve: the raw snapshot is Unresolved (OFF) but the hook decides ON for its key only.
+        assertTrue(flags.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertTrue(flags.isEnabledForAnyResolvedServer(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertFalse(flags.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY))
+        assertEquals(Triple<ServerId?, String, Boolean>(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, false), seen[0])
+        assertEquals(Triple<ServerId?, String, Boolean>(null, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, false), seen[1])
+
+        // After resolve the hook still sees the true server value (explicit OFF) and the raw snapshot is untouched.
+        flags.prefetch(server)
+        assertTrue(flags.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertFalse(flags.snapshotFor(server).isEnabled(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertEquals(false, seen.last().third)
+    }
+
+    @Test
+    fun diagnosticOverrideHookCanForceAServerEnabledFlagOff() = runBlocking {
+        val api = FakeApi(ok("""{"evaluations":[{"key":"sync_core_messages_v0","enabled":true}]}"""))
+        val flags = SharedServerFeatureFlags(api, diagnosticOverride = { _, _, _ -> false })
+        flags.prefetch(server)
+        assertFalse(flags.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertFalse(flags.isEnabledForAnyResolvedServer(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertTrue(flags.snapshotFor(server).isEnabled(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+    }
+
+    @Test
+    fun withoutDiagnosticOverrideHookReadsAreTheRawSnapshot() = runBlocking {
+        val api = FakeApi(ok("""{"evaluations":[{"key":"sync_core_messages_v0","enabled":true}]}"""))
+        val flags = SharedServerFeatureFlags(api)
+        assertFalse(flags.isEnabledForAnyResolvedServer(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        flags.prefetch(server)
+        assertTrue(flags.isEnabledForAnyResolvedServer(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+    }
+
+    @Test
     fun readStateV1FlagIsIndependentAndDefaultsOffUntilItsOwnEvaluation() = runBlocking {
         val flags =
             SharedServerFeatureFlags(

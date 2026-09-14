@@ -155,10 +155,24 @@ internal class SlockFeatureFlagsNetworkApi(
  * [snapshotFor]/[isEnabled] are safe defaults-off reads before/without a resolve. A failed fetch leaves
  * the prior snapshot (or Unresolved) — flags default OFF, so the gated feature stays dark, never broken.
  */
+/**
+ * Process-local diagnostic override seam for the boolean reads ([SharedServerFeatureFlags.isEnabled] /
+ * [SharedServerFeatureFlags.isEnabledForAnyResolvedServer]). It receives the server-effective value and returns
+ * the final one, so the diagnostics "Local Feature Overrides" page can still show server / override / final
+ * side by side. `null` (the default, and every host that never entitles the override registry) reads the raw
+ * snapshot; [SharedServerFeatureFlags.snapshotFor] is always raw. `serverId` is null for the process-wide
+ * `isEnabledForAnyResolvedServer` shape.
+ */
+fun interface ServerFeatureFlagDiagnosticOverride {
+    fun finalEffective(serverId: ServerId?, key: String, serverEffective: Boolean): Boolean
+}
+
 class SharedServerFeatureFlags(
     private val api: SlockFeatureFlagsApi,
     private val keys: List<String> = REGISTERED_SERVER_FEATURE_FLAG_KEYS,
     private val diagnosticsLogger: ((String) -> Unit)? = null,
+    private val diagnosticOverride: ServerFeatureFlagDiagnosticOverride? = null,
+    // Kept last so existing trailing-lambda constructions keep binding here.
     private val onEvaluation: ((ServerId, String, Boolean, String?, String?, String?, Long) -> Unit)? = null,
 ) {
     private val stateLock = SynchronizedObject()
@@ -182,7 +196,11 @@ class SharedServerFeatureFlags(
     fun snapshotFor(serverId: ServerId?): ServerFeatureFlagSnapshot =
         serverId?.let { snapshots[it.value] } ?: ServerFeatureFlagSnapshot.Unresolved
 
-    fun isEnabled(serverId: ServerId?, key: String): Boolean = snapshotFor(serverId).isEnabled(key)
+    fun isEnabled(serverId: ServerId?, key: String): Boolean =
+        applyDiagnosticOverride(serverId, key, snapshotFor(serverId).isEnabled(key))
+
+    private fun applyDiagnosticOverride(serverId: ServerId?, key: String, serverEffective: Boolean): Boolean =
+        diagnosticOverride?.finalEffective(serverId, key, serverEffective) ?: serverEffective
 
     /**
      * True if [key] is enabled in ANY resolved server snapshot. Used by the sync-core shadow-compare gate,
@@ -191,7 +209,7 @@ class SharedServerFeatureFlags(
      * per-server, replace this with a serverId-scoped read.
      */
     fun isEnabledForAnyResolvedServer(key: String): Boolean =
-        snapshots.values.any { it.resolved && it.isEnabled(key) }
+        applyDiagnosticOverride(null, key, snapshots.values.any { it.resolved && it.isEnabled(key) })
 
     /** Evaluate the registered flags for [serverId] and cache the snapshot. Returns the resolved snapshot. */
     suspend fun prefetch(
