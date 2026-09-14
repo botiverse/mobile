@@ -628,7 +628,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           trackProgress ? callback : undefined
         );
         if (downloadResult["status"] !== "complete") {
-          callback(downloadResult);
+          callback(this.slockAttachmentSaveFailurePayload(downloadResult));
           return;
         }
       }
@@ -656,6 +656,22 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     } finally {
       if (this.activePrivateDownloadId === downloadId) this.activePrivateDownloadId = "";
     }
+  }
+
+  private slockAttachmentSaveFailurePayload(downloadResult: Record<string, Object>): Record<string, Object> {
+    const status = downloadResult["status"] as string | undefined;
+    if (status === "cancelled") {
+      return downloadResult;
+    }
+    const errorKind = (downloadResult["errorKind"] as string | undefined) ?? "";
+    const storageFailure = errorKind === "storage_write" ||
+      errorKind === "storage_prepare" ||
+      errorKind === "storage_publish";
+    return {
+      "status": storageFailure ? "storage_failed" : "download_failed",
+      "message": (downloadResult["message"] as string | undefined) ?? "Unable to download attachment",
+      "errorKind": errorKind
+    };
   }
 
   private attachmentCacheStatus(params: KRAny, callback: KuiklyRenderCallback) {

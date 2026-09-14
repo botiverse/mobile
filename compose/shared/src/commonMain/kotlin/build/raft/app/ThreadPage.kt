@@ -2868,7 +2868,7 @@ private data class ThreadAttachmentOpenResult(
 
 internal fun slockThreadAttachmentOpenStatus(nativeStatus: String): String =
     when (nativeStatus) {
-        "opened", "cancelled", "save_cancelled", "missing", "no_app", "storage_failed" -> nativeStatus
+        "opened", "cancelled", "save_cancelled", "missing", "no_app", "storage_failed", "download_failed" -> nativeStatus
         else -> "failed"
     }
 
@@ -6175,6 +6175,7 @@ internal fun SharedThreadRouteContent(
             unableToDownloadAttachment = unableToDownloadAttachmentLabel,
             noAppCanOpenFile = stringResource(MR.strings.file_preview_error_no_app),
             storageUnavailable = stringResource(MR.strings.file_preview_error_storage_unavailable),
+            downloadFailed = stringResource(MR.strings.file_preview_download_failed),
             unableToOpenAttachment = unableToOpenAttachmentLabel
         )
     val attachmentSavedToDownloadsLabel = stringResource(MR.strings.file_preview_download_saved)
@@ -7448,7 +7449,13 @@ internal fun SharedThreadRouteContent(
                                 message = result.message,
                                 downloadId = downloadId
                             ))
-                    bridge.toast(result.message.ifBlank { unableToDownloadAttachmentLabel })
+                    bridge.toast(
+                        when (result.status) {
+                            "download_failed" -> attachmentOpenResultTerms.downloadFailed
+                            "storage_failed" -> attachmentOpenResultTerms.storageUnavailable
+                            else -> result.message.ifBlank { unableToDownloadAttachmentLabel }
+                        }
+                    )
                     attachmentOperationTokens = attachmentOperationTokens - attachment.id
                 }
             }
@@ -11774,6 +11781,11 @@ private suspend fun saveSharedThreadAttachment(
                     ThreadAttachmentOpenResult(
                         status = "storage_failed",
                         message = nativeResult?.optString("message").orEmpty().ifBlank { "Storage unavailable" }
+                    )
+                "download_failed" ->
+                    ThreadAttachmentOpenResult(
+                        status = "download_failed",
+                        message = nativeResult?.optString("message").orEmpty()
                     )
                 else ->
                     ThreadAttachmentOpenResult(

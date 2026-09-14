@@ -1548,7 +1548,7 @@ class SlockFilePreviewDownloadStatusTest {
                 persistedUri = "content://downloads/public-7"
             )
 
-        listOf("missing", "storage_failed").forEach { terminal ->
+        listOf("missing", "storage_failed", "download_failed").forEach { terminal ->
             val downgraded =
                 slockFilePreviewPublicDownloadStateAfterOpen(
                     current = downloaded,

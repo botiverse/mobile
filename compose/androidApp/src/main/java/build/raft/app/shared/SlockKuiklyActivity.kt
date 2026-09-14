@@ -7116,17 +7116,29 @@ internal class SlockKuiklyBridgeModule(
                                                 "message" to "Unable to prepare attachment storage"
                                         )
                                     }
-                                    val preparation =
-                                            prepareAttachment(
-                                                    request = request,
-                                                    operationId = request.optString("operationId"),
-                                                    progressCallback =
-                                                        if (trackProgress) {
-                                                            { progress -> callback?.invoke(progress) }
-                                                        } else {
-                                                            null
-                                                        }
-                                            )
+                                    val preparationAttempt =
+                                            runCatching {
+                                                        prepareAttachment(
+                                                                request = request,
+                                                                operationId = request.optString("operationId"),
+                                                                progressCallback =
+                                                                    if (trackProgress) {
+                                                                        { progress -> callback?.invoke(progress) }
+                                                                    } else {
+                                                                        null
+                                                                    }
+                                                        )
+                                                    }
+                                    if (preparationAttempt.isFailure) {
+                                        val throwable = preparationAttempt.exceptionOrNull()
+                                        val payload = attachmentSavePreparationFailurePayload(throwable)
+                                        SlockAppLog.record(
+                                                "SlockAttachmentExport",
+                                                "phase=download status=${payload["status"]} type=${throwable?.javaClass?.simpleName}"
+                                        )
+                                        return@withIdentityLock payload
+                                    }
+                                    val preparation = preparationAttempt.getOrThrow()
                                     when (preparation) {
                                         is AttachmentPreparationResult.Terminal -> preparation.payload
                                         is AttachmentPreparationResult.Ready -> {
@@ -7549,6 +7561,10 @@ internal class SlockKuiklyBridgeModule(
                                         "message" to "Download stopped",
                                         "cached" to false
                                 )
+                        )
+                    } catch (failure: AttachmentDownloadFailedException) {
+                        return AttachmentPreparationResult.Terminal(
+                                attachmentDownloadFailurePayload(failure)
                         )
                     }
                 } else {
@@ -8167,7 +8183,10 @@ internal class SlockKuiklyBridgeModule(
             }
             else -> {
                 ownerOperation.cancelAndCleanup()
-                throw IllegalStateException(result.message ?: result.errorKind ?: "Attachment download failed")
+                throw AttachmentDownloadFailedException(
+                        errorKind = result.errorKind,
+                        message = result.message ?: result.errorKind ?: "Attachment download failed"
+                )
             }
         }
     }
@@ -8463,7 +8482,43 @@ internal class SlockKuiklyBridgeModule(
     }
 }
 
-private class AttachmentDownloadStoppedException : RuntimeException()
+internal class AttachmentDownloadStoppedException : RuntimeException()
+
+internal class AttachmentDownloadFailedException(
+        val errorKind: String?,
+        message: String
+) : RuntimeException(message)
+
+internal fun attachmentSavePreparationFailurePayload(
+        throwable: Throwable?
+): Map<String, Any> =
+        when (throwable) {
+            is AttachmentDownloadStoppedException ->
+                    mapOf(
+                            "status" to "cancelled",
+                            "cached" to false,
+                            "message" to (throwable.message ?: "Download stopped")
+                    )
+            is AttachmentDownloadFailedException -> attachmentDownloadFailurePayload(throwable)
+            else ->
+                    mapOf(
+                            "status" to "storage_failed",
+                            "cached" to false,
+                            "message" to "Unable to prepare attachment storage"
+                    )
+        }
+
+internal fun attachmentDownloadFailurePayload(
+        failure: AttachmentDownloadFailedException
+): Map<String, Any> {
+    val storageFailure =
+            failure.errorKind in setOf("storage_write", "storage_prepare", "storage_publish")
+    return mapOf(
+            "status" to if (storageFailure) "storage_failed" else "download_failed",
+            "cached" to false,
+            "message" to (failure.message ?: "Attachment download failed")
+    )
+}
 
 private data class DirectAttachmentDownloadCompletion(
         val contentType: String?,

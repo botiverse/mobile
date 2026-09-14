@@ -75,6 +75,9 @@ jobs:
       - name: Validate OHOS attachment-open diagnostic production wiring
         run: node compose/ohosApp/scripts/test_attachment_open_diagnostics_source_contract.mjs
 
+      - name: Validate attachment save failure mapping across native bridges
+        run: python3 scripts/ci/test_attachment_save_mapping_contract.py
+
       - name: Validate Kuikly immutable-Raft consumer contract
         run: python3 scripts/ci/test_kuikly_raft_consumer_contract.py
 
@@ -1171,14 +1174,33 @@ jobs:
         working-directory: compose/iosApp
         run: |
           set -o pipefail
+          log="$GITHUB_WORKSPACE/xcodebuild-ios.log"
           xcodebuild \
             -workspace iosApp.xcworkspace \
             -scheme iosAppUITests \
             -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/ios-build" \
+            ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO \
-            build-for-testing | tail -200
+            build-for-testing > "$log" 2>&1
+          status=$?
+          tail -200 "$log"
+          if [ "$status" -ne 0 ]; then
+            echo "===== iOS build FAILED (status=$status) — extracted errors ====="
+            grep -nE "(^|[[:space:]])e: |: error:|error: |Unresolved|FAILURE:|Execution failed|BUILD FAILED|following build commands failed|PhaseScriptExecution" "$log" \
+              | grep -v "Using response file" | tail -100 || true
+          fi
+          exit "$status"
+
+      - name: Upload xcodebuild log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-compile-xcodebuild-log-${{ github.run_id }}
+          path: xcodebuild-ios.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Gradle failure diagnostics
         if: failure()
