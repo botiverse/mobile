@@ -1000,6 +1000,28 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
+    fun attachmentUploadCapabilitiesBodyEventMarksParseFailure() = runBlocking {
+        val body = """{"maxBytes":"""
+        val logs = mutableListOf<String>()
+        val network =
+            FakeConversationNetworkClient(
+                responses = mapOf("GET attachments/upload-capabilities" to body)
+            )
+
+        val result =
+            RealConversationRepository(sampleStore(), network, warningLogger = logs::add)
+                .getAttachmentUploadCapabilities()
+
+        assertIs<DataResult.Error>(result)
+        assertTrue(
+            logs.any { line ->
+                line.contains("conversation_network_body_received source=attachment_upload_capabilities") &&
+                    line.contains("attachmentUploadCapabilitiesParseError=true")
+            }
+        )
+    }
+
+    @Test
     fun attachmentUploadCapabilitiesRejectThresholdAboveContractLimit() = runBlocking {
         val network =
             FakeConversationNetworkClient(

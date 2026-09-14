@@ -1887,7 +1887,9 @@ private fun attachmentUploadCapabilitiesBodyTelemetry(body: String): String =
         " maxBytes=${capabilities.maxBytes} " +
             "directUploadThresholdBytes=${capabilities.directUploadThresholdBytes ?: "null"} " +
             "directUploadEnabled=${capabilities.directUploadEnabled}"
-    }.getOrDefault("")
+    }.getOrElse {
+        " attachmentUploadCapabilitiesParseError=true"
+    }
 
 private suspend fun <T> executeConversationWithDiagnostics(
     emptyReason: EmptyReason,
