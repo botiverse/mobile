@@ -334,6 +334,7 @@ class RealConversationRepository private constructor(
             emptyReason = EmptyReason.NoSettingsAvailable,
             block = { networkClient.attachmentUploadCapabilities(DataRequestPriority.Foreground) },
             source = "attachment_upload_capabilities",
+            bodyEventFields = ::attachmentUploadCapabilitiesBodyTelemetry,
             mapper = ::parseSharedAttachmentUploadCapabilities
         )
     }
@@ -1468,6 +1469,7 @@ class RealConversationRepository private constructor(
         block: suspend () -> HomeNetworkResponse,
         emptyWhen: (T) -> Boolean = { false },
         source: String? = null,
+        bodyEventFields: ((String) -> String)? = null,
         mapper: (String) -> T
     ): DataResult<T> =
         executeConversationWithDiagnostics(
@@ -1476,6 +1478,7 @@ class RealConversationRepository private constructor(
             emptyWhen = emptyWhen,
             source = source,
             diagnosticsLogger = warningLogger,
+            bodyEventFields = bodyEventFields,
             mapper = mapper
         )
 
@@ -1878,12 +1881,23 @@ private fun PlatformFile.toMultipartFile(): MultipartFile =
         sizeBytes = sizeBytes
     )
 
+private fun attachmentUploadCapabilitiesBodyTelemetry(body: String): String =
+    runCatching {
+        val capabilities = parseSharedAttachmentUploadCapabilities(body)
+        " maxBytes=${capabilities.maxBytes} " +
+            "directUploadThresholdBytes=${capabilities.directUploadThresholdBytes ?: "null"} " +
+            "directUploadEnabled=${capabilities.directUploadEnabled}"
+    }.getOrElse {
+        " attachmentUploadCapabilitiesParseError=true"
+    }
+
 private suspend fun <T> executeConversationWithDiagnostics(
     emptyReason: EmptyReason,
     block: suspend () -> HomeNetworkResponse,
     emptyWhen: (T) -> Boolean = { false },
     source: String? = null,
     diagnosticsLogger: (String) -> Unit = {},
+    bodyEventFields: ((String) -> String)? = null,
     mapper: (String) -> T
 ): DataResult<T> {
     var statusCode: Int? = null
@@ -1897,7 +1911,8 @@ private suspend fun <T> executeConversationWithDiagnostics(
         val responseBytes = body.encodeToByteArray().size
         diagnosticsLogger(
             "conversation_network_body_received source=$sourceLabel code=${response.code} " +
-                "responseBytes=$responseBytes hasBody=${response.bodyText != null}"
+                "responseBytes=$responseBytes hasBody=${response.bodyText != null}" +
+                (bodyEventFields?.invoke(body) ?: "")
         )
         val parseStartedAt = TimeSource.Monotonic.markNow()
         diagnosticsLogger(
