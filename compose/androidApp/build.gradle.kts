@@ -331,6 +331,7 @@ val slockAndroidVersionName =
             append(".")
             append(slockAndroidVersionPatch)
             slockAndroidVersionSuffix?.let { append("-").append(it) }
+            append("+").append(slockGitCommit())
         }
 
 fun slockBuildTime(): String {
