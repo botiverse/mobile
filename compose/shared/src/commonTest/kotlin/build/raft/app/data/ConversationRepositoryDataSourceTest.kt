@@ -977,6 +977,29 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
+    fun attachmentUploadCapabilitiesBodyEventIncludesRoutingFields() = runBlocking {
+        val body =
+            """{"directUploadEnabled":true,"directUploadThresholdBytes":94371840,"maxBytes":52428800,"sessionExpiresInSeconds":900}"""
+        val logs = mutableListOf<String>()
+        val network =
+            FakeConversationNetworkClient(
+                responses = mapOf("GET attachments/upload-capabilities" to body)
+            )
+
+        RealConversationRepository(sampleStore(), network, warningLogger = logs::add)
+            .getAttachmentUploadCapabilities()
+
+        assertTrue(
+            logs.any { line ->
+                line.contains("conversation_network_body_received source=attachment_upload_capabilities") &&
+                    line.contains("maxBytes=52428800") &&
+                    line.contains("directUploadThresholdBytes=94371840") &&
+                    line.contains("directUploadEnabled=true")
+            }
+        )
+    }
+
+    @Test
     fun attachmentUploadCapabilitiesRejectThresholdAboveContractLimit() = runBlocking {
         val network =
             FakeConversationNetworkClient(
