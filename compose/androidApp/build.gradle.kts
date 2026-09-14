@@ -332,6 +332,7 @@ val slockAndroidVersionName =
             append(slockAndroidVersionPatch)
             slockAndroidVersionSuffix?.let { append("-").append(it) }
             append("+").append(slockGitCommit())
+            if (slockWorkingTreeDirty()) append("-dirty")
         }
 
 fun slockBuildTime(): String {
@@ -351,6 +352,19 @@ fun slockGitCommit(): String =
         if (process.exitValue() == 0 && output.isNotBlank()) output else "unknown"
     } catch (_: Throwable) {
         "unknown"
+    }
+
+fun slockWorkingTreeDirty(): Boolean =
+    try {
+        val process = ProcessBuilder("git", "status", "--porcelain")
+            .directory(rootProject.projectDir)
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().readText().trim()
+        process.waitFor(5, TimeUnit.SECONDS)
+        process.exitValue() == 0 && output.isNotBlank()
+    } catch (_: Throwable) {
+        false
     }
 
 data class OssLicenseOverride(
