@@ -419,7 +419,10 @@ internal fun slockNetworkClientConfig(
                             "negotiatedProtocol=${diagnostics.negotiatedProtocol} " +
                             "status=${diagnostics.statusCode ?: "none"} " +
                             "errorKind=${diagnostics.errorKind ?: "none"} " +
-                            "transportId=${diagnostics.timing.transportRequestId ?: "none"}"
+                            "transportId=${diagnostics.timing.transportRequestId ?: "none"} " +
+                            // task #372 / #1135: clamped connect budget actually handed to the
+                            // engine (0.1.0-raft.38); 0 = route did not report, shown as none.
+                            "effectiveConnectTimeoutMillis=${diagnostics.timing.effectiveConnectTimeoutMillis.takeIf { it > 0 }?.toString() ?: "none"}"
                     )
                 }
             }
