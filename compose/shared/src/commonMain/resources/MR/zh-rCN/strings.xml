@@ -133,7 +133,7 @@
     <string name="settings_mobile_title">移动端</string>
     <string name="settings_mobile_subtitle">我的消息对齐</string>
     <string name="settings_computers_title">计算机</string>
-    <string name="settings_computers_subtitle">已连接的机器和工作区</string>
+    <string name="settings_computers_subtitle">已连接计算机和守护进程状态</string>
     <string name="settings_server_title">服务器</string>
     <string name="settings_server_profile_title">服务器信息</string>
     <string name="settings_billing_title">账单</string>

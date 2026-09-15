@@ -46,7 +46,9 @@ class WorkspaceTerminologyResourceTest {
     // Agent local-filesystem keys that must keep 工作区 and never become 工作空间.
     private val agentFilesystemKeys =
         listOf(
-            "settings_computers_subtitle",
+            // task #374: settings_computers_subtitle removed — AngLee's 2026-09-01 ruling
+            // (已连接计算机和守护进程状态) drops the workspace concept entirely.
+
             "member_state_loading_workspace",
             "member_tab_workspace",
             "member_section_workspace",
@@ -80,9 +82,9 @@ class WorkspaceTerminologyResourceTest {
         listOf(
             "auth_create_description",
             "settings_billing_trial_detail",
-            "settings_billing_subtitle",
-            "slock_activity_widget_description",
-            "slock_agent_status_widget_description"
+            "settings_billing_subtitle"
+            // task #374: the two widget descriptions were removed — AngLee's ruled copy
+            // (未读动态和收藏计数 / 实时 Agent 动态) drops the 选中的 Raft 工作空间的 prefix.
         )
 
     // Android native catalog keys whose workspaces are the agent-local directories on a

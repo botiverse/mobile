@@ -460,9 +460,9 @@
     <string name="settings_storage_temp_logs_title">临时文件和日志</string>
     <string name="settings_storage_title">存储</string>
     <string name="settings_storage_total_title">本地存储总量</string>
-    <string name="slock_activity_widget_description">选中的 Raft 工作空间的未读动态和收藏计数。</string>
+    <string name="slock_activity_widget_description">未读动态和收藏计数</string>
     <string name="slock_activity_widget_name">Raft 动态</string>
-    <string name="slock_agent_status_widget_description">选中的 Raft 工作空间的实时 Agent 动态。</string>
+    <string name="slock_agent_status_widget_description">实时 Agent 动态</string>
     <string name="slock_agent_status_widget_name">Raft 实时 Agent</string>
     <string name="slock_status_widget_updated">更新于 %1$s</string>
     <string name="thread_files_empty_detail">此会话中共享的文件会显示在这里。</string>

@@ -23,8 +23,8 @@ class ActivityTerminologyResourceTest {
     private val nativeWidgetExpectations =
         mapOf(
             "slock_activity_widget_name" to "Raft 动态",
-            "slock_activity_widget_description" to "选中的 Raft 工作空间的未读动态和收藏计数。",
-            "slock_agent_status_widget_description" to "选中的 Raft 工作空间的实时 Agent 动态。"
+            "slock_activity_widget_description" to "未读动态和收藏计数",
+            "slock_agent_status_widget_description" to "实时 Agent 动态"
         )
 
     @Test
