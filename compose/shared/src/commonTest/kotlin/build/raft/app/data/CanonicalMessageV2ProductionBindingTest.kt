@@ -22,7 +22,7 @@ class CanonicalMessageV2ProductionBindingTest {
     @Test
     fun flagOffDoesNotReadNetworkOrRequireAnAuthSession() = runBlocking {
         val store = RecordingStore()
-        val network = RecordingNetworkClient(page(includeReplyCount = true))
+        val network = RecordingNetworkClient(canonicalV2TestPage())
         val engine = CanonicalMessageV2GenerationEngine(
             coordinator = CanonicalMessageV2BaselineCoordinator(),
             store = store,
@@ -45,11 +45,17 @@ class CanonicalMessageV2ProductionBindingTest {
     @Test
     fun serverPageBecomesFullV2SnapshotBeforeCommit() = runBlocking {
         val store = RecordingStore()
-        val network = RecordingNetworkClient(page(includeReplyCount = true))
+        val network = RecordingNetworkClient(
+            canonicalV2TestThreadParentPage(),
+            threadSummariesBody = canonicalV2TestThreadSummaries(replyCount = 4),
+        )
         val gateway = gateway(store, network)
 
         assertEquals(CanonicalMessageV2CanaryOutcome.Committed, gateway.accept(grant(), input()))
-        assertEquals(listOf("channels/channel-1", "messages/channel/channel-1"), network.paths)
+        assertEquals(
+            listOf("channels/channel-1", "messages/channel/channel-1", "channels/channel-1/threads"),
+            network.paths,
+        )
         assertEquals(1, store.snapshots.size)
         val frame = store.snapshots.single()
         assertEquals(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID, frame.scope.consumerId)
@@ -59,9 +65,12 @@ class CanonicalMessageV2ProductionBindingTest {
     }
 
     @Test
-    fun pageWithoutAuthoritativeReplyCountCannotEnterSoleApply() = runBlocking {
+    fun threadParentWithoutSummaryCannotEnterSoleApply() = runBlocking {
         val store = RecordingStore()
-        val gateway = gateway(store, RecordingNetworkClient(page(includeReplyCount = false)))
+        val gateway = gateway(
+            store,
+            RecordingNetworkClient(canonicalV2TestThreadParentPage(), threadSummariesBody = "{}"),
+        )
 
         assertIs<CanonicalMessageV2CanaryOutcome.Held>(gateway.accept(grant(), input()))
         assertEquals(0, store.snapshots.size)
@@ -119,9 +128,4 @@ class CanonicalMessageV2ProductionBindingTest {
         selectedServerId = "server-1",
         servers = listOf(StoredAuthServer(id = "server-1", name = "Server", slug = "server")),
     )
-
-    private fun page(includeReplyCount: Boolean): String {
-        val replyCount = if (includeReplyCount) ",\"replyCount\":4" else ""
-        return """{"messages":[{"id":"message-1","seq":7,"channelId":"channel-1","senderType":"user","senderId":"user-1","content":"hello","messageType":"chat","randomId":null,"threadId":null,"createdAt":"2026-07-17T00:00:00.000Z","senderName":"Alice","senderDescription":null,"senderMembershipStatus":null,"mentions":[],"attachments":[],"reactions":[],"commentRef":null,"actionMetadata":null$replyCount}],"historyLimited":false}"""
-    }
 }

@@ -28,6 +28,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 
 internal fun interface CanonicalMessageV2OwnerGateway {
@@ -87,7 +88,9 @@ internal class ProviderBackedCanonicalMessageV2OwnerGateway(
  * The REST page → full-V2 snapshot frame step shared by the canary's authoritative snapshot and the
  * enter-snapshot writer (task #1124). Pure fetch + decode: no auth check, no store write, no
  * selection. Every rejection is an [CanonicalMessageV2SnapshotLoadResult.Unavailable] with the
- * same diagnostics the canary always emitted.
+ * same diagnostics the canary always emitted. Reply counts are sourced from
+ * `channels/{id}/threads?parentMessageIds=…` because page nodes never carry them (task #1136:
+ * requiring them on the node rejected every real page as `not_full_v6`).
  *
  * `expectedScopeKind == null` means "resolve the kind from `channels/{id}`" (the enter path knows
  * only the id); a non-null value must match the server's answer (the canary path).
@@ -124,6 +127,18 @@ internal class CanonicalMessageV2RestSnapshotFetcher(
         ) ?: return unavailable("canonical_v2_snapshot_unavailable")
         val rawMessages = page["messages"] as? JsonArray
             ?: return unavailable("canonical_v2_snapshot_shape")
+        if (rawMessages.isEmpty()) {
+            // An empty page is a full answer too, but persisting an empty baseline frame is a
+            // separate design question (task #1137) — until then it gets its own diagnostic.
+            return unavailable("canonical_v2_snapshot_empty_page")
+        }
+        // The messages page never carries replyCount/threadSummary (server emits those only via
+        // `channels/{id}/threads` and the internal agent API). Messages without `threadId` have
+        // exactly zero replies; thread parents get the real count from the summaries endpoint, and
+        // if that call fails while parents are present the page is refused rather than persisted
+        // with silently zeroed counts.
+        val replyCountByParentId = fetchThreadReplyCounts(partition, scopeId, rawMessages)
+            ?: return unavailable("canonical_v2_thread_summaries_unavailable")
         val context = CanonicalConversationContextWire(channelType = channelType)
         val envelopes = rawMessages.mapNotNull { element ->
             val raw = element as? JsonObject ?: return@mapNotNull null
@@ -134,7 +149,14 @@ internal class CanonicalMessageV2RestSnapshotFetcher(
                         "fields=${violation.missingOrInvalidRequiredFields.sorted().joinToString(",")}",
                 )
             } ?: return@mapNotNull null
-            val replyCount = raw.replyCountOrNull() ?: return@mapNotNull null
+            val replyCount = raw.snapshotReplyCountOrNull(replyCountByParentId)
+            if (replyCount == null) {
+                logger(
+                    "canonical_v2_snapshot_reply_count_missing scope=$scopeId " +
+                        "message=${(raw["id"] as? JsonPrimitive)?.contentOrNull}",
+                )
+                return@mapNotNull null
+            }
             CanonicalMessageFoldInput.from(CanonicalMessageFoldKind.Updated, carry)
                 .toCanonicalMessageV2Envelope(
                     partition = partition,
@@ -142,7 +164,7 @@ internal class CanonicalMessageV2RestSnapshotFetcher(
                     producerContextOverride = context,
                 )
         }
-        if (envelopes.size != rawMessages.size || envelopes.isEmpty()) {
+        if (envelopes.size != rawMessages.size) {
             return unavailable("canonical_v2_snapshot_not_full_v6")
         }
         val seqs = envelopes.map { it.fact.seq }
@@ -160,6 +182,40 @@ internal class CanonicalMessageV2RestSnapshotFetcher(
                 ),
             ),
         )
+    }
+
+    /**
+     * Real reply counts for the page's thread parents, keyed by parent message id. `null` means the
+     * summaries call was needed and failed; an empty map means the page has no thread parents and
+     * no call was made.
+     */
+    private suspend fun fetchThreadReplyCounts(
+        partition: DurablePartitionKey,
+        scopeId: SyncScopeId,
+        rawMessages: JsonArray,
+    ): Map<String, Int>? {
+        val parentIds = rawMessages.mapNotNull { element ->
+            val raw = element as? JsonObject ?: return@mapNotNull null
+            if (raw.threadChannelIdOrNull() == null) return@mapNotNull null
+            (raw["id"] as? JsonPrimitive)
+                ?.takeIf { it.isString }
+                ?.content
+                ?.takeIf { it.isNotBlank() }
+        }.distinct()
+        if (parentIds.isEmpty()) return emptyMap()
+        val summaries = fetchJson(
+            priority = DataRequestPriority.Background,
+            path = "channels/$scopeId/threads",
+            serverId = partition.serverId,
+            query = listOf("parentMessageIds" to parentIds.joinToString(",")),
+        ) ?: return null
+        return summaries.entries.mapNotNull { (parentId, element) ->
+            val count = ((element as? JsonObject)?.get("replyCount") as? JsonPrimitive)
+                ?.intOrNull
+                ?.takeIf { it >= 0 }
+                ?: return@mapNotNull null
+            parentId to count
+        }.toMap()
     }
 
     private suspend fun fetchJson(
@@ -270,18 +326,20 @@ internal class CanonicalMessageV2EnteredScopeLoader(
     }
 }
 
-private fun JsonObject.replyCountOrNull(): Int? {
-    val summary = this["threadSummary"] as? JsonObject
-    val summaryCount = summary
-        ?.takeIf { it.containsKey("replyCount") }
-        ?.get("replyCount")
-        ?.let { it as? JsonPrimitive }
-        ?.intOrNull
-    val directCount = takeIf { it.containsKey("replyCount") }
-        ?.get("replyCount")
-        ?.let { it as? JsonPrimitive }
-        ?.intOrNull
-    return (summaryCount ?: directCount)?.takeIf { it >= 0 }
+private fun JsonObject.threadChannelIdOrNull(): String? =
+    (this["threadId"] as? JsonPrimitive)
+        ?.takeIf { it.isString }
+        ?.content
+        ?.takeIf { it.isNotBlank() }
+
+/** `null` = thread parent whose summary is missing; the caller drops the node (fail-closed). */
+private fun JsonObject.snapshotReplyCountOrNull(replyCountByParentId: Map<String, Int>): Int? {
+    threadChannelIdOrNull() ?: return 0
+    val id = (this["id"] as? JsonPrimitive)
+        ?.takeIf { it.isString }
+        ?.content
+        ?: return null
+    return replyCountByParentId[id]
 }
 
 private fun JsonObject.hasFullV2SnapshotNodeKeys(): Boolean =

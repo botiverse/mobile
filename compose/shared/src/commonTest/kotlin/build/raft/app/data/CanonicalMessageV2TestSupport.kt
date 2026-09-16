@@ -11,13 +11,15 @@ import kotlinx.coroutines.CompletableDeferred
 
 /**
  * Shared fakes for the V2 production binding tests (canary gateway, enter-snapshot loader, and the
- * real-SQLite round trip). The network fake answers only the two endpoints the snapshot fetcher
+ * real-SQLite round trip). The network fake answers only the three endpoints the snapshot fetcher
  * uses, for the channel ids it was told about; everything else is a 404.
  */
 internal class RecordingNetworkClient(
     private val pageBody: String,
     private val channelIds: Set<String> = setOf("channel-1"),
     private val channelType: String = "channel",
+    /** Body for `channels/{id}/threads`; `null` makes that endpoint fail (500). */
+    private val threadSummariesBody: String? = "{}",
 ) : SlockNetworkClient {
     val paths = mutableListOf<String>()
 
@@ -36,14 +38,19 @@ internal class RecordingNetworkClient(
         bodyText: String?,
     ): HomeNetworkResponse {
         paths += path
-        val channelId = channelIds.firstOrNull { path == "channels/$it" || path == "messages/channel/$it" }
-            ?: return HomeNetworkResponse(404, null)
-        return if (path == "channels/$channelId") {
-            HomeNetworkResponse(200, """{"id":"$channelId","type":"$channelType"}""")
-        } else {
-            pageGate?.await()
-            onPageRequested?.invoke()
-            HomeNetworkResponse(200, pageBody)
+        val channelId = channelIds.firstOrNull {
+            path == "channels/$it" || path == "messages/channel/$it" || path == "channels/$it/threads"
+        } ?: return HomeNetworkResponse(404, null)
+        return when (path) {
+            "channels/$channelId" ->
+                HomeNetworkResponse(200, """{"id":"$channelId","type":"$channelType"}""")
+            "channels/$channelId/threads" ->
+                threadSummariesBody?.let { HomeNetworkResponse(200, it) } ?: HomeNetworkResponse(500, null)
+            else -> {
+                pageGate?.await()
+                onPageRequested?.invoke()
+                HomeNetworkResponse(200, pageBody)
+            }
         }
     }
 }
@@ -84,8 +91,21 @@ internal fun canonicalV2TestSession() = StoredAuthSession(
     servers = listOf(StoredAuthServer(id = "server-1", name = "Server", slug = "server")),
 )
 
-/** One full-v6 top-level message page; `includeReplyCount = false` drops the authoritative reply count. */
-internal fun canonicalV2TestPage(includeReplyCount: Boolean = true, channelId: String = "channel-1"): String {
-    val replyCount = if (includeReplyCount) ",\"replyCount\":4" else ""
-    return """{"messages":[{"id":"message-1","seq":7,"channelId":"$channelId","senderType":"user","senderId":"user-1","content":"hello","messageType":"chat","randomId":null,"threadId":null,"createdAt":"2026-07-17T00:00:00.000Z","senderName":"Alice","senderDescription":null,"senderMembershipStatus":null,"mentions":[],"attachments":[],"reactions":[],"commentRef":null,"actionMetadata":null$replyCount}],"historyLimited":false}"""
-}
+/**
+ * One full-v6 top-level message page in the real server shape: nodes never carry
+ * `replyCount`/`threadSummary` (the server emits reply counts only via `channels/{id}/threads`).
+ */
+internal fun canonicalV2TestPage(channelId: String = "channel-1"): String =
+    """{"messages":[{"id":"message-1","seq":7,"channelId":"$channelId","senderType":"user","senderId":"user-1","content":"hello","messageType":"chat","randomId":null,"threadId":null,"createdAt":"2026-07-17T00:00:00.000Z","senderName":"Alice","senderDescription":null,"senderMembershipStatus":null,"mentions":[],"attachments":[],"reactions":[],"commentRef":null,"actionMetadata":null}],"historyLimited":false}"""
+
+/** Same page, but the single message is a thread parent (threadId anchors the thread channel). */
+internal fun canonicalV2TestThreadParentPage(channelId: String = "channel-1"): String =
+    """{"messages":[{"id":"message-1","seq":7,"channelId":"$channelId","senderType":"user","senderId":"user-1","content":"hello","messageType":"chat","randomId":null,"threadId":"thread-9","createdAt":"2026-07-17T00:00:00.000Z","senderName":"Alice","senderDescription":null,"senderMembershipStatus":null,"mentions":[],"attachments":[],"reactions":[],"commentRef":null,"actionMetadata":null}],"historyLimited":false}"""
+
+/** A page whose node is missing one of the seven required full-v6 keys. */
+internal fun canonicalV2TestThinPage(channelId: String = "channel-1"): String =
+    """{"messages":[{"id":"message-1","seq":7,"channelId":"$channelId","senderType":"user","senderId":"user-1","content":"hello","messageType":"chat","randomId":null,"threadId":null,"createdAt":"2026-07-17T00:00:00.000Z","senderName":"Alice","senderDescription":null,"senderMembershipStatus":null,"mentions":[],"attachments":[],"commentRef":null,"actionMetadata":null}],"historyLimited":false}"""
+
+/** `channels/{id}/threads` response body; keyed by parent message id, as the server emits. */
+internal fun canonicalV2TestThreadSummaries(replyCount: Int = 4): String =
+    """{"message-1":{"threadChannelId":"thread-9","replyCount":$replyCount,"unreadCount":0,"participantIds":[]}}"""
