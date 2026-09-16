@@ -208,7 +208,7 @@ jobs:
           "${BT}/aapt" dump badging "$APK" | tee aapt-badging.log
           grep -q "package: name='build.raft.app.alpha'" aapt-badging.log
           grep -q "application-label:'Raft Alpha'" aapt-badging.log
-          grep -q "versionName='[^']*-alpha[^']*'" aapt-badging.log
+          grep -qE "versionName='[0-9.]+-alpha\+[0-9a-f]{7,}'" aapt-badging.log
           SOURCE_SHA="${{ steps.source.outputs.sha }}"
           EXPECTED_MIN_SDK=29
           # The approved 1.7.0 QA source predates the API 29 floor. Keep this
@@ -222,6 +222,22 @@ jobs:
           VERSION_NAME="$(sed -n "s/^package: .* versionName='\([^']*\)'.*/\1/p" aapt-badging.log | head -n 1)"
           test -n "${VERSION_CODE}"
           test -n "${VERSION_NAME}"
+          # The fallback versionName embeds the build-time checkout sha
+          # (1.0.0-alpha+<short-sha>). Guard that property: the + segment must
+          # exist and must be a prefix of this run's source sha, so a lost or
+          # hand-passed sha fails the build instead of passing silently.
+          VN_SHA="${VERSION_NAME##*+}"
+          if [[ -z "${VN_SHA}" || "${VN_SHA}" == "${VERSION_NAME}" ]]; then
+            echo "Alpha versionName carries no +sha segment: ${VERSION_NAME}" >&2
+            exit 1
+          fi
+          case "${SOURCE_SHA}" in
+            "${VN_SHA}"*) ;;
+            *)
+              echo "Alpha versionName sha ${VN_SHA} is not a prefix of source sha ${SOURCE_SHA}" >&2
+              exit 1
+              ;;
+          esac
           cp "$APK" androidApp-alpha-${SOURCE_SHA::9}.apk
           echo "apk=androidApp-alpha-${SOURCE_SHA::9}.apk" >> "$GITHUB_OUTPUT"
           echo "sha256=$(sha256sum "androidApp-alpha-${SOURCE_SHA::9}.apk" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
