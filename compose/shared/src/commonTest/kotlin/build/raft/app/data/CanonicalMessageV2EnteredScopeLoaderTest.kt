@@ -41,10 +41,71 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
         val frame = on.store.snapshots.single()
         assertEquals(SyncScopeKey(partition, "channel-1", "channel"), frame.scope)
         assertEquals(listOf("message-1"), frame.envelopes.map { it.fact.id })
+        assertEquals(0, frame.envelopes.single().fact.replyCount, "no threadId ⇒ exactly zero replies")
         assertEquals(7L, frame.cursor.latestSeq)
         assertTrue(frame.cursor.hasLoadedOldest)
         assertTrue(frame.cursor.hasLoadedNewest)
         assertTrue(on.logs.any { "outcome=committed facts=1" in it }, on.logs.toString())
+    }
+
+    @Test
+    fun threadParentReplyCountComesFromTheSummariesEndpoint() = runBlocking {
+        val h = harness(
+            flagOn = true,
+            pageBody = canonicalV2TestThreadParentPage(),
+            threadSummariesBody = canonicalV2TestThreadSummaries(replyCount = 4),
+        )
+        h.loader.loadOnEnter(partition, "channel-1") { true }
+        assertEquals(
+            listOf("channels/channel-1", "messages/channel/channel-1", "channels/channel-1/threads"),
+            h.network.paths,
+        )
+        assertEquals(4, h.store.snapshots.single().envelopes.single().fact.replyCount)
+        assertTrue(h.logs.any { "outcome=committed facts=1" in it }, h.logs.toString())
+    }
+
+    @Test
+    fun summariesOutageWithThreadParentRejectsThePage() = runBlocking {
+        val h = harness(
+            flagOn = true,
+            pageBody = canonicalV2TestThreadParentPage(),
+            threadSummariesBody = null,
+        )
+        h.loader.loadOnEnter(partition, "channel-1") { true }
+        assertEquals(0, h.store.snapshots.size)
+        assertTrue(h.logs.any { "outcome=canonical_v2_thread_summaries_unavailable" in it }, h.logs.toString())
+    }
+
+    @Test
+    fun summariesOutageWithoutThreadParentsStillLoads() = runBlocking {
+        val h = harness(flagOn = true, threadSummariesBody = null)
+        h.loader.loadOnEnter(partition, "channel-1") { true }
+        assertEquals(1, h.store.snapshots.size)
+        assertTrue(
+            h.network.paths.none { it.endsWith("/threads") },
+            "no thread parents ⇒ the summaries endpoint is never called: ${h.network.paths}",
+        )
+    }
+
+    @Test
+    fun threadParentWithoutSummaryDropsTheNodeAndRefusesThePage() = runBlocking {
+        val h = harness(
+            flagOn = true,
+            pageBody = canonicalV2TestThreadParentPage(),
+            threadSummariesBody = "{}",
+        )
+        h.loader.loadOnEnter(partition, "channel-1") { true }
+        assertEquals(0, h.store.snapshots.size)
+        assertTrue(h.logs.any { "canonical_v2_snapshot_reply_count_missing" in it }, h.logs.toString())
+        assertTrue(h.logs.any { "outcome=canonical_v2_snapshot_not_full_v6" in it }, h.logs.toString())
+    }
+
+    @Test
+    fun emptyPageGetsItsOwnDiagnostic() = runBlocking {
+        val h = harness(flagOn = true, pageBody = """{"messages":[],"historyLimited":false}""")
+        h.loader.loadOnEnter(partition, "channel-1") { true }
+        assertEquals(0, h.store.snapshots.size)
+        assertTrue(h.logs.any { "outcome=canonical_v2_snapshot_empty_page" in it }, h.logs.toString())
     }
 
     @Test
@@ -101,7 +162,7 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
         assertEquals(0, thread.store.snapshots.size)
         assertTrue(thread.logs.any { "outcome=canonical_v2_scope_not_top_level" in it }, thread.logs.toString())
 
-        val thin = harness(flagOn = true, pageBody = canonicalV2TestPage(includeReplyCount = false))
+        val thin = harness(flagOn = true, pageBody = canonicalV2TestThinPage())
         thin.loader.loadOnEnter(partition, "channel-1") { true }
         assertEquals(0, thin.store.snapshots.size)
         assertTrue(thin.logs.any { "outcome=canonical_v2_snapshot_not_full_v6" in it }, thin.logs.toString())
@@ -140,8 +201,14 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
         channelIds: Set<String> = setOf("channel-1"),
         channelType: String = "channel",
         pageBody: String = canonicalV2TestPage(),
+        threadSummariesBody: String? = "{}",
     ): Harness {
-        val network = RecordingNetworkClient(pageBody, channelIds = channelIds, channelType = channelType)
+        val network = RecordingNetworkClient(
+            pageBody,
+            channelIds = channelIds,
+            channelType = channelType,
+            threadSummariesBody = threadSummariesBody,
+        )
         val store = RecordingStore()
         val engine = CanonicalMessageV2GenerationEngine(
             coordinator = CanonicalMessageV2BaselineCoordinator(),

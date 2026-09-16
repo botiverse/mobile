@@ -31,7 +31,12 @@ class CanonicalMessageV2EnteredScopeRoundTripTest {
         val loader = CanonicalMessageV2EnteredScopeLoader(
             canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine),
             generationEngine = engine,
-            fetcher = CanonicalMessageV2RestSnapshotFetcher(RecordingNetworkClient(canonicalV2TestPage())),
+            fetcher = CanonicalMessageV2RestSnapshotFetcher(
+                RecordingNetworkClient(
+                    canonicalV2TestThreadParentPage(),
+                    threadSummariesBody = canonicalV2TestThreadSummaries(replyCount = 4),
+                ),
+            ),
             isEnabledForServer = { true },
         )
         val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true })
