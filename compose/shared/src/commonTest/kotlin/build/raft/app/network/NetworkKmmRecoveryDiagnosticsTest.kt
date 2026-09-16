@@ -82,4 +82,38 @@ class NetworkKmmRecoveryDiagnosticsTest {
         assertContains(diagnostics, "curlTotalTimingAvailable=none")
         assertContains(diagnostics, "curlTlsTimingState=none")
     }
+
+    @Test
+    fun effectiveConnectTimeoutMillisIsReportedWhenEngineRouteProvidesIt() {
+        val response =
+            NetworkResponse(
+                request = NetworkRequest(),
+                statusCode = 200,
+                headers = emptyMap(),
+                body = NetworkResponseBody(),
+                timing = VBTransportElapseStatistics(effectiveConnectTimeoutMillis = 15_000)
+            )
+
+        val diagnostics = response.networkKmmDiagnostics()
+
+        assertContains(diagnostics, "effectiveConnectTimeoutMillis=15000")
+    }
+
+    @Test
+    fun effectiveConnectTimeoutMillisRendersAsNoneWhenRouteDoesNotReport() {
+        val response =
+            NetworkResponse(
+                request = NetworkRequest(),
+                statusCode = 200,
+                headers = emptyMap(),
+                body = NetworkResponseBody(),
+                timing = VBTransportElapseStatistics()
+            )
+
+        val diagnostics = response.networkKmmDiagnostics()
+
+        // 0 means "engine route did not report" (e.g. iOS native curl / streaming
+        // routes without a timing assembly point) and must not be read as a real 0ms.
+        assertContains(diagnostics, "effectiveConnectTimeoutMillis=none")
+    }
 }

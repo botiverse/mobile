@@ -650,7 +650,11 @@ internal fun NetworkResponse.networkKmmDiagnostics(redactSensitive: Boolean = fa
         "curlPreTransferTimingAvailable=${timing.curlPreTransferTimingAvailable ?: "none"} " +
         "curlStartTransferTimingAvailable=${timing.curlStartTransferTimingAvailable ?: "none"} " +
         "curlTotalTimingAvailable=${timing.curlTotalTimingAvailable ?: "none"} " +
-        "curlTlsTimingState=${timing.curlTlsTimingState?.toSafeDiagnosticsToken() ?: "none"}"
+        "curlTlsTimingState=${timing.curlTlsTimingState?.toSafeDiagnosticsToken() ?: "none"} " +
+        // task #372 / #1135: connect budget actually handed to the engine after the
+        // library's total/whole-transfer clamp (0.1.0-raft.38). 0 means the engine
+        // route did not report it; surface that as none rather than a fake zero.
+        "effectiveConnectTimeoutMillis=${timing.effectiveConnectTimeoutMillis.takeIf { it > 0 }?.toString() ?: "none"}"
 }
 
 internal fun String.sanitizeMultipartFileName(): String =
