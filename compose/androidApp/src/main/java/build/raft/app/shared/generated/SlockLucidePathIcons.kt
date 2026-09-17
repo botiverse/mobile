@@ -600,6 +600,44 @@ internal object SlockLucidePathIcons {
         )
     }
 
+    private val Blend: SlockLucideIconSpec by lazy {
+        SlockLucideIconSpec(
+            name = "blend",
+            viewBox =
+                SlockLucideViewBox(
+                    minX = 0f,
+                    minY = 0f,
+                    width = 24f,
+                    height = 24f,
+                ),
+            paths =
+                listOf(
+            SlockLucidePathSpec(
+                pathData = "M 2.0 9.0 A 7.0 7.0 0 1 0 16.0 9.0 A 7.0 7.0 0 1 0 2.0 9.0 Z",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+            SlockLucidePathSpec(
+                pathData = "M 8.0 15.0 A 7.0 7.0 0 1 0 22.0 15.0 A 7.0 7.0 0 1 0 8.0 15.0 Z",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+                ),
+        )
+    }
+
     private val Blocks: SlockLucideIconSpec by lazy {
         SlockLucideIconSpec(
             name = "blocks",
@@ -1948,6 +1986,44 @@ internal object SlockLucidePathIcons {
             ),
             SlockLucidePathSpec(
                 pathData = "M 2.0 10.0 L 22.0 10.0",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+                ),
+        )
+    }
+
+    private val Crop: SlockLucideIconSpec by lazy {
+        SlockLucideIconSpec(
+            name = "crop",
+            viewBox =
+                SlockLucideViewBox(
+                    minX = 0f,
+                    minY = 0f,
+                    width = 24f,
+                    height = 24f,
+                ),
+            paths =
+                listOf(
+            SlockLucidePathSpec(
+                pathData = "M6 2v14a2 2 0 0 0 2 2h14",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+            SlockLucidePathSpec(
+                pathData = "M18 22V8a2 2 0 0 0-2-2H2",
                 fillPaint = null,
                 strokePaint = "currentColor",
                 fillOpacity = 0f,
@@ -10259,6 +10335,7 @@ internal object SlockLucidePathIcons {
             "bell",
             "bell-off",
             "bell-ring",
+            "blend",
             "blocks",
             "bookmark",
             "bookmark-minus",
@@ -10287,6 +10364,7 @@ internal object SlockLucidePathIcons {
             "columns-3",
             "copy",
             "credit-card",
+            "crop",
             "download",
             "ellipsis",
             "menu",
@@ -10459,6 +10537,7 @@ internal object SlockLucidePathIcons {
             "bell" -> Bell
             "bell-off" -> BellOff
             "bell-ring" -> BellRing
+            "blend" -> Blend
             "blocks" -> Blocks
             "bookmark" -> Bookmark
             "bookmark-minus" -> BookmarkMinus
@@ -10487,6 +10566,7 @@ internal object SlockLucidePathIcons {
             "columns-3" -> Columns3
             "copy" -> Copy
             "credit-card" -> CreditCard
+            "crop" -> Crop
             "download" -> Download
             "ellipsis" -> Ellipsis
             "menu" -> Menu

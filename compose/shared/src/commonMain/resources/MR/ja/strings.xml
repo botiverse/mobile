@@ -1109,6 +1109,10 @@
     <string name="file_preview_toolbar_text">テキスト</string>
     <string name="file_preview_toolbar_erase">消しゴム</string>
     <string name="file_preview_toolbar_mosaic">モザイク</string>
+    <string name="file_preview_toolbar_crop">切り抜き</string>
+    <string name="file_preview_crop_free">自由</string>
+    <string name="file_preview_crop_reset">リセット</string>
+    <string name="file_preview_crop_apply">適用</string>
     <string name="file_preview_action_comments">コメント</string>
     <string name="file_preview_action_download">ダウンロード</string>
     <string name="file_preview_action_install">インストール</string>

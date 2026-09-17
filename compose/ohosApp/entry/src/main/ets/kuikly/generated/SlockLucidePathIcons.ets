@@ -28,6 +28,7 @@ export const SlockLucidePathIconNames: string[] = [
   'bell',
   'bell-off',
   'bell-ring',
+  'blend',
   'blocks',
   'bookmark',
   'bookmark-minus',
@@ -56,6 +57,7 @@ export const SlockLucidePathIconNames: string[] = [
   'columns-3',
   'copy',
   'credit-card',
+  'crop',
   'download',
   'ellipsis',
   'menu',
@@ -686,6 +688,33 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
     },
     {
       commands: 'M 4 2 C 2.8 3.7 2 5.7 2 8',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'blend':
+      return [
+    {
+      commands: 'M 2 9 A 7 7 0 1 0 16 9 A 7 7 0 1 0 2 9 Z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 8 15 A 7 7 0 1 0 22 15 A 7 7 0 1 0 8 15 Z',
       fillPaint: 'none',
       strokePaint: 'currentColor',
       fillOpacity: 0,
@@ -1766,6 +1795,33 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
     },
     {
       commands: 'M 2 10 L 22 10',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'crop':
+      return [
+    {
+      commands: 'M 6 2 v 14 a 2 2 0 0 0 2 2 h 14',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 18 22 V 8 a 2 2 0 0 0 -2 -2 H 2',
       fillPaint: 'none',
       strokePaint: 'currentColor',
       fillOpacity: 0,

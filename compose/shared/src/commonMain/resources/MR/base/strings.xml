@@ -1116,6 +1116,10 @@
     <string name="file_preview_toolbar_text">Text</string>
     <string name="file_preview_toolbar_erase">Erase</string>
     <string name="file_preview_toolbar_mosaic">Mosaic</string>
+    <string name="file_preview_toolbar_crop">Crop</string>
+    <string name="file_preview_crop_free">Free</string>
+    <string name="file_preview_crop_reset">Reset</string>
+    <string name="file_preview_crop_apply">Apply</string>
     <string name="file_preview_action_comments">Comments</string>
     <string name="file_preview_action_download">Download</string>
     <string name="file_preview_action_install">Install</string>

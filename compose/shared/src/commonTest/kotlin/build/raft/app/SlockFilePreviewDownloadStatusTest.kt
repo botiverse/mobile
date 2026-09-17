@@ -16,6 +16,7 @@ import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -280,6 +281,136 @@ class SlockFilePreviewDownloadStatusTest {
             )
         )
         assertEquals(9, tiles.size)
+    }
+
+    @Test
+    fun composerImageMosaicAccumulateAlongLineFillsGapBetweenFarTouchPoints() {
+        val target = mutableSetOf<SlockComposerImageMosaicTile>()
+        val changed =
+            slockComposerImageAccumulateMosaicTilesAlongLine(
+                target = target,
+                start = Offset(10f, 10f),
+                end = Offset(90f, 10f),
+                tileSizePx = 10f,
+                brushRadius = 0,
+            )
+
+        assertTrue(changed)
+        assertTrue(target.size >= 9)
+        for (col in 1..9) {
+            assertTrue(SlockComposerImageMosaicTile(column = col, row = 1) in target)
+        }
+    }
+
+    @Test
+    fun composerImageCropRectComputesFractionsAndIdentifiesUncropped() {
+        assertTrue(SlockComposerImageCropRect.Uncropped.isUncropped)
+        assertEquals(1f, SlockComposerImageCropRect.Uncropped.widthFraction)
+        assertEquals(1f, SlockComposerImageCropRect.Uncropped.heightFraction)
+
+        val crop = SlockComposerImageCropRect(left = 0.2f, top = 0.1f, right = 0.8f, bottom = 0.7f)
+        assertFalse(crop.isUncropped)
+        assertEquals(0.6f, crop.widthFraction, 0.001f)
+        assertEquals(0.6f, crop.heightFraction, 0.001f)
+    }
+
+    @Test
+    fun composerImageCaptureSizeAppliesCropRectWithoutLetterbox() {
+        val crop = SlockComposerImageCropRect(left = 0.1f, top = 0.1f, right = 0.6f, bottom = 0.35f)
+        assertEquals(0.5f, crop.widthFraction, 0.001f)
+        assertEquals(0.25f, crop.heightFraction, 0.001f)
+
+        val captureSize =
+            slockComposerImageEditorCaptureSize(
+                imageWidth = 4000,
+                imageHeight = 4000,
+                maxWidth = 400f,
+                maxHeight = 600f,
+                cropRect = crop,
+            )
+
+        assertNotNull(captureSize)
+        assertEquals(400f, captureSize.width, 0.01f)
+        assertEquals(200f, captureSize.height, 0.01f)
+    }
+
+    @Test
+    fun composerImageCropDetectHandleIdentifiesCornersEdgesAndCenter() {
+        val crop = SlockComposerImageCropRect(left = 0.2f, top = 0.2f, right = 0.8f, bottom = 0.8f)
+        val canvasSize = Size(100f, 100f)
+
+        assertEquals(SlockCropDragHandle.TopLeft, slockCropDetectHandle(Offset(20f, 20f), crop, canvasSize))
+        assertEquals(SlockCropDragHandle.TopRight, slockCropDetectHandle(Offset(80f, 20f), crop, canvasSize))
+        assertEquals(SlockCropDragHandle.BottomLeft, slockCropDetectHandle(Offset(20f, 80f), crop, canvasSize))
+        assertEquals(SlockCropDragHandle.BottomRight, slockCropDetectHandle(Offset(80f, 80f), crop, canvasSize))
+
+        assertEquals(SlockCropDragHandle.Top, slockCropDetectHandle(Offset(50f, 20f), crop, canvasSize))
+        assertEquals(SlockCropDragHandle.Bottom, slockCropDetectHandle(Offset(50f, 80f), crop, canvasSize))
+        assertEquals(SlockCropDragHandle.Left, slockCropDetectHandle(Offset(20f, 50f), crop, canvasSize))
+        assertEquals(SlockCropDragHandle.Right, slockCropDetectHandle(Offset(80f, 50f), crop, canvasSize))
+
+        assertEquals(SlockCropDragHandle.Center, slockCropDetectHandle(Offset(50f, 50f), crop, canvasSize))
+        assertEquals(SlockCropDragHandle.None, slockCropDetectHandle(Offset(5f, 5f), crop, canvasSize))
+    }
+
+    @Test
+    fun composerImageCropApplyDragClampsToBoundsAndMinDimension() {
+        val crop = SlockComposerImageCropRect(left = 0.2f, top = 0.2f, right = 0.8f, bottom = 0.8f)
+        val canvasSize = Size(100f, 100f)
+
+        val draggedCorner =
+            slockCropApplyDrag(
+                handle = SlockCropDragHandle.TopLeft,
+                cropRect = crop,
+                dragAmount = Offset(10f, 10f),
+                canvasSize = canvasSize,
+            )
+        assertEquals(0.3f, draggedCorner.left, 0.001f)
+        assertEquals(0.3f, draggedCorner.top, 0.001f)
+        assertEquals(0.8f, draggedCorner.right, 0.001f)
+        assertEquals(0.8f, draggedCorner.bottom, 0.001f)
+
+        val draggedCenter =
+            slockCropApplyDrag(
+                handle = SlockCropDragHandle.Center,
+                cropRect = crop,
+                dragAmount = Offset(10f, 0f),
+                canvasSize = canvasSize,
+            )
+        assertEquals(0.3f, draggedCenter.left, 0.001f)
+        assertEquals(0.9f, draggedCenter.right, 0.001f)
+        assertEquals(0.2f, draggedCenter.top, 0.001f)
+        assertEquals(0.8f, draggedCenter.bottom, 0.001f)
+
+        val clampedCenter =
+            slockCropApplyDrag(
+                handle = SlockCropDragHandle.Center,
+                cropRect = crop,
+                dragAmount = Offset(50f, 0f),
+                canvasSize = canvasSize,
+            )
+        assertEquals(0.4f, clampedCenter.left, 0.001f)
+        assertEquals(1.0f, clampedCenter.right, 0.001f)
+    }
+
+    @Test
+    fun composerImageCropRemapTranslatesStrokesAndAnnotationsToCroppedRegion() {
+        val oldCrop = SlockComposerImageCropRect.Uncropped
+        val newCrop = SlockComposerImageCropRect(left = 0.25f, top = 0.25f, right = 0.75f, bottom = 0.75f)
+        val oldCanvas = Size(400f, 400f)
+        val newCanvas = Size(400f, 400f)
+
+        val centerRemapped = slockRemapPoint(Offset(200f, 200f), oldCrop, newCrop, oldCanvas, newCanvas)
+        assertEquals(200f, centerRemapped.x, 0.01f)
+        assertEquals(200f, centerRemapped.y, 0.01f)
+
+        val topLeftRemapped = slockRemapPoint(Offset(100f, 100f), oldCrop, newCrop, oldCanvas, newCanvas)
+        assertEquals(0f, topLeftRemapped.x, 0.01f)
+        assertEquals(0f, topLeftRemapped.y, 0.01f)
+
+        val bottomRightRemapped = slockRemapPoint(Offset(300f, 300f), oldCrop, newCrop, oldCanvas, newCanvas)
+        assertEquals(400f, bottomRightRemapped.x, 0.01f)
+        assertEquals(400f, bottomRightRemapped.y, 0.01f)
     }
 
     @Test
@@ -982,6 +1113,13 @@ class SlockFilePreviewDownloadStatusTest {
             slockFilePreviewPencilOptionsExpandedAfterToolSelection(
                 currentTool = SlockComposerImageEditorTool.Pencil,
                 selectedTool = SlockComposerImageEditorTool.Mosaic,
+                currentlyExpanded = true,
+            )
+        )
+        assertFalse(
+            slockFilePreviewPencilOptionsExpandedAfterToolSelection(
+                currentTool = SlockComposerImageEditorTool.Pencil,
+                selectedTool = SlockComposerImageEditorTool.Crop,
                 currentlyExpanded = true,
             )
         )
