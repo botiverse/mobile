@@ -3,6 +3,8 @@ package build.raft.app
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.unit.IntOffset
+import com.tencent.kuikly.compose.ui.unit.IntSize
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -228,5 +230,37 @@ class SlockFilePreviewCropMathTest {
         )
         assertEquals(400f, croppedSquare?.width)
         assertEquals(400f, croppedSquare?.height)
+    }
+
+    @Test
+    fun backgroundImageSrcRectCalculatesCorrectSubRectangle() {
+        val imageWidth = 1000
+        val imageHeight = 800
+
+        // Uncropped
+        val (uncroppedOffset, uncroppedSize) = slockComposerBackgroundImageSrcRect(
+            imageWidth = imageWidth,
+            imageHeight = imageHeight,
+            cropRect = SlockComposerImageCropRect.Uncropped,
+        )
+        assertEquals(IntOffset(0, 0), uncroppedOffset)
+        assertEquals(IntSize(1000, 800), uncroppedSize)
+
+        // Sub-crop
+        val (croppedOffset, croppedSize) = slockComposerBackgroundImageSrcRect(
+            imageWidth = imageWidth,
+            imageHeight = imageHeight,
+            cropRect = SlockComposerImageCropRect(0.2f, 0.3f, 0.7f, 0.8f),
+        )
+        assertEquals(IntOffset(200, 240), croppedOffset)
+        assertEquals(IntSize(500, 400), croppedSize)
+
+        // Zero/negative dimensions
+        val (zeroOffset, zeroSize) = slockComposerBackgroundImageSrcRect(
+            imageWidth = 0,
+            imageHeight = 0,
+        )
+        assertEquals(IntOffset.Zero, zeroOffset)
+        assertEquals(IntSize.Zero, zeroSize)
     }
 }
