@@ -4190,13 +4190,47 @@ internal fun SlockFilePreviewComposerImageEditor(
         textDraft = textDraft.cleared()
         return true
     }
+    var editorFinishing by remember(payload.imageUrl) { mutableStateOf(false) }
+    LaunchedEffect(saving) {
+        if (!saving) {
+            editorFinishing = false
+        }
+    }
+    fun applyCurrentCrop(): Boolean {
+        var applied = false
+        if (mosaicImage != null && transientCropRect != state.history.content.cropRect) {
+            val nextContent = slockApplyCropToContent(
+                content = state.history.content,
+                newCrop = transientCropRect,
+                imageWidth = mosaicImage.width,
+                imageHeight = mosaicImage.height,
+                maxWidth = stageSize.width * editorDensity.density,
+                maxHeight = stageSize.height * editorDensity.density,
+            )
+            state.update(state.history.apply(nextContent))
+            applied = true
+        }
+        selectTool(SlockComposerImageEditorTool.Pencil)
+        return applied
+    }
     fun requestDone() {
+        if (editorFinishing || saving) return
+        if (tool == SlockComposerImageEditorTool.Crop) {
+            editorFinishing = true
+            applyCurrentCrop()
+            coroutineScope.launch {
+                repeat(2) { withFrameNanos { _ -> } }
+                onDone()
+            }
+            return
+        }
         if (!addTextAnnotation()) {
             onDone()
             return
         }
+        editorFinishing = true
         coroutineScope.launch {
-            withFrameNanos { _ -> }
+            repeat(2) { withFrameNanos { _ -> } }
             onDone()
         }
     }
@@ -4251,6 +4285,7 @@ internal fun SlockFilePreviewComposerImageEditor(
                             .pointerInput(payload.imageUrl, tool, pencilMode, selectedPenColor) {
                         if (tool == SlockComposerImageEditorTool.Crop) return@pointerInput
                         detectTapGestures { position ->
+                            if (saving || editorFinishing) return@detectTapGestures
                             when (tool) {
                                 SlockComposerImageEditorTool.Pencil ->
                                     if (pencilMode == SlockComposerImagePencilMode.Eraser) {
@@ -4285,6 +4320,7 @@ internal fun SlockFilePreviewComposerImageEditor(
                         var lastMosaicPoint = Offset.Zero
                         detectDragGestures(
                             onDragStart = { start ->
+                                if (saving || editorFinishing) return@detectDragGestures
                                 when (tool) {
                                     SlockComposerImageEditorTool.Pencil ->
                                         if (pencilMode == SlockComposerImagePencilMode.Ink) {
@@ -4394,6 +4430,7 @@ internal fun SlockFilePreviewComposerImageEditor(
                             }
                         ) { change, dragAmount ->
                             change.consume()
+                            if (saving || editorFinishing) return@detectDragGestures
                             when (tool) {
                                 SlockComposerImageEditorTool.Pencil ->
                                     if (pencilMode == SlockComposerImagePencilMode.Ink) {
@@ -4620,7 +4657,7 @@ internal fun SlockFilePreviewComposerImageEditor(
                 SlockFilePreviewPencilOptions(
                     mode = pencilMode,
                     selectedColor = selectedPenColor,
-                    enabled = !saving,
+                    enabled = !saving && !editorFinishing,
                     onSelectEraser = { pencilMode = SlockComposerImagePencilMode.Eraser },
                     onSelectColor = { color ->
                         selectedPenColor = color
@@ -4638,7 +4675,7 @@ internal fun SlockFilePreviewComposerImageEditor(
                 )
                 SlockFilePreviewImageEditorPrimaryControls(
                     tool = tool,
-                    saving = saving,
+                    saving = saving || editorFinishing,
                     imageAvailable = payload.imageUrl != null,
                     onSelectTool = ::selectTool,
                     onDone = ::requestDone,
@@ -4695,7 +4732,7 @@ internal fun SlockFilePreviewComposerImageEditor(
                         iconName = SlockLucideIconName.Check,
                         contentDescription = stringResource(MR.strings.common_add),
                         onClick = { addTextAnnotation() },
-                        enabled = !saving && textDraft.text.isNotBlank(),
+                        enabled = !saving && !editorFinishing && textDraft.text.isNotBlank(),
                         backgroundColor = SlockColor.BrandYellow,
                         shadowOffset = 2.dp
                     )
@@ -4703,7 +4740,7 @@ internal fun SlockFilePreviewComposerImageEditor(
                 }
                 SlockFilePreviewImageEditorPrimaryControls(
                     tool = tool,
-                    saving = saving,
+                    saving = saving || editorFinishing,
                     imageAvailable = payload.imageUrl != null,
                     onSelectTool = ::selectTool,
                     onDone = ::requestDone,
@@ -4725,7 +4762,7 @@ internal fun SlockFilePreviewComposerImageEditor(
             ) {
                 SlockFilePreviewCropOptions(
                     canReset = !transientCropRect.isUncropped || !state.history.content.cropRect.isUncropped,
-                    enabled = !saving,
+                    enabled = !saving && !editorFinishing,
                     onReset = {
                         transientCropRect = SlockComposerImageCropRect.Uncropped
                         if (mosaicImage != null) {
@@ -4741,18 +4778,7 @@ internal fun SlockFilePreviewComposerImageEditor(
                         }
                     },
                     onApply = {
-                        if (mosaicImage != null && transientCropRect != state.history.content.cropRect) {
-                            val nextContent = slockApplyCropToContent(
-                                content = state.history.content,
-                                newCrop = transientCropRect,
-                                imageWidth = mosaicImage.width,
-                                imageHeight = mosaicImage.height,
-                                maxWidth = stageSize.width * editorDensity.density,
-                                maxHeight = stageSize.height * editorDensity.density,
-                            )
-                            state.update(state.history.apply(nextContent))
-                        }
-                        selectTool(SlockComposerImageEditorTool.Pencil)
+                        applyCurrentCrop()
                     },
                     modifier =
                         Modifier
@@ -4766,7 +4792,7 @@ internal fun SlockFilePreviewComposerImageEditor(
                 )
                 SlockFilePreviewImageEditorPrimaryControls(
                     tool = tool,
-                    saving = saving,
+                    saving = saving || editorFinishing,
                     imageAvailable = payload.imageUrl != null,
                     onSelectTool = ::selectTool,
                     onDone = ::requestDone,
@@ -4788,7 +4814,7 @@ internal fun SlockFilePreviewComposerImageEditor(
             ) {
                 SlockFilePreviewImageEditorPrimaryControls(
                     tool = tool,
-                    saving = saving,
+                    saving = saving || editorFinishing,
                     imageAvailable = payload.imageUrl != null,
                     onSelectTool = ::selectTool,
                     onDone = ::requestDone,

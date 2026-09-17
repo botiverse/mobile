@@ -263,4 +263,72 @@ class SlockFilePreviewCropMathTest {
         assertEquals(IntOffset.Zero, zeroOffset)
         assertEquals(IntSize.Zero, zeroSize)
     }
+
+    @Test
+    fun applyCropToContentUpdatesCropRectAndRemapsStrokesAndAnnotations() {
+        val initialContent = SlockComposerImageEditorContent(
+            strokes = listOf(
+                SlockComposerImageStroke(
+                    points = listOf(Offset(250f, 250f), Offset(300f, 300f)),
+                    color = Color.Red,
+                )
+            ),
+            textAnnotations = listOf(
+                SlockComposerImageTextAnnotation(
+                    id = 1,
+                    text = "Hello",
+                    position = Offset(250f, 250f),
+                )
+            ),
+            mosaicTiles = setOf(
+                SlockComposerImageMosaicTile(
+                    column = 10,
+                    row = 10,
+                )
+            ),
+            cropRect = SlockComposerImageCropRect.Uncropped,
+        )
+
+        // Sub-crop: center region (0.25..0.75 in both X and Y)
+        val newCrop = SlockComposerImageCropRect(0.25f, 0.25f, 0.75f, 0.75f)
+        val imageWidth = 1000
+        val imageHeight = 1000
+        val maxWidth = 500f
+        val maxHeight = 500f
+
+        val updated = slockApplyCropToContent(
+            content = initialContent,
+            newCrop = newCrop,
+            imageWidth = imageWidth,
+            imageHeight = imageHeight,
+            maxWidth = maxWidth,
+            maxHeight = maxHeight,
+        )
+
+        assertEquals(newCrop, updated.cropRect)
+        assertEquals(1, updated.strokes.size)
+        // Center (250, 250) of old 500x500 canvas corresponds to norm (0.5, 0.5)
+        // In newCrop (0.25..0.75), norm 0.5 is at relative 0.5 -> center (250, 250) of new 500x500 canvas
+        assertEquals(250f, updated.strokes[0].points[0].x, 0.1f)
+        assertEquals(250f, updated.strokes[0].points[0].y, 0.1f)
+        assertEquals(1, updated.textAnnotations.size)
+        assertEquals(250f, updated.textAnnotations[0].position.x, 0.1f)
+        assertEquals(250f, updated.textAnnotations[0].position.y, 0.1f)
+    }
+
+    @Test
+    fun applyCropToContentWithSameCropReturnsIdenticalContent() {
+        val content = SlockComposerImageEditorContent(
+            cropRect = SlockComposerImageCropRect(0.1f, 0.1f, 0.9f, 0.9f)
+        )
+        val result = slockApplyCropToContent(
+            content = content,
+            newCrop = SlockComposerImageCropRect(0.1f, 0.1f, 0.9f, 0.9f),
+            imageWidth = 1000,
+            imageHeight = 1000,
+            maxWidth = 500f,
+            maxHeight = 500f,
+        )
+        assertEquals(content, result)
+    }
 }
