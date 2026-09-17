@@ -132,4 +132,96 @@ class SlockImagePreviewSurfaceTest {
             slockImagePreviewRenderIdentity("https://cdn.example/image.jpg", -1, -1)
         )
     }
+
+    @Test
+    fun resolveIdentityPreservesExistingIdentityWhenAlreadySucceeded() {
+        val initialIdentity =
+            slockImagePreviewRenderIdentity(
+                source = "https://cdn.example/image.jpg",
+                decodedWidth = 0,
+                decodedHeight = 0
+            )
+
+        // When image has already succeeded, late cold decode must NOT alter the render identity
+        val resolved =
+            resolveSlockImagePreviewRenderIdentity(
+                currentIdentity = initialIdentity,
+                source = "https://cdn.example/image.jpg",
+                decodedWidth = 606,
+                decodedHeight = 508,
+                activeSucceeded = true
+            )
+
+        assertEquals(initialIdentity, resolved)
+    }
+
+    @Test
+    fun resolveIdentityUpdatesWhenColdDecodeCompletesBeforeSuccess() {
+        val initialIdentity =
+            slockImagePreviewRenderIdentity(
+                source = "https://cdn.example/image.jpg",
+                decodedWidth = 0,
+                decodedHeight = 0
+            )
+
+        // Cold decode finishes while image is still loading
+        val resolved =
+            resolveSlockImagePreviewRenderIdentity(
+                currentIdentity = initialIdentity,
+                source = "https://cdn.example/image.jpg",
+                decodedWidth = 1280,
+                decodedHeight = 720,
+                activeSucceeded = false
+            )
+
+        assertEquals(
+            slockImagePreviewRenderIdentity("https://cdn.example/image.jpg", 1280, 720),
+            resolved
+        )
+    }
+
+    @Test
+    fun resolveIdentityPreservesDecodedIdentityOnceUpdated() {
+        val decodedIdentity =
+            slockImagePreviewRenderIdentity(
+                source = "https://cdn.example/image.jpg",
+                decodedWidth = 1280,
+                decodedHeight = 720
+            )
+
+        val resolved =
+            resolveSlockImagePreviewRenderIdentity(
+                currentIdentity = decodedIdentity,
+                source = "https://cdn.example/image.jpg",
+                decodedWidth = 1280,
+                decodedHeight = 720,
+                activeSucceeded = true
+            )
+
+        assertEquals(decodedIdentity, resolved)
+    }
+
+    @Test
+    fun resolveIdentityResetsWhenSourceChanges() {
+        val oldIdentity =
+            slockImagePreviewRenderIdentity(
+                source = "https://cdn.example/old.jpg",
+                decodedWidth = 1280,
+                decodedHeight = 720
+            )
+
+        val resolved =
+            resolveSlockImagePreviewRenderIdentity(
+                currentIdentity = oldIdentity,
+                source = "https://cdn.example/new.jpg",
+                decodedWidth = 0,
+                decodedHeight = 0,
+                activeSucceeded = true
+            )
+
+        assertEquals(
+            slockImagePreviewRenderIdentity("https://cdn.example/new.jpg", 0, 0),
+            resolved
+        )
+    }
 }

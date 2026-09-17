@@ -106,6 +106,49 @@ class SlockImagePreviewRenderSlotTest {
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun resolvedIdentityPreservationPreventsRemountOnSubsequentDecode() = runTest {
+        var identity by
+            mutableStateOf(
+                slockImagePreviewRenderIdentity("https://cdn.example/image.jpg", 0, 0)
+            )
+        val mounted = mutableListOf<SlockImagePreviewRenderIdentity>()
+
+        runRenderSlotComposition(
+            content = {
+                val currentIdentity = identity
+                SlockImagePreviewRenderSlot(currentIdentity) {
+                    DisposableEffect(Unit) {
+                        mounted += currentIdentity
+                        onDispose { }
+                    }
+                }
+            },
+            mutate = {
+                val preservedIdentity =
+                    resolveSlockImagePreviewRenderIdentity(
+                        currentIdentity = identity,
+                        source = "https://cdn.example/image.jpg",
+                        decodedWidth = 606,
+                        decodedHeight = 508,
+                        activeSucceeded = true
+                    )
+                identity = preservedIdentity
+                Snapshot.sendApplyNotifications()
+                sendFrame()
+                advanceUntilIdle()
+            }
+        )
+
+        assertEquals(
+            listOf(
+                slockImagePreviewRenderIdentity("https://cdn.example/image.jpg", 0, 0)
+            ),
+            mounted
+        )
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
     private suspend fun kotlinx.coroutines.test.TestScope.runRenderSlotComposition(
         content: @androidx.compose.runtime.Composable () -> Unit,
         mutate: suspend RenderSlotTestScope.() -> Unit
