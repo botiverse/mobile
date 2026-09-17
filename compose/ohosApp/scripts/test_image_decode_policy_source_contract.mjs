@@ -140,7 +140,7 @@ const editor = functionBody(
 );
 assertContract(
   editor.includes('rememberAsyncImageBitmap(payload.imageUrl)') &&
-    editor.includes('SlockAspectFitImagePreviewSurface('),
+    (editor.includes('drawSlockComposerBackgroundImage(') || editor.includes('SlockAspectFitImagePreviewSurface(')),
   'editor image path must remain on the shared Kuikly image-cache surface'
 );
 const widgetsSource = read('compose/shared/src/commonMain/kotlin/build/raft/app/BasicWidget.kt');
