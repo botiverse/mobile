@@ -155,6 +155,7 @@ enum class SlockLucideIconName(val wireName: String) {
     MessageSquarePlus("message-square-plus"),
     Monitor("monitor"),
     MonitorX("monitor-x"),
+    Mosaic("mosaic"),
     PackageCheck("package-check"),
     Package("package"),
     Paperclip("paperclip"),

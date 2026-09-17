@@ -4253,6 +4253,7 @@ internal fun SlockFilePreviewComposerImageEditor(
                             .onGloballyPositioned { coordinates -> editorCanvasSize = coordinates.size }
                             .nativeRef { ref -> onCaptureRef(ref) }
                             .pointerInput(payload.imageUrl, tool, pencilMode, selectedPenColor) {
+                        if (tool == SlockComposerImageEditorTool.Crop) return@pointerInput
                         detectTapGestures { position ->
                             when (tool) {
                                 SlockComposerImageEditorTool.Pencil ->
@@ -4283,7 +4284,7 @@ internal fun SlockFilePreviewComposerImageEditor(
                             }
                         }
                     }
-                    .pointerInput(payload.imageUrl, tool, pencilMode, selectedPenColor, transientCropRect) {
+                    .pointerInput(payload.imageUrl, tool, pencilMode, selectedPenColor) {
                         if (tool == SlockComposerImageEditorTool.Text) return@pointerInput
                         var lastMosaicPoint = Offset.Zero
                         detectDragGestures(
@@ -4309,8 +4310,14 @@ internal fun SlockFilePreviewComposerImageEditor(
                                         activeMosaicRevision += 1
                                     }
                                     SlockComposerImageEditorTool.Crop -> {
-                                        val canvasSize = Size(captureSize.width, captureSize.height)
-                                        activeCropHandle = slockCropDetectHandle(start, transientCropRect, canvasSize)
+                                        val canvasSize =
+                                            if (editorCanvasSize.width > 0 && editorCanvasSize.height > 0) {
+                                                Size(editorCanvasSize.width.toFloat(), editorCanvasSize.height.toFloat())
+                                            } else {
+                                                Size(captureSize.width * editorDensity.density, captureSize.height * editorDensity.density)
+                                            }
+                                        val hitRadiusPx = 36f * editorDensity.density
+                                        activeCropHandle = slockCropDetectHandle(start, transientCropRect, canvasSize, hitRadius = hitRadiusPx)
                                         cropDragOriginContent = state.history.content
                                     }
                                 }
@@ -4390,6 +4397,7 @@ internal fun SlockFilePreviewComposerImageEditor(
                                 }
                             }
                         ) { change, dragAmount ->
+                            change.consume()
                             when (tool) {
                                 SlockComposerImageEditorTool.Pencil ->
                                     if (pencilMode == SlockComposerImagePencilMode.Ink) {
@@ -4413,7 +4421,12 @@ internal fun SlockFilePreviewComposerImageEditor(
                                 }
                                 SlockComposerImageEditorTool.Crop -> {
                                     if (activeCropHandle != SlockCropDragHandle.None) {
-                                        val canvasSize = Size(captureSize.width, captureSize.height)
+                                        val canvasSize =
+                                            if (editorCanvasSize.width > 0 && editorCanvasSize.height > 0) {
+                                                Size(editorCanvasSize.width.toFloat(), editorCanvasSize.height.toFloat())
+                                            } else {
+                                                Size(captureSize.width * editorDensity.density, captureSize.height * editorDensity.density)
+                                            }
                                         transientCropRect = slockCropApplyDrag(
                                             handle = activeCropHandle,
                                             cropRect = transientCropRect,
@@ -4431,7 +4444,12 @@ internal fun SlockFilePreviewComposerImageEditor(
                 Box(
                     modifier =
                         Modifier
-                            .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
+                            .offset {
+                                IntOffset(
+                                    (offsetX * editorDensity.density).roundToInt(),
+                                    (offsetY * editorDensity.density).roundToInt(),
+                                )
+                            }
                             .size(fullWidth.dp, fullHeight.dp)
                 ) {
                     SlockAspectFitImagePreviewSurface(
@@ -4839,7 +4857,7 @@ private fun SlockFilePreviewImageEditorPrimaryControls(
         )
         SlockFilePreviewEditorToolButton(
             label = stringResource(MR.strings.file_preview_toolbar_mosaic),
-            icon = SlockLucideIconName.Blend,
+            icon = SlockLucideIconName.Mosaic,
             selected = tool == SlockComposerImageEditorTool.Mosaic,
             enabled = !saving,
             onClick = { onSelectTool(SlockComposerImageEditorTool.Mosaic) }

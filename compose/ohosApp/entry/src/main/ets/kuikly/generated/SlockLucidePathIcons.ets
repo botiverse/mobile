@@ -160,6 +160,7 @@ export const SlockLucidePathIconNames: string[] = [
   'message-square-plus',
   'monitor',
   'monitor-x',
+  'mosaic',
   'package-check',
   'package',
   'paperclip',
@@ -6633,6 +6634,21 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
       fillOpacity: 0,
       strokeOpacity: 1,
       strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'mosaic':
+      return [
+    {
+      commands: 'M 20.1025 3.0049 C 20.6067 3.0562 21 3.4823 21 4 V 20 L 20.9951 20.1025 C 20.9472 20.573 20.573 20.9472 20.1025 20.9951 L 20 21 H 4 C 3.4823 21 3.0562 20.6067 3.0049 20.1025 L 3 20 V 4 C 3 3.4477 3.4477 3 4 3 H 20 L 20.1025 3.0049 Z M 5 19 H 19 V 5 H 5 V 19 Z M 9 17 H 7 V 15 H 9 V 17 Z M 13 17 H 11 V 15 H 13 V 17 Z M 17 17 H 15 V 15 H 17 V 17 Z M 11 15 H 9 V 13 H 11 V 15 Z M 15 15 H 13 V 13 H 15 V 15 Z M 9 13 H 7 V 11 H 9 V 13 Z M 13 13 H 11 V 11 H 13 V 13 Z M 17 13 H 15 V 11 H 17 V 13 Z M 11 11 H 9 V 9 H 11 V 11 Z M 15 11 H 13 V 9 H 15 V 11 Z M 9 9 H 7 V 7 H 9 V 9 Z M 13 9 H 11 V 7 H 13 V 9 Z M 17 9 H 15 V 7 H 17 V 9 Z',
+      fillPaint: 'currentColor',
+      strokePaint: 'none',
+      fillOpacity: 1,
+      strokeOpacity: 0,
+      strokeWidth: 0,
       strokeLineCap: LineCapStyle.Round,
       strokeLineJoin: LineJoinStyle.Round,
       viewportWidth: 24,
