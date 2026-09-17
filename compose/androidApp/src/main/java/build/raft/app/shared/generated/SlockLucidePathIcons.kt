@@ -600,6 +600,44 @@ internal object SlockLucidePathIcons {
         )
     }
 
+    private val Blend: SlockLucideIconSpec by lazy {
+        SlockLucideIconSpec(
+            name = "blend",
+            viewBox =
+                SlockLucideViewBox(
+                    minX = 0f,
+                    minY = 0f,
+                    width = 24f,
+                    height = 24f,
+                ),
+            paths =
+                listOf(
+            SlockLucidePathSpec(
+                pathData = "M 2.0 9.0 A 7.0 7.0 0 1 0 16.0 9.0 A 7.0 7.0 0 1 0 2.0 9.0 Z",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+            SlockLucidePathSpec(
+                pathData = "M 8.0 15.0 A 7.0 7.0 0 1 0 22.0 15.0 A 7.0 7.0 0 1 0 8.0 15.0 Z",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+                ),
+        )
+    }
+
     private val Blocks: SlockLucideIconSpec by lazy {
         SlockLucideIconSpec(
             name = "blocks",
@@ -1948,6 +1986,44 @@ internal object SlockLucidePathIcons {
             ),
             SlockLucidePathSpec(
                 pathData = "M 2.0 10.0 L 22.0 10.0",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+                ),
+        )
+    }
+
+    private val Crop: SlockLucideIconSpec by lazy {
+        SlockLucideIconSpec(
+            name = "crop",
+            viewBox =
+                SlockLucideViewBox(
+                    minX = 0f,
+                    minY = 0f,
+                    width = 24f,
+                    height = 24f,
+                ),
+            paths =
+                listOf(
+            SlockLucidePathSpec(
+                pathData = "M6 2v14a2 2 0 0 0 2 2h14",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+            SlockLucidePathSpec(
+                pathData = "M18 22V8a2 2 0 0 0-2-2H2",
                 fillPaint = null,
                 strokePaint = "currentColor",
                 fillOpacity = 0f,
@@ -7718,6 +7794,33 @@ internal object SlockLucidePathIcons {
         )
     }
 
+    private val Mosaic: SlockLucideIconSpec by lazy {
+        SlockLucideIconSpec(
+            name = "mosaic",
+            viewBox =
+                SlockLucideViewBox(
+                    minX = 0f,
+                    minY = 0f,
+                    width = 24f,
+                    height = 24f,
+                ),
+            paths =
+                listOf(
+            SlockLucidePathSpec(
+                pathData = "M20.1025 3.00488C20.6067 3.05621 21 3.48232 21 4V20L20.9951 20.1025C20.9472 20.573 20.573 20.9472 20.1025 20.9951L20 21H4C3.48232 21 3.05621 20.6067 3.00488 20.1025L3 20V4C3 3.44772 3.44772 3 4 3H20L20.1025 3.00488ZM5 19H19V5H5V19ZM9 17H7V15H9V17ZM13 17H11V15H13V17ZM17 17H15V15H17V17ZM11 15H9V13H11V15ZM15 15H13V13H15V15ZM9 13H7V11H9V13ZM13 13H11V11H13V13ZM17 13H15V11H17V13ZM11 11H9V9H11V11ZM15 11H13V9H15V11ZM9 9H7V7H9V9ZM13 9H11V7H13V9ZM17 9H15V7H17V9Z",
+                fillPaint = "currentColor",
+                strokePaint = null,
+                fillOpacity = 1f,
+                strokeOpacity = 0f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+                ),
+        )
+    }
+
     private val PackageCheck: SlockLucideIconSpec by lazy {
         SlockLucideIconSpec(
             name = "package-check",
@@ -10259,6 +10362,7 @@ internal object SlockLucidePathIcons {
             "bell",
             "bell-off",
             "bell-ring",
+            "blend",
             "blocks",
             "bookmark",
             "bookmark-minus",
@@ -10287,6 +10391,7 @@ internal object SlockLucidePathIcons {
             "columns-3",
             "copy",
             "credit-card",
+            "crop",
             "download",
             "ellipsis",
             "menu",
@@ -10389,6 +10494,7 @@ internal object SlockLucidePathIcons {
             "message-square-plus",
             "monitor",
             "monitor-x",
+            "mosaic",
             "package-check",
             "package",
             "paperclip",
@@ -10459,6 +10565,7 @@ internal object SlockLucidePathIcons {
             "bell" -> Bell
             "bell-off" -> BellOff
             "bell-ring" -> BellRing
+            "blend" -> Blend
             "blocks" -> Blocks
             "bookmark" -> Bookmark
             "bookmark-minus" -> BookmarkMinus
@@ -10487,6 +10594,7 @@ internal object SlockLucidePathIcons {
             "columns-3" -> Columns3
             "copy" -> Copy
             "credit-card" -> CreditCard
+            "crop" -> Crop
             "download" -> Download
             "ellipsis" -> Ellipsis
             "menu" -> Menu
@@ -10589,6 +10697,7 @@ internal object SlockLucidePathIcons {
             "message-square-plus" -> MessageSquarePlus
             "monitor" -> Monitor
             "monitor-x" -> MonitorX
+            "mosaic" -> Mosaic
             "package-check" -> PackageCheck
             "package" -> Package
             "paperclip" -> Paperclip

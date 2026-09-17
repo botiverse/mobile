@@ -1114,6 +1114,9 @@
     <string name="file_preview_toolbar_text">文本</string>
     <string name="file_preview_toolbar_erase">橡皮</string>
     <string name="file_preview_toolbar_mosaic">马赛克</string>
+    <string name="file_preview_toolbar_crop">裁剪</string>
+    <string name="file_preview_crop_reset">重置</string>
+    <string name="file_preview_crop_apply">应用</string>
     <string name="file_preview_action_comments">评论</string>
     <string name="file_preview_action_download">下载</string>
     <string name="file_preview_action_install">安装</string>
