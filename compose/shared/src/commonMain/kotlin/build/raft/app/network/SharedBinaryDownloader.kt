@@ -2,7 +2,6 @@ package build.raft.app.network
 
 import com.tencent.kmm.network.export.NetworkBody
 import com.tencent.kmm.network.export.NetworkRequest
-import com.tencent.kmm.network.export.NetworkRequestPolicy
 import com.tencent.kmm.network.export.VBTransportMethod
 import com.tencent.kmm.network.service.NetworkClient
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -96,7 +95,7 @@ object SharedBinaryDownloader {
         }
         NetworkClient(
             slockNetworkClientConfig(
-                defaultPolicy = NetworkRequestPolicy(timeoutMillis = SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS),
+                defaultPolicy = slockNetworkRequestPolicy(SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS),
                 diagnosticsLogger = { message ->
                     recordDiagnostics("operation=engine_diagnostics $message")
                 }
@@ -250,7 +249,7 @@ object SharedBinaryDownloader {
                             method = VBTransportMethod.GET,
                             url = url,
                             body = NetworkBody.Empty,
-                            policy = NetworkRequestPolicy(timeoutMillis = SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS)
+                            policy = slockNetworkRequestPolicy(SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS)
                         ).apply {
                             setHeader("Accept", "*/*")
                         },
@@ -336,7 +335,7 @@ internal fun sharedBinaryConditionalRequest(
         method = VBTransportMethod.GET,
         url = url,
         body = NetworkBody.Empty,
-        policy = NetworkRequestPolicy(timeoutMillis = SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS)
+        policy = slockNetworkRequestPolicy(SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS)
     ).apply {
         setHeader("Accept", "*/*")
         validators?.eTag?.let { setHeader("If-None-Match", it) }

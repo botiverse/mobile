@@ -32,6 +32,37 @@ internal fun createPlatformSlockHttpExecutor(
 private const val SLOCK_REQUEST_TIMEOUT_MILLIS = 30_000L
 
 /**
+ * task #1138: the connect-phase budget for ordinary requests (login, lists,
+ * plain GET/POST). Before this constant existed those requests passed no
+ * connect timeout and silently inherited the NetworkKMM library default,
+ * which moved from 3s to 10s in `0.1.0-raft.38` without any app-side
+ * change or telemetry. The value is deliberately equal to today's library
+ * default so behaviour is unchanged; what changes is that the number now has
+ * ONE app-side source, is logged as `configConnectTimeoutMillis`, and a
+ * library bump can no longer move it unnoticed.
+ */
+internal const val SLOCK_CONNECT_TIMEOUT_MILLIS = 10_000L
+
+/**
+ * The single constructor for every [NetworkRequestPolicy] the app hands to
+ * NetworkKMM. Call sites must not build the policy inline: a policy built
+ * without [NetworkStreamTimeoutPolicy.connectTimeoutMillis] silently falls
+ * back to the library default, which is exactly the regression task #1138
+ * closes. Presigned uploads pass their own [connectTimeoutMillis]; everything
+ * else takes [SLOCK_CONNECT_TIMEOUT_MILLIS].
+ */
+internal fun slockNetworkRequestPolicy(
+    totalTimeoutMillis: Long,
+    priority: NetworkPriority = NetworkPriority.NORMAL,
+    connectTimeoutMillis: Long = SLOCK_CONNECT_TIMEOUT_MILLIS,
+): NetworkRequestPolicy =
+    NetworkRequestPolicy(
+        timeoutMillis = totalTimeoutMillis,
+        priority = priority,
+        streamTimeouts = NetworkStreamTimeoutPolicy(connectTimeoutMillis = connectTimeoutMillis),
+    )
+
+/**
  * task #783 (human ruling in `#proj-chat:8b673a88`): streaming fileRef
  * uploads get a 3-minute total budget instead of the generic 30s request
  * deadline — a healthy 190 MiB upload legitimately outlives 30s. Ordinary
@@ -114,7 +145,7 @@ internal class NetworkKmmSlockHttpExecutor(
         ensureNetworkKmmInitialized(warningLogger)
         NetworkClient(
             slockNetworkClientConfig(
-                defaultPolicy = NetworkRequestPolicy(timeoutMillis = SLOCK_REQUEST_TIMEOUT_MILLIS),
+                defaultPolicy = slockNetworkRequestPolicy(SLOCK_REQUEST_TIMEOUT_MILLIS),
                 diagnosticsLogger = warningLogger
             )
         )
@@ -136,6 +167,8 @@ internal class NetworkKmmSlockHttpExecutor(
         warningLogger(
             "slock_networkkmm_execute_start path=$path method=${method.uppercase()} " +
                 "priority=$priority jsonBody=$jsonBody requestBytes=$requestBytes " +
+                "configTotalTimeoutMillis=$SLOCK_REQUEST_TIMEOUT_MILLIS " +
+                "configConnectTimeoutMillis=$SLOCK_CONNECT_TIMEOUT_MILLIS " +
                 "clientRequestId=$clientRequestId headers=${traceHeaders.toSafeHeaderDiagnostics()}"
         )
         return try {
@@ -150,8 +183,8 @@ internal class NetworkKmmSlockHttpExecutor(
                             else -> NetworkBody.Text(bodyText)
                         },
                     policy =
-                        NetworkRequestPolicy(
-                            timeoutMillis = SLOCK_REQUEST_TIMEOUT_MILLIS,
+                        slockNetworkRequestPolicy(
+                            totalTimeoutMillis = SLOCK_REQUEST_TIMEOUT_MILLIS,
                             priority = priority.toNetworkKmmPriority()
                         )
                 )
@@ -213,6 +246,7 @@ internal class NetworkKmmSlockHttpExecutor(
             "slock_networkkmm_multipart_start path=$path method=POST priority=$priority " +
                 "fields=${fields.size} files=${files.size} requestBytes=$requestBytes " +
                 "totalTimeoutMs=$totalTimeoutMillis " +
+                "configConnectTimeoutMillis=$SLOCK_CONNECT_TIMEOUT_MILLIS " +
                 "clientRequestId=$clientRequestId headers=${traceHeaders.toSafeHeaderDiagnostics()}"
         )
         return try {
@@ -236,8 +270,8 @@ internal class NetworkKmmSlockHttpExecutor(
                                     }
                         ),
                     policy =
-                        NetworkRequestPolicy(
-                            timeoutMillis = totalTimeoutMillis,
+                        slockNetworkRequestPolicy(
+                            totalTimeoutMillis = totalTimeoutMillis,
                             priority = priority.toNetworkKmmPriority()
                         )
                 )
@@ -362,13 +396,10 @@ internal class NetworkKmmSlockHttpExecutor(
                 method = method.toTransportMethod(),
                 url = url,
                 body = body,
-                policy = NetworkRequestPolicy(
-                    timeoutMillis = totalTimeoutMillis,
+                policy = slockNetworkRequestPolicy(
+                    totalTimeoutMillis = totalTimeoutMillis,
                     priority = priority.toNetworkKmmPriority(),
-                    streamTimeouts =
-                        NetworkStreamTimeoutPolicy(
-                            connectTimeoutMillis = connectTimeoutMillis
-                        )
+                    connectTimeoutMillis = connectTimeoutMillis
                 )
             )
             if (http1Only) {
