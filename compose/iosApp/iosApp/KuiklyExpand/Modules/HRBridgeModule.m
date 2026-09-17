@@ -1,5 +1,6 @@
 #import "HRBridgeModule.h"
 #import "RaftDiagnosticsPathAdmission.h"
+#import "RaftDiagnosticsEnvironmentRows.h"
 
 #import "KuiklyRenderViewController.h"
 #import <AVFoundation/AVFoundation.h>
@@ -1903,7 +1904,7 @@ static void SlockDiagnosticsClear(void) {
     });
 }
 
-static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
+static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about, BOOL omitEmptyRows) {
     NSMutableString *text = [NSMutableString string];
     [text appendString:@"Raft diagnostics\n\nEnvironment\n"];
     NSArray<NSDictionary *> *rows = @[
@@ -1929,11 +1930,10 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
         @{ @"key": @"crashAtMillis", @"label": @"Crash at millis" },
         @{ @"key": @"crashAt", @"label": @"Crash at" }
     ];
-    for (NSDictionary *row in rows) {
-        NSString *key = row[@"key"];
-        NSString *value = SlockBridgeString(about[key]);
-        [text appendFormat:@"%@: %@\n", row[@"label"], value.length > 0 ? value : @"--"];
-    }
+    // task #382 (product ruling 2026-09-17, option (a)): user-facing copy/share
+    // surfaces omit empty rows entirely instead of printing "--" placeholders;
+    // the diagnostics attachment passes omitEmptyRows=NO and keeps full rows.
+    [text appendString:RaftDiagnosticsEnvironmentRowsText(about, rows, omitEmptyRows)];
     [text appendString:@"\niOS diagnostics\n"];
     [text appendString:SlockDiagnosticsExportRecentText(SlockDiagnosticsRecentMaxChars)];
     return text;
@@ -2063,7 +2063,7 @@ static void SlockDiagnosticsPruneFeedbackFiles(NSString *dir) {
 static NSDictionary *SlockDiagnosticsPrepareAttachmentFiles(NSDictionary *about, NSString *reason, BOOL includeBodyBase64) {
     NSDictionary *result = SlockDiagnosticsPerformOwnerOperation(^id{
         NSString *summaryText = SlockDiagnosticsStringByReplacingInvalidSurrogates(
-            SlockBridgeSanitizedLogString(SlockDiagnosticsBuildExportText(about ?: @{}))
+            SlockBridgeSanitizedLogString(SlockDiagnosticsBuildExportText(about ?: @{}, NO))
         );
         NSString *safeReason = SlockBridgeSanitizedLogString(reason ?: @"diagnostics").lowercaseString;
         NSData *summaryData = [summaryText dataUsingEncoding:NSUTF8StringEncoding];
@@ -5048,7 +5048,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"copyDiagnostics"]) {
-        NSString *exportText = SlockDiagnosticsBuildExportText([self slock_settingsCapabilityResultForAction:@"loadAbout" params:@{}]);
+        NSString *exportText = SlockDiagnosticsBuildExportText([self slock_settingsCapabilityResultForAction:@"loadAbout" params:@{}], YES);
         SlockBridgeRunOnMain(^{
             UIPasteboard.generalPasteboard.string = exportText;
         });
@@ -5056,7 +5056,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"shareDiagnostics"]) {
-        NSString *exportText = SlockDiagnosticsBuildExportText([self slock_settingsCapabilityResultForAction:@"loadAbout" params:@{}]);
+        NSString *exportText = SlockDiagnosticsBuildExportText([self slock_settingsCapabilityResultForAction:@"loadAbout" params:@{}], YES);
         [self slock_shareItems:@[ exportText ]];
         SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_share_diagnostics");
         return @{ @"status" : @"ok" };
@@ -5194,7 +5194,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
                 }
                 NSString *shortId = [ticketId substringToIndex:MIN(ticketId.length, (NSUInteger)8)];
                 NSString *environment = SlockDiagnosticsEnvironmentSectionFromExportText(
-                    SlockDiagnosticsBuildExportText([self slock_settingsCapabilityResultForAction:@"loadAbout" params:@{}])
+                    SlockDiagnosticsBuildExportText([self slock_settingsCapabilityResultForAction:@"loadAbout" params:@{}], YES)
                 );
                 NSString *attachmentBlock = SlockHandsFeedbackAttachmentBlock(attachments);
                 NSString *attachmentSection = attachmentBlock.length > 0
