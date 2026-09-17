@@ -117,6 +117,7 @@ import build.raft.app.data.SlockAndroidSqlDatabaseContext
 import build.raft.app.data.SlockAvatarMountedRenderDescriptor
 import build.raft.app.data.parseSlockAvatarMountedRenderModel
 import build.raft.app.network.SharedBinaryDownloader
+import build.raft.app.network.SharedDownloadedBytes
 import build.raft.app.network.AttachmentDownloadObserver
 import build.raft.app.network.AttachmentDownloadProgress
 import build.raft.app.network.AttachmentDownloadResult
@@ -3405,6 +3406,8 @@ internal class SlockKuiklyImageAdapter(
                 }
         private val networkImageFlights =
                 SlockImageRequestSingleFlight<SlockNetworkImageRequestKey, Bitmap>()
+        private val networkByteFlights =
+                SlockImageRequestSingleFlight<String, SharedDownloadedBytes>()
     }
 
     override fun fetchDrawable(
@@ -3606,10 +3609,7 @@ internal class SlockKuiklyImageAdapter(
                                                 )
                                                 return@runCatching bitmap
                                             }
-                                            val response =
-                                                    runBlocking {
-                                                        SharedBinaryDownloader.fetchBytes(imageLoadOption.src)
-                                                    }
+                                            val response = fetchNetworkBytes(imageLoadOption.src)
                                             recordNetworkImageBytes(imageLoadOption, response.bytes.size, response.contentType)
                                             bitmapFromNetworkBytes(response.bytes, imageLoadOption, response.contentType)
                                                     ?: throw IllegalStateException("Image decode failed")
@@ -3629,6 +3629,32 @@ internal class SlockKuiklyImageAdapter(
                         "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
                         binaryDownloadUrlDiagnostics(imageLoadOption.src)
         )
+    }
+
+    private fun fetchNetworkBytes(src: String): SharedDownloadedBytes {
+        val urlIdentity = src.slockNetworkImageUrlIdentity()
+        val completed = CountDownLatch(1)
+        var result: Result<SharedDownloadedBytes>? = null
+        networkByteFlights.load(
+                key = urlIdentity,
+                start = { complete ->
+                    SlockKuiklyThreadAdapter.executeOnSubThread {
+                        val fetchResult =
+                                runCatching {
+                                    runBlocking {
+                                        SharedBinaryDownloader.fetchBytes(src)
+                                    }
+                                }
+                        complete(fetchResult)
+                    }
+                },
+                callback = { res ->
+                    result = res
+                    completed.countDown()
+                }
+        )
+        completed.await()
+        return result?.getOrThrow() ?: throw IllegalStateException("Network image fetch failed")
     }
 
     private fun cachedNetworkBitmap(requestKey: SlockNetworkImageRequestKey): Bitmap? =

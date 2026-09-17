@@ -217,6 +217,46 @@ class SlockImageRequestSingleFlightTest {
         assertEquals(0, singleFlight.activeFlightCount())
     }
 
+    @Test
+    fun urlByteSingleFlightDeduplicatesAcrossDifferentDecodeDimensions() {
+        val byteFlights = SlockImageRequestSingleFlight<String, ByteArray>()
+        val url = "https://cdn.example.com/image.png"
+        var byteFetchCount = 0
+        lateinit var completeBytes: (Result<ByteArray>) -> Unit
+
+        val results = mutableListOf<ByteArray>()
+
+        // Simulate 2 decode requests with different dimensions sharing the byte flight
+        val key1 = requestKey(url = url, requestWidth = -1, requestHeight = -1)
+        val key2 = requestKey(url = url, requestWidth = 606, requestHeight = 1151)
+
+        assertEquals(key1.urlIdentity, key2.urlIdentity)
+
+        byteFlights.load(
+            key = key1.urlIdentity,
+            start = { finish ->
+                byteFetchCount++
+                completeBytes = finish
+            },
+            callback = { results += it.getOrThrow() }
+        )
+
+        byteFlights.load(
+            key = key2.urlIdentity,
+            start = { error("second decode request must join in-flight byte download") },
+            callback = { results += it.getOrThrow() }
+        )
+
+        assertEquals(1, byteFetchCount)
+        val fakeBytes = byteArrayOf(1, 2, 3)
+        completeBytes(Result.success(fakeBytes))
+
+        assertEquals(2, results.size)
+        assertSame(fakeBytes, results[0])
+        assertSame(fakeBytes, results[1])
+        assertEquals(0, byteFlights.activeFlightCount())
+    }
+
     private fun requestKey(
         url: String = "https://www.gravatar.com/avatar/hash?s=121&d=404",
         requestWidth: Int = 121,

@@ -147,6 +147,33 @@ internal fun slockImagePreviewRenderIdentity(
         decodedHeight = decodedHeight.coerceAtLeast(0)
     )
 
+internal fun resolveSlockImagePreviewRenderIdentity(
+    currentIdentity: SlockImagePreviewRenderIdentity?,
+    source: String,
+    decodedWidth: Int,
+    decodedHeight: Int,
+    activeSucceeded: Boolean
+): SlockImagePreviewRenderIdentity {
+    val normalizedSource = source.trim()
+    if (currentIdentity != null && currentIdentity.source == normalizedSource) {
+        if (activeSucceeded) {
+            return currentIdentity
+        }
+        if (currentIdentity.decodedWidth > 0 && currentIdentity.decodedHeight > 0) {
+            return currentIdentity
+        }
+    }
+    return slockImagePreviewRenderIdentity(
+        source = normalizedSource,
+        decodedWidth = decodedWidth,
+        decodedHeight = decodedHeight
+    )
+}
+
+private class SlockImagePreviewIdentityHolder(
+    var identity: SlockImagePreviewRenderIdentity
+)
+
 @Composable
 internal fun SlockImagePreviewRenderSlot(
     identity: SlockImagePreviewRenderIdentity,
@@ -228,18 +255,31 @@ internal fun SlockAspectFitImagePreviewSurface(
     ) {
         if (activeSource != null) {
             val activeBitmap = rememberAsyncImageBitmap(activeSource)
-            val renderIdentity =
-                slockImagePreviewRenderIdentity(
-                    source = activeSource.orEmpty(),
-                    decodedWidth = activeBitmap?.width ?: 0,
-                    decodedHeight = activeBitmap?.height ?: 0
+            val currentSource = activeSource.orEmpty()
+            val activeSucceeded = imageState is AsyncImagePainter.State.Success
+            val identityHolder = remember(activeSource) {
+                SlockImagePreviewIdentityHolder(
+                    slockImagePreviewRenderIdentity(
+                        source = currentSource,
+                        decodedWidth = activeBitmap?.width ?: 0,
+                        decodedHeight = activeBitmap?.height ?: 0
+                    )
                 )
+            }
+            val renderIdentity =
+                resolveSlockImagePreviewRenderIdentity(
+                    currentIdentity = identityHolder.identity,
+                    source = currentSource,
+                    decodedWidth = activeBitmap?.width ?: 0,
+                    decodedHeight = activeBitmap?.height ?: 0,
+                    activeSucceeded = activeSucceeded
+                ).also { identityHolder.identity = it }
             val loadingPresentation =
                 slockImagePreviewLoadingPresentation(
                     activeSource = activeSource,
                     fallbackSource = normalizedFallback,
                     showLoadingIndicator = showLoadingIndicator,
-                    activeSucceeded = imageState is AsyncImagePainter.State.Success,
+                    activeSucceeded = activeSucceeded,
                     activeFailed = imageState is AsyncImagePainter.State.Error
                 )
             loadingPresentation.fallbackUnderlaySource?.let { underlaySource ->
