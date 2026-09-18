@@ -402,6 +402,7 @@ internal fun SharedHomeActivityScreen(
         stableOrderEnabled = stableOrderEnabledAtRouteEntry,
         stableOrderDecisionRevision = diagnosticOverrideRevision,
         presentationStore = activityStore.presentationStore,
+        foregroundEpoch = activitySummary.lastForegroundEpoch,
         modifier = modifier
     )
 }
@@ -580,6 +581,7 @@ internal fun SharedHomeActivityScreen(
     stableOrderEnabled: Boolean = true,
     stableOrderDecisionRevision: Long = 0L,
     presentationStore: SharedActivityPresentationStore = remember { SharedActivityPresentationStore() },
+    foregroundEpoch: Long,
     modifier: Modifier = Modifier
 ) {
     SharedActivityPanelContent(
@@ -596,6 +598,7 @@ internal fun SharedHomeActivityScreen(
         stableOrderEnabled = stableOrderEnabled,
         stableOrderDecisionRevision = stableOrderDecisionRevision,
         presentationStore = presentationStore,
+        foregroundEpoch = 0L,
         modifier = modifier
     )
 }
@@ -617,6 +620,7 @@ internal fun SharedHomeActivityPanel(
     stableOrderEnabled: Boolean = true,
     stableOrderDecisionRevision: Long = 0L,
     presentationStore: SharedActivityPresentationStore = remember { SharedActivityPresentationStore() },
+    foregroundEpoch: Long,
     modifier: Modifier = Modifier
 ) {
     // #192 trace scope extension: wrap the Inbox panel render. The Inbox is
@@ -644,6 +648,7 @@ internal fun SharedHomeActivityPanel(
             stableOrderEnabled = stableOrderEnabled,
             stableOrderDecisionRevision = stableOrderDecisionRevision,
             presentationStore = presentationStore,
+            foregroundEpoch = foregroundEpoch,
             modifier = modifier
         )
     }
@@ -664,6 +669,7 @@ private fun SharedActivityPanelContent(
     stableOrderEnabled: Boolean,
     stableOrderDecisionRevision: Long,
     presentationStore: SharedActivityPresentationStore,
+    foregroundEpoch: Long,
     modifier: Modifier = Modifier
 ) {
     val refreshPresentation = activityRefreshPresentation(state.refreshing, state.pullRefreshing)
@@ -740,6 +746,7 @@ private fun SharedActivityPanelContent(
                     stableOrderEnabled = stableOrderEnabled,
                     stableOrderDecisionRevision = stableOrderDecisionRevision,
                     presentationStore = presentationStore,
+                    foregroundEpoch = foregroundEpoch,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -783,6 +790,7 @@ private fun SharedActivityBodyContent(
     stableOrderEnabled: Boolean,
     stableOrderDecisionRevision: Long,
     presentationStore: SharedActivityPresentationStore,
+    foregroundEpoch: Long,
     modifier: Modifier = Modifier
 ) {
     val snapshot = state.snapshot
@@ -856,7 +864,8 @@ private fun SharedActivityBodyContent(
                     presentationAccountId = presentationAccountId,
                     stableOrderEnabled = stableOrderEnabled,
                     stableOrderDecisionRevision = stableOrderDecisionRevision,
-                    presentationStore = presentationStore
+                    presentationStore = presentationStore,
+                    foregroundEpoch = foregroundEpoch
                 )
         }
     }
@@ -956,11 +965,14 @@ private fun SharedActivityList(
     presentationAccountId: String,
     stableOrderEnabled: Boolean,
     stableOrderDecisionRevision: Long,
-    presentationStore: SharedActivityPresentationStore
+    presentationStore: SharedActivityPresentationStore,
+    foregroundEpoch: Long
 ) {
     val presentationServerId = snapshot.server.id.value
     val panelFirstRenderMark = remember { TimeSource.Monotonic.markNow() }
     var firstRenderLogged by remember { mutableStateOf(false) }
+    val resumeFirstRenderMark = remember(foregroundEpoch) { TimeSource.Monotonic.markNow() }
+    var resumeFirstRenderLogged by remember(foregroundEpoch) { mutableStateOf(false) }
     val restoredPresentation =
         remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
             if (stableOrderEnabled) {
@@ -1184,7 +1196,16 @@ private fun SharedActivityList(
             firstRenderLogged = true
             slockLogInfo(
                 "SlockForegroundPerf",
-                "first_render elapsedMs=${panelFirstRenderMark.elapsedNow().inWholeMilliseconds} serverId=$presentationServerId items=${renderedItems.size}"
+                "first_render elapsedMs=${panelFirstRenderMark.elapsedNow().inWholeMilliseconds} serverId=$presentationServerId items=${renderedItems.size} basis=per_cold_start"
+            )
+        }
+    }
+    LaunchedEffect(renderedItems.isNotEmpty(), foregroundEpoch) {
+        if (foregroundEpoch != 0L && !resumeFirstRenderLogged && renderedItems.isNotEmpty()) {
+            resumeFirstRenderLogged = true
+            slockLogInfo(
+                "SlockForegroundPerf",
+                "resume_first_render elapsedMs=${resumeFirstRenderMark.elapsedNow().inWholeMilliseconds} epoch=$foregroundEpoch serverId=$presentationServerId items=${renderedItems.size} basis=per_resume"
             )
         }
     }

@@ -23930,6 +23930,7 @@ internal fun HomeActivityVisualContent() {
             pullRefreshing = params.optBoolean("task797Refreshing", false),
             activityTaskStatusBadgesEnabled = true,
             draftProjection = homeActivityVisualDraftProjection,
+            foregroundEpoch = 0L,
             modifier = Modifier.fillMaxSize()
         )
     }
@@ -23943,6 +23944,7 @@ internal fun HomeActivityHitTargetVisualContent() {
             snapshot = homeActivityVisualSnapshot,
             onOpenItem = { item -> openedKey = item.key },
             onClose = {},
+            foregroundEpoch = 0L,
             modifier = Modifier.fillMaxSize()
         )
         openedKey?.let { key ->
@@ -24106,6 +24108,7 @@ internal fun HomeActivityAvatarVisualContent(activitySenderAvatarsEnabled: Boole
             activityTaskStatusBadgesEnabled = true,
             activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
             draftProjection = homeActivityAvatarVisualDraftProjection,
+            foregroundEpoch = 0L,
             modifier = Modifier.fillMaxSize()
         )
     }
