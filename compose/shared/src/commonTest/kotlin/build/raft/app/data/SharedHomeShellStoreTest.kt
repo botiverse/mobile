@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.SlockSlackNavTabs
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.MemberId
@@ -397,6 +398,83 @@ class SharedHomeShellStoreTest {
             ),
             fixture.activityIntents.last()
         )
+        fixture.cancel()
+    }
+
+    @Test
+    fun setSelectedTabActivityMarksVisibleAndRefreshesActivity() {
+        val fixture = fixture()
+        val store = fixture.store
+
+        assertEquals(false, store.state.value.isActivityVisible)
+        assertNull(store.state.value.selectedTab)
+
+        store.dispatch(SharedHomeShellIntent.SetSelectedTab(SlockSlackNavTabs.Activity))
+
+        assertEquals(true, store.state.value.isActivityVisible)
+        assertEquals(SlockSlackNavTabs.Activity, store.state.value.selectedTab)
+        assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.Refresh), fixture.activityIntents)
+
+        // Redundant set does not re-dispatch refresh
+        store.dispatch(SharedHomeShellIntent.SetSelectedTab(SlockSlackNavTabs.Activity))
+        assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.Refresh), fixture.activityIntents)
+
+        // Switching away resets isActivityVisible
+        store.dispatch(SharedHomeShellIntent.SetSelectedTab(SlockSlackNavTabs.Dms))
+        assertEquals(false, store.state.value.isActivityVisible)
+        assertEquals(SlockSlackNavTabs.Dms, store.state.value.selectedTab)
+
+        fixture.cancel()
+    }
+
+    @Test
+    fun slackNavActivityTabReceivesRealtimeEvents() {
+        val fixture = fixture(homeState = homeStateForServer("server-1", activityMuted = false))
+        val event =
+            build.raft.app.model.MessageNew(
+                Message(
+                    id = MessageId("message-1"),
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    seq = 10,
+                    author =
+                        MemberProfile(
+                            id = MemberId("user-2"),
+                            displayName = "User Two",
+                            handle = "user-2",
+                            kind = MemberKind.Human
+                        ),
+                    timestampLabel = "2026-07-13T03:00:00Z",
+                    body = "New activity message"
+                )
+            )
+
+        fixture.store.dispatch(SharedHomeShellIntent.SetSelectedTab(SlockSlackNavTabs.Activity))
+        fixture.store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
+
+        assertEquals(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                event = event,
+                allowLocalPatch = true
+            ),
+            fixture.activityIntents.last()
+        )
+        fixture.cancel()
+    }
+
+    @Test
+    fun slackNavActivityTabRefreshesOnForegroundRefresh() {
+        val fixture = fixture()
+        val store = fixture.store
+
+        store.dispatch(SharedHomeShellIntent.SetSelectedTab(SlockSlackNavTabs.Activity))
+        fixture.activityIntents.clear()
+        fixture.homeIntents.clear()
+
+        store.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+
+        assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.Refresh), fixture.activityIntents)
+        assertEquals(emptyList<SharedHomeIntent>(), fixture.homeIntents)
         fixture.cancel()
     }
 
