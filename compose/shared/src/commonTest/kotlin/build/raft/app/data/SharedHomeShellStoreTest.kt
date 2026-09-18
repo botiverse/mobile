@@ -478,6 +478,48 @@ class SharedHomeShellStoreTest {
         fixture.cancel()
     }
 
+    @Test
+    fun destinationPriorityOverSelectedTabOnForegroundRefresh() {
+        val fixture = fixture()
+        val store = fixture.store
+
+        // User is on Slack Activity tab, then opens Saved overlay
+        store.dispatch(SharedHomeShellIntent.SetSelectedTab(SlockSlackNavTabs.Activity))
+        store.dispatch(SharedHomeShellIntent.OpenSaved)
+        fixture.activityIntents.clear()
+        fixture.searchSavedIntents.clear()
+        fixture.homeIntents.clear()
+
+        // Returning to foreground must refresh the visible overlay (Saved), not underlying Activity
+        store.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+
+        assertEquals(
+            listOf<SharedHomeSearchSavedIntent>(SharedHomeSearchSavedIntent.RefreshSaved),
+            fixture.searchSavedIntents
+        )
+        assertEquals(emptyList<SharedActivityIntent>(), fixture.activityIntents)
+        assertEquals(emptyList<SharedHomeIntent>(), fixture.homeIntents)
+
+        // Same priority contract for Search overlay
+        store.dispatch(SharedHomeShellIntent.OpenSearch)
+        fixture.searchSavedIntents.clear()
+        store.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+        assertEquals(
+            listOf<SharedHomeSearchSavedIntent>(SharedHomeSearchSavedIntent.RefreshSearch),
+            fixture.searchSavedIntents
+        )
+        assertEquals(emptyList<SharedActivityIntent>(), fixture.activityIntents)
+
+        // Closing overlay restores Activity tab foreground refresh
+        store.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
+        fixture.searchSavedIntents.clear()
+        store.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+        assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.Refresh), fixture.activityIntents)
+        assertEquals(emptyList<SharedHomeSearchSavedIntent>(), fixture.searchSavedIntents)
+
+        fixture.cancel()
+    }
+
     private fun fixture(
         homeState: SharedHomeState = SharedHomeState(),
         activityState: SharedActivityState = SharedActivityState(),

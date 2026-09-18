@@ -230,12 +230,17 @@ class SharedHomeShellStore(
     }
 
     private fun refreshVisibleHomeDestination() {
-        when {
-            _state.value.isActivityVisible -> dispatchActivity(SharedActivityIntent.Refresh)
-            _state.value.destination == SharedHomeShellDestinationSaved ->
-                dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSaved)
-            _state.value.destination == SharedHomeShellDestinationSearch ->
-                dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSearch)
+        when (val destination = _state.value.destination) {
+            SharedHomeShellDestinationActivity -> dispatchActivity(SharedActivityIntent.Refresh)
+            SharedHomeShellDestinationSaved -> dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSaved)
+            SharedHomeShellDestinationSearch -> dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSearch)
+            null ->
+                if (_state.value.selectedTab == SlockSlackNavTabs.Activity) {
+                    dispatchActivity(SharedActivityIntent.Refresh)
+                } else {
+                    dispatchHome(SharedHomeIntent.ForegroundRefresh)
+                    refreshSavedSummary()
+                }
             else -> {
                 dispatchHome(SharedHomeIntent.ForegroundRefresh)
                 refreshSavedSummary()
