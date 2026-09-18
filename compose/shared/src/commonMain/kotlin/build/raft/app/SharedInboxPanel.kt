@@ -117,6 +117,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.launch
+import kotlin.time.TimeSource
 
 private val ActivitySelectedRowShadowOffset = 2.dp
 
@@ -958,6 +959,8 @@ private fun SharedActivityList(
     presentationStore: SharedActivityPresentationStore
 ) {
     val presentationServerId = snapshot.server.id.value
+    val panelFirstRenderMark = remember { TimeSource.Monotonic.markNow() }
+    var firstRenderLogged by remember { mutableStateOf(false) }
     val restoredPresentation =
         remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
             if (stableOrderEnabled) {
@@ -1176,6 +1179,15 @@ private fun SharedActivityList(
     val renderedItems = presentedItems.filterNot { item -> item.hasUnopenableInternalJointParentSource() }
     val renderedPresentationGeneration = presentationGeneration
     val renderedPresentationOwnerIdentity = presentationOwnerIdentity
+    LaunchedEffect(renderedItems.isNotEmpty()) {
+        if (!firstRenderLogged && renderedItems.isNotEmpty()) {
+            firstRenderLogged = true
+            slockLogInfo(
+                "SlockForegroundPerf",
+                "first_render elapsedMs=${panelFirstRenderMark.elapsedNow().inWholeMilliseconds} serverId=$presentationServerId items=${renderedItems.size}"
+            )
+        }
+    }
     // The pointerInput coroutine deliberately keeps the callback from its DOWN generation. Read
     // the backing MutableState objects at commit time so the old callback sees an order change
     // immediately, even before the next recomposition updates or cancels its pointerInput node.

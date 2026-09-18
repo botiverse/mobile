@@ -3353,6 +3353,7 @@ private fun SlockAppShellReadyContent(
         cachedHomePreview
     ) {
         val delayMs = homeSurfaceVisibilityDispatchDelayMs(homeSurfaceVisible)
+        val surfaceWaitMark = TimeSource.Monotonic.markNow()
         if (delayMs > 0L) {
             delay(delayMs)
         }
@@ -3362,6 +3363,10 @@ private fun SlockAppShellReadyContent(
                     (readyServerId ?: homePreviewServerId) != null &&
                     (setupAdmissionAllowsHome || cachedHomePreview)
             )
+        )
+        slockLogInfo(
+            "SlockForegroundPerf",
+            "surface_visible_wait plannedMs=$delayMs actualMs=${surfaceWaitMark.elapsedNow().inWholeMilliseconds} visible=$homeSurfaceVisible"
         )
     }
     LaunchedEffect(readyServerId, readySession?.accessToken, authoritativeHomeStartAllowed) {
@@ -4537,6 +4542,7 @@ private fun SlockAppShellReadyContent(
         realtimeCallbackGate,
         authoritativeHomeStartAllowed,
     ) {
+        var suppressedVisibleRefreshCount = 0
         val onRealtimeEvent: (JSONObject) -> Unit = onRealtimeEvent@{ rawEventData ->
             if (!latestAuthoritativeHomeStartAllowed) return@onRealtimeEvent
             if (
@@ -4631,12 +4637,14 @@ private fun SlockAppShellReadyContent(
                                     "cause=page_not_visible tab=$latestSelectedTab " +
                                     "homeDestination=${latestSelectedHomeDestination.orEmpty()}"
                             )
+                            suppressedVisibleRefreshCount++
                             return@launch
                         }
                         if (
                             appShellLifecycleCanRefreshVisibleRoute(latestPageVisible, event) &&
                             latestReadySession != null
                         ) {
+                            val fgResumeMark = TimeSource.Monotonic.markNow()
                             val plan =
                                 appShellForegroundResumePlan(
                                     pageVisible = latestPageVisible,
@@ -4670,6 +4678,11 @@ private fun SlockAppShellReadyContent(
                             if (refreshedVisibleRoute && plan?.refreshServerMembers == true) {
                                 sharedStores.foregroundReconciler.onForeground("app_shell_$event")
                             }
+                            slockLogInfo(
+                                "SlockForegroundPerf",
+                                "fg_resume event=$event serverId=${eventData.optString(SlockRealtimeNotifyContract.KeyServerId)} epoch=${foregroundEpoch ?: 0L} routeRefreshed=$refreshedVisibleRoute suppressedVisibleRefresh=$suppressedVisibleRefreshCount elapsedMs=${fgResumeMark.elapsedNow().inWholeMilliseconds}"
+                            )
+                            suppressedVisibleRefreshCount = 0
                         }
                         return@launch
                     }
