@@ -271,6 +271,7 @@ private fun HomeActivityRouterContent(
         shellScope = environment.shellScope,
         activityTaskStatusBadgesEnabled = environment.activityTaskStatusBadgesEnabled,
         activitySenderAvatarsEnabled = environment.activitySenderAvatarsEnabled,
+        refreshOnAppLifecycleResume = true,
         storeScope = environment.storeScope
     )
 }

@@ -3845,9 +3845,11 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun rootLifecycleRefreshDoesNotDuplicateNativeHomeChildRefreshes() {
+    fun rootLifecycleRefreshCoversActivityButNotSelfRefreshingDestinations() {
         assertEquals(true, homeDestinationRefreshesOnLifecycleResume(null))
-        assertEquals(false, homeDestinationRefreshesOnLifecycleResume("activity"))
+        // task #383: the Activity destination does not self-refresh on app
+        // foreground, so the shell resume path must cover it.
+        assertEquals(true, homeDestinationRefreshesOnLifecycleResume("activity"))
         assertEquals(false, homeDestinationRefreshesOnLifecycleResume("saved"))
         assertEquals(false, homeDestinationRefreshesOnLifecycleResume("search"))
         assertEquals(true, homeDestinationRefreshesOnLifecycleResume("unknown"))
