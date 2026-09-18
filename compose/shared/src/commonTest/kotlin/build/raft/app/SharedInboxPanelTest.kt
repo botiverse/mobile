@@ -16,6 +16,7 @@ import build.raft.app.data.ServerFeatureFlagSnapshot
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.mergedSharedConversationDirectoryState
+import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedActivitySenderProfile
 import build.raft.app.data.SharedActivityPresentationCheckpoint
@@ -381,6 +382,43 @@ class SharedInboxPanelTest {
     fun activityPageDidAppearRefreshesOnlyAfterInitialAppearance() {
         assertEquals(false, activityPageDidAppearShouldRefresh(0))
         assertEquals(true, activityPageDidAppearShouldRefresh(1))
+    }
+
+    @Test
+    fun activityAppLifecycleResumeRefreshesOnlyOnVisibleWireEvents() {
+        // Android publishes "resume", iOS publishes "show" (task #383).
+        assertEquals(
+            true,
+            activityAppLifecycleResumeShouldRefresh(
+                action = SlockRealtimeNotifyContract.ActionAppLifecycle,
+                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleVisibleResume
+            )
+        )
+        assertEquals(
+            true,
+            activityAppLifecycleResumeShouldRefresh(
+                action = SlockRealtimeNotifyContract.ActionAppLifecycle,
+                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleVisibleShow
+            )
+        )
+        assertEquals(
+            false,
+            activityAppLifecycleResumeShouldRefresh(
+                action = SlockRealtimeNotifyContract.ActionAppLifecycle,
+                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleHidden
+            )
+        )
+        assertEquals(
+            false,
+            activityAppLifecycleResumeShouldRefresh(
+                action = "realtime",
+                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleVisibleResume
+            )
+        )
+        assertEquals(
+            false,
+            activityAppLifecycleResumeShouldRefresh(action = "", lifecycleEvent = "")
+        )
     }
 
     @Test

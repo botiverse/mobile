@@ -16,6 +16,7 @@ import build.raft.app.data.ActivityUpdateTrackingState
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
+import build.raft.app.data.KuiklyRealtimeEvents
 import build.raft.app.data.activityVisibleSummaryCounts
 import build.raft.app.data.hasUnopenableInternalJointParentSource
 import build.raft.app.data.isUnfollowedActivityThread
@@ -35,6 +36,7 @@ import build.raft.app.data.SharedActivityPresentationStore
 import build.raft.app.data.SharedActivityState
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.mergedSharedConversationDirectoryState
+import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
 import build.raft.app.network.sync.DiagnosticFeatureFlagScope
@@ -132,6 +134,11 @@ internal fun SharedHomeActivityScreen(
     storeScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
     activityTaskStatusBadgesEnabled: Boolean = false,
     activitySenderAvatarsEnabled: Boolean = false,
+    // task #383: secondary-route pages (ComposeHomeActivityPage) never see a
+    // Kuikly pageDidAppear on app foreground, so they opt into refreshing on
+    // the app-scope appLifecycle resume/show broadcast. Shell surfaces leave
+    // this off: the app shell owns foreground reconciliation there.
+    refreshOnAppLifecycleResume: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val pager = LocalActivity.current.getPager() as Pager
@@ -341,6 +348,24 @@ internal fun SharedHomeActivityScreen(
             activityStore.dispatch(SharedActivityIntent.Refresh)
         }
     }
+    if (refreshOnAppLifecycleResume) {
+        val realtimeEvents = remember(sharedStores) { KuiklyRealtimeEvents(sharedStores.eventBus) }
+        DisposableEffect(realtimeEvents, activityStore) {
+            val subscription =
+                realtimeEvents.addListener { data ->
+                    if (
+                        activityAppLifecycleResumeShouldRefresh(
+                            action = data.optString(SlockRealtimeNotifyContract.KeyAction),
+                            lifecycleEvent = data.optString(SlockRealtimeNotifyContract.KeyLifecycleEvent)
+                        )
+                    ) {
+                        bridge.log("shared_activity_app_lifecycle_resume_refresh")
+                        activityStore.dispatch(SharedActivityIntent.Refresh)
+                    }
+                }
+            onDispose { realtimeEvents.removeListener(subscription) }
+        }
+    }
     SharedActivityPanelContent(
         state = safeOpenProjectedState,
         onOpenItem = { item ->
@@ -400,6 +425,18 @@ internal fun resolveActivityStableOrderEnabled(
 
 internal fun activityPageDidAppearShouldRefresh(routeVisibleTick: Int): Boolean =
     routeVisibleTick > 0
+
+/**
+ * task #383: app-foreground resume arrives as the app-scope appLifecycle
+ * broadcast ("resume" on Android, "show" on iOS) rather than as a Kuikly
+ * pageDidAppear, so secondary-route surfaces match on those two wire values.
+ */
+internal fun activityAppLifecycleResumeShouldRefresh(action: String, lifecycleEvent: String): Boolean =
+    action == SlockRealtimeNotifyContract.ActionAppLifecycle &&
+        (
+            lifecycleEvent == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
+                lifecycleEvent == SlockRealtimeNotifyContract.LifecycleVisibleShow
+            )
 
 internal data class ActivityRefreshPresentation(
     val headerRefreshing: Boolean,

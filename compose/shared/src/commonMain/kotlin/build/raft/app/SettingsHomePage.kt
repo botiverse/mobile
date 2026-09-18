@@ -1297,8 +1297,12 @@ private fun isRetainedAppShellTab(tab: String): Boolean =
 internal fun retainedHomeSecondaryDestination(destination: String?): String? =
     destination?.takeIf { it in homeSecondaryDestinationKeys }
 
+// task #383: the Activity destination does not self-refresh on app foreground
+// (its "own lifecycle effects" only fire on Kuikly push/pop), so the shell
+// resume path must route a ForegroundRefresh to it. Saved/Search keep the old
+// contract (their surfaces still own their resume refresh).
 internal fun homeDestinationRefreshesOnLifecycleResume(destination: String?): Boolean =
-    retainedHomeSecondaryDestination(destination) == null
+    retainedHomeSecondaryDestination(destination).let { it == null || it == HomeDestinationActivity }
 
 internal fun appShellAppearanceGeneration(
     pageVisibleTick: Int,
@@ -1344,14 +1348,23 @@ internal fun appShellForegroundResumePlan(
     if (!pageVisible) return null
     return when (retainedAppShellSelectedTab(selectedTab)) {
         "home" ->
-            if (selectedHomeDestination.isNullOrBlank()) {
-                AppShellForegroundResumePlan(
-                    refreshVisibleRoute = true,
-                    refreshActivityUnreadSummary = true,
-                    refreshServerMembers = true
-                )
-            } else {
-                null
+            when {
+                selectedHomeDestination.isNullOrBlank() ->
+                    AppShellForegroundResumePlan(
+                        refreshVisibleRoute = true,
+                        refreshActivityUnreadSummary = true,
+                        refreshServerMembers = true
+                    )
+                // task #383: Activity destination joins the visible-route
+                // refresh; unread summary and members stay scoped to Home.
+                retainedHomeSecondaryDestination(selectedHomeDestination) == HomeDestinationActivity ->
+                    AppShellForegroundResumePlan(
+                        refreshVisibleRoute = true,
+                        refreshActivityUnreadSummary = false,
+                        refreshServerMembers = false
+                    )
+                else ->
+                    null
             }
         else ->
             AppShellForegroundResumePlan(
@@ -3482,8 +3495,9 @@ private fun SlockAppShellReadyContent(
                             homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
                     }
                 }
-            // task #94: DMs renders the same home store; Activity self-refreshes through its
-            // own lifecycle effects and More is the settings surface.
+            // task #94: DMs renders the same home store and More is the settings surface.
+            // The slack-nav Activity tab is reconciled by the tab surface itself
+            // (task #383 keeps this branch free of a second dispatch).
             SlockSlackNavTabs.Dms -> homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
             SlockSlackNavTabs.Activity -> Unit
             SlockSlackNavTabs.More -> Unit
