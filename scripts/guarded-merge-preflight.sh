@@ -81,9 +81,9 @@ for ((index = 0; index < commit_count; index++)); do
   message_file="${tmp_dir}/commit-${index}.txt"
   jq -j --argjson index "$index" '.[$index].commit.message' "$commits_json" > "$message_file"
   if ! error="$($validator "$message_file" 2>&1)"; then
-    echo "refusing merge: source commit ${commit_sha} failed DCO message validation: ${error}" >&2
+    echo "refusing merge: source commit ${commit_sha} failed message validation: ${error}" >&2
     exit 1
   fi
 done
 
-echo "guarded merge preflight: OK — PR #${pr_number} targets ${base_ref}, head ${reviewed_head}, ${commit_count} exact DCO-signed commit(s), rebase enabled, ordinary merge disabled"
+echo "guarded merge preflight: OK — PR #${pr_number} targets ${base_ref}, head ${reviewed_head}, ${commit_count} exact validated commit(s), rebase enabled, ordinary merge disabled"

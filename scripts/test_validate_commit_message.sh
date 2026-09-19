@@ -56,33 +56,11 @@ expect_fail \
   "merge command escaped newlines; use body file"
 
 cat >"${tmp_dir}/missing.txt" <<'EOF'
-fix(ui): missing trailer
+fix(ui): no trailer at all
 
 Body only.
 EOF
-expect_fail "missing sign-off" "${tmp_dir}/missing.txt" "exactly one valid Signed-off-by trailer"
-
-cat >"${tmp_dir}/wrong-domain.txt" <<'EOF'
-fix(ui): wrong domain
-
-Signed-off-by: Merge Safety <merge-safety@example.com>
-EOF
-expect_fail "wrong sign-off domain" "${tmp_dir}/wrong-domain.txt" "@mail.build"
-
-cat >"${tmp_dir}/duplicate.txt" <<EOF
-fix(ui): duplicate trailers
-
-Signed-off-by: ${signer}
-Signed-off-by: Other Reviewer <other@mail.build>
-EOF
-expect_fail "duplicate sign-off" "${tmp_dir}/duplicate.txt" "exactly one valid Signed-off-by trailer"
-
-cat >"${tmp_dir}/malformed.txt" <<'EOF'
-fix(ui): malformed trailer
-
-Signed-off-by Merge Safety <merge-safety@mail.build>
-EOF
-expect_fail "malformed sign-off" "${tmp_dir}/malformed.txt" "malformed Signed-off-by trailer"
+expect_pass "message without any sign-off is accepted" "${tmp_dir}/missing.txt"
 
 cat >"${tmp_dir}/multi-body.txt" <<EOF
 fix(ui): preserve a structured body
