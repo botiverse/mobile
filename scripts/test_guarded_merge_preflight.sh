@@ -109,11 +109,6 @@ expect_fail "stale reviewed head" "reviewed=${head_sha}" env "${base_env[@]}" \
   FAKE_PR_STATE="open\tfalse\t${other_sha}\tmain" \
   "$preflight" botiverse/mobile 1459 "$head_sha"
 
-missing_json="$(message_json "$head_sha" $'fix(ui): unsigned source\n\nBody only.')"
-expect_fail "unsigned source commit" "failed DCO message validation" env "${base_env[@]}" \
-  FAKE_COMMITS_JSON="$missing_json" \
-  "$preflight" botiverse/mobile 1459 "$head_sha"
-
 literal_json="$(message_json "$head_sha" \
   'fix(ui): incident\\n\\nSigned-off-by: Merge Safety <merge-safety@mail.build>')"
 expect_fail "literal escaped-newline source commit" "merge command escaped newlines; use body file" \

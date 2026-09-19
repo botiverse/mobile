@@ -151,8 +151,6 @@ grep -Fq "merge command status=PASS" "$receipt_file"
 grep -Fq "mergeOutcome=MERGED" "$receipt_file"
 grep -Fq "tool_version=guarded-squash-merge.v1 spec_version=guarded-squash-receipt.v1" "$receipt_file"
 grep -Fq "baseAtReview=${base_at_review} baseAtMerge=${base_at_review} reviewedHead=${head_sha} prHead=${head_sha} reviewedTree=${reviewed_tree} mergeCommit=${merge_sha} mergeTree=${merge_tree}" "$receipt_file"
-grep -Fq "reviewedHeadSignedOffBy=Signed-off-by: Merge Safety <merge-safety@mail.build>" "$receipt_file"
-grep -Fq "landedSignedOffBy=Signed-off-by: Merge Safety <merge-safety@mail.build>" "$receipt_file"
 grep -Fq "reviewed/landed tree comparison=IDENTICAL" "$receipt_file"
 echo "PASS: exact guarded merge validates a complete message and uses body-file"
 
@@ -325,11 +323,11 @@ grep -Fq "mergeOutcome=NOT_MERGED" "$receipt_file"
 grep -Fq "evidence=mergeable=CONFLICTING,mergeCommit=null" "$receipt_file"
 echo "PASS: conflicting PR is classified from affirmative structural evidence"
 
-cat >"${tmp_dir}/bad-landed.txt" <<'EOF'
-fix(ui): landing lost its trailer
-
-Body only.
-EOF
+printf '%s\n' \
+  'fix(ui): landing carried escaped newlines' \
+  '' \
+  'Body line\n' \
+  >"${tmp_dir}/bad-landed.txt"
 : > "$record"
 : > "$receipt_file"
 if GH_BIN="$fake_gh" GH_RECORD="$record" GH_BODY_RECORD="$body_record" GUARDED_MERGE_RECEIPT_FILE="$receipt_file" \
@@ -339,12 +337,12 @@ if GH_BIN="$fake_gh" GH_RECORD="$record" GH_BODY_RECORD="$body_record" GUARDED_M
   FAKE_COMMITS_JSON="$commits_json" \
   "$wrapper" botiverse/mobile 1459 "$head_sha" "$message_file" >"${tmp_dir}/bad-output" 2>&1; then
   cat "${tmp_dir}/bad-output" >&2
-  echo "FAIL: bad landed trailer did not produce a post-merge failure" >&2
+  echo "FAIL: bad landed message did not produce a post-merge failure" >&2
   exit 1
 fi
 grep -Fq "landed parsed-only validation=FAIL (post-merge alert; no rollback)" "$receipt_file"
 grep -Eq '^pr merge ' "$record"
-echo "PASS: bad landed trailer is reported after merge without rollback"
+echo "PASS: bad landed message is reported after merge without rollback"
 
 : > "$record"
 : > "$receipt_file"

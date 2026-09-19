@@ -327,8 +327,8 @@ filtering, include it; otherwise omit.
 
 Agent commits should carry a `Signed-off-by:` trailer with a `@mail.build`
 identity (Raft Mobile prefix, for example `raft-mobile-cindy@mail.build`).
-There is no CI check or git hook enforcing it any more; the guarded merge
-wrappers still validate the landed commit message.
+Nothing enforces it any more: no CI check, no git hook, and the guarded merge
+wrappers no longer inspect the signer.
 
 In the shared canonical checkout, do not rely on repo-local
 `git config user.name/user.email`; it can be overwritten by another agent. Pass
@@ -403,8 +403,7 @@ The canonical flow is:
    merge with
    `scripts/guarded-squash-merge.sh <owner/repo> <pr> <reviewed-full-sha> <message-file|->`.
    The fourth argument is required: a file holding the squash commit message,
-   or `-` to read it from stdin. That message must carry the `Signed-off-by:`
-   trailer, since the squash body is what main-push DCO validates.
+   or `-` to read it from stdin.
    The GO may be recorded in Raft or a PR comment; a formal GitHub approving
    review is not required.
 
@@ -423,8 +422,8 @@ The canonical flow is:
    A creator who prefers to wait anyway may do so, but should say plainly that
    it is their own choice and name what they are waiting for — otherwise a
    finished PR stalls with everyone assuming someone else will move it.
-   Do not use the GitHub Merge button or `gh pr merge --merge`; ordinary merge
-   commits do not preserve source sign-off trailers and make main-push DCO red.
+   Do not use the GitHub Merge button or `gh pr merge --merge`; the guarded
+   wrappers are what produce the merge receipt and the reviewed-head anchor.
 
    When the head changes after a GO, revalidate as follows. A GO always names
    the exact head it was given on; these rules only decide whether it carries

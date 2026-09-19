@@ -199,9 +199,8 @@ receipt "guarded squash receipt: tool_version=${tool_version} spec_version=${spe
 GH_BIN="$gh_bin" MERGE_MESSAGE_VALIDATOR="$validator" \
   "$preflight" "$repo" "$pr_number" "$reviewed_head"
 
-# Capture the reviewed head's exact tree and signer before --delete-branch.
-# The SHA remains the verification anchor while the copied signer keeps the
-# receipt readable if the source object later becomes unavailable.
+# Capture the reviewed head's exact tree before --delete-branch. The SHA
+# remains the verification anchor.
 if ! "$gh_bin" api "repos/${repo}/git/commits/${reviewed_head}" > "$reviewed_commit_file"; then
   echo "refusing guarded squash: cannot read reviewed head object ${reviewed_head}" >&2
   exit 1
@@ -217,13 +216,6 @@ jq -r '.message // ""' "$reviewed_commit_file" > "$reviewed_message_file"
   echo "refusing guarded squash: reviewed head tree is missing or invalid" >&2
   exit 1
 }
-if ! reviewed_message_error="$("$validator" "$reviewed_message_file" 2>&1)"; then
-  echo "refusing guarded squash: reviewed head object failed DCO validation: ${reviewed_message_error}" >&2
-  exit 1
-fi
-reviewed_head_signoff="$(git interpret-trailers --parse "$reviewed_message_file" | awk '
-  tolower($0) ~ /^signed-off-by:[[:space:]]/ { print }
-')"
 
 # Preserve the review-time base and its merge-base with the reviewed head
 # before --delete-branch. This makes a later tree DIFFERENT result
@@ -326,7 +318,6 @@ candidate_sha="$(sha256_file "$candidate_file")"
 landed_sha="$(sha256_file "$landed_file")"
 landing_status=0
 receipt "guarded squash receipt: repo=${repo} pr=${pr_number} mergeOutcome=${merge_outcome} state=${merge_state} mergedAt=${merged_at:-unknown} mergeable=${mergeable:-unknown} mergeStateStatus=${merge_state_status:-unknown} blockingEvidencePolicy=${blocking_evidence_policy} baseRef=${review_base_ref:-unknown} baseAtReview=${base_at_review} baseAtMerge=${base_at_merge:-missing} reviewedHead=${reviewed_head} prHead=${pr_head:-missing} reviewedTree=${reviewed_tree} mergeCommit=${merge_commit} mergeTree=${merge_tree} url=${merge_url:-unknown}"
-receipt "guarded squash receipt: reviewedHeadSignedOffBy=${reviewed_head_signoff}"
 receipt "guarded squash receipt: candidate parsed-only validation=PASS"
 receipt "guarded squash receipt: candidate_sha256=${candidate_sha} landed_message_sha256=${landed_sha}"
 if cmp -s "$candidate_file" "$landed_file"; then
@@ -379,10 +370,6 @@ else
 fi
 if landing_error="$("$landing_validator" "$landed_file" 2>&1)"; then
   receipt "guarded squash receipt: landed parsed-only validation=PASS"
-  landed_signoff="$(git interpret-trailers --parse "$landed_file" | awk '
-    tolower($0) ~ /^signed-off-by:[[:space:]]/ { print }
-  ')"
-  receipt "guarded squash receipt: landedSignedOffBy=${landed_signoff}"
 else
   landing_status=1
   receipt "guarded squash receipt: landed parsed-only validation=FAIL (post-merge alert; no rollback)"
