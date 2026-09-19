@@ -3,7 +3,6 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 validator="${repo_root}/scripts/validate-landed-commit-message.sh"
-checker="${repo_root}/scripts/check-landed-commit-signoff.sh"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 output="${tmp_dir}/output.log"
@@ -104,35 +103,5 @@ printf '%s\n' \
   'Signed-off-by: Merge Safety <merge-safety@mail.build>\n' \
   >"${tmp_dir}/escaped.txt"
 expect_fail "literal escaped newline" "${tmp_dir}/escaped.txt" "escaped newlines"
-
-git_dir="${tmp_dir}/repo"
-git init -q "$git_dir"
-git -C "$git_dir" config user.name "Landing Test"
-git -C "$git_dir" config user.email "landing-test@mail.build"
-printf 'base\n' >"${git_dir}/file"
-git -C "$git_dir" add file
-git -C "$git_dir" commit -q -m 'base'
-base="$(git -C "$git_dir" rev-parse HEAD)"
-git -C "$git_dir" commit --allow-empty -q -F "${tmp_dir}/historical.txt"
-head="$(git -C "$git_dir" rev-parse HEAD)"
-(cd "$git_dir" && "$checker" "$base" "$head") >"$output"
-grep -Fq "landed commit sign-off: OK" "$output" || {
-  cat "$output" >&2
-  echo "FAIL: landed range checker did not accept a valid squash-style message" >&2
-  exit 1
-}
-
-git -C "$git_dir" commit --allow-empty -q -F "${tmp_dir}/duplicate.txt"
-bad_head="$(git -C "$git_dir" rev-parse HEAD)"
-if (cd "$git_dir" && "$checker" "$head" "$bad_head") >"$output" 2>&1; then
-  cat "$output" >&2
-  echo "FAIL: landed range checker accepted parsed=2" >&2
-  exit 1
-fi
-grep -Fq "parsed 2" "$output" || {
-  cat "$output" >&2
-  echo "FAIL: landed range checker lost parsed=2 diagnostic" >&2
-  exit 1
-}
 
 echo "All landed commit-message validation tests passed."

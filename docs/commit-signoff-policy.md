@@ -1,6 +1,13 @@
 # Commit Sign-off Policy
 
-All Raft Mobile commits must carry a `Signed-off-by:` trailer with a `@mail.build` identity.
+> **Status (2026-09-19):** the `Commit Sign-off` CI check, the `commit-msg` git
+> hook, `scripts/check-commit-signoff.sh`, `scripts/check-landed-commit-signoff.sh`
+> and the attestation ledger were removed on artin's decision. The trailer stays
+> the convention for agent commits, and the guarded merge wrappers still validate
+> the landed commit message. Commands below that call the removed scripts are
+> historical.
+
+Raft Mobile agent commits should carry a `Signed-off-by:` trailer with a `@mail.build` identity.
 
 ## Commit Identity
 

@@ -325,15 +325,10 @@ filtering, include it; otherwise omit.
 
 ### Signed-off commits are required (2026-07-02)
 
-Every new commit must include a `Signed-off-by:` trailer with a `@mail.build`
-identity. Agents should use the Raft Mobile prefix, for example
-`raft-mobile-cindy@mail.build`.
-
-Install the hook once per checkout or worktree:
-
-```bash
-scripts/install_git_hooks.sh
-```
+Agent commits should carry a `Signed-off-by:` trailer with a `@mail.build`
+identity (Raft Mobile prefix, for example `raft-mobile-cindy@mail.build`).
+There is no CI check or git hook enforcing it any more; the guarded merge
+wrappers still validate the landed commit message.
 
 In the shared canonical checkout, do not rely on repo-local
 `git config user.name/user.email`; it can be overwritten by another agent. Pass
@@ -401,9 +396,7 @@ The canonical flow is:
 
 1. Create a topic branch or worktree from current `origin/main`.
 2. Commit with `Signed-off-by:` and the correct `@mail.build` identity.
-3. Run focused validation and
-   `scripts/check-commit-signoff.sh <base-sha> <head-sha>` for the PR range.
-   It takes two separate SHAs, not a `base..head` range expression.
+3. Run focused validation.
 4. Push the topic branch and open a GitHub PR to `main`.
 5. After required checks pass and at least one reviewer who is not the PR author
    gives a clear GO bound to the exact PR head, the PR creator performs the

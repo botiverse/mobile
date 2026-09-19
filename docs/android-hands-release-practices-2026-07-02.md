@@ -256,9 +256,8 @@ the release preflight that is easy to forget manually:
 - verifies local Slock `main` matches `origin/main`; the wrapper does not push
   Slock `main`. First merge the release candidate through a GitHub PR, then
   dispatch the release workflow from the protected remote `main` commit.
-- requires successful `Commit Sign-off` for the exact release head; the
-  `Android Release` workflow is the candidate build/test gate, so a separate
-  exact-head `Test` run is not required
+- the `Android Release` workflow is the candidate build/test gate, so a
+  separate exact-head `Test` run is not required
 - requires the computed versionCode to be higher than the active Hands version
   for the selected channel
 - dispatches `.github/workflows/android-release.yml` as a draft with the

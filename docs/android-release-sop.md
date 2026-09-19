@@ -111,9 +111,8 @@ The preflight fails closed when any of these facts is false:
    `origin/release-X.Y.Z`.
 2. Every `--required-pr` is merged and its merge commit is an ancestor of the
    release head.
-3. The release head has a successful `Commit Sign-off` workflow. The Android
-   Release workflow itself is the candidate build/test gate; do not run a
-   separate exact-head `Test` workflow for release.
+3. The Android Release workflow itself is the candidate build/test gate; do
+   not run a separate exact-head `Test` workflow for release.
 4. The pinned Kuikly release has a valid create-last manifest with the exact
    coordinate closure. The release build then resolves those coordinates
    through the standard Gradle/CocoaPods/OHPM surfaces; there is no source

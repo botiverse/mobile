@@ -31,11 +31,7 @@ ruby -e '
   workflow = YAML.load_file(".github/workflows/android-release.yml")
   ios_workflow = YAML.load_file(".github/workflows/ios-release.yml")
   update_workflow = YAML.load_file(".github/workflows/android-update-qa.yml")
-  signoff_workflow = YAML.load_file(".github/workflows/commit-signoff.yml")
   YAML.load_file(".github/workflows/android-release-contract.yml")
-
-  signoff_branches = signoff_workflow.fetch(true).fetch("push").fetch("branches")
-  raise "Commit Sign-off does not cover release branches" unless signoff_branches.include?("main") && signoff_branches.include?("release-*")
 
   inputs = workflow.fetch(true).fetch("workflow_dispatch").fetch("inputs")
   raise "manual release must not expose a skip-draft switch" if inputs.key?("publish_hands") || inputs.key?("create_hands_draft")
