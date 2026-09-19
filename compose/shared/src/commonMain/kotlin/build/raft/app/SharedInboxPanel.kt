@@ -125,6 +125,7 @@ internal fun SharedHomeActivityScreen(
     bridge: BridgeModule,
     authStore: SlockAuthSessionStore,
     routeVisibleTick: Int = 0,
+    active: Boolean = true,
     onOpenMessage: (HomeMessageOpenRequest) -> Unit,
     onClose: (() -> Unit)? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
@@ -365,6 +366,13 @@ internal fun SharedHomeActivityScreen(
                 }
             onDispose { realtimeEvents.removeListener(subscription) }
         }
+    }
+    var wasActive by remember { mutableStateOf(active) }
+    LaunchedEffect(active) {
+        if (active && !wasActive) {
+            activityStore.dispatch(SharedActivityIntent.Refresh)
+        }
+        wasActive = active
     }
     SharedActivityPanelContent(
         state = safeOpenProjectedState,

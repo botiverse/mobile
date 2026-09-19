@@ -2821,6 +2821,9 @@ private fun SlockAppShellReadyContent(
     DisposableEffect(homeShellStore) {
         onDispose { homeShellStore.clear() }
     }
+    LaunchedEffect(homeShellStore, selectedTab) {
+        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedTab(selectedTab))
+    }
     val homeShellRenderState =
         remember(homeShellStore, serverDrawerEnabled) {
             if (serverDrawerEnabled) {
@@ -3495,11 +3498,10 @@ private fun SlockAppShellReadyContent(
                             homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
                     }
                 }
-            // task #94: DMs renders the same home store and More is the settings surface.
-            // The slack-nav Activity tab is reconciled by the tab surface itself
-            // (task #383 keeps this branch free of a second dispatch).
+            // task #94: DMs renders the same home store; Activity forwards foreground refresh
+            // to ActivityStore, and More is the settings surface.
             SlockSlackNavTabs.Dms -> homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
-            SlockSlackNavTabs.Activity -> Unit
+            SlockSlackNavTabs.Activity -> homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
             SlockSlackNavTabs.More -> Unit
             "tasks" -> tasksViewModel.dispatch(SharedTasksRouteIntent.Refresh)
             "members" -> {
@@ -5550,6 +5552,7 @@ private fun SlockAppShellReadyContent(
                             bridge = bridge,
                             authStore = shellAuthStore,
                             routeVisibleTick = pageVisibleTick,
+                            active = active,
                             onOpenMessage = { request ->
                                 openHomeMessageRequest(
                                     request = request,
