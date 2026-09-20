@@ -6560,8 +6560,11 @@ private fun SlockAvatarHttpImage(
         if (avatarMountedBinding == null || cacheSubject == null) {
             activeSource
         } else {
-            val handle = mountedHandle ?: return
-            handle.imageModel.collectAsState().value ?: return
+            // Cold cache: the durable bytes haven't landed yet, so imageModel is still null. Fall
+            // back to the ordinary HTTP source so the painter isn't starved while the mounted
+            // download is still in flight; once bytes commit, imageModel takes over rendering.
+            val handle = mountedHandle
+            handle?.imageModel?.collectAsState()?.value ?: activeSource
         }
     val imageModel =
         slockAvatarHttpAdmittedImageModel(

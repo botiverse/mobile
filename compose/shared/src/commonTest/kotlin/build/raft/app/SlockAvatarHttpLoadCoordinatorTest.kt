@@ -127,6 +127,35 @@ class SlockAvatarHttpLoadCoordinatorTest {
     }
 
     @Test
+    fun ownerDisposalWithRemainingObserversOrphansInsteadOfResetting() {
+        val coordinator =
+            SlockAvatarHttpLoadCoordinator(
+                failureCooldownMillis = 500L,
+                nowMillis = { 1_000L }
+            )
+        val key = uploadedAvatarKey()
+        // Two rows observing the same avatar.
+        coordinator.retain(key)
+        coordinator.retain(key)
+
+        val abandoned = assertNotNull(coordinator.tryAcquire(key))
+        coordinator.releaseOwner(key, abandoned)
+
+        // The entry stays InFlight with no owner so a surviving row can adopt the same generation
+        // instead of restarting the download from scratch.
+        val orphaned = coordinator.stateFlow(key).value
+        assertEquals(SlockAvatarHttpCacheState.InFlight, orphaned.cache)
+        assertNull(orphaned.ownerToken)
+
+        val adopter = assertNotNull(coordinator.tryAcquire(key))
+        assertEquals(abandoned.generation, adopter.generation)
+        assertEquals(adopter.ownerToken, coordinator.stateFlow(key).value.ownerToken)
+
+        coordinator.release(key)
+        coordinator.release(key)
+    }
+
+    @Test
     fun canonicalSourceChangeCreatesAnIndependentGenerationAndFencesOldCompletion() {
         val coordinator =
             SlockAvatarHttpLoadCoordinator(

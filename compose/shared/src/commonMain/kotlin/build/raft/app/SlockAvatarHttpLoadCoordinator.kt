@@ -126,8 +126,22 @@ internal class SlockAvatarHttpLoadCoordinator(
         synchronized(lock) {
             val entry = entryLocked(key)
             val current = entry.state.value
-            if (current.cache == SlockAvatarHttpCacheState.Ready || current.cache == SlockAvatarHttpCacheState.InFlight) {
+            if (current.cache == SlockAvatarHttpCacheState.Ready) {
                 return@synchronized null
+            }
+            if (current.cache == SlockAvatarHttpCacheState.InFlight) {
+                // An in-flight request with no owner (its composable owner left the viewport while
+                // observers remain) is inheritable: a new row adopts the existing generation so the
+                // same download keeps running instead of restarting from byte 0.
+                if (current.ownerToken != null) return@synchronized null
+                val adopted =
+                    SlockAvatarHttpLoadLease(
+                        generation = current.generation,
+                        ownerToken = ++nextOwnerToken
+                    )
+                entry.state.value = current.copy(ownerToken = adopted.ownerToken)
+                touchLocked(entry)
+                return@synchronized adopted
             }
             if (current.retryDelayMillis(nowMillis()) > 0L) return@synchronized null
             val lease =
@@ -221,12 +235,18 @@ internal class SlockAvatarHttpLoadCoordinator(
             val current = entry.state.value
             if (!current.isOwnedBy(lease)) return@synchronized
             entry.state.value =
-                current.copy(
-                    painter = SlockAvatarHttpPainterPhase.Empty,
-                    cache = SlockAvatarHttpCacheState.Idle,
-                    ownerToken = null,
-                    retryAtMillis = null
-                )
+                if (entry.observerCount > 1) {
+                    // Other rows still observe this avatar. Orphan the in-flight generation instead
+                    // of resetting to Idle so a surviving row can adopt it and continue the download.
+                    current.copy(ownerToken = null)
+                } else {
+                    current.copy(
+                        painter = SlockAvatarHttpPainterPhase.Empty,
+                        cache = SlockAvatarHttpCacheState.Idle,
+                        ownerToken = null,
+                        retryAtMillis = null
+                    )
+                }
             touchLocked(entry)
         }
     }
