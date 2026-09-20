@@ -1,5 +1,9 @@
 package build.raft.app.shared
 
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -255,6 +259,50 @@ class SlockImageRequestSingleFlightTest {
         assertSame(fakeBytes, results[0])
         assertSame(fakeBytes, results[1])
         assertEquals(0, byteFlights.activeFlightCount())
+    }
+
+    @Test
+    fun nestedAsyncFanoutDoesNotStarveFixedThreadPool() {
+        val executor = Executors.newFixedThreadPool(4)
+        val byteFlights = SlockImageRequestSingleFlight<String, ByteArray>()
+        val imageFlights = SlockImageRequestSingleFlight<SlockNetworkImageRequestKey, String>()
+        val url = "https://cdn.example.com/avatar.png"
+        val count = 8
+        val completedResults = CopyOnWriteArrayList<String>()
+        val allDoneLatch = CountDownLatch(count)
+
+        for (i in 0 until count) {
+            val key = requestKey(url = url, requestWidth = 100 + i, requestHeight = 100 + i)
+            imageFlights.load(
+                key = key,
+                start = { completeImage ->
+                    byteFlights.load(
+                        key = key.urlIdentity,
+                        start = { completeBytes ->
+                            Thread {
+                                Thread.sleep(20)
+                                completeBytes(Result.success(byteArrayOf(1, 2, 3)))
+                            }.start()
+                        },
+                        callback = { byteResult ->
+                            executor.execute {
+                                val bytes = byteResult.getOrThrow()
+                                val decoded = "bitmap-${bytes.size}-${key.requestWidth}"
+                                completeImage(Result.success(decoded))
+                            }
+                        }
+                    )
+                },
+                callback = { result ->
+                    completedResults += result.getOrThrow()
+                    allDoneLatch.countDown()
+                }
+            )
+        }
+
+        assertTrue("All requests must complete within 3 seconds without deadlock", allDoneLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(count, completedResults.size)
+        executor.shutdown()
     }
 
     private fun requestKey(
