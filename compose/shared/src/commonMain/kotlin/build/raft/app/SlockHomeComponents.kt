@@ -6535,12 +6535,18 @@ private fun SlockAvatarHttpImage(
         }
     }
 
-    LaunchedEffect(loadKey, loadState.cache, loadState.retryAtMillis, loadState.generation) {
+    // ownerToken is part of the key so that an owner departing (ownerToken -> null while the
+    // flight stays InFlight) re-fires this effect and lets a surviving/new row adopt the orphan.
+    LaunchedEffect(loadKey, loadState.cache, loadState.ownerToken, loadState.retryAtMillis, loadState.generation) {
         val retryDelayMillis = slockAvatarHttpLoadCoordinator.retryDelayMillis(loadState)
         if (retryDelayMillis > 0L) delay(retryDelayMillis)
         if (
             loadState.cache == SlockAvatarHttpCacheState.Idle ||
-            loadState.cache == SlockAvatarHttpCacheState.Cooldown
+            loadState.cache == SlockAvatarHttpCacheState.Cooldown ||
+            // A flight whose owner left the viewport while other observers remain is orphaned
+            // (InFlight with a null ownerToken). Reachable here so a surviving/new row can adopt
+            // the in-flight generation instead of never re-acquiring the lease.
+            (loadState.cache == SlockAvatarHttpCacheState.InFlight && loadState.ownerToken == null)
         ) {
             lease = slockAvatarHttpLoadCoordinator.tryAcquire(loadKey)
         }
