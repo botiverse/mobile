@@ -11811,6 +11811,126 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun replyCountGapRefetchesTailWhenDeltaSyncReturnsEmpty() = runBlocking {
+        // task #296: a reply thread whose delta `messageSync` returns empty
+        // (replies are stranded below the visible tail seq) must fall back to a
+        // full channel tail refetch, otherwise the thread shows "N replies" but
+        // only the messages that arrived via realtime.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val allReplies =
+            (1..4).map { index ->
+                message(
+                    threadId = "thread-m1",
+                    channelId = "thread-m1",
+                    id = "reply-$index",
+                    seq = index.toLong(),
+                    body = "reply $index"
+                )
+            }
+        // The tail fallback calls `getReplyThread` (the reply-thread resolver),
+        // which the fake routes through `threadResultsById[thread-m1]` — first
+        // call returns the single newest reply, second returns all four.
+        var replyThreadFetchCount = 0
+        val repository =
+            FakeConversationRepository(
+                // Delta sync has nothing newer than the visible tail.
+                newerResult = DataResult.Empty(EmptyReason.NoMessages),
+                threadResultsById =
+                    mapOf(
+                        ThreadId("thread-m1") to
+                            DataResult.Content(
+                                threadSnapshot(
+                                    threadId = "thread-m1",
+                                    messages = allReplies.takeLast(1),
+                                    conversation =
+                                        replyConversation()
+                                )
+                            )
+                    ),
+                threadResultProvider = { _, _, _ ->
+                    replyThreadFetchCount += 1
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            messages = allReplies,
+                            conversation = replyConversation()
+                        )
+                    )
+                }
+            )
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository = repository
+            )
+        val route =
+            basePayload().copy(
+                instanceId = "shared-shell-thread-thread-m1",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "thread-m1",
+                streamChannelId = "thread-m1",
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentChannelKind = KuiklyThreadSurfaceKind.Channel,
+                originParentMessageId = "m1",
+                showModeTabs = false
+            )
+        dataSource.cachePayloadForTest(
+            route.copy(
+                status = "content",
+                messages = listOf(
+                    KuiklyThreadMessageItem(
+                        id = "reply-4",
+                        authorId = "u2",
+                        authorName = "Cindy",
+                        body = "reply 4",
+                        seq = 4
+                    )
+                ),
+                originMessage =
+                    KuiklyThreadMessageItem(
+                        id = "m1",
+                        authorId = "u1",
+                        authorName = "Artin",
+                        body = "parent body",
+                        threadChannelId = "thread-m1",
+                        replyCount = 1
+                    ),
+                originStatus = "loaded"
+            )
+        )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(route))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                ThreadUpdated(
+                    parentMessageId = MessageId("m1"),
+                    threadChannelId = ChannelId("thread-m1"),
+                    replyCount = 4,
+                    lastReplyAt = "2026-08-02T00:00:00Z",
+                    participantIds = emptyList()
+                )
+            )
+        )
+
+        val payload = store.state.value.payload
+        assertEquals(
+            listOf("reply-1", "reply-2", "reply-3", "reply-4"),
+            payload.messages.map { it.id }
+        )
+        assertEquals("content", payload.status)
+        // The delta sync ran (returned empty), then the tail refetch produced
+        // the stranded replies via getThread.
+        assertEquals(1, repository.syncNewerRequests.size)
+        assertTrue(repository.getThreadRequests.size >= 1)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeMessageUpdatedAppliesReactionPayloadIncludingEmptyRemoval() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource = canonicalThreadDataSource()
@@ -16375,6 +16495,18 @@ class SharedThreadStoreTest {
                 channelId = ChannelId(threadId),
                 kind = ConversationKind.Channel,
                 name = "general"
+            )
+
+        private fun replyConversation(): ConversationSummary =
+            conversationSummary("thread-m1").copy(
+                kind = ConversationKind.Thread,
+                channelId = ChannelId("thread-m1"),
+                thread =
+                    ThreadConversation(
+                        parentChannelId = ChannelId("channel-1"),
+                        parentMessageId = MessageId("m1"),
+                        streamChannelId = ChannelId("thread-m1")
+                    )
             )
 
         private fun message(
