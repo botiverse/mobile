@@ -1338,12 +1338,14 @@ internal fun threadVisualFixture(
                 messageId = "msg_md_mermaid_flowchart_visual",
                 subtitle = "Mermaid flowchart specimen (task #10)",
                 intro = "Flowchart below must render as a diagram, not as code.",
+                // Kept to the 0.1.2 flowchart grammar on purpose: `A[x] --> B[y]`
+                // only (no edge labels, no {} decision nodes), so this case
+                // measures rendering, not parser coverage.
                 mermaid =
                     "graph TD\n" +
-                        "  A[Start] --> B{Parsed?}\n" +
-                        "  B -- yes --> C[Layout]\n" +
-                        "  C --> D[Draw on canvas]\n" +
-                        "  B -- no --> E[Fallback code block]\n"
+                        "  A[Start] --> B[Parse]\n" +
+                        "  B --> C[Layout]\n" +
+                        "  C --> D[Draw on canvas]\n"
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_MERMAID_SEQUENCE ->
             // Mermaid sequence diagram: lifelines, arrows and labels.
@@ -1354,9 +1356,8 @@ internal fun threadVisualFixture(
                 intro = "Sequence diagram below must render with lifelines and arrows.",
                 mermaid =
                     "sequenceDiagram\n" +
-                        "  Alice->>Bob: Hello Bob!\n" +
-                        "  Bob-->>Alice: Hi Alice!\n" +
-                        "  Alice->>Bob: Ship it?\n"
+                        "  Alice->>Bob: Hello\n" +
+                        "  Bob-->>Alice: Hi\n"
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_MERMAID_INVALID ->
             // Unparseable mermaid: the contract is a graceful fallback to the
