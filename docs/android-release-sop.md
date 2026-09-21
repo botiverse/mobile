@@ -301,7 +301,9 @@ limitation written down, not silently dropped.
 - **Session & auth (6):** cold start reaches expected session state; login
   persists across force-stop/relaunch; logout revokes the token server-side
   (control-arm verified — a stale token must 401 while a same-moment other
-  token stays 200); no orphaned session after upgrade; auth-resume lands on
+  freshly minted token stays 200 — the positive arm proves the 401 is
+  discriminative, not an auth-plane outage); no orphaned session after
+  upgrade; auth-resume lands on
   the right surface; server selection preserved.
 - **Core surfaces (12):** Home renders; channel list renders; open a channel;
   thread/timeline renders with history; composer opens; send a message and
@@ -333,8 +335,9 @@ artifact before asking for activation.
 
 The Hands upload chain is part of the gate, not an afterthought: the signed
 `androidApp-<variant>.apk` (never the misleading `-unsigned` intermediate),
-metadata, and native symbols must land on the same draft, and the draft's
-recorded SHA-256 must equal the announced APK SHA-256. A share page is optional
+metadata, and native symbols must land on the same draft. The draft's recorded
+SHA-256, the announced APK SHA-256, and the §5.1 point-2 re-downloaded bytes
+are one and the same check — not three requirements. A share page is optional
 for smoke; the release must never be activated off an unverified upload. The
 `/download` link must resolve to the exact carrier bytes.
 
