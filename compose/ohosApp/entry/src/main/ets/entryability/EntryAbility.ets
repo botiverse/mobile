@@ -171,6 +171,11 @@ export default class EntryAbility extends UIAbility {
     const parameters = (want.parameters ?? {}) as Record<string, Object>;
     const page = this.stringValueParameter(parameters['slockVisualPage']);
     if (page.length === 0) {
+      // A want without visual parameters clears any stale ingress state so a
+      // later parameterless cold start of Index cannot pick up an old fixture.
+      AppStorage.delete('slock.visual.pageName');
+      AppStorage.delete('slock.visual.fixture');
+      AppStorage.delete('slock.visual.instanceId');
       return;
     }
     const fixture = this.stringValueParameter(parameters['slockVisualFixture']);

@@ -66,7 +66,10 @@ struct Index {
       const visualInstanceId = AppStorage.get<string>('slock.visual.instanceId') ?? '';
       this.pageData = {
         instanceId: visualInstanceId,
-        visualFixture: fixture
+        visualFixture: fixture,
+        // Match the Android visual-capture framing so cross-platform images
+        // share the same safe-area treatment (SlockSafeArea zeroes it when set).
+        slockVisualZeroSafeArea: true
       } as KRRecord;
     }
     this.pageName = resolvedPageName;
