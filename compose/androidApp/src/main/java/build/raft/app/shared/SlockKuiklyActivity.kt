@@ -4603,6 +4603,10 @@ internal class SlockKuiklyBridgeModule(
                             recycleProbeBitmap()
                             return@secondFrame
                         }
+                        if (hostActivity.isFinishing || hostActivity.isDestroyed) {
+                            finish(mapOf("status" to "failed", "message" to "Thread view is not ready"))
+                            return@secondFrame
+                        }
                         runCatching {
                             PixelCopy.request(
                                     hostActivity.window,
@@ -4761,26 +4765,36 @@ internal class SlockKuiklyBridgeModule(
             // ordering guarantee.
             container.postOnAnimation {
                 container.postOnAnimation {
-                    PixelCopy.request(
-                            hostActivity.window,
-                            sourceRect,
-                            bitmap,
-                            { copyResult ->
-                                if (copyResult == PixelCopy.SUCCESS) {
-                                    onResult(saveThreadShareBitmap(bitmap, frame = request.optBoolean("frame", true)))
-                                } else {
-                                    bitmap.recycle()
-                                    onResult(
-                                            mapOf(
-                                                    "status" to "failed",
-                                                    "message" to "Unable to capture image",
-                                                    "pixelCopyResult" to copyResult
-                                            )
-                                    )
-                                }
-                            },
-                            Handler(Looper.getMainLooper())
-                    )
+                    if (hostActivity.isFinishing || hostActivity.isDestroyed) {
+                        bitmap.recycle()
+                        onResult(mapOf("status" to "failed", "message" to "Thread view is not ready"))
+                        return@postOnAnimation
+                    }
+                    runCatching {
+                        PixelCopy.request(
+                                hostActivity.window,
+                                sourceRect,
+                                bitmap,
+                                { copyResult ->
+                                    if (copyResult == PixelCopy.SUCCESS) {
+                                        onResult(saveThreadShareBitmap(bitmap, frame = request.optBoolean("frame", true)))
+                                    } else {
+                                        bitmap.recycle()
+                                        onResult(
+                                                mapOf(
+                                                        "status" to "failed",
+                                                        "message" to "Unable to capture image",
+                                                        "pixelCopyResult" to copyResult
+                                                )
+                                        )
+                                    }
+                                },
+                                Handler(Looper.getMainLooper())
+                        )
+                    }.onFailure {
+                        bitmap.recycle()
+                        onResult(mapOf("status" to "failed", "message" to "Unable to capture image"))
+                    }
                 }
             }
             return
