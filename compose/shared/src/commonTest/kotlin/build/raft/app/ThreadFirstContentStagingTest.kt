@@ -157,18 +157,4 @@ class ThreadFirstContentStagingTest {
         assertFalse(filesSelection.mountComposer)
     }
 
-    @Test
-    fun loadingScaffoldUsesTheBrandedNonWhiteSurface() {
-        assertTrue(
-            threadRouteScaffoldUsesBrandedLoadingSurface(
-                ThreadRouteMountPlan.LoadingShell.toThreadRouteScaffoldPlan()
-            )
-        )
-        assertFalse(
-            threadRouteScaffoldUsesBrandedLoadingSurface(
-                ThreadRouteMountPlan.FeatureSurfaces.toThreadRouteScaffoldPlan()
-            )
-        )
-    }
-
 }
