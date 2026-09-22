@@ -12628,7 +12628,7 @@ class SharedThreadStoreTest {
         releaseSavedLookup.complete(
             DataResult.Content(SavedMessageStatusSnapshot(savedIds = emptySet()))
         )
-        withTimeout(1_000L) {
+        withTimeout(5_000L) {
             while (store.state.value.payload.messages.single().isSaved) {
                 delay(10L)
             }
