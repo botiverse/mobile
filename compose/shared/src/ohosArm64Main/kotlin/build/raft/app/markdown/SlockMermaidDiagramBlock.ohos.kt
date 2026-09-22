@@ -7,7 +7,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
 import com.tencent.kuikly.core.layout.Frame
-import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -90,7 +89,7 @@ internal actual fun SlockMermaidDiagramBlock(
                         context.lineTo(42f, 42f)
                         context.lineTo(2f, 42f)
                         context.closePath()
-                        context.fillStyle(Color.BLACK)
+                        context.fillStyle(com.tencent.kuikly.core.base.Color.BLACK)
                         context.fill()
                         try {
                             MermaidKuiklyRenderer.render(
@@ -117,7 +116,7 @@ internal actual fun SlockMermaidDiagramBlock(
                         context.lineTo(42f, 42f)
                         context.lineTo(2f, 42f)
                         context.closePath()
-                        context.fillStyle(Color.BLACK)
+                        context.fillStyle(com.tencent.kuikly.core.base.Color.BLACK)
                         context.fill()
                         try {
                             MermaidKuiklyRenderer.render(
