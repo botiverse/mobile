@@ -1915,6 +1915,189 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    // Task #283 (2026-09-22): the mermaid matrix cases (task #10) captured PNGs
+    // without asserting anything, so "drawn diagram", "fallback code block" and
+    // "bordered box with a blank canvas" (release 1120016 / mermaid-native 0.1.3)
+    // all passed. These helpers turn the capture into a real oracle:
+    //   PASS(diagram)  = the white 1dp-black-bordered container exists, its
+    //                    interior is mostly white, and it holds ink whose
+    //                    bounding box lies inside the container — with the
+    //                    bottom-end zoom chrome (−/100%/+) excluded so the
+    //                    control border can never impersonate diagram ink.
+    //   PASS(fallback) = no such container, and the dark code-block fill is
+    //                    present (the invalid-syntax specimen must fall back).
+    // Criterion agreed with HuaTuo/Quiver in #artifacts:db1c77fa and issue #2539.
+    private data class MermaidInkReading(
+        val box: android.graphics.Rect?,
+        val interiorWhiteRatio: Float,
+        val inkPixels: Int,
+        val inkBounds: android.graphics.Rect?
+    )
+
+    private fun mermaidPixelIsNearBlack(c: Int): Boolean =
+        Color.red(c) < 56 && Color.green(c) < 56 && Color.blue(c) < 56
+
+    private fun mermaidPixelIsNearWhite(c: Int): Boolean =
+        Color.red(c) > 236 && Color.green(c) > 236 && Color.blue(c) > 236
+
+    // Ink = anything clearly darker than the white canvas. Node fills (#eeeeee)
+    // and anti-alias fringes are deliberately NOT ink; strokes (#999999),
+    // edges (#666666) and labels (#111827) are.
+    private fun mermaidPixelIsInk(c: Int): Boolean =
+        minOf(Color.red(c), Color.green(c), Color.blue(c)) < 200
+
+    /**
+     * Finds the diagram container: a rectangle outlined by the 1dp black border
+     * that SlockMermaidDiagramBlock draws around the CanvasView. The outline
+     * must span at least 40% of the bitmap width so the small zoom-control
+     * border (≈95dp) can never be mistaken for it.
+     */
+    private fun Bitmap.findMermaidDiagramBox(): android.graphics.Rect? {
+        val minRun = (width * 0.4f).toInt().coerceAtLeast(16)
+        val row = IntArray(width)
+        data class Run(val y: Int, val x0: Int, val x1: Int)
+        val runs = mutableListOf<Run>()
+        for (y in 0 until height) {
+            getPixels(row, 0, width, 0, y, width, 1)
+            var best: Run? = null
+            var start = -1
+            for (x in 0..width) {
+                val black = x < width && mermaidPixelIsNearBlack(row[x])
+                if (black && start < 0) start = x
+                if (!black && start >= 0) {
+                    if (x - start >= minRun && (best == null || x - start > best.x1 - best.x0)) {
+                        best = Run(y, start, x - 1)
+                    }
+                    start = -1
+                }
+            }
+            best?.let { runs += it }
+        }
+        if (runs.isEmpty()) return null
+        val density = width / THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP.widthDp.toFloat()
+        val minHeightPx = (24 * density).roundToInt()
+        val tolerance = (2 * density).roundToInt().coerceAtLeast(2)
+        for (top in runs) {
+            val bottom =
+                runs.firstOrNull { candidate ->
+                    candidate.y - top.y >= minHeightPx &&
+                        kotlin.math.abs(candidate.x0 - top.x0) <= tolerance &&
+                        kotlin.math.abs(candidate.x1 - top.x1) <= tolerance
+                } ?: continue
+            // Verify the vertical sides are black too, else this is a filled dark band.
+            var leftHits = 0
+            var rightHits = 0
+            var samples = 0
+            for (y in (top.y + 1) until bottom.y step 2) {
+                samples++
+                if (mermaidPixelIsNearBlack(getPixel(top.x0, y)) || mermaidPixelIsNearBlack(getPixel(top.x0 + 1, y))) leftHits++
+                if (mermaidPixelIsNearBlack(getPixel(top.x1, y)) || mermaidPixelIsNearBlack(getPixel(top.x1 - 1, y))) rightHits++
+            }
+            if (samples > 0 && leftHits >= samples * 0.8f && rightHits >= samples * 0.8f) {
+                return android.graphics.Rect(top.x0, top.y, top.x1, bottom.y)
+            }
+        }
+        return null
+    }
+
+    private fun Bitmap.readMermaidInk(): MermaidInkReading {
+        val box = findMermaidDiagramBox() ?: return MermaidInkReading(null, 0f, 0, null)
+        val density = width / THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP.widthDp.toFloat()
+        val inset = (3 * density).roundToInt().coerceAtLeast(3)
+        val interior = android.graphics.Rect(box.left + inset, box.top + inset, box.right - inset, box.bottom - inset)
+        // Zoom chrome: Row aligned BottomEnd, padding 6dp, ≈95dp × 28dp. Exclude generously.
+        val chrome =
+            android.graphics.Rect(
+                interior.right - (130 * density).roundToInt(),
+                interior.bottom - (44 * density).roundToInt(),
+                interior.right,
+                interior.bottom
+            )
+        var white = 0
+        var total = 0
+        var ink = 0
+        var minX = Int.MAX_VALUE
+        var minY = Int.MAX_VALUE
+        var maxX = -1
+        var maxY = -1
+        val row = IntArray(width)
+        for (y in interior.top until interior.bottom) {
+            getPixels(row, 0, width, 0, y, width, 1)
+            for (x in interior.left until interior.right) {
+                if (chrome.contains(x, y)) continue
+                total++
+                val c = row[x]
+                if (mermaidPixelIsNearWhite(c)) white++
+                if (mermaidPixelIsInk(c)) {
+                    ink++
+                    if (x < minX) minX = x
+                    if (y < minY) minY = y
+                    if (x > maxX) maxX = x
+                    if (y > maxY) maxY = y
+                }
+            }
+        }
+        val bounds = if (ink > 0) android.graphics.Rect(minX, minY, maxX, maxY) else null
+        return MermaidInkReading(box, if (total == 0) 0f else white.toFloat() / total, ink, bounds)
+    }
+
+    private fun Bitmap.assertMermaidDiagramDrawn(caseId: String) {
+        val reading = readMermaidInk()
+        val density = width / THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP.widthDp.toFloat()
+        val summary =
+            "box=${reading.box} interiorWhiteRatio=${"%.3f".format(reading.interiorWhiteRatio)} " +
+                "inkPixels=${reading.inkPixels} inkBounds=${reading.inkBounds} bitmap=${width}x${height}"
+        assertTrue(
+            "$caseId: no white container with a 1dp black border found — the block fell back to a code " +
+                "block or did not render at all ($summary)",
+            reading.box != null
+        )
+        assertTrue(
+            "$caseId: container interior is not a mostly-white canvas ($summary)",
+            reading.interiorWhiteRatio >= 0.6f
+        )
+        val box = requireNotNull(reading.box)
+        val minInk = maxOf(120, (box.width().toLong() * box.height().toLong() * 0.002).toInt())
+        assertTrue(
+            "$caseId: diagram canvas has no ink — ${reading.inkPixels} ink pixels inside the container " +
+                "(need ≥ $minInk); this is the blank-canvas shape of release 1120016 ($summary)",
+            reading.inkPixels >= minInk
+        )
+        val bounds = requireNotNull(reading.inkBounds)
+        val minExtent = (12 * density).roundToInt()
+        assertTrue(
+            "$caseId: ink bounding box ${bounds} is too small to be a diagram ($summary)",
+            bounds.width() >= minExtent && bounds.height() >= minExtent
+        )
+    }
+
+    private fun Bitmap.assertMermaidFallbackCodeBlock(caseId: String) {
+        val reading = readMermaidInk()
+        assertTrue(
+            "$caseId: invalid mermaid must fall back to a code block, but a diagram container was found (box=${reading.box})",
+            reading.box == null
+        )
+        // SlockMarkdownCodeBlockBackground = #07111F.
+        var dark = 0
+        val row = IntArray(width)
+        for (y in 0 until height) {
+            getPixels(row, 0, width, 0, y, width, 1)
+            for (x in 0 until width) {
+                val c = row[x]
+                if (kotlin.math.abs(Color.red(c) - 0x07) <= 12 &&
+                    kotlin.math.abs(Color.green(c) - 0x11) <= 12 &&
+                    kotlin.math.abs(Color.blue(c) - 0x1F) <= 12
+                ) dark++
+            }
+        }
+        val density = width / THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP.widthDp.toFloat()
+        val minDark = (60 * 20 * density * density).roundToInt()
+        assertTrue(
+            "$caseId: fallback code block background (#07111F) not found — $dark matching pixels (need ≥ $minDark)",
+            dark >= minDark
+        )
+    }
+
     private fun Bitmap.changedPixelRatio(other: Bitmap): Float {
         require(width == other.width && height == other.height) {
             "Forward scroll probe bitmap size changed: ${width}x$height vs ${other.width}x${other.height}"
@@ -2475,7 +2658,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-mermaid-flowchart")
                     .put("visualFixture", "md_mermaid_flowchart"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            assertBitmap = { it.assertMermaidDiagramDrawn("components.thread.message-row.md-mermaid-flowchart") }
         )
     }
 
@@ -2488,7 +2672,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-mermaid-sequence")
                     .put("visualFixture", "md_mermaid_sequence"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            assertBitmap = { it.assertMermaidDiagramDrawn("components.thread.message-row.md-mermaid-sequence") }
         )
     }
 
@@ -2501,7 +2686,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-mermaid-invalid-fallback")
                     .put("visualFixture", "md_mermaid_invalid"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            assertBitmap = { it.assertMermaidFallbackCodeBlock("components.thread.message-row.md-mermaid-invalid-fallback") }
         )
     }
 
