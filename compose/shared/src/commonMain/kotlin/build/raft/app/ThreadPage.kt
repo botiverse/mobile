@@ -17249,7 +17249,12 @@ private fun ThreadMessagesListContent(
     }
     // task #232: report the rendered visible tail so the read marker tracks
     // actual visibility instead of the loaded payload tail.
-    LaunchedEffect(threadInstanceKey) {
+    // The key must include the payload window: a bare threadInstanceKey key
+    // captures firstMessageListItemIndex/messageCount from the entry payload,
+    // so newer messages fall outside the [firstMessageListItemIndex,
+    // firstMessageListItemIndex + messageCount) window and the tail index never
+    // advances (task #1139 — the ↓ x new count froze at the entry value).
+    LaunchedEffect(threadInstanceKey, renderPayload.messages, renderPayload.firstMessageListItemIndex()) {
         snapshotFlow {
             threadVisibleReadTailMessageIndex(
                 visibleListItemIndexes = listState.layoutInfo.visibleItemsInfo.map { item -> item.index },
