@@ -62,6 +62,7 @@ fun TabPager(
     pageCount: Int,
     modifier: Modifier = Modifier,
     gesturePolicy: TabPagerGesturePolicy = TabPagerGesturePolicy(),
+    keepItemAlive: Boolean = false,
     tabBar: @Composable () -> Unit = {},
     /**
      * task #233 diagnostic tap: every sync-relevant event (effect launches,
@@ -234,6 +235,7 @@ fun TabPager(
                 modifier = Modifier.fillMaxSize(),
                 userScrollEnabled = gesturePolicy.swipeEnabled,
                 key = { page -> page },
+                keepItemAlive = keepItemAlive,
             ) { page ->
                 // currentPage, not settledPage: the latter is frozen on the
                 // iOS port (round-4 evidence), which would leave every

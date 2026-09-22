@@ -19,6 +19,8 @@ import build.raft.app.components.SlockFormField
 import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.components.SlockRaftUiSelectionPopover
 import build.raft.app.components.SlockRaftUiSelectionOption
+import build.raft.app.components.TabPager
+import build.raft.app.components.TabPagerGesturePolicy
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AgentActivityEntry
 import build.raft.app.data.AgentIssueReportRepository
@@ -743,6 +745,41 @@ internal val MembersAgentDetailTab.serverOrderKey: String
 
 internal fun List<MembersAgentDetailTab>.toMembersAgentPanelTabOrderWireKeys(): List<String> =
     map { it.serverOrderKey }
+
+/**
+ * Pager index the agent-detail [TabPager] must show for [selectedTab]. Index-
+ * aligned with [visibleTabs] exactly like the pager's pages; a selection that
+ * is not visible (stale override while tabs are recomputed) pins page 0
+ * rather than a negative index, mirroring `selectedTab`'s own fallback.
+ */
+internal fun membersAgentDetailPagerIndex(
+    visibleTabs: List<MembersAgentDetailTab>,
+    selectedTab: MembersAgentDetailTab
+): Int = visibleTabs.indexOf(selectedTab).coerceAtLeast(0)
+
+/**
+ * Tab a pager page renders, or null when the page index has no tab (pager
+ * page count and [visibleTabs] can disagree for one frame while visibility
+ * changes) — the caller composes an empty page instead of crashing.
+ */
+internal fun membersAgentDetailPageTab(
+    visibleTabs: List<MembersAgentDetailTab>,
+    page: Int
+): MembersAgentDetailTab? = visibleTabs.getOrNull(page)
+
+/**
+ * Whether [pageTab] should compose its full tab body inside the agent-detail
+ * [TabPager]. Unvisited tabs render a lightweight loading placeholder so
+ * opening Agent Detail only composes the initial [selectedTab]; once a tab has
+ * been selected (added to [visitedTabs]), it remains composed across swipes
+ * (`keepItemAlive = true`) so swiping back and forth never unmounts or flashes
+ * a loading spinner.
+ */
+internal fun membersAgentDetailShouldComposeTab(
+    pageTab: MembersAgentDetailTab?,
+    selectedTab: MembersAgentDetailTab,
+    visitedTabs: Set<MembersAgentDetailTab>,
+): Boolean = pageTab != null && (pageTab == selectedTab || pageTab in visitedTabs)
 
 internal fun List<MembersAgentDetailTab>.membersMoveTab(
     fromIndex: Int,
@@ -5082,6 +5119,21 @@ private fun MembersDetailContent(
     var selectedTabOverride by remember(member.id.value, initialAgentTab) {
         mutableStateOf(initialAgentTab)
     }
+    // task #232 PR2 (@LiBai review): each tab's list scroll position lives here,
+    // keyed by TAB rather than by pager index so it survives both a swipe away
+    // and a tab reorder. Inside the page the LazyColumn is discarded whenever
+    // the page is not the selected one, so a state remembered there would
+    // reset to the top on every return — the Activity caller hoists its
+    // per-page states for the same reason (SharedInboxPanel pageListStates).
+    // rememberLazyListState (saveable, like Activity's) rather than a bare
+    // LazyListState so rotation keeps the position too; key() re-creates the
+    // set when the detail switches member, so one member's scroll offsets
+    // never show up on another (same pattern as ThreadPage's listState). The
+    // map covers the FULL enum, so getValue below is total whatever the
+    // visible-tab set is.
+    val agentTabListStates = key(member.id.value) {
+        MembersAgentDetailTab.entries.associateWith { rememberLazyListState() }
+    }
     var managementMenuOpen by remember(member.id.value, initialVisualMode) { mutableStateOf(false) }
     val storeLifecycleInFlight: String? = storeState.lifecycleActionInFlight
     val storeDiagnosticInFlight: String? = storeState.diagnosticActionInFlight
@@ -5177,6 +5229,12 @@ private fun MembersDetailContent(
     val selectedTab = selectedTabOverride?.takeIf { it in visibleTabs }
         ?: visibleTabs.firstOrNull()
         ?: MembersAgentDetailTab.Profile
+    var visitedAgentTabs by remember(member.id.value) {
+        mutableStateOf(setOf(selectedTab))
+    }
+    if (selectedTab !in visitedAgentTabs) {
+        visitedAgentTabs = visitedAgentTabs + selectedTab
+    }
     fun loadWorkspaceRoot() {
         val callback = agentWorkspaceTreeLoader
         if (callback == null) {
@@ -5464,194 +5522,234 @@ private fun MembersDetailContent(
                 )
             }
             if (member.kind == MemberKind.Agent) {
-                MembersAgentTabBar(
-                    tabs = visibleTabs,
-                    selectedTab = selectedTab,
-                    onSelectedTabChange = { selectedTabOverride = it },
-                    onReorderTabs = onAgentPanelTabOrderChange,
-                    autoScrollSelectedTab = !stableVisualCapture
-                )
-            }
-            if (member.kind == MemberKind.Agent && selectedTab == MembersAgentDetailTab.Activity) {
-                MembersAgentActivityTab(
-                    detail = detail,
-                    loadState = agentActivityLoadState,
-                    diagnosticActionState = effectiveDiagnosticActionState,
-                    onCopyDiagnostics = { copyDiagnostics() },
-                    timeContext = timeContext,
-                    onOpenUrl = onOpenUrl,
-                    autoScrollToLatest = !stableVisualCapture,
+                // task #232 PR2: the six agent tabs share TabPager with Activity
+                // (PR1, #2224). The tab bar stays the tap surface and selection
+                // owner; a horizontal swipe on the body settles on a neighbour
+                // tab. Gating matches the Activity caller exactly: a page
+                // composes real content only once it is the pager's current
+                // page AND the selection has settled on it (`active` is not a
+                // settle signal, and onSelectedIndexChange fires once per
+                // settle), so the incoming page shows the loading body for the
+                // whole drag, then fills. Per-tab cost therefore equals the
+                // previous single `when (selectedTab)`. State that must survive
+                // a swipe is hoisted above: workspace tree, chat tick, profile
+                // editing, and (agentTabListStates) each tab's scroll position.
+                TabPager(
+                    selectedIndex = membersAgentDetailPagerIndex(visibleTabs, selectedTab),
+                    onSelectedIndexChange = { index ->
+                        membersAgentDetailPageTab(visibleTabs, index)?.let { selectedTabOverride = it }
+                    },
+                    pageCount = visibleTabs.size.coerceAtLeast(1),
+                    gesturePolicy = TabPagerGesturePolicy(
+                        startEdgeInset = slockPlatformTabPagerStartEdgeInsetDp().dp,
+                    ),
+                    keepItemAlive = true,
+                    tabBar = {
+                        MembersAgentTabBar(
+                            tabs = visibleTabs,
+                            selectedTab = selectedTab,
+                            onSelectedTabChange = { selectedTabOverride = it },
+                            onReorderTabs = onAgentPanelTabOrderChange,
+                            autoScrollSelectedTab = !stableVisualCapture
+                        )
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                )
+                ) { page, _ ->
+                    val pageTab = membersAgentDetailPageTab(visibleTabs, page)
+                    if (pageTab == null || !membersAgentDetailShouldComposeTab(pageTab, selectedTab, visitedAgentTabs)) {
+                        // SlockCenteredLoading renders common_loading when message
+                        // is null — only shown for tabs that have not been visited yet.
+                        SlockCenteredLoading(modifier = Modifier.fillMaxSize())
+                    } else if (pageTab == MembersAgentDetailTab.Activity) {
+                        MembersAgentActivityTab(
+                            detail = detail,
+                            loadState = agentActivityLoadState,
+                            diagnosticActionState = effectiveDiagnosticActionState,
+                            onCopyDiagnostics = { copyDiagnostics() },
+                            timeContext = timeContext,
+                            onOpenUrl = onOpenUrl,
+                            autoScrollToLatest = !stableVisualCapture,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        LazyColumn(
+                            state = agentTabListStates.getValue(pageTab),
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+                            beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
+                        ) {
+                            if (initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement) {
+                                item(key = "member-detail-${member.id.value}-top-spacer") {
+                                    Spacer(Modifier.height(SlockSpacing.Sm))
+                                }
+                            }
+                            if (
+                                membersAgentDetailShowsProfileStateNotice(
+                                    selectedTab = pageTab,
+                                    avatarManagementMode = initialVisualMode == MembersAgentDetailVisualMode.AvatarManagement
+                                )
+                            ) {
+                                item(key = "member-detail-${member.id.value}-state-notice") {
+                                    MembersAgentDetailStateNotice(
+                                        state = agentDetailState,
+                                        modifier = Modifier.padding(horizontal = MembersPageInset)
+                                    )
+                                }
+                            }
+                            // This item switches between composables with different remember slots
+                            // as the selected tab/member changes.  An implicit index key lets
+                            // Kuikly's lazy provider reuse the previous tab's slot table; on
+                            // Android that can make rememberCoroutineScope read a Boolean (or
+                            // another tab state) as CompositionScopedCoroutineScopeCanceller and
+                            // crash while entering the profile.  Keep each member/tab surface a
+                            // distinct lazy item so state is disposed/recreated at the boundary.
+                            item(key = membersAgentDetailBodyItemKey(member.id.value, pageTab)) {
+                                // Kuikly's lazy item key is not sufficient to fence the nested
+                                // composition on every renderer.  Give each tab surface its own
+                                // Compose group as well, so remember slots from Profile/Chat/etc.
+                                // can never be reused across a tab switch.
+                                key(pageTab) {
+                                    when (pageTab) {
+                                    MembersAgentDetailTab.Profile ->
+                                        MembersAgentProfileTab(
+                                            member = member,
+                                            detail = detail,
+                                            runtimeModels = MembersAgentRuntimeModelInputs(
+                                                agentMachineRuntimes = agentMachineRuntimes,
+                                                agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
+                                                agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
+                                                agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
+                                                agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
+                                                onAgentRuntimeModelsRequest = onAgentRuntimeModelsRequest
+                                            ),
+                                            createAgentFormStore = createAgentFormStore,
+                                            agentProfileEditAuthority = agentProfileEditAuthority,
+                                            canManage = canManage,
+                                            agentStatusIndicatorState = agentStatusIndicatorState,
+                                            agentStatusObservedState = agentStatusObservedState,
+                                            agentStatusResolver = agentStatusResolver,
+                                            memberAvatarResolver = memberAvatarResolver,
+                                            showAvatarPicker = showAvatarPicker && canManage && !deleted,
+                                            onToggleAvatarPicker = {
+                                                showAvatarPicker = !showAvatarPicker
+                                            },
+                                            onSelectAvatar = { key ->
+                                                saveAvatar("pixel:$key")
+                                            },
+                                            onClearAvatar = {
+                                                saveAvatar(null)
+                                            },
+                                            onUploadAvatar = {
+                                                val uploadCallback = onUploadAgentAvatar
+                                                if (uploadCallback == null) {
+                                                    DataResult.Empty(EmptyReason.NoMembers)
+                                                } else {
+                                                    val picked = onPickAgentAvatarFile()
+                                                    when (picked) {
+                                                        is DataResult.Content ->
+                                                            uploadCallback(member.id, picked.data)
+                                                        is DataResult.Empty -> DataResult.Empty(picked.reason)
+                                                        is DataResult.Error -> DataResult.Error(picked.error)
+                                                        is DataResult.NoPermission -> DataResult.NoPermission(picked.blocker)
+                                                    }
+                                                }
+                                            },
+                                            sharedAgentDetailStore = sharedAgentDetailStore,
+                                            storeState = storeState.takeIf { sharedAgentDetailStore != null },
+                                            agentDetailActions = agentDetailActions,
+                                            onUpdateAgentProfile = onUpdateAgentProfile,
+                                            onApplyAgentProfileResult = onApplyAgentProfileResult,
+                                            onApplyAgentRuntimeConfigProjection = onApplyAgentRuntimeConfigProjection,
+                                            onUnavailableAction = onUnavailableAction,
+                                            lifecycle = MembersAgentLifecycleInputs(
+                                                lifecycleInFlight = lifecycleInFlight,
+                                                diagnosticActionState = effectiveDiagnosticActionState,
+                                                onRunLifecycleAction = { runLifecycleAction(it) },
+                                                onOpenRestartReset = { openRestartResetDialog() },
+                                                onCopyDiagnostics = { copyDiagnostics() },
+                                                onReportIssue = {
+                                                    issueReportReceipt = null
+                                                    issueReportReferenceCopied = false
+                                                    reportIssueDialogOpen = true
+                                                },
+                                                onOpenComputer = onOpenComputer
+                                            ),
+                                            machineStatusRow = machineStatusRow,
+                                            timeContext = timeContext,
+                                            fixtureStatusFallbackEnabled = stableVisualCapture,
+                                            modifier = Modifier.padding(horizontal = MembersPageInset)
+                                        )
+                                    MembersAgentDetailTab.Chat ->
+                                        MembersAgentChatTab(
+                                            detail = detail,
+                                            currentServerId = currentServerId,
+                                            serverMembersState = serverMembersState,
+                                            timeContext = timeContext,
+                                            pageVisibleTick = pageVisibleTick,
+                                            modifier = Modifier.padding(horizontal = MembersPageInset)
+                                        )
+                                    MembersAgentDetailTab.Reminders ->
+                                        MembersAgentRemindersTab(
+                                            detail = detail,
+                                            timeContext = timeContext,
+                                            onOpenMessageRef = onOpenReminderMessage,
+                                            modifier = Modifier.padding(horizontal = MembersPageInset)
+                                        )
+                                    MembersAgentDetailTab.Workspace ->
+                                        MembersAgentWorkspaceTab(
+                                            treeState = workspaceTreeState,
+                                            expandedDirs = expandedWorkspaceDirs,
+                                            loadedDirs = loadedWorkspaceDirs,
+                                            loadingDirs = loadingWorkspaceDirs,
+                                            dirErrors = workspaceDirErrors,
+                                            onRefresh = { loadWorkspaceRoot() },
+                                            onToggleDirectory = { toggleWorkspaceDirectory(it) },
+                                            onSelectFile = { selectWorkspaceFile(it) },
+                                            modifier = Modifier.padding(horizontal = MembersPageInset)
+                                        )
+                                    MembersAgentDetailTab.Apps ->
+                                        MembersAgentAppsTab(
+                                            detail = detail,
+                                            timeContext = timeContext,
+                                            onOpenUrl = onOpenUrl,
+                                            modifier = Modifier.padding(horizontal = MembersPageInset)
+                                        )
+                                        MembersAgentDetailTab.Activity -> Unit
+                                    }
+                                }
+                            }
+                            item(key = "member-detail-${member.id.value}-bottom-spacer") {
+                                Spacer(Modifier.height(180.dp))
+                            }
+                        }
+                    }
+                }
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
                     beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
                 ) {
-                    if (initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement) {
-                        item(key = "member-detail-${member.id.value}-top-spacer") {
-                            Spacer(Modifier.height(SlockSpacing.Sm))
-                        }
-                    }
-                    if (member.kind == MemberKind.Agent) {
-                        if (
-                            membersAgentDetailShowsProfileStateNotice(
-                                selectedTab = selectedTab,
-                                avatarManagementMode = initialVisualMode == MembersAgentDetailVisualMode.AvatarManagement
-                            )
-                        ) {
-                            item(key = "member-detail-${member.id.value}-state-notice") {
-                                MembersAgentDetailStateNotice(
-                                    state = agentDetailState,
-                                    modifier = Modifier.padding(horizontal = MembersPageInset)
-                                )
-                            }
-                        }
-                        // This item switches between composables with different remember slots
-                        // as the selected tab/member changes.  An implicit index key lets
-                        // Kuikly's lazy provider reuse the previous tab's slot table; on
-                        // Android that can make rememberCoroutineScope read a Boolean (or
-                        // another tab state) as CompositionScopedCoroutineScopeCanceller and
-                        // crash while entering the profile.  Keep each member/tab surface a
-                        // distinct lazy item so state is disposed/recreated at the boundary.
-                        item(key = membersAgentDetailBodyItemKey(member.id.value, selectedTab)) {
-                            // Kuikly's lazy item key is not sufficient to fence the nested
-                            // composition on every renderer.  Give each tab surface its own
-                            // Compose group as well, so remember slots from Profile/Chat/etc.
-                            // can never be reused across a tab switch.
-                            key(selectedTab) {
-                                when (selectedTab) {
-                                MembersAgentDetailTab.Profile ->
-                                    MembersAgentProfileTab(
-                                        member = member,
-                                        detail = detail,
-                                        runtimeModels = MembersAgentRuntimeModelInputs(
-                                            agentMachineRuntimes = agentMachineRuntimes,
-                                            agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
-                                            agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
-                                            agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
-                                            agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
-                                            onAgentRuntimeModelsRequest = onAgentRuntimeModelsRequest
-                                        ),
-                                        createAgentFormStore = createAgentFormStore,
-                                        agentProfileEditAuthority = agentProfileEditAuthority,
-                                        canManage = canManage,
-                                        agentStatusIndicatorState = agentStatusIndicatorState,
-                                        agentStatusObservedState = agentStatusObservedState,
-                                        agentStatusResolver = agentStatusResolver,
-                                        memberAvatarResolver = memberAvatarResolver,
-                                        showAvatarPicker = showAvatarPicker && canManage && !deleted,
-                                        onToggleAvatarPicker = {
-                                            showAvatarPicker = !showAvatarPicker
-                                        },
-                                        onSelectAvatar = { key ->
-                                            saveAvatar("pixel:$key")
-                                        },
-                                        onClearAvatar = {
-                                            saveAvatar(null)
-                                        },
-                                        onUploadAvatar = {
-                                            val uploadCallback = onUploadAgentAvatar
-                                            if (uploadCallback == null) {
-                                                DataResult.Empty(EmptyReason.NoMembers)
-                                            } else {
-                                                val picked = onPickAgentAvatarFile()
-                                                when (picked) {
-                                                    is DataResult.Content ->
-                                                        uploadCallback(member.id, picked.data)
-                                                    is DataResult.Empty -> DataResult.Empty(picked.reason)
-                                                    is DataResult.Error -> DataResult.Error(picked.error)
-                                                    is DataResult.NoPermission -> DataResult.NoPermission(picked.blocker)
-                                                }
-                                            }
-                                        },
-                                        sharedAgentDetailStore = sharedAgentDetailStore,
-                                        storeState = storeState.takeIf { sharedAgentDetailStore != null },
-                                        agentDetailActions = agentDetailActions,
-                                        onUpdateAgentProfile = onUpdateAgentProfile,
-                                        onApplyAgentProfileResult = onApplyAgentProfileResult,
-                                        onApplyAgentRuntimeConfigProjection = onApplyAgentRuntimeConfigProjection,
-                                        onUnavailableAction = onUnavailableAction,
-                                        lifecycle = MembersAgentLifecycleInputs(
-                                            lifecycleInFlight = lifecycleInFlight,
-                                            diagnosticActionState = effectiveDiagnosticActionState,
-                                            onRunLifecycleAction = { runLifecycleAction(it) },
-                                            onOpenRestartReset = { openRestartResetDialog() },
-                                            onCopyDiagnostics = { copyDiagnostics() },
-                                            onReportIssue = {
-                                                issueReportReceipt = null
-                                                issueReportReferenceCopied = false
-                                                reportIssueDialogOpen = true
-                                            },
-                                            onOpenComputer = onOpenComputer
-                                        ),
-                                        machineStatusRow = machineStatusRow,
-                                        timeContext = timeContext,
-                                        fixtureStatusFallbackEnabled = stableVisualCapture,
-                                        modifier = Modifier.padding(horizontal = MembersPageInset)
-                                    )
-                                MembersAgentDetailTab.Chat ->
-                                    MembersAgentChatTab(
-                                        detail = detail,
-                                        currentServerId = currentServerId,
-                                        serverMembersState = serverMembersState,
-                                        timeContext = timeContext,
-                                        pageVisibleTick = pageVisibleTick,
-                                        modifier = Modifier.padding(horizontal = MembersPageInset)
-                                    )
-                                MembersAgentDetailTab.Reminders ->
-                                    MembersAgentRemindersTab(
-                                        detail = detail,
-                                        timeContext = timeContext,
-                                        onOpenMessageRef = onOpenReminderMessage,
-                                        modifier = Modifier.padding(horizontal = MembersPageInset)
-                                    )
-                                MembersAgentDetailTab.Workspace ->
-                                    MembersAgentWorkspaceTab(
-                                        treeState = workspaceTreeState,
-                                        expandedDirs = expandedWorkspaceDirs,
-                                        loadedDirs = loadedWorkspaceDirs,
-                                        loadingDirs = loadingWorkspaceDirs,
-                                        dirErrors = workspaceDirErrors,
-                                        onRefresh = { loadWorkspaceRoot() },
-                                        onToggleDirectory = { toggleWorkspaceDirectory(it) },
-                                        onSelectFile = { selectWorkspaceFile(it) },
-                                        modifier = Modifier.padding(horizontal = MembersPageInset)
-                                    )
-                                MembersAgentDetailTab.Apps ->
-                                    MembersAgentAppsTab(
-                                        detail = detail,
-                                        timeContext = timeContext,
-                                        onOpenUrl = onOpenUrl,
-                                        modifier = Modifier.padding(horizontal = MembersPageInset)
-                                    )
-                                    MembersAgentDetailTab.Activity -> Unit
-                                }
-                            }
-                        }
-                    } else {
-                        item(key = "member-detail-${member.id.value}-human-content") {
-                            MembersHumanDetailSections(
-                                member = member,
-                                timeContext = timeContext,
-                                memberAvatarResolver = memberAvatarResolver,
-                                agentStatusResolver = agentStatusResolver,
-                                fixtureStatusFallbackEnabled = stableVisualCapture,
-                                actorRole = humanActorRole,
-                                accessMode = humanAccessMode,
-                                currentUserId = currentUserId,
-                                currentServerId = currentServerId,
-                                ownerCount = humanOwnerCount,
-                                onUpdateRole = onUpdateHumanRole,
-                                onRemoveMember = onRemoveMember?.takeIf {
-                                    member.membershipStatus != "removed"
-                                },
-                                modifier = Modifier.padding(horizontal = MembersPageInset)
-                            )
-                        }
+                    item(key = "member-detail-${member.id.value}-human-content") {
+                        MembersHumanDetailSections(
+                            member = member,
+                            timeContext = timeContext,
+                            memberAvatarResolver = memberAvatarResolver,
+                            agentStatusResolver = agentStatusResolver,
+                            fixtureStatusFallbackEnabled = stableVisualCapture,
+                            actorRole = humanActorRole,
+                            accessMode = humanAccessMode,
+                            currentUserId = currentUserId,
+                            currentServerId = currentServerId,
+                            ownerCount = humanOwnerCount,
+                            onUpdateRole = onUpdateHumanRole,
+                            onRemoveMember = onRemoveMember?.takeIf {
+                                member.membershipStatus != "removed"
+                            },
+                            modifier = Modifier.padding(horizontal = MembersPageInset)
+                        )
                     }
                     item(key = "member-detail-${member.id.value}-bottom-spacer") {
                         Spacer(Modifier.height(180.dp))
