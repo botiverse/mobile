@@ -6985,14 +6985,18 @@ internal class SharedThreadStore(
                                 ThreadAccessResolution.Error
                             currentState.canonicalAccessResolved ->
                                 ThreadAccessResolution.Resolved
-                            // Task #1141: on a Channel/DM route the Home directory candidate is the
-                            // same write authority the canonical fetch would confirm. Accept it for
-                            // renderable cached content just as it is accepted for "empty", so the
-                            // composer mounts when the directory answers instead of after the first
-                            // network refresh. A later canonical NoPermission still closes access.
+                            // Task #1141: on a Channel/DM route a POSITIVE Home directory candidate
+                            // (joined + canSend) is the same write authority the canonical fetch would
+                            // confirm. Accept it for renderable cached content just as it is accepted
+                            // for "empty", so the composer mounts when the directory answers instead
+                            // of after the first network refresh. A negative candidate (stale unjoined
+                            // row) keeps waiting for the canonical fetch, which must still win; a later
+                            // canonical NoPermission still closes access.
                             candidate != null &&
+                                candidate.joined &&
+                                candidate.permissions.canSend &&
                                 projectedPayload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread &&
-                                (currentPayload.status == "empty" || currentPayload.status == "content") ->
+                                currentPayload.status == "content" ->
                                 ThreadAccessResolution.Resolved
                             candidate != null && currentPayload.status == "empty" ->
                                 ThreadAccessResolution.Resolved
