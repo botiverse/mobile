@@ -148,11 +148,53 @@ export default class EntryAbility extends UIAbility {
     );
     this.setupKnoi();
     this.mobileOAuthIngress.captureColdStart(want.uri);
+    this.captureVisualFixtureWant(want);
     slockOhosProcessNetworkLifecycle.install(this.context.getApplicationContext());
   }
 
   onNewWant(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
     this.mobileOAuthIngress.captureWarmStart(want.uri);
+    this.captureVisualFixtureWant(want);
+  }
+
+  /*
+   * Debug-only visual-fixture ingress (task #10, 2026-09-21): lets a local
+   * harness open an arbitrary Kuikly visual page with a fixture key via
+   *   hdc shell aa start ... --ps slockVisualPage <page> --ps slockVisualFixture <key>
+   * Release builds ignore these parameters entirely; the AppStorage keys are
+   * only ever written when BuildProfile.DEBUG is true.
+   */
+  private captureVisualFixtureWant(want: Want): void {
+    if (!BuildProfile.DEBUG) {
+      return;
+    }
+    const parameters = (want.parameters ?? {}) as Record<string, Object>;
+    const page = this.stringValueParameter(parameters['slockVisualPage']);
+    if (page.length === 0) {
+      // A want without visual parameters clears any stale ingress state so a
+      // later parameterless cold start of Index cannot pick up an old fixture.
+      AppStorage.delete('slock.visual.pageName');
+      AppStorage.delete('slock.visual.fixture');
+      AppStorage.delete('slock.visual.instanceId');
+      return;
+    }
+    const fixture = this.stringValueParameter(parameters['slockVisualFixture']);
+    const instanceId = this.stringValueParameter(parameters['slockVisualInstanceId'])
+      || `ohos-visual-${fixture.length > 0 ? fixture : page}`;
+    AppStorage.setOrCreate<string>('slock.visual.pageName', page);
+    AppStorage.setOrCreate<string>('slock.visual.fixture', fixture);
+    AppStorage.setOrCreate<string>('slock.visual.instanceId', instanceId);
+    SlockOhosDiagnostics.record(
+      'SlockRouteHost',
+      `visual_want_ingress page=${page} fixture=${fixture} instanceId=${instanceId}`
+    );
+  }
+
+  private stringValueParameter(raw: Object | undefined): string {
+    if (typeof raw === 'string') {
+      return raw;
+    }
+    return '';
   }
 
   onDestroy(): void {
