@@ -6543,8 +6543,11 @@ internal class SharedThreadStore(
                         ) {
                             false
                         } else {
+                            // A positive Home candidate may resolve the footer before the canonical
+                            // fetch lands; the first canonical result still has to record itself.
                             val resolvingInitialAccess =
-                                currentState.accessResolution != ThreadAccessResolution.Resolved
+                                currentState.accessResolution != ThreadAccessResolution.Resolved ||
+                                    !currentState.canonicalAccessResolved
                             val refreshStableNextPayload =
                                 if (result is DataResult.Content) {
                                     nextPayload.preserveStableTimelineFrom(
