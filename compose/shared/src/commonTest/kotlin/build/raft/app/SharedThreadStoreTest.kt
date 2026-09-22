@@ -12304,7 +12304,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun visibleReadMarksChannel() = runBlocking {
+    fun visibleReadSkipsWhenLatestSeqMissing() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
         val dataSource =
@@ -12324,7 +12324,9 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.MarkVisibleRead())
         store.accept(SharedThreadIntent.MarkVisibleRead())
 
-        assertEquals(listOf("channel-1"), api.readAllChannels)
+        // task #299: no positive seq on the visible marker => skip, never fall back to read-all.
+        assertTrue(api.readAllChannels.isEmpty())
+        assertTrue(api.readSeqRequests.isEmpty())
         scope.cancel()
     }
 
@@ -12342,7 +12344,11 @@ class SharedThreadStoreTest {
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
-        dataSource.cachePayloadForTest(contentPayload("cached body"))
+        val payload =
+            contentPayload("cached body").let { content ->
+                content.copy(messages = content.messages.map { message -> message.copy(seq = 10L) })
+            }
+        dataSource.cachePayloadForTest(payload)
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         try {
@@ -12458,10 +12464,14 @@ class SharedThreadStoreTest {
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
-                        threadResult = DataResult.Content(threadSnapshot(body = "cached body", seq = 0))
+                        threadResult = DataResult.Content(threadSnapshot(body = "cached body", seq = 10))
                     ),
             )
-        dataSource.cachePayloadForTest(contentPayload("cached body"))
+        val payload =
+            contentPayload("cached body").let { content ->
+                content.copy(messages = content.messages.map { message -> message.copy(seq = 10L) })
+            }
+        dataSource.cachePayloadForTest(payload)
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -12483,7 +12493,10 @@ class SharedThreadStoreTest {
         )
         store.accept(SharedThreadIntent.MarkVisibleRead())
 
-        assertEquals(listOf("channel-1"), api.readAllChannels)
+        // The immediate same-channel completion is coalesced: the second MarkVisibleRead is
+        // skipped inside the dedup window even though a newer seq arrived.
+        assertTrue(api.readAllChannels.isEmpty())
+        assertEquals(listOf("channel-1" to 10L), api.readSeqRequests)
         scope.cancel()
     }
 
@@ -12561,8 +12574,7 @@ class SharedThreadStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api =
             FakeThreadApi(failChannelMessages = true).also {
-                it.failReadAll = false
-                it.readAllDelayMillis = 50L
+                it.readSeqDelayMillis = 50L
             }
         val dataSource =
             testSharedThreadDataSource(
@@ -12571,10 +12583,14 @@ class SharedThreadStoreTest {
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
-                        threadResult = DataResult.Content(threadSnapshot(body = "cached body", seq = 0))
+                        threadResult = DataResult.Content(threadSnapshot(body = "cached body", seq = 10))
                     ),
             )
-        dataSource.cachePayloadForTest(contentPayload("cached body"))
+        val payload =
+            contentPayload("cached body").let { content ->
+                content.copy(messages = content.messages.map { message -> message.copy(seq = 10L) })
+            }
+        dataSource.cachePayloadForTest(payload)
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -12614,9 +12630,9 @@ class SharedThreadStoreTest {
 
         delay(120L)
 
-        assertEquals(listOf("channel-1"), api.readAllChannels)
-        assertEquals(listOf("channel-1" to 12L), api.readSeqRequests)
-        assertEquals(1, api.maxConcurrentReadAllCalls)
+        assertTrue(api.readAllChannels.isEmpty())
+        assertEquals(listOf("channel-1" to 10L, "channel-1" to 12L), api.readSeqRequests)
+        assertEquals(1, api.maxConcurrentReadSeqCalls)
         scope.cancel()
     }
 
@@ -14973,6 +14989,9 @@ class SharedThreadStoreTest {
         val readSeqRequests: MutableList<Pair<String, Long>> = mutableListOf()
         var activeReadAllCalls: Int = 0
         var maxConcurrentReadAllCalls: Int = 0
+        var readSeqDelayMillis: Long = 0L
+        var activeReadSeqCalls: Int = 0
+        var maxConcurrentReadSeqCalls: Int = 0
         val beforeSeqs: MutableList<Long> = mutableListOf()
         val afterSeqs: MutableList<Long> = mutableListOf()
         val syncSinceSeqs: MutableList<Long> = mutableListOf()
@@ -15100,8 +15119,17 @@ class SharedThreadStoreTest {
         }
 
         override suspend fun markChannelReadToSeq(channelId: String, seq: Long): HomeNetworkResponse {
+            activeReadSeqCalls += 1
+            maxConcurrentReadSeqCalls = maxOf(maxConcurrentReadSeqCalls, activeReadSeqCalls)
             readSeqRequests += channelId to seq
-            return HomeNetworkResponse(code = 200, bodyText = """{"ok":true,"seq":$seq}""")
+            try {
+                if (readSeqDelayMillis > 0L) {
+                    delay(readSeqDelayMillis)
+                }
+                return HomeNetworkResponse(code = 200, bodyText = """{"ok":true,"seq":$seq}""")
+            } finally {
+                activeReadSeqCalls -= 1
+            }
         }
 
         override suspend fun saveMessage(messageId: String): HomeNetworkResponse {

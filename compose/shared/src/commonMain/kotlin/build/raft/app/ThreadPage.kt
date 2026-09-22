@@ -9933,20 +9933,10 @@ internal fun SharedThreadRouteContent(
                             threadChannelId = parentReplyMetadata.threadChannelId
                         )
                     )
-                    parentReplyMetadata.threadChannelId
-                        ?.takeIf { it.isNotBlank() }
-                        ?.let { threadChannelId ->
-                            coroutineScope.launch {
-                                // Opening the whole reply scope clears the whole inline unread projection.
-                                // The bounded preview cannot prove the authoritative latest seq (newer system
-                                // rows may be intentionally hidden), so dispatch the canonical read-all intent.
-                                val result = dataSource.markVisibleChannelRead(threadChannelId, latestSeq = null)
-                                bridge.log(
-                                    "thread_inline_reply_read_dispatch channelId=$threadChannelId " +
-                                        "target=all result=${result::class.simpleName.orEmpty()}"
-                                )
-                            }
-                        }
+                    // The reply scope opens on its own thread page; visible-read there advances the
+                    // read cursor to the latest rendered seq. A blanket read-all dispatched here —
+                    // at click time, before anything renders — would mark rows read that were never
+                    // rendered, which is the reported regression (task #299).
                     bridge.log(
                         "thread_reply_open action=message_chip parentChannelId=${loadingPayload.parentChannelId.orEmpty()} " +
                             "parentMessageId=${parentMessage.id} replyCount=${parentReplyMetadata.replyCount} " +

@@ -7938,6 +7938,14 @@ internal class SharedThreadStore(
         }
         if (!authorityStillCurrent()) return
         val marker = authorityState.payload.visibleReadMarker(visibleTailIndex) ?: return
+        if (marker.latestSeq == null || marker.latestSeq <= 0L) {
+            // task #299: a visible marker without a positive seq cannot prove the channel frontier;
+            // falling back to read-all would clear unread rows that were never rendered.
+            diagnosticsLogger?.invoke(
+                "thread_read_skip channelId=${marker.channelId} reason=missing_seq latest=${marker.latestMessageId}"
+            )
+            return
+        }
         if (marker.wasRecentlyMarkedRead()) {
             diagnosticsLogger?.invoke(
                 "thread_read_skip channelId=${marker.channelId} reason=recently_marked latest=${marker.latestMessageId}"
@@ -7981,8 +7989,7 @@ internal class SharedThreadStore(
                 }
                 diagnosticsLogger?.invoke(
                     "thread_read_result channelId=${current.channelId} result=${result.threadDiagnosticsResult()} " +
-                        "mode=${if (current.latestSeq != null && current.latestSeq > 0L) "seq" else "all"} " +
-                        "seq=${current.latestSeq ?: -1} latest=${current.latestMessageId} " +
+                        "mode=seq seq=${current.latestSeq ?: -1} latest=${current.latestMessageId} " +
                         "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
                 )
             } finally {
