@@ -7,7 +7,8 @@
 #   0 lines                -> NOT PROVIDED (rotation/timing), never "no entry"
 #   no run-as and no root  -> NOT COVERED, never a negative
 set -u
-out="${1:?usage: export_app_diagnostics_jsonl.sh <out-file>}"
+out="${1:?usage: export_app_diagnostics_jsonl.sh <out-file> [action-start-file]}"
+start_file="${2:-}"
 mkdir -p "$(dirname "$out")"
 : > "$out"
 rel='files/raft_diagnostics_logs'
@@ -28,4 +29,19 @@ for pkg in $pkgs; do
   fi
   echo "export_app_diagnostics: $pkg NOT COVERED (no run-as, no root)"
 done
-echo "export_app_diagnostics: total_lines=$(wc -l < "$out") mermaid_lines=$(grep -c 'mermaid_drawcb' "$out" || true)"
+# Window check (HuaTuo): the JSONL rotates in place; if its FIRST record is later
+# than the action start, the window is incomplete and a 0 for any tag is NOT
+# PROVIDED rather than a negative. Record both so the reader can judge.
+win="${out%.jsonl}.window.txt"
+action_start="$( [ -n "$start_file" ] && [ -f "$start_file" ] && cat "$start_file" || echo unknown )"
+first_ts="$(grep -v '^###' "$out" | head -1 | grep -oE '"(timestampMillis|ts|timestamp)":[ ]*[0-9]+' | head -1 | grep -oE '[0-9]+$' || true)"
+{
+  echo "capture_mode=tail_at_end"
+  echo "action_start_epoch_s=$action_start"
+  echo "first_record_ts=${first_ts:-none}"
+  echo "total_lines=$(grep -vc '^###' "$out" || true)"
+  echo "bytes=$(wc -c < "$out")"
+  for tag in mermaid_drawcb_entry mermaid_drawcb_redraw_enter mermaid_drawcb_setframe_enter mermaid_drawcb_setframe_returned; do
+    echo "count_$tag=$(grep -c "$tag" "$out" || true)"
+  done
+} | tee "$win"
