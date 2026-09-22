@@ -624,7 +624,8 @@ class ConversationRepositoryDataSourceTest {
         // Release the held request only after the result is in hand; the block must end in
         // an assertion so the JUnit4 method stays void (runBlocking returns its last value).
         holdFollowed.complete(Unit)
-        val summaries = assertIs<DataResult.Content<ThreadReplySummariesSnapshot>>(result).data
+        val summaries =
+            assertIs<DataResult.Content<ThreadReplySummariesSnapshot>>(result) { "unexpected result: $result" }.data
         assertEquals(1, summaries.threads.size)
         assertEquals("parent-1", summaries.threads.single().parentMessageId?.value)
         assertEquals(4, summaries.threads.single().replyCount)
