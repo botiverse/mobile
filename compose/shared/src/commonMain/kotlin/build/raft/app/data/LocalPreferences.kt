@@ -474,8 +474,7 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_SERVER_DRAWER_ENABLED, enabled)
     }
 
-    override fun readNewDesignSettingsEnabledSync(): Boolean =
-        store.getBoolean(KEY_NEW_DESIGN_SETTINGS_ENABLED, false)
+    override fun readNewDesignSettingsEnabledSync(): Boolean = true
 
     override suspend fun readNewDesignSettingsEnabled(): Boolean =
         readNewDesignSettingsEnabledSync()
