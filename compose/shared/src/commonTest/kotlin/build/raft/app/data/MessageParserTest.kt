@@ -167,6 +167,24 @@ class MessageParserTest {
     }
 
     @Test
+    fun contextMalformedEmbeddedSummariesAreEmbeddedInvalidNotUnavailable() {
+        // The distinction drives whether the store still waits for the targeted refetch:
+        // a present-but-malformed record must not be read as "the server sent nothing".
+        fun parse(summaryField: String) =
+            parseSharedMessageContext(
+                """{"channelId":"channel-1","messages":[]$summaryField}""",
+                fallbackThreadId = ThreadId("channel-1"),
+            ).replySummariesAuthority
+        assertEquals(ThreadReplySummariesAuthority.Embedded, parse(""", "threadSummariesByParentMessageId": {}"""))
+        assertEquals(ThreadReplySummariesAuthority.EmbeddedInvalid, parse(""", "threadSummariesByParentMessageId": []"""))
+        assertEquals(ThreadReplySummariesAuthority.EmbeddedInvalid, parse(""", "threadSummariesByParentMessageId": null"""))
+        assertEquals(
+            ThreadReplySummariesAuthority.EmbeddedInvalid,
+            parse(""", "threadSummariesByParentMessageId": {"parent-1": "not-an-object"}"""),
+        )
+    }
+
+    @Test
     fun contextWithoutEmbeddedSummariesStaysUnavailable() {
         val payload =
             parseSharedMessageContext(
