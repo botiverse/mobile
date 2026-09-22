@@ -3415,6 +3415,87 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun warmChannelCacheResolvesFooterFromHomeCandidateBeforeCanonicalFetch() = runBlocking {
+        // Task #1141: on a Channel route with renderable cached content, the Home directory
+        // candidate (joined + canSend) is the write authority; the footer must resolve when the
+        // directory answers, not after the first network refresh. Home releases first, the
+        // canonical fetch stays held.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            body = "network body",
+                            conversation = conversationSummary().copy(joined = true)
+                        )
+                    )
+            ).apply {
+                getThreadStarted = CompletableDeferred()
+                releaseGetThread = CompletableDeferred()
+            }
+        val homeRequested = CompletableDeferred<Unit>()
+        val releaseHome = CompletableDeferred<Unit>()
+        val channelRepository =
+            FakeChannelRepository {
+                homeRequested.complete(Unit)
+                releaseHome.await()
+                DataResult.Content(joinedHomeSnapshot())
+            }
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository = repository,
+                channelRepository = channelRepository
+        )
+        dataSource.cachePayloadForTest(contentPayload("cached body").copy(joined = true, canSend = true))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(basePayload()))
+        repository.getThreadStarted?.await()
+        homeRequested.await()
+
+        val cachedFrame = store.state.value
+        assertEquals("content", cachedFrame.payload.status)
+        assertEquals(ThreadAccessResolution.Loading, cachedFrame.accessResolution)
+        assertFalse(cachedFrame.writeActionsEnabled)
+
+        releaseHome.complete(Unit)
+        withTimeout(1_000) {
+            while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
+                delay(10)
+            }
+        }
+        val homeResolved = store.state.value
+        assertFalse(homeResolved.canonicalAccessResolved)
+        assertEquals(ThreadAccessResolution.Resolved, homeResolved.accessResolution)
+        assertTrue(homeResolved.writeActionsEnabled)
+        assertTrue(homeResolved.payload.joined)
+        assertTrue(homeResolved.payload.canSend)
+        assertTrue(homeResolved.payload.composer.enabled)
+        assertTrue(
+            homeResolved.payload.isThreadPrimaryFooterReady(
+                timelineSlice = homeResolved.timelineSlice,
+                accessResolution = homeResolved.accessResolution
+            )
+        )
+
+        repository.releaseGetThread?.complete(Unit)
+        withTimeout(1_000) {
+            while (store.state.value.payload.messages.singleOrNull()?.body != "network body") {
+                delay(10)
+            }
+        }
+        val canonicalFrame = store.state.value
+        assertTrue(canonicalFrame.canonicalAccessResolved)
+        assertEquals(ThreadAccessResolution.Resolved, canonicalFrame.accessResolution)
+        assertTrue(canonicalFrame.writeActionsEnabled)
+        scope.cancel()
+    }
+
+    @Test
     fun warmChannelCacheKeepsFooterUnresolvedUntilInitialLookupCompletes() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val repository =
