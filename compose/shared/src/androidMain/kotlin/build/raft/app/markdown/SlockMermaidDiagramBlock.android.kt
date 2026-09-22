@@ -78,6 +78,11 @@ internal actual fun SlockMermaidDiagramBlock(
                     .height(diagramHeightDp),
                 viewInit = {
                     drawCallback = { context, _, _ ->
+                        android.util.Log.i(
+                            "SlockMermaidDrawCb",
+                            "mermaid_drawcb init cmds=" + layoutScene.commands.size +
+                                " extent=" + layoutScene.width + "x" + layoutScene.height,
+                        )
                         MermaidKuiklyRenderer.render(
                             scene = layoutScene,
                             context = context,
@@ -88,6 +93,11 @@ internal actual fun SlockMermaidDiagramBlock(
                 },
                 viewUpdate = { view ->
                     view.drawCallback = { context, _, _ ->
+                        android.util.Log.i(
+                            "SlockMermaidDrawCb",
+                            "mermaid_drawcb update cmds=" + layoutScene.commands.size +
+                                " extent=" + layoutScene.width + "x" + layoutScene.height,
+                        )
                         MermaidKuiklyRenderer.render(
                             scene = layoutScene,
                             context = context,
