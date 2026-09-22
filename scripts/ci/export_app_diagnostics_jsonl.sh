@@ -11,6 +11,11 @@ out="${1:?usage: export_app_diagnostics_jsonl.sh <out-file> [action-start-file]}
 start_file="${2:-}"
 mkdir -p "$(dirname "$out")"
 : > "$out"
+win="${out%.jsonl}.window.txt"
+# Explicit outlet: window.txt must exist even if everything below fails, so a
+# missing file can never impersonate "all clock sources unavailable".
+printf 'capture_mode=tail_at_end\nexport_status=started\naction_start_resolution=none\n' > "$win"
+trap 'if ! grep -q "^export_status=finished" "$win" 2>/dev/null; then printf "export_status=aborted_rc=%s\n" "$?" >> "$win"; fi' EXIT
 rel='files/raft_diagnostics_logs'
 pkgs="$(adb shell pm list packages 2>/dev/null | tr -d '\r' | sed 's/^package://' | grep -E '^build\.raft\.app' || true)"
 echo "export_app_diagnostics: packages=[$(echo "$pkgs" | tr '\n' ' ')]"
@@ -32,12 +37,12 @@ done
 # Window check (HuaTuo): the JSONL rotates in place; if its FIRST record is later
 # than the action start, the window is incomplete and a 0 for any tag is NOT
 # PROVIDED rather than a negative. Record both so the reader can judge.
-win="${out%.jsonl}.window.txt"
 action_raw="$( [ -n "$start_file" ] && [ -f "$start_file" ] && cat "$start_file" || echo "unknown none" )"
 action_start="${action_raw%% *}"; action_res="${action_raw##* }"
 first_ts="$(grep -v '^###' "$out" | head -1 | grep -oE '"(timestampMillis|ts|timestamp)":[ ]*[0-9]+' | head -1 | grep -oE '[0-9]+$' || true)"
 {
   echo "capture_mode=tail_at_end"
+  echo "export_status=finished"
   echo "action_start_device_ms=$action_start"
   echo "action_start_resolution=$action_res   # ms = comparable to JSONL timestampMillis; s = truncated, may be up to 999ms early (biases toward NOT PROVIDED)"
   echo "first_record_ts=${first_ts:-none}"
