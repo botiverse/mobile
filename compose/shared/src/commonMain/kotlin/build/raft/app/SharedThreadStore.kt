@@ -3755,7 +3755,9 @@ internal class SharedThreadDataSource(
                 home = home,
                 channelLabel = channelLabel,
                 requiredKind = requiredParentKind,
-                knownMemberProfilesById = knownMemberProfilesById
+                knownMemberProfilesById = knownMemberProfilesById,
+                currentPayload = currentPayload,
+                threadShortId = shortId
             )
                 ?: return DataResult.Empty(EmptyReason.NoChannels)
         val parentChannelId =
@@ -9587,7 +9589,7 @@ private fun KuiklyThreadScreenPayload.withRouteIntentFrom(routePayload: KuiklyTh
     )
 }
 
-private fun KuiklyThreadScreenPayload.withHomeContextProjectionFrom(
+internal fun KuiklyThreadScreenPayload.withHomeContextProjectionFrom(
     patch: KuiklyThreadScreenPayload
 ): KuiklyThreadScreenPayload {
     val knownNames =
@@ -9598,7 +9600,8 @@ private fun KuiklyThreadScreenPayload.withHomeContextProjectionFrom(
     // enrichment must never flip an already-mounted Composer into Join later.
     return copy(
         knownMarkdownChannelNames = knownNames,
-        knownMarkdownDirectMessagePeerNames = patch.knownMarkdownDirectMessagePeerNames
+        knownMarkdownDirectMessagePeerNames =
+            patch.knownMarkdownDirectMessagePeerNames.ifEmpty { knownMarkdownDirectMessagePeerNames }
     )
 }
 
@@ -9628,7 +9631,12 @@ internal fun buildMarkdownChannelLaunchPayload(
     home: HomeSnapshot,
     channelLabel: String
 ): KuiklyThreadScreenPayload? {
-    val channel = resolveMarkdownChannelConversation(home, channelLabel) ?: return null
+    val channel =
+        resolveMarkdownChannelConversation(
+            home = home,
+            channelLabel = channelLabel,
+            currentPayload = currentPayload
+        ) ?: return null
     val conversation = channel.toThreadLaunchConversationIdentity()
     val streamChannelId = conversation.threadStreamChannelId() ?: return null
     return buildStandaloneConversationThreadLaunchPayload(
@@ -9656,7 +9664,9 @@ internal fun buildMarkdownThreadRefLaunchPayload(
             home = home,
             channelLabel = channelLabel,
             requiredKind = requiredParentKind,
-            knownMemberProfilesById = knownMemberProfilesById
+            knownMemberProfilesById = knownMemberProfilesById,
+            currentPayload = currentPayload,
+            threadShortId = threadShortId
         ) ?: return null
     val routeIdentity = channel.resolveThreadRouteIdentity()
     val parentChannelId =
@@ -9688,14 +9698,83 @@ internal fun buildMarkdownThreadRefLaunchPayload(
     )?.toInitialPayloadOrNull(instanceId)
 }
 
-private fun resolveMarkdownChannelConversation(
+internal fun resolveMarkdownChannelConversation(
     home: HomeSnapshot,
     channelLabel: String,
     requiredKind: ConversationKind? = null,
-    knownMemberProfilesById: Map<String, MemberProfile> = emptyMap()
+    knownMemberProfilesById: Map<String, MemberProfile> = emptyMap(),
+    currentPayload: KuiklyThreadScreenPayload? = null,
+    threadShortId: String? = null
 ): ConversationSummary? {
     val key = channelLabel.markdownChannelLookupKey()
     if (key.isBlank()) return null
+
+    if (requiredKind == ConversationKind.DirectMessage && home.currentMember.matchesMarkdownChannelLabel(channelLabel)) {
+        val currentDmChannelId = currentPayload?.let { payload ->
+            when {
+                payload.parentSurfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
+                    payload.parentChannelKind == "dm" ||
+                    payload.resolveThreadRouteIdentity().parentConversationKind == ConversationKind.DirectMessage -> {
+                    payload.parentChannelId?.takeIf { it.isNotBlank() }
+                }
+                payload.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
+                    payload.channelKind == "dm" ||
+                    payload.dmPeerIdentity != null -> {
+                    payload.resolveThreadRouteIdentity().timelineChannelId
+                        ?: payload.streamChannelId?.takeIf { it.isNotBlank() }
+                        ?: payload.sourceThreadId?.takeIf { it.isNotBlank() }
+                }
+                else -> null
+            }
+        }
+
+        if (!currentDmChannelId.isNullOrBlank()) {
+            val existing =
+                home.directMessages
+                    .map { it.toConversationSummary() }
+                    .firstOrNull {
+                        it.messageStreamChannelId().value == currentDmChannelId ||
+                            it.channelId?.value == currentDmChannelId ||
+                            it.threadId.value == currentDmChannelId
+                    }
+            if (existing != null) {
+                return existing
+            }
+            return ConversationSummary(
+                threadId = ThreadId(currentDmChannelId),
+                channelId = ChannelId(currentDmChannelId),
+                kind = ConversationKind.DirectMessage,
+                name = currentPayload?.dmPeerName ?: currentPayload?.title.orEmpty(),
+                presenceMemberId = currentPayload?.dmPeerIdentity?.memberId
+            )
+        }
+
+        if (currentPayload != null && !threadShortId.isNullOrBlank()) {
+            val referencingMessage =
+                currentPayload.messages.firstOrNull { it.body.contains(threadShortId) }
+                    ?: currentPayload.originMessage?.takeIf { it.body.contains(threadShortId) }
+            if (referencingMessage != null) {
+                val authorId = referencingMessage.authorId.trim()
+                val authorHandle = referencingMessage.authorHandle.trim()
+                val authorName = referencingMessage.authorName.trim()
+                val matchByAuthor =
+                    home.directMessages
+                        .map { it.toConversationSummary() }
+                        .firstOrNull { dm ->
+                            (authorId.isNotBlank() && dm.presenceMemberId?.value == authorId) ||
+                                dm.markdownDirectMessagePeerAliases(knownMemberProfilesById).any { alias ->
+                                    val aliasKey = alias.markdownChannelLookupKey().lowercase()
+                                    (authorHandle.isNotBlank() && aliasKey == authorHandle.markdownChannelLookupKey().lowercase()) ||
+                                        (authorName.isNotBlank() && aliasKey == authorName.markdownChannelLookupKey().lowercase())
+                                }
+                        }
+                if (matchByAuthor != null) {
+                    return matchByAuthor
+                }
+            }
+        }
+    }
+
     val matches =
         (if (requiredKind == ConversationKind.DirectMessage) home.directMessages else home.channels)
             .map { it.toConversationSummary() }
@@ -9710,6 +9789,14 @@ private fun resolveMarkdownChannelConversation(
             }
             .distinctBy { it.messageStreamChannelId().value }
     return matches.singleOrNull()
+}
+
+internal fun MemberProfile.matchesMarkdownChannelLabel(label: String): Boolean {
+    val key = label.markdownChannelLookupKey().lowercase()
+    if (key.isBlank()) return false
+    return listOfNotNull(handle, displayName, id.value).any { candidate ->
+        candidate.markdownChannelLookupKey().lowercase() == key
+    }
 }
 
 private fun ConversationSummary.markdownDirectMessagePeerAliases(

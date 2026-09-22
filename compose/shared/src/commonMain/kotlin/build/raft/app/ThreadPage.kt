@@ -3034,6 +3034,16 @@ internal fun KuiklyThreadScreenPayload.toKnownMarkdownMentionNameSet(): Set<Stri
 internal fun KuiklyThreadScreenPayload.toKnownMarkdownDirectMessagePeerNameSet(): Set<String> =
     buildSet {
         knownMarkdownDirectMessagePeerNames.forEach { name -> addKnownThreadMentionValue(name) }
+        dmPeerName?.let { addKnownThreadMentionValue(it) }
+        dmPeerIdentity?.let { identity -> addKnownThreadMentionValue(identity.memberId.value) }
+        if (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
+            parentSurfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
+            channelKind == "dm" ||
+            parentChannelKind == "dm"
+        ) {
+            members.forEach { member -> addKnownThreadMentionValues(member) }
+            memberCandidates.forEach { member -> addKnownThreadMentionValues(member) }
+        }
     }
 
 internal fun KuiklyThreadScreenPayload.toKnownMarkdownTaskNumberSetOrNull(): Set<Int>? =
@@ -13724,7 +13734,17 @@ private fun ThreadPageContentContent(
             payload.toKnownMarkdownMentionNameSet()
         }
     val knownMarkdownDirectMessagePeerNames =
-        remember(payload.knownMarkdownDirectMessagePeerNames) {
+        remember(
+            payload.knownMarkdownDirectMessagePeerNames,
+            payload.dmPeerName,
+            payload.dmPeerIdentity,
+            payload.surfaceKind,
+            payload.parentSurfaceKind,
+            payload.channelKind,
+            payload.parentChannelKind,
+            payload.members,
+            payload.memberCandidates
+        ) {
             payload.toKnownMarkdownDirectMessagePeerNameSet()
         }
     val knownMarkdownTaskNumbers =
