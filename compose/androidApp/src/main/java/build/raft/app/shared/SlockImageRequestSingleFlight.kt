@@ -1,6 +1,42 @@
 package build.raft.app.shared
 
+import build.raft.app.data.SlockAvatarMountedRenderDescriptor
 import java.net.URI
+
+internal data class SlockMountedAvatarRequestKey(
+    val partitionKey: String,
+    val subjectKey: String,
+    val bytesKey: String,
+    val commitGeneration: Long,
+    val commitNonce: String,
+    val modelRevision: Long,
+    val requestWidth: Int,
+    val requestHeight: Int,
+    val needResize: Boolean,
+    val scaleType: String
+) {
+    companion object {
+        fun create(
+            descriptor: SlockAvatarMountedRenderDescriptor,
+            requestWidth: Int,
+            requestHeight: Int,
+            needResize: Boolean,
+            scaleType: String
+        ): SlockMountedAvatarRequestKey =
+            SlockMountedAvatarRequestKey(
+                partitionKey = descriptor.slot.nativePartitionKey,
+                subjectKey = descriptor.slot.nativeSubjectKey,
+                bytesKey = descriptor.slot.nativeBytesKey,
+                commitGeneration = descriptor.commitIdentity.commitGeneration,
+                commitNonce = descriptor.commitIdentity.nonce,
+                modelRevision = descriptor.modelRevision,
+                requestWidth = requestWidth.coerceAtLeast(0),
+                requestHeight = requestHeight.coerceAtLeast(0),
+                needResize = needResize,
+                scaleType = scaleType
+            )
+    }
+}
 
 internal data class SlockNetworkImageRequestKey(
     val urlIdentity: String,

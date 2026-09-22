@@ -512,6 +512,36 @@ class SlockAvatarMountedBindingTest {
         assertTrue(second.imageModel.value.orEmpty().startsWith("slock-avatar-render-v1:"))
     }
 
+    @Test
+    fun peekInitialManagedModelReturnsModelAcrossMountDisposeAndReopen() = runBlocking {
+        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 500L) }
+        val provider = FakeNativeProvider()
+        val binding = binding(store, provider, RecordingDownloader())
+
+        // 1. Before mount, no snapshot exists yet
+        assertNull(binding.peekInitialManagedModel(subject(), RemoteUrl))
+
+        // 2. Mount and refresh to commit model into session
+        val handle = binding.mount(subject(), RemoteUrl)
+        binding.refresh(handle)
+        val model = assertNotNull(handle.imageModel.value)
+        assertTrue(model.startsWith("slock-avatar-render-v1:"))
+
+        // 3. Peek returns the exact committed model synchronously
+        val peeked = assertNotNull(binding.peekInitialManagedModel(subject(), RemoteUrl))
+        assertEquals(model, peeked)
+
+        // 4. Dispose handle (simulating leaving page / closing server switcher)
+        assertTrue(binding.dispose(handle))
+
+        // 5. Peek still returns the model synchronously (session remembers metadata)
+        val peekedAfterDispose = assertNotNull(binding.peekInitialManagedModel(subject(), RemoteUrl))
+        assertEquals(model, peekedAfterDispose)
+
+        // 6. Mismatched URL returns null
+        assertNull(binding.peekInitialManagedModel(subject(), "https://other.test/avatar.png"))
+    }
+
     private fun binding(
         store: FakeMetadataStore = FakeMetadataStore(),
         provider: SlockAvatarMountedNativeProvider,
