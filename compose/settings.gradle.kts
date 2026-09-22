@@ -122,10 +122,16 @@ dependencyResolutionManagement {
     val kuiklyLocal = providers.gradleProperty("kuiklyLocal").orNull == "true"
     repositories {
         if (kuiklyLocal) {
-            mavenLocal()
-            maven {
-                name = "RaftArtifactsKuiklyReleaseNonExclusive"
-                url = uri("https://maven.artifacts.botiverse.dev")
+            // Loud, not silent: with the switch on, the Kuikly group resolves ONLY
+            // from mavenLocal. A missing/partial local publish fails resolution
+            // instead of quietly falling back to the unmodified remote artifact
+            // (Quiver, 2026-09-22 — "correct-looking wrong product").
+            exclusiveContent {
+                forRepository { mavenLocal() }
+                filter {
+                    includeGroup("com.tencent.kuikly-open")
+                    includeGroupByRegex("com\\.tencent\\.kuikly-open\\.compose\\..+")
+                }
             }
         } else {
             raftArtifactsKuiklyRelease()
