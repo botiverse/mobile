@@ -847,6 +847,21 @@ jobs:
             SOURCE_EXACT='${{ github.event.pull_request.head.sha || github.sha }}' ANDROID_EMULATOR_SYSTEM_IMAGE_PACKAGE='system-images;android-34;google_apis;x86_64' RUNNER_LABEL='blacksmith-4vcpu-ubuntu-2404' scripts/ci/prepare_android_emulator_ime.sh android-ime-environment.txt
             adb install -r "$(find android-connected-test-apks -type f -name '*connectedTest.apk' -not -name '*androidTest*' | head -n 1)"
             adb install -r "$(find android-connected-test-apks -type f -name '*androidTest.apk' | head -n 1)"
+            # Install + run the shared-module test APK guards first. This script
+            # aborts on the first failing line, so lines that must not be masked
+            # by an unrelated downstream flake run before everything else. The
+            # shared test APK does not depend on the connectedtest app.
+            adb install -r "$(find android-shared-atomic-sink-test-apk -type f -name '*.apk' | head -n 1)"
+            adb shell pm list instrumentation | tee attachment-atomic-sink-receipt.txt
+            grep -Fq 'instrumentation:build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner' attachment-atomic-sink-receipt.txt
+            # Mermaid <clinit> guard: JVM regex accepts `\{`/`}` literals that the
+            # Android ICU engine rejects, so a bad pattern can only be caught on a
+            # real runtime. <clinit> is all-or-nothing — one member touch covers
+            # every compiled pattern at once.
+            scripts/ci/run-instrumentation-with-retry.sh mermaid-parser-clinit-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.markdown.SlockMermaidParserClinitConnectedTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner
+            # Written for the composed-character boundary but never named by any
+            # gate — a file existing is not a test running under a named allowlist.
+            scripts/ci/run-instrumentation-with-retry.sh composed-character-boundary-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.SlockComposedCharacterBoundaryRuntimeTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner
             scripts/ci/run-instrumentation-with-retry.sh inactive-host-rendering-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockKuiklyInactiveHostRenderingTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
             scripts/ci/run-instrumentation-with-retry.sh first-character-baseline-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockComposerFirstCharacterBaselineTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
             # Keep this single-request capability probe unprimed. An earlier
@@ -863,20 +878,6 @@ jobs:
             scripts/ci/run-instrumentation-with-retry.sh kuikly-profiler-runtime-smoke-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.KuiklyProfilerRuntimeSmokeTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
             adb logcat -c
             scripts/ci/run-instrumentation-with-retry.sh attachment-private-file-provider-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.AndroidAttachmentPrivateFileProviderConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner; RC=$?; adb logcat -d -v threadtime 'AndroidRuntime:E' 'ActivityTaskManager:I' 'TestRunner:E' '*:S' > attachment-private-file-provider-logcat.txt; exit $RC
-            adb install -r "$(find android-shared-atomic-sink-test-apk -type f -name '*.apk' | head -n 1)"
-            adb shell pm list instrumentation | tee attachment-atomic-sink-receipt.txt
-            grep -Fq 'instrumentation:build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner' attachment-atomic-sink-receipt.txt
-            # Run the shared-APK guards first now that the APK is installed: this
-            # script aborts on the first failing line, and these are the checks
-            # that must not be masked by an unrelated later flake.
-            # Mermaid <clinit> guard: JVM regex accepts `\{`/`}` literals that the
-            # Android ICU engine rejects, so a bad pattern can only be caught on a
-            # real runtime. <clinit> is all-or-nothing — one member touch covers
-            # every compiled pattern at once.
-            scripts/ci/run-instrumentation-with-retry.sh mermaid-parser-clinit-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.markdown.SlockMermaidParserClinitConnectedTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner
-            # Written for the composed-character boundary but never named by any
-            # gate — a file existing is not a test running under a named allowlist.
-            scripts/ci/run-instrumentation-with-retry.sh composed-character-boundary-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.SlockComposedCharacterBoundaryRuntimeTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner
             scripts/ci/run-instrumentation-with-retry.sh attachment-atomic-sink-instrumentation.txt 2 -- adb shell am instrument -w -r -e class build.raft.app.network.AndroidAttachmentDownloadAtomicSinkTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner
             scripts/ci/run-instrumentation-with-retry.sh attachment-download-runtime-instrumentation.txt 6 -- adb shell am instrument -w -r -e class build.raft.app.network.AndroidAttachmentDownloadCoordinatorRuntimeTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner
             grep -Fq 'TASK2_RUNTIME scenario=slow_complete' attachment-download-runtime-instrumentation.txt
