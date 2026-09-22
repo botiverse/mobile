@@ -39,6 +39,14 @@ done
 # PROVIDED rather than a negative. Record both so the reader can judge.
 action_raw="$( [ -n "$start_file" ] && [ -f "$start_file" ] && cat "$start_file" || echo "unknown none" )"
 action_start="${action_raw%% *}"; action_res="${action_raw##* }"
+# Fallback marker: host ms marker + device/host offset measured now (seconds).
+host_file="${start_file%/*}/action_start_host_ms-${start_file##*action_start-}"
+host_ms="$( [ -f "$host_file" ] && cat "$host_file" || echo "" )"
+dev_now="$(adb shell 'date -u +%s' 2>/dev/null | tr -d '\r\n')"; host_now="$(date -u +%s)"
+offset_s=""; [[ "$dev_now" =~ ^[0-9]{10}$ ]] && offset_s=$((dev_now - host_now))
+if ! [[ "$action_start" =~ ^[0-9]{13}$ ]] && [[ "$host_ms" =~ ^[0-9]{13}$ ]] && [ -n "$offset_s" ]; then
+  action_start=$((host_ms + offset_s * 1000)); action_res="s(offset-derived)"
+fi
 # Records carry "ts":"<ISO-8601 Z>" (device clock, ms). Convert on the runner (GNU date).
 first_iso="$(grep -v '^###' "$out" | head -1 | grep -oE '"ts":"[^"]+"' | head -1 | cut -d'"' -f4 || true)"
 first_ts=""
@@ -51,6 +59,7 @@ fi
   echo "capture_mode=tail_at_end"
   echo "export_status=finished"
   echo "action_start_device_ms=$action_start"
+  echo "host_ms_marker=${host_ms:-none} device_host_offset_s=${offset_s:-unknown}"
   echo "action_start_resolution=$action_res   # ms = comparable to JSONL timestampMillis; s = truncated, may be up to 999ms early (biases toward NOT PROVIDED)"
   echo "first_record_iso=${first_iso:-none}"
   echo "first_record_ts_ms=${first_ts:-none}"
