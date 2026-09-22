@@ -115,8 +115,21 @@ dependencyResolutionManagement {
         }
     }
 
+    // PROBE (DO NOT MERGE): `-PkuiklyLocal=true` lets a locally published Kuikly
+    // (publishToMavenLocal from the fork) win for com.tencent.kuikly-open. The
+    // release path uses exclusiveContent, which pins that group to the remote
+    // repo and silently ignores mavenLocal (Quiver, 2026-09-22). Probe-only.
+    val kuiklyLocal = providers.gradleProperty("kuiklyLocal").orNull == "true"
     repositories {
-        raftArtifactsKuiklyRelease()
+        if (kuiklyLocal) {
+            mavenLocal()
+            maven {
+                name = "RaftArtifactsKuiklyReleaseNonExclusive"
+                url = uri("https://maven.artifacts.botiverse.dev")
+            }
+        } else {
+            raftArtifactsKuiklyRelease()
+        }
         raftArtifactsKuiklyBase()
         raftArtifactsHands()
         mavenLocal()
