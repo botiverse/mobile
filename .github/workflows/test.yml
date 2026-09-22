@@ -1185,18 +1185,45 @@ jobs:
         working-directory: compose/iosApp
         run: pod install
 
+      # Sync the K/N framework as its own step so Gradle gets proper caching
+      # and failure diagnostics, instead of running nested inside xcodebuild's
+      # [CP-User] Build shared script phase (which is also where tail-truncated
+      # logs used to swallow the real linker error). xcodebuild then skips the
+      # podspec script via OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES.
+      - name: Sync shared framework (simulator arm64)
+        working-directory: compose
+        run: |
+          ./gradlew :shared:syncFramework \
+            -Pkotlin.native.cocoapods.platform=iphonesimulator \
+            -Pkotlin.native.cocoapods.archs=arm64 \
+            -Pkotlin.native.cocoapods.configuration=Debug \
+            --no-daemon \
+            --console=plain \
+            --stacktrace
+
       - name: Build iOS host app (simulator)
         working-directory: compose/iosApp
         run: |
           set -o pipefail
+          log="$GITHUB_WORKSPACE/xcodebuild-ios.log"
           xcodebuild \
             -workspace iosApp.xcworkspace \
             -scheme iosApp \
             -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/ios-build" \
+            ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO \
-            build | tail -200
+            OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
+            build > "$log" 2>&1
+          status=$?
+          tail -200 "$log"
+          if [ "$status" -ne 0 ]; then
+            echo "===== iOS build FAILED (status=$status) — extracted errors ====="
+            grep -nE "(^|[[:space:]])e: |: error:|error: |Unresolved|FAILURE:|Execution failed|BUILD FAILED|following build commands failed|PhaseScriptExecution" "$log" \
+              | grep -v "Using response file" | tail -100 || true
+          fi
+          exit "$status"
 
       # The UI-test bundle is only compiled here; no UI case is ever executed in
       # this workflow, and qa-acceptance-ios.yml does its own build-for-testing
