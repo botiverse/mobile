@@ -868,6 +868,14 @@ jobs:
             grep -Fq 'instrumentation:build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner' attachment-atomic-sink-receipt.txt
             scripts/ci/run-instrumentation-with-retry.sh attachment-atomic-sink-instrumentation.txt 2 -- adb shell am instrument -w -r -e class build.raft.app.network.AndroidAttachmentDownloadAtomicSinkTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner
             scripts/ci/run-instrumentation-with-retry.sh attachment-download-runtime-instrumentation.txt 6 -- adb shell am instrument -w -r -e class build.raft.app.network.AndroidAttachmentDownloadCoordinatorRuntimeTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner
+            # Mermaid <clinit> guard: JVM regex accepts `\{`/`}` literals that the
+            # Android ICU engine rejects, so a bad pattern can only be caught on a
+            # real runtime. <clinit> is all-or-nothing — one member touch covers
+            # every compiled pattern at once.
+            scripts/ci/run-instrumentation-with-retry.sh mermaid-parser-clinit-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.markdown.SlockMermaidParserClinitConnectedTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner
+            # Written for the composed-character boundary but never named by any
+            # gate — a file existing is not a test running under a named allowlist.
+            scripts/ci/run-instrumentation-with-retry.sh composed-character-boundary-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.SlockComposedCharacterBoundaryRuntimeTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner
             grep -Fq 'TASK2_RUNTIME scenario=slow_complete' attachment-download-runtime-instrumentation.txt
             grep -Fq 'TASK2_RUNTIME scenario=cancel_paths' attachment-download-runtime-instrumentation.txt
             grep -Fq 'TASK2_RUNTIME scenario=pause_resume' attachment-download-runtime-instrumentation.txt
