@@ -39,13 +39,21 @@ done
 # PROVIDED rather than a negative. Record both so the reader can judge.
 action_raw="$( [ -n "$start_file" ] && [ -f "$start_file" ] && cat "$start_file" || echo "unknown none" )"
 action_start="${action_raw%% *}"; action_res="${action_raw##* }"
-first_ts="$(grep -v '^###' "$out" | head -1 | grep -oE '"(timestampMillis|ts|timestamp)":[ ]*[0-9]+' | head -1 | grep -oE '[0-9]+$' || true)"
+# Records carry "ts":"<ISO-8601 Z>" (device clock, ms). Convert on the runner (GNU date).
+first_iso="$(grep -v '^###' "$out" | head -1 | grep -oE '"ts":"[^"]+"' | head -1 | cut -d'"' -f4 || true)"
+first_ts=""
+if [ -n "$first_iso" ]; then
+  first_s="$(date -u -d "$first_iso" +%s 2>/dev/null || true)"
+  first_ms="$(echo "$first_iso" | grep -oE '\.[0-9]{3}' | tr -d . || echo 000)"
+  [ -n "$first_s" ] && first_ts="${first_s}${first_ms}"
+fi
 {
   echo "capture_mode=tail_at_end"
   echo "export_status=finished"
   echo "action_start_device_ms=$action_start"
   echo "action_start_resolution=$action_res   # ms = comparable to JSONL timestampMillis; s = truncated, may be up to 999ms early (biases toward NOT PROVIDED)"
-  echo "first_record_ts=${first_ts:-none}"
+  echo "first_record_iso=${first_iso:-none}"
+  echo "first_record_ts_ms=${first_ts:-none}"
   echo "total_lines=$(grep -vc '^###' "$out" || true)"
   echo "bytes=$(wc -c < "$out")"
   for tag in mermaid_drawcb_entry mermaid_drawcb_redraw_enter mermaid_drawcb_setframe_enter mermaid_drawcb_setframe_returned; do
