@@ -5656,7 +5656,17 @@ private fun SlockAppShellReadyContent(
                     // task #386: the Slack-nav More tab is a destination hub, not the raw settings
                     // page — Tasks/Members were demoted from the tab bar and live behind it.
                     val moreTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        // Transient navigation by design (#388 review): a process/rotation
+                        // rebuild intentionally lands back on the hub instead of restoring a
+                        // sub-destination; the hub is the durable landing surface.
                         var moreDestination by remember { mutableStateOf(SlockSlackNavMoreDestination.Hub) }
+                        // Sub-pages must consume the system back key before the root shell
+                        // handler (which closes the page) — returning to the hub instead.
+                        SlockBackHandler(
+                            enabled = slockSlackNavMoreShouldConsumeSystemBack(moreDestination),
+                            label = "app_shell_more_hub",
+                            onBack = { moreDestination = SlockSlackNavMoreDestination.Hub }
+                        )
                         when (moreDestination) {
                             SlockSlackNavMoreDestination.Hub ->
                                 SlockSlackNavMoreHub(
@@ -24715,12 +24725,18 @@ private fun SettingsHomePageLinkPayload.toTabItemPayload(): SlockTabItemPayload 
 
 // task #386: Slack-nav More-tab destination hub. Tasks/Members/Settings live behind More;
 // gate-off keeps the legacy four-tab bar where they stay first-class tabs.
-private enum class SlockSlackNavMoreDestination {
+internal enum class SlockSlackNavMoreDestination {
     Hub,
     Tasks,
     Members,
     Settings
 }
+
+/** task #386/#388: only More sub-pages consume the system back key (root handler closes the
+ *  page); the hub itself keeps the root shell back behavior. */
+internal fun slockSlackNavMoreShouldConsumeSystemBack(
+    destination: SlockSlackNavMoreDestination
+): Boolean = destination != SlockSlackNavMoreDestination.Hub
 
 @Composable
 private fun SlockSlackNavMoreHub(
