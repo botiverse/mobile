@@ -92,12 +92,16 @@ internal actual fun SlockMermaidDiagramBlock(
                         context.closePath()
                         context.fillStyle(Color.BLACK)
                         context.fill()
-                        MermaidKuiklyRenderer.render(
+                        try {
+                            MermaidKuiklyRenderer.render(
                             scene = layoutScene,
                             context = context,
                             scale = scale,
                             batchDraw = true,
                         )
+                        } catch (t: Throwable) {
+                            slockLogInfo("SlockMermaid", "mermaid_drawcb_render_exception site=viewInit ${t::class.simpleName}: ${t.message}")
+                        }
                     }
                     slockLogInfo("SlockMermaid", "mermaid_drawcb_redraw_enter site=viewInit layoutFrameDefault=${isLayoutFrameDefault()} renderViewNull=${renderView == null} nativeRef=${nativeRef}")
                     redraw()
@@ -115,12 +119,16 @@ internal actual fun SlockMermaidDiagramBlock(
                         context.closePath()
                         context.fillStyle(Color.BLACK)
                         context.fill()
-                        MermaidKuiklyRenderer.render(
+                        try {
+                            MermaidKuiklyRenderer.render(
                             scene = layoutScene,
                             context = context,
                             scale = scale,
                             batchDraw = true,
                         )
+                        } catch (t: Throwable) {
+                            slockLogInfo("SlockMermaid", "mermaid_drawcb_render_exception site=viewUpdate ${t::class.simpleName}: ${t.message}")
+                        }
                     }
                     slockLogInfo("SlockMermaid", "mermaid_drawcb_redraw_enter site=viewUpdate layoutFrameDefault=${view.isLayoutFrameDefault()} renderViewNull=${view.renderView == null} nativeRef=${view.nativeRef}")
                     // PROBE (DO NOT MERGE): push a non-zero frame before redraw() so
