@@ -88,7 +88,7 @@ internal actual fun SlockMermaidDiagramBlock(
                             batchDraw = true,
                         )
                     }
-                    slockLogInfo("SlockMermaid", "mermaid_drawcb_setframe_enter site=viewInit layoutFrameDefault=${flexNode.layoutFrame.isDefaultValue()} before_rvFrame=${renderView?.currentFrame}")
+                    slockLogInfo("SlockMermaid", "mermaid_drawcb_setframe_enter site=viewInit layoutFrameDefault=${flexNode.layoutFrame.isDefaultValue()} before_rvFrame=${renderView?.currentFrame} write_frame=0,0,${(layoutScene.width * scale).toFloat()},${(layoutScene.height * scale).toFloat()}")
                     setFrameToRenderView(Frame(0f, 0f, (layoutScene.width * scale).toFloat(), (layoutScene.height * scale).toFloat()))
                     slockLogInfo("SlockMermaid", "mermaid_drawcb_setframe_returned site=viewInit layoutFrameDefault=${flexNode.layoutFrame.isDefaultValue()}")
                 },
@@ -102,7 +102,7 @@ internal actual fun SlockMermaidDiagramBlock(
                             batchDraw = true,
                         )
                     }
-                    slockLogInfo("SlockMermaid", "mermaid_drawcb_setframe_enter site=viewUpdate layoutFrameDefault=${view.flexNode.layoutFrame.isDefaultValue()} before_rvFrame=${view.renderView?.currentFrame}")
+                    slockLogInfo("SlockMermaid", "mermaid_drawcb_setframe_enter site=viewUpdate layoutFrameDefault=${view.flexNode.layoutFrame.isDefaultValue()} before_rvFrame=${view.renderView?.currentFrame} write_frame=0,0,${(layoutScene.width * scale).toFloat()},${(layoutScene.height * scale).toFloat()}")
                     view.setFrameToRenderView(Frame(0f, 0f, (layoutScene.width * scale).toFloat(), (layoutScene.height * scale).toFloat()))
                     slockLogInfo("SlockMermaid", "mermaid_drawcb_setframe_returned site=viewUpdate layoutFrameDefault=${view.flexNode.layoutFrame.isDefaultValue()}")
                 }
