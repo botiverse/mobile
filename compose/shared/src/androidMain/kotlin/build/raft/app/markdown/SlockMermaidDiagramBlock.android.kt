@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
+import com.tencent.kuikly.core.layout.Frame
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -101,6 +102,11 @@ internal actual fun SlockMermaidDiagramBlock(
                         )
                     }
                     slockLogInfo("SlockMermaid", "mermaid_drawcb_redraw_enter site=viewUpdate layoutFrameDefault=${view.isLayoutFrameDefault()} renderViewNull=${view.renderView == null} nativeRef=${view.nativeRef}")
+                    // PROBE (DO NOT MERGE): push a non-zero frame before redraw() so
+                    // draw() sees a drawable size even when renderView was created
+                    // after placement (MingQi's noDrawableSize hypothesis, 2026-09-22).
+                    view.setFrameToRenderView(Frame(0f, 0f, (layoutScene.width * scale).toFloat(), (layoutScene.height * scale).toFloat()))
+                    slockLogInfo("SlockMermaid", "mermaid_drawcb_probe_setframe site=viewUpdate w=${layoutScene.width * scale} h=${layoutScene.height * scale} rvFrame=${view.renderView?.currentFrame}")
                     view.redraw()
                 }
             )
