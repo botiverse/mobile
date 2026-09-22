@@ -7761,6 +7761,13 @@ internal fun SharedThreadRouteContent(
     // task #232: rendered visible tail reported by the messages list; the read
     // marker must track what the user sees, not the loaded payload tail.
     var visibleReadTailIndex by remember(threadInstanceKey) { mutableStateOf<Int?>(null) }
+    LaunchedEffect(visibleReadTailIndex) {
+        bridge.log(
+            "thread_read_tail index=${visibleReadTailIndex?.toString() ?: "null"} " +
+                "firstMessageListItemIndex=${renderedTimelineSlice.firstMessageListItemIndex()} " +
+                "messageCount=${renderedTimelineSlice.messages.size}"
+        )
+    }
     val visibleReadMarkerKey =
         remember(
             renderedThread.sourceThreadId,
@@ -16417,6 +16424,10 @@ private fun ThreadMessagesListContent(
         if (anchor != null) {
             val advanced = advanceThreadReadAnchorFrontier(latestVisibleReadAnchor, anchor)
             if (advanced != latestVisibleReadAnchor) {
+                diagnosticsLogger(
+                    "thread_read_anchor_frontier seq=${advanced?.seq} id=${advanced?.messageId} " +
+                        "prevSeq=${latestVisibleReadAnchor?.seq}"
+                )
                 latestVisibleReadAnchor = advanced
             }
         }
