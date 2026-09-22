@@ -21813,7 +21813,6 @@ private fun ThreadMessageCardContent(
     val onOpenAttachment = callbacks.onOpenAttachment
     val onDownloadAttachment = callbacks.onDownloadAttachment
     val attachmentCommentsEnabled = data.attachmentCommentsEnabled
-    val onOpenAttachmentComments = callbacks.onOpenAttachmentComments
     val onRetryLocalSend = callbacks.onRetryLocalSend
     val onCopyLocalSendFailureDetails = callbacks.onCopyLocalSendFailureDetails
     val attachmentOpenStates = data.attachmentOpenStates
@@ -22324,8 +22323,6 @@ private fun ThreadMessageCardContent(
                                     attachments = message.attachments,
                                     alignEnd = alignOwnMessageRight,
                                     attachmentOpenStates = attachmentOpenStates,
-                                    commentsEnabled = attachmentCommentsEnabled,
-                                    onOpenComments = onOpenAttachmentComments,
                                     onOpenAttachment = onOpenAttachment,
                                     onDownloadAttachment = onDownloadAttachment
                                 )
@@ -26784,18 +26781,11 @@ internal fun PlatformFile.isComposerImageOwnedTemporary(): Boolean {
     return !normalizedMime.startsWith("video/") && !hasVideoExtension
 }
 
-internal fun KuiklyThreadAttachmentItem.threadAttachmentCommentCountLabel(): String? =
-    commentCount
-        .takeIf { it > 0 && !isImageAttachment() && !isPdfAttachment() }
-        ?.let { count -> "$count ${if (count == 1) "comment" else "comments"}" }
-
 @Composable
 private fun ThreadMessageAttachments(
     attachments: List<KuiklyThreadAttachmentItem>,
     alignEnd: Boolean,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
-    commentsEnabled: Boolean = false,
-    onOpenComments: (String) -> Unit = {},
     onOpenAttachment: (String) -> Unit,
     onDownloadAttachment: (String) -> Unit = {}
 ) {
@@ -26831,10 +26821,8 @@ private fun ThreadMessageAttachments(
             ThreadAttachmentChip(
                 attachment = attachment,
                 openState = attachmentOpenStates[attachment.id],
-                commentsEnabled = commentsEnabled,
                 onOpen = { onOpenAttachment(attachment.id) },
-                onDownload = { onDownloadAttachment(attachment.id) },
-                onOpenComments = { onOpenComments(attachment.id) }
+                onDownload = { onDownloadAttachment(attachment.id) }
             )
         }
     }
@@ -26884,31 +26872,24 @@ private fun ThreadImageAttachmentTile(
 private fun ThreadAttachmentChip(
     attachment: KuiklyThreadAttachmentItem,
     openState: ThreadAttachmentOpenUiState?,
-    commentsEnabled: Boolean = false,
     onOpen: () -> Unit,
-    onDownload: () -> Unit = {},
-    onOpenComments: () -> Unit = {}
+    onDownload: () -> Unit = {}
 ) {
     if (attachment.isPreviewableVideoAttachment()) {
         ThreadInlineVideoAttachmentCard(
             attachment = attachment,
-            commentsEnabled = commentsEnabled,
-            onDownload = onDownload,
-            onOpenComments = onOpenComments
+            onDownload = onDownload
         )
         return
     }
     if (attachment.isPreviewableAudioAttachment()) {
         ThreadInlineAudioAttachmentCard(
             attachment = attachment,
-            commentsEnabled = commentsEnabled,
-            onDownload = onDownload,
-            onOpenComments = onOpenComments
+            onDownload = onDownload
         )
         return
     }
     val isOpening = openState.threadAttachmentIsOpening()
-    val canOpenComments = commentsEnabled && !attachment.isImageAttachment() && !attachment.isPdfAttachment()
     val meta = attachment.threadAttachmentChipMetaLine(stringResource(MR.strings.file_preview_html))
     val statusLabel = openState.localizedThreadAttachmentStatusLabel()
     val summaryLabel = statusLabel ?: attachment.threadAttachmentSummaryLine()?.localized()
@@ -26926,19 +26907,6 @@ private fun ThreadAttachmentChip(
             loading = isOpening,
             onClick = if (isOpening) ({}) else onOpen
         )
-        if (canOpenComments) {
-            SlockBrutalActionButton(
-                label = attachment.threadAttachmentCommentCountLabel() ?: "Comments",
-                onClick = onOpenComments,
-                modifier = Modifier.fillMaxWidth(),
-                backgroundColor = SlockColor.SurfaceCream,
-                minWidth = 0.dp,
-                minHeight = 30.dp,
-                leadingIcon = SlockLucideIconName.MessageCircle,
-                shadowOffset = 0.dp,
-                textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack)
-            )
-        }
     }
 }
 
