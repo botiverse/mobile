@@ -592,21 +592,10 @@ class ConversationRepositoryDataSourceTest {
             FakeConversationNetworkClient(
                 responses =
                     mapOf(
+                        // The endpoint is a record keyed by parent message id (see
+                        // parseChannelThreadSummaryRecordElement); a {"threads":[...]} list is rejected.
                         "GET channels/channel-1/threads" to
-                            """
-                            {
-                              "threads": [
-                                {
-                                  "threadChannelId": "thread-1",
-                                  "parentChannelId": "channel-1",
-                                  "parentMessageId": "parent-1",
-                                  "replyCount": 4,
-                                  "unreadCount": 1,
-                                  "firstUnreadMessageId": "reply-4"
-                                }
-                              ]
-                            }
-                            """.trimIndent()
+                            """{"parent-1":{"threadChannelId":"thread-1","replyCount":4,"latestReplies":[]}}""",
                     ),
                 requestRelease = mapOf("GET channels/threads/followed" to holdFollowed),
             )
