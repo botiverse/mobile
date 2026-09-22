@@ -1977,12 +1977,30 @@ class KmpVisualScreenshotCaptureTest {
         val density = width / THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP.widthDp.toFloat()
         val minHeightPx = (24 * density).roundToInt()
         val tolerance = (2 * density).roundToInt().coerceAtLeast(2)
+        val probe = (3 * density).roundToInt().coerceAtLeast(3)
+        // A border is a THIN line: the row a few px inside it must be mostly
+        // non-black. Without this the dark fill of the fallback code block
+        // (#07111F, rounded, spans the column) matches as top/bottom "borders"
+        // with dark "sides" — exactly what the first run on main produced.
+        fun rowMostlyNotBlack(y: Int, x0: Int, x1: Int): Boolean {
+            if (y < 0 || y >= height || x1 - x0 <= 2 * probe) return false
+            getPixels(row, 0, width, 0, y, width, 1)
+            var notBlack = 0
+            var n = 0
+            for (x in (x0 + probe)..(x1 - probe)) {
+                n++
+                if (!mermaidPixelIsNearBlack(row[x])) notBlack++
+            }
+            return n > 0 && notBlack >= n * 0.9f
+        }
         for (top in runs) {
+            if (!rowMostlyNotBlack(top.y + probe, top.x0, top.x1)) continue
             val bottom =
                 runs.firstOrNull { candidate ->
                     candidate.y - top.y >= minHeightPx &&
                         kotlin.math.abs(candidate.x0 - top.x0) <= tolerance &&
-                        kotlin.math.abs(candidate.x1 - top.x1) <= tolerance
+                        kotlin.math.abs(candidate.x1 - top.x1) <= tolerance &&
+                        rowMostlyNotBlack(candidate.y - probe, candidate.x0, candidate.x1)
                 } ?: continue
             // Verify the vertical sides are black too, else this is a filled dark band.
             var leftHits = 0
