@@ -5653,6 +5653,33 @@ private fun SlockAppShellReadyContent(
                         )
                     }
                     val currentChildTab = retainedAppShellSelectedTab(selectedTab)
+                    // task #386: the Slack-nav More tab is a destination hub, not the raw settings
+                    // page — Tasks/Members were demoted from the tab bar and live behind it.
+                    val moreTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        var moreDestination by remember { mutableStateOf(SlockSlackNavMoreDestination.Hub) }
+                        when (moreDestination) {
+                            SlockSlackNavMoreDestination.Hub ->
+                                SlockSlackNavMoreHub(
+                                    bottomContentPadding = appShellBottomContentInset,
+                                    onOpenTasks = { moreDestination = SlockSlackNavMoreDestination.Tasks },
+                                    onOpenMembers = { moreDestination = SlockSlackNavMoreDestination.Members },
+                                    onOpenSettings = { moreDestination = SlockSlackNavMoreDestination.Settings },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            SlockSlackNavMoreDestination.Tasks -> {
+                                SlockSlackNavMoreSubPageBackBar(onBack = { moreDestination = SlockSlackNavMoreDestination.Hub })
+                                tasksTabContent(active)
+                            }
+                            SlockSlackNavMoreDestination.Members -> {
+                                SlockSlackNavMoreSubPageBackBar(onBack = { moreDestination = SlockSlackNavMoreDestination.Hub })
+                                membersTabContent(active)
+                            }
+                            SlockSlackNavMoreDestination.Settings -> {
+                                SlockSlackNavMoreSubPageBackBar(onBack = { moreDestination = SlockSlackNavMoreDestination.Hub })
+                                settingsTabContent(active)
+                            }
+                        }
+                    }
                     val childTabRenderer: AppShellChildTabRenderer = { tab, active ->
                         val homeSummary = sharedHomeContentRenderSummary(homeState.content)
                         LaunchedEffect(tab, active, currentChildTab, readyServerId, homeSummary, homeState.homeRealtimeDirty) {
@@ -5670,7 +5697,7 @@ private fun SlockAppShellReadyContent(
                                 "settings" -> settingsTabContent(active)
                                 SlockSlackNavTabs.Dms -> dmsTabContent(active)
                                 SlockSlackNavTabs.Activity -> activityTabContent(active)
-                                SlockSlackNavTabs.More -> settingsTabContent(active)
+                                SlockSlackNavTabs.More -> moreTabContent(active)
                                 else -> homeTabContent(active)
                             }
                         }
@@ -24684,3 +24711,93 @@ private fun SettingsHomePageLinkPayload.toTabItemPayload(): SlockTabItemPayload 
         value = value,
         section = section,
     )
+
+
+// task #386: Slack-nav More-tab destination hub. Tasks/Members/Settings live behind More;
+// gate-off keeps the legacy four-tab bar where they stay first-class tabs.
+private enum class SlockSlackNavMoreDestination {
+    Hub,
+    Tasks,
+    Members,
+    Settings
+}
+
+@Composable
+private fun SlockSlackNavMoreHub(
+    bottomContentPadding: Dp,
+    onOpenTasks: () -> Unit,
+    onOpenMembers: () -> Unit,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val moreTitle = stringResource(MR.strings.tab_more)
+    val tasksTitle = stringResource(MR.strings.tab_tasks)
+    val membersTitle = stringResource(MR.strings.tab_members)
+    val settingsTitle = stringResource(MR.strings.tab_settings)
+    val tasksSubtitle = stringResource(MR.strings.more_hub_tasks_subtitle)
+    val membersSubtitle = stringResource(MR.strings.more_hub_members_subtitle)
+    val settingsSubtitle = stringResource(MR.strings.more_hub_settings_subtitle)
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceCream)
+                .padding(horizontal = SlockSpacing.Md)
+                .padding(bottom = bottomContentPadding)
+    ) {
+        SlockMainTabPageHeader(
+            surface = SlockMainTabHeaderSurface.More,
+            title = moreTitle,
+            subtitle = null,
+            applyTopSafeArea = true,
+            refreshing = false
+        )
+        Spacer(modifier = Modifier.height(SlockSpacing.Md))
+        SlockBrutalListRow(
+            title = tasksTitle,
+            subtitle = tasksSubtitle,
+            onClick = onOpenTasks
+        )
+        Spacer(modifier = Modifier.height(SlockSpacing.Sm))
+        SlockBrutalListRow(
+            title = membersTitle,
+            subtitle = membersSubtitle,
+            onClick = onOpenMembers
+        )
+        Spacer(modifier = Modifier.height(SlockSpacing.Sm))
+        SlockBrutalListRow(
+            title = settingsTitle,
+            subtitle = settingsSubtitle,
+            onClick = onOpenSettings
+        )
+    }
+}
+
+@Composable
+private fun SlockSlackNavMoreSubPageBackBar(onBack: () -> Unit) {
+    val backLabel = stringResource(MR.strings.common_back)
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .clickable { onBack() }
+                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SlockLucideIcon(
+            name = SlockLucideIconName.ArrowLeft,
+            modifier = Modifier.size(18.dp),
+            color = SlockColor.TextBlackArgb
+        )
+        Spacer(modifier = Modifier.width(SlockSpacing.Xs))
+        Text(
+            text = backLabel,
+            style = SlockType.Caption.copy(color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
