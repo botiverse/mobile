@@ -3975,6 +3975,29 @@ internal class SharedThreadDataSource(
             }
         )
 
+    /**
+     * Reply-thread gap recovery tail fallback. `messageSync` is a delta feed that
+     * only returns messages with seq greater than `sinceSeq`; when a reply-count
+     * gap is driven by replies that were already on the server *below* the
+     * visible tail (backgrounded receipt, initial empty load), the delta returns
+     * empty forever and the timeline is stranded short of `replyCount`. This
+     * refetches the channel tail (`channelMessages`, no seq bound) so those
+     * older replies are merged back into the timeline.
+     */
+    suspend fun fetchReplyThreadTailGapPayload(
+        basePayload: KuiklyThreadScreenPayload
+    ): DataResult<SharedThreadPageFetchResult> =
+        fetchThreadPage(
+            basePayload = basePayload,
+            source = "reply_count_tail_gap",
+            repositoryCall = { repository, threadId, pageSize ->
+                repository.getThread(threadId, includeFollowedSummaries = false, limit = pageSize)
+            },
+            call = { threadId, pageSize ->
+                api.channelMessages(threadId, limit = pageSize)
+            }
+        )
+
     suspend fun sendMessage(
         channelId: String,
         body: String,
@@ -5764,6 +5787,14 @@ internal class SharedThreadStore(
         val staleToken: MviStaleToken,
         var targetSeq: Long,
         var targetVersion: Long,
+        /**
+         * Reply-thread only: the server-authoritative replyCount that triggered
+         * this recovery. When the delta `messageSync` cannot reach replies
+         * stranded below the visible tail seq, the recovery falls back to a
+         * full tail refetch until `loadedReplyTimelineCount()` reaches it.
+         */
+        var replyCountTarget: Int? = null,
+        var replyCountTailFallbackUsed: Boolean = false,
     )
 
     private data class LoadNewerState(
@@ -8325,6 +8356,7 @@ internal class SharedThreadStore(
             ),
             staleToken = staleToken,
             tagAsGapRefill = true,
+            replyCountTarget = replyCountGap.replyCount,
         )
     }
 
@@ -8362,6 +8394,7 @@ internal class SharedThreadStore(
         initialRequest: RealtimeVisibleStreamGapRequest,
         staleToken: MviStaleToken,
         tagAsGapRefill: Boolean,
+        replyCountTarget: Int? = null,
     ) {
         val routeIdentity = initial.realtimeGapRouteIdentity()
         val recoveryId =
@@ -8409,6 +8442,7 @@ internal class SharedThreadStore(
                             staleToken = staleToken,
                             targetSeq = initialRequest.serverSeq,
                             targetVersion = 1L,
+                            replyCountTarget = replyCountTarget,
                         )
                     reducePayloadPatch(cachePayload = true) { currentPayload ->
                         currentPayload.copy(newerMessagesStatus = "loading", errorCode = null)
@@ -8416,7 +8450,10 @@ internal class SharedThreadStore(
                     id
                 }
             } ?: return
-        runRealtimeGapRecovery(initial, initialRequest, staleToken, recoveryId, tagAsGapRefill)
+        runRealtimeGapRecovery(
+            initial, initialRequest, staleToken, recoveryId, tagAsGapRefill,
+            replyCountTarget = replyCountTarget,
+        )
     }
 
     private suspend fun runRealtimeGapRecovery(
@@ -8425,8 +8462,13 @@ internal class SharedThreadStore(
         staleToken: MviStaleToken,
         recoveryId: Long,
         tagAsGapRefill: Boolean,
+        replyCountTarget: Int? = null,
     ) {
         var nextRequest = initialRequest
+        // When true, the next fetch uses a full channel tail refetch
+        // (`fetchReplyThreadTailGapPayload`) instead of the `messageSync` delta.
+        // Armed once a delta pass cannot satisfy the reply-count target.
+        var tailFallbackArmed = false
         try {
             while (true) {
                 val requestSnapshot =
@@ -8453,9 +8495,15 @@ internal class SharedThreadStore(
                     } ?: return
                 val requestTargetVersion = requestSnapshot.first
                 val requestPayload = requestSnapshot.second
-                val result = dataSource.fetchRealtimeGapThreadPayload(requestPayload, nextRequest.sinceSeq)
+                val result =
+                    if (tailFallbackArmed) {
+                        dataSource.fetchReplyThreadTailGapPayload(requestPayload)
+                    } else {
+                        dataSource.fetchRealtimeGapThreadPayload(requestPayload, nextRequest.sinceSeq)
+                    }
                 var shouldContinue = false
                 var nextSinceSeq = nextRequest.sinceSeq
+                var armTailFallback = false
                 realtimeGapRecoveryMutex.withLock {
                     val recovery =
                         realtimeGapRecoveryState
@@ -8492,10 +8540,6 @@ internal class SharedThreadStore(
                             val fetchedFullPage =
                                 pageMessages.size >= result.data.requestedPageSize
                             val targetAdvancedDuringFetch = recovery.targetVersion > requestTargetVersion
-                            shouldContinue =
-                                madeProgress &&
-                                nextSinceSeq < recovery.targetSeq &&
-                                (fetchedFullPage || targetAdvancedDuringFetch)
                             val merged =
                                 currentPayload
                                     .mergePagedMessages(
@@ -8506,7 +8550,7 @@ internal class SharedThreadStore(
                                     .preserveStableTimelineFrom(currentPayload)
                                     .copy(
                                         canLoadMoreAfter = false,
-                                        newerMessagesStatus = if (shouldContinue) "loading" else "idle",
+                                        newerMessagesStatus = "idle",
                                     )
                                     .let { mergedPayload ->
                                         if (tagAsGapRefill) {
@@ -8540,18 +8584,58 @@ internal class SharedThreadStore(
                                 }
                                 latestPayload.withThreadContentProjectionFrom(selected)
                             }
-                            if (!shouldContinue) {
+                            val replyCountShortfall =
+                                replyCountTarget != null &&
+                                    merged.loadedReplyTimelineCount() < replyCountTarget
+                            if (tailFallbackArmed) {
+                                // Tail refetch ran once; regardless of shortfall we stop —
+                                // the timeline now reflects the server's authoritative tail.
+                                shouldContinue = false
                                 realtimeGapRecoveryState = null
+                            } else if (replyCountShortfall && !recovery.replyCountTailFallbackUsed) {
+                                // The delta can't reach replies stranded below the visible
+                                // tail seq — arm the one-shot tail refetch. Keep
+                                // newerMessagesStatus=loading so the UI shows a
+                                // pending tail and the gap detector stays gated.
+                                recovery.replyCountTailFallbackUsed = true
+                                armTailFallback = true
+                                shouldContinue = true
+                                reducePayloadPatch(cachePayload = true) { latestPayload ->
+                                    latestPayload.copy(newerMessagesStatus = "loading")
+                                }
+                            } else {
+                                shouldContinue =
+                                    madeProgress &&
+                                    nextSinceSeq < recovery.targetSeq &&
+                                    (fetchedFullPage || targetAdvancedDuringFetch)
+                                if (!shouldContinue) {
+                                    realtimeGapRecoveryState = null
+                                }
                             }
                         }
                         is DataResult.Empty -> {
-                            reducePayloadPatch(cachePayload = true) { latestPayload ->
-                                latestPayload.copy(
-                                    canLoadMoreAfter = false,
-                                    newerMessagesStatus = "idle",
-                                )
+                            val replyCountShortfall =
+                                replyCountTarget != null &&
+                                    currentPayload.loadedReplyTimelineCount() < replyCountTarget
+                            if (!tailFallbackArmed && replyCountShortfall && !recovery.replyCountTailFallbackUsed) {
+                                // Delta returned empty but replies are still owed — the
+                                // missing replies live below the visible tail seq, so a
+                                // `sinceSeq` sync can never produce them. Arm tail refetch.
+                                recovery.replyCountTailFallbackUsed = true
+                                armTailFallback = true
+                                shouldContinue = true
+                                reducePayloadPatch(cachePayload = true) { latestPayload ->
+                                    latestPayload.copy(newerMessagesStatus = "loading")
+                                }
+                            } else {
+                                reducePayloadPatch(cachePayload = true) { latestPayload ->
+                                    latestPayload.copy(
+                                        canLoadMoreAfter = false,
+                                        newerMessagesStatus = "idle",
+                                    )
+                                }
+                                realtimeGapRecoveryState = null
                             }
-                            realtimeGapRecoveryState = null
                         }
                         is DataResult.Error -> {
                             reducePayloadPatch(cachePayload = true) { latestPayload ->
@@ -8572,6 +8656,14 @@ internal class SharedThreadStore(
                             realtimeGapRecoveryState = null
                         }
                     }
+                }
+                if (armTailFallback) {
+                    tailFallbackArmed = true
+                    diagnosticsLogger?.invoke(
+                        "thread_reply_count_tail_fallback threadId=${initial.sourceThreadId.orEmpty()} " +
+                            "loadedReplies=${_state.value.payload.loadedReplyTimelineCount()} " +
+                            "replyCount=${replyCountTarget ?: -1}"
+                    )
                 }
                 if (!shouldContinue) return
                 nextRequest = nextRequest.copy(sinceSeq = nextSinceSeq)
