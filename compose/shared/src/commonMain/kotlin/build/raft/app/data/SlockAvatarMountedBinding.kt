@@ -253,6 +253,7 @@ internal class SlockAvatarMountedBinding(
 ) {
     private val handlesLock = SynchronizedObject()
     private val handles = mutableMapOf<Long, SlockAvatarMountedHandle>()
+    private val lastKnownOwners = mutableMapOf<String?, SlockAvatarCacheOwner>()
     private val flightsMutex = Mutex()
     private val runningFlights = mutableMapOf<String, CompletableDeferred<Unit>>()
 
@@ -263,6 +264,11 @@ internal class SlockAvatarMountedBinding(
     ): SlockAvatarMountedHandle {
         val normalizedUrl = remoteUrl.trim()
         val owner = runCatchingPreservingCancellation { currentOwner(serverId) }.getOrNull()
+        if (owner != null) {
+            synchronized(handlesLock) {
+                lastKnownOwners[serverId] = owner
+            }
+        }
         val key = owner?.let { runCatching { SlockAvatarCacheKey(it, subject, slockAvatarContentIdentity(normalizedUrl)) }.getOrNull() }
         val provider = nativeProvider()
         if (key == null) return legacyHandle(normalizedUrl)
@@ -312,6 +318,28 @@ internal class SlockAvatarMountedBinding(
             )
         synchronized(handlesLock) { handles[token.mountId] = handle }
         return handle
+    }
+
+    fun peekInitialManagedModel(
+        subject: SlockAvatarCacheSubject,
+        remoteUrl: String,
+        serverId: String? = null
+    ): String? {
+        val normalizedUrl = remoteUrl.trim()
+        val content = runCatching { slockAvatarContentIdentity(normalizedUrl) }.getOrNull() ?: return null
+        val owner = synchronized(handlesLock) { lastKnownOwners[serverId] }
+        if (owner != null) {
+            val key = SlockAvatarCacheKey(owner, subject, content)
+            val snapshot = session.snapshotFor(owner, subject)
+            if (snapshot?.key == key && snapshot.commitIdentity != null) {
+                return snapshot.managedImageModel()
+            }
+        }
+        val fallbackSnapshot = session.snapshotForSubject(subject, content)
+        if (fallbackSnapshot?.commitIdentity != null) {
+            return fallbackSnapshot.managedImageModel()
+        }
+        return null
     }
 
     fun dispose(handle: SlockAvatarMountedHandle): Boolean {
@@ -695,7 +723,7 @@ private fun nextMountedAvatarModelRevision(current: Long): Long {
 }
 
 @OptIn(ExperimentalEncodingApi::class)
-private fun SlockAvatarMountedSnapshot.managedImageModel(): String? {
+internal fun SlockAvatarMountedSnapshot.managedImageModel(): String? {
     val identity = commitIdentity ?: return null
     val json =
         JSONObject()

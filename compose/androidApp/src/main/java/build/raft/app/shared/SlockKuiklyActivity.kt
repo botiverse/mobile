@@ -3419,6 +3419,8 @@ internal class SlockKuiklyImageAdapter(
     private companion object {
         private const val NETWORK_BITMAP_CACHE_BYTES = 12 * 1024 * 1024
         private const val MAX_SINGLE_NETWORK_BITMAP_BYTES = 2 * 1024 * 1024
+        private const val MOUNTED_AVATAR_BITMAP_CACHE_BYTES = 8 * 1024 * 1024
+        private const val MAX_SINGLE_MOUNTED_AVATAR_BITMAP_BYTES = 1024 * 1024
         private const val MAX_BITMAP_DECODE_EDGE_PX = 4096
 
         private val networkBitmapCache =
@@ -3427,8 +3429,16 @@ internal class SlockKuiklyImageAdapter(
                         return value.allocationByteCount.coerceAtLeast(value.byteCount)
                     }
                 }
+        private val mountedAvatarBitmapCache =
+                object : LruCache<SlockMountedAvatarRequestKey, Bitmap>(MOUNTED_AVATAR_BITMAP_CACHE_BYTES) {
+                    override fun sizeOf(key: SlockMountedAvatarRequestKey, value: Bitmap): Int {
+                        return value.allocationByteCount.coerceAtLeast(value.byteCount)
+                    }
+                }
         private val networkImageFlights =
                 SlockImageRequestSingleFlight<SlockNetworkImageRequestKey, Bitmap>()
+        private val mountedAvatarImageFlights =
+                SlockImageRequestSingleFlight<SlockMountedAvatarRequestKey, Bitmap>()
         private val networkByteFlights =
                 SlockImageRequestSingleFlight<String, SharedDownloadedBytes>()
         private val networkDownloadScope =
@@ -3481,39 +3491,106 @@ internal class SlockKuiklyImageAdapter(
             imageLoadOption: HRImageLoadOption,
             callback: (drawable: Drawable?) -> Unit
     ) {
-        SlockKuiklyThreadAdapter.executeOnSubThread {
-            val renderRead = SlockAndroidAvatarCacheProcess.currentOrNull()?.beginRender(descriptor)
-            if (renderRead == null) {
-                callback(null)
-                return@executeOnSubThread
-            }
-            withSlockAvatarRenderDeliveryLease(renderRead) { leasedRead ->
-                val drawable =
-                        try {
-                            val decoded =
-                                    drawableFromBytes(
-                                            bytes = leasedRead.bytes,
-                                            imageLoadOption = imageLoadOption,
-                                            contentType = leasedRead.contentType
-                                    )
-                            val registered =
-                                    decoded != null &&
-                                            leasedRead.registerDecoded(
-                                                    width = decoded.intrinsicWidth.coerceAtLeast(0),
-                                                    height = decoded.intrinsicHeight.coerceAtLeast(0),
-                                                    scaleIdentity =
-                                                            "${imageLoadOption.requestWidth}x${imageLoadOption.requestHeight}:" +
-                                                                    "${imageLoadOption.needResize}:${imageLoadOption.scaleType.name}"
-                                            )
-                            decoded.takeIf { registered }
-                        } catch (throwable: Throwable) {
-                            recordImageLoadFailure("managed_avatar", imageLoadOption, throwable)
-                            null
-                        }
-                callback(drawable)
-            }
+        val requestKey = imageLoadOption.mountedAvatarRequestKey(descriptor)
+        cachedMountedAvatarBitmap(requestKey)?.let { bitmap ->
+            SlockAppLog.record(
+                    "SlockImageLoad",
+                    "source=managed_avatar status=cache_hit bitmapWidth=${bitmap.width} " +
+                            "bitmapHeight=${bitmap.height} " +
+                            "requestWidth=${imageLoadOption.requestWidth} " +
+                            "requestHeight=${imageLoadOption.requestHeight} " +
+                            "managedModelHash=${imageLoadOption.src.hashCode().toString(16)}"
+            )
+            callback(bitmap.toBitmapDrawable())
+            return
+        }
+        val subscription =
+                mountedAvatarImageFlights.load(
+                        key = requestKey,
+                        start = { complete ->
+                            SlockKuiklyThreadAdapter.executeOnSubThread {
+                                val renderRead = SlockAndroidAvatarCacheProcess.currentOrNull()?.beginRender(descriptor)
+                                if (renderRead == null) {
+                                    complete(Result.failure(IllegalStateException("Avatar render read failed")))
+                                    return@executeOnSubThread
+                                }
+                                withSlockAvatarRenderDeliveryLease(renderRead) { leasedRead ->
+                                    val result =
+                                            runCatching {
+                                                cachedMountedAvatarBitmap(requestKey)?.let { return@runCatching it }
+                                                val decoded =
+                                                        bitmapFromMountedAvatarBytes(
+                                                                bytes = leasedRead.bytes,
+                                                                imageLoadOption = imageLoadOption,
+                                                                contentType = leasedRead.contentType
+                                                        ) ?: throw IllegalStateException("Failed to decode avatar")
+                                                val registered =
+                                                        leasedRead.registerDecoded(
+                                                                width = decoded.width.coerceAtLeast(0),
+                                                                height = decoded.height.coerceAtLeast(0),
+                                                                scaleIdentity =
+                                                                        "${imageLoadOption.requestWidth}x${imageLoadOption.requestHeight}:" +
+                                                                                "${imageLoadOption.needResize}:${imageLoadOption.scaleType.name}"
+                                                        )
+                                                if (!registered) throw IllegalStateException("Failed to register decoded avatar")
+                                                cacheMountedAvatarBitmap(requestKey, decoded)
+                                                decoded
+                                            }
+                                    result.exceptionOrNull()?.let { throwable ->
+                                        recordImageLoadFailure("managed_avatar", imageLoadOption, throwable)
+                                    }
+                                    complete(result)
+                                }
+                            }
+                        },
+                        callback = { result -> callback(result.getOrNull()?.toBitmapDrawable()) }
+                )
+        SlockAppLog.record(
+                "SlockImageLoad",
+                "source=managed_avatar status=${subscription.disposition.diagnosticsToken()} " +
+                        "requestKeyHash=${requestKey.hashCode().toString(16)} " +
+                        "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
+                        "managedModelHash=${imageLoadOption.src.hashCode().toString(16)}"
+        )
+    }
+
+    private fun bitmapFromMountedAvatarBytes(
+            bytes: ByteArray,
+            imageLoadOption: HRImageLoadOption,
+            contentType: String?
+    ): Bitmap? {
+        return if (bytes.looksLikeSvg(contentType)) {
+            (svgBitmapDrawable(bytes.toString(StandardCharsets.UTF_8), imageLoadOption) as? BitmapDrawable)?.bitmap
+        } else {
+            bitmapFromBytes(bytes, imageLoadOption)
         }
     }
+
+    private fun cachedMountedAvatarBitmap(requestKey: SlockMountedAvatarRequestKey): Bitmap? =
+            synchronized(mountedAvatarBitmapCache) {
+                mountedAvatarBitmapCache.get(requestKey)?.takeUnless { it.isRecycled }
+            }
+
+    private fun cacheMountedAvatarBitmap(requestKey: SlockMountedAvatarRequestKey, bitmap: Bitmap) {
+        val bitmapBytes = bitmap.allocationByteCount.coerceAtLeast(bitmap.byteCount)
+        if (bitmapBytes > MAX_SINGLE_MOUNTED_AVATAR_BITMAP_BYTES) {
+            return
+        }
+        synchronized(mountedAvatarBitmapCache) {
+            mountedAvatarBitmapCache.put(requestKey, bitmap)
+        }
+    }
+
+    private fun HRImageLoadOption.mountedAvatarRequestKey(
+            descriptor: SlockAvatarMountedRenderDescriptor
+    ): SlockMountedAvatarRequestKey =
+            SlockMountedAvatarRequestKey.create(
+                    descriptor = descriptor,
+                    requestWidth = requestWidth,
+                    requestHeight = requestHeight,
+                    needResize = needResize,
+                    scaleType = scaleType.name
+            )
 
     override fun getDrawableWidth(
             kuiklyRenderViewContext: KuiklyRenderViewContext,
@@ -3616,24 +3693,22 @@ internal class SlockKuiklyImageAdapter(
             callback: (drawable: Drawable?) -> Unit
     ) {
         val requestKey = imageLoadOption.networkRequestKey()
+        cachedNetworkBitmap(requestKey)?.let { bitmap ->
+            SlockAppLog.record(
+                    "SlockImageLoad",
+                    "source=network status=cache_hit bitmapWidth=${bitmap.width} " +
+                            "bitmapHeight=${bitmap.height} " +
+                            "requestWidth=${imageLoadOption.requestWidth} " +
+                            "requestHeight=${imageLoadOption.requestHeight} " +
+                            binaryDownloadUrlDiagnostics(imageLoadOption.src)
+            )
+            callback(bitmap.toBitmapDrawable())
+            return
+        }
         val subscription =
                 networkImageFlights.load(
                         key = requestKey,
                         start = { complete ->
-                            cachedNetworkBitmap(requestKey)?.let { bitmap ->
-                                SlockAppLog.record(
-                                        "SlockImageLoad",
-                                        "source=network status=cache_hit bitmapWidth=${bitmap.width} " +
-                                                "bitmapHeight=${bitmap.height} " +
-                                                "requestWidth=${imageLoadOption.requestWidth} " +
-                                                "requestHeight=${imageLoadOption.requestHeight} " +
-                                                binaryDownloadUrlDiagnostics(imageLoadOption.src)
-                                )
-                                SlockKuiklyThreadAdapter.executeOnSubThread {
-                                    complete(Result.success(bitmap))
-                                }
-                                return@load
-                            }
                             fetchNetworkBytes(imageLoadOption.src) { byteResult ->
                                 byteResult.onFailure { throwable ->
                                     recordImageLoadFailure("network", imageLoadOption, throwable)

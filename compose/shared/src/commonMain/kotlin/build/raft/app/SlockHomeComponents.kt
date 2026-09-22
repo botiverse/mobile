@@ -5212,19 +5212,21 @@ private fun ServerSwitcherAvatarTile(server: SlockServerSwitcherItem) {
                 .border(SlockStroke.Default, SlockColor.BorderBlack),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            presentation.fallbackLabel,
-            style =
-                SlockType.Button.copy(
-                    fontFamily = slockMonoFamilyForWeight(FontWeight.Bold),
-                    fontSize = 17.sp,
-                    lineHeight = 20.sp,
-                    fontWeight = FontWeight.Normal
-                ),
-            color = SlockColor.BrandYellow,
-            maxLines = 1,
-            textAlign = TextAlign.Center
-        )
+        if (presentation.avatarWireValue == null) {
+            Text(
+                presentation.fallbackLabel,
+                style =
+                    SlockType.Button.copy(
+                        fontFamily = slockMonoFamilyForWeight(FontWeight.Bold),
+                        fontSize = 17.sp,
+                        lineHeight = 20.sp,
+                        fontWeight = FontWeight.Normal
+                    ),
+                color = SlockColor.BrandYellow,
+                maxLines = 1,
+                textAlign = TextAlign.Center
+            )
+        }
         presentation.avatarWireValue?.let { source ->
             if (source.toPixelAvatarSpec() != null) {
                 // Visual-fixture pixel avatars use the same renderer as the compact header so
@@ -6474,6 +6476,18 @@ private fun SlockAvatarHttpImage(
     var lease by remember(loadKey) { mutableStateOf<SlockAvatarHttpLoadLease?>(null) }
     val activeSource = loadKey.sourceFor(loadState.endpoint) ?: return
     val avatarMountedBinding = SlockSharedStoreRegistry.currentOrNull()?.avatarMountedBinding
+    val initialManagedModel =
+        remember(activeSource, cacheSubject, cacheServerId, avatarMountedBinding) {
+            if (avatarMountedBinding == null || cacheSubject == null) {
+                null
+            } else {
+                avatarMountedBinding.peekInitialManagedModel(
+                    subject = cacheSubject,
+                    remoteUrl = activeSource,
+                    serverId = cacheServerId
+                )
+            }
+        }
     var mountedHandle by
         remember(activeSource, cacheSubject, cacheServerId, avatarMountedBinding) {
             mutableStateOf<SlockAvatarMountedHandle?>(null)
@@ -6567,10 +6581,13 @@ private fun SlockAvatarHttpImage(
             activeSource
         } else {
             // Cold cache: the durable bytes haven't landed yet, so imageModel is still null. Fall
-            // back to the ordinary HTTP source so the painter isn't starved while the mounted
-            // download is still in flight; once bytes commit, imageModel takes over rendering.
+            // back to an already-committed managed model from this session, or the ordinary HTTP source
+            // so the painter isn't starved while the mounted download is still in flight; once bytes
+            // commit, imageModel takes over rendering.
             val handle = mountedHandle
-            handle?.imageModel?.collectAsState()?.value ?: activeSource
+            handle?.imageModel?.collectAsState()?.value
+                ?: initialManagedModel
+                ?: activeSource
         }
     val imageModel =
         slockAvatarHttpAdmittedImageModel(
