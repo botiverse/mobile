@@ -376,7 +376,7 @@ jobs:
           # The runner executes each script line as a separate command;
           # backslash line continuations break ("Task '\' not found").
           script: |
-            mkdir -p visual-testing-results && (adb shell date +%s 2>/dev/null | tr -d "\r" || date -u +%s) > visual-testing-results/action_start-shard-${{ matrix.shard }}.txt && echo "action_start(device clock)=$(cat visual-testing-results/action_start-shard-${{ matrix.shard }}.txt) host=$(date -u +%s)"
+            mkdir -p visual-testing-results && bash scripts/ci/device_epoch_ms.sh > visual-testing-results/action_start-shard-${{ matrix.shard }}.txt && echo "action_start(device clock, ms + resolution)=$(cat visual-testing-results/action_start-shard-${{ matrix.shard }}.txt) host_ms=$(date -u +%s%3N)"
             bash scripts/run_android_visual_capture.sh --app-apk "$(find apks -name '*connectedTest.apk' -not -name '*androidTest*' | sort | head -1)" --test-apk "$(find apks -name '*androidTest.apk' | sort | head -1)" --method-filter "${{ needs.android-build.outputs.method_filter }}" --shard-index "${{ matrix.shard }}" --shard-total 8 --capture-locale "${{ inputs.capture_locale }}" --output-dir visual-testing-results --defer-verdict
             bash scripts/ci/export_app_diagnostics_jsonl.sh "visual-testing-results/diagnostics-shard-${{ matrix.shard }}.jsonl" "visual-testing-results/action_start-shard-${{ matrix.shard }}.txt" || true
 

@@ -33,11 +33,13 @@ done
 # than the action start, the window is incomplete and a 0 for any tag is NOT
 # PROVIDED rather than a negative. Record both so the reader can judge.
 win="${out%.jsonl}.window.txt"
-action_start="$( [ -n "$start_file" ] && [ -f "$start_file" ] && cat "$start_file" || echo unknown )"
+action_raw="$( [ -n "$start_file" ] && [ -f "$start_file" ] && cat "$start_file" || echo "unknown none" )"
+action_start="${action_raw%% *}"; action_res="${action_raw##* }"
 first_ts="$(grep -v '^###' "$out" | head -1 | grep -oE '"(timestampMillis|ts|timestamp)":[ ]*[0-9]+' | head -1 | grep -oE '[0-9]+$' || true)"
 {
   echo "capture_mode=tail_at_end"
-  echo "action_start_epoch_s=$action_start (device clock via adb shell date; JSONL ts is device clock too)"
+  echo "action_start_device_ms=$action_start"
+  echo "action_start_resolution=$action_res   # ms = comparable to JSONL timestampMillis; s = truncated, may be up to 999ms early (biases toward NOT PROVIDED)"
   echo "first_record_ts=${first_ts:-none}"
   echo "total_lines=$(grep -vc '^###' "$out" || true)"
   echo "bytes=$(wc -c < "$out")"
