@@ -116,6 +116,7 @@ class SlockThreadImePaintConnectedTest {
             val imeVisibleAtReplacement = AtomicBoolean(false)
             lateinit var replacementEditor: EditText
             try {
+                var lastEdgeDiagnostic: String? = null
                 waitUntil(SendTimeoutMs, "first attached replacement editor") {
                     var captured = false
                     scenario.onActivity { activity ->
@@ -137,6 +138,18 @@ class SlockThreadImePaintConnectedTest {
                             val connection = requireNotNull(candidate.onCreateInputConnection(EditorInfo()))
                             firstCompositionAccepted.set(connection.setComposingText("sent", 1))
                             captured = true
+                        }
+                    }
+                    if (!captured) {
+                        // Probe (task #465 N=2): on each view-system edge, record
+                        // the attached/tree editor identity — separates "state
+                        // emitted a new instanceId but attach lags" from "nothing
+                        // emitted at all". Throttled to changes only.
+                        val diagnostic =
+                            scenario.composerRetirementDiagnostics(nonce, retiredEditor)
+                        if (diagnostic != lastEdgeDiagnostic) {
+                            lastEdgeDiagnostic = diagnostic
+                            println("replacementEditorWait edge: $diagnostic")
                         }
                     }
                     captured
