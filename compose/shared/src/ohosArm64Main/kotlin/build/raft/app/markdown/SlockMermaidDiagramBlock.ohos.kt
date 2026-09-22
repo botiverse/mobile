@@ -7,6 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
 import com.tencent.kuikly.core.layout.Frame
+import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -81,6 +82,16 @@ internal actual fun SlockMermaidDiagramBlock(
                 viewInit = {
                     drawCallback = { context, _, _ ->
                         slockLogInfo("SlockMermaid", "mermaid_drawcb_entry site=viewInit layoutFrameDefault=${isLayoutFrameDefault()}")
+                        // PROBE (DO NOT MERGE): callback-internal quantity + CanvasView positive control.
+                        slockLogInfo("SlockMermaid", "mermaid_drawcb_scene site=viewInit cmds=${layoutScene.commands.size} w=${layoutScene.width} h=${layoutScene.height}")
+                        context.beginPath()
+                        context.moveTo(2f, 2f)
+                        context.lineTo(42f, 2f)
+                        context.lineTo(42f, 42f)
+                        context.lineTo(2f, 42f)
+                        context.closePath()
+                        context.fillStyle(Color.BLACK)
+                        context.fill()
                         MermaidKuiklyRenderer.render(
                             scene = layoutScene,
                             context = context,
@@ -94,6 +105,16 @@ internal actual fun SlockMermaidDiagramBlock(
                 viewUpdate = { view ->
                     view.drawCallback = { context, _, _ ->
                         slockLogInfo("SlockMermaid", "mermaid_drawcb_entry site=viewUpdate layoutFrameDefault=${view.isLayoutFrameDefault()}")
+                        // PROBE (DO NOT MERGE): callback-internal quantity + CanvasView positive control.
+                        slockLogInfo("SlockMermaid", "mermaid_drawcb_scene site=viewUpdate cmds=${layoutScene.commands.size} w=${layoutScene.width} h=${layoutScene.height}")
+                        context.beginPath()
+                        context.moveTo(2f, 2f)
+                        context.lineTo(42f, 2f)
+                        context.lineTo(42f, 42f)
+                        context.lineTo(2f, 42f)
+                        context.closePath()
+                        context.fillStyle(Color.BLACK)
+                        context.fill()
                         MermaidKuiklyRenderer.render(
                             scene = layoutScene,
                             context = context,
