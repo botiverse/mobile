@@ -133,12 +133,24 @@ classify_changed_paths() {
   local saw_ci_control=false
   local saw_relevant=false
   local saw_unknown=false
+  saw_shared_build_gradle=false
 
   test -f "$changed_paths_file"
   while IFS= read -r path || test -n "$path"; do
     path="${path%$'\r'}"
     test -n "$path" || continue
-    if is_deterministic_all_path "$path"; then
+    if test "$path" = "compose/shared/build.gradle.kts"; then
+      # Dependency bumps in the shared KMP module are the entry point for
+      # "compiles on the host JDK, fails on the device runtime" defects
+      # (mermaid-core <clinit> incident: JVM Pattern accepted regexes Android
+      # ICU rejected). A named instrumented allowlist line can only fire if the
+      # device suite actually runs — and it does not run on ordinary PRs.
+      # This path rule upgrades it without needing anyone to remember the
+      # full-ci label. Narrow on purpose: this file changes a few times a year.
+      mark_all_platforms
+      saw_relevant=true
+      saw_shared_build_gradle=true
+    elif is_deterministic_all_path "$path"; then
       mark_all_platforms
       saw_relevant=true
       saw_ci_control=true
@@ -201,6 +213,15 @@ emit_plan() {
           case "$reason" in
             pull-request-paths:*) reason="pull-request-paths:$(platform_summary)" ;;
           esac
+        fi
+        # Dependency bumps in the shared KMP module enter through
+        # compose/shared/build.gradle.kts and are the common path for
+        # host-JDK-green / device-red defects (see classify_changed_paths).
+        # Named allowlist lines only fire if the device suite runs at all, so
+        # upgrade it here instead of relying on someone remembering full-ci.
+        if test "$saw_shared_build_gradle" = true; then
+          run_device_suite=true
+          reason="pull-request-paths:$(platform_summary)+shared-build-gradle"
         fi
       fi
       ;;
@@ -330,6 +351,13 @@ self_test() {
     pull_request false feature $'compose/shared/src/commonMain/kotlin/Example.kt\n'
   assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android,ohos' \
     pull_request false feature $'compose/gradle/libs.versions.toml\n'
+  # Shared-KMP dependency bumps are the entry point for host-JDK-green /
+  # device-red defects; touching the shared module's Gradle file upgrades the
+  # device suite on an ordinary PR so named instrumented lines actually run.
+  # (iOS is downshifted by change_keeps_ios since the path isn't iOS-specific;
+  # run_ios=true at classify time but false after the downshift.)
+  assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=true\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android,ohos+shared-build-gradle' \
+    pull_request false feature $'compose/shared/build.gradle.kts\n'
   assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android,ohos' \
     pull_request false feature $'scripts/test_process_network_lifecycle_source_contract.mjs\n'
   # PR pushes that touch iOS-specific paths keep the iOS compile.
