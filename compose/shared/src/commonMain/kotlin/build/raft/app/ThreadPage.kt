@@ -9671,7 +9671,6 @@ internal fun SharedThreadRouteContent(
             pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
             markdownReferencePendingActionId = markdownReferencePending.active?.actionId,
             attachmentOpenStates = attachmentOpenStates,
-            attachmentCommentsEnabled = attachmentCommentsEnabled && renderSlice.writeActionsEnabled,
             composerSendKeyEnabled = composerSendKeyEnabled,
             newDesignSettingsEnabled = chatLayoutPreferenceStore::readNewDesignSettingsEnabledSync,
             longMessageCollapseEnabled = longMessageCollapseEnabled,
@@ -12849,7 +12848,6 @@ private data class ThreadPageContentData(
     val pendingTaskConvertMessageIds: Set<String>,
     val markdownReferencePendingActionId: String?,
     val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
-    val attachmentCommentsEnabled: Boolean,
     val composerSendKeyEnabled: Boolean,
     val longMessageCollapseEnabled: Boolean,
     val singleTapOpensThreadEnabled: Boolean,
@@ -12958,7 +12956,6 @@ fun ThreadPageContent(
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     markdownReferencePendingActionId: String? = null,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
-    attachmentCommentsEnabled: Boolean = false,
     composerSendKeyEnabled: Boolean = false,
     newDesignSettingsEnabled: () -> Boolean = { false },
     longMessageCollapseEnabled: Boolean = false,
@@ -13031,7 +13028,6 @@ fun ThreadPageContent(
                 pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 markdownReferencePendingActionId = markdownReferencePendingActionId,
                 attachmentOpenStates = attachmentOpenStates,
-                attachmentCommentsEnabled = attachmentCommentsEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
@@ -13145,7 +13141,6 @@ private fun ThreadPageContentContent(
     val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
     val markdownReferencePendingActionId = data.markdownReferencePendingActionId
     val attachmentOpenStates = data.attachmentOpenStates
-    val attachmentCommentsEnabled = data.attachmentCommentsEnabled
     val composerSendKeyEnabled = data.composerSendKeyEnabled
     val newDesignSettingsEnabled = callbacks.newDesignSettingsEnabled
     val longMessageCollapseEnabled = data.longMessageCollapseEnabled
@@ -13842,7 +13837,6 @@ private fun ThreadPageContentContent(
                         pendingActionCardIds = pendingActionCardIds,
                         pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                         attachmentOpenStates = attachmentOpenStates,
-                        attachmentCommentsEnabled = attachmentCommentsEnabled,
                         writeActionsEnabled = writeActionsEnabled,
                         currentServerSlug = currentServerSlug,
                         contentExtrasVisible = contentExtrasVisible,
@@ -15240,7 +15234,6 @@ private data class ThreadChatTabData(
     val pendingActionCardIds: Set<String>,
     val pendingTaskConvertMessageIds: Set<String>,
     val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
-    val attachmentCommentsEnabled: Boolean,
     val writeActionsEnabled: Boolean,
     val currentServerSlug: String?,
     val contentExtrasVisible: Boolean,
@@ -15313,7 +15306,6 @@ fun ThreadChatTab(
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
-    attachmentCommentsEnabled: Boolean = false,
     writeActionsEnabled: Boolean = true,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
@@ -15379,7 +15371,6 @@ fun ThreadChatTab(
                 pendingActionCardIds = pendingActionCardIds,
                 pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 attachmentOpenStates = attachmentOpenStates,
-                attachmentCommentsEnabled = attachmentCommentsEnabled,
                 writeActionsEnabled = writeActionsEnabled,
                 currentServerSlug = currentServerSlug,
                 contentExtrasVisible = contentExtrasVisible,
@@ -15456,7 +15447,6 @@ private fun ThreadChatTabContent(
     val pendingActionCardIds = data.pendingActionCardIds
     val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
     val attachmentOpenStates = data.attachmentOpenStates
-    val attachmentCommentsEnabled = data.attachmentCommentsEnabled
     val writeActionsEnabled = data.writeActionsEnabled
     val currentServerSlug = data.currentServerSlug
     val contentExtrasVisible = data.contentExtrasVisible
@@ -15551,7 +15541,6 @@ private fun ThreadChatTabContent(
                     pendingActionCardIds = pendingActionCardIds,
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                     attachmentOpenStates = attachmentOpenStates,
-                    attachmentCommentsEnabled = attachmentCommentsEnabled,
                     writeActionsEnabled = writeActionsEnabled,
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
@@ -15632,7 +15621,6 @@ private fun ThreadChatTabContent(
                     pendingActionCardIds = pendingActionCardIds,
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                     attachmentOpenStates = attachmentOpenStates,
-                    attachmentCommentsEnabled = attachmentCommentsEnabled,
                     writeActionsEnabled = writeActionsEnabled,
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
@@ -15704,7 +15692,6 @@ private fun ThreadChatTabContent(
                 pendingActionCardIds = pendingActionCardIds,
                 pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 attachmentOpenStates = attachmentOpenStates,
-                attachmentCommentsEnabled = attachmentCommentsEnabled,
                 writeActionsEnabled = writeActionsEnabled,
                 currentServerSlug = currentServerSlug,
                 contentExtrasVisible = contentExtrasVisible,
@@ -16021,7 +16008,6 @@ private data class ThreadMessagesListData(
     val pendingActionCardIds: Set<String>,
     val pendingTaskConvertMessageIds: Set<String>,
     val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
-    val attachmentCommentsEnabled: Boolean,
     val writeActionsEnabled: Boolean,
     val currentServerSlug: String?,
     val contentExtrasVisible: Boolean,
@@ -16095,7 +16081,6 @@ fun ThreadMessagesList(
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
-    attachmentCommentsEnabled: Boolean = false,
     writeActionsEnabled: Boolean = true,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
@@ -16161,7 +16146,6 @@ fun ThreadMessagesList(
                 pendingActionCardIds = pendingActionCardIds,
                 pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 attachmentOpenStates = attachmentOpenStates,
-                attachmentCommentsEnabled = attachmentCommentsEnabled,
                 writeActionsEnabled = writeActionsEnabled,
                 currentServerSlug = currentServerSlug,
                 contentExtrasVisible = contentExtrasVisible,
@@ -16238,7 +16222,6 @@ private fun ThreadMessagesListContent(
     val pendingActionCardIds = data.pendingActionCardIds
     val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
     val attachmentOpenStates = data.attachmentOpenStates
-    val attachmentCommentsEnabled = data.attachmentCommentsEnabled
     val writeActionsEnabled = data.writeActionsEnabled
     val currentServerSlug = data.currentServerSlug
     val contentExtrasVisible = data.contentExtrasVisible
@@ -18717,7 +18700,6 @@ private fun ThreadMessagesListContent(
                         highlightedMentions = highlightedMentions,
                         pendingActionCardIds = pendingActionCardIds,
                         attachmentOpenStates = attachmentOpenStates,
-                        attachmentCommentsEnabled = attachmentCommentsEnabled,
                         currentServerSlug = currentServerSlug,
                         contentExtrasVisible = contentExtrasVisible,
                         isMarkdownTagValid = isMarkdownTagValid,
@@ -19030,8 +19012,6 @@ private fun ThreadMessagesListContent(
                                 compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message),
                                 onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                                 onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },
-                                attachmentCommentsEnabled = attachmentCommentsEnabled,
-                                onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", message.id, it, null) },
                                 onRetryLocalSend = { onThreadEvent("retryLocalSend", message.id, null, null) },
                                 onCopyLocalSendFailureDetails = {
                                     onThreadEvent("copyLocalSendFailureDetails", message.id, null, null)
@@ -21570,7 +21550,6 @@ private data class ThreadMessageCardData(
     val activeMarkdownTagKey: String?,
     val timestampLabel: String,
     val compactTimestampLabel: String,
-    val attachmentCommentsEnabled: Boolean,
     val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     val pendingActionCardIds: Set<String>,
     val writeActionsEnabled: Boolean,
@@ -21603,7 +21582,6 @@ private class ThreadMessageCardCallbacks(
     val onOpenCommentHost: (KuiklyThreadMessageCommentRef) -> Unit,
     val onOpenAttachment: (String) -> Unit,
     val onDownloadAttachment: (String) -> Unit,
-    val onOpenAttachmentComments: (String) -> Unit,
     val onRetryLocalSend: () -> Unit,
     val onCopyLocalSendFailureDetails: () -> Unit,
     val onCommitActionCard: (String) -> Unit,
@@ -21659,8 +21637,6 @@ fun ThreadMessageCard(
     onOpenCommentHost: (KuiklyThreadMessageCommentRef) -> Unit = {},
     onOpenAttachment: (String) -> Unit,
     onDownloadAttachment: (String) -> Unit = {},
-    attachmentCommentsEnabled: Boolean = false,
-    onOpenAttachmentComments: (String) -> Unit = {},
     onRetryLocalSend: () -> Unit = {},
     onCopyLocalSendFailureDetails: () -> Unit = {},
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
@@ -21718,7 +21694,6 @@ fun ThreadMessageCard(
                 activeMarkdownTagKey = activeMarkdownTagKey,
                 timestampLabel = timestampLabel,
                 compactTimestampLabel = compactTimestampLabel,
-                attachmentCommentsEnabled = attachmentCommentsEnabled,
                 attachmentOpenStates = attachmentOpenStates,
                 pendingActionCardIds = pendingActionCardIds,
                 writeActionsEnabled = writeActionsEnabled,
@@ -21750,7 +21725,6 @@ fun ThreadMessageCard(
                 onOpenCommentHost = onOpenCommentHost,
                 onOpenAttachment = onOpenAttachment,
                 onDownloadAttachment = onDownloadAttachment,
-                onOpenAttachmentComments = onOpenAttachmentComments,
                 onRetryLocalSend = onRetryLocalSend,
                 onCopyLocalSendFailureDetails = onCopyLocalSendFailureDetails,
                 onCommitActionCard = onCommitActionCard,
@@ -21812,7 +21786,6 @@ private fun ThreadMessageCardContent(
     val onOpenCommentHost = callbacks.onOpenCommentHost
     val onOpenAttachment = callbacks.onOpenAttachment
     val onDownloadAttachment = callbacks.onDownloadAttachment
-    val attachmentCommentsEnabled = data.attachmentCommentsEnabled
     val onRetryLocalSend = callbacks.onRetryLocalSend
     val onCopyLocalSendFailureDetails = callbacks.onCopyLocalSendFailureDetails
     val attachmentOpenStates = data.attachmentOpenStates
@@ -25924,7 +25897,6 @@ private fun ThreadOriginCard(
     highlightedMentions: Set<String>,
     pendingActionCardIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
-    attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
@@ -26036,8 +26008,6 @@ private fun ThreadOriginCard(
                             timestampLabel = origin.timestampLabel,
                             onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                             onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },
-                            attachmentCommentsEnabled = attachmentCommentsEnabled,
-                            onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", origin.id, it, null) },
                             attachmentOpenStates = if (contentExtrasVisible) attachmentOpenStates else emptyMap(),
                             pendingActionCardIds = if (contentExtrasVisible) pendingActionCardIds else emptySet(),
                             onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
