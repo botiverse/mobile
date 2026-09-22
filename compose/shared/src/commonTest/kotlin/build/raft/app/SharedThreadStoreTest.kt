@@ -3450,7 +3450,12 @@ class SharedThreadStoreTest {
                 conversationRepository = repository,
                 channelRepository = channelRepository
         )
-        dataSource.cachePayloadForTest(contentPayload("cached body").copy(joined = true, canSend = true))
+        // A real memory-cached payload was written from a canonical snapshot, which already
+        // carried the composer enabled for a joined + canSend conversation; model that here.
+        val cached = contentPayload("cached body")
+        dataSource.cachePayloadForTest(
+            cached.copy(joined = true, canSend = true, composer = cached.composer.copy(enabled = true))
+        )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.dispatch(SharedThreadIntent.Start(basePayload()))
