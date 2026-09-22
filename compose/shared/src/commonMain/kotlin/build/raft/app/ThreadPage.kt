@@ -14669,7 +14669,7 @@ private fun ThreadPageHeader(
                         ThreadMembersHeaderButton(count = payload.membersCount, onClick = onShowMembers)
                     }
                     if (payload.threadHeaderOpenInParentActionVisible()) {
-                        ThreadHeaderIconButton(icon = SlockLucideIconName.ExternalLink, onClick = onOpenInChannel)
+                        ThreadHeaderIconButton(icon = SlockLucideIconName.MapPin, onClick = onOpenInChannel)
                     }
                 }
                 }
