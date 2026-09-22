@@ -7,6 +7,7 @@ import build.raft.app.network.HEADER_AUTHORIZATION
 import build.raft.app.network.HEADER_SERVER_ID
 import build.raft.app.network.MultipartFile
 import build.raft.app.network.MultipartFileStreamOpener
+import build.raft.app.network.SLOCK_DIRECT_UPLOAD_TOTAL_TIMEOUT_MILLIS
 import build.raft.app.network.SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS
 import build.raft.app.network.SlockHttpExecutor
 import build.raft.app.network.SlockHttpExecutorResponse
@@ -262,12 +263,14 @@ internal class SharedSlockNetworkClient(
         priority: DataRequestPriority,
         upload: AttachmentUploadSessionPut,
         bytes: ByteArray,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
     ): HomeNetworkResponse = authorityBindingRequiredResponse()
 
     override suspend fun putAttachmentUploadFile(
         priority: DataRequestPriority,
         upload: AttachmentUploadSessionPut,
         file: PlatformFile,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
     ): HomeNetworkResponse = authorityBindingRequiredResponse()
 
     override suspend fun prepareAttachmentUploadFile(
@@ -384,6 +387,7 @@ internal class SharedSlockNetworkClient(
         upload: AttachmentUploadSessionPut,
         bytes: ByteArray,
         expectedAuthority: SlockExpectedAuthBinding,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
     ): HomeNetworkResponse =
         executePresignedPut(
             priority = priority,
@@ -391,6 +395,7 @@ internal class SharedSlockNetworkClient(
             bodyBytes = bytes,
             bodyFile = null,
             expectedAuthority = expectedAuthority,
+            onUploadProgress = onUploadProgress,
         )
 
     override suspend fun putAttachmentUploadFileBound(
@@ -398,6 +403,7 @@ internal class SharedSlockNetworkClient(
         upload: AttachmentUploadSessionPut,
         file: PlatformFile,
         expectedAuthority: SlockExpectedAuthBinding,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
     ): HomeNetworkResponse {
         // Do not even stat a private file after the captured route authority has gone stale.
         // [executePresignedPut] repeats this check immediately before and after transport; this
@@ -443,6 +449,7 @@ internal class SharedSlockNetworkClient(
                     openStream = { opener.open() },
                 ),
                 expectedAuthority = expectedAuthority,
+                onUploadProgress = onUploadProgress,
             )
         } else {
             executePresignedPut(
@@ -451,6 +458,7 @@ internal class SharedSlockNetworkClient(
                 bodyBytes = resolved.bytes,
                 bodyFile = null,
                 expectedAuthority = expectedAuthority,
+                onUploadProgress = onUploadProgress,
             )
         }
     }
@@ -544,6 +552,7 @@ internal class SharedSlockNetworkClient(
         bodyBytes: ByteArray?,
         bodyFile: SlockHttpFileBody?,
         expectedAuthority: SlockExpectedAuthBinding,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
     ): HomeNetworkResponse {
         // A presigned URL is intentionally sent without Authorization, but it remains part of
         // the same captured route operation.  Fence both sides of the I/O against session,
@@ -581,11 +590,17 @@ internal class SharedSlockNetworkClient(
         }
         val key = "attachments/upload-sessions/presigned-put"
         return try {
+            val schedulerTimeoutMillis =
+                if (bodyFile != null) {
+                    SLOCK_DIRECT_UPLOAD_TOTAL_TIMEOUT_MILLIS + SLOCK_UPLOAD_SCHEDULER_DISPATCH_MARGIN_MILLIS
+                } else {
+                    SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS + SLOCK_UPLOAD_SCHEDULER_DISPATCH_MARGIN_MILLIS
+                }
             requestScheduler.run(
                 priority = priority.toNetworkPriority(),
                 key = key,
                 reason = "PUT",
-                timeoutMillis = SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS + SLOCK_UPLOAD_SCHEDULER_DISPATCH_MARGIN_MILLIS,
+                timeoutMillis = schedulerTimeoutMillis,
             ) {
                 if (!expectedAuthority.isCurrentForPresignedPut()) {
                     return@run routeEnvironmentChangedResponse()
@@ -606,6 +621,7 @@ internal class SharedSlockNetworkClient(
                                 method = upload.method,
                                 headers = upload.headers,
                                 body = transportBody,
+                                onUploadProgress = onUploadProgress,
                             )
                         } else {
                             executor.executeBytes(
@@ -614,6 +630,7 @@ internal class SharedSlockNetworkClient(
                                 method = upload.method,
                                 headers = upload.headers,
                                 bodyBytes = bodyBytes!!,
+                                onUploadProgress = onUploadProgress,
                             )
                         }
                     } catch (failure: Throwable) {

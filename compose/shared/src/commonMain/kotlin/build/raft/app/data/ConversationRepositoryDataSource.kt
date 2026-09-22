@@ -375,7 +375,8 @@ class RealConversationRepository private constructor(
 
     override suspend fun putAttachmentUploadBytes(
         upload: AttachmentUploadSessionPut,
-        bytes: ByteArray
+        bytes: ByteArray,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
     ): DataResult<Unit> {
         if (directSessionAuthority == null) return directSessionAuthorityRequired()
         currentContext() ?: return authRequired()
@@ -389,6 +390,7 @@ class RealConversationRepository private constructor(
                     priority = DataRequestPriority.Foreground,
                     upload = upload,
                     bytes = bytes,
+                    onUploadProgress = onUploadProgress,
                 )
             }
         )
@@ -396,7 +398,8 @@ class RealConversationRepository private constructor(
 
     override suspend fun putAttachmentUploadFile(
         upload: AttachmentUploadSessionPut,
-        file: PlatformFile
+        file: PlatformFile,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
     ): DataResult<Unit> {
         if (directSessionAuthority == null) return directSessionAuthorityRequired()
         currentContext() ?: return authRequired()
@@ -410,6 +413,7 @@ class RealConversationRepository private constructor(
                     priority = DataRequestPriority.Foreground,
                     upload = upload,
                     file = file,
+                    onUploadProgress = onUploadProgress,
                 )
             }
         )
@@ -1513,7 +1517,10 @@ class RealConversationRepository private constructor(
     ): DataResult<Unit> {
         return try {
             val response = block()
-            if (response.isSuccessful) {
+            // If-None-Match:* returns 412 when the object is already present. Treat that as a
+            // successful PUT so the caller can complete the same session instead of creating
+            // another reservation.
+            if (response.isSuccessful || response.code == 412) {
                 warningLogger(
                     "conversation_binary_result source=$source code=${response.code} " +
                         "result=content"

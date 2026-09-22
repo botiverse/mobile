@@ -57,8 +57,14 @@ import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SlockEventBus
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.DataResult
 import build.raft.app.data.DirectAttachmentUploadOperation
+import build.raft.app.data.ThreadComposerDirectUploadDecision
+import build.raft.app.data.ThreadComposerDirectUploadPhase
+import build.raft.app.data.resolveThreadComposerDirectUpload
+import build.raft.app.data.ThreadComposerDirectUploadClientRequestIds
+import build.raft.app.data.newAttachmentUploadClientRequestId
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.KeyValueThreadReadAnchorStore
@@ -6049,6 +6055,9 @@ internal fun SharedThreadRouteContent(
     var attachmentUploadFilesByLocalId by remember(threadInstanceKey) {
         mutableStateOf<Map<ThreadAttachmentUploadAttemptIdentity, PlatformFile>>(emptyMap())
     }
+    val threadDirectUploadClientRequestIds = remember(threadInstanceKey) {
+        ThreadComposerDirectUploadClientRequestIds()
+    }
     // Rows restored from the durable draft are tracked separately from files admitted by the
     // currently mounted composer.  When a reused Thread instance moves to another draft key we
     // may retire only the previous restoration batch; blindly clearing this map would race an
@@ -8099,7 +8108,9 @@ internal fun SharedThreadRouteContent(
     suspend fun admittedComposerAttachmentFiles(
         files: List<PlatformFile>,
         maxBytesOverride: Long? = null,
+        skipClientSizeGate: Boolean = false,
     ): List<PlatformFile> {
+        if (skipClientSizeGate) return files
         val maxBytes =
             maxBytesOverride ?: when (val capability = dataSource.attachmentUploadMaxBytes()) {
                 is DataResult.Content -> capability.data
@@ -8145,36 +8156,44 @@ internal fun SharedThreadRouteContent(
         // it for capabilities, upload, and compensation. This prevents a session/account/server
         // switch between those calls from silently falling back to an unbound repository.
         val directUploadOperation =
-            if (requireAllFiles) {
-                dataSource.captureDirectAttachmentUploadOperation { message -> bridge.log(message) }
-            } else {
-                null
-            }
+            dataSource.captureDirectAttachmentUploadOperation { message -> bridge.log(message) }
         if (requireAllFiles && directUploadOperation == null) {
             bridge.logWarn("thread_composer_attachment_batch_rejected reason=authority_unavailable")
             return false
         }
-        val directCapabilities =
+        val capabilitiesProbe =
             if (directUploadOperation != null) {
-                when (val result = directUploadOperation.capabilities()) {
-                    is DataResult.Content -> result.data
-                    is DataResult.NoPermission -> {
-                        routeAuthRequired(result)
-                        bridge.toast(attachmentLimitUnavailableLabel)
-                        return false
-                    }
-                    is DataResult.Empty,
-                    is DataResult.Error -> {
-                        bridge.toast(attachmentLimitUnavailableLabel)
-                        return false
-                    }
-                }
+                directUploadOperation.capabilities()
             } else {
                 null
             }
+        if (capabilitiesProbe is DataResult.NoPermission) {
+            routeAuthRequired(capabilitiesProbe)
+            if (requireAllFiles) {
+                bridge.toast(attachmentLimitUnavailableLabel)
+                return false
+            }
+        }
+        val capabilitiesCancelled =
+            (capabilitiesProbe as? DataResult.Error)?.error?.code.equals("cancelled", ignoreCase = true)
+        if (capabilitiesCancelled) {
+            return false
+        }
+        val directCapabilities =
+            (capabilitiesProbe as? DataResult.Content)?.data
+        // Per-file Thread path fail-opens to multipart when capabilities cannot be read.
+        // Gallery N/N remains fail-closed: it cannot compensate without an explicit capability.
+        if (requireAllFiles && directCapabilities == null) {
+            bridge.toast(attachmentLimitUnavailableLabel)
+            return false
+        }
         val admittedFiles = admittedComposerAttachmentFiles(
             files = files,
             maxBytesOverride = directCapabilities?.maxBytes,
+            // Caller sizeBytes is an untrusted hint. Direct and fail-open paths
+            // decide TooLarge/threshold only after authority-bound prepare/stat
+            // (or skip the gate entirely when capabilities cannot be read).
+            skipClientSizeGate = true,
         )
         if (admittedFiles.isEmpty() || (requireAllFiles && admittedFiles.size != files.size)) {
             if (requireAllFiles && admittedFiles.size != files.size) {
@@ -8666,6 +8685,13 @@ internal fun SharedThreadRouteContent(
             val localAttachmentId = file.id.takeIf { it.isNotBlank() } ?: continue
             val admission = admittedLocalAdmissions[localAttachmentId] ?: continue
             val admittedSourceAttachment = localAttachments.firstOrNull { it.id == localAttachmentId }
+            val identity = threadAttachmentUploadAttemptIdentity(localAttachmentId, draftKey)
+            val clientRequestId =
+                if (identity != null) {
+                    threadDirectUploadClientRequestIds.idFor(identity)
+                } else {
+                    newAttachmentUploadClientRequestId()
+                }
             val attemptToken =
                 attachmentUploadOrchestrator.launch(
                     localAttachmentId = localAttachmentId,
@@ -8687,29 +8713,163 @@ internal fun SharedThreadRouteContent(
                         val uploadResult =
                             withContext(Dispatchers.Default) {
                                 attachmentUploadSemaphore.withPermit {
-                                    dataSource.uploadAttachments(
-                                        channelId = channelId,
-                                        files = listOf(file),
-                                        onProgress = { progress ->
-                                            coroutineScope.launch {
-                                                attachmentUploadOrchestrator.publishIfAccepted(
-                                                    localAttachmentId,
-                                                    draftKey,
-                                                    uploadAttemptToken
-                                                ) {
-                                                    composerDraftViewModel.accept(
-                                                        SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
-                                                            attachmentId = localAttachmentId,
-                                                            bytesTransferred = progress.bytesTransferred,
-                                                            bytesTotal = progress.bytesTotal,
-                                                            expectedDraftKey = draftKey,
-                                                            expectedAdmission = admission
-                                                        )
+                                    val resolvedUpload =
+                                        when (
+                                            val resolved =
+                                                resolveThreadComposerDirectUpload(
+                                                    file = file,
+                                                    capabilities = directCapabilities,
+                                                    cancelled = false,
+                                                    prepare = { candidate ->
+                                                        val operation = directUploadOperation
+                                                        if (operation == null) {
+                                                            DataResult.Error(
+                                                                ScreenError(
+                                                                    code = "attachment_size_unavailable",
+                                                                    retryable = true,
+                                                                )
+                                                            )
+                                                        } else {
+                                                            operation.prepare(candidate)
+                                                        }
+                                                    },
+                                                )
+                                        ) {
+                                            is DataResult.Content -> resolved.data
+                                            is DataResult.Error ->
+                                                return@withPermit resolved
+                                            is DataResult.NoPermission ->
+                                                return@withPermit resolved
+                                            is DataResult.Empty ->
+                                                return@withPermit DataResult.Error(
+                                                    ScreenError(
+                                                        code = "attachment_size_unavailable",
+                                                        retryable = false,
                                                     )
+                                                )
+                                        }
+                                    val uploadFile = resolvedUpload.file
+                                    val decision = resolvedUpload.decision
+                                    fun publishPhaseProgress(phase: ThreadComposerDirectUploadPhase) {
+                                        val transferred =
+                                            when (phase) {
+                                                ThreadComposerDirectUploadPhase.Creating -> 1L
+                                                ThreadComposerDirectUploadPhase.Putting -> 2L
+                                                ThreadComposerDirectUploadPhase.Verifying -> 3L
+                                            }
+                                        coroutineScope.launch {
+                                            attachmentUploadOrchestrator.publishIfAccepted(
+                                                localAttachmentId,
+                                                draftKey,
+                                                uploadAttemptToken
+                                            ) {
+                                                composerDraftViewModel.accept(
+                                                    SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
+                                                        attachmentId = localAttachmentId,
+                                                        bytesTransferred = transferred,
+                                                        bytesTotal = 3L,
+                                                        expectedDraftKey = draftKey,
+                                                        expectedAdmission = admission
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    }
+                                    when (decision) {
+                                        ThreadComposerDirectUploadDecision.Cancelled ->
+                                            DataResult.Error(ScreenError(code = "cancelled", retryable = false))
+                                        ThreadComposerDirectUploadDecision.TooLarge ->
+                                            DataResult.Error(
+                                                ScreenError(code = "UPLOAD_TOO_LARGE", retryable = false)
+                                            )
+                                        ThreadComposerDirectUploadDecision.Direct -> {
+                                            val operation = directUploadOperation
+                                            if (operation == null) {
+                                                dataSource.uploadAttachments(
+                                                    channelId = channelId,
+                                                    files = listOf(uploadFile),
+                                                    onProgress = { progress ->
+                                                        coroutineScope.launch {
+                                                            attachmentUploadOrchestrator.publishIfAccepted(
+                                                                localAttachmentId,
+                                                                draftKey,
+                                                                uploadAttemptToken
+                                                            ) {
+                                                                composerDraftViewModel.accept(
+                                                                    SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
+                                                                        attachmentId = localAttachmentId,
+                                                                        bytesTransferred = progress.bytesTransferred,
+                                                                        bytesTotal = progress.bytesTotal,
+                                                                        expectedDraftKey = draftKey,
+                                                                        expectedAdmission = admission
+                                                                    )
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                )
+                                            } else {
+                                                when (
+                                                    val one =
+                                                        operation.uploadOneThreadFile(
+                                                            channelId = ChannelId(channelId),
+                                                            file = uploadFile,
+                                                            clientRequestId = clientRequestId,
+                                                            onPhase = ::publishPhaseProgress,
+                                                            onUploadProgress = { progress ->
+                                                                coroutineScope.launch {
+                                                                    attachmentUploadOrchestrator.publishIfAccepted(
+                                                                        localAttachmentId,
+                                                                        draftKey,
+                                                                        uploadAttemptToken
+                                                                    ) {
+                                                                        composerDraftViewModel.accept(
+                                                                            SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
+                                                                                attachmentId = localAttachmentId,
+                                                                                bytesTransferred = progress.bytesTransferred,
+                                                                                bytesTotal = progress.bytesTotal,
+                                                                                expectedDraftKey = draftKey,
+                                                                                expectedAdmission = admission
+                                                                            )
+                                                                        )
+                                                                    }
+                                                                }
+                                                            },
+                                                        )
+                                                ) {
+                                                    is DataResult.Content ->
+                                                        DataResult.Content(AttachmentUploadResult(listOf(one.data)))
+                                                    is DataResult.Error -> one
+                                                    is DataResult.NoPermission -> one
+                                                    is DataResult.Empty -> one
                                                 }
                                             }
                                         }
-                                    )
+                                        ThreadComposerDirectUploadDecision.LegacyMultipart ->
+                                            dataSource.uploadAttachments(
+                                                channelId = channelId,
+                                                files = listOf(uploadFile),
+                                                onProgress = { progress ->
+                                                    coroutineScope.launch {
+                                                        attachmentUploadOrchestrator.publishIfAccepted(
+                                                            localAttachmentId,
+                                                            draftKey,
+                                                            uploadAttemptToken
+                                                        ) {
+                                                            composerDraftViewModel.accept(
+                                                                SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
+                                                                    attachmentId = localAttachmentId,
+                                                                    bytesTransferred = progress.bytesTransferred,
+                                                                    bytesTotal = progress.bytesTotal,
+                                                                    expectedDraftKey = draftKey,
+                                                                    expectedAdmission = admission
+                                                                )
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            )
+                                    }
                                 }
                             }
                         val published =
@@ -9311,9 +9471,8 @@ internal fun SharedThreadRouteContent(
                             withContext(NonCancellable) {
                                 uploadComposerAttachmentFiles(
                                     files = files,
-                                    // 1.11.0 bleed-stop: 1.10.0 admitted per file. requireAllFiles
-                                    // would reject the whole gallery pick if one image exceeds
-                                    // maxBytes. Replacement ids stay keyed by local file id.
+                                    // Per-file admission: one oversize or failed image must not
+                                    // reject the rest. Direct vs multipart is chosen per file.
                                     requireAllFiles = false,
                                     replaceAttachmentIdsByLocalId = replaceAttachmentIdsByLocalId
                                 )
