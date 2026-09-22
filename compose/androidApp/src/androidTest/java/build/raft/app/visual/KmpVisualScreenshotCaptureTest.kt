@@ -1928,8 +1928,9 @@ class KmpVisualScreenshotCaptureTest {
     //                    present (the invalid-syntax specimen must fall back).
     // Criterion agreed with HuaTuo/Quiver in #artifacts:db1c77fa and issue #2539.
     //
-    // Ink floor is max(120 px, 0.2% of the container area) — an absolute presence
-    // check, NOT an area ratio: a real 2-node diagram is only ~5% ink of its scene.
+    // Ink floor is max(120 px, 150·density²) — an absolute presence check scaled with
+    // pixel density, NOT an area ratio: a real 2-node diagram is only ~3% ink of the
+    // container interior (≈1,084 dp²), so any area-share threshold would reject it.
     // Precondition (theme): the ink/white thresholds below are absolute. They are
     // theme-independent INSIDE the container because SlockMermaidDiagramBlock hard-codes
     // Color.White + BorderBlack for it; only the container DETECTION step assumes the
@@ -2111,7 +2112,12 @@ class KmpVisualScreenshotCaptureTest {
             reading.interiorWhiteRatio >= 0.6f
         )
         val box = requireNotNull(reading.box)
-        val minInk = maxOf(120, (box.width().toLong() * box.height().toLong() * 0.002).toInt())
+        // Presence floor scaled by density², NOT by container area: the container is
+        // fillMaxWidth() so its area tracks the message column, not the diagram, and
+        // at density 1 a real 2-node diagram is only ≈1,084 ink px (Quiver's command
+        // table: borders + edges + arrows + glyphs). 150·d² gives ≈7× headroom at every
+        // density (d=3 ⇒ 1,350 px vs ≈9,760 real) while still rejecting stray specks.
+        val minInk = maxOf(120, (150 * density * density).roundToInt())
         assertTrue(
             "$caseId: diagram canvas has no ink — ${reading.inkPixels} ink pixels inside the container " +
                 "(need ≥ $minInk); this is the blank-canvas shape of release 1120016 ($summary)",
