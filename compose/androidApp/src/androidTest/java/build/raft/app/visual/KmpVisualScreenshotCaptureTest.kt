@@ -1937,7 +1937,7 @@ class KmpVisualScreenshotCaptureTest {
     // The visual pages run in the light theme; a dark-theme capture would fail at
     // detection ("no container"), not at the ink count — read such a RED as a theme
     // mismatch, not as a blank canvas. Geometry shared with HuaTuo's device script:
-    // border run >= 40% width, thin-line check 3dp inside, interior inset 3dp,
+    // border run >= 160dp (absolute), thin-line check 3dp inside, interior inset 3dp,
     // zoom chrome exclusion 130x44dp at the interior's bottom-end, density = width/390.
     private data class MermaidInkReading(
         val box: android.graphics.Rect?,
@@ -1964,11 +1964,19 @@ class KmpVisualScreenshotCaptureTest {
     /**
      * Finds the diagram container: a rectangle outlined by the 1dp black border
      * that SlockMermaidDiagramBlock draws around the CanvasView. The outline
-     * must span at least 40% of the bitmap width so the small zoom-control
-     * border (≈95dp) can never be mistaken for it.
+     * must span at least 160dp so the small zoom-control border (≈95dp) can
+     * never be mistaken for it. Every candidate top edge is tried in order: a
+     * wide dark text row or divider that fails the thin-line / bottom / sides
+     * checks simply falls through to the next candidate (fail-closed only when
+     * no candidate survives).
      */
     private fun Bitmap.findMermaidDiagramBox(): android.graphics.Rect? {
-        val minRun = (width * 0.4f).toInt().coerceAtLeast(16)
+        // The bordered container is fillMaxWidth() over the message column (CI reads
+        // ~77% of the 390dp crop), independent of the diagram's own scene width, so an
+        // absolute floor is enough: 160dp keeps the ~95dp zoom-control border out and
+        // does not depend on screen share (HuaTuo/Argus, 2026-09-22).
+        val density = width / THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP.widthDp.toFloat()
+        val minRun = (160 * density).roundToInt().coerceAtLeast(16)
         val row = IntArray(width)
         data class Run(val y: Int, val x0: Int, val x1: Int)
         val runs = mutableListOf<Run>()
@@ -1989,7 +1997,6 @@ class KmpVisualScreenshotCaptureTest {
             best?.let { runs += it }
         }
         if (runs.isEmpty()) return null
-        val density = width / THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP.widthDp.toFloat()
         val minHeightPx = (24 * density).roundToInt()
         val tolerance = (2 * density).roundToInt().coerceAtLeast(2)
         val probe = (3 * density).roundToInt().coerceAtLeast(3)
