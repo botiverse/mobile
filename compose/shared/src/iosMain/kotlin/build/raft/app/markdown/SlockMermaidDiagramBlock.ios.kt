@@ -80,10 +80,10 @@ internal actual fun SlockMermaidDiagramBlock(
                     .width(diagramWidthDp)
                     .height(diagramHeightDp),
                 viewInit = {
-                    drawCallback = { context, _, _ ->
+                    drawCallback = { context, cbWidth, cbHeight ->
                         slockLogInfo("SlockMermaid", "mermaid_drawcb_entry site=viewInit layoutFrameDefault=${isLayoutFrameDefault()}")
                         // PROBE (DO NOT MERGE): callback-internal quantity + CanvasView positive control.
-                        slockLogInfo("SlockMermaid", "mermaid_drawcb_scene site=viewInit cmds=${layoutScene.commands.size} w=${layoutScene.width} h=${layoutScene.height}")
+                        slockLogInfo("SlockMermaid", "mermaid_drawcb_scene site=viewInit cmds=${layoutScene.commands.size} w=${layoutScene.width} h=${layoutScene.height} cbWidth=$cbWidth cbHeight=$cbHeight")
                         context.beginPath()
                         context.moveTo(2f, 2f)
                         context.lineTo(42f, 2f)
@@ -107,10 +107,10 @@ internal actual fun SlockMermaidDiagramBlock(
                     redraw()
                 },
                 viewUpdate = { view ->
-                    view.drawCallback = { context, _, _ ->
+                    view.drawCallback = { context, cbWidth, cbHeight ->
                         slockLogInfo("SlockMermaid", "mermaid_drawcb_entry site=viewUpdate layoutFrameDefault=${view.isLayoutFrameDefault()}")
                         // PROBE (DO NOT MERGE): callback-internal quantity + CanvasView positive control.
-                        slockLogInfo("SlockMermaid", "mermaid_drawcb_scene site=viewUpdate cmds=${layoutScene.commands.size} w=${layoutScene.width} h=${layoutScene.height}")
+                        slockLogInfo("SlockMermaid", "mermaid_drawcb_scene site=viewUpdate cmds=${layoutScene.commands.size} w=${layoutScene.width} h=${layoutScene.height} cbWidth=$cbWidth cbHeight=$cbHeight")
                         context.beginPath()
                         context.moveTo(2f, 2f)
                         context.lineTo(42f, 2f)
