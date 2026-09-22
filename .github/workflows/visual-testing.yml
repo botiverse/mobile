@@ -371,7 +371,7 @@ jobs:
           ram-size: 4096M
           cores: 2
           emulator-boot-timeout: 1200
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
+          emulator-options: -no-snapshot -no-window -gpu host -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
           # The runner executes each script line as a separate command;
           # backslash line continuations break ("Task '\' not found").
