@@ -37,7 +37,7 @@ action_start="$( [ -n "$start_file" ] && [ -f "$start_file" ] && cat "$start_fil
 first_ts="$(grep -v '^###' "$out" | head -1 | grep -oE '"(timestampMillis|ts|timestamp)":[ ]*[0-9]+' | head -1 | grep -oE '[0-9]+$' || true)"
 {
   echo "capture_mode=tail_at_end"
-  echo "action_start_epoch_s=$action_start"
+  echo "action_start_epoch_s=$action_start (device clock via adb shell date; JSONL ts is device clock too)"
   echo "first_record_ts=${first_ts:-none}"
   echo "total_lines=$(grep -vc '^###' "$out" || true)"
   echo "bytes=$(wc -c < "$out")"
