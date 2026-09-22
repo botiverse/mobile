@@ -248,6 +248,22 @@ internal class SlockAvatarMountedSession(
             snapshotForLocked(key)
         }
 
+    fun snapshotForSubject(
+        subject: SlockAvatarCacheSubject,
+        content: SlockAvatarContentIdentity
+    ): SlockAvatarMountedSnapshot? =
+        synchronized(lock) {
+            val entry = metadata.entries.firstOrNull {
+                it.key.subject == subject && it.value.key.content == content
+            }
+            val key = entry?.value?.key
+                ?: mounts.values.firstOrNull {
+                    it.token.key.subject == subject && it.token.key.content == content
+                }?.token?.key
+                ?: return@synchronized null
+            snapshotForLocked(key)
+        }
+
     /**
      * Seeds an exact durable commit after process restart. It may only initialize an untouched
      * current mount: an active flight or any in-memory commit wins and cannot be overwritten by a
