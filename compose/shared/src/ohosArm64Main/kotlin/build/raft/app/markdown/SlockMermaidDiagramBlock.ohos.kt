@@ -25,6 +25,7 @@ import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import build.raft.app.SlockColor
+import build.raft.app.slockLogInfo
 import build.raft.mermaid.core.MermaidParseResult
 import build.raft.mermaid.core.MermaidParser
 import build.raft.mermaid.kuikly.MermaidKuiklyRenderer
@@ -78,6 +79,7 @@ internal actual fun SlockMermaidDiagramBlock(
                     .height(diagramHeightDp),
                 viewInit = {
                     drawCallback = { context, _, _ ->
+                        slockLogInfo("SlockMermaid", "mermaid_drawcb_entry layoutFrameDefault=${isLayoutFrameDefault()}")
                         MermaidKuiklyRenderer.render(
                             scene = layoutScene,
                             context = context,
@@ -85,9 +87,11 @@ internal actual fun SlockMermaidDiagramBlock(
                             batchDraw = true,
                         )
                     }
+                    redraw()
                 },
                 viewUpdate = { view ->
                     view.drawCallback = { context, _, _ ->
+                        slockLogInfo("SlockMermaid", "mermaid_drawcb_entry layoutFrameDefault=${view.isLayoutFrameDefault()}")
                         MermaidKuiklyRenderer.render(
                             scene = layoutScene,
                             context = context,
@@ -95,6 +99,7 @@ internal actual fun SlockMermaidDiagramBlock(
                             batchDraw = true,
                         )
                     }
+                    view.redraw()
                 }
             )
 
