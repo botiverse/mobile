@@ -377,6 +377,15 @@ jobs:
           # backslash line continuations break ("Task '\' not found").
           script: |
             bash scripts/run_android_visual_capture.sh --app-apk "$(find apks -name '*connectedTest.apk' -not -name '*androidTest*' | sort | head -1)" --test-apk "$(find apks -name '*androidTest.apk' | sort | head -1)" --method-filter "${{ needs.android-build.outputs.method_filter }}" --shard-index "${{ matrix.shard }}" --shard-total 8 --capture-locale "${{ inputs.capture_locale }}" --output-dir visual-testing-results --defer-verdict
+            bash scripts/ci/export_app_diagnostics_jsonl.sh "visual-testing-results/diagnostics-shard-${{ matrix.shard }}.jsonl" || true
+
+      - name: Upload app diagnostics JSONL (mermaid probe)
+        if: ${{ always() && (needs.android-build.outputs.method_filter == '' || matrix.shard == 0) }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: visual-diagnostics-shard-${{ matrix.shard }}
+          path: visual-testing-results/diagnostics-shard-${{ matrix.shard }}.jsonl
+          if-no-files-found: warn
 
       - name: Upload android results
         if: ${{ always() && (needs.android-build.outputs.method_filter == '' || matrix.shard == 0) }}
