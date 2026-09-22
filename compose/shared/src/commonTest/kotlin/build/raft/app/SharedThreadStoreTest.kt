@@ -3488,13 +3488,15 @@ class SharedThreadStoreTest {
         )
 
         repository.releaseGetThread?.complete(Unit)
+        // The canonical body and the canonicalAccessResolved flag land in separate reduces;
+        // wait for the flag, then read one frame.
         withTimeout(1_000) {
-            while (store.state.value.payload.messages.singleOrNull()?.body != "network body") {
+            while (!store.state.value.canonicalAccessResolved) {
                 delay(10)
             }
         }
         val canonicalFrame = store.state.value
-        assertTrue(canonicalFrame.canonicalAccessResolved)
+        assertEquals("network body", canonicalFrame.payload.messages.singleOrNull()?.body)
         assertEquals(ThreadAccessResolution.Resolved, canonicalFrame.accessResolution)
         assertTrue(canonicalFrame.writeActionsEnabled)
         scope.cancel()
