@@ -1108,12 +1108,16 @@ class SharedActivityStore internal constructor(
                                     SharedActivityPageSize
                                 )
                             }
+                        // task #302: guard on identity (user + server), not the access
+                        // token. A 401 inside loadCanonicalDepth triggers a token
+                        // rotation and the retry already returns fresh data; comparing
+                        // tokens here discards that successful result as stale_session
+                        // and leaves the visible feed on the pre-refresh snapshot.
                         val currentSession = authStore.readSession()
                         val requestSessionStillCurrent =
                             currentSession != null &&
                                 currentSession.user.id == userId &&
-                                currentSession.currentServerId == serverId.value &&
-                                currentSession.accessToken == session.accessToken
+                                currentSession.currentServerId == serverId.value
                         if (!requestSessionStillCurrent) {
                             synchronized(realtimeOwnerLock) {
                                 if (generation == loadGeneration && !backgroundRefresh) {
