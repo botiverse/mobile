@@ -82,7 +82,7 @@ internal actual fun SlockMermaidDiagramBlock(
                             scene = layoutScene,
                             context = context,
                             scale = scale,
-                            batchDraw = true,
+                            batchDraw = false,
                         )
                     }
                 },
@@ -92,7 +92,7 @@ internal actual fun SlockMermaidDiagramBlock(
                             scene = layoutScene,
                             context = context,
                             scale = scale,
-                            batchDraw = true,
+                            batchDraw = false,
                         )
                     }
                 }
