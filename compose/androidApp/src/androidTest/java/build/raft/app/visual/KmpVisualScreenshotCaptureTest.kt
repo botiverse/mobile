@@ -2095,13 +2095,53 @@ class KmpVisualScreenshotCaptureTest {
         return MermaidInkReading(box, if (total == 0) 0f else white.toFloat() / total, ink, bounds, fill)
     }
 
+    /**
+     * Same-run positive control for the fill band (Argus/Quiver 2026-09-22: every
+     * bucket needs its own positive; the dark-ink positive from the fallback case
+     * does not cover the #eeeeee band). Two independent legs:
+     *  - synthetic: a 32x32 #eeeeee bitmap must count 1024 band pixels and a
+     *    #07111F one must count 0 — proves the band predicate on this build;
+     *  - in-run: band pixels anywhere in the captured crop (anti-alias fringe of
+     *    the 1dp border, light UI greys) reported for the reader, not asserted.
+     */
+    private fun fillBandSelfCheck(): String {
+        val fill = Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFFEEEEEE.toInt()) }
+        val dark = Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF07111F.toInt()) }
+        fun count(b: Bitmap): Int {
+            var n = 0
+            val row = IntArray(b.width)
+            for (y in 0 until b.height) {
+                b.getPixels(row, 0, b.width, 0, y, b.width, 1)
+                for (x in 0 until b.width) if (mermaidPixelIsNodeFill(row[x])) n++
+            }
+            return n
+        }
+        val fillCount = count(fill)
+        val darkCount = count(dark)
+        fill.recycle(); dark.recycle()
+        assertTrue("fill-band reader self-check failed: #eeeeee=$fillCount (want 1024), #07111F=$darkCount (want 0)", fillCount == 1024 && darkCount == 0)
+        return "fillBandSelfCheck=ok(1024/0)"
+    }
+
+    private fun Bitmap.fillBandPixelsInCrop(): Int {
+        var n = 0
+        val row = IntArray(width)
+        for (y in 0 until height) {
+            getPixels(row, 0, width, 0, y, width, 1)
+            for (x in 0 until width) if (mermaidPixelIsNodeFill(row[x])) n++
+        }
+        return n
+    }
+
     private fun Bitmap.assertMermaidDiagramDrawn(caseId: String) {
+        val selfCheck = fillBandSelfCheck()
+        val bandInCrop = fillBandPixelsInCrop()
         val reading = readMermaidInk()
         val density = width / THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP.widthDp.toFloat()
         val summary =
             "box=${reading.box} interiorWhiteRatio=${"%.3f".format(reading.interiorWhiteRatio)} " +
                 "inkPixels=${reading.inkPixels} inkBounds=${reading.inkBounds} " +
-                "fillPixels=${reading.fillPixels} bitmap=${width}x${height}"
+                "fillPixels=${reading.fillPixels} fillBandPixelsInCrop=$bandInCrop $selfCheck bitmap=${width}x${height}"
         assertTrue(
             "$caseId: no white container with a 1dp black border found — the block fell back to a code " +
                 "block or did not render at all ($summary)",
