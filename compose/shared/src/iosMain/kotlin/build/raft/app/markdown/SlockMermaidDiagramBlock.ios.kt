@@ -29,6 +29,7 @@ import build.raft.app.slockLogInfo
 import build.raft.mermaid.core.MermaidParseResult
 import build.raft.mermaid.core.MermaidParser
 import build.raft.mermaid.kuikly.MermaidKuiklyRenderer
+import com.tencent.kuikly.core.layout.Frame
 import com.tencent.kuikly.core.views.CanvasView
 import build.raft.mermaid.layout.LayoutConfig
 import build.raft.mermaid.layout.LayoutScene
@@ -79,7 +80,7 @@ internal actual fun SlockMermaidDiagramBlock(
                     .height(diagramHeightDp),
                 viewInit = {
                     drawCallback = { context, _, _ ->
-                        slockLogInfo("SlockMermaid", "mermaid_drawcb_entry layoutFrameDefault=${isLayoutFrameDefault()}")
+                        slockLogInfo("SlockMermaid", "mermaid_drawcb_entry site=viewInit layoutFrameDefault=${flexNode.layoutFrame.isDefaultValue()}")
                         MermaidKuiklyRenderer.render(
                             scene = layoutScene,
                             context = context,
@@ -87,11 +88,13 @@ internal actual fun SlockMermaidDiagramBlock(
                             batchDraw = true,
                         )
                     }
-                    redraw()
+                    slockLogInfo("SlockMermaid", "mermaid_drawcb_setframe_enter site=viewInit layoutFrameDefault=${flexNode.layoutFrame.isDefaultValue()} before_rvFrame=${renderView?.currentFrame}")
+                    setFrameToRenderView(Frame(0f, 0f, (layoutScene.width * scale).toFloat(), (layoutScene.height * scale).toFloat()))
+                    slockLogInfo("SlockMermaid", "mermaid_drawcb_setframe_returned site=viewInit layoutFrameDefault=${flexNode.layoutFrame.isDefaultValue()}")
                 },
                 viewUpdate = { view ->
                     view.drawCallback = { context, _, _ ->
-                        slockLogInfo("SlockMermaid", "mermaid_drawcb_entry layoutFrameDefault=${view.isLayoutFrameDefault()}")
+                        slockLogInfo("SlockMermaid", "mermaid_drawcb_entry site=viewUpdate layoutFrameDefault=${view.flexNode.layoutFrame.isDefaultValue()}")
                         MermaidKuiklyRenderer.render(
                             scene = layoutScene,
                             context = context,
@@ -99,7 +102,9 @@ internal actual fun SlockMermaidDiagramBlock(
                             batchDraw = true,
                         )
                     }
-                    view.redraw()
+                    slockLogInfo("SlockMermaid", "mermaid_drawcb_setframe_enter site=viewUpdate layoutFrameDefault=${view.flexNode.layoutFrame.isDefaultValue()} before_rvFrame=${view.renderView?.currentFrame}")
+                    view.setFrameToRenderView(Frame(0f, 0f, (layoutScene.width * scale).toFloat(), (layoutScene.height * scale).toFloat()))
+                    slockLogInfo("SlockMermaid", "mermaid_drawcb_setframe_returned site=viewUpdate layoutFrameDefault=${view.flexNode.layoutFrame.isDefaultValue()}")
                 }
             )
 
