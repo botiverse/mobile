@@ -1928,6 +1928,8 @@ class KmpVisualScreenshotCaptureTest {
     //                    present (the invalid-syntax specimen must fall back).
     // Criterion agreed with HuaTuo/Quiver in #artifacts:db1c77fa and issue #2539.
     //
+    // Ink floor is max(120 px, 0.2% of the container area) — an absolute presence
+    // check, NOT an area ratio: a real 2-node diagram is only ~5% ink of its scene.
     // Precondition (theme): the ink/white thresholds below are absolute. They are
     // theme-independent INSIDE the container because SlockMermaidDiagramBlock hard-codes
     // Color.White + BorderBlack for it; only the container DETECTION step assumes the
@@ -1947,8 +1949,11 @@ class KmpVisualScreenshotCaptureTest {
     private fun mermaidPixelIsNearBlack(c: Int): Boolean =
         Color.red(c) < 56 && Color.green(c) < 56 && Color.blue(c) < 56
 
+    // "White" here means canvas-or-node-fill: the renderer's node fill is #eeeeee
+    // (238), so the bound sits at 224 to leave 14 of headroom for anti-aliasing and
+    // the capture chain instead of 2 (Quiver's command-table reading, 2026-09-22).
     private fun mermaidPixelIsNearWhite(c: Int): Boolean =
-        Color.red(c) > 236 && Color.green(c) > 236 && Color.blue(c) > 236
+        Color.red(c) > 224 && Color.green(c) > 224 && Color.blue(c) > 224
 
     // Ink = anything clearly darker than the white canvas. Node fills (#eeeeee)
     // and anti-alias fringes are deliberately NOT ink; strokes (#999999),
