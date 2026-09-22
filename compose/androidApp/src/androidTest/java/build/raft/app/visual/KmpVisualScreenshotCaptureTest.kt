@@ -1943,8 +1943,19 @@ class KmpVisualScreenshotCaptureTest {
         val box: android.graphics.Rect?,
         val interiorWhiteRatio: Float,
         val inkPixels: Int,
-        val inkBounds: android.graphics.Rect?
+        val inkBounds: android.graphics.Rect?,
+        // Diagnostic only (never part of the verdict): pixels in the node-fill band
+        // (#eeeeee ± anti-alias). A RED with fillPixels > 0 and inkPixels == 0 means
+        // "rects filled, strokes/text/edges missing" — a partial render, not a blank
+        // canvas. Keeps the CI reading attributable next to HuaTuo's NONUNIFORM bucket.
+        val fillPixels: Int
     )
+
+    private fun mermaidPixelIsNodeFill(c: Int): Boolean {
+        val lo = minOf(Color.red(c), Color.green(c), Color.blue(c))
+        val hi = maxOf(Color.red(c), Color.green(c), Color.blue(c))
+        return lo in 226..246 && hi - lo <= 8
+    }
 
     private fun mermaidPixelIsNearBlack(c: Int): Boolean =
         Color.red(c) < 56 && Color.green(c) < 56 && Color.blue(c) < 56
@@ -2041,7 +2052,7 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     private fun Bitmap.readMermaidInk(): MermaidInkReading {
-        val box = findMermaidDiagramBox() ?: return MermaidInkReading(null, 0f, 0, null)
+        val box = findMermaidDiagramBox() ?: return MermaidInkReading(null, 0f, 0, null, 0)
         val density = width / THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP.widthDp.toFloat()
         val inset = (3 * density).roundToInt().coerceAtLeast(3)
         val interior = android.graphics.Rect(box.left + inset, box.top + inset, box.right - inset, box.bottom - inset)
@@ -2056,6 +2067,7 @@ class KmpVisualScreenshotCaptureTest {
         var white = 0
         var total = 0
         var ink = 0
+        var fill = 0
         var minX = Int.MAX_VALUE
         var minY = Int.MAX_VALUE
         var maxX = -1
@@ -2068,6 +2080,7 @@ class KmpVisualScreenshotCaptureTest {
                 total++
                 val c = row[x]
                 if (mermaidPixelIsNearWhite(c)) white++
+                if (mermaidPixelIsNodeFill(c)) fill++
                 if (mermaidPixelIsInk(c)) {
                     ink++
                     if (x < minX) minX = x
@@ -2078,7 +2091,7 @@ class KmpVisualScreenshotCaptureTest {
             }
         }
         val bounds = if (ink > 0) android.graphics.Rect(minX, minY, maxX, maxY) else null
-        return MermaidInkReading(box, if (total == 0) 0f else white.toFloat() / total, ink, bounds)
+        return MermaidInkReading(box, if (total == 0) 0f else white.toFloat() / total, ink, bounds, fill)
     }
 
     private fun Bitmap.assertMermaidDiagramDrawn(caseId: String) {
@@ -2086,7 +2099,8 @@ class KmpVisualScreenshotCaptureTest {
         val density = width / THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP.widthDp.toFloat()
         val summary =
             "box=${reading.box} interiorWhiteRatio=${"%.3f".format(reading.interiorWhiteRatio)} " +
-                "inkPixels=${reading.inkPixels} inkBounds=${reading.inkBounds} bitmap=${width}x${height}"
+                "inkPixels=${reading.inkPixels} inkBounds=${reading.inkBounds} " +
+                "fillPixels=${reading.fillPixels} bitmap=${width}x${height}"
         assertTrue(
             "$caseId: no white container with a 1dp black border found — the block fell back to a code " +
                 "block or did not render at all ($summary)",
