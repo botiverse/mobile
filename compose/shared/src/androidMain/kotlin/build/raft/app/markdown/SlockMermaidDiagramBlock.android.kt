@@ -105,6 +105,19 @@ internal actual fun SlockMermaidDiagramBlock(
                             batchDraw = true,
                         )
                     }
+                    try {
+                        android.util.Log.i(
+                            "SlockMermaidDrawCb",
+                            "mermaid_probe layoutFrame=" + view.layoutFrame +
+                                " isDefault=" + view.layoutFrame.isDefaultValue(),
+                        )
+                        val m = view.javaClass.getDeclaredMethod("draw")
+                        m.isAccessible = true
+                        m.invoke(view)
+                        android.util.Log.i("SlockMermaidDrawCb", "mermaid_probe draw() invoked")
+                    } catch (t: Throwable) {
+                        android.util.Log.e("SlockMermaidDrawCb", "mermaid_probe draw() failed: " + t)
+                    }
                 }
             )
 
