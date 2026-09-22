@@ -597,10 +597,18 @@ class SharedActivityStore internal constructor(
             synchronized(realtimeOwnerLock) {
                 if (_state.value.selectedFilter == filter) return@synchronized false
                 realtimeHighWater.clear()
+                val cachedSnapshot = _state.value.filterSnapshots[filter]
                 _state.value =
-                    SharedActivityState(
+                    _state.value.copy(
                         selectedFilter = filter,
-                        loading = true
+                        snapshot = cachedSnapshot,
+                        loaded = cachedSnapshot != null,
+                        loading = cachedSnapshot == null,
+                        refreshing = false,
+                        pullRefreshing = false,
+                        loadingMore = false,
+                        errorCode = null,
+                        loadMoreErrorCode = null
                     )
                 true
             }
@@ -613,7 +621,9 @@ class SharedActivityStore internal constructor(
             realtimeHighWater.clear()
             _state.value =
                 SharedActivityState(
-                    selectedFilter = _state.value.selectedFilter
+                    selectedFilter = _state.value.selectedFilter,
+                    ownerServerId = _state.value.ownerServerId,
+                    ownerUserId = _state.value.ownerUserId
                 )
         }
     }
@@ -2109,8 +2119,25 @@ class SharedActivityStore internal constructor(
         summarySource: String = "activity:${intent.activitySummarySource()}"
     ): Boolean {
         val previousState = _state.value
+        val stateWithFilterCache =
+            if (nextState.snapshot != null) {
+                val updatedMap = nextState.filterSnapshots.toMutableMap()
+                updatedMap[nextState.selectedFilter] = nextState.snapshot
+                if (intent is SharedActivityIntent.MarkRead ||
+                    intent is SharedActivityIntent.MarkDone ||
+                    intent is SharedActivityIntent.MarkAllRead ||
+                    intent is SharedActivityIntent.ApplyReadReceiptPrediction
+                ) {
+                    // Invalidate other filter caches when mutations occur so switching to them re-fetches fresh data
+                    val keysToRemove = updatedMap.keys.filter { it != nextState.selectedFilter }
+                    keysToRemove.forEach { updatedMap.remove(it) }
+                }
+                nextState.copy(filterSnapshots = updatedMap)
+            } else {
+                nextState
+            }
         val finalState =
-            persistSlices.fold(nextState) { state, slice ->
+            persistSlices.fold(stateWithFilterCache) { state, slice ->
                 slice.reduce(previous = previousState, intent = intent, reduced = state)
             }
         if (finalState == previousState) return false
@@ -2390,6 +2417,7 @@ internal fun List<InboxItem>.dedupeActivityItems(): List<InboxItem> =
 data class SharedActivityState(
     val selectedFilter: InboxFilter = InboxFilter.All,
     val snapshot: InboxSnapshot? = null,
+    val filterSnapshots: Map<InboxFilter, InboxSnapshot> = emptyMap(),
     val senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap(),
     val ownerServerId: String? = null,
     val ownerUserId: String? = null,

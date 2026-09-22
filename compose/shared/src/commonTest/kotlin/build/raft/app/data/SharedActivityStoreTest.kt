@@ -681,6 +681,26 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun setFilterRetainsCachedFilterSnapshotsForKeepAliveSwipe() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val allSnap = snapshot(listOf(activityItem("channel-all", unreadCount = 1)), totalUnreadCount = 1)
+        val unreadSnap = snapshot(listOf(activityItem("channel-unread", unreadCount = 1)), totalUnreadCount = 1)
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(allSnap, unreadSnap, allSnap))
+        val store = activityStore(scope, inbox)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        assertEquals(listOf("channel:channel-all"), store.state.value.items.map { it.key })
+        assertEquals(listOf("channel:channel-all"), store.state.value.filterSnapshots[InboxFilter.All]?.items?.map { it.key })
+
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
+        assertEquals(InboxFilter.Unread, store.state.value.selectedFilter)
+        assertEquals(listOf("channel:channel-unread"), store.state.value.items.map { it.key })
+        assertEquals(listOf("channel:channel-all"), store.state.value.filterSnapshots[InboxFilter.All]?.items?.map { it.key })
+        assertEquals(listOf("channel:channel-unread"), store.state.value.filterSnapshots[InboxFilter.Unread]?.items?.map { it.key })
+        scope.cancel()
+    }
+
+    @Test
     fun loadMoreMergesWithoutDuplicateRows() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox =

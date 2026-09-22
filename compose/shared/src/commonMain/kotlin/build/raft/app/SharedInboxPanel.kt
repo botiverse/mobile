@@ -662,6 +662,20 @@ internal fun SharedHomeActivityPanel(
     }
 }
 
+internal fun projectActivityStateForFilterPage(
+    state: SharedActivityState,
+    pageFilter: InboxFilter
+): SharedActivityState {
+    if (state.selectedFilter == pageFilter) return state
+    val cachedSnapshot = state.filterSnapshots[pageFilter]
+    return state.copy(
+        selectedFilter = pageFilter,
+        snapshot = cachedSnapshot,
+        loaded = cachedSnapshot != null,
+        loading = cachedSnapshot == null
+    )
+}
+
 @Composable
 private fun SharedActivityPanelContent(
     state: SharedActivityState,
@@ -729,6 +743,7 @@ private fun SharedActivityPanelContent(
             gesturePolicy = TabPagerGesturePolicy(
                 startEdgeInset = slockPlatformTabPagerStartEdgeInsetDp().dp,
             ),
+            keepItemAlive = true,
             tabBar = {
                 SharedActivityFilterBar(
                     selectedFilter = state.selectedFilter,
@@ -738,10 +753,12 @@ private fun SharedActivityPanelContent(
                 )
             },
             modifier = Modifier.weight(1f).fillMaxWidth()
-        ) { page, active ->
-            if (active && filters[page] == state.selectedFilter) {
+        ) { page, _ ->
+            val pageFilter = filters[page]
+            val pageState = projectActivityStateForFilterPage(state, pageFilter)
+            if (pageState.snapshot != null) {
                 SharedActivityBodyContent(
-                    state = state,
+                    state = pageState,
                     onOpenItem = onOpenItem,
                     onIntent = onIntent,
                     bottomContentPadding = bottomContentPadding,
