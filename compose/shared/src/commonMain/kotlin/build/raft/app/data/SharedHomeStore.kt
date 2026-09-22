@@ -522,6 +522,8 @@ internal class SharedHomeStore(
                         selectedTopAction = null
                     )
                 )
+            SharedHomeIntent.ClearSelectedConversation ->
+                reduceState(_state.value.copy(selectedConversationId = null))
             is SharedHomeIntent.SelectTopAction ->
                 reduceState(
                     _state.value.copy(
@@ -3473,6 +3475,7 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.RetryServerDrawerSection ->
             "${SharedHomeChannelFoldEvent.Hydrate.wireName}:server-drawer-retry:${serverId.value}"
         is SharedHomeIntent.SelectConversation -> "${SharedHomeChannelFoldEvent.Patch.wireName}:select:$threadId"
+        SharedHomeIntent.ClearSelectedConversation -> "${SharedHomeChannelFoldEvent.Patch.wireName}:select:_"
         is SharedHomeIntent.SelectTopAction -> "${SharedHomeChannelFoldEvent.Patch.wireName}:top-action:$action"
         is SharedHomeIntent.SelectServer -> "${SharedHomeChannelFoldEvent.Hydrate.wireName}:server:$serverId"
         is SharedHomeIntent.ApplyRealtimeEvent -> "${event.toSharedHomeChannelFoldEvent().wireName}:$serverId:${event.toSharedHomeRealtimeEventDiagnosticsLabel()}"
@@ -4131,6 +4134,13 @@ sealed interface SharedHomeIntent {
     data class ToggleServerDrawerSection(val serverId: ServerId) : SharedHomeIntent
     data class RetryServerDrawerSection(val serverId: ServerId) : SharedHomeIntent
     data class SelectConversation(val threadId: String) : SharedHomeIntent
+    /**
+     * task #299: clear the home-side active-conversation marker when the UI
+     * leaves a conversation. Without this the realtime merge keeps treating
+     * the last opened conversation as active and permanently suppresses its
+     * unread increment (ConversationSummary.withRealtimePreview).
+     */
+    data object ClearSelectedConversation : SharedHomeIntent
     data class SelectTopAction(val action: SharedHomeTopAction) : SharedHomeIntent
     data class SelectServer(val serverId: String) : SharedHomeIntent
     data class ApplyRealtimeEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeIntent
@@ -4194,6 +4204,7 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.ToggleServerDrawerSection,
             is SharedHomeIntent.RetryServerDrawerSection,
             is SharedHomeIntent.SelectConversation,
+            SharedHomeIntent.ClearSelectedConversation,
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
             is SharedHomeIntent.ApplyBackgroundServerUnreadEvent,
@@ -4233,6 +4244,7 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.ToggleServerDrawerSection,
             is SharedHomeIntent.RetryServerDrawerSection,
             is SharedHomeIntent.SelectConversation,
+            SharedHomeIntent.ClearSelectedConversation,
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
             is SharedHomeIntent.ApplyBackgroundServerUnreadEvent,
@@ -4272,6 +4284,7 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.ToggleServerDrawerSection,
             is SharedHomeIntent.RetryServerDrawerSection,
             is SharedHomeIntent.SelectConversation,
+            SharedHomeIntent.ClearSelectedConversation,
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
             is SharedHomeIntent.ApplyBackgroundServerUnreadEvent,
