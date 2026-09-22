@@ -7,6 +7,7 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.ThreadId
+import build.raft.app.model.formatSlockTimestampLabel
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -62,33 +63,30 @@ class SharedDmsPageTest {
 
         // 1. Same day: clock time
         val todayTimestamp = "2026-05-20T14:25:00Z"
-        val todayResult = formatWeChatConversationTimestamp(todayTimestamp, context)
+        val todayResult = formatSlockTimestampLabel(todayTimestamp, context)
         assertEquals("14:25", todayResult)
 
-        // 2. Yesterday: "Yesterday"
+        // 2. Yesterday: falls back to "MM-DD HH:MM" (unified label, no "Yesterday")
         val yesterdayTimestamp = "2026-05-19T23:10:00Z"
-        val yesterdayResult = formatWeChatConversationTimestamp(yesterdayTimestamp, context, yesterdayLabel = "Yesterday")
-        assertEquals("Yesterday", yesterdayResult)
+        val yesterdayResult = formatSlockTimestampLabel(yesterdayTimestamp, context)
+        assertEquals("05-19 23:10", yesterdayResult)
 
-        val yesterdayZhResult = formatWeChatConversationTimestamp(yesterdayTimestamp, context, yesterdayLabel = "昨天")
-        assertEquals("昨天", yesterdayZhResult)
-
-        // 3. Earlier this year: "MM-DD"
+        // 3. Earlier this year: "MM-DD HH:MM"
         val earlierThisYear = "2026-03-15T09:00:00Z"
-        val earlierResult = formatWeChatConversationTimestamp(earlierThisYear, context)
-        assertEquals("03-15", earlierResult)
+        val earlierResult = formatSlockTimestampLabel(earlierThisYear, context)
+        assertEquals("03-15 09:00", earlierResult)
 
-        // 4. Previous year: "YYYY-MM-DD"
+        // 4. Previous year: "YYYY-MM-DD HH:MM"
         val previousYear = "2025-11-20T10:00:00Z"
-        val previousResult = formatWeChatConversationTimestamp(previousYear, context)
-        assertEquals("2025-11-20", previousResult)
+        val previousResult = formatSlockTimestampLabel(previousYear, context)
+        assertEquals("2025-11-20 10:00", previousResult)
 
         // 5. Blank / null timestamp
-        assertEquals("", formatWeChatConversationTimestamp(null, context))
-        assertEquals("", formatWeChatConversationTimestamp("  ", context))
+        assertEquals("", formatSlockTimestampLabel(null, context))
+        assertEquals("", formatSlockTimestampLabel("  ", context))
 
         // 6. Unparseable string returns original string trimmed
-        assertEquals("raw-custom-text", formatWeChatConversationTimestamp(" raw-custom-text ", context))
+        assertEquals("raw-custom-text", formatSlockTimestampLabel(" raw-custom-text ", context))
     }
 
     @Test

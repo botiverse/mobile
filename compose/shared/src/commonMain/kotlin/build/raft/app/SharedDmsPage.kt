@@ -6,18 +6,10 @@ import androidx.compose.runtime.remember
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
-import build.raft.app.model.MillisPerDay
-import build.raft.app.model.MillisPerHour
-import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.SlockTimeContext
-import build.raft.app.model.SlockTimeFormat24Hour
 import build.raft.app.model.ThreadId
-import build.raft.app.model.civilDateFromEpochDay
-import build.raft.app.model.floorDiv
-import build.raft.app.model.floorMod
-import build.raft.app.model.formatSlockClock
+import build.raft.app.model.formatSlockTimestampLabel
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
-import build.raft.app.model.twoDigits
 import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -209,12 +201,7 @@ internal fun SlockWeChatDirectMessageRow(
 
     val inheritedTimeContext = LocalSlockTimeContextProvider.current?.current
     val effectiveTimeContext = timeContext ?: inheritedTimeContext
-    val yesterdayLabel = stringResource(MR.strings.relative_time_day_yesterday)
-    val timestampText = formatWeChatConversationTimestamp(
-        timestamp = item.lastMessageAt ?: item.createdAt,
-        timeContext = effectiveTimeContext,
-        yesterdayLabel = yesterdayLabel
-    )
+    val timestampText = formatSlockTimestampLabel(item.lastMessageAt ?: item.createdAt, effectiveTimeContext)
     val previewText = formatWeChatConversationPreview(item)
     val draftLabel = stringResource(MR.strings.thread_inline_draft)
 
@@ -376,44 +363,6 @@ internal fun List<SlockHomeConversationItem>.sortedForWeChatDms(): List<SlockHom
                 ?: Long.MIN_VALUE
         }.thenBy { it.name.trim().lowercase() }.thenBy { it.id }
     )
-
-/**
- * Formats timestamps in WeChat conversation list style:
- * - Today: 24h clock time (e.g. "14:25")
- * - Yesterday: localized yesterday label (e.g. "Yesterday" / "昨天")
- * - Same year: "MM-DD" (e.g. "03-15")
- * - Earlier years: "YYYY-MM-DD" (e.g. "2025-11-20")
- */
-internal fun formatWeChatConversationTimestamp(
-    timestamp: String?,
-    timeContext: SlockTimeContext? = null,
-    yesterdayLabel: String = "Yesterday"
-): String {
-    val trimmed = timestamp?.trim().orEmpty()
-    if (trimmed.isEmpty()) return ""
-    val offsetMinutes = timeContext?.localOffsetMinutes ?: 0
-    val epochMillis = parseSlockTimestampEpochMillisOrNull(trimmed, offsetMinutes) ?: return trimmed
-    val localMillis = epochMillis + offsetMinutes * MillisPerMinute
-    val localEpochDay = floorDiv(localMillis, MillisPerDay)
-    val todayEpochDay = timeContext?.todayEpochDay
-        ?: timeContext?.nowEpochMillis?.let { floorDiv(it + offsetMinutes * MillisPerMinute, MillisPerDay) }
-    val millisOfDay = floorMod(localMillis, MillisPerDay)
-    val hour = (millisOfDay / MillisPerHour).toInt()
-    val minute = ((millisOfDay % MillisPerHour) / MillisPerMinute).toInt()
-    val timeStr = formatSlockClock(hour, minute, null, timeContext?.timeFormat ?: SlockTimeFormat24Hour)
-    val date = civilDateFromEpochDay(localEpochDay)
-
-    return when {
-        todayEpochDay != null && localEpochDay == todayEpochDay -> timeStr
-        todayEpochDay != null && localEpochDay == todayEpochDay - 1L -> yesterdayLabel
-        todayEpochDay != null && civilDateFromEpochDay(todayEpochDay).year == date.year -> {
-            "${date.month.twoDigits()}-${date.day.twoDigits()}"
-        }
-        else -> {
-            "${date.year}-${date.month.twoDigits()}-${date.day.twoDigits()}"
-        }
-    }
-}
 
 /**
  * Formats the conversation preview text:
