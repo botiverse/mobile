@@ -626,14 +626,6 @@ class SettingsHandsFeedbackImageEditTest {
 
         assertEquals("opaque-id.jpg", normalized.single().fileName)
         assertTrue(slockComposerImagePickerFilesAreStrictImages(normalized))
-        assertEquals(
-            ThreadPickedAttachmentComposerAction.OpenImageAnnotation,
-            resolveThreadPickedAttachmentComposerAction(
-                action = "attachImage",
-                fileCount = normalized.size,
-                allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(normalized)
-            )
-        )
         val video = opaque.copy(fileName = "opaque-video", mimeType = "video/mp4")
         assertEquals("opaque-video", normalizeSettingsHandsFeedbackPickerFiles(listOf(video), true).single().fileName)
         assertFalse(slockComposerImagePickerFilesAreStrictImages(listOf(video)))
@@ -1066,6 +1058,77 @@ class SettingsHandsFeedbackImageEditTest {
                 allFilesAreImages = true
             )
         )
+    }
+
+    @Test
+    fun feedbackImagePickerMountsDirectlyWithoutAnnotationDetour() {
+        // task #300: feedback image picks must mount like attachFile — the merge helper is the
+        // only post-pick path, regardless of what the thread resolver would say about images.
+        val picked =
+            listOf(
+                image("photo-1", "file:///picked/1.jpg"),
+                image("photo-2", "file:///picked/2.jpg")
+            )
+        assertEquals(
+            ThreadPickedAttachmentComposerAction.OpenImageAnnotation,
+            resolveThreadPickedAttachmentComposerAction(
+                action = "attachImage",
+                fileCount = picked.size,
+                allFilesAreImages = true
+            )
+        )
+        val merge =
+            settingsHandsFeedbackMergedAttachments(
+                existing = emptyList(),
+                picked = picked,
+                attachmentMaxBytes = 1_000,
+                attachmentLimit = 3
+            )
+        assertEquals(picked.map { it.fileRef }, merge.attachments.map { it.fileRef })
+        assertEquals(0, merge.rejectedCount)
+        assertFalse(merge.limitTrimmed)
+    }
+
+    @Test
+    fun feedbackAttachmentMergeFiltersOversizeAndTrimsToLimit() {
+        val ok = image("ok", "file:///picked/ok.jpg").copy(sizeBytes = 100L)
+        val tooBig = image("big", "file:///picked/big.jpg").copy(sizeBytes = 2_000L)
+        val merge =
+            settingsHandsFeedbackMergedAttachments(
+                existing = emptyList(),
+                picked = listOf(ok, tooBig),
+                attachmentMaxBytes = 1_000,
+                attachmentLimit = 3
+            )
+        assertEquals(listOf("file:///picked/ok.jpg"), merge.attachments.map { it.fileRef })
+        assertEquals(1, merge.rejectedCount)
+        assertFalse(merge.limitTrimmed)
+
+        val existing = image("existing", "file:///draft/existing.jpg")
+        val trimmed =
+            settingsHandsFeedbackMergedAttachments(
+                existing = listOf(existing),
+                picked = (1..4).map { image("p$it", "file:///picked/$it.jpg") },
+                attachmentMaxBytes = 1_000,
+                attachmentLimit = 3
+            )
+        assertEquals(3, trimmed.attachments.size)
+        assertEquals("file:///draft/existing.jpg", trimmed.attachments.first().fileRef)
+        assertTrue(trimmed.limitTrimmed)
+
+        val dup = existing.copy(id = "different-id")
+        val deduped =
+            settingsHandsFeedbackMergedAttachments(
+                existing = listOf(existing),
+                picked = listOf(dup, image("new", "file:///picked/new.jpg")),
+                attachmentMaxBytes = 1_000,
+                attachmentLimit = 3
+            )
+        assertEquals(
+            listOf("file:///draft/existing.jpg", "file:///picked/new.jpg"),
+            deduped.attachments.map { it.fileRef }
+        )
+        assertFalse(deduped.limitTrimmed)
     }
 
     private fun session(expectedCount: Int): SettingsHandsFeedbackImageEditSession =

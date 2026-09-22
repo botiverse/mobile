@@ -12000,10 +12000,9 @@ internal fun SharedHandsFeedbackContent(
     }
     var allowBottomAnchor by remember(accountId) { mutableStateOf(true) }
     val feedbackEntryIds = remember(entries) { entries.map(SettingsHandsFeedbackEntry::id) }
-    // task #92 close-out: server + Hands SDKs support 9 files with presigned
-    // large-file upload; the per-file byte cap is platform-dependent (OHOS SDK
-    // still caps at 50MB).
-    val attachmentLimit = 9
+    // Native Hands SDK caps feedback submissions at maxAttachments=3 (one slot is
+    // reserved for the attached log bundle); keep UI copy and merge in lockstep.
+    val attachmentLimit = 3
     val remainingSlots = attachmentLimit - attachments.size
     val normalizedMessage = message.trim()
 
@@ -12127,82 +12126,20 @@ internal fun SharedHandsFeedbackContent(
                             files = result.data,
                             imageOnly = imageOnly
                         )
-                    val attachmentAction =
-                        resolveThreadPickedAttachmentComposerAction(
-                            action = if (imageOnly) "attachImage" else "attachFile",
-                            fileCount = pickedFiles.size,
-                            allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(pickedFiles)
+                    // Feedback attachments mount straight into the form, identical to the
+                    // file path: no chat-style annotation detour for images.
+                    val merge =
+                        settingsHandsFeedbackMergedAttachments(
+                            existing = attachmentsState.value,
+                            picked = pickedFiles,
+                            attachmentMaxBytes = attachmentMaxBytes,
+                            attachmentLimit = attachmentLimit
                         )
-                    if (attachmentAction == ThreadPickedAttachmentComposerAction.OpenImageAnnotation) {
-                        val request =
-                            settingsHandsFeedbackImageEditRequest(
-                                accountId = accountId,
-                                pageGeneration = feedbackPageGeneration,
-                                files = pickedFiles,
-                                sourceStoreScope = sourceStoreScope
-                            )
-                        if (request == null) {
-                            error = copy.attachmentPickerFailed
-                        } else {
-                            var previewSessionId = ""
-                            if (
-                                !pager.openSlockFilePreviewPage(
-                                    request.previewPayload,
-                                    sourceStoreScope = request.sourceStoreScope,
-                                    onEphemeralSessionRegistered = { registeredId ->
-                                        previewSessionId = registeredId
-                                        imageEditSessionTracker.track(registeredId).also { tracked ->
-                                            // Install the session witness before the preview page is
-                                            // opened. Native editor callbacks may be delivered
-                                            // synchronously during navigation; assigning only after
-                                            // `openSlockFilePreviewPage` returns would make that
-                                            // first event look ownerless and lose the batch.
-                                            if (tracked) {
-                                                pendingImageEditSession =
-                                                    request.session.copy(previewSessionId = registeredId)
-                                            }
-                                        }
-                                    }
-                                )
-                            ) {
-                                imageEditSessionTracker.release(previewSessionId)
-                                pendingImageEditSession = null
-                                error = copy.attachmentPickerFailed
-                            } else if (previewSessionId.isBlank()) {
-                                imageEditSessionTracker.release(previewSessionId)
-                                pendingImageEditSession = null
-                                error = copy.attachmentPickerFailed
-                            } else {
-                                if (
-                                    !imageEditSessionTracker.owns(previewSessionId) &&
-                                        !imageEditSessionTracker.isHandoffStarted(previewSessionId)
-                                ) {
-                                    abortOwnedImageEditSessions(listOf(previewSessionId))
-                                    pendingImageEditSession = null
-                                    error = copy.attachmentPickerFailed
-                                }
-                            }
-                        }
-                    } else {
-                        val accepted =
-                            pickedFiles.filter { file ->
-                                (file.sizeBytes ?: 0L) <= attachmentMaxBytes
-                            }
-                        val rejectedCount = pickedFiles.size - accepted.size
-                        val currentAttachments = attachmentsState.value
-                        val currentRemainingSlots =
-                            (attachmentLimit - currentAttachments.size).coerceAtLeast(0)
-                        val merged =
-                            (currentAttachments + accepted)
-                                .distinctBy { it.fileRef ?: it.id }
-                                .take(attachmentLimit)
-                        attachments = merged
-                        error = when {
-                            rejectedCount > 0 -> copy.attachmentTooLarge(attachmentMaxLabel)
-                            accepted.size > currentRemainingSlots ->
-                                copy.attachmentLimitTrimmed(attachmentLimit)
-                            else -> null
-                        }
+                    attachments = merge.attachments
+                    error = when {
+                        merge.rejectedCount > 0 -> copy.attachmentTooLarge(attachmentMaxLabel)
+                        merge.limitTrimmed -> copy.attachmentLimitTrimmed(attachmentLimit)
+                        else -> null
                     }
                 }
                 is DataResult.Empty -> Unit
@@ -13117,6 +13054,32 @@ private fun List<PlatformFile>.toFeedbackComposerAttachmentItems(
             status = "ready"
         )
     }
+
+internal data class SettingsHandsFeedbackAttachmentMerge(
+    val attachments: List<PlatformFile>,
+    val rejectedCount: Int,
+    val limitTrimmed: Boolean
+)
+
+internal fun settingsHandsFeedbackMergedAttachments(
+    existing: List<PlatformFile>,
+    picked: List<PlatformFile>,
+    attachmentMaxBytes: Long,
+    attachmentLimit: Int
+): SettingsHandsFeedbackAttachmentMerge {
+    val accepted = picked.filter { file -> (file.sizeBytes ?: 0L) <= attachmentMaxBytes }
+    val rejectedCount = picked.size - accepted.size
+    val remainingSlots = (attachmentLimit - existing.size).coerceAtLeast(0)
+    val merged =
+        (existing + accepted)
+            .distinctBy { it.fileRef ?: it.id }
+            .take(attachmentLimit)
+    return SettingsHandsFeedbackAttachmentMerge(
+        attachments = merged,
+        rejectedCount = rejectedCount,
+        limitTrimmed = accepted.size > remainingSlots
+    )
+}
 
 private fun PlatformFile.feedbackComposerAttachmentId(): String =
     fileRef?.takeIf { it.isNotBlank() } ?: id
