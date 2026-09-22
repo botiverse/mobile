@@ -159,6 +159,9 @@ private data class MessagesWireContextResponse(
     val messages: List<MessagesWireMessage> = emptyList(),
     val historyLimited: Boolean = false,
     val channelArchived: Boolean = false,
+    // Task #1142: the server embeds the same parent-message keyed summary record on the
+    // context endpoint as on the page endpoint; the client used to drop it here.
+    val threadSummariesByParentMessageId: JsonElement? = null,
 )
 
 @Serializable
@@ -279,10 +282,31 @@ fun parseSharedMessageContext(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): SharedMessagesPayload {
     if (bodyText.isBlank()) return SharedMessagesPayload(emptyList())
+    val responseRoot =
+        runCatching { messagesJson.parseToJsonElement(bodyText) as? JsonObject }.getOrNull()
+            ?: return SharedMessagesPayload(emptyList())
     val response = runCatching {
-        messagesJson.decodeFromString(MessagesWireContextResponse.serializer(), bodyText)
+        messagesJson.decodeFromJsonElement(MessagesWireContextResponse.serializer(), responseRoot)
     }.getOrNull() ?: return SharedMessagesPayload(emptyList())
     val resolvedThreadId = response.channelId?.let(::ThreadId) ?: fallbackThreadId
+    // Task #1142: an anchored open (Activity row, notification, search) lands on this page.
+    // Read the embedded summaries exactly like the page parser so reply rows render on the
+    // first frame instead of waiting for the targeted summary refetch.
+    val embeddedFieldPresent = "threadSummariesByParentMessageId" in responseRoot
+    val embeddedElement =
+        response.threadSummariesByParentMessageId
+            ?: responseRoot["threadSummariesByParentMessageId"]
+    val embeddedSummaries =
+        when (embeddedElement) {
+            is JsonObject -> parseChannelThreadSummaryRecordElement(embeddedElement, diagnostics)
+            else -> null
+        }
+    val embeddedAuthority =
+        when {
+            !embeddedFieldPresent -> ThreadReplySummariesAuthority.Unavailable
+            embeddedSummaries != null -> ThreadReplySummariesAuthority.Embedded
+            else -> ThreadReplySummariesAuthority.EmbeddedInvalid
+        }
     return SharedMessagesPayload(
         messages = response.messages.mapNotNull { it.toDomain(resolvedThreadId, diagnostics) },
         channelId = response.channelId?.let(::ChannelId),
@@ -290,6 +314,11 @@ fun parseSharedMessageContext(
         canonicalTarget = response.canonicalTarget?.toDomain(),
         hasOlder = response.hasOlder,
         hasNewer = response.hasNewer,
+        threadSummaries =
+            ThreadReplySummariesSnapshot(
+                threads = embeddedSummaries?.items.orEmpty(),
+            ),
+        replySummariesAuthority = embeddedAuthority,
         historyLimited = response.historyLimited,
         channelArchived = response.channelArchived,
     )
