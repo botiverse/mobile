@@ -1927,6 +1927,16 @@ class KmpVisualScreenshotCaptureTest {
     //   PASS(fallback) = no such container, and the dark code-block fill is
     //                    present (the invalid-syntax specimen must fall back).
     // Criterion agreed with HuaTuo/Quiver in #artifacts:db1c77fa and issue #2539.
+    //
+    // Precondition (theme): the ink/white thresholds below are absolute. They are
+    // theme-independent INSIDE the container because SlockMermaidDiagramBlock hard-codes
+    // Color.White + BorderBlack for it; only the container DETECTION step assumes the
+    // page around it is light enough that the 1dp border reads as a thin dark line.
+    // The visual pages run in the light theme; a dark-theme capture would fail at
+    // detection ("no container"), not at the ink count — read such a RED as a theme
+    // mismatch, not as a blank canvas. Geometry shared with HuaTuo's device script:
+    // border run >= 40% width, thin-line check 3dp inside, interior inset 3dp,
+    // zoom chrome exclusion 130x44dp at the interior's bottom-end, density = width/390.
     private data class MermaidInkReading(
         val box: android.graphics.Rect?,
         val interiorWhiteRatio: Float,
