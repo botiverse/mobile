@@ -5641,6 +5641,16 @@ private fun SharedThreadRouteContentContent(
                 diagnosticsLogger = { message -> bridge.log("thread_avatar_member $message") }
             )
         }
+    // task #392: model label resolves on the route's server — same scope as
+    // agentStatusResolver (the author is a member of the channel's server),
+    // not the header-projection server used for cross-server DM headers.
+    val memberModelLabelResolver =
+        remember(serverMembersStore, route.serverId) {
+            slockMemberModelLabelResolver(
+                serverMembersStore = serverMembersStore,
+                serverId = route.serverId.value,
+            )
+        }
     val initialDirectoryConversationProjections =
         remember(
             conversationIdentityProvider,
@@ -19247,6 +19257,7 @@ private fun ThreadMessagesListContent(
                                 highlightedMentions = highlightedMentions,
                                 agentStatusResolver = agentStatusResolver,
                                 memberAvatarResolver = memberAvatarResolver,
+                                memberModelLabelResolver = memberModelLabelResolver,
                                 inlineReplyParticipantsById = inlineReplyParticipantsById,
                                 focused = activeFocusedMessageId == message.id || activeInlineSearchMessageId == message.id,
                                 shareSelectionActive = shareSelectionActive,
@@ -21878,6 +21889,7 @@ private class ThreadMessageCardCallbacks(
     val onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     val isMessageListScrolling: () -> Boolean,
     val memberAvatarResolver: SlockMemberAvatarResolver,
+    val memberModelLabelResolver: SlockMemberModelLabelResolver,
     val onToggleShareSelection: () -> Unit,
     val onToggleTranslationOriginal: () -> Unit,
     val onRetryTranslation: () -> Unit,
@@ -21939,6 +21951,7 @@ fun ThreadMessageCard(
     focused: Boolean = false,
     isMessageListScrolling: () -> Boolean = { false },
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
     inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
     shareSelectionActive: Boolean = false,
     selectedForShare: Boolean = false,
@@ -22021,6 +22034,7 @@ fun ThreadMessageCard(
                 onMentionAuthor = onMentionAuthor,
                 isMessageListScrolling = isMessageListScrolling,
                 memberAvatarResolver = memberAvatarResolver,
+                memberModelLabelResolver = memberModelLabelResolver,
                 onToggleShareSelection = onToggleShareSelection,
                 onToggleTranslationOriginal = onToggleTranslationOriginal,
                 onRetryTranslation = onRetryTranslation,
@@ -22088,6 +22102,7 @@ private fun ThreadMessageCardContent(
     val focused = data.focused
     val isMessageListScrolling = callbacks.isMessageListScrolling
     val memberAvatarResolver = callbacks.memberAvatarResolver
+    val memberModelLabelResolver = callbacks.memberModelLabelResolver
     val inlineReplyParticipantsById = data.inlineReplyParticipantsById
     val shareSelectionActive = data.shareSelectionActive
     val selectedForShare = data.selectedForShare
@@ -22108,6 +22123,15 @@ private fun ThreadMessageCardContent(
             stringResource(MR.strings.thread_author_you)
         } else {
             message.authorName
+        }
+    // task #392 (port of Web PR #7545): agent model label, resolved live from
+    // the members directory — the message wire carries no model. `null` for
+    // humans, agents without a model, and while the roster is still loading.
+    val authorModelLabel =
+        if (message.isThreadAgentAuthor()) {
+            rememberSlockMemberModelLabel(memberModelLabelResolver, message.authorId)
+        } else {
+            null
         }
     val pointerSessionKey = LocalThreadMessagePointerSessionKey.current
     val horizontalArrangement =
@@ -22394,6 +22418,22 @@ private fun ThreadMessageCardContent(
                                                 .widthIn(max = 220.dp)
                                                 .clickable { openAuthorProfile("author_name") }
                                     )
+                                    // task #392 (port of Web PR #7545): agent
+                                    // model name, 11sp mono at 40% opacity,
+                                    // after the name, before badge/subtitle.
+                                    authorModelLabel?.let { modelLabel ->
+                                        Text(
+                                            text = modelLabel,
+                                            style =
+                                                SlockType.Caption.copy(
+                                                    fontFamily = SlockMonoFamily,
+                                                    fontSize = 11.sp,
+                                                    color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                                                ),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
                                     authorBadgeLabel?.let { label ->
                                         ThreadMessageAuthorBadge(label)
                                     }
@@ -26267,6 +26307,7 @@ private fun ThreadOriginCard(
                             highlightedMentions = highlightedMentions,
                             agentStatusResolver = agentStatusResolver,
                             memberAvatarResolver = memberAvatarResolver,
+                            memberModelLabelResolver = memberModelLabelResolver,
                             shareSelectionActive = shareSelectionActive,
                             selectedForShare = origin.id in selectedShareMessageIds,
                             onToggleShareSelection = { onToggleShareSelection(origin.id) },

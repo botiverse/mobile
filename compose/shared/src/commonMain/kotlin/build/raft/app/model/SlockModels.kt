@@ -292,6 +292,15 @@ data class MemberProfile(
      * is required downstream ([build.raft.app.data.SharedServerMemberStatus]).
      */
     val isExternal: Boolean = false,
+    /**
+     * Agent model id (e.g. `claude-sonnet-4-6`). Mirrors Web `agent.model`.
+     * Resolved at render time via the members store (Web `store.agents`
+     * lookup by `senderId`); paired with [roleDescription] (which carries
+     * the runtime) to produce `getModelLabel(runtime, model)`.
+     * `null` on humans, system senders, and identity seeds whose payloads
+     * never carried a model — the header label stays absent, never a raw id.
+     */
+    val model: String? = null,
     val joinedAt: String? = null,
     val membershipStatus: String? = null,
     val agentDeletedAt: String? = null,
