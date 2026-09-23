@@ -2829,7 +2829,7 @@ open class SlockKuiklyActivity :
                 if (intent.isDiagnosticsDeepLinkIntent()) {
                     intent?.getStringExtra(KEY_PAGE_NAME).takeUnless { it.isNullOrBlank() } ?: PAGE_APP_SHELL
                 } else {
-                    intent?.getStringExtra(KEY_PAGE_NAME).takeUnless { it.isNullOrBlank() } ?: PAGE_ROUTER
+                    intent?.getStringExtra(KEY_PAGE_NAME).takeUnless { it.isNullOrBlank() } ?: PAGE_APP_SHELL
                 }
 
         private fun resolvedPageData(intent: Intent?): SlockKuiklyPageData {
