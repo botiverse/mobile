@@ -1,6 +1,5 @@
 ✨ **New**
 
-- Mermaid code blocks in threads now render as diagrams instead of source text; zoom controls in the bottom-right corner (50%–300%), tap the percentage to reset; unparseable diagrams fall back to the code block
 - Audio attachments (MP3, WAV, OGG, M4A, AAC, FLAC, etc.) now play inline in the message card — no external app needed
 - XLSX spreadsheet previews: .xlsx/.xlsm attachments show worksheet tabs and table content in the file viewer (up to 20 sheets, 200×20 cells each); new "Open in browser" action in the file viewer
 - Image editor gains a crop tool with draggable rule-of-thirds handles; existing annotations remap automatically and exports have no letterboxing; toolbar buttons now have text labels and the mosaic icon is refreshed
@@ -17,7 +16,6 @@
 
 🐛 **Fixed**
 
-- Fixed mermaid diagrams occasionally rendering blank: drawing commands no longer get lost during page refresh
 - Fixed image previews flickering and reloading; eliminated avatar and image flicker across the app
 - Fixed the Direct Messages list occasionally resetting message previews and flickering during background refresh
 - Fixed inconsistent timestamps on DM conversation rows
