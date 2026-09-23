@@ -5211,6 +5211,47 @@ private fun ThreadMessageVisualCard(
 }
 }
 
+/**
+ * release/1.12.0 vc 1120118 hotfix: payload classes for [SharedThreadRouteContent].
+ * The flat 27-parameter composable body pushed past the Android ART dex verifier
+ * threshold (VerifyError on release builds); grouping into data + callbacks keeps the
+ * implementation frame small enough to verify. Same shape as task #346's
+ * ThreadPageContentData/ThreadPageContentCallbacks and PR #2453.
+ */
+private data class SharedThreadRouteContentData(
+    val initialPayload: KuiklyThreadScreenPayload,
+    val timeContextProvider: SlockTimeContextProvider,
+    val bridge: build.raft.app.base.BridgeModule,
+    val dataSource: SharedThreadDataSource,
+    val forwardTargetRepository: ForwardMessageTargetRepository?,
+    val threadSendScope: CoroutineScope,
+    val authStore: SlockAuthSessionStore,
+    val tasksDataSource: SharedTasksDataSource,
+    val tasksDataStore: SharedTasksDataStore?,
+    val computersStore: SharedComputersStore?,
+    val membersStore: SharedMembersStore?,
+    val serverMembersStore: SharedServerMembersStore?,
+    val conversationIdentityProvider: SharedConversationIdentityProvider?,
+    val storeScope: SlockShellStoreScope,
+    val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
+    val eventBus: SlockEventBus,
+    val active: Boolean,
+    val adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest?,
+)
+
+/** Callback payload of [SharedThreadRouteContent]. See SharedThreadRouteContentData. */
+private class SharedThreadRouteContentCallbacks(
+    val onBack: () -> Unit,
+    val onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit,
+    val onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit,
+    val onOpenParentThread: (KuiklyThreadScreenPayload, String?) -> Boolean,
+    val onAuthRequired: (String) -> Unit,
+    val onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit,
+    val onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit,
+    val onOpenMembersPager: (KuiklyThreadScreenPayload, ServerId, ChannelId, SlockShellStoreScope) -> Unit,
+    val onOpenChannelSettings: (ServerId, ChannelId, SlockShellStoreScope) -> Unit,
+)
+
 @Composable
 internal fun SharedThreadRouteContent(
     initialPayload: KuiklyThreadScreenPayload,
@@ -5241,6 +5282,75 @@ internal fun SharedThreadRouteContent(
     onOpenMembersPager: (KuiklyThreadScreenPayload, ServerId, ChannelId, SlockShellStoreScope) -> Unit = { _, _, _, _ -> },
     onOpenChannelSettings: (ServerId, ChannelId, SlockShellStoreScope) -> Unit = { _, _, _ -> }
 ) {
+    SharedThreadRouteContentContent(
+        data =
+            SharedThreadRouteContentData(
+                initialPayload = initialPayload,
+                timeContextProvider = timeContextProvider,
+                bridge = bridge,
+                dataSource = dataSource,
+                forwardTargetRepository = forwardTargetRepository,
+                threadSendScope = threadSendScope,
+                authStore = authStore,
+                tasksDataSource = tasksDataSource,
+                tasksDataStore = tasksDataStore,
+                computersStore = computersStore,
+                membersStore = membersStore,
+                serverMembersStore = serverMembersStore,
+                conversationIdentityProvider = conversationIdentityProvider,
+                storeScope = storeScope,
+                composerDraftPersistSlice = composerDraftPersistSlice,
+                eventBus = eventBus,
+                active = active,
+                adaptiveCloseRequest = adaptiveCloseRequest,
+            ),
+        callbacks =
+            SharedThreadRouteContentCallbacks(
+                onBack = onBack,
+                onOpenThreadPayload = onOpenThreadPayload,
+                onReplaceThreadPayload = onReplaceThreadPayload,
+                onOpenParentThread = onOpenParentThread,
+                onAuthRequired = onAuthRequired,
+                onResolvedAuxiliaryThreadIdChanged = onResolvedAuxiliaryThreadIdChanged,
+                onOpenMemberProfile = onOpenMemberProfile,
+                onOpenMembersPager = onOpenMembersPager,
+                onOpenChannelSettings = onOpenChannelSettings,
+            ),
+    )
+}
+
+@Composable
+private fun SharedThreadRouteContentContent(
+    data: SharedThreadRouteContentData,
+    callbacks: SharedThreadRouteContentCallbacks,
+) {
+    val initialPayload = data.initialPayload
+    val timeContextProvider = data.timeContextProvider
+    val bridge = data.bridge
+    val dataSource = data.dataSource
+    val forwardTargetRepository = data.forwardTargetRepository
+    val threadSendScope = data.threadSendScope
+    val authStore = data.authStore
+    val tasksDataSource = data.tasksDataSource
+    val tasksDataStore = data.tasksDataStore
+    val computersStore = data.computersStore
+    val membersStore = data.membersStore
+    val serverMembersStore = data.serverMembersStore
+    val conversationIdentityProvider = data.conversationIdentityProvider
+    val storeScope = data.storeScope
+    val composerDraftPersistSlice = data.composerDraftPersistSlice
+    val eventBus = data.eventBus
+    val active = data.active
+    val adaptiveCloseRequest = data.adaptiveCloseRequest
+    val onBack = callbacks.onBack
+    val onOpenThreadPayload = callbacks.onOpenThreadPayload
+    val onReplaceThreadPayload = callbacks.onReplaceThreadPayload
+    val onOpenParentThread = callbacks.onOpenParentThread
+    val onAuthRequired = callbacks.onAuthRequired
+    val onResolvedAuxiliaryThreadIdChanged = callbacks.onResolvedAuxiliaryThreadIdChanged
+    val onOpenMemberProfile = callbacks.onOpenMemberProfile
+    val onOpenMembersPager = callbacks.onOpenMembersPager
+    val onOpenChannelSettings = callbacks.onOpenChannelSettings
     val pager = LocalActivity.current.getPager() as Pager
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
