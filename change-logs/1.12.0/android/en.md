@@ -17,7 +17,6 @@
 🐛 **Fixed**
 
 - Fixed a crash when opening some threads (Android verification error and a files-page null pointer)
-- Fixed mermaid diagrams occasionally rendering blank: drawing commands no longer get lost during page refresh
 - Fixed opening a local image preview after scrolling channels hanging on a spinner with an unresponsive button
 - Fixed image previews flickering and reloading; eliminated avatar and image flicker across the app
 - Fixed the Direct Messages list occasionally resetting message previews and flickering during background refresh
