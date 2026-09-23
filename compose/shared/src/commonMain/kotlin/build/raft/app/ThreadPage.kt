@@ -1145,8 +1145,10 @@ internal fun threadFeatureOwnerMountPlan(
     return ThreadFeatureOwnerMountPlan(
         mountChatTimeline = mountChat,
         mountComposer = mountComposer,
-        mountTasksOwner = normalizedTab == "tasks",
-        mountFilesOwner = normalizedTab == "files",
+        // keepItemAlive pre-composes inactive tabs, so both owners must stay
+        // mounted regardless of the selected tab; each VM keeps its store lazy.
+        mountTasksOwner = true,
+        mountFilesOwner = true,
         mountMemberSuggestionsOwner = mountComposer && suggestionDemand == ThreadComposerSuggestionDemand.Members,
         mountChannelSuggestionsOwner = mountComposer && suggestionDemand == ThreadComposerSuggestionDemand.Channels
     )
@@ -14208,7 +14210,8 @@ private fun ThreadPageContentContent(
                         threadInstanceKey = threadInstanceKey,
                         basePayload = payload,
                         filesStartKey = resolvedAuxiliaryThreadId,
-                        filesViewModel = checkNotNull(filesViewModel),
+                        filesViewModel = filesViewModel,
+                        active = tab == selectedTab,
                         attachmentOpenStates = attachmentOpenStates,
                         onAuthRequired = onFilesAuthRequired,
                         onOpenAttachment = onOpenFilesAttachment,
@@ -27536,31 +27539,39 @@ private fun ThreadFilesTab(
     threadInstanceKey: String,
     basePayload: KuiklyThreadScreenPayload,
     filesStartKey: String?,
-    filesViewModel: SharedThreadFilesViewModel,
+    filesViewModel: SharedThreadFilesViewModel?,
+    active: Boolean,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     onAuthRequired: (String?) -> Unit,
     onOpenAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
     onDownloadAttachment: (KuiklyThreadAttachmentItem) -> Unit,
     onOpenFileSource: (KuiklyThreadFileItem) -> Unit
 ) {
+    if (filesViewModel == null) {
+        ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
+        return
+    }
+    val vm = filesViewModel
     LaunchedEffect(
         threadInstanceKey,
         filesStartKey,
         basePayload.sourceThreadId,
         basePayload.streamChannelId,
-        basePayload.instanceId
+        basePayload.instanceId,
+        active
     ) {
+        if (!active) return@LaunchedEffect
         if (filesStartKey == null) return@LaunchedEffect
-        filesViewModel.dispatch(
+        vm.dispatch(
             SharedThreadFilesIntent.Start(
                 basePayload = basePayload
             )
         )
-        if (filesViewModel.state.value.payload.shouldFetchInitialFiles()) {
-            filesViewModel.dispatch(SharedThreadFilesIntent.Refresh("initial_tab"))
+        if (vm.state.value.payload.shouldFetchInitialFiles()) {
+            vm.dispatch(SharedThreadFilesIntent.Refresh("initial_tab"))
         }
     }
-    val filesState by filesViewModel.state.collectAsState()
+    val filesState by vm.state.collectAsState()
     val payload = filesState.payload
     LaunchedEffect(payload.status, payload.errorCode) {
         if (payload.status == "no_permission" || payload.status == "error") {
@@ -27588,8 +27599,8 @@ private fun ThreadFilesTab(
                 val fileItem = payload.items.firstOrNull { it.attachmentId == cleanAttachmentId } ?: return@ThreadFilesContent
                 onOpenFileSource(fileItem)
             }
-            "loadMore" -> filesViewModel.dispatch(SharedThreadFilesIntent.LoadMore("load_more"))
-            "retry" -> filesViewModel.dispatch(SharedThreadFilesIntent.Refresh("retry"))
+            "loadMore" -> vm.dispatch(SharedThreadFilesIntent.LoadMore("load_more"))
+            "retry" -> vm.dispatch(SharedThreadFilesIntent.Refresh("retry"))
         }
     }
 }
