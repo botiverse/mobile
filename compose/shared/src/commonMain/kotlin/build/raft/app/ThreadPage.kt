@@ -13416,6 +13416,7 @@ private fun ThreadPageContentContent(
     val highlightedMentions = data.highlightedMentions
     val agentStatusResolver = callbacks.agentStatusResolver
     val memberAvatarResolver = callbacks.memberAvatarResolver
+    val memberModelLabelResolver = callbacks.memberModelLabelResolver
     val diagnosticsLogger = callbacks.diagnosticsLogger
     val onLayoutGeneration = callbacks.onLayoutGeneration
     val onComposerLayoutProbe = callbacks.onComposerLayoutProbe
@@ -16337,6 +16338,7 @@ private data class ThreadMessagesListData(
 private class ThreadMessagesListCallbacks(
     val agentStatusResolver: SlockAgentStatusResolver,
     val memberAvatarResolver: SlockMemberAvatarResolver,
+    val memberModelLabelResolver: SlockMemberModelLabelResolver,
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
     val resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
     val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
