@@ -13901,7 +13901,8 @@ private fun ThreadPageContentContent(
         onThreadEvent("selectTab", null, null, tab.wireValue)
     }
     var threadHeaderScrollToTopRequest by remember(threadInstanceKey) { mutableStateOf(0) }
-    val renderThreadTabContent: @Composable (KuiklyThreadTab, Modifier) -> Unit = { tab, contentModifier ->
+    val renderThreadTabContent: @Composable (KuiklyThreadTab, Modifier, Boolean) -> Unit =
+        { tab, contentModifier, tabActive ->
         Box(
             modifier = contentModifier
                 .fillMaxWidth()
@@ -13937,7 +13938,7 @@ private fun ThreadPageContentContent(
                         readAnchorOwner = threadReadAnchorOwner,
                         readAnchorStore = threadReadAnchorStore,
                         readAnchorSessionGeneration = threadReadAnchorSessionGeneration,
-                        routeActive = routeActive,
+                        routeActive = routeActive && tabActive,
                         hostForeground = hostForeground,
                         renderConfig = timelineRenderConfig,
                         messageBodyTextStyle = messageBodyTextStyle,
@@ -14143,7 +14144,8 @@ private fun ThreadPageContentContent(
             } else {
                 renderThreadTabContent(
                     selectedTab,
-                    Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)
+                    Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite),
+                    true
                 )
             }
             if (!primaryFooterReady) {
@@ -16517,7 +16519,10 @@ private fun ThreadMessagesListContent(
         readAnchorOwner,
         renderPayload.messages,
         visibleReadTailIndex,
+        routeActive,
+        hostForeground,
     ) {
+        if (!routeActive || !hostForeground) return@LaunchedEffect
         val anchor =
             visibleReadTailIndex
                 ?.takeIf { it in renderPayload.messages.indices }
@@ -16573,7 +16578,8 @@ private fun ThreadMessagesListContent(
             latestCanonicalMessage = latestCanonicalReadAnchor,
             atCanonicalBottom = unreadJumpAtCanonicalBottom,
         )
-    LaunchedEffect(unreadJumpAtCanonicalBottom, latestCanonicalReadAnchor) {
+    LaunchedEffect(unreadJumpAtCanonicalBottom, latestCanonicalReadAnchor, routeActive, hostForeground) {
+        if (!routeActive || !hostForeground) return@LaunchedEffect
         if (!unreadJumpAtCanonicalBottom) return@LaunchedEffect
         val advanced =
             consumeUnreadJumpFrontierAtCanonicalBottom(

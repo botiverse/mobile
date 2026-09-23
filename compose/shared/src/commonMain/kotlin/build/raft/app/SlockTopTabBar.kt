@@ -72,7 +72,7 @@ internal fun <T> SlockTabbedScaffold(
     onSelectedKeyChange: (T) -> Unit,
     modifier: Modifier = Modifier,
     itemKeyPrefix: String = "top-tab",
-    content: @Composable (T, Modifier) -> Unit
+    content: @Composable (T, Modifier, Boolean) -> Unit
 ) {
     // task #232 PR3: mode tabs in SlockTabbedScaffold (Thread Chat/Tasks/Files)
     // share TabPager with Activity (PR1, #2224) and Agent Detail (PR2, #2345).
@@ -105,14 +105,15 @@ internal fun <T> SlockTabbedScaffold(
             )
         },
         modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
-    ) { page, _ ->
+    ) { page, active ->
         val pageKey = slockTabbedScaffoldPageKey(tabs, page)
         if (pageKey != null) {
             content(
                 pageKey,
                 Modifier
                     .fillMaxSize()
-                    .background(SlockColor.SurfaceWhite)
+                    .background(SlockColor.SurfaceWhite),
+                active
             )
         }
     }
