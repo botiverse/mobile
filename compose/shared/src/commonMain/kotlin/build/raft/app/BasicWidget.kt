@@ -189,19 +189,24 @@ internal fun slockImagePreviewLoadingPresentation(
     fallbackSource: String?,
     showLoadingIndicator: Boolean,
     activeSucceeded: Boolean,
-    activeFailed: Boolean
+    activeFailed: Boolean,
+    previousRenderedSource: String? = null
 ): SlockImagePreviewLoadingPresentation {
     val active = activeSource?.trim()?.takeIf { it.isNotBlank() }
     val fallback = fallbackSource?.trim()?.takeIf { it.isNotBlank() }
-    val fallbackUnderlay = fallback?.takeIf { it != active }
-    val fallbackKeepsContentVisible =
-        fallback != null && !(active == fallback && activeFailed)
+    val previous = previousRenderedSource?.trim()?.takeIf { it.isNotBlank() && it != active }
+    // Prefer the previous successfully rendered frame as the underlay during a
+    // source swap: it is already decoded, so the surface keeps pixels on screen
+    // while the new source is still loading instead of flashing blank.
+    val underlay = (previous ?: fallback)?.takeIf { it != active }
+    val keepsContentVisible =
+        previous != null || (fallback != null && !(active == fallback && activeFailed))
     return SlockImagePreviewLoadingPresentation(
-        fallbackUnderlaySource = fallbackUnderlay.takeUnless { activeSucceeded },
+        fallbackUnderlaySource = underlay.takeUnless { activeSucceeded },
         showLoadingOverlay =
             showLoadingIndicator &&
                 !activeSucceeded &&
-                !fallbackKeepsContentVisible
+                !keepsContentVisible
     )
 }
 
@@ -247,6 +252,11 @@ internal fun SlockAspectFitImagePreviewSurface(
     val normalizedFallback = fallbackSource?.trim()?.takeIf { it.isNotBlank() && it != normalizedSource }
     var activeSource by remember(normalizedSource, normalizedFallback) { mutableStateOf(normalizedSource ?: normalizedFallback) }
     var imageState by remember(activeSource) { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
+    // The last source that reached AsyncImagePainter.State.Success. Kept as the
+    // underlay when `source`/`fallbackSource` changes so a resolved full-size
+    // URL swaps in over the already-rendered thumbnail instead of flashing a
+    // blank frame (task #282).
+    var lastSucceededSource by remember { mutableStateOf<String?>(null) }
     Box(
         modifier = modifier
             .background(backgroundColor)
@@ -280,7 +290,8 @@ internal fun SlockAspectFitImagePreviewSurface(
                     fallbackSource = normalizedFallback,
                     showLoadingIndicator = showLoadingIndicator,
                     activeSucceeded = activeSucceeded,
-                    activeFailed = imageState is AsyncImagePainter.State.Error
+                    activeFailed = imageState is AsyncImagePainter.State.Error,
+                    previousRenderedSource = lastSucceededSource
                 )
             loadingPresentation.fallbackUnderlaySource?.let { underlaySource ->
                 SlockCachedImage(
@@ -299,6 +310,9 @@ internal fun SlockAspectFitImagePreviewSurface(
                         onImageStateChange = { state ->
                             imageState = state
                             onImageStateChange?.invoke(state)
+                            if (state is AsyncImagePainter.State.Success) {
+                                lastSucceededSource = activeSource
+                            }
                             if (state is AsyncImagePainter.State.Error && activeSource != normalizedFallback && normalizedFallback != null) {
                                 activeSource = normalizedFallback
                             }
@@ -313,6 +327,9 @@ internal fun SlockAspectFitImagePreviewSurface(
                         onImageStateChange = { state ->
                             imageState = state
                             onImageStateChange?.invoke(state)
+                            if (state is AsyncImagePainter.State.Success) {
+                                lastSucceededSource = activeSource
+                            }
                             if (state is AsyncImagePainter.State.Error && activeSource != normalizedFallback && normalizedFallback != null) {
                                 activeSource = normalizedFallback
                             }
