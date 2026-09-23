@@ -213,6 +213,184 @@ class SharedMarkdownDirectMessageThreadRefTest {
         assertEquals("dm", payload.parentChannelKind)
     }
 
+    @Test
+    fun dmPeerClickResolvesSelfAddressedDmWhenViewingDmDirectly() {
+        val artin = MemberProfile(id = MemberId("viewer-artin"), displayName = "Artin Zhang", handle = "artin", kind = MemberKind.Human)
+        val friday = MemberProfile(id = MemberId("peer-friday"), displayName = "Friday", handle = "friday", kind = MemberKind.Agent)
+        val dmWithFridayChannelId = "dm-friday-channel"
+        val home = HomeSnapshot(
+            server = dmServer(),
+            currentMember = artin,
+            channels = emptyList(),
+            directMessages = listOf(
+                ConversationSummary(
+                    threadId = ThreadId(dmWithFridayChannelId),
+                    channelId = ChannelId(dmWithFridayChannelId),
+                    kind = ConversationKind.DirectMessage,
+                    name = "Friday",
+                    presenceMemberId = friday.id
+                ).toHomeDirectMessageRow()
+            ),
+            unreadTotal = 0
+        )
+
+        val currentPayload = KuiklyThreadScreenPayload(
+            surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+            channelKind = "dm",
+            streamChannelId = dmWithFridayChannelId,
+            dmPeerName = "Friday"
+        )
+
+        val payload = buildMarkdownThreadRefLaunchPayload(
+            currentPayload = currentPayload,
+            home = home,
+            channelLabel = "artin",
+            threadShortId = "1f1def75",
+            parentMessageId = ParentMessageId,
+            requiredParentKind = ConversationKind.DirectMessage,
+            knownMemberProfilesById = mapOf(friday.id.value to friday)
+        )
+
+        val resolved = requireNotNull(payload)
+        assertEquals(dmWithFridayChannelId, resolved.parentChannelId)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, resolved.parentSurfaceKind)
+        assertEquals("dm", resolved.parentChannelKind)
+    }
+
+    @Test
+    fun dmPeerClickResolvesSelfAddressedDmWhenViewingDmReplyThread() {
+        val artin = MemberProfile(id = MemberId("viewer-artin"), displayName = "Artin Zhang", handle = "artin", kind = MemberKind.Human)
+        val friday = MemberProfile(id = MemberId("peer-friday"), displayName = "Friday", handle = "friday", kind = MemberKind.Agent)
+        val dmWithFridayChannelId = "dm-friday-channel"
+        val home = HomeSnapshot(
+            server = dmServer(),
+            currentMember = artin,
+            channels = emptyList(),
+            directMessages = listOf(
+                ConversationSummary(
+                    threadId = ThreadId(dmWithFridayChannelId),
+                    channelId = ChannelId(dmWithFridayChannelId),
+                    kind = ConversationKind.DirectMessage,
+                    name = "Friday",
+                    presenceMemberId = friday.id
+                ).toHomeDirectMessageRow()
+            ),
+            unreadTotal = 0
+        )
+
+        val currentPayload = KuiklyThreadScreenPayload(
+            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            parentSurfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+            parentChannelKind = "dm",
+            parentChannelId = dmWithFridayChannelId,
+            sourceThreadId = "reply-thread-123"
+        )
+
+        val payload = buildMarkdownThreadRefLaunchPayload(
+            currentPayload = currentPayload,
+            home = home,
+            channelLabel = "artin",
+            threadShortId = "1f1def75",
+            parentMessageId = ParentMessageId,
+            requiredParentKind = ConversationKind.DirectMessage,
+            knownMemberProfilesById = mapOf(friday.id.value to friday)
+        )
+
+        val resolved = requireNotNull(payload)
+        assertEquals(dmWithFridayChannelId, resolved.parentChannelId)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, resolved.parentSurfaceKind)
+    }
+
+    @Test
+    fun dmPeerClickResolvesSelfAddressedDmInChannelViaReferencingMessageAuthor() {
+        val artin = MemberProfile(id = MemberId("viewer-artin"), displayName = "Artin Zhang", handle = "artin", kind = MemberKind.Human)
+        val friday = MemberProfile(id = MemberId("peer-friday"), displayName = "Friday", handle = "friday", kind = MemberKind.Agent)
+        val dmWithFridayChannelId = "dm-friday-channel"
+        val home = HomeSnapshot(
+            server = dmServer(),
+            currentMember = artin,
+            channels = emptyList(),
+            directMessages = listOf(
+                ConversationSummary(
+                    threadId = ThreadId(dmWithFridayChannelId),
+                    channelId = ChannelId(dmWithFridayChannelId),
+                    kind = ConversationKind.DirectMessage,
+                    name = "Friday",
+                    presenceMemberId = friday.id
+                ).toHomeDirectMessageRow()
+            ),
+            unreadTotal = 0
+        )
+
+        val messageWithDmTag = KuiklyThreadMessageItem(
+            id = "msg-tag-1",
+            authorId = friday.id.value,
+            authorName = "Friday",
+            authorHandle = "friday",
+            body = "Please review dm:@artin:1f1def75"
+        )
+        val currentPayload = KuiklyThreadScreenPayload(
+            surfaceKind = KuiklyThreadSurfaceKind.Channel,
+            streamChannelId = "general-channel",
+            messages = listOf(messageWithDmTag)
+        )
+
+        val payload = buildMarkdownThreadRefLaunchPayload(
+            currentPayload = currentPayload,
+            home = home,
+            channelLabel = "artin",
+            threadShortId = "1f1def75",
+            parentMessageId = ParentMessageId,
+            requiredParentKind = ConversationKind.DirectMessage,
+            knownMemberProfilesById = mapOf(friday.id.value to friday)
+        )
+
+        val resolved = requireNotNull(payload)
+        assertEquals(dmWithFridayChannelId, resolved.parentChannelId)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, resolved.parentSurfaceKind)
+    }
+
+    @Test
+    fun withHomeContextProjectionFromPreservesExistingDmPeersWhenPatchIsEmpty() {
+        val basePayload = KuiklyThreadScreenPayload(
+            knownMarkdownDirectMessagePeerNames = listOf("friday", "artin"),
+            knownMarkdownChannelNames = listOf("general")
+        )
+
+        val emptyPatch = KuiklyThreadScreenPayload(
+            knownMarkdownDirectMessagePeerNames = emptyList(),
+            knownMarkdownChannelNames = emptyList()
+        )
+        val projected1 = basePayload.withHomeContextProjectionFrom(emptyPatch)
+        assertEquals(listOf("friday", "artin"), projected1.knownMarkdownDirectMessagePeerNames)
+        assertEquals(listOf("general"), projected1.knownMarkdownChannelNames)
+
+        val newPatch = KuiklyThreadScreenPayload(
+            knownMarkdownDirectMessagePeerNames = listOf("saturday"),
+            knownMarkdownChannelNames = listOf("random")
+        )
+        val projected2 = basePayload.withHomeContextProjectionFrom(newPatch)
+        assertEquals(listOf("saturday"), projected2.knownMarkdownDirectMessagePeerNames)
+        assertEquals(listOf("random"), projected2.knownMarkdownChannelNames)
+    }
+
+    @Test
+    fun toKnownMarkdownDirectMessagePeerNameSetIncludesDmPeerAndMembers() {
+        val friday = KuiklyThreadMemberItem(id = "peer-friday", displayName = "Friday", handle = "friday")
+        val payload = KuiklyThreadScreenPayload(
+            surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+            channelKind = "dm",
+            dmPeerName = "Friday",
+            members = listOf(friday),
+            knownMarkdownDirectMessagePeerNames = listOf("bot")
+        )
+
+        val names = payload.toKnownMarkdownDirectMessagePeerNameSet()
+        assertTrue("bot" in names)
+        assertTrue("friday" in names)
+        assertTrue(friday.id in names)
+    }
+
     private fun dmHomeSnapshot(dmName: String = "Artin"): HomeSnapshot {
         val peer = dmPeer()
         return HomeSnapshot(
