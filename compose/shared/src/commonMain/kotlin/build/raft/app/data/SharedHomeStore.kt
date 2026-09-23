@@ -2167,6 +2167,7 @@ internal class SharedHomeStore(
             }
         val strippedSnapshot = snapshot.withoutReadStateV1Hydrates()
         val sidebarOrder = strippedSnapshot.sidebarOrder ?: sidebarOrderByServer[strippedSnapshot.server.id]
+            ?: compatiblePreviousContent?.baseSnapshot?.sidebarOrder
         val snapshotWithSidebarOrder =
             if (sidebarOrder != null && strippedSnapshot.sidebarOrder != sidebarOrder) {
                 strippedSnapshot.copy(sidebarOrder = sidebarOrder)
@@ -2400,7 +2401,8 @@ internal class SharedHomeStore(
                         nextContent,
                         HomeServerDrawerLoadStatus.Loaded
                     )
-            )
+            ),
+            intentOverride = SharedHomeIntent.Refresh
         )
         return true
     }
