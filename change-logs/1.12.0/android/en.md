@@ -17,13 +17,10 @@
 🐛 **Fixed**
 
 - Fixed a crash when opening some threads (Android verification error and a files-page null pointer)
-- Fixed mermaid diagrams occasionally rendering blank: drawing commands no longer get lost during page refresh
 - Fixed opening a local image preview after scrolling channels hanging on a spinner with an unresponsive button
 - Fixed image previews flickering and reloading; eliminated avatar and image flicker across the app
-- Fixed the Direct Messages list occasionally resetting message previews and flickering during background refresh
 - Fixed inconsistent timestamps on DM conversation rows
 - Fixed the Activity feed not refreshing when returning from background
-- Fixed the Activity tab missing realtime messages under the Slack-style bottom navigation
 - Fixed the "N replies" preview row taking a long time to appear when entering a channel from Activity, notifications, or search
 - Fixed the composer briefly missing then appearing when entering a thread
 - Fixed a crash when sharing selected messages as an image right as the window lost its surface
