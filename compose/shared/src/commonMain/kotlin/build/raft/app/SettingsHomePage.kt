@@ -17255,6 +17255,11 @@ private fun SharedHomeScreen(
     onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> },
     onContentComposeCommitted: (String) -> Unit = {}
 ) {
+    // keepItemAlive keeps hidden pages composed: a DisposableEffect
+    // (onDispose) downstream can still fire a stale snapshot while the page is
+    // off-screen. Gate through rememberUpdatedState so the check reads the
+    // current `active` flag, not the one captured at callback creation.
+    val latestActive = rememberUpdatedState(active)
     val conversationUnavailableMessage = stringResource(MR.strings.home_error_conversation_unavailable)
     val directMessageUnavailableMessage = stringResource(MR.strings.home_error_direct_message_unavailable)
     val openDirectMessageFailedMessage = stringResource(MR.strings.home_error_open_direct_message)
@@ -17428,7 +17433,9 @@ private fun SharedHomeScreen(
         is SharedHomeContentState.Content -> {
             val snapshot = current.snapshot
             SideEffect {
-                onContentComposeCommitted(snapshot.server.id.value)
+                if (active) {
+                    onContentComposeCommitted(snapshot.server.id.value)
+                }
             }
             val agentStatusResolver =
                 remember(serverMembersStore, snapshot.server.id.value) {
@@ -17454,8 +17461,8 @@ private fun SharedHomeScreen(
                         "memberStore=${serverMembersStore != null} resolver=member_ssot"
                 )
             }
-            LaunchedEffect(serverMembersStore, snapshot.server.id, current.contentRefreshing) {
-                if (!current.contentRefreshing) {
+            LaunchedEffect(serverMembersStore, snapshot.server.id, current.contentRefreshing, active) {
+                if (active && !current.contentRefreshing) {
                     serverMembersStore?.refreshMembers(snapshot.server.id, DataRequestPriority.Background)
                 }
             }
@@ -17710,7 +17717,11 @@ private fun SharedHomeScreen(
                 scrollToTopRequest = scrollToTopRequest,
                 listPositionServerId = listPositionServerId ?: snapshot.server.id.value,
                 initialListPosition = initialListPosition,
-                onListPositionSnapshot = onListPositionSnapshot
+                onListPositionSnapshot = { serverId, position ->
+                    if (latestActive.value) {
+                        onListPositionSnapshot(serverId, position)
+                    }
+                }
             )
         }
     }

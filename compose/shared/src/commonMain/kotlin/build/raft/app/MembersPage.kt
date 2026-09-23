@@ -5526,11 +5526,13 @@ private fun MembersDetailContent(
                 // (PR1, #2224). The tab bar stays the tap surface and selection
                 // owner; a horizontal swipe on the body settles on a neighbour
                 // tab. Gating matches the Activity caller exactly: a page
-                // composes real content only once it is the pager's current
-                // page AND the selection has settled on it (`active` is not a
-                // settle signal, and onSelectedIndexChange fires once per
-                // settle), so the incoming page shows the loading body for the
-                // whole drag, then fills. Per-tab cost therefore equals the
+                // composes real content only while it is the pager's current
+                // page AND the selection has settled on it (`active` is the
+                // pager's own current-page flag, and onSelectedIndexChange
+                // fires once per settle), so an incoming page shows the
+                // loading body for the whole drag, then fills — and a
+                // keepItemAlive-hidden page stops composing its tab content
+                // instead of keeping its effects alive. Per-tab cost therefore equals the
                 // previous single `when (selectedTab)`. State that must survive
                 // a swipe is hoisted above: workspace tree, chat tick, profile
                 // editing, and (agentTabListStates) each tab's scroll position.
@@ -5556,9 +5558,9 @@ private fun MembersDetailContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                ) { page, _ ->
+                ) { page, active ->
                     val pageTab = membersAgentDetailPageTab(visibleTabs, page)
-                    if (pageTab == null || !membersAgentDetailShouldComposeTab(pageTab, selectedTab, visitedAgentTabs)) {
+                    if (pageTab == null || !active || !membersAgentDetailShouldComposeTab(pageTab, selectedTab, visitedAgentTabs)) {
                         // SlockCenteredLoading renders common_loading when message
                         // is null — only shown for tabs that have not been visited yet.
                         SlockCenteredLoading(modifier = Modifier.fillMaxSize())
