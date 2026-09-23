@@ -18,11 +18,8 @@
 
 - Fixed blank Google/GitHub icons on the sign-in page and Account › Connected accounts; icons now load from bundled assets
 - Fixed image previews flickering and reloading
-- Fixed the Direct Messages list occasionally resetting message previews and flickering during background refresh
 - Fixed inconsistent timestamps on DM conversation rows
 - Fixed the Activity feed not refreshing when returning from background
-- Fixed the Activity tab missing realtime messages under the Slack-style bottom navigation
 - Fixed the "N replies" preview row taking a long time to appear when entering a channel from Activity, notifications, or search
 - Fixed the composer briefly missing then appearing when entering a thread
 - Attachment cards no longer show a "Comments" button; comments are still available from the preview page's action bar
-- Fixed tapping a self-addressed DM tag (dm:@you:id) doing nothing: DM contexts now resolve to the active conversation, channel messages resolve via the original author
