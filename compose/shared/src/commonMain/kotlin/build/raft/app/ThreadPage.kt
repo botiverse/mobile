@@ -5641,14 +5641,11 @@ private fun SharedThreadRouteContentContent(
                 diagnosticsLogger = { message -> bridge.log("thread_avatar_member $message") }
             )
         }
-    // task #392: model label resolves on the route's server — same scope as
-    // agentStatusResolver (the author is a member of the channel's server),
-    // not the header-projection server used for cross-server DM headers.
     val memberModelLabelResolver =
-        remember(serverMembersStore, route.serverId) {
+        remember(serverMembersStore, headerProjectionServerId) {
             slockMemberModelLabelResolver(
                 serverMembersStore = serverMembersStore,
-                serverId = route.serverId.value,
+                serverId = headerProjectionServerId?.value,
             )
         }
     val initialDirectoryConversationProjections =
@@ -9926,6 +9923,7 @@ private fun SharedThreadRouteContentContent(
             highlightedMentions = highlightedMentions,
             agentStatusResolver = agentStatusResolver,
             memberAvatarResolver = memberAvatarResolver,
+            memberModelLabelResolver = memberModelLabelResolver,
             diagnosticsLogger = { bridge.log(it) },
             onLayoutGeneration = { width, height ->
                 performanceGenerationCounter.nextLayout(width, height)?.let { generation ->
@@ -13156,6 +13154,7 @@ private class ThreadPageContentCallbacks(
     val onOpenMemberProfile: (MemberDetailIdentity) -> Unit,
     val agentStatusResolver: SlockAgentStatusResolver,
     val memberAvatarResolver: SlockMemberAvatarResolver,
+    val memberModelLabelResolver: SlockMemberModelLabelResolver,
     val diagnosticsLogger: (String) -> Unit,
     val onLayoutGeneration: (width: Int, height: Int) -> Unit,
     val onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit,
@@ -13230,6 +13229,7 @@ fun ThreadPageContent(
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
     diagnosticsLogger: (String) -> Unit = {},
     onLayoutGeneration: (width: Int, height: Int) -> Unit = { _, _ -> },
     onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit = { _, _ -> },
@@ -13335,6 +13335,7 @@ fun ThreadPageContent(
                 onOpenMemberProfile = onOpenMemberProfile,
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
+                memberModelLabelResolver = memberModelLabelResolver,
                 diagnosticsLogger = diagnosticsLogger,
                 onLayoutGeneration = onLayoutGeneration,
                 onComposerLayoutProbe = onComposerLayoutProbe,
@@ -14125,6 +14126,7 @@ private fun ThreadPageContentContent(
                         highlightedMentions = highlightedMentions,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
+                        memberModelLabelResolver = memberModelLabelResolver,
                         inlineReplyParticipantsById = inlineReplyParticipantsById,
                         pendingActionCardIds = pendingActionCardIds,
                         pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
@@ -15554,6 +15556,7 @@ private data class ThreadChatTabData(
 private class ThreadChatTabCallbacks(
     val agentStatusResolver: SlockAgentStatusResolver,
     val memberAvatarResolver: SlockMemberAvatarResolver,
+    val memberModelLabelResolver: SlockMemberModelLabelResolver,
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
     val resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
     val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
@@ -15595,6 +15598,7 @@ fun ThreadChatTab(
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
     inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
@@ -15690,6 +15694,7 @@ fun ThreadChatTab(
             ThreadChatTabCallbacks(
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
+                memberModelLabelResolver = memberModelLabelResolver,
                 isMarkdownTagValid = isMarkdownTagValid,
                 resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                 onLoadNewer = onLoadNewer,
@@ -15736,6 +15741,7 @@ private fun ThreadChatTabContent(
     val highlightedMentions = data.highlightedMentions
     val agentStatusResolver = callbacks.agentStatusResolver
     val memberAvatarResolver = callbacks.memberAvatarResolver
+    val memberModelLabelResolver = callbacks.memberModelLabelResolver
     val inlineReplyParticipantsById = data.inlineReplyParticipantsById
     val pendingActionCardIds = data.pendingActionCardIds
     val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
@@ -15830,6 +15836,7 @@ private fun ThreadChatTabContent(
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
+                    memberModelLabelResolver = memberModelLabelResolver,
                     inlineReplyParticipantsById = inlineReplyParticipantsById,
                     pendingActionCardIds = pendingActionCardIds,
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
@@ -15910,6 +15917,7 @@ private fun ThreadChatTabContent(
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
+                    memberModelLabelResolver = memberModelLabelResolver,
                     inlineReplyParticipantsById = inlineReplyParticipantsById,
                     pendingActionCardIds = pendingActionCardIds,
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
@@ -15981,6 +15989,7 @@ private fun ThreadChatTabContent(
                 highlightedMentions = highlightedMentions,
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
+                memberModelLabelResolver = memberModelLabelResolver,
                 inlineReplyParticipantsById = inlineReplyParticipantsById,
                 pendingActionCardIds = pendingActionCardIds,
                 pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
@@ -16370,6 +16379,7 @@ fun ThreadMessagesList(
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
     inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
@@ -16465,6 +16475,7 @@ fun ThreadMessagesList(
             ThreadMessagesListCallbacks(
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
+                memberModelLabelResolver = memberModelLabelResolver,
                 isMarkdownTagValid = isMarkdownTagValid,
                 resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                 onLoadNewer = onLoadNewer,
@@ -16511,6 +16522,7 @@ private fun ThreadMessagesListContent(
     val highlightedMentions = data.highlightedMentions
     val agentStatusResolver = callbacks.agentStatusResolver
     val memberAvatarResolver = callbacks.memberAvatarResolver
+    val memberModelLabelResolver = callbacks.memberModelLabelResolver
     val inlineReplyParticipantsById = data.inlineReplyParticipantsById
     val pendingActionCardIds = data.pendingActionCardIds
     val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
@@ -19029,6 +19041,7 @@ private fun ThreadMessagesListContent(
                         onMentionAuthor = onMentionAuthor,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
+                        memberModelLabelResolver = memberModelLabelResolver,
                         onOpenMarkdownTag = onOpenMarkdownTag,
                         onOpenMarkdownUrl = onOpenMarkdownUrl,
                         shareSelectionActive = shareSelectionActive,
@@ -26240,6 +26253,7 @@ private fun ThreadOriginCard(
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     shareSelectionActive: Boolean = false,
