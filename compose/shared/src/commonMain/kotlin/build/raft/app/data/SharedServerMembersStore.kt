@@ -1873,6 +1873,19 @@ class SharedServerMembersStore internal constructor(
                     val normalizedChannelId = result.data.channelId.value.trim().ifBlank { channelKey }
                     val normalizedScope = admittedBinding.scope(ChannelId(normalizedChannelId))
                         ?: return@withLock staleChannelMembersOwnerResult()
+                    // Channel members can include cross-server agents (joint-channel agents
+                    // from other servers). Seed them into the scoped profile cache so
+                    // memberProfile can resolve avatarUrl — the roster filter below would
+                    // otherwise drop them.
+                    cacheProfiles(
+                        key = serverKey,
+                        profiles =
+                            result.data.members
+                                .distinctBy { "${it.kind.name}:${it.id.value.trim()}" }
+                                .filterDeletedAgents(serverKey)
+                                .map(MemberProfile::withoutVolatileStatus),
+                        authoritativeAvatar = false
+                    )
                     val members =
                         authoritativeProfilesForPublication(
                             key = serverKey,
