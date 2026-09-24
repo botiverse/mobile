@@ -61,7 +61,6 @@ import build.raft.app.data.MOBILE_ACTION_LINK_OPEN_MODE
 import build.raft.app.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
 import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
 import build.raft.app.data.MOBILE_ACTION_SERVER_DRAWER
-import build.raft.app.data.MOBILE_ACTION_NEW_DESIGN_SETTINGS
 import build.raft.app.data.MOBILE_ACTION_HOME_SERVER_AVATAR
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
 import build.raft.app.data.MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS
@@ -5654,6 +5653,43 @@ private fun SlockAppShellReadyContent(
                         )
                     }
                     val currentChildTab = retainedAppShellSelectedTab(selectedTab)
+                    // task #386: the Slack-nav More tab is a destination hub, not the raw settings
+                    // page — Tasks/Members were demoted from the tab bar and live behind it.
+                    val moreTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        // Transient navigation by design (#388 review): a process/rotation
+                        // rebuild intentionally lands back on the hub instead of restoring a
+                        // sub-destination; the hub is the durable landing surface.
+                        var moreDestination by remember { mutableStateOf(SlockSlackNavMoreDestination.Hub) }
+                        // Sub-pages must consume the system back key before the root shell
+                        // handler (which closes the page) — returning to the hub instead.
+                        SlockBackHandler(
+                            enabled = slockSlackNavMoreShouldConsumeSystemBack(moreDestination),
+                            label = "app_shell_more_hub",
+                            onBack = { moreDestination = SlockSlackNavMoreDestination.Hub }
+                        )
+                        when (moreDestination) {
+                            SlockSlackNavMoreDestination.Hub ->
+                                SlockSlackNavMoreHub(
+                                    bottomContentPadding = appShellBottomContentInset,
+                                    onOpenTasks = { moreDestination = SlockSlackNavMoreDestination.Tasks },
+                                    onOpenMembers = { moreDestination = SlockSlackNavMoreDestination.Members },
+                                    onOpenSettings = { moreDestination = SlockSlackNavMoreDestination.Settings },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            SlockSlackNavMoreDestination.Tasks -> {
+                                SlockSlackNavMoreSubPageBackBar(onBack = { moreDestination = SlockSlackNavMoreDestination.Hub })
+                                tasksTabContent(active)
+                            }
+                            SlockSlackNavMoreDestination.Members -> {
+                                SlockSlackNavMoreSubPageBackBar(onBack = { moreDestination = SlockSlackNavMoreDestination.Hub })
+                                membersTabContent(active)
+                            }
+                            SlockSlackNavMoreDestination.Settings -> {
+                                SlockSlackNavMoreSubPageBackBar(onBack = { moreDestination = SlockSlackNavMoreDestination.Hub })
+                                settingsTabContent(active)
+                            }
+                        }
+                    }
                     val childTabRenderer: AppShellChildTabRenderer = { tab, active ->
                         val homeSummary = sharedHomeContentRenderSummary(homeState.content)
                         LaunchedEffect(tab, active, currentChildTab, readyServerId, homeSummary, homeState.homeRealtimeDirty) {
@@ -5671,7 +5707,7 @@ private fun SlockAppShellReadyContent(
                                 "settings" -> settingsTabContent(active)
                                 SlockSlackNavTabs.Dms -> dmsTabContent(active)
                                 SlockSlackNavTabs.Activity -> activityTabContent(active)
-                                SlockSlackNavTabs.More -> settingsTabContent(active)
+                                SlockSlackNavTabs.More -> moreTabContent(active)
                                 else -> homeTabContent(active)
                             }
                         }
@@ -6721,9 +6757,6 @@ private fun SettingsNativeDetailPageContent(
                     onServerDrawerChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetServerDrawerEnabled(enabled))
                         onServerDrawerSelected(enabled)
-                    },
-                    onNewDesignSettingsChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetNewDesignSettingsEnabled(enabled))
                     },
                     onHomeServerAvatarChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetHomeServerAvatarEnabled(enabled))
@@ -8012,7 +8045,6 @@ private fun SettingsMobileContent(
     onComposerSendKeyChange: (Boolean) -> Unit,
     onMultiShellHostChange: (Boolean) -> Unit,
     onServerDrawerChange: (Boolean) -> Unit,
-    onNewDesignSettingsChange: (Boolean) -> Unit,
     onHomeServerAvatarChange: (Boolean) -> Unit,
 ) {
     val snapshot =
@@ -8111,13 +8143,6 @@ private fun SettingsMobileContent(
                     snapshot = snapshot,
                     actionState = actionState,
                     onServerDrawerChange = onServerDrawerChange
-                )
-            }
-            item {
-                SettingsNewDesignSettingsCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onNewDesignSettingsChange = onNewDesignSettingsChange
                 )
             }
             item {
@@ -8223,54 +8248,6 @@ private fun SettingsServerDrawerCard(
             SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_SERVER_DRAWER && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState)
-        }
-    }
-}
-
-@Composable
-private fun SettingsNewDesignSettingsCard(
-    snapshot: SettingsMobileSnapshot,
-    actionState: SharedSettingsActionState?,
-    onNewDesignSettingsChange: (Boolean) -> Unit
-) {
-    val busy = actionState?.action == MOBILE_ACTION_NEW_DESIGN_SETTINGS && actionState.inProgress
-    val preference = snapshot.newDesignSettings
-    SettingsFormSectionCard(
-        iconName = SlockLucideIconName.Settings,
-        title = stringResource(MR.strings.settings_mobile_new_design_settings)
-    ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
-                        onNewDesignSettingsChange(!preference.enabled)
-                    }
-                    .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_badge_beta), SlockColor.BrandYellow)
-                    Text(
-                        preference.localizedToggleStatus(),
-                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray
-                    )
-                }
-                Text(
-                    stringResource(MR.strings.settings_mobile_new_design_settings_detail),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
-        }
-        if (actionState?.action == MOBILE_ACTION_NEW_DESIGN_SETTINGS && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
         }
     }
@@ -24775,3 +24752,99 @@ private fun SettingsHomePageLinkPayload.toTabItemPayload(): SlockTabItemPayload 
         value = value,
         section = section,
     )
+
+
+// task #386: Slack-nav More-tab destination hub. Tasks/Members/Settings live behind More;
+// gate-off keeps the legacy four-tab bar where they stay first-class tabs.
+internal enum class SlockSlackNavMoreDestination {
+    Hub,
+    Tasks,
+    Members,
+    Settings
+}
+
+/** task #386/#388: only More sub-pages consume the system back key (root handler closes the
+ *  page); the hub itself keeps the root shell back behavior. */
+internal fun slockSlackNavMoreShouldConsumeSystemBack(
+    destination: SlockSlackNavMoreDestination
+): Boolean = destination != SlockSlackNavMoreDestination.Hub
+
+@Composable
+private fun SlockSlackNavMoreHub(
+    bottomContentPadding: Dp,
+    onOpenTasks: () -> Unit,
+    onOpenMembers: () -> Unit,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val moreTitle = stringResource(MR.strings.tab_more)
+    val tasksTitle = stringResource(MR.strings.tab_tasks)
+    val membersTitle = stringResource(MR.strings.tab_members)
+    val settingsTitle = stringResource(MR.strings.tab_settings)
+    val tasksSubtitle = stringResource(MR.strings.more_hub_tasks_subtitle)
+    val membersSubtitle = stringResource(MR.strings.more_hub_members_subtitle)
+    val settingsSubtitle = stringResource(MR.strings.more_hub_settings_subtitle)
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceCream)
+                .padding(horizontal = SlockSpacing.Md)
+                .padding(bottom = bottomContentPadding)
+    ) {
+        SlockMainTabPageHeader(
+            surface = SlockMainTabHeaderSurface.More,
+            title = moreTitle,
+            subtitle = null,
+            applyTopSafeArea = true,
+            refreshing = false
+        )
+        Spacer(modifier = Modifier.height(SlockSpacing.Md))
+        SlockBrutalListRow(
+            title = tasksTitle,
+            subtitle = tasksSubtitle,
+            onClick = onOpenTasks
+        )
+        Spacer(modifier = Modifier.height(SlockSpacing.Sm))
+        SlockBrutalListRow(
+            title = membersTitle,
+            subtitle = membersSubtitle,
+            onClick = onOpenMembers
+        )
+        Spacer(modifier = Modifier.height(SlockSpacing.Sm))
+        SlockBrutalListRow(
+            title = settingsTitle,
+            subtitle = settingsSubtitle,
+            onClick = onOpenSettings
+        )
+    }
+}
+
+@Composable
+private fun SlockSlackNavMoreSubPageBackBar(onBack: () -> Unit) {
+    val backLabel = stringResource(MR.strings.common_back)
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .clickable { onBack() }
+                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SlockLucideIcon(
+            name = SlockLucideIconName.ArrowLeft,
+            modifier = Modifier.size(18.dp),
+            color = SlockColor.TextBlackArgb
+        )
+        Spacer(modifier = Modifier.width(SlockSpacing.Xs))
+        Text(
+            text = backLabel,
+            style = SlockType.Caption.copy(color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}

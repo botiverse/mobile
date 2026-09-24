@@ -2467,6 +2467,45 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowMdMermaidFlowchart() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-mermaid-flowchart",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-mermaid-flowchart")
+                    .put("visualFixture", "md_mermaid_flowchart"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdMermaidSequence() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-mermaid-sequence",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-mermaid-sequence")
+                    .put("visualFixture", "md_mermaid_sequence"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdMermaidInvalidFallback() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-mermaid-invalid-fallback",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-mermaid-invalid-fallback")
+                    .put("visualFixture", "md_mermaid_invalid"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowMdTable() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.md-table",
