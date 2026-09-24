@@ -21968,7 +21968,10 @@ internal fun buildAppShellThreadPayload(
     val routeIdentity = conversation.resolveThreadRouteIdentity()
     val surfaceKind = routeIdentity.surfaceKind
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
-    if (isReplyThread && !routeIdentity.hasCompleteReplyIdentity) {
+    // Trust the source tuple: parent channel+message ids alone are enough to open the
+    // reply thread. Only a missing tuple is unrecoverable here; an unresolved parent
+    // kind stays observable via parentSurfaceKind/parentChannelKind = null (#304/#307).
+    if (isReplyThread && routeIdentity.parentKey == null) {
         onWarn("thread_launch_rejected reason=reply_identity_incomplete source=app_shell threadId=${conversation.threadId.value}")
         return null
     }
@@ -22340,7 +22343,9 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     val routeIdentity = conversation.resolveThreadRouteIdentity()
     val surfaceKind = routeIdentity.surfaceKind
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
-    if (isReplyThread && !routeIdentity.hasCompleteReplyIdentity) {
+    // Same contract as buildAppShellThreadPayload: source tuple alone is sufficient;
+    // only a missing parentKey rejects the launch (#304/#307).
+    if (isReplyThread && routeIdentity.parentKey == null) {
         onWarn("thread_launch_rejected reason=reply_identity_incomplete source=standalone threadId=${conversation.threadId.value}")
         return null
     }
