@@ -14,7 +14,7 @@ import json, os, sys
 args = sys.argv[1:]
 with open(os.environ['CALLS'], 'a') as out: out.write(json.dumps(args) + '\\n')
 if args == ['simctl', 'list', 'runtimes', '-j']:
- print(json.dumps({'runtimes': [{'identifier': 'ios9', 'version': '9.0', 'platform': 'iOS', 'isAvailable': True}, {'identifier': 'ios18', 'version': '18.2', 'platform': 'iOS', 'isAvailable': True}]}))
+ print(json.dumps({'runtimes': [{'identifier': 'ios9', 'version': '9.0', 'platform': 'iOS', 'isAvailable': True}, {'identifier': 'com.apple.CoreSimulator.SimRuntime.iOS-18-2', 'version': '18.2', 'isAvailable': True}]}))
 elif args == ['simctl', 'list', 'devicetypes', '-j']:
  print(json.dumps({'devicetypes': [{'name': 'iPhone 14', 'identifier': 'iphone14'}]}))
 elif args[:2] == ['simctl', 'create']: print('01234567-89AB-CDEF-0123-456789ABCDEF')
@@ -61,7 +61,7 @@ class RunnerTest(unittest.TestCase):
     def test_fresh_device_numeric_runtime_and_exact_cleanup(self):
         self.run_phase("boot")
         self.assertIn(["simctl", "create", "visualcap-" + self.capture.name,
-                       "iphone14", "ios18"], self.calls())
+                       "iphone14", "com.apple.CoreSimulator.SimRuntime.iOS-18-2"], self.calls())
         self.run_phase("cleanup")
         self.assertEqual(self.calls()[-2:], [["simctl", "shutdown", UDID],
                                            ["simctl", "delete", UDID]])

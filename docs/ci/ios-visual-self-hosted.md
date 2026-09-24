@@ -9,7 +9,8 @@ The runner account needs an initialized Xcode installation (`xcodebuild -version
 an available iOS Simulator runtime with the iPhone 14 device type, CocoaPods
 (`pod`), and Python 3 on PATH. The workflow installs JDK 17 and retains the
 existing Gradle setup/cache policy and immutable Kuikly release verification.
-It does not download Xcode or change the machine's selected developer directory.
+It selects a full installed Xcode through job-local `DEVELOPER_DIR`, without
+changing the machine-wide developer directory or downloading Xcode.
 
 Every job creates a temporary directory under `RUNNER_TEMP` and a new simulator.
 The captured UDID is the only device it boots, installs into, or deletes. Build
@@ -28,3 +29,31 @@ group, the environment preflight passes, the app builds, actual screenshots and
 metadata upload, and cleanup completes. A Linux scripts test or a queued job is
 not evidence of a working Mac environment. Keep first-attempt failures visible;
 switching runners does not establish that earlier iOS build failures are fixed.
+
+## Bootstrap the first Mac
+
+Run **iOS runner bootstrap** manually on `main`. It targets the confirmed
+`mac-mini-1` label within `jacky-macmini`; it does not run on PRs or a schedule.
+An optional `xcode_app_path` accepts the absolute path to an installed Xcode app.
+Otherwise selection preserves a valid job developer directory, prefers
+`/Applications/Xcode.app`, or accepts exactly one other installed Xcode app.
+Missing or ambiguous full Xcode fails before installing dependencies.
+
+The workflow sets up JDK 17, installs missing Python/CocoaPods with existing
+Homebrew, and downloads an iOS runtime only when none is available. Existing
+Homebrew formulae are not explicitly upgraded. If Apple's first-launch components
+are pending, it uses noninteractive sudo for `xcodebuild -runFirstLaunch`; lack of
+permission fails the job. It never prompts for a password or accepts an Apple
+license. Full Xcode installation, Apple sign-in/license acceptance, and initial
+Homebrew installation remain machine-owner prerequisites.
+
+The final readiness check creates, boots, and deletes a fresh iPhone 14 using the
+same helper as capture. A successful bootstrap proves those prerequisites, not
+an app build or screenshot. The subsequent capture job selects Xcode again so a
+machine-wide CommandLineTools setting cannot silently undo the bootstrap choice.
+For nonstandard installations, arrange the conventional app location or a runner
+`DEVELOPER_DIR` before scheduled capture; an explicit bootstrap input affects only
+that bootstrap job.
+
+Runtime installation uses [Apple's documented component commands](https://developer.apple.com/documentation/xcode/downloading-and-installing-additional-xcode-components).
+Homebrew prerequisites follow the [installation documentation](https://docs.brew.sh/Installation).

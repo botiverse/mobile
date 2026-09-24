@@ -14,7 +14,7 @@ case "${1:-}" in
     : "${IOS_CAPTURE_TEMP:?}" "${SIM_DEVICE:?}"
     runtime=$(xcrun simctl list runtimes -j | python3 -c '
 import json, sys
-rs = [r for r in json.load(sys.stdin)["runtimes"] if r["isAvailable"] and r["platform"] == "iOS"]
+rs = [r for r in json.load(sys.stdin)["runtimes"] if r["isAvailable"] and (r.get("platform") == "iOS" or r["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS-"))]
 if not rs: sys.exit("No available iOS Simulator runtime; install it in Xcode before using this runner")
 print(max(rs, key=lambda r: tuple(map(int, r["version"].split("."))))["identifier"])
 ')
