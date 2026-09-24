@@ -35,3 +35,12 @@ jobs:
 
       - name: Test iOS capture runner resource ownership
         run: python3 scripts/ci/test_ios_visual_runner.py
+
+      - name: Test full Xcode selection
+        run: python3 scripts/ci/test_select_ios_xcode.py
+
+      - name: Test iOS bootstrap dependency decisions
+        run: python3 scripts/ci/test_bootstrap_ios_runner.py
+
+      - name: Test bootstrap main-ref boundary
+        run: python3 scripts/ci/test_ios_bootstrap_workflow.py

@@ -473,6 +473,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Select full Xcode for this job
+        run: bash scripts/ci/select_ios_xcode.sh
+
       - name: Prepare isolated iOS capture environment
         run: bash scripts/ci/ios_visual_runner.sh prepare
 
