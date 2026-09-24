@@ -40,6 +40,10 @@ internal data class SettingsHandsFeedbackImageEditSession(
 internal data class SettingsHandsFeedbackImageEditEvent(
     val threadKey: String,
     val actionId: String,
+    /** "complete" appends an edited batch; "replace" substitutes one existing attachment. */
+    val action: String = "complete",
+    /** Attachment identity the replace action targets (feedbackComposerAttachmentId). */
+    val replaceAttachmentId: String = "",
     val groupId: String,
     val index: Int,
     val total: Int,
@@ -54,7 +58,7 @@ internal sealed interface SettingsHandsFeedbackImageEditFoldResult {
     data class Pending(val session: SettingsHandsFeedbackImageEditSession) :
         SettingsHandsFeedbackImageEditFoldResult
 
-    data class Complete(val files: List<PlatformFile>) :
+    data class Complete(val files: List<PlatformFile>, val replaceAttachmentId: String = "") :
         SettingsHandsFeedbackImageEditFoldResult
 
     data class Ignored(val session: SettingsHandsFeedbackImageEditSession) :
@@ -403,6 +407,77 @@ internal fun settingsHandsFeedbackImageEditRequest(
     )
 }
 
+/**
+ * task #286: build the editable preview for one already-mounted feedback attachment.
+ *
+ * The session is a single-member group (N=1) whose completion carries action="replace" with the
+ * target attachment identity. The page opens the shared file-preview page with editing enabled;
+ * the resulting event folds back through the same ownership/commit machinery as a picked batch.
+ */
+internal fun settingsHandsFeedbackImageEditPreviewRequest(
+    accountId: String,
+    pageGeneration: String,
+    file: PlatformFile,
+    sourceStoreScope: SlockShellStoreScope,
+    groupId: String = newSettingsHandsFeedbackImageEditId()
+): SettingsHandsFeedbackImageEditRequest? {
+    if (groupId.isBlank() || pageGeneration.isBlank() || file.fileRef.isNullOrBlank()) return null
+    val previewUri = file.composerLocalPreviewUri().orEmpty()
+    val threadKey = "feedback-$groupId"
+    val session =
+        SettingsHandsFeedbackImageEditSession(
+            groupId = groupId,
+            threadKey = threadKey,
+            accountId = accountId,
+            pageGeneration = pageGeneration,
+            expectedCount = 1
+        )
+    return SettingsHandsFeedbackImageEditRequest(
+        session = session,
+        sourceStoreScope = sourceStoreScope,
+        previewPayload =
+            SlockFilePreviewPayload(
+                kind = "image",
+                requestedKind = "image",
+                titleDesc = MR.strings.file_preview_image.desc(),
+                subtitle = file.fileName,
+                name = file.fileName,
+                path = file.fileName,
+                meta =
+                    listOf(
+                        file.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+                        file.mimeType.orEmpty()
+                    ).filter { it.isNotBlank() }.joinToString(" \u00b7 "),
+                imageUrl = previewUri.takeIf { it.isNotBlank() },
+                externalUrl = previewUri.takeIf { it.isNotBlank() },
+                externalFileName = file.fileName,
+                externalMimeType = file.mimeType.orEmpty(),
+                source = file.source,
+                attachmentId = file.feedbackComposerAttachmentId(),
+                imageGallery =
+                    listOf(
+                        file.toComposerImageGalleryImage().copy(
+                            composerImageReplaceAttachmentId = file.feedbackComposerAttachmentId()
+                        )
+                    ),
+                composerImageThreadKey = threadKey,
+                composerImageActionId = "feedback-image-edit-$groupId",
+                composerImageGroupId = groupId,
+                composerImageFileRef = file.fileRef.orEmpty(),
+                composerImageFileName = file.fileName,
+                composerImageMimeType = file.mimeType.orEmpty(),
+                composerImageSizeBytes = file.sizeBytes,
+                composerImagePreviewUri = previewUri,
+                composerImageOwnedTemporaryFileRefs =
+                    listOf(file).filter(PlatformFile::isComposerImageOwnedTemporary)
+                        .mapNotNull(PlatformFile::fileRef),
+                composerImageCompressAfterEdit = true,
+                composerImageCanComplete = true,
+                composerImageCanEdit = true
+            )
+    )
+}
+
 internal fun normalizeSettingsHandsFeedbackPickerFiles(
     files: List<PlatformFile>,
     imageOnly: Boolean
@@ -441,13 +516,15 @@ internal fun parseSettingsHandsFeedbackImageEditEvent(
             data = data,
             requireGroup = true
         ) ?: return null
-    if (payload.action != "complete") return null
+    if (payload.action != "complete" && payload.action != "replace") return null
     val groupId = payload.groupId ?: return null
     val index = payload.groupIndex ?: return null
     val total = payload.groupTotal ?: return null
     return SettingsHandsFeedbackImageEditEvent(
         threadKey = payload.threadKey,
         actionId = payload.actionId,
+        action = payload.action,
+        replaceAttachmentId = payload.replaceAttachmentId,
         groupId = groupId,
         index = index,
         total = total,
@@ -526,7 +603,10 @@ internal fun foldSettingsHandsFeedbackImageEditEvent(
     }
     val orderedFiles = (0 until session.expectedCount).mapNotNull(nextFilesByIndex::get)
     return if (orderedFiles.size == session.expectedCount) {
-        SettingsHandsFeedbackImageEditFoldResult.Complete(orderedFiles)
+        SettingsHandsFeedbackImageEditFoldResult.Complete(
+            files = orderedFiles,
+            replaceAttachmentId = event.replaceAttachmentId
+        )
     } else {
         SettingsHandsFeedbackImageEditFoldResult.Failed("missing_group_item")
     }
@@ -536,7 +616,8 @@ internal fun promoteSettingsHandsFeedbackEditedAttachments(
     existing: List<PlatformFile>,
     edited: List<PlatformFile>,
     attachmentMaxBytes: Long,
-    attachmentLimit: Int
+    attachmentLimit: Int,
+    replaceAttachmentId: String = ""
 ): SettingsHandsFeedbackAttachmentPromotion {
     val durable =
         edited.filter { file ->
@@ -545,6 +626,31 @@ internal fun promoteSettingsHandsFeedbackEditedAttachments(
                 file.sizeBytes?.let { it > 0L } == true
         }
     val accepted = durable.filter { file -> file.sizeBytes?.let { it <= attachmentMaxBytes } == true }
+    // task #286: a replace completion swaps its target in place instead of appending; the target
+    // already occupies a slot so the limit only applies to genuinely new members.
+    if (replaceAttachmentId.isNotBlank()) {
+        val targetIndex =
+            existing.indexOfFirst { file -> (file.fileRef ?: file.id) == replaceAttachmentId }
+        val replaced =
+            if (targetIndex < 0) {
+                // Target removed while the editor was open: mount the edit as a new entry so the
+                // user's work is not silently dropped (limit still applies below).
+                (existing + accepted).distinctBy { file -> file.fileRef ?: file.id }
+            } else {
+                existing.toMutableList().apply {
+                    accepted.forEachIndexed { index, file ->
+                        val slot = targetIndex + index
+                        if (slot < size) set(slot, file) else add(file)
+                    }
+                }
+            }
+        return SettingsHandsFeedbackAttachmentPromotion(
+            attachments = replaced.take(attachmentLimit),
+            rejectedTooLargeCount = durable.size - accepted.size,
+            trimmedByLimit = replaced.size > attachmentLimit,
+            invalidDurableCount = edited.size - durable.size
+        )
+    }
     val merged = (existing + accepted).distinctBy { file -> file.fileRef ?: file.id }
     return SettingsHandsFeedbackAttachmentPromotion(
         attachments = merged.take(attachmentLimit),
@@ -559,6 +665,7 @@ internal suspend fun commitSettingsHandsFeedbackEditedGroup(
     edited: List<PlatformFile>,
     attachmentMaxBytes: Long,
     attachmentLimit: Int,
+    replaceAttachmentId: String = "",
     isCurrent: () -> Boolean,
     promote: suspend (List<PlatformFile>) -> DataResult<List<PlatformFile>>,
     persist: (List<PlatformFile>) -> Unit,
@@ -572,8 +679,9 @@ internal suspend fun commitSettingsHandsFeedbackEditedGroup(
             "settings_feedback_attachment_session_stale"
         )
     }
+    val isReplace = replaceAttachmentId.isNotBlank()
     val remainingSlots = (attachmentLimit - currentExisting().size).coerceAtLeast(0)
-    val selected = edited.take(remainingSlots)
+    val selected = if (isReplace) edited.take(1) else edited.take(remainingSlots)
     if (selected.isEmpty()) {
         return SettingsHandsFeedbackEditedGroupCommitResult.Failed(
             "settings_feedback_attachment_limit_reached"
@@ -602,7 +710,8 @@ internal suspend fun commitSettingsHandsFeedbackEditedGroup(
                     existing = currentExisting(),
                     edited = promoted.data,
                     attachmentMaxBytes = attachmentMaxBytes,
-                    attachmentLimit = attachmentLimit
+                    attachmentLimit = attachmentLimit,
+                    replaceAttachmentId = replaceAttachmentId
                 )
             val promotion =
                 promotionBeforeSelectionTrim.copy(

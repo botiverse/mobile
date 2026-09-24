@@ -12151,12 +12151,68 @@ internal fun SharedHandsFeedbackContent(
     }
 
     fun previewAttachment(attachmentId: String) {
-        attachmentsState.value
-            .firstOrNull { file -> file.feedbackComposerAttachmentId() == attachmentId }
-            ?.toSettingsHandsFeedbackAttachmentPreviewPayload(copy.attachment)
-            ?.let { payload ->
-                pager.openSlockFilePreviewPage(payload, sourceStoreScope = sourceStoreScope)
+        val file =
+            attachmentsState.value
+                .firstOrNull { it.feedbackComposerAttachmentId() == attachmentId }
+                ?: return
+        // task #286: image previews reopen the shared editor so tapping a mounted image can
+        // edit it in place; non-image previews stay read-only.
+        val editRequest =
+            if (
+                slockFilePreviewIsImageAttachment(
+                    file.fileName.ifBlank { copy.attachment },
+                    file.mimeType.orEmpty()
+                )
+            ) {
+                settingsHandsFeedbackImageEditPreviewRequest(
+                    accountId = accountId,
+                    pageGeneration = feedbackPageGeneration,
+                    file = file,
+                    sourceStoreScope = sourceStoreScope
+                )
+            } else {
+                null
             }
+        if (editRequest == null) {
+            file.toSettingsHandsFeedbackAttachmentPreviewPayload(copy.attachment)
+                ?.let { payload ->
+                    pager.openSlockFilePreviewPage(payload, sourceStoreScope = sourceStoreScope)
+                }
+            return
+        }
+        // A new edit preview supersedes any session still pending; retire it first so its
+        // admission cannot consume events meant for the replacement.
+        abortAllOwnedImageEditSessions()
+        pendingImageEditSession = null
+        var previewSessionId = ""
+        if (
+            !pager.openSlockFilePreviewPage(
+                editRequest.previewPayload,
+                sourceStoreScope = editRequest.sourceStoreScope,
+                onEphemeralSessionRegistered = { registeredId ->
+                    previewSessionId = registeredId
+                    imageEditSessionTracker.track(registeredId).also { tracked ->
+                        if (tracked) {
+                            pendingImageEditSession =
+                                editRequest.session.copy(previewSessionId = registeredId)
+                        }
+                    }
+                }
+            ) || previewSessionId.isBlank()
+        ) {
+            imageEditSessionTracker.release(previewSessionId)
+            pendingImageEditSession = null
+            error = copy.attachmentPickerFailed
+            return
+        }
+        if (
+            !imageEditSessionTracker.owns(previewSessionId) &&
+                !imageEditSessionTracker.isHandoffStarted(previewSessionId)
+        ) {
+            abortOwnedImageEditSessions(listOf(previewSessionId))
+            pendingImageEditSession = null
+            error = copy.attachmentPickerFailed
+        }
     }
 
     DisposableEffect(eventBus, accountId, feedbackPageGeneration) {
@@ -12332,6 +12388,7 @@ internal fun SharedHandsFeedbackContent(
                                             edited = result.files,
                                             attachmentMaxBytes = attachmentMaxBytes,
                                             attachmentLimit = attachmentLimit,
+                                            replaceAttachmentId = result.replaceAttachmentId,
                                             isCurrent = {
                                                 !imageEditSessionTracker.isDisposed() &&
                                                     imageEditSessionTracker.owns(session.previewSessionId) &&
@@ -13081,7 +13138,7 @@ internal fun settingsHandsFeedbackMergedAttachments(
     )
 }
 
-private fun PlatformFile.feedbackComposerAttachmentId(): String =
+internal fun PlatformFile.feedbackComposerAttachmentId(): String =
     fileRef?.takeIf { it.isNotBlank() } ?: id
 
 internal fun PlatformFile.toSettingsHandsFeedbackAttachmentPreviewPayload(

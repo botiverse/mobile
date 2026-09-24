@@ -1131,6 +1131,151 @@ class SettingsHandsFeedbackImageEditTest {
         assertFalse(deduped.limitTrimmed)
     }
 
+    @Test
+    fun previewEditRequestBuildsReplaceBoundEditablePayload() {
+        val sourceStoreScope = SlockShellStoreScope.create("legacy", "server-a")
+        val file =
+            PlatformFile(
+                id = "att-1",
+                fileName = "shot.png",
+                mimeType = "image/png",
+                sizeBytes = 512L,
+                previewUri = "file:///draft/shot-preview.png",
+                fileRef = "file:///draft/shot.png",
+                source = "settings_feedback_draft"
+            )
+
+        val request =
+            requireNotNull(
+                settingsHandsFeedbackImageEditPreviewRequest(
+                    accountId = "account-a",
+                    pageGeneration = "page-a",
+                    file = file,
+                    sourceStoreScope = sourceStoreScope,
+                    groupId = "edit-group"
+                )
+            )
+
+        assertEquals(1, request.session.expectedCount)
+        assertEquals("feedback-edit-group", request.session.threadKey)
+        assertTrue(request.previewPayload.composerImageCanEdit)
+        assertTrue(request.previewPayload.composerImageCanComplete)
+        assertEquals("edit-group", request.previewPayload.composerImageGroupId)
+        val galleryImage = request.previewPayload.imageGallery.single()
+        assertEquals("file:///draft/shot.png", galleryImage.composerImageFileRef)
+        assertEquals(
+            file.fileRef,
+            galleryImage.composerImageReplaceAttachmentId
+        )
+    }
+
+    @Test
+    fun previewEditRequestRejectsBlankRefs() {
+        val file =
+            PlatformFile(
+                id = "att-1",
+                fileName = "shot.png",
+                mimeType = "image/png",
+                fileRef = null
+            )
+        assertNull(
+            settingsHandsFeedbackImageEditPreviewRequest(
+                accountId = "account-a",
+                pageGeneration = "page-a",
+                file = file,
+                sourceStoreScope = SlockShellStoreScope.create("legacy", "server-a"),
+                groupId = "edit-group"
+            )
+        )
+    }
+
+    @Test
+    fun replaceEventParsesAndFoldsToSingleComplete() {
+        val session = session(expectedCount = 1)
+        val parsed =
+            parseSettingsHandsFeedbackImageEditEvent(
+                eventJson(index = 0, total = 1).apply {
+                    put("action", "replace")
+                    put("replaceAttachmentId", "file:///draft/original.png")
+                }
+            )!!
+
+        assertEquals("replace", parsed.action)
+        assertEquals("file:///draft/original.png", parsed.replaceAttachmentId)
+
+        val result =
+            foldSettingsHandsFeedbackImageEditEvent(
+                session = session,
+                event = parsed,
+                currentAccountId = session.accountId,
+                currentPageGeneration = session.pageGeneration
+            )
+
+        val complete = assertIs<SettingsHandsFeedbackImageEditFoldResult.Complete>(result)
+        assertEquals("file:///draft/original.png", complete.replaceAttachmentId)
+        assertEquals(listOf("file:///edited/0.png"), complete.files.map { it.fileRef })
+    }
+
+    @Test
+    fun replaceCommitSwapsTargetInPlaceAndKeepsOrder() = runBlocking {
+        val before = image("before", "file:///draft/before.png")
+        val target = image("target", "file:///draft/target.png")
+        val after = image("after", "file:///draft/after.png")
+        val edited =
+            image("edited", "file:///editor-temp/edited.png")
+                .copy(source = "settings_feedback_draft")
+        var currentAttachments = listOf(before, target, after)
+        var persisted = emptyList<PlatformFile>()
+
+        val result =
+            commitSettingsHandsFeedbackEditedGroup(
+                existing = currentAttachments,
+                edited = listOf(edited),
+                attachmentMaxBytes = 1_000,
+                attachmentLimit = 3,
+                replaceAttachmentId = "file:///draft/target.png",
+                isCurrent = { true },
+                promote = { files -> DataResult.Content(files.map { it.copy(source = "settings_feedback_draft") }) },
+                persist = { persisted = it },
+                currentExisting = { currentAttachments }
+            )
+
+        val committed = assertIs<SettingsHandsFeedbackEditedGroupCommitResult.Committed>(result)
+        assertEquals(
+            listOf("file:///draft/before.png", "file:///editor-temp/edited.png", "file:///draft/after.png"),
+            committed.promotion.attachments.map { it.fileRef }
+        )
+        assertEquals(committed.promotion.attachments, persisted)
+    }
+
+    @Test
+    fun replaceCommitFallsBackToAppendWhenTargetWasRemoved() = runBlocking {
+        val kept = image("kept", "file:///draft/kept.png")
+        val edited =
+            image("edited", "file:///editor-temp/edited.png")
+                .copy(source = "settings_feedback_draft")
+        var currentAttachments = listOf(kept)
+
+        val result =
+            commitSettingsHandsFeedbackEditedGroup(
+                existing = currentAttachments,
+                edited = listOf(edited),
+                attachmentMaxBytes = 1_000,
+                attachmentLimit = 3,
+                replaceAttachmentId = "file:///draft/gone.png",
+                isCurrent = { true },
+                promote = { files -> DataResult.Content(files.map { it.copy(source = "settings_feedback_draft") }) },
+                persist = {},
+                currentExisting = { currentAttachments }
+            )
+
+        val committed = assertIs<SettingsHandsFeedbackEditedGroupCommitResult.Committed>(result)
+        assertEquals(
+            listOf("file:///draft/kept.png", "file:///editor-temp/edited.png"),
+            committed.promotion.attachments.map { it.fileRef }
+        )
+    }
+
     private fun session(expectedCount: Int): SettingsHandsFeedbackImageEditSession =
         SettingsHandsFeedbackImageEditSession(
             groupId = "group-a",
