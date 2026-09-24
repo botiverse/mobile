@@ -2508,8 +2508,10 @@ internal class SharedThreadDataSource(
         expected: ReplyResolutionScope
     ): Boolean {
         val current = readReplyResolutionScope() ?: return false
-        return current.provenance == expected.provenance &&
-            isCurrentReplyCacheProvenance(expected.provenance)
+        // A transparent token rotation (same binding/server/selection) keeps the owner; any
+        // binding, principal, or server change still fails closed (task #2606).
+        return current.provenance.isCurrentOrSuccessorForLocalSend(expected.provenance) &&
+            isCurrentReplyCacheProvenanceForLocalSend(expected.provenance)
     }
 
     private fun KuiklyThreadScreenPayload.exactReplyParentAccessCandidate(
@@ -3213,7 +3215,7 @@ internal class SharedThreadDataSource(
         suspend fun fetchCanonicalPayloadForCurrentGeneration(): DataResult<KuiklyThreadScreenPayload> {
             val resolvedThreadId = threadId ?: return fetchCanonicalPayload()
             while (true) {
-                if (!isCurrentReplyCacheProvenance(resolutionScope.provenance)) {
+                if (!isCurrentReplyCacheProvenanceForLocalSend(resolutionScope.provenance)) {
                     return staleReplyCacheProvenanceResult()
                 }
                 val generation =
@@ -3227,7 +3229,7 @@ internal class SharedThreadDataSource(
                     canonicalRequestGeneration = generation
                     return result
                 }
-                if (!isCurrentReplyCacheProvenance(resolutionScope.provenance)) {
+                if (!isCurrentReplyCacheProvenanceForLocalSend(resolutionScope.provenance)) {
                     return staleReplyCacheProvenanceResult()
                 }
             }
@@ -3239,7 +3241,7 @@ internal class SharedThreadDataSource(
                     threadId = threadId,
                     ownerScopeId = payloadOwnerScopeId,
                     fetch = {
-                        if (!isCurrentReplyCacheProvenance(resolutionScope.provenance)) {
+                        if (!isCurrentReplyCacheProvenanceForLocalSend(resolutionScope.provenance)) {
                             staleReplyCacheProvenanceResult()
                         } else {
                             fetchCanonicalPayload()
@@ -3277,7 +3279,10 @@ internal class SharedThreadDataSource(
         if (!replyAccessResolutionOwnerStillCurrent(resolutionScope)) {
             return staleReplyCacheProvenanceResult()
         }
-        if (!cacheReplyThreadResolution(resolutionScope.provenance, payload)) {
+        val cacheProvenance =
+            currentReplyCacheProvenanceForLocalSend(resolutionScope.provenance)
+                ?: return staleReplyCacheProvenanceResult()
+        if (!cacheReplyThreadResolution(cacheProvenance, payload)) {
             return staleReplyCacheProvenanceResult()
         }
         if (canonicalRequestGeneration != null) {
