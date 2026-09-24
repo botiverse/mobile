@@ -7873,6 +7873,13 @@ private fun SharedThreadRouteContentContent(
     // task #232: rendered visible tail reported by the messages list; the read
     // marker must track what the user sees, not the loaded payload tail.
     var visibleReadTailIndex by remember(threadInstanceKey) { mutableStateOf<Int?>(null) }
+    LaunchedEffect(visibleReadTailIndex) {
+        bridge.log(
+            "thread_read_tail index=${visibleReadTailIndex?.toString() ?: "null"} " +
+                "firstMessageListItemIndex=${renderedTimelineSlice.firstMessageListItemIndex()} " +
+                "messageCount=${renderedTimelineSlice.messages.size}"
+        )
+    }
     val visibleReadMarkerKey =
         remember(
             renderedThread.sourceThreadId,
@@ -16535,6 +16542,10 @@ private fun ThreadMessagesListContent(
         if (anchor != null) {
             val advanced = advanceThreadReadAnchorFrontier(latestVisibleReadAnchor, anchor)
             if (advanced != latestVisibleReadAnchor) {
+                diagnosticsLogger(
+                    "thread_read_anchor_frontier seq=${advanced?.seq} id=${advanced?.messageId} " +
+                        "prevSeq=${latestVisibleReadAnchor?.seq}"
+                )
                 latestVisibleReadAnchor = advanced
             }
         }
@@ -17394,7 +17405,12 @@ private fun ThreadMessagesListContent(
     }
     // task #232: report the rendered visible tail so the read marker tracks
     // actual visibility instead of the loaded payload tail.
-    LaunchedEffect(threadInstanceKey) {
+    // The key must include the payload window: a bare threadInstanceKey key
+    // captures firstMessageListItemIndex/messageCount from the entry payload,
+    // so newer messages fall outside the [firstMessageListItemIndex,
+    // firstMessageListItemIndex + messageCount) window and the tail index never
+    // advances (task #1139 — the ↓ x new count froze at the entry value).
+    LaunchedEffect(threadInstanceKey, renderPayload.messages, renderPayload.firstMessageListItemIndex()) {
         snapshotFlow {
             threadVisibleReadTailMessageIndex(
                 visibleListItemIndexes = listState.layoutInfo.visibleItemsInfo.map { item -> item.index },
