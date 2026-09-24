@@ -2665,6 +2665,7 @@ private fun SlockAppShellReadyContent(
             conversationRepository,
             memberRepository,
             appShellServerMembersStore,
+            channelRepository,
             homeStore,
             homeActivityReplyThreadPrewarmDataSource
         ) {
@@ -2674,6 +2675,7 @@ private fun SlockAppShellReadyContent(
                 readReceiptRepository = homeReadReceiptRepository,
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
+                channelRepository = channelRepository,
                 prewarmReplyThread = homeActivityReplyThreadPrewarmDataSource::prewarmReplyThread,
                 onUnreadCountsChanged = { homeStore.dispatch(SharedHomeIntent.ForegroundRefresh) },
                 // task #436: shared store — both call sites must use one identity.
@@ -3282,9 +3284,11 @@ private fun SlockAppShellReadyContent(
         }
     val homeConversationDirectory by homeConversationDirectoryFlow.collectAsState(SharedConversationDirectoryState())
     val appShellConversationDirectory =
-        remember(homeConversationDirectory, homeActivityState.snapshot) {
+        remember(homeConversationDirectory, homeActivityState.snapshot, homeActivityState.dmPeerNames) {
             val activityDirectory =
-                homeActivityState.snapshot?.toSharedConversationDirectoryState()
+                homeActivityState.snapshot?.toSharedConversationDirectoryState(
+                    dmPeerNames = homeActivityState.dmPeerNames
+                )
                     ?: SharedConversationDirectoryState()
             listOf(homeConversationDirectory, activityDirectory)
                 .mergedSharedConversationDirectoryState()

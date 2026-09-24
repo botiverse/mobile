@@ -4336,6 +4336,35 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun replyConversationContextRendersDmParentPeerAsAtLabel() {
+        // task #399: a reply thread hosted in a DM subtitles the header with
+        // the peer's @-name — never a # channel tag.
+        val context =
+            SharedThreadHeaderContextStore.conversationContext(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                conversation =
+                    ConversationSummary(
+                        threadId = ThreadId("dm-thread-1"),
+                        channelId = ChannelId("dm-1"),
+                        kind = ConversationKind.Thread,
+                        name = "Jiacheng",
+                        thread =
+                            ThreadConversation(
+                                parentChannelId = ChannelId("dm-1"),
+                                parentMessageId = MessageId("message-1"),
+                                streamChannelId = ChannelId("dm-thread-1"),
+                                parentSurfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                                parentChannelKind = "dm"
+                            )
+                    ),
+                originMessage = null,
+                parentMessageId = "message-1"
+            )
+
+        assertEquals("@Jiacheng", context.subtitle)
+    }
+
+    @Test
     fun replyConversationContextStillMarksOriginMissingWhenNoHydrationIsPending() {
         val context =
             SharedThreadHeaderContextStore.conversationContext(

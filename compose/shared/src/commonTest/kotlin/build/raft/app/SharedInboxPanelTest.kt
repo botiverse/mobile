@@ -1460,6 +1460,85 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityDmParentThreadRendersPeerIdentityLines() {
+        // task #399 飞书 shape: a thread hosted in a DM shows the peer's
+        // @-identity in the channel tag and prefixes the root preview with
+        // "@peer:", while the second line stays "sender: latest reply".
+        val item =
+            InboxItem(
+                key = "thread:dm-thread-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("dm-thread-1"),
+                channelName = "thread-stream",
+                parentChannelId = ChannelId("dm-1"),
+                // channels.name is not a reliable peer projection for DMs;
+                // the hydrated Home DM list name wins.
+                parentChannelName = "raw-dm-name",
+                parentChannelKind = ConversationKind.DirectMessage,
+                parentMessageId = MessageId("message-1"),
+                parentMessagePreview = "DM root preview",
+                latestActivityPreview = "Latest reply",
+                latestActivitySenderName = "Artin",
+                replyCount = 2
+            )
+        val dmPeerNames = mapOf("dm-1" to "Jiacheng")
+
+        assertEquals("@Jiacheng", item.channelLabel(dmPeerNames))
+        assertEquals("@Jiacheng: DM root preview", item.primaryActivityPreviewText(dmPeerNames = dmPeerNames).fullText)
+        assertEquals("@Jiacheng", item.primaryActivityPreviewText(dmPeerNames = dmPeerNames).senderName)
+        assertEquals("Artin: Latest reply", item.secondaryActivityPreviewText()?.fullText)
+        assertEquals("Jiacheng", item.toConversationSummary(dmPeerNames).name)
+    }
+
+    @Test
+    fun activityDmParentThreadFallsBackToRawParentNameWithoutPeerMap() {
+        // Before the DM list hydrate lands (or when the DM is absent from the
+        // Home snapshot) the row still shows the @-identity shape; it only
+        // loses the peer-resolution quality, never the DM-vs-channel marker.
+        val item =
+            InboxItem(
+                key = "thread:dm-thread-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("dm-thread-1"),
+                channelName = "thread-stream",
+                parentChannelId = ChannelId("dm-1"),
+                parentChannelName = "raw-dm-name",
+                parentChannelKind = ConversationKind.DirectMessage,
+                parentMessageId = MessageId("message-1"),
+                parentMessagePreview = "DM root preview"
+            )
+
+        assertEquals("@raw-dm-name", item.channelLabel())
+        assertEquals("@raw-dm-name: DM root preview", item.primaryActivityPreviewText().fullText)
+        assertEquals("raw-dm-name", item.toConversationSummary().name)
+    }
+
+    @Test
+    fun activityChannelParentThreadKeepsHashTagAndBareRootPreview() {
+        val item =
+            InboxItem(
+                key = "thread:activity-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-channel-1"),
+                channelName = "thread-stream",
+                parentChannelId = ChannelId("channel-1"),
+                parentChannelName = "general",
+                parentChannelKind = ConversationKind.Channel,
+                parentMessageId = MessageId("message-1"),
+                parentMessagePreview = "Parent message preview",
+                latestActivityPreview = "Latest reply",
+                latestActivitySenderName = "Artin",
+                replyCount = 2
+            )
+        val dmPeerNames = mapOf("channel-1" to "wrong-peer")
+
+        assertEquals("#general", item.channelLabel(dmPeerNames))
+        assertEquals("Parent message preview", item.primaryActivityPreviewText(dmPeerNames = dmPeerNames).fullText)
+        assertEquals(null, item.primaryActivityPreviewText(dmPeerNames = dmPeerNames).senderName)
+        assertEquals("Artin: Latest reply", item.secondaryActivityPreviewText()?.fullText)
+    }
+
+    @Test
     fun activityFooterSlotsMatchReactOrderForThreadRows() {
         val item =
             InboxItem(
