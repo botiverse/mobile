@@ -12550,11 +12550,9 @@ class SharedThreadStoreTest {
         )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
-        withTimeout(1_000) {
-            while (!store.state.value.writeActionsEnabled) {
-                delay(10)
-            }
-        }
+        // Unconfined scope: Start has already rendered the cached parent. With the channel fetch
+        // failing, write actions stay disabled, so waiting on them would never finish.
+        assertEquals(5, store.state.value.payload.messages.single().replyCount)
         val provenance = requireNotNull(dataSource.currentReplyCacheProvenance())
 
         store.accept(

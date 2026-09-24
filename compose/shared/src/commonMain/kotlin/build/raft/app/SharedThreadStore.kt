@@ -401,7 +401,7 @@ internal data class SharedThreadReplyCountFact(
     // Monotonic mark captured by the caller when the value was observed. The
     // ledger arbitrates same-message facts by recency so an older projection
     // cannot overwrite a newer realtime observation (e.g. reply deletions).
-    val observedAt: TimeMark
+    val observedAt: TimeSource.Monotonic.ValueTimeMark
 )
 
 internal class SharedThreadFreshnessLedger(
@@ -3508,7 +3508,7 @@ internal class SharedThreadDataSource(
 
     suspend fun fetchFollowedThreadPayload(
         basePayload: KuiklyThreadScreenPayload,
-        onSummaries: (ThreadReplySummariesSnapshot, TimeMark) -> Unit = { _, _ -> },
+        onSummaries: (ThreadReplySummariesSnapshot, TimeSource.Monotonic.ValueTimeMark) -> Unit = { _, _ -> },
     ): DataResult<KuiklyThreadScreenPayload> {
         return fetchFollowedThreadPayloadForContext(
             basePayload = basePayload,
@@ -3520,7 +3520,7 @@ internal class SharedThreadDataSource(
     internal suspend fun fetchFollowedThreadPayloadForContext(
         basePayload: KuiklyThreadScreenPayload,
         expectedContext: ReplyCacheProducerContext?,
-        onSummaries: (ThreadReplySummariesSnapshot, TimeMark) -> Unit = { _, _ -> },
+        onSummaries: (ThreadReplySummariesSnapshot, TimeSource.Monotonic.ValueTimeMark) -> Unit = { _, _ -> },
     ): DataResult<KuiklyThreadScreenPayload> {
         if (expectedContext != null && !isCurrentReplyCacheProvenance(expectedContext.provenance)) {
             return staleReplyCacheProvenanceResult()
@@ -3575,7 +3575,7 @@ internal class SharedThreadDataSource(
     fun cacheReplyCountProjection(
         threadId: String,
         snapshot: ThreadReplySummariesSnapshot,
-        observedAt: TimeMark,
+        observedAt: TimeSource.Monotonic.ValueTimeMark,
         serverId: String,
         principalId: String,
         expectedProvenance: ReplyCacheProvenance,
@@ -7378,7 +7378,7 @@ internal class SharedThreadStore(
             return
         }
         var replySummaries: ThreadReplySummariesSnapshot? = null
-        var replySummariesObservedAt: TimeMark? = null
+        var replySummariesObservedAt: TimeSource.Monotonic.ValueTimeMark? = null
         val followedPayload =
             if (beforeFetch.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
                 // ReplyThread loads are already scoped to a single canonical stream,
