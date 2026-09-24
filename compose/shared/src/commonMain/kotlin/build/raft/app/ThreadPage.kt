@@ -16880,6 +16880,14 @@ private fun ThreadMessagesListContent(
     var classicMenuOverrideMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     // task #569: long-press on a reaction chip shows who reacted.
     var reactionDetails by remember(threadInstanceKey) { mutableStateOf<ThreadReactionDetailsRequest?>(null) }
+    var authorDescriptionPopover by remember(threadInstanceKey) {
+        mutableStateOf<ThreadAuthorDescriptionPopoverRequest?>(null)
+    }
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            authorDescriptionPopover = null
+        }
+    }
     var taskStatusMenuMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var taskStatusMenuAnchor by remember(threadInstanceKey) { mutableStateOf<SlockPopoverAnchor?>(null) }
     var allowBottomAutoAnchor by remember(threadInstanceKey) {
@@ -19072,6 +19080,13 @@ private fun ThreadMessagesListContent(
                                     anchor = anchor
                                 )
                         },
+                        onShowAuthorDescription = { description, anchor ->
+                            authorDescriptionPopover =
+                                ThreadAuthorDescriptionPopoverRequest(
+                                    description = description,
+                                    anchor = anchor
+                                )
+                        },
                         onShowActions = { message, anchor ->
                             actionMenuAnchor = anchor
                             actionMessageId = message.id
@@ -19363,6 +19378,13 @@ private fun ThreadMessagesListContent(
                                             anchor = anchor
                                         )
                                 },
+                                onShowAuthorDescription = { description, anchor ->
+                                    authorDescriptionPopover =
+                                        ThreadAuthorDescriptionPopoverRequest(
+                                            description = description,
+                                            anchor = anchor
+                                        )
+                                },
                                 showReactionAddAction = renderPayload.showReactionActions && !message.hasLocalSendState(),
                                 onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
                                 timestampLabel = message.timestampLabel,
@@ -19629,6 +19651,12 @@ private fun ThreadMessagesListContent(
             ThreadReactionDetailsTooltip(
                 details = details,
                 onDismiss = { reactionDetails = null }
+            )
+        }
+        authorDescriptionPopover?.let { request ->
+            ThreadAuthorDescriptionPopover(
+                request = request,
+                onDismiss = { authorDescriptionPopover = null }
             )
         }
         actionMessageId?.let { messageId ->
@@ -21956,6 +21984,7 @@ private class ThreadMessageCardCallbacks(
     val onToggleLongMessage: () -> Unit,
     val onLongPressInputReady: ((String) -> Unit)?,
     val quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)?,
+    val onShowAuthorDescription: ((String, SlockPopoverAnchor) -> Unit)? = null,
 )
 
 internal @Composable
@@ -22026,6 +22055,7 @@ fun ThreadMessageCard(
     onLongPressInputReady: ((String) -> Unit)? = null,
     longPressGestureInstanceKey: Any = message.id,
     quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)? = null,
+    onShowAuthorDescription: ((String, SlockPopoverAnchor) -> Unit)? = null,
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 )
  {
@@ -22103,6 +22133,7 @@ fun ThreadMessageCard(
                 onToggleLongMessage = onToggleLongMessage,
                 onLongPressInputReady = onLongPressInputReady,
                 quotedPermalinkLoader = quotedPermalinkLoader,
+                onShowAuthorDescription = onShowAuthorDescription,
             ),
     )
 }
@@ -22506,8 +22537,31 @@ private fun ThreadMessageCardContent(
                                         ThreadMessageAuthorBadge(label)
                                     }
                                     message.authorDescription?.let { description ->
+                                        val subtitleAnchor =
+                                            remember(message.id) {
+                                                SlockLiveRootAnchorRef(
+                                                    identity = "thread_author_subtitle:${message.id}"
+                                                )
+                                            }
+                                        val onShowDescription = callbacks.onShowAuthorDescription
+                                        val handleSubtitleClick: (() -> Unit)? =
+                                            if (onShowDescription != null && !shareSelectionActive && description.isNotBlank()) {
+                                                {
+                                                    tapMovementGate.rejectChildAction("author_subtitle")
+                                                    diagnosticsLogger("thread_author_subtitle_tap messageId=${message.id}")
+                                                    subtitleAnchor
+                                                        .resolve(SlockPopoverLocalPoint.BottomStart)
+                                                        ?.let { anchor ->
+                                                            onShowDescription(description, anchor)
+                                                        }
+                                                }
+                                            } else {
+                                                null
+                                            }
                                         ThreadMessageAuthorSubtitle(
-                                            description,
+                                            description = description,
+                                            rootAnchor = subtitleAnchor,
+                                            onClick = handleSubtitleClick,
                                             modifier = Modifier.weight(1f, fill = false)
                                         )
                                     }
@@ -24146,6 +24200,118 @@ private val ThreadReactionDetailsHorizontalPadding = 8.dp
 // Rough per-character width at 12sp bold caption — only used to pre-size the
 // popover for viewport clamping; the row itself wraps its real content.
 private val ThreadReactionDetailsLabelCharWidth = 7.dp
+
+internal data class ThreadAuthorDescriptionPopoverRequest(
+    val description: String,
+    val anchor: SlockPopoverAnchor
+)
+
+internal const val ThreadAuthorDescriptionPopoverMaxWidthDp = 280f
+internal const val ThreadAuthorDescriptionPopoverMinWidthDp = 120f
+internal const val ThreadAuthorDescriptionPopoverHorizontalPaddingDp = 10f
+internal const val ThreadAuthorDescriptionPopoverVerticalPaddingDp = 8f
+internal const val ThreadAuthorDescriptionPopoverApproxCharWidthDp = 7.5f
+internal const val ThreadAuthorDescriptionPopoverLineHeightDp = 16f
+
+internal data class ThreadAuthorDescriptionPopoverDimensions(
+    val width: Dp,
+    val height: Dp
+)
+
+internal fun threadAuthorDescriptionPopoverDimensions(
+    description: String,
+    maxWidth: Dp = ThreadAuthorDescriptionPopoverMaxWidthDp.dp
+): ThreadAuthorDescriptionPopoverDimensions {
+    val clean = description.trim()
+    if (clean.isEmpty()) {
+        return ThreadAuthorDescriptionPopoverDimensions(
+            width = ThreadAuthorDescriptionPopoverMinWidthDp.dp,
+            height = 36.dp
+        )
+    }
+    val shadowOffset = SlockShadow.BrutalSmall
+    val strokeExtra = SlockStroke.Default * 2
+    val horizontalPadding = (ThreadAuthorDescriptionPopoverHorizontalPaddingDp * 2).dp
+    val verticalPadding = (ThreadAuthorDescriptionPopoverVerticalPaddingDp * 2).dp
+    val availableTextWidth = (maxWidth - horizontalPadding - strokeExtra).value.coerceAtLeast(60f)
+    val approxCharsPerLine = (availableTextWidth / ThreadAuthorDescriptionPopoverApproxCharWidthDp).toInt().coerceAtLeast(1)
+    val estimatedLines = ((clean.length + approxCharsPerLine - 1) / approxCharsPerLine).coerceAtLeast(1)
+
+    val estimatedWidth = if (estimatedLines == 1) {
+        val singleLineWidth = (clean.length * ThreadAuthorDescriptionPopoverApproxCharWidthDp).dp + horizontalPadding + strokeExtra + shadowOffset
+        singleLineWidth.coerceIn(ThreadAuthorDescriptionPopoverMinWidthDp.dp, maxWidth + shadowOffset)
+    } else {
+        maxWidth + shadowOffset
+    }
+    val estimatedHeight = (estimatedLines * ThreadAuthorDescriptionPopoverLineHeightDp).dp + verticalPadding + strokeExtra + shadowOffset
+    return ThreadAuthorDescriptionPopoverDimensions(
+        width = estimatedWidth,
+        height = estimatedHeight.coerceIn(36.dp, 320.dp)
+    )
+}
+
+@Composable
+private fun ThreadAuthorDescriptionPopover(
+    request: ThreadAuthorDescriptionPopoverRequest,
+    onDismiss: () -> Unit
+) {
+    val density = LocalDensity.current
+    val dimensions = threadAuthorDescriptionPopoverDimensions(request.description)
+    val estimatedSize =
+        with(density) {
+            Size(
+                width = dimensions.width.toPx(),
+                height = dimensions.height.toPx()
+            )
+        }
+    SlockAnchoredPopover(
+        anchor = request.anchor,
+        contentSize = estimatedSize,
+        onDismiss = onDismiss,
+        horizontalAutoFlip = true,
+        verticalPlacement = SlockFloatingVerticalPlacement.Auto,
+        dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis,
+        outsidePointerMode = SlockFloatingOverlayOutsidePointerMode.Dismiss
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .padding(end = SlockShadow.BrutalSmall, bottom = SlockShadow.BrutalSmall)
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .offset(x = SlockShadow.BrutalSmall, y = SlockShadow.BrutalSmall)
+                        .background(SlockColor.ShadowBlack)
+            )
+            Box(
+                modifier =
+                    Modifier
+                        .widthIn(min = ThreadAuthorDescriptionPopoverMinWidthDp.dp, max = ThreadAuthorDescriptionPopoverMaxWidthDp.dp)
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .slockFloatingContentClickTarget()
+                        .padding(
+                            horizontal = ThreadAuthorDescriptionPopoverHorizontalPaddingDp.dp,
+                            vertical = ThreadAuthorDescriptionPopoverVerticalPaddingDp.dp
+                        )
+            ) {
+                Text(
+                    text = request.description,
+                    style =
+                        SlockType.Caption.copy(
+                            fontFamily = SlockMonoFamily,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
+                            color = SlockColor.TextBlack
+                        ),
+                    color = SlockColor.TextBlack
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun ThreadReactionAddChipChrome() {
@@ -26308,6 +26474,7 @@ private fun ThreadOriginCard(
     onShowActions: (KuiklyThreadMessageItem, SlockPopoverAnchor) -> Unit,
     onOpenTaskStatusMenu: (KuiklyThreadMessageItem, SlockPopoverAnchor) -> Unit,
     onShowReactionDetails: ((KuiklyThreadReactionItem, SlockPopoverAnchor) -> Unit)? = null,
+    onShowAuthorDescription: ((String, SlockPopoverAnchor) -> Unit)? = null,
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
@@ -26405,6 +26572,7 @@ private fun ThreadOriginCard(
                             onOpenTaskStatusMenu = { anchor -> onOpenTaskStatusMenu(origin, anchor) },
                             onToggleReaction = { emoji -> onThreadEvent("toggleReaction", origin.id, null, emoji) },
                             onShowReactionDetails = onShowReactionDetails,
+                            onShowAuthorDescription = onShowAuthorDescription,
                             showReactionAddAction = timelineSlice.showReactionActions && contentExtrasVisible,
                             onOpenCommentHost = { onThreadEvent("openCommentHost", origin.id, null, null) },
                             timestampLabel = origin.timestampLabel,
@@ -26440,8 +26608,26 @@ private fun ThreadOriginCard(
 
 // React parity: MessageItem's senderSubtitle — 12px mono at 40% black,
 // truncating flexibly between the name/badge and the timestamp.
+// Tapping truncated description opens Brutal Anchored Popover to display full description.
 @Composable
-private fun ThreadMessageAuthorSubtitle(description: String, modifier: Modifier = Modifier) {
+private fun ThreadMessageAuthorSubtitle(
+    description: String,
+    modifier: Modifier = Modifier,
+    rootAnchor: SlockLiveRootAnchorRef? = null,
+    onClick: (() -> Unit)? = null
+) {
+    val clickableModifier =
+        if (onClick != null) {
+            modifier.clickable(onClick = onClick)
+        } else {
+            modifier
+        }
+    val anchoredModifier =
+        if (rootAnchor != null) {
+            clickableModifier.slockCaptureLiveRootAnchor(rootAnchor)
+        } else {
+            clickableModifier
+        }
     Text(
         text = description,
         style =
@@ -26452,7 +26638,7 @@ private fun ThreadMessageAuthorSubtitle(description: String, modifier: Modifier 
         color = SlockColor.TextBlack.copy(alpha = 0.4f),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        modifier = modifier
+        modifier = anchoredModifier
     )
 }
 
