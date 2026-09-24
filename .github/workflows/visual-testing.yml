@@ -457,7 +457,9 @@ jobs:
   ios-capture:
     name: iOS capture (simulator)
     if: ${{ !inputs.site_only }}
-    runs-on: blacksmith-6vcpu-macos-15
+    runs-on:
+      group: jacky-macmini
+      labels: [self-hosted, macOS, ARM64]
     timeout-minutes: 75
     env:
       # iPhone 14: 390x844pt @3x = 1170x2532 px, the exact android/react
@@ -470,6 +472,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Prepare isolated iOS capture environment
+        run: bash scripts/ci/ios_visual_runner.sh prepare
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -493,19 +498,8 @@ jobs:
         working-directory: compose/iosApp
         run: pod install
 
-      - name: Boot simulator
-        run: |
-          udid=$(xcrun simctl list devices available -j \
-            | python3 -c "import json,sys,os; d=json.load(sys.stdin)['devices']; print(next((dev['udid'] for devs in d.values() for dev in devs if dev['name']==os.environ['SIM_DEVICE']), ''))")
-          if [ -z "$udid" ]; then
-            # device type not pre-created on this runner image; create it on the newest runtime
-            runtime=$(xcrun simctl list runtimes -j | python3 -c "import json,sys; rs=[r for r in json.load(sys.stdin)['runtimes'] if r['isAvailable'] and r['platform']=='iOS']; print(sorted(rs, key=lambda r: r['version'])[-1]['identifier'])")
-            devtype=$(xcrun simctl list devicetypes -j | python3 -c "import json,sys,os; print(next(d['identifier'] for d in json.load(sys.stdin)['devicetypes'] if d['name']==os.environ['SIM_DEVICE']))")
-            udid=$(xcrun simctl create "visualcap-${SIM_DEVICE// /-}" "$devtype" "$runtime")
-          fi
-          echo "UDID=$udid" >> "$GITHUB_ENV"
-          xcrun simctl boot "$udid"
-          xcrun simctl bootstatus "$udid" -b
+      - name: Boot job-owned simulator
+        run: bash scripts/ci/ios_visual_runner.sh boot
 
       # Built AFTER simulator boot, pinned to its udid: an unmatched named
       # destination makes xcodebuild silently fall back to a device build.
@@ -525,7 +519,7 @@ jobs:
             -configuration Debug \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=${UDID}" \
-            -derivedDataPath build/DerivedData \
+            -derivedDataPath "$IOS_CAPTURE_TEMP/DerivedData" \
             CODE_SIGNING_ALLOWED=NO \
             build > "$log" 2>&1
           status=$?
@@ -541,37 +535,48 @@ jobs:
       - name: Generate case manifest
         run: |
           python3 scripts/generate_ios_case_manifest.py \
-            --filter "$CASE_FILTER" --out /tmp/ios-manifest.json
+            --filter "$CASE_FILTER" --out "$IOS_CAPTURE_TEMP/ios-manifest.json"
 
       - name: Install app and capture cases
         run: |
-          app=$(find compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' | head -1)
+          app=$(find "$IOS_CAPTURE_TEMP/DerivedData/Build/Products/Debug-iphonesimulator" -maxdepth 1 -name '*.app' | head -1)
           test -n "$app"
           bundle_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")
           echo "app=$app bundle_id=$bundle_id"
           xcrun simctl install "$UDID" "$app"
           mkdir -p visual-testing-results/ios
           python3 -c "
-          import json
-          m = json.load(open('/tmp/ios-manifest.json'))
-          with open('/tmp/ios-cases.tsv', 'w') as out:
+          import json, os
+          m = json.load(open(os.path.join(os.environ['IOS_CAPTURE_TEMP'], 'ios-manifest.json')))
+          with open(os.path.join(os.environ['IOS_CAPTURE_TEMP'], 'ios-cases.tsv'), 'w') as out:
               for c in m['cases']:
                   print(c['caseId'], c['pageName'], json.dumps(c['pageData'], ensure_ascii=False), sep='\t', file=out)
           "
+          launch_pid=
+          stop_console() {
+            if [ -n "$launch_pid" ]; then
+              kill "$launch_pid" 2>/dev/null || true
+              wait "$launch_pid" 2>/dev/null || true
+              launch_pid=
+            fi
+          }
+          trap stop_console EXIT
           failed=0
-          total=$(wc -l < /tmp/ios-cases.tsv | tr -d ' ')
+          total=$(wc -l < "$IOS_CAPTURE_TEMP/ios-cases.tsv" | tr -d ' ')
           echo "capturing $total cases"
           i=0
           while IFS=$'\t' read -r case_id page_name page_data; do
             i=$((i+1))
+            stop_console
             xcrun simctl terminate "$UDID" "$bundle_id" 2>/dev/null || true
-            : > /tmp/launch.log
+            : > "$IOS_CAPTURE_TEMP/launch.log"
             SIMCTL_CHILD_SLOCK_VISUAL_FIXTURE_PAGE="$page_name" \
             SIMCTL_CHILD_SLOCK_VISUAL_FIXTURE_PAGE_DATA="$page_data" \
-              xcrun simctl launch --console-pty "$UDID" "$bundle_id" > /tmp/launch.log 2>&1 &
+              xcrun simctl launch --console-pty "$UDID" "$bundle_id" > "$IOS_CAPTURE_TEMP/launch.log" 2>&1 &
+            launch_pid=$!
             ready=0
             for _ in $(seq 1 60); do
-              if grep -q "SLOCK_VISUAL_FIXTURE_READY page=$page_name" /tmp/launch.log; then
+              if grep -q "SLOCK_VISUAL_FIXTURE_READY page=$page_name" "$IOS_CAPTURE_TEMP/launch.log"; then
                 ready=1; break
               fi
               sleep 1
@@ -595,19 +600,19 @@ jobs:
             # symptom even though the original NSException is gone.
             handled_scroll_drops="$(
               grep -iE '\[kuikly error\]\[KRScrollView\] non-finite scroll event value field=.* action=drop_(event|touch)' \
-                /tmp/launch.log || true
+                "$IOS_CAPTURE_TEMP/launch.log" || true
             )"
             unhandled_kuikly_errors="$(
-              grep -i 'kuikly error' /tmp/launch.log \
+              grep -i 'kuikly error' "$IOS_CAPTURE_TEMP/launch.log" \
                 | grep -ivE '\[kuikly error\]\[KRScrollView\] non-finite scroll event value field=.* action=drop_(event|touch)' \
                 || true
             )"
-            if grep -qi '\[Kuikly Exception\]' /tmp/launch.log \
+            if grep -qi '\[Kuikly Exception\]' "$IOS_CAPTURE_TEMP/launch.log" \
               || [ -n "$unhandled_kuikly_errors" ]; then
               echo "::warning::[$i/$total] $case_id: renderer exception after READY (kuikly error dialog); not capturing"
               mkdir -p visual-testing-results/ios-diagnostics
               xcrun simctl io "$UDID" screenshot "visual-testing-results/ios-diagnostics/$case_id.error.png" || true
-              cp /tmp/launch.log "visual-testing-results/ios-diagnostics/$case_id.launch.log" || true
+              cp "$IOS_CAPTURE_TEMP/launch.log" "visual-testing-results/ios-diagnostics/$case_id.launch.log" || true
               failed=$((failed+1))
               continue
             fi
@@ -619,22 +624,22 @@ jobs:
             xcrun simctl io "$UDID" screenshot "visual-testing-results/ios/$case_id.png"
             # task #441: stash any SLOCK_RICHTEXT_CAPS marker line(s) printed
             # after the first frame so the metadata step can merge per-case caps.
-            grep "SLOCK_RICHTEXT_CAPS " /tmp/launch.log > "visual-testing-results/ios/$case_id.caps.log" 2>/dev/null || true
+            grep "SLOCK_RICHTEXT_CAPS " "$IOS_CAPTURE_TEMP/launch.log" > "visual-testing-results/ios/$case_id.caps.log" 2>/dev/null || true
             # task #60 diag: surface per-element inline-box advance dumps so the
             # trailing-cavity origin is visible in the job log AND the artifact.
-            if grep -q "KR_INLINE_BOX_DIAG" /tmp/launch.log; then
-              grep "KR_INLINE_BOX_DIAG" /tmp/launch.log | tee "visual-testing-results/ios/$case_id.inlinebox-diag.log"
+            if grep -q "KR_INLINE_BOX_DIAG" "$IOS_CAPTURE_TEMP/launch.log"; then
+              grep "KR_INLINE_BOX_DIAG" "$IOS_CAPTURE_TEMP/launch.log" | tee "visual-testing-results/ios/$case_id.inlinebox-diag.log"
             fi
             echo "[$i/$total] $case_id OK"
-          done < /tmp/ios-cases.tsv
+          done < "$IOS_CAPTURE_TEMP/ios-cases.tsv"
           captured=$(ls visual-testing-results/ios/*.png 2>/dev/null | wc -l | tr -d ' ')
           echo "captured=$captured failed=$failed total=$total"
-          cp /tmp/ios-manifest.json visual-testing-results/ios-manifest.json
+          cp "$IOS_CAPTURE_TEMP/ios-manifest.json" visual-testing-results/ios-manifest.json
           # Per-case metadata alongside each PNG, mirroring the android
           # provider's <caseId>.metadata.json so the CLI panels don't show n/a.
           python3 -c "
-          import json, struct
-          m = json.load(open('/tmp/ios-manifest.json'))
+          import json, struct, os
+          m = json.load(open(os.path.join(os.environ['IOS_CAPTURE_TEMP'], 'ios-manifest.json')))
           by_id = {c['caseId']: c for c in m['cases']}
           import glob, os
           for png in glob.glob('visual-testing-results/ios/*.png'):
@@ -691,6 +696,10 @@ jobs:
           if [ "$failed" -gt 0 ]; then
             echo "::error::$failed of $total cases failed to reach READY"; exit 1
           fi
+
+      - name: Clean up job-owned simulator and temporary files
+        if: always()
+        run: bash scripts/ci/ios_visual_runner.sh cleanup
 
       - name: Upload results
         if: always()
