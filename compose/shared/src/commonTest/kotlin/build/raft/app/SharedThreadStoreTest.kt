@@ -153,6 +153,8 @@ import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /**
  * Thread-safe append/snapshot log buffer for tests that run stores on
@@ -1194,7 +1196,7 @@ class SharedThreadStoreTest {
                         )
                     )
             )
-        val facts = listOf("m1" to SharedThreadReplyCountFact("thread-m1", 7))
+        val facts = listOf("m1" to SharedThreadReplyCountFact("thread-m1", 7, TimeSource.Monotonic.markNow()))
         fun replyCount(environmentId: String, principalId: String): Int =
             store.applyReplyCountFacts("server-1", "channel-1", environmentId, principalId, canonical)
                 .messages.single().replyCount
@@ -1214,6 +1216,138 @@ class SharedThreadStoreTest {
         assertEquals(0, replyCount("https://staging.example.test", ""))
         assertEquals(0, replyCount("https://staging.example.test", "user-1"))
         assertEquals(7, replyCount("https://prod.example.test", "user-1"))
+    }
+
+    @Test
+    fun replyCountFactsOverrideCanonicalValue() {
+        val store = SharedThreadPayloadStore()
+        fun canonical(replyCount: Int) =
+            basePayload().copy(
+                status = "content",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "u1",
+                            authorName = "Artin",
+                            body = "parent",
+                            threadChannelId = null,
+                            replyCount = replyCount
+                        )
+                    )
+            )
+        store.recordReplyCountFacts(
+            "server-1", "channel-1", TestThreadEnvironmentId, "user-1",
+            listOf("m1" to SharedThreadReplyCountFact("thread-m1", 7, TimeSource.Monotonic.markNow()))
+        )
+        // The recorded fact is the freshest observation for this identity: it
+        // overrides the canonical value in both directions. A canonical payload
+        // reporting more replies (9) does not win, because facts are accepted by
+        // recency at record time — the older canonical projection is stale.
+        assertEquals(
+            7,
+            store.applyReplyCountFacts("server-1", "channel-1", TestThreadEnvironmentId, "user-1", canonical(9))
+                .messages.single().replyCount
+        )
+        // A canonical value that missed replies is likewise corrected upward.
+        assertEquals(
+            7,
+            store.applyReplyCountFacts("server-1", "channel-1", TestThreadEnvironmentId, "user-1", canonical(3))
+                .messages.single().replyCount
+        )
+    }
+
+    @Test
+    fun replyCountFactsRejectObservationsOlderThanTheRecordedFact() {
+        val store = SharedThreadPayloadStore()
+        fun canonical(replyCount: Int) =
+            basePayload().copy(
+                status = "content",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "u1",
+                            authorName = "Artin",
+                            body = "parent",
+                            threadChannelId = null,
+                            replyCount = replyCount
+                        )
+                    )
+            )
+        fun apply(replyCount: Int) =
+            store.applyReplyCountFacts("server-1", "channel-1", TestThreadEnvironmentId, "user-1", canonical(replyCount))
+                .messages.single().replyCount
+
+        val now = TimeSource.Monotonic.markNow()
+        store.recordReplyCountFacts(
+            "server-1", "channel-1", TestThreadEnvironmentId, "user-1",
+            listOf("m1" to SharedThreadReplyCountFact("thread-m1", 5, now))
+        )
+
+        // A replayed projection observed before the recorded fact (e.g. a
+        // reprojection scheduled before a reply was deleted) must not win.
+        store.recordReplyCountFacts(
+            "server-1", "channel-1", TestThreadEnvironmentId, "user-1",
+            listOf("m1" to SharedThreadReplyCountFact("thread-m1", 4, now - 1.seconds))
+        )
+        assertEquals(5, apply(4))
+
+        // A genuinely newer observation (the post-delete projection) is accepted
+        // and overrides both the prior fact and the canonical value.
+        store.recordReplyCountFacts(
+            "server-1", "channel-1", TestThreadEnvironmentId, "user-1",
+            listOf("m1" to SharedThreadReplyCountFact("thread-m1", 4, now + 1.seconds))
+        )
+        assertEquals(4, apply(4))
+    }
+
+    @Test
+    fun replyCountFactsRejectCanonicalResponseMarkedAtRequestTime() {
+        val store = SharedThreadPayloadStore()
+        fun canonical(replyCount: Int) =
+            basePayload().copy(
+                status = "content",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "u1",
+                            authorName = "Artin",
+                            body = "parent",
+                            threadChannelId = null,
+                            replyCount = replyCount
+                        )
+                    )
+            )
+        fun apply(replyCount: Int) =
+            store.applyReplyCountFacts("server-1", "channel-1", TestThreadEnvironmentId, "user-1", canonical(replyCount))
+                .messages.single().replyCount
+
+        // Interleaving: the canonical summaries request is issued while the
+        // server-side snapshot still says 5; while it is in flight a realtime
+        // event records 6; the response then lands carrying the stale 5. The
+        // response is observed at request-issue time, so the realtime fact must
+        // stay ahead.
+        val requestMark = TimeSource.Monotonic.markNow()
+        store.recordReplyCountFacts(
+            "server-1", "channel-1", TestThreadEnvironmentId, "user-1",
+            listOf("m1" to SharedThreadReplyCountFact("thread-m1", 6, requestMark + 1.seconds))
+        )
+        store.recordReplyCountFacts(
+            "server-1", "channel-1", TestThreadEnvironmentId, "user-1",
+            listOf("m1" to SharedThreadReplyCountFact("thread-m1", 5, requestMark))
+        )
+        assertEquals(6, apply(5))
+
+        // Converse: a canonical response issued after the realtime event (e.g.
+        // a fresh projection after a reply was deleted) is genuinely newer and
+        // still wins.
+        store.recordReplyCountFacts(
+            "server-1", "channel-1", TestThreadEnvironmentId, "user-1",
+            listOf("m1" to SharedThreadReplyCountFact("thread-m1", 4, requestMark + 2.seconds))
+        )
+        assertEquals(4, apply(4))
     }
 
     @Test
@@ -1286,12 +1420,13 @@ class SharedThreadStoreTest {
             )
 
         store.put("server-1", "channel-1", enriched, TestThreadOwnerScopeId)
+        val firstMark = TimeSource.Monotonic.markNow()
         store.recordReplyCountFacts(
             serverId = "server-1",
             threadId = "channel-1",
             environmentId = TestThreadEnvironmentId,
             principalId = "user-1",
-            facts = listOf("m1" to SharedThreadReplyCountFact("thread-m1", 7))
+            facts = listOf("m1" to SharedThreadReplyCountFact("thread-m1", 7, firstMark))
         )
         store.freshnessLedger.advance("server-1", "channel-1", TestThreadOwnerScopeId)
 
@@ -1317,7 +1452,7 @@ class SharedThreadStoreTest {
             threadId = "channel-1",
             environmentId = TestThreadEnvironmentId,
             principalId = "user-1",
-            facts = listOf("m1" to SharedThreadReplyCountFact("thread-m1", 3))
+            facts = listOf("m1" to SharedThreadReplyCountFact("thread-m1", 3, firstMark + 1.seconds))
         )
         assertEquals(
             3,
@@ -12393,6 +12528,78 @@ class SharedThreadStoreTest {
         assertEquals(1, message.replyCount)
         assertEquals(0, message.unreadReplyCount)
         assertNull(message.firstUnreadReplyMessageId)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeThreadUpdatedReplyCountSurvivesCanonicalReprojection() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val payloadStore = SharedThreadPayloadStore()
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                payloadStore = payloadStore
+            )
+        dataSource.cachePayloadForTest(
+            contentPayload("parent").copy(
+                messages =
+                    listOf(contentPayload("parent").messages.single().copy(replyCount = 5))
+            )
+        )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        withTimeout(1_000) {
+            while (!store.state.value.writeActionsEnabled) {
+                delay(10)
+            }
+        }
+        val provenance = requireNotNull(dataSource.currentReplyCacheProvenance())
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                ThreadUpdated(
+                    parentMessageId = MessageId("m1"),
+                    threadChannelId = ChannelId("reply-thread"),
+                    replyCount = 9,
+                    lastReplyAt = "2026-05-19T16:13:00Z",
+                    participantIds = emptyList(),
+                    unreadCount = 0,
+                    firstUnreadMessageId = null
+                )
+            )
+        )
+        assertEquals(9, store.state.value.payload.messages.single().replyCount)
+
+        // The realtime fact was recorded, so a stale canonical reprojection cannot erase it.
+        val staleCanonical =
+            basePayload().copy(
+                status = "content",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "u1",
+                            authorName = "Artin",
+                            body = "parent",
+                            threadChannelId = null,
+                            replyCount = 5
+                        )
+                    )
+            )
+        assertEquals(
+            9,
+            payloadStore
+                .applyReplyCountFacts(
+                    provenance.serverId,
+                    "channel-1",
+                    provenance.environmentId,
+                    provenance.principalId,
+                    staleCanonical
+                )
+                .messages.single().replyCount
+        )
         scope.cancel()
     }
 

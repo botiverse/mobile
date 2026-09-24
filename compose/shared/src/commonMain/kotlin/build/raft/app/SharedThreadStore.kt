@@ -397,7 +397,11 @@ private data class SharedThreadReplyCountKey(
 
 internal data class SharedThreadReplyCountFact(
     val threadChannelId: String?,
-    val replyCount: Int
+    val replyCount: Int,
+    // Monotonic mark captured by the caller when the value was observed. The
+    // ledger arbitrates same-message facts by recency so an older projection
+    // cannot overwrite a newer realtime observation (e.g. reply deletions).
+    val observedAt: TimeMark
 )
 
 internal class SharedThreadFreshnessLedger(
@@ -525,6 +529,12 @@ internal class SharedThreadFreshnessLedger(
             val key = SharedThreadPayloadCacheKey(serverId, threadId)
             facts.forEach { (parentMessageId, fact) ->
                 val factKey = SharedThreadReplyCountKey(key, environmentId, principalId, parentMessageId)
+                val existing = replyCountFacts[factKey]
+                if (existing != null && existing.observedAt > fact.observedAt) {
+                    // Older observation losing to a newer fact: reject without
+                    // refreshing the key's recency position.
+                    return@forEach
+                }
                 replyCountFacts.remove(factKey)
                 replyCountFacts[factKey] = fact
             }
@@ -3498,7 +3508,7 @@ internal class SharedThreadDataSource(
 
     suspend fun fetchFollowedThreadPayload(
         basePayload: KuiklyThreadScreenPayload,
-        onSummaries: (ThreadReplySummariesSnapshot) -> Unit = {},
+        onSummaries: (ThreadReplySummariesSnapshot, TimeMark) -> Unit = { _, _ -> },
     ): DataResult<KuiklyThreadScreenPayload> {
         return fetchFollowedThreadPayloadForContext(
             basePayload = basePayload,
@@ -3510,7 +3520,7 @@ internal class SharedThreadDataSource(
     internal suspend fun fetchFollowedThreadPayloadForContext(
         basePayload: KuiklyThreadScreenPayload,
         expectedContext: ReplyCacheProducerContext?,
-        onSummaries: (ThreadReplySummariesSnapshot) -> Unit = {},
+        onSummaries: (ThreadReplySummariesSnapshot, TimeMark) -> Unit = { _, _ -> },
     ): DataResult<KuiklyThreadScreenPayload> {
         if (expectedContext != null && !isCurrentReplyCacheProvenance(expectedContext.provenance)) {
             return staleReplyCacheProvenanceResult()
@@ -3529,6 +3539,11 @@ internal class SharedThreadDataSource(
                 ?: basePayload.streamChannelId?.takeIf { it.isNotBlank() }
                 ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
         val parentMessageIds = basePayload.messages.map { MessageId(it.id) }
+        // Mark the instant the canonical summaries request is issued, not when
+        // the response lands: facts recorded by realtime events that arrive
+        // while this request is in flight must stay ahead of its (older)
+        // server-side snapshot.
+        val summariesRequestedAt = TimeSource.Monotonic.markNow()
         val result = conversationRepository
             .getThreadReplySummaries(
                 threadId = ThreadId(resolvedThreadId),
@@ -3539,7 +3554,7 @@ internal class SharedThreadDataSource(
         }
         return when (result) {
             is DataResult.Content -> {
-                onSummaries(result.data)
+                onSummaries(result.data, summariesRequestedAt)
                 if (!isCurrentReplyCacheProvenance(context.provenance)) {
                     staleReplyCacheProvenanceResult()
                 } else {
@@ -3560,18 +3575,23 @@ internal class SharedThreadDataSource(
     fun cacheReplyCountProjection(
         threadId: String,
         snapshot: ThreadReplySummariesSnapshot,
+        observedAt: TimeMark,
         serverId: String,
         principalId: String,
         expectedProvenance: ReplyCacheProvenance,
         commit: () -> Boolean,
     ): Boolean? {
+        // The caller supplies the instant the canonical summaries request was
+        // issued; the response reflects the server-side snapshot at request
+        // time, so facts newer than that mark must not be overwritten.
         val facts =
             snapshot.threads.mapNotNull { summary ->
                 val parentMessageId = summary.parentMessageId?.value ?: return@mapNotNull null
                 parentMessageId to
                     SharedThreadReplyCountFact(
                         threadChannelId = (summary.threadChannelId ?: summary.channelId).value,
-                        replyCount = summary.replyCount
+                        replyCount = summary.replyCount,
+                        observedAt = observedAt
                     )
             }
         if (serverId != expectedProvenance.serverId || principalId != expectedProvenance.principalId) {
@@ -3590,6 +3610,30 @@ internal class SharedThreadDataSource(
                 )
             }
             true
+        }
+    }
+
+    /**
+     * Best-effort reply-count fact write for a realtime [ThreadUpdated] event.
+     * Keeps the fact ledger fresh so a later canonical reprojection cannot
+     * clobber a newer realtime reply count. Silently no-ops when the
+     * provenance is unavailable or rotates mid-call.
+     */
+    fun recordReplyCountRealtimeFact(
+        threadId: String,
+        parentMessageId: String,
+        fact: SharedThreadReplyCountFact,
+    ) {
+        val provenance = currentReplyCacheProvenance() ?: return
+        synchronized(replyCacheProvenanceLock) {
+            if (replyCacheProvenance.value != provenance) return@synchronized
+            payloadCache.recordReplyCountFacts(
+                serverId = provenance.serverId,
+                threadId = threadId,
+                environmentId = provenance.environmentId,
+                principalId = provenance.principalId,
+                facts = listOf(parentMessageId to fact)
+            )
         }
     }
 
@@ -7334,6 +7378,7 @@ internal class SharedThreadStore(
             return
         }
         var replySummaries: ThreadReplySummariesSnapshot? = null
+        var replySummariesObservedAt: TimeMark? = null
         val followedPayload =
             if (beforeFetch.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
                 // ReplyThread loads are already scoped to a single canonical stream,
@@ -7351,7 +7396,10 @@ internal class SharedThreadStore(
                     dataSource.fetchFollowedThreadPayloadForContext(
                         basePayload = beforeFetch,
                         expectedContext = producerContext,
-                    ) { snapshot -> replySummaries = snapshot }
+                    ) { snapshot, observedAt ->
+                        replySummaries = snapshot
+                        replySummariesObservedAt = observedAt
+                    }
                 diagnosticsLogger?.invoke(
                     "thread_secondary_followed_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
                         "result=${followedResult.threadDiagnosticsResult()} " +
@@ -7456,11 +7504,13 @@ internal class SharedThreadStore(
         }
         fun commitSecondary(accepted: Map<String, ThreadRepliesAcceptedProjection>): Boolean? {
             val snapshot = replySummaries
+            val observedAt = replySummariesObservedAt
             val threadId = routePayload.cacheThreadId()
-            return if (snapshot != null && threadId != null) {
+            return if (snapshot != null && observedAt != null && threadId != null) {
                 dataSource.cacheReplyCountProjection(
                     threadId = threadId,
                     snapshot = snapshot,
+                    observedAt = observedAt,
                     serverId = expectedProvenance.serverId,
                     principalId = expectedProvenance.principalId,
                     expectedProvenance = expectedProvenance,
@@ -7641,6 +7691,20 @@ internal class SharedThreadStore(
                         dataSource.seedAcceptedRealtimeThreadReplyAuthorProfile(
                             serverId = currentSession?.currentServerId,
                             reply = reply
+                        )
+                    }
+                }
+                if (event is ThreadUpdated) {
+                    currentPayload.cacheThreadId()?.let { factThreadId ->
+                        dataSource.recordReplyCountRealtimeFact(
+                            threadId = factThreadId,
+                            parentMessageId = event.parentMessageId.value,
+                            fact =
+                                SharedThreadReplyCountFact(
+                                    threadChannelId = event.threadChannelId.value,
+                                    replyCount = event.replyCount,
+                                    observedAt = TimeSource.Monotonic.markNow()
+                                )
                         )
                     }
                 }
