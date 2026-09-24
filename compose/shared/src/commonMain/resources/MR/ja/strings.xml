@@ -61,6 +61,7 @@
     <string name="common_open">開く</string>
     <string name="common_send">送信</string>
     <string name="common_share">共有</string>
+    <string name="share_open_failed">共有パネルを開けませんでした。もう一度お試しください。</string>
     <string name="common_stop">停止</string>
     <string name="common_yes">はい</string>
     <string name="common_no">いいえ</string>

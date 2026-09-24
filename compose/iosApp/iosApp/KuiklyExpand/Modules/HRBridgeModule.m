@@ -5252,13 +5252,12 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 - (void)slock_presentShareItems:(NSArray *)items attempt:(NSInteger)attempt {
     UIViewController *controller = [self slock_currentViewController];
     if (!controller) {
+        NSString *reason = [self slock_shareControllerFailureReason];
         if (attempt < 2) {
-            // The controller may be absent because the presenting page detached while
-            // the (async) download finished, or the key window belongs to a
-            // non-foreground scene. Give it one more runloop turn before failing.
             SlockDiagnosticsRecord(
                 @"warn", @"SlockShare",
-                [NSString stringWithFormat:@"share_present_retry attempt=%ld reason=no_controller", (long)attempt]);
+                [NSString stringWithFormat:@"share_present_retry attempt=%ld reason=%@",
+                 (long)attempt, reason]);
             dispatch_async(dispatch_get_main_queue(), ^{
                 [self slock_presentShareItems:items attempt:attempt + 1];
             });
@@ -5266,8 +5265,9 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         }
         SlockDiagnosticsRecord(
             @"error", @"SlockShare",
-            @"share_present_failed reason=no_controller");
-        [self slock_showToast:@"无法打开分享面板，请重试"];
+            [NSString stringWithFormat:@"share_present_failed attempt=%ld reason=%@",
+             (long)attempt, reason]);
+        [self slock_showToast:SharedSlockHostStrings.shared.shareOpenFailed];
         return;
     }
     UIActivityViewController *activityController = [[UIActivityViewController alloc] initWithActivityItems:items applicationActivities:nil];
@@ -5278,6 +5278,33 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         popover.permittedArrowDirections = 0;
     }
     [controller presentViewController:activityController animated:YES completion:nil];
+}
+
+- (NSString *)slock_shareControllerFailureReason {
+    BOOL hasForegroundActiveScene = YES;
+    if (@available(iOS 13.0, *)) {
+        hasForegroundActiveScene = NO;
+        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if (scene.activationState == UISceneActivationStateForegroundActive &&
+                [scene isKindOfClass:UIWindowScene.class]) {
+                hasForegroundActiveScene = YES;
+                break;
+            }
+        }
+    }
+    return SlockShareControllerFailureReason(
+        self.hr_rootView.window != nil, hasForegroundActiveScene);
+}
+
+NSString *SlockShareControllerFailureReason(BOOL hasRootViewWindow,
+                                            BOOL hasForegroundActiveScene) {
+    if (!hasRootViewWindow) {
+        return @"detached_root";
+    }
+    if (!hasForegroundActiveScene) {
+        return @"scene_inactive";
+    }
+    return @"no_controller";
 }
 
 - (UIViewController *)slock_currentViewController {

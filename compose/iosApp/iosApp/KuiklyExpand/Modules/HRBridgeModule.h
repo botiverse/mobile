@@ -29,5 +29,15 @@ FOUNDATION_EXTERN void SlockIosInstallThreadComposerTemporaryFileRetirement(void
 FOUNDATION_EXTERN NSArray<NSString *> *SlockIosPrepareDiagnosticsAttachmentPaths(NSString *reason);
 FOUNDATION_EXTERN NSArray<NSString *> *SlockIosPrepareDiagnosticsAttachmentPathsForCrash(int64_t crashAtMillis);
 FOUNDATION_EXTERN NSString * _Nullable SlockIosPrepareDiagnosticsCrashAttachmentPath(void);
+/**
+ * Classifies why an attachment share had no presenter. Pure function so it can be
+ * unit-tested without a live app/scene. Returns "detached_root" when the render
+ * page already left the window, "scene_inactive" when no foreground-active
+ * UIWindowScene exists, otherwise "no_controller".
+ */
+FOUNDATION_EXTERN NSString *SlockShareControllerFailureReason(
+    BOOL hasRootViewWindow,
+    BOOL hasForegroundActiveScene
+);
 
 NS_ASSUME_NONNULL_END
