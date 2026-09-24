@@ -6990,17 +6990,22 @@ internal class SharedThreadStore(
                                 ThreadAccessResolution.Error
                             currentState.canonicalAccessResolved ->
                                 ThreadAccessResolution.Resolved
-                            // Task #1141: on a Channel/DM route a POSITIVE Home directory candidate
-                            // (joined + canSend) is the same write authority the canonical fetch would
-                            // confirm. Accept it for renderable cached content just as it is accepted
-                            // for "empty", so the composer mounts when the directory answers instead
-                            // of after the first network refresh. A negative candidate (stale unjoined
-                            // row) keeps waiting for the canonical fetch, which must still win; a later
-                            // canonical NoPermission still closes access.
+                            // Task #1141 + reply-thread parity: a POSITIVE access candidate
+                            // (joined + canSend) is the same write authority the canonical fetch
+                            // would confirm — for Channel/DM it is the conversation's own row, and
+                            // for a ReplyThread it is the exact parent row, which is the only write
+                            // authority the reply surface ever consults
+                            // (hasWriteAuthorityForAccess + withInitialHomeConversationAccessFallback).
+                            // Accept it for renderable cached content just as it is accepted for
+                            // "empty", so the composer mounts when the directory answers instead of
+                            // after the first network refresh. For reply threads the canonical reply
+                            // stream never attests parent write authority anyway, so waiting for it
+                            // added latency without adding information. A negative candidate (stale
+                            // unjoined row) keeps waiting for the canonical fetch, which must still
+                            // win; a later canonical NoPermission still closes access.
                             candidate != null &&
                                 candidate.joined &&
                                 candidate.permissions.canSend &&
-                                projectedPayload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread &&
                                 currentPayload.status == "content" ->
                                 ThreadAccessResolution.Resolved
                             candidate != null && currentPayload.status == "empty" ->
