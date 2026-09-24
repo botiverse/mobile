@@ -4616,6 +4616,126 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun dmPeerNameHydrationRetriesAfterFetchErrorAndParksTrueMisses() = runBlocking {
+        // task #399 review (Mahua #1): a failed getDirectMessages must NOT
+        // park the missing ids — the next load/patch trigger retries and
+        // hydration recovers. Only a successful fetch that returns no row
+        // parks the id, so later loads don't re-fetch for it.
+        val dmThread =
+            InboxItem(
+                key = "thread:dm-thread-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("dm-thread-1"),
+                channelName = "thread-stream",
+                parentChannelId = ChannelId("dm-1"),
+                parentChannelName = "raw-dm-name",
+                parentChannelKind = ConversationKind.DirectMessage,
+                parentMessageId = MessageId("message-1"),
+                parentMessagePreview = "DM root preview"
+            )
+        var failDirectMessages = true
+        val channelRepository =
+            FakeChannelRepository(
+                directMessagesResult = { serverId ->
+                    if (failDirectMessages) {
+                        DataResult.Error(ScreenError("dm_list_failed"))
+                    } else {
+                        DataResult.Content(
+                            DirectMessageSnapshot(
+                                server = ServerSummary(id = serverId, name = "Slock"),
+                                directMessages =
+                                    listOf(
+                                        HomeDirectMessageRow(
+                                            threadId = ThreadId("dm-1"),
+                                            channelId = ChannelId("dm-1"),
+                                            name = "Jiacheng"
+                                        )
+                                    )
+                            )
+                        )
+                    }
+                }
+            )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository =
+                    FakeInboxRepository(
+                        initialSnapshots = listOf(snapshot(listOf(dmThread)))
+                    ),
+                channelRepository = channelRepository
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        delay(50L)
+        // Error → nothing parked, nothing resolved.
+        assertEquals(1, channelRepository.directMessageCalls)
+        assertEquals(emptyMap(), store.state.value.dmPeerNames)
+
+        failDirectMessages = false
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        withTimeout(5_000L) {
+            while (store.state.value.dmPeerNames["dm-1"] == null) {
+                delay(1L)
+            }
+        }
+        assertEquals(2, channelRepository.directMessageCalls)
+        assertEquals(mapOf("dm-1" to "Jiacheng"), store.state.value.dmPeerNames)
+        scope.cancel()
+    }
+
+    @Test
+    fun dmPeerNameHydrationParksIdsMissingFromSuccessfulFetch() = runBlocking {
+        // Complement: a Content result that genuinely lacks the DM row parks
+        // the id — a later load does not re-fetch the list for it.
+        val dmThread =
+            InboxItem(
+                key = "thread:dm-thread-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("dm-thread-1"),
+                channelName = "thread-stream",
+                parentChannelId = ChannelId("dm-1"),
+                parentChannelName = "raw-dm-name",
+                parentChannelKind = ConversationKind.DirectMessage,
+                parentMessageId = MessageId("message-1"),
+                parentMessagePreview = "DM root preview"
+            )
+        val channelRepository =
+            FakeChannelRepository(
+                directMessagesResult = { serverId ->
+                    DataResult.Content(
+                        DirectMessageSnapshot(
+                            server = ServerSummary(id = serverId, name = "Slock"),
+                            directMessages = emptyList()
+                        )
+                    )
+                }
+            )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository =
+                    FakeInboxRepository(
+                        initialSnapshots = listOf(snapshot(listOf(dmThread)))
+                    ),
+                channelRepository = channelRepository
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        delay(50L)
+        assertEquals(1, channelRepository.directMessageCalls)
+        assertEquals(emptyMap(), store.state.value.dmPeerNames)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        delay(50L)
+        // Parked id: no second fetch for the same unresolved DM.
+        assertEquals(1, channelRepository.directMessageCalls)
+        scope.cancel()
+    }
+
+    @Test
     fun channelOnlySnapshotsNeverFetchDirectMessages() = runBlocking {
         val channelRepository =
             FakeChannelRepository(

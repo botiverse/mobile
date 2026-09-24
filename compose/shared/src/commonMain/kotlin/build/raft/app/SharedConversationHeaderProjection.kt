@@ -20,7 +20,12 @@ internal data class ThreadHeaderDisplayModel(
     val channelKind: String,
     val dmPeerAvatarWireValue: String? = null,
     val dmPeerAvatarLabel: String = title.take(2).uppercase(),
-    val dmPeerIdentity: MemberDetailIdentity? = null
+    val dmPeerIdentity: MemberDetailIdentity? = null,
+    // task #399: when a reply thread's parent is a DM, this is the peer's
+    // display name (without the leading '@'). The header renders the localized
+    // "来自: @peer (私聊)" origin attribution from it instead of the raw
+    // subtitle. Null for every other shape.
+    val dmOriginPeerName: String? = null
 )
 
 internal sealed interface ThreadHeaderProjectionInput {
@@ -308,7 +313,13 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
                 surfaceKind = surfaceKind,
                 channelKind = parentChannelKind.normalizedHeaderChannelKind()
                     ?: directory.channelKind.normalizedHeaderChannelKind()
-                    ?: channelKind
+                    ?: channelKind,
+                dmOriginPeerName =
+                    directory
+                        .takeIf {
+                            it.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage
+                        }
+                        ?.let { threadHeaderSafeTitleOrNull(it.title)?.removePrefix("@") }
             )
         else ->
             threadHeaderFallbackDisplayModel()

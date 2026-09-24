@@ -14860,6 +14860,13 @@ private fun ThreadPageHeader(
             localizedChannel = stringResource(MR.strings.thread_channel_title),
             localizedDirectMessage = stringResource(MR.strings.thread_direct_message_title)
         )
+    // task #399: a reply thread whose parent is a DM carries the localized
+    // "来自: @Peer (私聊)" origin attribution — the raw subtitle stays the
+    // @peer fallback when the directory projection has not resolved a name.
+    val localizedHeaderSubtitle =
+        headerDisplay.dmOriginPeerName?.takeIf { it.isNotBlank() }?.let {
+            stringResource(MR.strings.thread_header_dm_origin, it)
+        } ?: headerDisplay.subtitle
     val resolvedDmPeerAvatarWireValue =
         rememberSlockMemberAvatarWireValue(
             memberAvatarResolver,
@@ -14933,7 +14940,7 @@ private fun ThreadPageHeader(
                     }
                     dmAgentActivity?.let { ThreadDmAgentActivity(state = it) }
                 }
-                headerDisplay.subtitle?.takeIf { it.isNotBlank() }?.let {
+                localizedHeaderSubtitle?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         text = it,
                         style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),

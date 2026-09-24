@@ -273,6 +273,11 @@ class SharedActivityStore internal constructor(
             readPredictionRevisions = emptyMap()
             readPredictionItemKeys = emptyMap()
             pendingThreadFollowMutations = emptySet()
+            // task #399 review: parked ids and the fetch flag belong to the
+            // old owner/server; a stale park would suppress hydration for the
+            // next session's DM rows.
+            unresolvedDmPeerChannelIds = emptySet()
+            dmPeerNamesFetchInFlight = false
             _state.value = SharedActivityState()
         }
     }
@@ -2298,27 +2303,36 @@ class SharedActivityStore internal constructor(
                 unresolved
             }
         scope.launch {
+            // true only when the DM list actually came back; a failed fetch
+            // must NOT park ids (Mahua review: one network blip would
+            // otherwise disable hydration for those rows for the store's
+            // lifetime) and must not tail-retry (that would hot-loop against
+            // an unreachable server — the next load/patch trigger retries).
+            var fetchSucceeded = false
             try {
                 val serverId = currentServerId() ?: return@launch
-                val resolved: Map<String, String> =
+                val resolved: Map<String, String>? =
                     when (val result = repository.getDirectMessages(serverId)) {
                         is DataResult.Content ->
                             result.data.directMessages.associate { row ->
                                 row.channelId.value to row.name
                             }
-                        else -> emptyMap()
+                        else -> null
                     }
-                synchronized(realtimeOwnerLock) {
-                    val current = _state.value
-                    val merged = current.dmPeerNames + resolved
-                    // Park only the ids this fetch could not resolve; ids that
-                    // arrived while the fetch was in flight stay eligible for
-                    // the tail-call ensure below.
-                    unresolvedDmPeerChannelIds =
-                        unresolvedDmPeerChannelIds +
-                            missing.filter { merged[it.value].isNullOrBlank() }
-                    if (merged != current.dmPeerNames) {
-                        _state.value = current.copy(dmPeerNames = merged)
+                if (resolved != null) {
+                    fetchSucceeded = true
+                    synchronized(realtimeOwnerLock) {
+                        val current = _state.value
+                        val merged = current.dmPeerNames + resolved
+                        // Park only the ids a successful fetch could not
+                        // resolve; ids that arrived while the fetch was in
+                        // flight stay eligible for the tail-call ensure below.
+                        unresolvedDmPeerChannelIds =
+                            unresolvedDmPeerChannelIds +
+                                missing.filter { merged[it.value].isNullOrBlank() }
+                        if (merged != current.dmPeerNames) {
+                            _state.value = current.copy(dmPeerNames = merged)
+                        }
                     }
                 }
             } finally {
@@ -2326,7 +2340,9 @@ class SharedActivityStore internal constructor(
                     dmPeerNamesFetchInFlight = false
                 }
             }
-            ensureDmPeerNames()
+            if (fetchSucceeded) {
+                ensureDmPeerNames()
+            }
         }
     }
 

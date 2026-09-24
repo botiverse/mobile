@@ -90,7 +90,15 @@ internal object SharedThreadHeaderContextStore {
                         // is the best available peer projection (inbox items
                         // hydrate it from the Home DM list).
                         if (parseConversationKindOrNull(conversation.threadParentChannelKind()) == ConversationKind.DirectMessage) {
-                            conversation.name.takeIf { it.isNotBlank() }?.let { "@$it" }
+                            // Mahua review #3: `conversation.name` can fall
+                            // back to the raw parent channel id before the DM
+                            // projection hydrates — suppress identity-like
+                            // names (including the parentId itself) instead
+                            // of rendering "@<uuid>".
+                            threadHeaderSafeTitleOrNull(
+                                conversation.name,
+                                setOfNotNull(conversation.thread?.parentChannelId?.value)
+                            )?.let { "@$it" }
                         } else {
                             existingThreadChannelHeaderSubtitle(conversation.subtitle)
                                 ?: threadChannelHeaderSubtitle(conversation.name)

@@ -304,6 +304,7 @@
     <string name="thread_reply_title">スレッド</string>
     <string name="thread_channel_title">チャンネル</string>
     <string name="thread_direct_message_title">ダイレクトメッセージ</string>
+    <string name="thread_header_dm_origin">@%1$s から (DM)</string>
     <string name="thread_state_no_replies">まだ返信はありません</string>
     <string name="thread_inline_reply_count_one">1 件の返信</string>
     <string name="thread_inline_reply_count_many">%1$d 件の返信</string>

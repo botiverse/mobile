@@ -304,6 +304,7 @@
     <string name="thread_reply_title">消息列</string>
     <string name="thread_channel_title">频道</string>
     <string name="thread_direct_message_title">私信</string>
+    <string name="thread_header_dm_origin">来自: @%1$s (私聊)</string>
     <string name="thread_state_no_replies">暂无回复</string>
     <string name="thread_inline_reply_count_one">1 条回复</string>
     <string name="thread_inline_reply_count_many">%1$d 条回复</string>
