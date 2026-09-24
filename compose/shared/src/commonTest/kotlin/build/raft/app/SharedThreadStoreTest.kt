@@ -2779,7 +2779,13 @@ class SharedThreadStoreTest {
                 payloadStore = payloadStore
             )
         val ownerA = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val diagnostics = ConcurrentTestLogBuffer()
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                diagnosticsLogger = diagnostics::add
+            )
 
         try {
             store.dispatch(SharedThreadIntent.Start(basePayload()))
@@ -2798,7 +2804,14 @@ class SharedThreadStoreTest {
 
             // The fetch result must be dropped post-transport: payload stays on the
             // loading shell and nothing is persisted for either owner scope.
-            delay(500)
+            // Deterministic completion signal: dropForOwnerChange emits the
+            // `reason=owner_changed` diagnostic synchronously inside the refresh
+            // coroutine, so observing that line proves adjudication has run.
+            withTimeout(5_000) {
+                while (!diagnostics.any { it.contains("reason=owner_changed") }) {
+                    delay(5)
+                }
+            }
             assertEquals("loading", store.state.value.payload.status)
             assertTrue(store.state.value.payload.messages.isEmpty())
             assertNull(
