@@ -146,8 +146,39 @@ data class ConversationPermissions(
 enum class MemberKind {
     Human,
     Agent,
-    System
+    System,
+    /** Slack-bridge / provider external projection: never a Raft member, never
+     *  in member-detail or roster flows; surfaces read [Message.externalAuthor]. */
+    External,
 }
+
+/**
+ * Immutable, human-facing attribution frozen on a `senderType=external_projection`
+ * message (Web parity: `ExternalMessageAuthorProjection` in
+ * `packages/shared/src/externalProjection.ts`). It is display/search data only —
+ * never a Raft principal, member, task assignee, or mention handle.
+ */
+@Serializable
+data class ExternalMessageAuthor(
+    val displayName: String,
+    val provider: String,
+    val actorKind: String,
+    val avatarUrl: String? = null,
+    val avatarDigest: String? = null,
+    val projectionId: String? = null,
+    val externalActorId: String? = null,
+    val externalConversationId: String? = null,
+    val externalMessageId: String? = null,
+    val workspaceId: String? = null,
+    val installId: String? = null,
+    val appRegistrationId: String? = null,
+    val actorProjectionRevision: Long? = null,
+)
+
+/** Provider subtitle label, web parity (`formatProviderLabel` in MessageItem.tsx):
+ *  "slack" renders as "Slack", other providers pass through verbatim. */
+fun ExternalMessageAuthor.providerLabel(): String =
+    provider.trim().let { if (it.equals("slack", ignoreCase = true)) "Slack" else it }
 
 @Serializable
 enum class Presence {
@@ -377,6 +408,8 @@ data class Message(
     val commentRef: MessageCommentRef? = null,
     val forwardBundle: ForwardMessageBundle? = null,
     val conversationContext: MessageConversationContext? = null,
+    /** Set when `author.kind == MemberKind.External` (senderType=external_projection). */
+    val externalAuthor: ExternalMessageAuthor? = null,
     val randomId: String? = null,
     /** Canonical numeric creation time used for ordering; never derived from localized display text. */
     @Transient val createdAtEpochMillis: Long? = null,

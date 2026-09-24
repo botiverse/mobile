@@ -2472,6 +2472,8 @@ internal fun memberDetailInitialRouteState(
                 accessMode = identity.memberDetailAccessMode(activeServer)
             )
         MemberKind.System -> null
+        // External projections never open a member detail route.
+        MemberKind.External -> null
     }
 }
 
@@ -2966,6 +2968,7 @@ private class MemberDetailRouteProvider(
                 MemberKind.Agent -> channelRepository.openAgentDirectMessage(member.id)
                 MemberKind.Human -> channelRepository.openUserDirectMessage(member.id)
                 MemberKind.System -> DataResult.Empty(EmptyReason.NoMembers)
+                MemberKind.External -> DataResult.Empty(EmptyReason.NoMembers)
             }
         if (result is DataResult.Content && authority != null) {
             sharedHomeStore?.supplementOpenedDirectMessage(
@@ -4587,7 +4590,7 @@ internal fun MembersListContent(
         payload.members.groupBy {
             when (it.kind) {
                 MemberKind.Human -> payload.labels.humans
-                MemberKind.Agent, MemberKind.System -> payload.labels.agents
+                MemberKind.Agent, MemberKind.System, MemberKind.External -> payload.labels.agents
             }
         }
     }
@@ -12982,6 +12985,7 @@ private val MemberKind.membersAvatarColor: Color
         MemberKind.Human -> SlockColor.AccentLavender
         MemberKind.Agent -> SlockColor.AccentPink
         MemberKind.System -> SlockColor.AccentCyan
+        MemberKind.External -> SlockColor.AccentCyan
     }
 
 internal data class MembersAgentStatusDisplayState(
@@ -13047,6 +13051,7 @@ private val MemberProfile.detailRoleLabel: String
                 MemberKind.Agent -> "Agent"
                 MemberKind.Human -> "Human member"
                 MemberKind.System -> "System"
+                MemberKind.External -> "External"
             }
 
 private fun MemberProfile.membersHumanRoleChipColor(): Color =
