@@ -9815,6 +9815,9 @@ private fun MembersAgentRuntimeConfigDialog(
     var builtInSupportsImageInput by remember(stableInitialConfig) {
         mutableStateOf((initialBuiltInProvider as? RuntimeProviderConfig.Gateway)?.supportsImageInput == true)
     }
+    var builtInLoadLocalPlugins by remember(stableInitialConfig) {
+        mutableStateOf(stableInitialConfig.loadLocalPlugins == true)
+    }
     var fastMode by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.mode is RuntimeModeConfig.Fast) }
     var reasoningEffort by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.reasoningEffort) }
     // kimi-sdk (task #275): only an explicit selector pick counts as "changed";
@@ -9841,7 +9844,7 @@ private fun MembersAgentRuntimeConfigDialog(
     }
     var saveValidationError by remember(stableInitialConfig) { mutableStateOf<String?>(null) }
     var advancedOpen by remember(stableInitialConfig) {
-        mutableStateOf(command.isNotBlank() || envVarEntries.isNotEmpty())
+        mutableStateOf(command.isNotBlank() || envVarEntries.isNotEmpty() || builtInLoadLocalPlugins)
     }
     val formStoreState = createAgentFormStore?.state?.collectAsState()?.value
     val cleanServerId = currentServerId?.trim().orEmpty()
@@ -9910,7 +9913,8 @@ private fun MembersAgentRuntimeConfigDialog(
                 baseUrl = builtInBaseUrl,
                 model = model,
                 envVars = envVarEntries.toMembersRuntimeEnvVars(),
-                supportsImageInput = builtInSupportsImageInput
+                supportsImageInput = builtInSupportsImageInput,
+                loadLocalPlugins = builtInLoadLocalPlugins
             )?.membersProjectRetainedBuiltInSecret(retainBuiltInProviderSecret)
         } else {
             null
@@ -10002,6 +10006,7 @@ private fun MembersAgentRuntimeConfigDialog(
                 builtInBaseUrl = ""
                 builtInApiKey = TextFieldValue("")
                 builtInSupportsImageInput = false
+                builtInLoadLocalPlugins = false
                 val modelSource =
                     builtInForm.optionSources["model"] as?
                         build.raft.app.data.SharedAgentCreateFormOptionSource.DependentSelect
@@ -10232,6 +10237,7 @@ private fun MembersAgentRuntimeConfigDialog(
                                     builtInApiKey = TextFieldValue("")
                                     builtInBaseUrl = ""
                                     builtInSupportsImageInput = false
+                                    builtInLoadLocalPlugins = false
                                 }
                                 builtInProviderId = nextProvider
                             },
@@ -10241,6 +10247,8 @@ private fun MembersAgentRuntimeConfigDialog(
                             onBaseUrlChange = { builtInBaseUrl = it },
                             supportsImageInput = builtInSupportsImageInput,
                             onSupportsImageInputChange = { builtInSupportsImageInput = it },
+                            loadLocalPlugins = builtInLoadLocalPlugins,
+                            onLoadLocalPluginsChange = { builtInLoadLocalPlugins = it },
                             model = model,
                             onModelChange = { model = it },
                             envVarEntries = envVarEntries,
