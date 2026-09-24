@@ -1560,6 +1560,64 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun realtimeMessageIncrementsUnreadAfterLeavingSelectedConversation() = runBlocking {
+        // task #299: after opening a conversation and leaving it, a new
+        // realtime message must accrue unread again — the clear path has to
+        // reach the home store's selectedConversationId.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1"))),
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+        val otherMember = sampleMember().copy(
+            id = MemberId("member-2"),
+            displayName = "Cindy",
+            handle = "cindy@slock.ai"
+        )
+        fun liveMessage(id: String, seq: Long, body: String) =
+            MessageNew(
+                Message(
+                    id = MessageId(id),
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    seq = seq,
+                    author = otherMember,
+                    timestampLabel = "12:01",
+                    body = body
+                )
+            )
+
+        // While the conversation is selected, realtime messages only update
+        // the preview — no unread increment.
+        store.accept(SharedHomeIntent.SelectConversation("channel-1"))
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event = liveMessage("message-2", 2, "while open")
+            )
+        )
+        var content = store.state.value.content
+        assertTrue(content is SharedHomeContentState.Content)
+        assertEquals(0, content.snapshot.channels.single().unreadCount)
+
+        // After leaving the conversation the same stream must accrue unread.
+        store.accept(SharedHomeIntent.ClearSelectedConversation)
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event = liveMessage("message-3", 3, "after leave")
+            )
+        )
+        content = store.state.value.content
+        assertTrue(content is SharedHomeContentState.Content)
+        assertEquals(1, content.snapshot.channels.single().unreadCount)
+        assertEquals(1, content.snapshot.unreadTotal)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeMessageUpdateOnlyReplacesMatchingHomeRow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
