@@ -9494,6 +9494,31 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun focusMessageUpdatesMessageIdAndIncrementsNonce() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
+            )
+        val initial = basePayload().copy(focusedMessageId = null, focusedMessageRequestNonce = 0)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, initialPayload = initial)
+
+        store.accept(SharedThreadIntent.FocusMessage(messageId = "msg-1", switchToTab = null))
+        assertEquals("msg-1", store.state.value.payload.focusedMessageId)
+        val firstNonce = store.state.value.payload.focusedMessageRequestNonce
+        assertTrue(firstNonce > 0)
+
+        store.accept(SharedThreadIntent.FocusMessage(messageId = "msg-1", switchToTab = null))
+        assertEquals("msg-1", store.state.value.payload.focusedMessageId)
+        val secondNonce = store.state.value.payload.focusedMessageRequestNonce
+        assertTrue(secondNonce > firstNonce)
+
+        scope.cancel()
+    }
+
+    @Test
     fun focusedOriginCompletionRejectsNewerSameRouteOriginState() {
         val loading = focusedReplyRoute()
         val newerOrigin = contentPayload("newer parent").messages.single().copy(id = "parent-1")

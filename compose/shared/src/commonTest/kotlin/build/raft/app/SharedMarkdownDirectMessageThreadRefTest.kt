@@ -391,6 +391,39 @@ class SharedMarkdownDirectMessageThreadRefTest {
         assertTrue(friday.id in names)
     }
 
+    @Test
+    fun sameConversationMarkdownThreadRefTargetsRetainRouteIdentity() {
+        val current =
+            KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                channelKind = "dm",
+                streamChannelId = DmChannelId,
+                sourceThreadId = DmChannelId,
+                dmPeerName = "Artin"
+            )
+        val targetSameDm =
+            KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                channelKind = "dm",
+                streamChannelId = DmChannelId,
+                sourceThreadId = DmChannelId,
+                dmPeerName = "Artin",
+                focusedMessageId = "1c50c30a"
+            )
+        val otherDm =
+            KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                channelKind = "dm",
+                streamChannelId = "other-dm-channel",
+                sourceThreadId = "other-dm-channel",
+                dmPeerName = "Bob",
+                focusedMessageId = "1c50c30a"
+            )
+
+        assertTrue(current.resolveThreadRouteIdentity().canRetainThreadPageFor(targetSameDm.resolveThreadRouteIdentity()))
+        assertFalse(current.resolveThreadRouteIdentity().canRetainThreadPageFor(otherDm.resolveThreadRouteIdentity()))
+    }
+
     private fun dmHomeSnapshot(dmName: String = "Artin"): HomeSnapshot {
         val peer = dmPeer()
         return HomeSnapshot(
