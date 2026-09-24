@@ -2618,7 +2618,8 @@ class SharedThreadStoreTest {
                     principalId = "u-b",
                     serverId = "server-1",
                     authGeneration = 2L,
-                    selectionGeneration = 1L
+                    selectionGeneration = 1L,
+                    bindingGeneration = 2L
                 )
             val ownerB = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
             releaseAdmission.complete(Unit)
@@ -2671,7 +2672,8 @@ class SharedThreadStoreTest {
                 principalId = "u-a",
                 serverId = "server-1",
                 authGeneration = 1L,
-                selectionGeneration = 1L
+                selectionGeneration = 1L,
+                bindingGeneration = 1L
             )
         val api = FakeThreadApi()
         api.channelMessagesStarted = CompletableDeferred()
@@ -2702,7 +2704,8 @@ class SharedThreadStoreTest {
                     principalId = "u-a",
                     serverId = "server-1",
                     authGeneration = 2L,
-                    selectionGeneration = 1L
+                    selectionGeneration = 1L,
+                    bindingGeneration = 1L
                 )
             val ownerARotated =
                 requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
@@ -2765,7 +2768,8 @@ class SharedThreadStoreTest {
                 principalId = "u-a",
                 serverId = "server-1",
                 authGeneration = 1L,
-                selectionGeneration = 1L
+                selectionGeneration = 1L,
+                bindingGeneration = 1L
             )
         val api = FakeThreadApi()
         api.channelMessagesStarted = CompletableDeferred()
@@ -2797,7 +2801,8 @@ class SharedThreadStoreTest {
                     principalId = "u-b",
                     serverId = "server-1",
                     authGeneration = 2L,
-                    selectionGeneration = 1L
+                    selectionGeneration = 1L,
+                    bindingGeneration = 2L
                 )
             val ownerB = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
             api.releaseChannelMessages!!.complete(Unit)
