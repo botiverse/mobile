@@ -3889,13 +3889,6 @@ private fun ThreadPageScreen(
     }
     val unableToOpenThreadLabel = stringResource(MR.strings.thread_error_open_thread)
     val unableToOpenProfileLabel = stringResource(MR.strings.thread_error_open_profile)
-    val externalAuthorHintTemplate = stringResource(MR.strings.thread_external_author_hint)
-    // task #395: external (Slack-bridge) authors have no member profile; the avatar/name
-    // tap surfaces a provider identity hint instead of silently doing nothing.
-    val onExternalAuthorHint: (KuiklyThreadMessageItem) -> Unit = { message ->
-        val provider = message.externalAuthor?.providerLabel() ?: "external"
-        bridge.toast(externalAuthorHintTemplate.format(provider))
-    }
     fun openStandaloneThreadPayload(
         nextPayload: KuiklyThreadScreenPayload,
         serverIdOverride: String? = null
@@ -5382,6 +5375,13 @@ private fun SharedThreadRouteContentContent(
     val onOpenChannelSettings = callbacks.onOpenChannelSettings
     val pager = LocalActivity.current.getPager() as Pager
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
+    val externalAuthorHintTemplate = stringResource(MR.strings.thread_external_author_hint)
+    // task #395: external (Slack-bridge) authors have no member profile; the avatar/name
+    // tap surfaces a provider identity hint instead of silently doing nothing.
+    val onExternalAuthorHint: (KuiklyThreadMessageItem) -> Unit = { message ->
+        val provider = message.externalAuthor?.providerLabel() ?: "external"
+        bridge.toast(externalAuthorHintTemplate.format(provider))
+    }
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val messageBodyFontSizeState by sharedStores.messageBodyFontSizeStore.state.collectAsState()
     val messageBodySettingsNetworkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
@@ -9937,6 +9937,7 @@ private fun SharedThreadRouteContentContent(
             },
             onDownloadFilesAttachment = { attachment -> saveAttachmentExternally(attachment) },
             onOpenMemberProfile = { identity -> onOpenMemberProfile(renderedThread, renderedTimelineSlice, identity) },
+            onExternalAuthor = onExternalAuthorHint,
             highlightedMentions = highlightedMentions,
             agentStatusResolver = agentStatusResolver,
             memberAvatarResolver = memberAvatarResolver,
@@ -13169,6 +13170,7 @@ private class ThreadPageContentCallbacks(
     val onOpenFilesAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
     val onDownloadFilesAttachment: (KuiklyThreadAttachmentItem) -> Unit,
     val onOpenMemberProfile: (MemberDetailIdentity) -> Unit,
+    val onExternalAuthor: (KuiklyThreadMessageItem) -> Unit,
     val agentStatusResolver: SlockAgentStatusResolver,
     val memberAvatarResolver: SlockMemberAvatarResolver,
     val memberModelLabelResolver: SlockMemberModelLabelResolver,
@@ -13243,6 +13245,7 @@ fun ThreadPageContent(
     onOpenFilesAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
     onDownloadFilesAttachment: (KuiklyThreadAttachmentItem) -> Unit,
     onOpenMemberProfile: (MemberDetailIdentity) -> Unit,
+    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
@@ -13350,6 +13353,7 @@ fun ThreadPageContent(
                 onOpenFilesAttachment = onOpenFilesAttachment,
                 onDownloadFilesAttachment = onDownloadFilesAttachment,
                 onOpenMemberProfile = onOpenMemberProfile,
+                onExternalAuthor = onExternalAuthor,
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
                 memberModelLabelResolver = memberModelLabelResolver,
@@ -13430,6 +13434,7 @@ private fun ThreadPageContentContent(
     val onOpenFilesAttachment = callbacks.onOpenFilesAttachment
     val onDownloadFilesAttachment = callbacks.onDownloadFilesAttachment
     val onOpenMemberProfile = callbacks.onOpenMemberProfile
+    val onExternalAuthor = callbacks.onExternalAuthor
     val highlightedMentions = data.highlightedMentions
     val agentStatusResolver = callbacks.agentStatusResolver
     val memberAvatarResolver = callbacks.memberAvatarResolver
@@ -14166,7 +14171,7 @@ private fun ThreadPageContentContent(
                         onLoadNewer = onLoadNewer,
                         onJumpToLatest = onJumpToLatest,
                         onOpenMember = onOpenMemberProfile,
-                        onExternalAuthor = onExternalAuthorHint,
+                        onExternalAuthor = onExternalAuthor,
                         onMentionAuthor = { message ->
                             val handle = mentionHandleResolver(message)
                             if (showComposerForSelectedTab && handle != null) {
@@ -26640,7 +26645,6 @@ private fun ThreadExternalAuthorAvatarFallback(muted: Boolean) {
     ) {
         SlockLucideIcon(SlockLucideIconName.Link, modifier = Modifier.size(20.dp), color = SlockColor.TextBlackArgb)
     }
-}
 }
 
 private data class ThreadMessageAvatarGestureCallbacks(

@@ -10,7 +10,7 @@ import kotlinx.serialization.Serializable
  * carried for provenance but never used for authority.
  */
 @Serializable
-internal data class WireExternalAuthor(
+data class WireExternalAuthor(
     val displayName: String? = null,
     val provider: String? = null,
     val actorKind: String? = null,
