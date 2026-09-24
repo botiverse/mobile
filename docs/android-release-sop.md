@@ -276,12 +276,14 @@ SHA-256 + signer digests + CI run id. An upgrade cell must additionally show
 `firstInstallTime` unchanged and `lastUpdateTime` advanced.
 
 **No-adb identity surface.** The release owner does not have adb. To verify the
-installed build without `dumpsys`, the `versionName` carries the source commit
-(`1.12.0+<short-sha>`) and is shown under Android Settings → Apps → Raft → App
-details. An agent/QA seat with adb still reconciles `versionCode` + SHA-256 +
-signers per the five-point chain above; the owner-visible `versionName` is the
-cross-check that the UI reports the same train. Never let a `versionName`-only
-reading stand in for the `versionCode`/SHA-256 half of the binding.
+installed build without `dumpsys`, the `versionName` is a clean train tag
+(`1.12.0`, no source-commit suffix) shown under Android Settings → Apps → Raft →
+App details; the source commit is carried separately in build metadata and the
+Hands provenance record, not in `versionName`. An agent/QA seat with adb still
+reconciles `versionCode` + SHA-256 + signers per the five-point chain above;
+the owner-visible `versionName` is the cross-check that the UI reports the same
+train. Never let a `versionName`-only reading stand in for the `versionCode`/
+SHA-256 half of the binding.
 
 ### 5.2 The 46-cell smoke checklist
 
