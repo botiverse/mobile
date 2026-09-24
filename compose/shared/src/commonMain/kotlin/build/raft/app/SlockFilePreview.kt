@@ -221,7 +221,9 @@ internal data class SlockFilePreviewComposerImageEventPayload(
     val sizeBytes: Long?,
     val groupId: String?,
     val groupIndex: Int?,
-    val groupTotal: Int?
+    val groupTotal: Int?,
+    /** task #286: explicit target slot when action=="replace"; blank for "complete" events. */
+    val replaceAttachmentId: String
 )
 
 private fun JSONObject.requiredComposerImageEventString(key: String): String? {
@@ -267,6 +269,9 @@ internal fun parseSlockFilePreviewComposerImageEvent(
     val actionId = data.requiredComposerImageEventString("actionId") ?: return null
     val action = data.requiredComposerImageEventString("action") ?: return null
     if (action != "complete" && action != "replace") return null
+    val replaceAttachmentId =
+        data.requiredComposerImageEventString("replaceAttachmentId").orEmpty()
+    if (action == "replace" && replaceAttachmentId.isBlank()) return null
     val fileRef = data.requiredComposerImageEventString("fileRef") ?: return null
     val previewUri = data.requiredComposerImageEventString("previewUri") ?: return null
     val fileName = data.requiredComposerImageEventString("fileName") ?: return null
@@ -322,7 +327,8 @@ internal fun parseSlockFilePreviewComposerImageEvent(
         sizeBytes = sizeBytes,
         groupId = groupId,
         groupIndex = groupIndex,
-        groupTotal = groupTotal
+        groupTotal = groupTotal,
+        replaceAttachmentId = replaceAttachmentId
     )
 }
 

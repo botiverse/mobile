@@ -201,7 +201,7 @@ internal fun JSONObject.toChatLayoutPreferenceSnapshotOrNull(): ChatLayoutPrefer
         composerSendKeyEnabled = optBoolean(KEY_COMPOSER_SEND_KEY_ENABLED, false),
         multiShellHostEnabled = optBoolean(KEY_MULTI_SHELL_HOST_ENABLED, false),
         serverDrawerEnabled = optBoolean(KEY_SERVER_DRAWER_ENABLED, false),
-        newDesignSettingsEnabled = optBoolean(KEY_NEW_DESIGN_SETTINGS_ENABLED, false),
+        newDesignSettingsEnabled = true,
         homeServerAvatarEnabled = optBoolean(KEY_HOME_SERVER_AVATAR_ENABLED, false),
         translationMode = TranslationModePreference.fromStorageKey(optString(KEY_TRANSLATION_MODE)),
         translationTargetLanguage =

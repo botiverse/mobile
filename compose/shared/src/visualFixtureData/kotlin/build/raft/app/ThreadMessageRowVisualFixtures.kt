@@ -384,6 +384,11 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE = "md_table"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE_TIGHT = "md_table_tight"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_ESCAPES = "md_escapes"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_LATEST_RELEASE = "md_latest_release"
+// Mermaid diagram specimens (task #10, 2026-09-21): the native renderer landed
+// in #2443 without a matrix case, so no rendered image existed anywhere.
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_MERMAID_FLOWCHART = "md_mermaid_flowchart"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_MERMAID_SEQUENCE = "md_mermaid_sequence"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_MERMAID_INVALID = "md_mermaid_invalid"
 internal fun threadMessageVisualWidth(visualFixture: String): Dp =
     when (visualFixture) {
         THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP -> 920.dp
@@ -1324,6 +1329,47 @@ internal fun threadVisualFixture(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_MERMAID_FLOWCHART ->
+            // Mermaid flowchart: the fenced block must become a drawn diagram
+            // with the zoom controls, not the source text.
+            threadMermaidVisualFixture(
+                resolvedInstanceId = resolvedInstanceId,
+                messageId = "msg_md_mermaid_flowchart_visual",
+                subtitle = "Mermaid flowchart specimen (task #10)",
+                intro = "Flowchart below must render as a diagram, not as code.",
+                // Kept to the 0.1.2 flowchart grammar on purpose: `A[x] --> B[y]`
+                // only (no edge labels, no {} decision nodes), so this case
+                // measures rendering, not parser coverage.
+                mermaid =
+                    "graph TD\n" +
+                        "  A[Start] --> B[Parse]\n" +
+                        "  B --> C[Layout]\n" +
+                        "  C --> D[Draw on canvas]\n"
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_MERMAID_SEQUENCE ->
+            // Mermaid sequence diagram: lifelines, arrows and labels.
+            threadMermaidVisualFixture(
+                resolvedInstanceId = resolvedInstanceId,
+                messageId = "msg_md_mermaid_sequence_visual",
+                subtitle = "Mermaid sequence specimen (task #10)",
+                intro = "Sequence diagram below must render with lifelines and arrows.",
+                mermaid =
+                    "sequenceDiagram\n" +
+                        "  Alice->>Bob: Hello\n" +
+                        "  Bob-->>Alice: Hi\n"
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_MERMAID_INVALID ->
+            // Unparseable mermaid: the contract is a graceful fallback to the
+            // ordinary fenced code block with its copy affordance intact.
+            threadMermaidVisualFixture(
+                resolvedInstanceId = resolvedInstanceId,
+                messageId = "msg_md_mermaid_invalid_visual",
+                subtitle = "Mermaid invalid-source fallback specimen (task #10)",
+                intro = "Invalid mermaid below must fall back to a plain code block.",
+                mermaid =
+                    "graph INVALID_SYNTAX\n" +
+                        "  ??? --- !!!\n"
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE ->
             // task #497: GFM tables reportedly don't render on Android. The
@@ -2339,3 +2385,53 @@ internal fun String.requiresViewerSelfMentionContext(): Boolean =
         this == THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP ||
         this == THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS ||
         this == THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW
+
+/**
+ * One-message thread payload whose body is a fenced `mermaid` block between two
+ * plain paragraphs, mirroring the real chat shape the renderer sees.
+ */
+private fun threadMermaidVisualFixture(
+    resolvedInstanceId: String,
+    messageId: String,
+    subtitle: String,
+    intro: String,
+    mermaid: String
+): KuiklyThreadScreenPayload =
+    KuiklyThreadScreenPayload(
+        instanceId = resolvedInstanceId,
+        title = "#markdown",
+        subtitle = subtitle,
+        status = "content",
+        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+        streamChannelId = "channel-markdown",
+        sourceThreadId = "channel-markdown",
+        selectedTab = "chat",
+        showModeTabs = false,
+        showReplyActions = true,
+        alignOwnMessagesRight = false,
+        showMessageSaveAction = false,
+        showTaskOpenActions = false,
+        showTaskStatusActions = false,
+        messages =
+            listOf(
+                KuiklyThreadMessageItem(
+                    id = messageId,
+                    authorId = "agent-cindy",
+                    authorName = "Cindy",
+                    authorDescription = "Keeps visual testing release notes aligned.",
+                    authorKind = "agent",
+                    avatarLabel = "CI",
+                    timestampLabel = "09/21 07:20",
+                    messageType = "Chat",
+                    body = intro + "\n\n```mermaid\n" + mermaid + "```\n\nTrailing paragraph closes the specimen."
+                )
+            ),
+        members = emptyList(),
+        showComposer = false,
+        joined = true,
+        composer =
+            KuiklyThreadComposerPayload(
+                instanceId = resolvedInstanceId,
+                enabled = false
+            )
+    )

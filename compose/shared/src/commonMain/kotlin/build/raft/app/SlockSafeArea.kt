@@ -11,6 +11,7 @@ import com.tencent.kuikly.core.pager.Pager
 private const val KEY_NATIVE_SAFE_AREA_INSETS_ARE_PIXELS = "slockNativeSafeAreaInsetsArePixels"
 private const val KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA =
     "slockKeyboardInsetExcludesBottomSafeArea"
+private const val KEY_STATUS_BAR_HIDDEN = "slockStatusBarHidden"
 
 @Composable
 internal fun slockTopSafeAreaPadding(): Dp {
@@ -19,6 +20,10 @@ internal fun slockTopSafeAreaPadding(): Dp {
     // Visual-testing captures compare against React baselines that have no
     // device status bar; the capture harness opts out of the top inset.
     if (params.optBoolean("slockVisualZeroSafeArea", false)) return 0.dp
+    // When the host hides the status bar (immersive / fullscreen), the reported
+    // bar height would reserve a strip of dead space; keep a small fixed
+    // padding instead so page headers are not flush against the top edge.
+    if (params.optBoolean(KEY_STATUS_BAR_HIDDEN, false)) return SlockSpacing.Md
     val nativeInsetDp =
         resolveSlockNativeSafeAreaDp(
             nativeInsetsArePixels = params.optBoolean(KEY_NATIVE_SAFE_AREA_INSETS_ARE_PIXELS, false),

@@ -2446,11 +2446,32 @@ open class SlockKuiklyActivity :
                     JSONObject(text).apply {
                         put(KEY_HOST_EXCLUDES_NAVIGATION_BAR, androidHostExcludesNavigationBar())
                         put(KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA, true)
+                        put(KEY_STATUS_BAR_HIDDEN, !androidStatusBarVisible())
                     }
             )
 
     private fun androidHostExcludesNavigationBar(): Boolean =
             androidHostExcludesNavigationBarForMode(androidNavigationMode())
+
+    // When the status bar is hidden (immersive / FLAG_FULLSCREEN / legacy
+    // systemUiVisibility), pageData.statusBarHeight still reports the bar's
+    // nominal height and the shared layer would reserve a full strip of dead
+    // space at the top of every page. Flag it so the shared side can fall back
+    // to a small fixed padding instead. Undetectable => visible => flag off.
+    private fun androidStatusBarVisible(): Boolean {
+        val decorView = window?.decorView ?: return true
+        if (Build.VERSION.SDK_INT >= 30) {
+            val insets = decorView.rootWindowInsets
+            if (insets != null) {
+                return insets.isVisible(WindowInsets.Type.statusBars())
+            }
+        }
+        if (window?.attributes?.flags?.and(WindowManager.LayoutParams.FLAG_FULLSCREEN) != 0) {
+            return false
+        }
+        @Suppress("DEPRECATION")
+        return decorView.systemUiVisibility and View.SYSTEM_UI_FLAG_FULLSCREEN == 0
+    }
 
     private fun androidNavigationMode(): Int? {
         val fromSettings =
@@ -2707,6 +2728,7 @@ open class SlockKuiklyActivity :
         private const val KEY_HOST_EXCLUDES_NAVIGATION_BAR = "slockHostExcludesNavigationBar"
         private const val KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA =
                 "slockKeyboardInsetExcludesBottomSafeArea"
+        private const val KEY_STATUS_BAR_HIDDEN = "slockStatusBarHidden"
         private const val NAVIGATION_MODE_SETTING = "navigation_mode"
         private const val NAVIGATION_MODE_RESOURCE = "config_navBarInteractionMode"
         private const val NAVIGATION_MODE_GESTURAL = 2

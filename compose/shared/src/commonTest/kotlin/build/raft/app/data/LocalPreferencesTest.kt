@@ -140,7 +140,7 @@ class LocalPreferencesTest {
         assertEquals(false, snapshot.composerSendKeyEnabled)
         assertEquals(false, snapshot.multiShellHostEnabled)
         assertEquals(false, snapshot.serverDrawerEnabled)
-        assertEquals(false, snapshot.newDesignSettingsEnabled)
+        assertEquals(true, snapshot.newDesignSettingsEnabled)
         assertEquals(false, snapshot.homeServerAvatarEnabled)
         assertEquals(TranslationModePreference.Manual, snapshot.translationMode)
         assertEquals(TranslationTargetLanguages.Browser, snapshot.translationTargetLanguage)
