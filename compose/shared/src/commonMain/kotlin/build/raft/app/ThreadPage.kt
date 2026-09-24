@@ -159,6 +159,7 @@ import build.raft.app.data.messageBodyFontSizeOwnerKey
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.ExternalMessageAuthor
 import build.raft.app.model.ForwardMessageAttachment
 import build.raft.app.model.ForwardMessageBundle
 import build.raft.app.model.ForwardMessageItem
@@ -167,6 +168,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
+import build.raft.app.model.providerLabel
 import build.raft.app.markdown.LocalSlockMessagePermalinkLabelResolver
 import build.raft.app.markdown.LocalSlockMarkdownRenderConfig
 import build.raft.app.markdown.SlockMarkdownBody
@@ -1214,7 +1216,7 @@ internal fun threadTaskAssigneeRows(
 ): List<MemberProfile?> {
     val normalized = search.trim()
     return (listOf<MemberProfile?>(null) + assigneeOptions)
-        .filter { row -> row == null || row.kind != MemberKind.System }
+        .filter { row -> row == null || (row.kind != MemberKind.System && row.kind != MemberKind.External) }
         .filter { row -> row == null || normalized.isEmpty() || row.displayName.contains(normalized, ignoreCase = true) }
         .sortedWith(
             Comparator<MemberProfile?> { a, b ->
@@ -2019,6 +2021,7 @@ internal fun KuiklyThreadScreenPayload.threadConversationPinTarget(
             MemberKind.Agent -> "agent"
             MemberKind.Human -> "human"
             MemberKind.System -> return null
+            MemberKind.External -> return null
         }
     return ThreadConversationPinTarget(
         conversationId = conversationId,
@@ -2476,12 +2479,16 @@ private fun KuiklyThreadMemberItem.memberDetailIdentity(): MemberDetailIdentity?
         source = MemberDetailIdentitySource.ThreadMember
     )
 
-private fun KuiklyThreadMessageItem.memberDetailIdentity(): MemberDetailIdentity? =
-    memberDetailIdentityFromWire(
+private fun KuiklyThreadMessageItem.memberDetailIdentity(): MemberDetailIdentity? {
+    // External authors are never member-detail identities; short-circuit before the
+    // Identity contract rejects "external" with a diagnostic on every tap.
+    if (externalAuthor != null) return null
+    return memberDetailIdentityFromWire(
         memberId = authorId,
         kindWireValue = authorKind,
         source = MemberDetailIdentitySource.ThreadMessageAuthor
     )
+}
 
 internal fun KuiklyThreadMessageItem.threadAuthorGestureIdentity(): String =
     "${id.trim()}|${authorId.trim()}|${authorKind.trim().lowercase()}"
@@ -2524,6 +2531,8 @@ internal data class KuiklyThreadMessageItem(
     val isOwn: Boolean = false,
     val avatarLabel: String = "",
     val avatarWireValue: String? = null,
+    /** Slack-bridge external sender attribution (senderType=external_projection). */
+    val externalAuthor: ExternalMessageAuthor? = null,
     val senderMembershipStatus: String? = null,
     val authorDeletedAt: String? = null,
     val timestampLabel: String = "",
@@ -3880,6 +3889,13 @@ private fun ThreadPageScreen(
     }
     val unableToOpenThreadLabel = stringResource(MR.strings.thread_error_open_thread)
     val unableToOpenProfileLabel = stringResource(MR.strings.thread_error_open_profile)
+    val externalAuthorHintTemplate = stringResource(MR.strings.thread_external_author_hint)
+    // task #395: external (Slack-bridge) authors have no member profile; the avatar/name
+    // tap surfaces a provider identity hint instead of silently doing nothing.
+    val onExternalAuthorHint: (KuiklyThreadMessageItem) -> Unit = { message ->
+        val provider = message.externalAuthor?.providerLabel() ?: "external"
+        bridge.toast(externalAuthorHintTemplate.format(provider))
+    }
     fun openStandaloneThreadPayload(
         nextPayload: KuiklyThreadScreenPayload,
         serverIdOverride: String? = null
@@ -5136,7 +5152,8 @@ private fun ThreadMessageVisualCard(
             ) {
                 ThreadMessageStaticAvatar(
                     avatarLabel = message.avatarLabel,
-                    avatarWireValue = avatarWireValue,
+                    avatarWireValue =
+                        if (message.externalAuthor != null) message.avatarWireValue else avatarWireValue,
                     status = null,
                     cacheSubject =
                         slockMemberAvatarCacheSubject(
@@ -14149,6 +14166,7 @@ private fun ThreadPageContentContent(
                         onLoadNewer = onLoadNewer,
                         onJumpToLatest = onJumpToLatest,
                         onOpenMember = onOpenMemberProfile,
+                        onExternalAuthor = onExternalAuthorHint,
                         onMentionAuthor = { message ->
                             val handle = mentionHandleResolver(message)
                             if (showComposerForSelectedTab && handle != null) {
@@ -15565,6 +15583,7 @@ private class ThreadChatTabCallbacks(
     val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     val onJumpToLatest: suspend () -> Boolean,
     val onOpenMember: (MemberDetailIdentity) -> Unit,
+    val onExternalAuthor: (KuiklyThreadMessageItem) -> Unit,
     val onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     val onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     val onOpenMarkdownUrl: (String) -> Unit,
@@ -15622,6 +15641,7 @@ fun ThreadChatTab(
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     onJumpToLatest: suspend () -> Boolean,
     onOpenMember: (MemberDetailIdentity) -> Unit,
+    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
@@ -15703,6 +15723,7 @@ fun ThreadChatTab(
                 onLoadNewer = onLoadNewer,
                 onJumpToLatest = onJumpToLatest,
                 onOpenMember = onOpenMember,
+                onExternalAuthor = onExternalAuthor,
                 onMentionAuthor = onMentionAuthor,
                 onOpenMarkdownTag = onOpenMarkdownTag,
                 onOpenMarkdownUrl = onOpenMarkdownUrl,
@@ -15765,6 +15786,7 @@ private fun ThreadChatTabContent(
     val onLoadNewer = callbacks.onLoadNewer
     val onJumpToLatest = callbacks.onJumpToLatest
     val onOpenMember = callbacks.onOpenMember
+    val onExternalAuthor = callbacks.onExternalAuthor
     val onMentionAuthor = callbacks.onMentionAuthor
     val onOpenMarkdownTag = callbacks.onOpenMarkdownTag
     val onOpenMarkdownUrl = callbacks.onOpenMarkdownUrl
@@ -15860,6 +15882,7 @@ private fun ThreadChatTabContent(
                     onLoadNewer = onLoadNewer,
                     onJumpToLatest = onJumpToLatest,
                     onOpenMember = onOpenMember,
+                    onExternalAuthor = onExternalAuthor,
                     onMentionAuthor = onMentionAuthor,
                     onOpenMarkdownTag = onOpenMarkdownTag,
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
@@ -15941,6 +15964,7 @@ private fun ThreadChatTabContent(
                     onLoadNewer = onLoadNewer,
                     onJumpToLatest = onJumpToLatest,
                     onOpenMember = onOpenMember,
+                    onExternalAuthor = onExternalAuthor,
                     onMentionAuthor = onMentionAuthor,
                     onOpenMarkdownTag = onOpenMarkdownTag,
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
@@ -16012,6 +16036,7 @@ private fun ThreadChatTabContent(
                 onLoadNewer = onLoadNewer,
                 onJumpToLatest = onJumpToLatest,
                 onOpenMember = onOpenMember,
+                onExternalAuthor = onExternalAuthor,
                 onMentionAuthor = onMentionAuthor,
                 onOpenMarkdownTag = onOpenMarkdownTag,
                 onOpenMarkdownUrl = onOpenMarkdownUrl,
@@ -16346,6 +16371,7 @@ private class ThreadMessagesListCallbacks(
     val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     val onJumpToLatest: suspend () -> Boolean,
     val onOpenMember: (MemberDetailIdentity) -> Unit,
+    val onExternalAuthor: (KuiklyThreadMessageItem) -> Unit,
     val onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     val onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     val onOpenMarkdownUrl: (String) -> Unit,
@@ -16404,6 +16430,7 @@ fun ThreadMessagesList(
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     onJumpToLatest: suspend () -> Boolean,
     onOpenMember: (MemberDetailIdentity) -> Unit,
+    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
@@ -16485,6 +16512,7 @@ fun ThreadMessagesList(
                 onLoadNewer = onLoadNewer,
                 onJumpToLatest = onJumpToLatest,
                 onOpenMember = onOpenMember,
+                onExternalAuthor = onExternalAuthor,
                 onMentionAuthor = onMentionAuthor,
                 onOpenMarkdownTag = onOpenMarkdownTag,
                 onOpenMarkdownUrl = onOpenMarkdownUrl,
@@ -16547,6 +16575,7 @@ private fun ThreadMessagesListContent(
     val onLoadNewer = callbacks.onLoadNewer
     val onJumpToLatest = callbacks.onJumpToLatest
     val onOpenMember = callbacks.onOpenMember
+    val onExternalAuthor = callbacks.onExternalAuthor
     val onMentionAuthor = callbacks.onMentionAuthor
     val onOpenMarkdownTag = callbacks.onOpenMarkdownTag
     val onOpenMarkdownUrl = callbacks.onOpenMarkdownUrl
@@ -19027,6 +19056,7 @@ private fun ThreadMessagesListContent(
                         diagnosticsLogger = diagnosticsLogger,
                         onThreadEvent = onThreadEvent,
                         onOpenMember = onOpenMember,
+                        onExternalAuthor = onExternalAuthor,
                         onShowReactionDetails = { reaction, anchor ->
                             reactionDetails =
                                 ThreadReactionDetailsRequest(
@@ -19310,6 +19340,7 @@ private fun ThreadMessagesListContent(
                                     }
                                 },
                                 onOpenMember = onOpenMember,
+                                onExternalAuthor = onExternalAuthor,
                                 onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
                                 onOpenTask = { onThreadEvent("openTask", it, null, null) },
                                 onOpenTaskStatusMenu = { anchor ->
@@ -21894,6 +21925,7 @@ private class ThreadMessageCardCallbacks(
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
     val onShowActions: (SlockPopoverAnchor) -> Unit,
     val onOpenMember: (MemberDetailIdentity) -> Unit,
+    val onExternalAuthor: (KuiklyThreadMessageItem) -> Unit,
     val onOpenThread: (String) -> Unit,
     val onOpenTask: (String) -> Unit,
     val onOpenTaskStatusMenu: (SlockPopoverAnchor) -> Unit,
@@ -21950,6 +21982,7 @@ fun ThreadMessageCard(
     compactTimestampLabel: String = timestampLabel,
     onShowActions: (SlockPopoverAnchor) -> Unit,
     onOpenMember: (MemberDetailIdentity) -> Unit,
+    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     onOpenThread: (String) -> Unit,
     onOpenTask: (String) -> Unit,
     onOpenTaskStatusMenu: (SlockPopoverAnchor) -> Unit,
@@ -22039,6 +22072,7 @@ fun ThreadMessageCard(
                 isMarkdownTagValid = isMarkdownTagValid,
                 onShowActions = onShowActions,
                 onOpenMember = onOpenMember,
+                onExternalAuthor = onExternalAuthor,
                 onOpenThread = onOpenThread,
                 onOpenTask = onOpenTask,
                 onOpenTaskStatusMenu = onOpenTaskStatusMenu,
@@ -22101,6 +22135,7 @@ private fun ThreadMessageCardContent(
     val compactTimestampLabel = data.compactTimestampLabel
     val onShowActions = callbacks.onShowActions
     val onOpenMember = callbacks.onOpenMember
+    val onExternalAuthor = callbacks.onExternalAuthor
     val onOpenThread = callbacks.onOpenThread
     val onOpenTask = callbacks.onOpenTask
     val onOpenTaskStatusMenu = callbacks.onOpenTaskStatusMenu
@@ -22227,6 +22262,10 @@ private fun ThreadMessageCardContent(
                 "authorId=${message.authorId} authorKind=${message.authorKind} " +
                 "targetMemberId=${authorProfileIdentity?.memberId?.value.orEmpty()}"
         )
+        if (authorProfileIdentity == null && message.externalAuthor != null) {
+            onExternalAuthor(message)
+            return
+        }
         authorProfileIdentity?.let(onOpenMember)
     }
     val authorBadgeLabel = message.threadAuthorBadgeLabel()
@@ -22378,8 +22417,10 @@ private fun ThreadMessageCardContent(
                         timestampAlignment = Alignment.TopStart,
                         timestampTextAlign = TextAlign.Start,
                         avatarLabel = message.avatarLabel,
-                        avatarWireValue = avatarWireValue,
+                        avatarWireValue =
+                            if (message.externalAuthor != null) message.avatarWireValue else avatarWireValue,
                         avatarDiagnostics = avatarDiagnostics,
+                        external = message.externalAuthor != null,
                         cacheSubject =
                             slockMemberAvatarCacheSubject(
                                 message.authorKind.projectedMemberKindOrNull(),
@@ -22719,8 +22760,10 @@ private fun ThreadMessageCardContent(
                         timestampAlignment = Alignment.TopEnd,
                         timestampTextAlign = TextAlign.End,
                         avatarLabel = message.avatarLabel,
-                        avatarWireValue = avatarWireValue,
+                        avatarWireValue =
+                            if (message.externalAuthor != null) message.avatarWireValue else avatarWireValue,
                         avatarDiagnostics = avatarDiagnostics,
+                        external = message.externalAuthor != null,
                         cacheSubject =
                             slockMemberAvatarCacheSubject(
                                 message.authorKind.projectedMemberKindOrNull(),
@@ -26255,6 +26298,7 @@ private fun ThreadOriginCard(
     diagnosticsLogger: (String) -> Unit = {},
     onThreadEvent: ThreadEventHandler,
     onOpenMember: (MemberDetailIdentity) -> Unit,
+    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     onShowActions: (KuiklyThreadMessageItem, SlockPopoverAnchor) -> Unit,
     onOpenTaskStatusMenu: (KuiklyThreadMessageItem, SlockPopoverAnchor) -> Unit,
     onShowReactionDetails: ((KuiklyThreadReactionItem, SlockPopoverAnchor) -> Unit)? = null,
@@ -26349,6 +26393,7 @@ private fun ThreadOriginCard(
                             isMarkdownTagValid = isMarkdownTagValid,
                             onShowActions = { anchor -> onShowActions(origin, anchor) },
                             onOpenMember = onOpenMember,
+                            onExternalAuthor = onExternalAuthor,
                             onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
                             onOpenTask = { onThreadEvent("openTask", it, null, null) },
                             onOpenTaskStatusMenu = { anchor -> onOpenTaskStatusMenu(origin, anchor) },
@@ -26450,6 +26495,7 @@ private fun ThreadMessageAvatarSlot(
     status: SlockAgentStatusIndicatorState?,
     statusPulsing: () -> Boolean = { true },
     muted: Boolean = false,
+    external: Boolean = false,
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
 ) {
@@ -26472,6 +26518,7 @@ private fun ThreadMessageAvatarSlot(
                         status = status,
                         statusPulsing = statusPulsing,
                         muted = muted,
+                        external = external,
                         onClick = onClick,
                         onLongPress = onLongPress
                     )
@@ -26509,6 +26556,7 @@ private fun ThreadMessageAvatar(
     status: SlockAgentStatusIndicatorState?,
     statusPulsing: () -> Boolean = { true },
     muted: Boolean = false,
+    external: Boolean = false,
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
 ) {
@@ -26552,6 +26600,9 @@ private fun ThreadMessageAvatar(
             statusPulsing = status?.pulsing == true && statusPulsing()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
+                if (external && avatarSource == null) {
+                    ThreadExternalAuthorAvatarFallback(muted = muted)
+                } else {
                 SlockAvatar(
                     avatarWireValue = avatarSource,
                     label = avatarLabel,
@@ -26561,6 +26612,7 @@ private fun ThreadMessageAvatar(
                     borderWidth = SlockStroke.Default,
                     cacheSubject = cacheSubject
                 )
+                }
                 if (muted) {
                     Box(
                         modifier =
@@ -26572,6 +26624,23 @@ private fun ThreadMessageAvatar(
             }
         }
     }
+}
+
+/** Distinct fallback for external (Slack-bridge) authors with no avatar on the wire. */
+@Composable
+private fun ThreadExternalAuthorAvatarFallback(muted: Boolean) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.AccentCyan)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .alpha(if (muted) 0.62f else 1f),
+        contentAlignment = Alignment.Center
+    ) {
+        SlockLucideIcon(SlockLucideIconName.Link, modifier = Modifier.size(20.dp), color = SlockColor.TextBlackArgb)
+    }
+}
 }
 
 private data class ThreadMessageAvatarGestureCallbacks(
@@ -29669,6 +29738,7 @@ private fun MemberProfile.toKuiklyThreadMemberItem(localServerId: ServerId? = nu
                     MemberKind.Agent -> "Agent"
                     MemberKind.Human -> "Member"
                     MemberKind.System -> "System"
+                    MemberKind.External -> "External"
                 },
         description = normalizedThreadMemberDescription(description),
         avatarUrl = avatarWireValueForAvatarSlot(),

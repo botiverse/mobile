@@ -424,6 +424,7 @@ internal fun CanonicalMessageFoldInput.toCanonicalMessageV2Envelope(
         reactions = normalizedReactions.value.sharedFact,
         actionMetadata = actionMetadata,
         replyCount = replyCount,
+        externalAuthor = row.externalAuthor,
     )
     return (normalizeCanonicalMessageV2(
         CanonicalMessageV2NormalizationInput(

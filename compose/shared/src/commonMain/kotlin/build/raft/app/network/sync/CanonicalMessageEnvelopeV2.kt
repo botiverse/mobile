@@ -2,6 +2,7 @@
 
 package build.raft.app.network.sync
 
+import build.raft.app.data.WireExternalAuthor
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonClassDiscriminator
@@ -229,6 +230,8 @@ data class CanonicalMessageNodeV2(
     val reactions: List<ReactionFact> = emptyList(),
     val actionMetadata: CanonicalActionMetadataV2? = null,
     val replyCount: Int = 0,
+    /** Slack-bridge external sender attribution (senderType=external_projection). */
+    val externalAuthor: WireExternalAuthor? = null,
 )
 
 /** Full schema-v6 authoritative message envelope. */

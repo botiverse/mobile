@@ -176,7 +176,7 @@ private fun validateExactV2Shape(root: JsonObject): String? {
     if (!fact.hasExactKeys(
             "id", "seq", "senderType", "senderId", "content", "messageType", "createdAt", "randomId",
             "senderName", "senderDescription", "senderMembershipStatus", "mentions", "attachments", "reactions",
-            "actionMetadata", "replyCount",
+            "actionMetadata", "replyCount", "externalAuthor",
         )
     ) return CANONICAL_MESSAGE_V2_EXACT_KEYS
 

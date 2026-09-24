@@ -1837,7 +1837,10 @@ private fun SharedActivitySenderAvatar(
     ) {
         when (identity.senderKind) {
             MemberKind.Agent,
-            MemberKind.Human ->
+            MemberKind.Human,
+            // External senders render their wire avatar; the cache subject stays
+            // null because external ids are never member-cache identities.
+            MemberKind.External ->
                 SlockAvatar(
                     avatarWireValue = identity.avatarWireValue,
                     label = identity.label,

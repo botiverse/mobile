@@ -1257,6 +1257,8 @@ private fun AddChannelMemberRequest.toBodyText(): String =
         MemberKind.Agent -> memberRepositoryJson.encodeToString(AddAgentChannelMemberRequestBody(memberId.value))
         MemberKind.Human -> memberRepositoryJson.encodeToString(AddUserChannelMemberRequestBody(memberId.value))
         MemberKind.System -> memberRepositoryJson.encodeToString(AddUserChannelMemberRequestBody(memberId.value))
+        // Unreachable: external projections can never be added as channel members.
+        MemberKind.External -> memberRepositoryJson.encodeToString(AddUserChannelMemberRequestBody(memberId.value))
     }
 
 private data class SharedNetworkServerContext(val session: StoredAuthSession, val server: ServerSummary)
@@ -1390,6 +1392,7 @@ private val MemberKind.channelMemberPathSegment: String
             MemberKind.Agent -> "agent"
             MemberKind.Human -> "user"
             MemberKind.System -> "system"
+            MemberKind.External -> "external"
         }
 
 private fun DataResult<MemberSnapshot>.logMemberCounts(

@@ -10673,6 +10673,7 @@ private fun MemberProfile.toKuiklyThreadMemberItem(localServerId: ServerId?): Ku
                     MemberKind.Agent -> "Agent"
                     MemberKind.Human -> "Member"
                     MemberKind.System -> "System"
+                    MemberKind.External -> "External"
                 },
         description = normalizedThreadMemberDescription(description),
         avatarUrl = avatarWireValueForAvatarSlot(),
@@ -12465,11 +12466,13 @@ internal fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyTh
             when (author.kind) {
                 MemberKind.Agent -> "agent"
                 MemberKind.System -> "system"
+                MemberKind.External -> "external"
                 else -> "human"
             },
         isOwn = currentUserId != null && author.id.value == currentUserId,
         avatarLabel = author.avatarLabel,
         avatarWireValue = resolvedAvatar.effectiveAvatarWireValue,
+        externalAuthor = externalAuthor,
         senderMembershipStatus =
             senderMembershipStatus?.takeIf { it.isNotBlank() }
                 ?: author.membershipStatus?.takeIf { it.isNotBlank() },

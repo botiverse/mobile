@@ -853,6 +853,8 @@ private fun MemberProfile.toForwardMemberCandidate(serverId: ServerId): ForwardM
             MemberKind.Human -> ForwardMessageTargetKind.HumanDirectMessageCandidate
             MemberKind.Agent -> ForwardMessageTargetKind.AgentDirectMessageCandidate
             MemberKind.System -> return null
+            // External projections are never forward-target identities.
+            MemberKind.External -> return null
         }
     val title = displayName.trim().takeIf { it.isNotBlank() } ?: handle.trim().takeIf { it.isNotBlank() } ?: return null
     return ForwardMessageTarget(

@@ -8,6 +8,7 @@
  */
 package build.raft.app.canonical.message
 
+import build.raft.app.data.WireExternalAuthor
 import kotlinx.serialization.json.JsonElement
 
 // ── Wire-shaped nested DTOs (manifest v4 nestedWireShapes; raw types, no app-domain projection) ──
@@ -77,7 +78,7 @@ data class CanonicalReactionWire(
  */
 enum class MessageAggregateField {
     SenderName, SenderDescription, SenderMembershipStatus, Mentions, Attachments, Reactions, CommentRef,
-    ActionMetadata, ConversationContext,
+    ActionMetadata, ConversationContext, ExternalAuthor,
 }
 
 /**
@@ -111,4 +112,6 @@ data class CanonicalMessageRow(
     val commentRef: CanonicalCommentRefWire? = null,
     val actionMetadata: JsonElement? = null,
     val conversationContext: CanonicalConversationContextWire? = null,
+    /** Slack-bridge external sender attribution (senderType=external_projection). */
+    val externalAuthor: WireExternalAuthor? = null,
 )

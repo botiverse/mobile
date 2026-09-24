@@ -11,10 +11,12 @@ import build.raft.app.data.WireForwardedBundleAttachment
 import build.raft.app.data.WireForwardedBundleAuthor
 import build.raft.app.data.WireForwardedBundleItem
 import build.raft.app.data.WireForwardedBundleTarget
+import build.raft.app.data.toExternalMessageAuthor
 import build.raft.app.data.toForwardMessageBundle
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.toThreadActionCard
 import build.raft.app.memberKindWireValue
+import build.raft.app.model.providerLabel
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageType
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
@@ -50,20 +52,30 @@ internal fun CanonicalMessageEnvelopeV2.toThreadMessageItem(
         fact.senderType.strictMemberKindOrNull(
             source = "canonical_v2_message_sender",
             diagnostics = diagnostics,
-            contract = MemberKindWireContract.InternalActor,
+            contract = MemberKindWireContract.MessageSender,
         ) ?: return null
+    val external = senderKind == MemberKind.External
+    if (external && fact.externalAuthor == null) {
+        diagnostics("projection_value_rejected source=canonical_v2_message_sender field=externalAuthor value=missing messageId=${fact.id}")
+        return null
+    }
+    val resolvedExternalAuthor =
+        if (external) fact.externalAuthor?.toExternalMessageAuthor(fact.senderName.ifBlank { null }) else null
     val authorKind = if (resolvedMessageType == MessageType.System) MemberKind.System else senderKind
-    val resolvedName = fact.senderName.takeIf { it.isNotBlank() } ?: "Unknown"
+    val resolvedName = resolvedExternalAuthor?.displayName
+        ?: fact.senderName.takeIf { it.isNotBlank() } ?: "Unknown"
     val wireAction = fact.actionMetadata?.toWireActionCardMetadata()
     return KuiklyThreadMessageItem(
         id = fact.id,
         authorId = fact.senderId.ifBlank { "unknown" },
         authorName = resolvedName,
-        authorDescription = fact.senderDescription?.takeIf { it.isNotBlank() },
+        authorDescription = resolvedExternalAuthor?.providerLabel()
+            ?: fact.senderDescription?.takeIf { it.isNotBlank() },
         authorKind = authorKind.memberKindWireValue(),
         isOwn = currentUserId != null && fact.senderId == currentUserId,
         avatarLabel = resolvedName.take(1).uppercase(),
-        avatarWireValue = null,
+        avatarWireValue = resolvedExternalAuthor?.avatarUrl,
+        externalAuthor = resolvedExternalAuthor,
         senderMembershipStatus = fact.senderMembershipStatus?.takeIf { it.isNotBlank() },
         timestampLabel = fact.createdAt,
         createdAtEpochMillis = parseSlockTimestampEpochMillisOrNull(fact.createdAt),

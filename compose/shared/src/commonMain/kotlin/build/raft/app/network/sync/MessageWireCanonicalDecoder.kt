@@ -10,6 +10,7 @@ import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.CanonicalReactionWire
 import build.raft.app.canonical.message.MessageAggregateField
 import build.raft.app.canonical.message.TaskDomainFields
+import build.raft.app.data.WireExternalAuthor
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -55,7 +56,13 @@ private val AGGREGATE_WIRE_KEYS = mapOf(
     "commentRef" to MessageAggregateField.CommentRef,
     "actionMetadata" to MessageAggregateField.ActionMetadata,
     "conversationContext" to MessageAggregateField.ConversationContext,
+    "externalAuthor" to MessageAggregateField.ExternalAuthor,
 )
+
+private val decoderJson = kotlinx.serialization.json.Json {
+    ignoreUnknownKeys = true
+    coerceInputValues = true
+}
 
 private val TASK_WIRE_KEYS = setOf(
     "taskStatus",
@@ -121,6 +128,9 @@ fun decodeCanonicalMessageWire(
         commentRef = (rawJson["commentRef"] as? JsonObject)?.toCanonicalCommentRef(),
         actionMetadata = rawJson["actionMetadata"].takeUnless { it == null || it is JsonNull },
         conversationContext = (rawJson["conversationContext"] as? JsonObject)?.toCanonicalConversationContext(),
+        externalAuthor = (rawJson["externalAuthor"] as? JsonObject)?.let {
+            decoderJson.decodeFromJsonElement(WireExternalAuthor.serializer(), it)
+        },
     )
 
     return CanonicalMessageCarry(
