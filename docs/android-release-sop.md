@@ -250,18 +250,107 @@ The release owner must approve these files before activation.
 
 ## 5. Smoke The Draft
 
-Record the draft release id, share URL, APK SHA-256, source commit, and device
-or emulator used. At minimum validate:
+Smoke is a **hard gate** before activation. Record the draft release id, share
+URL, APK SHA-256, source commit, device or emulator, and the smoke manifest
+revision used. The QA Acceptance default goal (login + home + one channel) is
+**not** release smoke; a login/home pass must never be recorded as a complete
+smoke pass.
 
-1. Fresh install and launch reach the expected app/session state.
-2. The selected user-visible changes work on the candidate package.
-3. Updating from a lower versionCode reaches the Android package installer.
-4. A device already at the candidate versionCode reports no further update.
-5. Crash/deobfuscation support artifacts exist when the build produced them.
-6. Draft visibility remains isolated from the public `main` update endpoint.
+### 5.1 Carrier identity binding (not waivable)
+
+Every identity and functional receipt is bound to the exact carrier. A PASS on
+one versionCode does not transfer to a later build of the same marketing
+version. For each APK under test record and reconcile five points so the bytes
+the owner approved are the bytes the device ran:
+
+1. Announced SHA-256 (this SOP's publish step);
+2. Independent re-download from the Hands share `/download` link;
+3. Bytes after `adb push` onto the device (re-hash, do not trust the push
+   exit code — silent truncation has shipped a half APK before);
+4. `/data/app` readback of the package Android actually installed;
+5. `dumpsys package` readback of `versionCode` / `versionName` /
+   `firstInstallTime` / `lastUpdateTime`.
+
+Bind every receipt to `versionName` + `versionCode` + source commit +
+SHA-256 + signer digests + CI run id. An upgrade cell must additionally show
+`firstInstallTime` unchanged and `lastUpdateTime` advanced.
+
+**No-adb identity surface.** The release owner does not have adb. To verify the
+installed build without `dumpsys`, the `versionName` is a clean train tag
+(`1.12.0`, no source-commit suffix) shown under Android Settings → Apps → Raft →
+App details; the source commit is carried separately in build metadata and the
+Hands provenance record, not in `versionName`. An agent/QA seat with adb still
+reconciles `versionCode` + SHA-256 + signers per the five-point chain above;
+the owner-visible `versionName` is the cross-check that the UI reports the same
+train. Never let a `versionName`-only reading stand in for the `versionCode`/
+SHA-256 half of the binding.
+
+### 5.2 The 46-cell smoke checklist
+
+Freeze a case manifest and revision per train; each cell needs a terminal
+assertion and one of `PASS` / `FAIL` / `NOT RUN` / `NOT PROVIDED` /
+`NOT COVERED` / undecided — never an inferred PASS. The checklist is grouped so
+a carrier or seat limit lands on a named cell, not on the whole gate. Cells
+the build or device structurally cannot run are `NOT COVERED` with the seat
+limitation written down, not silently dropped.
+
+- **Identity & install (8):** announced-vs-downloaded SHA-256 equality; push
+  byte-size + double-hash; `/data/app` readback equality; `versionCode`/
+  `versionName` readback; signer-digest continuity (v2/v3 + v3.1 lineage);
+  fresh install launches; in-place upgrade preserves `firstInstallTime` and
+  advances `lastUpdateTime`; `debuggable=false` (release lineage, not a debug
+  build).
+- **Session & auth (6):** cold start reaches expected session state; login
+  persists across force-stop/relaunch; logout revokes the token server-side
+  (control-arm verified — a stale token must 401 while a same-moment other
+  freshly minted token stays 200 — the positive arm proves the 401 is
+  discriminative, not an auth-plane outage); no orphaned session after
+  upgrade; auth-resume lands on
+  the right surface; server selection preserved.
+- **Core surfaces (12):** Home renders; channel list renders; open a channel;
+  thread/timeline renders with history; composer opens; send a message and
+  read it back on the row; receive a realtime message; Activity/notification
+  surface; search; saved/pinned; settings pages render; scroll a long list
+  without dropped tiles or blank cells.
+- **Attachments & upload (8):** image picker → Done → composer preview → send
+  → server/row readback (`select-and-upload-image`); upload size limits are
+  readable; an oversized sibling is dropped while remaining files upload;
+  file-attachment path is a separate cell (an image PASS does not cover it);
+  avatar loads in list + on viewport scroll; download/save an attachment;
+  attachment thumbnail/preview; retry after injected network failure.
+- **Stability & performance (8):** cold-start latency recorded as a
+  `min/median/max` range over ≥5 samples (never a single point); four core
+  pages render within the recorded magnitude band; process `pid` stable across
+  the run; zero `FATAL`/ANR; no crash on upgrade path; background→foreground
+  resume repaints correctly; memory/battery within the recorded band; no
+  watchdog/hang on a long scroll.
+- **Isolation & negative cells (4):** draft stays isolated from the public
+  `main` update endpoint until activation; a device already at the candidate
+  versionCode reports no further update; a non-member/random principal gets a
+  negative resolver; control-arm sanity (a deliberately wrong token/input
+  fails) so the probes have discriminative power.
 
 For a risky release, add the targeted regression and a fresh performance/visual
 artifact before asking for activation.
+
+### 5.3 Upload path
+
+The Hands upload chain is part of the gate, not an afterthought: the signed
+`androidApp-<variant>.apk` (never the misleading `-unsigned` intermediate),
+metadata, and native symbols must land on the same draft. The draft's recorded
+SHA-256, the announced APK SHA-256, and the §5.1 point-2 re-downloaded bytes
+are one and the same check — not three requirements. A share page is optional
+for smoke; the release must never be activated off an unverified upload. The
+`/download` link must resolve to the exact carrier bytes.
+
+### 5.4 Waiver
+
+A **hotfix** train may skip the full matrix only with a recorded owner
+exception: `release_mode=hotfix`, waiver owner, scope, expiry/follow-up date,
+skipped cells, compensating checks on the affected path, and risk. Skipped
+cells are `NOT RUN · hotfix waiver`, never PASS. The §5.1 carrier-identity
+binding and the §5.3 upload path are **not** waivable, and an affected core
+cell on the hotfix path is not silently skipped.
 
 ## 6. Activate Only On Explicit Approval
 
