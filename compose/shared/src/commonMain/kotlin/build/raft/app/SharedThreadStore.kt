@@ -3078,7 +3078,7 @@ internal class SharedThreadDataSource(
         reusePrewarm: Boolean = false,
         replaceReplyAccessFailure: Boolean = false,
     ): DataResult<KuiklyThreadScreenPayload> {
-        if (!isCurrentReplyCacheProvenance(expectedContext.provenance)) {
+        if (!isCurrentReplyCacheProvenanceForLocalSend(expectedContext.provenance)) {
             return staleReplyCacheProvenanceResult()
         }
         return fetchThreadPayloadWithResolutionScope(
@@ -6312,7 +6312,7 @@ internal class SharedThreadStore(
                 withCommitAdmission =
                     expectedProvenance?.let { provenance ->
                         { commit ->
-                            dataSource.withCurrentReplyCacheProvenance(provenance) {
+                            dataSource.withCurrentReplyCacheProvenanceForLocalSend(provenance) {
                                 commit()
                             }
                         }
@@ -6348,7 +6348,7 @@ internal class SharedThreadStore(
         if (resolvingInitialAccessAtStart) {
             initialAccessStateMutex.withLock {
                 val admitted =
-                    dataSource.withCurrentReplyCacheProvenance(refreshProvenance) {
+                    dataSource.withCurrentReplyCacheProvenanceForLocalSend(refreshProvenance) {
                         val latest = _state.value
                         reduceState(
                             latest.copy(
@@ -6364,7 +6364,7 @@ internal class SharedThreadStore(
                     return
                 }
             }
-            if (!dataSource.isCurrentReplyCacheProvenance(refreshProvenance)) return
+            if (!dataSource.isCurrentReplyCacheProvenanceForLocalSend(refreshProvenance)) return
             launchInitialAccessResolution(basePayload, staleToken)
         } else if (retryingReadOnlyParentAccess) {
             // A readable reply timeline must stay terminal while Refresh retries
@@ -6400,7 +6400,7 @@ internal class SharedThreadStore(
                     "durationMs=${refreshStartedAt.elapsedNow().inWholeMilliseconds}"
             )
         }
-        if (!dataSource.isCurrentReplyCacheProvenance(refreshProvenance)) {
+        if (!dataSource.isCurrentReplyCacheProvenanceForLocalSend(refreshProvenance)) {
             dropForOwnerChange("before_loading")
             return
         }
@@ -6421,7 +6421,7 @@ internal class SharedThreadStore(
                 "messages=${loadingBase.messages.size} " + loadingBase.originDiagnostics()
         )
         val loadingAdmitted =
-            dataSource.withCurrentReplyCacheProvenance(refreshProvenance) {
+            dataSource.withCurrentReplyCacheProvenanceForLocalSend(refreshProvenance) {
                 reducePayloadPatch { currentPayload ->
                     if (!routeStillCurrent(basePayload, "thread_refresh", "loading_apply", currentPayload)) {
                         return@reducePayloadPatch currentPayload
@@ -6447,7 +6447,7 @@ internal class SharedThreadStore(
             )
         val latest = _state.value.payload
         if (
-            !dataSource.isCurrentReplyCacheProvenance(refreshProvenance) ||
+            !dataSource.isCurrentReplyCacheProvenanceForLocalSend(refreshProvenance) ||
             (result is DataResult.Error && result.error.code == ReplyCacheProvenanceStaleCode)
         ) {
             dropForOwnerChange("after_fetch", result)
@@ -6477,7 +6477,7 @@ internal class SharedThreadStore(
                         expectedProvenance = refreshProvenance,
                     )
                 }
-        if (!dataSource.isCurrentReplyCacheProvenance(refreshProvenance)) {
+        if (!dataSource.isCurrentReplyCacheProvenanceForLocalSend(refreshProvenance)) {
             dropForOwnerChange("after_rebaseline", result)
             return
         }
@@ -6530,7 +6530,7 @@ internal class SharedThreadStore(
                 fun commitWithAcceptedReplies(
                     acceptedReplies: Map<String, ThreadRepliesAcceptedProjection>,
                 ): Boolean? =
-                    dataSource.withCurrentReplyCacheProvenance(refreshProvenance) {
+                    dataSource.withCurrentReplyCacheProvenanceForLocalSend(refreshProvenance) {
                         val currentState = _state.value
                         val currentPayload = currentState.payload
                         if (
@@ -6642,19 +6642,23 @@ internal class SharedThreadStore(
             }
             return
         }
+        val currentProvenance =
+            dataSource.currentReplyCacheProvenanceForLocalSend(refreshProvenance)
         if (result is DataResult.NoPermission) {
-            dataSource.invalidateCachedPayload(basePayload, refreshProvenance)
+            currentProvenance?.let { dataSource.invalidateCachedPayload(basePayload, it) }
         } else {
             committedPayload?.let { payload ->
-                dataSource.cachePayload(
-                    payload = payload,
-                    serverId = refreshProvenance.serverId,
-                    ownerScopeId = refreshProvenance.threadPayloadOwnerScopeId.orEmpty(),
-                    expectedProvenance = refreshProvenance,
-                )
+                currentProvenance?.let { current ->
+                    dataSource.cachePayload(
+                        payload = payload,
+                        serverId = current.serverId,
+                        ownerScopeId = current.threadPayloadOwnerScopeId.orEmpty(),
+                        expectedProvenance = current,
+                    )
+                }
             }
         }
-        if (!dataSource.isCurrentReplyCacheProvenance(refreshProvenance)) {
+        if (currentProvenance == null) {
             return
         }
         diagnosticsLogger?.invoke(
