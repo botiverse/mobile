@@ -3753,12 +3753,17 @@ class SharedThreadStoreTest {
             }
         }
 
+        // Hands cd41d823: a positive parent candidate (joined + canSend) is the only
+        // write authority the reply surface ever consults — the canonical reply stream
+        // does not attest it. With renderable cached content the footer must therefore
+        // resolve when the directory answers, not after the held canonical fetch.
         val homeFirstFrame = store.state.value
-        assertEquals(ThreadAccessResolution.Loading, homeFirstFrame.accessResolution)
+        assertEquals(ThreadAccessResolution.Resolved, homeFirstFrame.accessResolution)
         assertTrue(homeFirstFrame.payload.joined)
         assertTrue(homeFirstFrame.payload.canSend)
         assertTrue(homeFirstFrame.payload.composer.enabled)
-        assertFalse(
+        assertTrue(homeFirstFrame.writeActionsEnabled)
+        assertTrue(
             homeFirstFrame.payload.isThreadPrimaryFooterReady(
                 timelineSlice = homeFirstFrame.timelineSlice,
                 accessResolution = homeFirstFrame.accessResolution
