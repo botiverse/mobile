@@ -95,6 +95,25 @@ internal class SlockAvatarHttpLoadCoordinator(
          * alive but frozen offscreen — is treated as adoptable once this goes stale.
          */
         var ownerProgressMillis: Long = 0L
+
+        /**
+         * Consecutive failure count since the last success/idle reset. Drives the bounded
+         * exponential cooldown: each failed generation doubles the wait, so a transient
+         * network error recovers in seconds while a permanently absent resource backs
+         * off to the cap instead of spamming the transport.
+         */
+        var consecutiveFailures: Int = 0
+    }
+
+    private fun cooldownDelayMillis(failures: Int): Long {
+        // First failure waits the base delay; each subsequent consecutive failure doubles
+        // it, capped at the configured maximum so absent resources don't retry forever.
+        val base = failureCooldownMillis.coerceAtMost(MAX_SINGLE_FAILURE_COOLDOWN_MILLIS)
+        var delay = base
+        repeat((failures - 1).coerceAtLeast(0)) {
+            delay = (delay * 2L).coerceAtMost(failureCooldownMillis)
+        }
+        return delay.coerceAtMost(failureCooldownMillis)
     }
 
     private val lock = SynchronizedObject()
@@ -193,6 +212,7 @@ internal class SlockAvatarHttpLoadCoordinator(
             entry.ownerProgressMillis = nowMillis()
             when (painter) {
                 SlockAvatarHttpPainterPhase.Success -> {
+                    entry.consecutiveFailures = 0
                     entry.state.value =
                         current.copy(
                             painter = painter,
@@ -211,11 +231,12 @@ internal class SlockAvatarHttpLoadCoordinator(
                                 painter = SlockAvatarHttpPainterPhase.Empty
                             )
                         } else {
+                            entry.consecutiveFailures += 1
                             current.copy(
                                 painter = painter,
                                 cache = SlockAvatarHttpCacheState.Cooldown,
                                 ownerToken = null,
-                                retryAtMillis = nowMillis() + failureCooldownMillis
+                                retryAtMillis = nowMillis() + cooldownDelayMillis(entry.consecutiveFailures)
                             )
                         }
                 }
@@ -236,12 +257,13 @@ internal class SlockAvatarHttpLoadCoordinator(
             if (current.generation != generation || current.cache != SlockAvatarHttpCacheState.Ready) {
                 return@synchronized
             }
+            entry.consecutiveFailures += 1
             entry.state.value =
                 current.copy(
                     painter = SlockAvatarHttpPainterPhase.Error,
                     cache = SlockAvatarHttpCacheState.Cooldown,
                     ownerToken = null,
-                    retryAtMillis = nowMillis() + failureCooldownMillis
+                    retryAtMillis = nowMillis() + cooldownDelayMillis(entry.consecutiveFailures)
                 )
             touchLocked(entry)
         }
@@ -261,6 +283,7 @@ internal class SlockAvatarHttpLoadCoordinator(
                     // of resetting to Idle so a surviving row can adopt it and continue the download.
                     current.copy(ownerToken = null)
                 } else {
+                    entry.consecutiveFailures = 0
                     current.copy(
                         painter = SlockAvatarHttpPainterPhase.Empty,
                         cache = SlockAvatarHttpCacheState.Idle,
@@ -308,6 +331,13 @@ internal class SlockAvatarHttpLoadCoordinator(
     internal companion object {
         const val DEFAULT_FAILURE_COOLDOWN_MILLIS = 5 * 60 * 1_000L
         const val DEFAULT_STUCK_OWNER_TIMEOUT_MILLIS = 30_000L
+
+        /**
+         * Upper bound on the first (single-failure) cooldown step. Transient errors
+         * recover after roughly this long; consecutive failures double toward
+         * [DEFAULT_FAILURE_COOLDOWN_MILLIS].
+         */
+        const val MAX_SINGLE_FAILURE_COOLDOWN_MILLIS = 10_000L
         private val processOrigin = TimeSource.Monotonic.markNow()
     }
 }

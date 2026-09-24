@@ -253,6 +253,104 @@ class SlockAvatarHttpLoadCoordinatorTest {
         assertEquals(SlockAvatarHttpCacheState.Ready, coordinator.stateFlow(key).value.cache)
     }
 
+    @Test
+    fun consecutiveFailuresDoubleTheCooldownUntilTheCap() {
+        var nowMillis = 1_000L
+        val coordinator =
+            SlockAvatarHttpLoadCoordinator(
+                failureCooldownMillis = 60_000L,
+                nowMillis = { nowMillis }
+            )
+        val key = uploadedAvatarKey()
+
+        // First failure: base cooldown (10s step) — a transient error recovers quickly.
+        val first = assertNotNull(coordinator.tryAcquire(key))
+        coordinator.reportPainterPhase(key, first, SlockAvatarHttpPainterPhase.Error) // Cdn->Api fallback
+        coordinator.reportPainterPhase(key, first, SlockAvatarHttpPainterPhase.Error) // Api fails -> cooldown
+        var cooling = coordinator.stateFlow(key).value
+        assertEquals(SlockAvatarHttpCacheState.Cooldown, cooling.cache)
+        assertEquals(
+            SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS,
+            coordinator.retryDelayMillis(cooling)
+        )
+
+        // Second failure: doubled.
+        nowMillis += SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS
+        val second = assertNotNull(coordinator.tryAcquire(key))
+        coordinator.reportPainterPhase(key, second, SlockAvatarHttpPainterPhase.Error)
+        coordinator.reportPainterPhase(key, second, SlockAvatarHttpPainterPhase.Error)
+        cooling = coordinator.stateFlow(key).value
+        assertEquals(
+            2 * SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS,
+            coordinator.retryDelayMillis(cooling)
+        )
+
+        // Failures keep doubling until they hit the configured cap, then stay there.
+        var delay = 2 * SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS
+        repeat(4) {
+            nowMillis += delay
+            val lease = assertNotNull(coordinator.tryAcquire(key))
+            coordinator.reportPainterPhase(key, lease, SlockAvatarHttpPainterPhase.Error)
+            coordinator.reportPainterPhase(key, lease, SlockAvatarHttpPainterPhase.Error)
+            delay = (delay * 2).coerceAtMost(60_000L)
+            cooling = coordinator.stateFlow(key).value
+            assertEquals(delay, coordinator.retryDelayMillis(cooling))
+        }
+    }
+
+    @Test
+    fun successResetsTheConsecutiveFailureBackoff() {
+        var nowMillis = 1_000L
+        val coordinator =
+            SlockAvatarHttpLoadCoordinator(
+                failureCooldownMillis = 60_000L,
+                nowMillis = { nowMillis }
+            )
+        val key = uploadedAvatarKey()
+
+        // Two consecutive failures -> backoff is already beyond the base step.
+        val first = assertNotNull(coordinator.tryAcquire(key))
+        coordinator.reportPainterPhase(key, first, SlockAvatarHttpPainterPhase.Error)
+        coordinator.reportPainterPhase(key, first, SlockAvatarHttpPainterPhase.Error)
+        nowMillis += SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS
+        val second = assertNotNull(coordinator.tryAcquire(key))
+        coordinator.reportPainterPhase(key, second, SlockAvatarHttpPainterPhase.Error)
+        coordinator.reportPainterPhase(key, second, SlockAvatarHttpPainterPhase.Error)
+
+        // A successful generation resets the counter; the next failure starts at the base step.
+        nowMillis += 2 * SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS
+        val third = assertNotNull(coordinator.tryAcquire(key))
+        coordinator.reportPainterPhase(key, third, SlockAvatarHttpPainterPhase.Success)
+        nowMillis += 1L
+        val fourth = assertNotNull(coordinator.tryAcquire(key))
+        coordinator.reportPainterPhase(key, fourth, SlockAvatarHttpPainterPhase.Error)
+        coordinator.reportPainterPhase(key, fourth, SlockAvatarHttpPainterPhase.Error)
+        assertEquals(
+            SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS,
+            coordinator.retryDelayMillis(coordinator.stateFlow(key).value)
+        )
+    }
+
+    @Test
+    fun readyConsumerErrorUsesTheSameBackoffCounter() {
+        var nowMillis = 1_000L
+        val coordinator =
+            SlockAvatarHttpLoadCoordinator(
+                failureCooldownMillis = 60_000L,
+                nowMillis = { nowMillis }
+            )
+        val key = uploadedAvatarKey()
+        val lease = assertNotNull(coordinator.tryAcquire(key))
+        coordinator.reportPainterPhase(key, lease, SlockAvatarHttpPainterPhase.Success)
+
+        // A ready consumer that still errors increments the same consecutive-failure counter.
+        coordinator.reportReadyConsumerError(key, coordinator.stateFlow(key).value.generation)
+        assertEquals(
+            SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS,
+            coordinator.retryDelayMillis(coordinator.stateFlow(key).value)
+        )
+    }
+
     private fun uploadedAvatarKey(): SlockAvatarHttpLoadKey =
         SlockAvatarHttpLoadKey(
             primarySource = "https://cdn.raft.build/avatars/agents/deadbeefdeadbeefdeadbeefdeadbeef.webp",
