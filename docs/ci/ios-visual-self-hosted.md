@@ -34,7 +34,12 @@ switching runners does not establish that earlier iOS build failures are fixed.
 
 Run **iOS runner bootstrap** manually on `main`. It targets the confirmed
 `mac-mini-1` label within `jacky-macmini`; it does not run on PRs or a schedule.
-An optional `xcode_app_path` accepts the absolute path to an installed Xcode app.
+A GitHub-hosted preflight rejects non-main dispatches before the Mac job; that
+job also requires the main ref and checks out the dispatch commit. This is a
+workflow guard, not a replacement for repository and runner-group access control.
+An optional `xcode_app_path` accepts only `/Applications/Xcode*.app`, with no
+symlink or traversal components. The same restriction applies to inherited
+`DEVELOPER_DIR`; workspace or temporary apps cannot be selected.
 Otherwise selection preserves a valid job developer directory, prefers
 `/Applications/Xcode.app`, or accepts exactly one other installed Xcode app.
 Missing or ambiguous full Xcode fails before installing dependencies.
@@ -51,8 +56,8 @@ The final readiness check creates, boots, and deletes a fresh iPhone 14 using th
 same helper as capture. A successful bootstrap proves those prerequisites, not
 an app build or screenshot. The subsequent capture job selects Xcode again so a
 machine-wide CommandLineTools setting cannot silently undo the bootstrap choice.
-For nonstandard installations, arrange the conventional app location or a runner
-`DEVELOPER_DIR` before scheduled capture; an explicit bootstrap input affects only
+For nonstandard installations, arrange a direct `/Applications/Xcode*.app`
+installation before scheduled capture; an explicit bootstrap input affects only
 that bootstrap job.
 
 Runtime installation uses [Apple's documented component commands](https://developer.apple.com/documentation/xcode/downloading-and-installing-additional-xcode-components).

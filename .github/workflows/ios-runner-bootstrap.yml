@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       xcode_app_path:
-        description: "Optional absolute installed Xcode .app path; empty selects the installed default"
+        description: "Optional /Applications/Xcode*.app path; empty selects the installed default"
         type: string
         default: ""
 
@@ -16,7 +16,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  preflight:
+    name: Require the reviewed main ref
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject non-main dispatches before reaching the Mac
+        env:
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          if [ "$DISPATCH_REF" != "refs/heads/main" ]; then
+            echo '::error::Bootstrap must be dispatched from main'
+            exit 1
+          fi
+
   bootstrap:
+    needs: preflight
+    if: ${{ github.ref == 'refs/heads/main' }}
     name: Bootstrap mac-mini-1 for iOS capture
     runs-on:
       group: jacky-macmini
@@ -27,6 +42,8 @@ jobs:
       SIM_DEVICE: iPhone 14
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
       - name: Select full Xcode for this job
         run: bash scripts/ci/select_ios_xcode.sh
       - name: Set up JDK 17
