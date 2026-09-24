@@ -321,10 +321,13 @@ class SlockAvatarHttpLoadCoordinatorTest {
         nowMillis += 2 * SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS
         val third = assertNotNull(coordinator.tryAcquire(key))
         coordinator.reportPainterPhase(key, third, SlockAvatarHttpPainterPhase.Success)
+        assertEquals(SlockAvatarHttpCacheState.Ready, coordinator.stateFlow(key).value.cache)
+
+        // A ready consumer that still errors drops the entry back into cooldown and counts
+        // as a failure. If Success reset the counter, this single failure produces the base
+        // step again — not the doubled value the two earlier failures had built up.
         nowMillis += 1L
-        val fourth = assertNotNull(coordinator.tryAcquire(key))
-        coordinator.reportPainterPhase(key, fourth, SlockAvatarHttpPainterPhase.Error)
-        coordinator.reportPainterPhase(key, fourth, SlockAvatarHttpPainterPhase.Error)
+        coordinator.reportReadyConsumerError(key, coordinator.stateFlow(key).value.generation)
         assertEquals(
             SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS,
             coordinator.retryDelayMillis(coordinator.stateFlow(key).value)
