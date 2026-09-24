@@ -23,7 +23,7 @@ import kotlin.time.TimeSource
  * All platforms route HTTP through the KuiklyBase NetworkKMM client
  * (task #12): OHOS because Ktor CIO has no native TLS there (task #6),
  * Android/iOS so the app has one explicit network stack with pooling
- * owned by the infra library (raft.4).
+ * owned by the infra library (raft.6).
  */
 internal fun createPlatformSlockHttpExecutor(
     warningLogger: (String) -> Unit
