@@ -80,7 +80,7 @@ class ThreadFirstContentStagingTest {
     }
 
     @Test
-    fun payloadReadyMountPlanKeepsNonCurrentAndUntriggeredOwnersLazy() {
+    fun payloadReadyMountPlanMountsTabOwnersAndKeepsSuggestionsLazy() {
         val loadingScaffold =
             ThreadRouteMountPlan.LoadingShell.toThreadRouteScaffoldPlan()
         val contentScaffold =
@@ -116,8 +116,9 @@ class ThreadFirstContentStagingTest {
             )
         assertTrue(firstPayload.mountChatTimeline)
         assertTrue(firstPayload.mountComposer)
-        assertFalse(firstPayload.mountTasksOwner)
-        assertFalse(firstPayload.mountFilesOwner)
+        // keepItemAlive pre-composes inactive tabs, so both owners stay mounted.
+        assertTrue(firstPayload.mountTasksOwner)
+        assertTrue(firstPayload.mountFilesOwner)
         assertFalse(firstPayload.mountMemberSuggestionsOwner)
         assertFalse(firstPayload.mountChannelSuggestionsOwner)
 
@@ -141,7 +142,7 @@ class ThreadFirstContentStagingTest {
                 suggestionDemand = ThreadComposerSuggestionDemand.None
             )
         assertTrue(tasksSelection.mountTasksOwner)
-        assertFalse(tasksSelection.mountFilesOwner)
+        assertTrue(tasksSelection.mountFilesOwner)
         assertFalse(tasksSelection.mountComposer)
 
         val filesSelection =
@@ -153,7 +154,7 @@ class ThreadFirstContentStagingTest {
                 suggestionDemand = ThreadComposerSuggestionDemand.None
             )
         assertTrue(filesSelection.mountFilesOwner)
-        assertFalse(filesSelection.mountTasksOwner)
+        assertTrue(filesSelection.mountTasksOwner)
         assertFalse(filesSelection.mountComposer)
     }
 

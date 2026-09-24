@@ -735,7 +735,9 @@ private fun SharedActivityPanelContent(
         // same SetFilter. The store keeps ONE snapshot (the selected
         // filter's), so only the active page renders real content; a
         // neighbor glimpsed mid-drag shows that filter's loading skeleton
-        // until the settle re-targets the store.
+        // until the settle re-targets the store. keepItemAlive keeps hidden
+        // pages composed, so the page body gates its shared-state effects on
+        // the pager's `active` flag.
         TabPager(
             selectedIndex = filters.indexOf(state.selectedFilter).coerceAtLeast(0),
             onSelectedIndexChange = { index -> onIntent(SharedActivityIntent.SetFilter(filters[index])) },
@@ -753,11 +755,12 @@ private fun SharedActivityPanelContent(
                 )
             },
             modifier = Modifier.weight(1f).fillMaxWidth()
-        ) { page, _ ->
+        ) { page, active ->
             val pageFilter = filters[page]
             val pageState = projectActivityStateForFilterPage(state, pageFilter)
             if (pageState.snapshot != null) {
                 SharedActivityBodyContent(
+                    active = active,
                     state = pageState,
                     onOpenItem = onOpenItem,
                     onIntent = onIntent,
@@ -802,6 +805,7 @@ internal fun <T> activityScrollToTopTarget(
 
 @Composable
 private fun SharedActivityBodyContent(
+    active: Boolean,
     state: SharedActivityState,
     onOpenItem: (InboxItem) -> Unit,
     onIntent: (SharedActivityIntent) -> Unit,
@@ -870,6 +874,7 @@ private fun SharedActivityBodyContent(
                 )
             else ->
                 SharedActivityList(
+                    active = active,
                     snapshot = remember(snapshot, draftProjection) {
                         snapshot.withComposerDraftProjection(draftProjection)
                     },
@@ -973,6 +978,7 @@ private fun SharedActivityFilterBar(
 
 @Composable
 private fun SharedActivityList(
+    active: Boolean,
     snapshot: InboxSnapshot,
     selectedFilter: InboxFilter,
     senderProfiles: Map<String, SharedActivitySenderProfile>,
@@ -1057,7 +1063,8 @@ private fun SharedActivityList(
     val latestOnIntent by rememberUpdatedState(onIntent)
     val refreshPresentation = activityRefreshPresentation(refreshing, pullRefreshing)
     val pullToRefreshState = rememberPullToRefreshState(refreshPresentation.pullRefreshing)
-    LaunchedEffect(presentedItems) {
+    LaunchedEffect(presentedItems, active) {
+        if (!active) return@LaunchedEffect
         val visibleItemKeys =
             listState.layoutInfo.visibleItemsInfo.mapNotNull { itemInfo ->
                 itemInfo.key as? String
@@ -1074,7 +1081,8 @@ private fun SharedActivityList(
             listState.scrollToItem(0)
         }
     }
-    LaunchedEffect(presentedItems) {
+    LaunchedEffect(presentedItems, active) {
+        if (!active) return@LaunchedEffect
         val selected = selectedItemKey
         if (selected != null && presentedItems.none { it.key == selected }) {
             selectedItemKey = null
@@ -1087,7 +1095,9 @@ private fun SharedActivityList(
         pullRefreshing,
         stableOrderEnabled,
         stableOrderDecisionRevision,
+        active,
     ) {
+        if (!active) return@LaunchedEffect
         val nextStableOrderDecision =
             ActivityStableOrderDecisionVersion(stableOrderEnabled, stableOrderDecisionRevision)
         if (appliedStableOrderDecision != nextStableOrderDecision) {
@@ -1174,7 +1184,8 @@ private fun SharedActivityList(
             listState.animateScrollToTopExpressive()
         }
     }
-    LaunchedEffect(listState, selectedFilter, snapshot.server.id, presentedItems) {
+    LaunchedEffect(listState, selectedFilter, snapshot.server.id, presentedItems, active) {
+        if (!active) return@LaunchedEffect
         val activityItemsByKey = presentedItems.associateBy(InboxItem::key)
         snapshotFlow {
             listState.layoutInfo.visibleItemsInfo
