@@ -304,7 +304,6 @@
     <string name="thread_reply_title">Thread</string>
     <string name="thread_channel_title">Channel</string>
     <string name="thread_direct_message_title">Direct Message</string>
-    <string name="thread_header_dm_origin">From: @%1$s (DM)</string>
     <string name="thread_state_no_replies">No replies yet</string>
     <string name="thread_inline_reply_count_one">1 reply</string>
     <string name="thread_inline_reply_count_many">%1$d replies</string>

@@ -4686,56 +4686,6 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun dmPeerNameHydrationParksIdsMissingFromSuccessfulFetch() = runBlocking {
-        // Complement: a Content result that genuinely lacks the DM row parks
-        // the id — a later load does not re-fetch the list for it.
-        val dmThread =
-            InboxItem(
-                key = "thread:dm-thread-1",
-                kind = InboxItemKind.Thread,
-                channelId = ChannelId("dm-thread-1"),
-                channelName = "thread-stream",
-                parentChannelId = ChannelId("dm-1"),
-                parentChannelName = "raw-dm-name",
-                parentChannelKind = ConversationKind.DirectMessage,
-                parentMessageId = MessageId("message-1"),
-                parentMessagePreview = "DM root preview"
-            )
-        val channelRepository =
-            FakeChannelRepository(
-                directMessagesResult = { serverId ->
-                    DataResult.Content(
-                        DirectMessageSnapshot(
-                            server = ServerSummary(id = serverId, name = "Slock"),
-                            directMessages = emptyList()
-                        )
-                    )
-                }
-            )
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val store =
-            activityStore(
-                scope = scope,
-                inboxRepository =
-                    FakeInboxRepository(
-                        initialSnapshots = listOf(snapshot(listOf(dmThread)))
-                    ),
-                channelRepository = channelRepository
-            )
-
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        delay(50L)
-        assertEquals(1, channelRepository.directMessageCalls)
-        assertEquals(emptyMap(), store.state.value.dmPeerNames)
-
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        delay(50L)
-        // Parked id: no second fetch for the same unresolved DM.
-        assertEquals(1, channelRepository.directMessageCalls)
-        scope.cancel()
-    }
-
-    @Test
     fun channelOnlySnapshotsNeverFetchDirectMessages() = runBlocking {
         val channelRepository =
             FakeChannelRepository(

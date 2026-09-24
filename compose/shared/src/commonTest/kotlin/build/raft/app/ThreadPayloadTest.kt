@@ -3133,69 +3133,6 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun dmParentReplyThreadHeaderCarriesPeerOriginName() {
-        // task #399: a reply thread hosted in a DM resolves the parent
-        // projection's peer title into dmOriginPeerName so the header can
-        // render the localized "来自: @peer (私聊)" attribution.
-        val payload =
-            KuiklyThreadScreenPayload(
-                instanceId = "reply-dm-message-1",
-                title = ThreadReplyPageTitle,
-                sourceThreadId = "dm-thread-1",
-                streamChannelId = "dm-thread-1",
-                parentChannelId = "dm-1",
-                parentMessageId = "message-1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-                parentSurfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
-                parentChannelKind = "dm"
-            )
-        val projection =
-            SharedConversationDirectoryProjection(
-                serverId = "server-1",
-                canonicalChannelId = "dm-1",
-                aliases = setOf("dm-1"),
-                conversationKind = ConversationKind.DirectMessage,
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
-                channelKind = "dm",
-                title = "Jiacheng"
-            )
-        val headerDisplay = payload.threadHeaderDisplayModelFromDirectory(projection)
-
-        assertEquals(ThreadReplyPageTitle, headerDisplay.title)
-        assertEquals("@Jiacheng", headerDisplay.subtitle)
-        assertEquals("Jiacheng", headerDisplay.dmOriginPeerName)
-    }
-
-    @Test
-    fun channelParentReplyThreadHeaderHasNoDmOriginName() {
-        val payload =
-            KuiklyThreadScreenPayload(
-                instanceId = "reply-message-2",
-                title = ThreadReplyPageTitle,
-                sourceThreadId = "reply-thread-2",
-                streamChannelId = "reply-thread-2",
-                parentChannelId = "channel-2",
-                parentMessageId = "message-2",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel
-            )
-        val projection =
-            SharedConversationDirectoryProjection(
-                serverId = "server-1",
-                canonicalChannelId = "channel-2",
-                aliases = setOf("channel-2"),
-                conversationKind = ConversationKind.Channel,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                channelKind = "channel",
-                title = "general"
-            )
-        val headerDisplay = payload.threadHeaderDisplayModelFromDirectory(projection)
-
-        assertEquals("#general", headerDisplay.subtitle)
-        assertEquals(null, headerDisplay.dmOriginPeerName)
-    }
-
-    @Test
     fun threadHeaderProjectionUsesScopeServerBeforeAsyncSessionReadCompletes() {
         assertEquals(
             "server-from-scope",
