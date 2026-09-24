@@ -5245,20 +5245,39 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         return;
     }
     SlockBridgeRunOnMain(^{
-        UIViewController *controller = [self slock_currentViewController];
-        if (!controller) {
-            NSLog(@"[%@][warn] share skipped missing controller", SlockBridgeDefaultLogTag);
+        [self slock_presentShareItems:items attempt:1];
+    });
+}
+
+- (void)slock_presentShareItems:(NSArray *)items attempt:(NSInteger)attempt {
+    UIViewController *controller = [self slock_currentViewController];
+    if (!controller) {
+        if (attempt < 2) {
+            // The controller may be absent because the presenting page detached while
+            // the (async) download finished, or the key window belongs to a
+            // non-foreground scene. Give it one more runloop turn before failing.
+            SlockDiagnosticsRecord(
+                @"warn", @"SlockShare",
+                [NSString stringWithFormat:@"share_present_retry attempt=%ld reason=no_controller", (long)attempt]);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self slock_presentShareItems:items attempt:attempt + 1];
+            });
             return;
         }
-        UIActivityViewController *activityController = [[UIActivityViewController alloc] initWithActivityItems:items applicationActivities:nil];
-        UIPopoverPresentationController *popover = activityController.popoverPresentationController;
-        if (popover) {
-            popover.sourceView = controller.view;
-            popover.sourceRect = CGRectMake(CGRectGetMidX(controller.view.bounds), CGRectGetMidY(controller.view.bounds), 1, 1);
-            popover.permittedArrowDirections = 0;
-        }
-        [controller presentViewController:activityController animated:YES completion:nil];
-    });
+        SlockDiagnosticsRecord(
+            @"error", @"SlockShare",
+            @"share_present_failed reason=no_controller");
+        [self slock_showToast:@"无法打开分享面板，请重试"];
+        return;
+    }
+    UIActivityViewController *activityController = [[UIActivityViewController alloc] initWithActivityItems:items applicationActivities:nil];
+    UIPopoverPresentationController *popover = activityController.popoverPresentationController;
+    if (popover) {
+        popover.sourceView = controller.view;
+        popover.sourceRect = CGRectMake(CGRectGetMidX(controller.view.bounds), CGRectGetMidY(controller.view.bounds), 1, 1);
+        popover.permittedArrowDirections = 0;
+    }
+    [controller presentViewController:activityController animated:YES completion:nil];
 }
 
 - (UIViewController *)slock_currentViewController {
