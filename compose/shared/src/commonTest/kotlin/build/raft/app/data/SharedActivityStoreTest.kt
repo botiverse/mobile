@@ -3433,6 +3433,36 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun loadInitialAppliesResultWhenAccessTokenRotatedMidFlight() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val authStore = InMemorySlockAuthSessionStore(sampleSession())
+        val inbox = DeferredInboxRepository()
+        val diagnostics = mutableListOf<String>()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                authStore = authStore,
+                diagnosticsLogger = { diagnostics += it }
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        assertEquals(true, store.state.value.loading)
+        assertEquals(1, inbox.initialLoadCount)
+
+        // A 401 inside the request rotates the tokens; the retried request still
+        // returns fresh data for the same user + server and must be applied.
+        authStore.updateTokens("rotated-access", "rotated-refresh")
+        inbox.completeNext(activityItem("channel-1"))
+
+        assertEquals(false, store.state.value.loading)
+        assertEquals(listOf("channel:channel-1"), store.state.value.items.map { it.key })
+        assertTrue(diagnostics.none { it.contains("stale_session") })
+        scope.cancel()
+    }
+
+    @Test
     fun loadInitialDedupesHydratedActivityPersistRows() = runBlocking {
         val persistStorage = InMemoryPersistStorage()
         val persistSlice = createSharedActivityPersistSlice(persistStorage)
