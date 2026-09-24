@@ -202,6 +202,57 @@ class SlockAvatarHttpLoadCoordinatorTest {
         assertEquals(2, coordinator.entryCount())
     }
 
+    @Test
+    fun stuckOwnerBecomesAdoptableAfterTimeout() {
+        var nowMillis = 1_000L
+        val coordinator =
+            SlockAvatarHttpLoadCoordinator(
+                failureCooldownMillis = 500L,
+                stuckOwnerTimeoutMillis = 100L,
+                nowMillis = { nowMillis }
+            )
+        val key = uploadedAvatarKey()
+        val stuckLease = assertNotNull(coordinator.tryAcquire(key))
+
+        // Owner acquired the lease but never reports a painter phase (frozen offscreen
+        // composition). Within the timeout a sibling still joins, afterwards it adopts.
+        nowMillis += 50L
+        assertNull(coordinator.tryAcquire(key), "owner still fresh, sibling must keep joining")
+        nowMillis += 100L
+        val adopted = assertNotNull(coordinator.tryAcquire(key), "stuck owner must be adoptable")
+        assertEquals(stuckLease.generation, adopted.generation, "adoption keeps the generation")
+        assertEquals(adopted.ownerToken, coordinator.stateFlow(key).value.ownerToken)
+
+        // The fenced-off old owner can no longer write phases.
+        coordinator.reportPainterPhase(key, stuckLease, SlockAvatarHttpPainterPhase.Success)
+        assertEquals(SlockAvatarHttpCacheState.InFlight, coordinator.stateFlow(key).value.cache)
+
+        coordinator.reportPainterPhase(key, adopted, SlockAvatarHttpPainterPhase.Success)
+        assertEquals(SlockAvatarHttpCacheState.Ready, coordinator.stateFlow(key).value.cache)
+    }
+
+    @Test
+    fun ownerProgressRefreshesTheStuckTimeout() {
+        var nowMillis = 1_000L
+        val coordinator =
+            SlockAvatarHttpLoadCoordinator(
+                failureCooldownMillis = 500L,
+                stuckOwnerTimeoutMillis = 100L,
+                nowMillis = { nowMillis }
+            )
+        val key = uploadedAvatarKey()
+        val lease = assertNotNull(coordinator.tryAcquire(key))
+
+        // A live owner keeps reporting phases, so the stuck deadline keeps moving.
+        repeat(3) {
+            nowMillis += 90L
+            coordinator.reportPainterPhase(key, lease, SlockAvatarHttpPainterPhase.Loading)
+            assertNull(coordinator.tryAcquire(key), "a reporting owner is not stuck")
+        }
+        coordinator.reportPainterPhase(key, lease, SlockAvatarHttpPainterPhase.Success)
+        assertEquals(SlockAvatarHttpCacheState.Ready, coordinator.stateFlow(key).value.cache)
+    }
+
     private fun uploadedAvatarKey(): SlockAvatarHttpLoadKey =
         SlockAvatarHttpLoadKey(
             primarySource = "https://cdn.raft.build/avatars/agents/deadbeefdeadbeefdeadbeefdeadbeef.webp",
