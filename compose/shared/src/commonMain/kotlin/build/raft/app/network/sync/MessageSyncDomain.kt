@@ -156,8 +156,6 @@ fun mergeCanonicalRow(
         reactions = gate(MessageAggregateField.Reactions, incoming.reactions, existing.reactions),
         actionMetadata = gate(MessageAggregateField.ActionMetadata, incoming.actionMetadata, existing.actionMetadata),
         conversationContext = gate(MessageAggregateField.ConversationContext, incoming.conversationContext, existing.conversationContext),
-        // externalAuthor: present-overwrite — immutable attribution; absent preserves (bare frames).
-        externalAuthor = gate(MessageAggregateField.ExternalAuthor, incoming.externalAuthor, existing.externalAuthor),
         // commentRef: shared-null-preserve — present AND non-null overwrites; present-null (privacy
         // strip) OR absent both preserve. Never cleared on the shared fold.
         commentRef =
@@ -178,7 +176,6 @@ private fun CanonicalMessageRow.withAbsentAggregatesCleared(present: Set<Message
         reactions = if (MessageAggregateField.Reactions in present) reactions else emptyList(),
         actionMetadata = if (MessageAggregateField.ActionMetadata in present) actionMetadata else null,
         conversationContext = if (MessageAggregateField.ConversationContext in present) conversationContext else null,
-        externalAuthor = if (MessageAggregateField.ExternalAuthor in present) externalAuthor else null,
         commentRef = if (MessageAggregateField.CommentRef in present) commentRef else null,
     )
 

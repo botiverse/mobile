@@ -1,34 +1,32 @@
 package build.raft.app.data
 
 import build.raft.app.MemberKindWireContract
-import build.raft.app.canonical.message.CanonicalMessageRow
-import build.raft.app.canonical.message.MessageAggregateField
+import build.raft.app.data.realtime.RealtimeEventMapper
+import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.memberDetailIdentityFromWire
 import build.raft.app.memberKindWireValue
 import build.raft.app.MemberDetailIdentitySource
 import build.raft.app.model.MemberKind
+import build.raft.app.model.MessageNew
 import build.raft.app.model.ThreadId
-import build.raft.app.network.sync.decodeCanonicalMessageWire
-import build.raft.app.network.sync.ProductionFace
-import build.raft.app.network.sync.toAppMessage
 import build.raft.app.strictMemberKindOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 
 /**
  * task #395: Slack-bridge external sender attribution (`senderType=external_projection`).
  *
  * Sender slots accept `external_projection` via [MemberKindWireContract.MessageSender] and
- * require an `externalAuthor` aggregate; member slots (Identity/InternalActor) still reject it,
+ * require an `externalAuthor` object; member slots (Identity/InternalActor) still reject it,
  * so an external sender can never be opened as a member profile or task assignee.
+ *
+ * Phase 1 scope: REST (`/api/messages`) and realtime (`message:new`) ingestion. The offline
+ * canonical/V2 sync domain keeps InternalActor (fail-closed) until the SHA-locked
+ * canonicalMessageManifest is upgraded — see PR #2595 review.
  */
 class ExternalMessageAuthorParseTest {
 
@@ -134,66 +132,62 @@ class ExternalMessageAuthorParseTest {
     }
 
     @Test
-    fun canonicalWireCarriesExternalAuthorAggregatePresence() {
-        val decoded =
-            decodeCanonicalMessageWire(
-                canonicalRow(
-                    "senderType" to JsonPrimitive("external_projection"),
-                    "externalAuthor" to externalAuthorJson(),
-                ),
-                ProductionFace.MessageNew,
+    fun realtimeEventMapperParsesMessageNewWithExternalAuthor() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.MessageNew,
+                """
+                {
+                  "id": "m-rt-1",
+                  "seq": 10,
+                  "channelId": "c1",
+                  "senderType": "external_projection",
+                  "senderId": "ext_slack_U123",
+                  "senderName": "Slack User",
+                  "messageType": "chat",
+                  "content": "realtime slack message",
+                  "createdAt": "2026-09-24T01:00:00.000Z",
+                  "externalAuthor": {
+                    "provider": "slack",
+                    "actorKind": "human",
+                    "displayName": "jinlu",
+                    "avatarUrl": "https://avatars.slack-edge.com/u123.png",
+                    "externalActorId": "U123"
+                  }
+                }
+                """.trimIndent(),
             )
 
-        assertNotNull(decoded)
-        assertTrue(MessageAggregateField.ExternalAuthor in decoded.presentAggregates)
-        val author = assertNotNull(decoded.row.externalAuthor)
-        assertEquals("jinlu", author.displayName)
-        assertEquals("slack", author.provider)
-    }
-
-    @Test
-    fun canonicalRowProjectionRendersExternalAuthorAndSkipsMemberHydration() {
-        val decoded =
-            decodeCanonicalMessageWire(
-                canonicalRow(
-                    "senderType" to JsonPrimitive("external_projection"),
-                    "externalAuthor" to externalAuthorJson(),
-                ),
-                ProductionFace.MessageNew,
-            )
-        assertNotNull(decoded)
-
-        var hydrationCalls = 0
-        val message =
-            decoded.row.toAppMessage(
-                memberHydration = { profile ->
-                    hydrationCalls += 1
-                    profile
-                },
-            )
-        assertNotNull(message)
-        assertEquals(0, hydrationCalls)
-        val external = assertNotNull(message.externalAuthor)
+        val messageNew = assertIs<MessageNew>(event)
+        val external = assertNotNull(messageNew.message.externalAuthor)
         assertEquals("jinlu", external.displayName)
-        assertEquals(MemberKind.External, message.author.kind)
-        assertEquals("Slack", message.author.description)
+        assertEquals("slack", external.provider)
+        assertEquals(MemberKind.External, messageNew.message.author.kind)
+        assertEquals("Slack", messageNew.message.author.description)
+        assertEquals("https://avatars.slack-edge.com/u123.png", messageNew.message.author.avatarUrl)
     }
 
     @Test
-    fun canonicalRowProjectionDropsExternalSenderWithoutAuthor() {
+    fun realtimeEventMapperDropsExternalProjectionWithoutExternalAuthor() {
         val diagnostics = mutableListOf<String>()
-        val decoded =
-            decodeCanonicalMessageWire(
-                canonicalRow(
-                    "senderType" to JsonPrimitive("external_projection"),
-                    "externalAuthor" to JsonNull,
-                ),
-                ProductionFace.MessageNew,
+        val event =
+            RealtimeEventMapper(diagnosticsLogger = diagnostics::add).map(
+                RealtimeSocketEvents.MessageNew,
+                """
+                {
+                  "id": "m-rt-2",
+                  "seq": 11,
+                  "channelId": "c1",
+                  "senderType": "external_projection",
+                  "senderId": "ext_slack_U999",
+                  "messageType": "chat",
+                  "content": "missing external author",
+                  "createdAt": "2026-09-24T01:00:00.000Z"
+                }
+                """.trimIndent(),
             )
-        assertNotNull(decoded)
 
-        val message = decoded.row.toAppMessage(diagnostics = diagnostics::add)
-        assertNull(message)
+        assertNull(event)
         assertTrue(diagnostics.any { "externalAuthor" in it })
     }
 
@@ -236,57 +230,4 @@ class ExternalMessageAuthorParseTest {
             )
         )
     }
-
-    @Test
-    fun externalAuthorDecodesWithMissingOptionalFields() {
-        val decoded =
-            decodeCanonicalMessageWire(
-                canonicalRow(
-                    "senderType" to JsonPrimitive("external_projection"),
-                    "externalAuthor" to
-                        buildJsonObject {
-                            put("provider", "slack")
-                            put("actorKind", "bot")
-                            put("externalActorId", "B9")
-                        },
-                ),
-                ProductionFace.MessageNew,
-            )
-        assertNotNull(decoded)
-        val author = assertNotNull(decoded.row.externalAuthor)
-        assertNull(author.displayName)
-        assertNull(author.avatarUrl)
-        assertEquals("bot", author.actorKind)
-    }
-
-    private fun externalAuthorJson(): JsonObject =
-        buildJsonObject {
-            put("provider", "slack")
-            put("actorKind", "human")
-            put("displayName", "jinlu")
-            put("avatarUrl", "https://avatars.slack-edge.com/u123.png")
-            put("externalActorId", "U123")
-            put("externalConversationId", "C456")
-            put("externalMessageId", "1759.0001")
-            put("installId", "inst-1")
-            put("projectionId", "proj-1")
-            put("actorProjectionRevision", 7)
-            put("appRegistrationId", "app-1")
-            put("workspaceId", "ws-1")
-        }
-
-    private fun canonicalRow(vararg additions: Pair<String, kotlinx.serialization.json.JsonElement>) =
-        buildJsonObject {
-            put("id", "m1")
-            put("seq", 7L)
-            put("channelId", "c1")
-            put("senderType", "user")
-            put("senderId", "u1")
-            put("content", "body")
-            put("messageType", "chat")
-            put("randomId", JsonNull)
-            put("threadId", JsonNull)
-            put("createdAt", "2026-09-24T01:00:00Z")
-            additions.forEach { (key, value) -> put(key, value) }
-        }
 }

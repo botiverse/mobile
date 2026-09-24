@@ -10,8 +10,6 @@ import build.raft.app.canonical.message.CanonicalReactionWire
 import build.raft.app.commentHostRouteKindOrNull
 import build.raft.app.commentHostTypeOrNull
 import build.raft.app.data.WireActionCardMetadata
-import build.raft.app.data.WireExternalAuthor
-import build.raft.app.data.toExternalMessageAuthor
 import build.raft.app.data.toForwardMessageBundle
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.toThreadActionCard
@@ -27,7 +25,6 @@ import build.raft.app.model.MessageCommentRef
 import build.raft.app.model.MessageConversationContext
 import build.raft.app.model.MessageDeliveryState
 import build.raft.app.model.MessageId
-import build.raft.app.model.providerLabel
 import build.raft.app.model.MessageReaction
 import build.raft.app.model.MessageType
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
@@ -67,24 +64,16 @@ fun CanonicalMessageRow.toAppMessage(
         senderType.strictMemberKindOrNull(
             source = "canonical_message_sender",
             diagnostics = diagnostics,
-            contract = MemberKindWireContract.MessageSender,
+            contract = MemberKindWireContract.InternalActor,
         ) ?: return null
-    val external = senderKind == MemberKind.External
-    if (external && externalAuthor == null) {
-        diagnostics("projection_value_rejected source=canonical_message_sender field=externalAuthor value=missing messageId=$id")
-        return null
-    }
-    val resolvedExternalAuthor =
-        if (external) externalAuthor?.toExternalMessageAuthor(senderName.ifBlank { null }) else null
     val authorKind = if (resolvedMessageType == MessageType.System) MemberKind.System else senderKind
     val fallbackAuthor = MemberProfile(
         id = MemberId(senderId),
-        displayName = resolvedExternalAuthor?.displayName ?: senderName.ifBlank { senderId },
+        displayName = senderName.ifBlank { senderId },
         handle = senderName.ifBlank { senderId },
         kind = authorKind,
-        description = resolvedExternalAuthor?.providerLabel() ?: senderDescription,
-        avatarUrl = resolvedExternalAuthor?.avatarUrl,
-        avatarLabel = (resolvedExternalAuthor?.displayName ?: senderName.ifBlank { senderId }).take(1).uppercase(),
+        description = senderDescription,
+        avatarLabel = senderName.ifBlank { senderId }.take(1).uppercase(),
         presence = Presence.Offline,
     )
     val action = actionMetadata.toAppActionProjection()
@@ -97,7 +86,7 @@ fun CanonicalMessageRow.toAppMessage(
         // message:* does not carry app thread linkage; preserve RealtimeEventMapper parity.
         threadChannelId = null,
         seq = seq,
-        author = if (external) fallbackAuthor else memberHydration(fallbackAuthor),
+        author = memberHydration(fallbackAuthor),
         timestampLabel = createdAt,
         createdAtEpochMillis = parseSlockTimestampEpochMillisOrNull(createdAt),
         body = content,
@@ -113,7 +102,6 @@ fun CanonicalMessageRow.toAppMessage(
         forwardBundle = action.forwardBundle,
         conversationContext = conversationContext?.toAppConversationContext(),
         randomId = randomId?.takeIf { it.isNotBlank() },
-        externalAuthor = resolvedExternalAuthor,
     )
 }
 
