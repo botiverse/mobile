@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.safeDisplayNameOrNull
 
@@ -84,8 +85,16 @@ internal object SharedThreadHeaderContextStore {
                 when (surfaceKind) {
                     KuiklyThreadSurfaceKind.DirectMessage -> null
                     KuiklyThreadSurfaceKind.ReplyThread ->
-                        existingThreadChannelHeaderSubtitle(conversation.subtitle)
-                            ?: threadChannelHeaderSubtitle(conversation.name)
+                        // task #399: a thread hosted in a DM carries the peer's
+                        // @-name, not a # channel label — `conversation.name`
+                        // is the best available peer projection (inbox items
+                        // hydrate it from the Home DM list).
+                        if (parseConversationKindOrNull(conversation.threadParentChannelKind()) == ConversationKind.DirectMessage) {
+                            conversation.name.takeIf { it.isNotBlank() }?.let { "@$it" }
+                        } else {
+                            existingThreadChannelHeaderSubtitle(conversation.subtitle)
+                                ?: threadChannelHeaderSubtitle(conversation.name)
+                        }
                     else -> conversation.subtitle?.takeIf { it.isNotBlank() }
                 },
             originMessage = if (isReplyThread) originMessage else null,

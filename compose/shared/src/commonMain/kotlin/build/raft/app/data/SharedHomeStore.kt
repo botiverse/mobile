@@ -345,23 +345,28 @@ internal class SharedHomeStore(
         }
     }
 
-    fun supplementConversationIdentity(snapshot: InboxSnapshot) {
+    fun supplementConversationIdentity(
+        snapshot: InboxSnapshot,
+        dmPeerNames: Map<String, String> = emptyMap()
+    ) {
         supplementConversationIdentity(
             serverId = snapshot.server.id,
             source = SharedConversationIdentitySupplementSource.Activity,
-            items = snapshot.items
+            items = snapshot.items,
+            dmPeerNames = dmPeerNames
         )
     }
 
     fun supplementConversationIdentity(
         serverId: ServerId,
         source: SharedConversationIdentitySupplementSource,
-        items: List<InboxItem>
+        items: List<InboxItem>,
+        dmPeerNames: Map<String, String> = emptyMap()
     ) {
         val serverKey = serverId.value
         supplementalConversationIdentityStates
             .getOrPut(serverKey) { linkedMapOf() }[source] =
-            items.toSharedConversationDirectoryState(serverId, logger = diagnosticsLogger)
+            items.toSharedConversationDirectoryState(serverId, dmPeerNames, logger = diagnosticsLogger)
         publishConversationIdentity(serverKey)
     }
 

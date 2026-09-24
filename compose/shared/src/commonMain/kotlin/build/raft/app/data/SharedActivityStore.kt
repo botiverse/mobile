@@ -4,6 +4,7 @@ import build.raft.app.SharedThreadContentGeneration
 import build.raft.app.SharedThreadFreshnessLedger
 import build.raft.app.SharedThreadSummaryFact
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberProfile
@@ -82,6 +83,9 @@ class SharedActivityStore internal constructor(
     private var memberRepository: MemberRepository? = null,
     private var serverMembersStore: SharedServerMembersStore? = null,
     private var tasksDataStore: SharedTasksDataStore? = null,
+    // task #399: optional; resolves DM-parent thread rows' peer name from the
+    // Home DM list (channels.name is not a reliable peer projection for DMs).
+    private var channelRepository: ChannelRepository? = null,
     private val perReceiverStateVersionStore: PerReceiverStateVersionStore,
     private var readReceiptCoordinator: ReadReceiptCoordinator? = null,
     private var readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
@@ -138,6 +142,10 @@ class SharedActivityStore internal constructor(
     private var tailDrainBarrier: Job? = null
     private var realtimeBackgroundReconcileJob: Job? = null
     private var realtimeBackgroundReconcileDirty = false
+    // task #399: DM-parent thread rows whose peer could not be resolved from the
+    // last DM list fetch; retried only when a NEW unresolved id appears.
+    private var unresolvedDmPeerChannelIds: Set<ChannelId> = emptySet()
+    private var dmPeerNamesFetchInFlight = false
     private val realtimeHighWater = mutableMapOf<String, ActivityRealtimeHighWater>()
     // One owner for live row patches, version-ledger changes, background reconcile scheduling,
     // and canonical load folds.
@@ -151,6 +159,7 @@ class SharedActivityStore internal constructor(
         memberRepository: MemberRepository? = this.memberRepository,
         serverMembersStore: SharedServerMembersStore? = this.serverMembersStore,
         tasksDataStore: SharedTasksDataStore? = this.tasksDataStore,
+        channelRepository: ChannelRepository? = this.channelRepository,
         prewarmReplyThread: (suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit>)? = null,
         replyThreadFreshnessLedger: SharedThreadFreshnessLedger? = null,
         persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = this.persistSlices,
@@ -169,6 +178,7 @@ class SharedActivityStore internal constructor(
         this.memberRepository = memberRepository
         this.serverMembersStore = serverMembersStore
         this.tasksDataStore = tasksDataStore
+        this.channelRepository = channelRepository
         if (prewarmReplyThread != null) {
             this.prewarmReplyThread = prewarmReplyThread
         }
@@ -639,6 +649,7 @@ class SharedActivityStore internal constructor(
     private fun applyRealtimeEventImmediately(intent: SharedActivityIntent.ApplyRealtimeEvent) {
         val reconcileJob = synchronized(realtimeOwnerLock) { applyRealtimeEventLocked(intent) }
         reconcileJob?.start()
+        ensureDmPeerNames()
     }
 
     private fun applyRealtimeEventLocked(intent: SharedActivityIntent.ApplyRealtimeEvent): Job? {
@@ -1179,6 +1190,7 @@ class SharedActivityStore internal constructor(
                             )
                             return@launch
                         }
+                        ensureDmPeerNames()
                         logActivityLoad(
                             result = result.activityDiagnosticsResult(),
                             code = null,
@@ -2259,6 +2271,79 @@ class SharedActivityStore internal constructor(
             )
         }
 
+    /**
+     * task #399: hydrate peer display names for DM-parent thread rows. The
+     * inbox row's `parentChannelName` is the raw channel name, which is not a
+     * reliable peer projection for DMs — the Home `directMessages` snapshot is
+     * the authority (web `itemFilterChannelLabel` joins the same way).
+     * Runs after each canonical load and safe realtime patch; a channel that
+     * stays missing after a fetch is parked so a flood of DM rows cannot
+     * refetch the DM list per row.
+     */
+    private fun ensureDmPeerNames() {
+        val repository = channelRepository ?: return
+        val missing: Set<ChannelId> =
+            synchronized(realtimeOwnerLock) {
+                if (dmPeerNamesFetchInFlight) return
+                val state = _state.value
+                val alreadyResolved = state.dmPeerNames
+                val unresolved =
+                    dmParentThreadChannelIds(state)
+                        .filter {
+                            alreadyResolved[it.value].isNullOrBlank() && it !in unresolvedDmPeerChannelIds
+                        }
+                        .toSet()
+                if (unresolved.isEmpty()) return
+                dmPeerNamesFetchInFlight = true
+                unresolved
+            }
+        scope.launch {
+            try {
+                val serverId = currentServerId() ?: return@launch
+                val resolved: Map<String, String> =
+                    when (val result = repository.getDirectMessages(serverId)) {
+                        is DataResult.Content ->
+                            result.data.directMessages.associate { row ->
+                                row.channelId.value to row.name
+                            }
+                        else -> emptyMap()
+                    }
+                synchronized(realtimeOwnerLock) {
+                    val current = _state.value
+                    val merged = current.dmPeerNames + resolved
+                    // Park only the ids this fetch could not resolve; ids that
+                    // arrived while the fetch was in flight stay eligible for
+                    // the tail-call ensure below.
+                    unresolvedDmPeerChannelIds =
+                        unresolvedDmPeerChannelIds +
+                            missing.filter { merged[it.value].isNullOrBlank() }
+                    if (merged != current.dmPeerNames) {
+                        _state.value = current.copy(dmPeerNames = merged)
+                    }
+                }
+            } finally {
+                synchronized(realtimeOwnerLock) {
+                    dmPeerNamesFetchInFlight = false
+                }
+            }
+            ensureDmPeerNames()
+        }
+    }
+
+    private fun dmParentThreadChannelIds(state: SharedActivityState): Set<ChannelId> =
+        buildSet {
+            state.snapshot?.items?.let(::addAll)
+            state.filterSnapshots.values.forEach { addAll(it.items) }
+        }
+            .asSequence()
+            .filter {
+                it.kind == InboxItemKind.Thread &&
+                    it.parentChannelKind == ConversationKind.DirectMessage &&
+                    it.parentChannelId != null
+            }
+            .mapNotNull { it.parentChannelId }
+            .toSet()
+
     private fun rememberUnreadCleared(items: List<InboxItem>) {
         val unreadItems = items.filter { it.unreadCount > 0 }
         if (unreadItems.isEmpty()) return
@@ -2419,6 +2504,9 @@ data class SharedActivityState(
     val snapshot: InboxSnapshot? = null,
     val filterSnapshots: Map<InboxFilter, InboxSnapshot> = emptyMap(),
     val senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap(),
+    /** task #399: DM channel id → peer display name, hydrated from the Home DM
+     * list for `parentChannelKind == DirectMessage` thread rows. */
+    val dmPeerNames: Map<String, String> = emptyMap(),
     val ownerServerId: String? = null,
     val ownerUserId: String? = null,
     val loaded: Boolean = false,

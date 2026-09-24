@@ -1289,6 +1289,7 @@ internal class SlockSharedStoreProvider private constructor(
         readReceiptRepository: ReadReceiptRepository,
         conversationRepository: ConversationRepository,
         memberRepository: MemberRepository? = null,
+        channelRepository: ChannelRepository? = null,
         prewarmReplyThread: (suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit>)? = null,
         onUnreadCountsChanged: (() -> Unit)? = null,
         diagnosticsLogger: ((String) -> Unit)? = null
@@ -1303,6 +1304,7 @@ internal class SlockSharedStoreProvider private constructor(
                     memberRepository = memberRepository,
                     serverMembersStore = serverMembersStore,
                     tasksDataStore = tasksDataStore,
+                    channelRepository = channelRepository,
                     persistSlices = listOf(activityPersistSlice),
                     readReceiptCoordinator = processReadReceiptCoordinator(),
                     readReceiptOwnerFactory = ::readReceiptOwner,
@@ -1325,6 +1327,7 @@ internal class SlockSharedStoreProvider private constructor(
                 memberRepository = memberRepository,
                 serverMembersStore = serverMembersStore(scope),
                 tasksDataStore = tasksDataStore,
+                channelRepository = channelRepository,
                 perReceiverStateVersionStore = PerReceiverStateVersionStore(sharedPreferenceStore),
                 readReceiptCoordinator = processReadReceiptCoordinator(),
                 readReceiptOwnerFactory = ::readReceiptOwner,
