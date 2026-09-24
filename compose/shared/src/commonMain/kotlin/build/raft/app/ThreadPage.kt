@@ -5375,11 +5375,13 @@ private fun SharedThreadRouteContentContent(
     val onOpenChannelSettings = callbacks.onOpenChannelSettings
     val pager = LocalActivity.current.getPager() as Pager
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
+    val externalAuthorHintTemplate =
+        stringResource(MR.strings.thread_external_author_hint, ThreadLocalizedFeedbackPlaceholder)
     // task #395: external (Slack-bridge) authors have no member profile; the avatar/name
     // tap surfaces a provider identity hint instead of silently doing nothing.
     val onExternalAuthorHint: (KuiklyThreadMessageItem) -> Unit = { message ->
         val provider = message.externalAuthor?.providerLabel() ?: "external"
-        bridge.toast(MR.strings.thread_external_author_hint.format(listOf(provider)).localized())
+        bridge.toast(externalAuthorHintTemplate.replace(ThreadLocalizedFeedbackPlaceholder, provider))
     }
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val messageBodyFontSizeState by sharedStores.messageBodyFontSizeStore.state.collectAsState()
