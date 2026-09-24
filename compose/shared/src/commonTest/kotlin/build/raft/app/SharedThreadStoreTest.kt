@@ -2618,7 +2618,8 @@ class SharedThreadStoreTest {
                     principalId = "u-b",
                     serverId = "server-1",
                     authGeneration = 2L,
-                    selectionGeneration = 1L
+                    selectionGeneration = 1L,
+                    bindingGeneration = 2L
                 )
             val ownerB = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
             releaseAdmission.complete(Unit)
@@ -2649,6 +2650,195 @@ class SharedThreadStoreTest {
         } finally {
             releaseAdmission.complete(Unit)
             releaseLoading.complete(Unit)
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun authGenerationAdvanceDuringFetchStillDeliversContent() = runBlocking {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + Dispatchers.Default)
+        val payloadStore = SharedThreadPayloadStore(scope, prewarmStartIntervalMillis = 0L)
+        val ownerASession =
+            sampleSession().copy(
+                user = StoredAuthUser(id = "u-a", email = "a@example.test", displayName = "Owner A"),
+                accessToken = "access-a",
+                refreshToken = "refresh-a"
+            )
+        var identity =
+            ThreadReplyCacheIdentitySnapshot(
+                session = ownerASession,
+                environmentId = "https://prod.example.test",
+                principalId = "u-a",
+                serverId = "server-1",
+                authGeneration = 1L,
+                selectionGeneration = 1L,
+                bindingGeneration = 1L
+            )
+        val api = FakeThreadApi()
+        api.channelMessagesStarted = CompletableDeferred()
+        api.releaseChannelMessages = CompletableDeferred()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(ownerASession),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                replyCacheIdentityAuthority = { identity },
+                payloadStore = payloadStore
+            )
+        val ownerA = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        try {
+            store.dispatch(SharedThreadIntent.Start(basePayload()))
+            withTimeout(5_000) { api.channelMessagesStarted!!.await() }
+            // Same principal/server, only the token rotated -> authGeneration advanced.
+            identity =
+                ThreadReplyCacheIdentitySnapshot(
+                    session =
+                        ownerASession.copy(
+                            accessToken = "access-a2",
+                            refreshToken = "refresh-a2"
+                        ),
+                    environmentId = "https://prod.example.test",
+                    principalId = "u-a",
+                    serverId = "server-1",
+                    authGeneration = 2L,
+                    selectionGeneration = 1L,
+                    bindingGeneration = 1L
+                )
+            val ownerARotated =
+                requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+            api.releaseChannelMessages!!.complete(Unit)
+
+            withTimeout(5_000) {
+                while (store.state.value.payload.status != "content") {
+                    delay(10)
+                }
+            }
+            assertEquals(
+                "network body",
+                store.state.value.payload.messages.single().body
+            )
+            val cached =
+                listOfNotNull(
+                    payloadStore.get(
+                        "server-1",
+                        "channel-1",
+                        environmentId = ownerA.environmentId,
+                        principalId = ownerA.principalId,
+                        ownerScopeId = ownerA.threadPayloadOwnerScopeId.orEmpty()
+                    ),
+                    payloadStore.get(
+                        "server-1",
+                        "channel-1",
+                        environmentId = ownerARotated.environmentId,
+                        principalId = ownerARotated.principalId,
+                        ownerScopeId = ownerARotated.threadPayloadOwnerScopeId.orEmpty()
+                    )
+                )
+            assertEquals("network body", cached.single().messages.single().body)
+        } finally {
+            api.releaseChannelMessages?.complete(Unit)
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun ownerSwitchDuringFetchDropsResult() = runBlocking {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + Dispatchers.Default)
+        val payloadStore = SharedThreadPayloadStore(scope, prewarmStartIntervalMillis = 0L)
+        val ownerASession =
+            sampleSession().copy(
+                user = StoredAuthUser(id = "u-a", email = "a@example.test", displayName = "Owner A"),
+                accessToken = "access-a",
+                refreshToken = "refresh-a"
+            )
+        val ownerBSession =
+            sampleSession().copy(
+                user = StoredAuthUser(id = "u-b", email = "b@example.test", displayName = "Owner B"),
+                accessToken = "access-b",
+                refreshToken = "refresh-b"
+            )
+        var identity =
+            ThreadReplyCacheIdentitySnapshot(
+                session = ownerASession,
+                environmentId = "https://prod.example.test",
+                principalId = "u-a",
+                serverId = "server-1",
+                authGeneration = 1L,
+                selectionGeneration = 1L,
+                bindingGeneration = 1L
+            )
+        val api = FakeThreadApi()
+        api.channelMessagesStarted = CompletableDeferred()
+        api.releaseChannelMessages = CompletableDeferred()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(ownerASession),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                replyCacheIdentityAuthority = { identity },
+                payloadStore = payloadStore
+            )
+        val ownerA = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+        val diagnostics = ConcurrentTestLogBuffer()
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                diagnosticsLogger = diagnostics::add
+            )
+
+        try {
+            store.dispatch(SharedThreadIntent.Start(basePayload()))
+            withTimeout(5_000) { api.channelMessagesStarted!!.await() }
+            identity =
+                ThreadReplyCacheIdentitySnapshot(
+                    session = ownerBSession,
+                    environmentId = "https://prod.example.test",
+                    principalId = "u-b",
+                    serverId = "server-1",
+                    authGeneration = 2L,
+                    selectionGeneration = 1L,
+                    bindingGeneration = 2L
+                )
+            val ownerB = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+            api.releaseChannelMessages!!.complete(Unit)
+
+            // The fetch result must be dropped post-transport: payload stays on the
+            // loading shell and nothing is persisted for either owner scope.
+            // Deterministic completion signal: dropForOwnerChange emits the
+            // `reason=owner_changed` diagnostic synchronously inside the refresh
+            // coroutine, so observing that line proves adjudication has run.
+            withTimeout(5_000) {
+                while (!diagnostics.any { it.contains("reason=owner_changed") }) {
+                    delay(5)
+                }
+            }
+            assertEquals("loading", store.state.value.payload.status)
+            assertTrue(store.state.value.payload.messages.isEmpty())
+            assertNull(
+                payloadStore.get(
+                    "server-1",
+                    "channel-1",
+                    environmentId = ownerA.environmentId,
+                    principalId = ownerA.principalId,
+                    ownerScopeId = ownerA.threadPayloadOwnerScopeId.orEmpty()
+                )
+            )
+            assertNull(
+                payloadStore.get(
+                    "server-1",
+                    "channel-1",
+                    environmentId = ownerB.environmentId,
+                    principalId = ownerB.principalId,
+                    ownerScopeId = ownerB.threadPayloadOwnerScopeId.orEmpty()
+                )
+            )
+        } finally {
+            api.releaseChannelMessages?.complete(Unit)
             scopeJob.cancelAndJoin()
         }
     }
