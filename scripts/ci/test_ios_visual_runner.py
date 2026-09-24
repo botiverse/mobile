@@ -34,8 +34,11 @@ class RunnerTest(unittest.TestCase):
             tool = self.root / name
             tool.write_text("#!/bin/sh\nexit 0\n")
             tool.chmod(0o755)
-        self.env = dict(os.environ, RUNNER_TEMP=str(self.root),
+        (self.root / "runner-temp").mkdir()
+        self.env = dict(os.environ, RUNNER_TEMP=str(self.root / "runner-temp"),
                         GITHUB_ENV=str(self.root / "env"), SIM_DEVICE="iPhone 14",
+                        GITHUB_WORKSPACE=str(self.root / "workspace"),
+                        RUNNER_NAME="test-runner", GITHUB_RUN_ID="123", GITHUB_RUN_ATTEMPT="1",
                         CALLS=str(self.root / "calls"),
                         PATH=str(self.root) + os.pathsep + os.environ["PATH"])
         self.run_phase("prepare")
@@ -43,6 +46,7 @@ class RunnerTest(unittest.TestCase):
             key, value = line.split("=", 1)
             self.env[key] = value
         self.capture = Path(self.env["IOS_CAPTURE_TEMP"])
+        self.receipt = self.root / "workspace/visual-testing-results/ios-diagnostics/simulator-cleanup-failure.json"
         self.neighbor = self.root / "unrelated-device-data"
         self.neighbor.write_text("keep")
 
@@ -63,6 +67,7 @@ class RunnerTest(unittest.TestCase):
                                            ["simctl", "delete", UDID]])
         self.assertFalse(self.capture.exists())
         self.assertEqual(self.neighbor.read_text(), "keep")
+        self.assertFalse(self.receipt.exists())
 
     def test_failed_boot_still_cleans_owned_device(self):
         self.env["FAIL_COMMAND"] = "boot"
@@ -76,6 +81,13 @@ class RunnerTest(unittest.TestCase):
         self.env["FAIL_COMMAND"] = "delete"
         self.run_phase("cleanup", success=False)
         self.assertEqual((self.capture / "simulator-udid").read_text().strip(), UDID)
+        self.assertEqual(json.loads(self.receipt.read_text()), {
+            "udid": UDID, "runner": "test-runner", "runId": "123", "runAttempt": "1",
+            "temporaryDirectory": self.capture.name})
+        # Simulate runner temp cleanup; the workspace artifact survives.
+        import shutil
+        shutil.rmtree(self.env["RUNNER_TEMP"])
+        self.assertEqual(json.loads(self.receipt.read_text())["udid"], UDID)
 
     def test_pre_boot_failure_cleanup_never_touches_simulators(self):
         before = self.calls()

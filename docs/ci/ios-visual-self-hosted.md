@@ -15,9 +15,12 @@ Every job creates a temporary directory under `RUNNER_TEMP` and a new simulator.
 The captured UDID is the only device it boots, installs into, or deletes. Build
 DerivedData, the manifest, case list, and console log belong to that directory.
 An `always()` step shuts down/deletes the owned simulator and removes the temporary
-directory. A failed delete fails cleanup and retains its ownership record.
-Runner loss or a force-killed process can prevent cleanup; recover using the
-exact `simulator-udid` file under that job's `ios-visual.*` directory. Never use
+directory. A failed delete fails cleanup and writes the exact device UUID,
+runner name, and run identity to `ios-diagnostics/simulator-cleanup-failure.json`
+in the uploaded results artifact. Use that receipt for recovery: `RUNNER_TEMP`
+is cleared at job end, so the temporary ownership file is not durable evidence.
+Runner loss or a force-killed process can prevent both cleanup and artifact
+upload; inspect the affected runner before attempting recovery. Never use
 `simctl delete all` or shutdown another user's simulator.
 
 The first real execution must confirm that GitHub assigns a runner from this

@@ -35,10 +35,25 @@ print(max(rs, key=lambda r: tuple(map(int, r["version"].split("."))))["identifie
     if [ -f "$IOS_CAPTURE_TEMP/simulator-udid" ]; then
       udid=$(cat "$IOS_CAPTURE_TEMP/simulator-udid")
       [[ "$udid" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]] || exit 1
-      # Shutdown can fail if already stopped. Deletion must succeed before
-      # removing the ownership record; otherwise retain it for diagnosis.
+      # Shutdown can fail if already stopped. RUNNER_TEMP is cleared after
+      # the job, so a failed delete needs an uploaded recovery receipt.
       xcrun simctl shutdown "$udid" || true
-      xcrun simctl delete "$udid"
+      if xcrun simctl delete "$udid"; then
+        :
+      else
+        status=$?
+        diagnostics="${GITHUB_WORKSPACE:?}/visual-testing-results/ios-diagnostics"
+        mkdir -p "$diagnostics"
+        python3 - "$udid" "$diagnostics/simulator-cleanup-failure.json" <<'PYRECEIPT'
+import json, os, sys
+with open(sys.argv[2], "w") as out:
+    json.dump({"udid": sys.argv[1], "runner": os.environ.get("RUNNER_NAME"),
+               "runId": os.environ.get("GITHUB_RUN_ID"),
+               "runAttempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+               "temporaryDirectory": os.path.basename(os.environ["IOS_CAPTURE_TEMP"])}, out, indent=2)
+PYRECEIPT
+        exit "$status"
+      fi
     fi
     rm -rf -- "$IOS_CAPTURE_TEMP"
     ;;
