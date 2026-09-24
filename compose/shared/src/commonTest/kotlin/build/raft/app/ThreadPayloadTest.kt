@@ -132,7 +132,10 @@ class ThreadPayloadTest {
     private val launchJson = Json { ignoreUnknownKeys = true }
 
     @Test
-    fun threadLaunchPayloadRejectsMissingParentKind() {
+    fun threadLaunchPayloadOpensReplyThreadWithMissingParentKind() {
+        // task #304/#307 (cae1eb2e4): the parent channel+message tuple alone is
+        // enough to open a reply thread; an unresolved parent kind stays null on
+        // the payload instead of rejecting the launch.
         val warnings = mutableListOf<String>()
         val identity =
             ThreadLaunchConversationIdentity(
@@ -161,10 +164,9 @@ class ThreadPayloadTest {
                 onWarn = { warnings.add(it) }
             )
 
-        assertNull(standalone)
-        assertNull(appShell)
-        assertTrue(warnings.any { it.contains("reply_identity_incomplete source=standalone") })
-        assertTrue(warnings.any { it.contains("reply_identity_incomplete source=app_shell") })
+        assertNotNull(standalone)
+        assertNotNull(appShell)
+        assertTrue(warnings.none { it.contains("reply_identity_incomplete") }, warnings.toString())
     }
 
     @Test

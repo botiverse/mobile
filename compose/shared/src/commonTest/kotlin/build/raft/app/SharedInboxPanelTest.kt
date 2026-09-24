@@ -44,6 +44,7 @@ import build.raft.app.model.threadIdentity
 import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
@@ -2131,9 +2132,14 @@ class SharedInboxPanelTest {
         assertEquals(KuiklyThreadSurfaceKind.Channel, request.conversationIdentity.thread?.parentSurfaceKind)
         assertEquals(null, request.anchorMessageId)
 
+        // task #304/#307 (cae1eb2e4): with no directory entry the parent kind is
+        // unknown, but the source tuple still opens the reply thread rather than
+        // parking it as Pending; the unknown kind stays null on the identity.
         val unresolved =
             item.toHomeMessageOpenRequest(serverId = "", conversationDirectory = SharedConversationDirectoryState())
-        assertTrue(unresolved is ConversationOpenResolution.Pending)
+        val opened = assertIs<ConversationOpenResolution.Resolved>(unresolved, unresolved.toString())
+        assertEquals(ConversationKind.Thread, opened.request.conversationIdentity.kind)
+        assertEquals(null, opened.request.conversationIdentity.thread?.parentSurfaceKind)
     }
 
     @Test
