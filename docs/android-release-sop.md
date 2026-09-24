@@ -276,10 +276,12 @@ SHA-256 + signer digests + CI run id. An upgrade cell must additionally show
 `firstInstallTime` unchanged and `lastUpdateTime` advanced.
 
 **No-adb identity surface.** The release owner does not have adb. To verify the
-installed build without `dumpsys`, the `versionName` is a clean train tag
-(`1.12.0`, no source-commit suffix) shown under Android Settings → Apps → Raft →
-App details; the source commit is carried separately in build metadata and the
-Hands provenance record, not in `versionName`. An agent/QA seat with adb still
+installed build without `dumpsys`, the installed `versionName` carries the
+source commit as SemVer build metadata (`1.12.0+<short-sha>`, appended by
+`compose/androidApp/build.gradle.kts`) and is shown under Android Settings →
+Apps → Raft → App details. A "clean" release means no pre-release suffix
+(`1.12.0`, not `1.12.0-rc1`); the `+<short-sha>` part is always present on a
+release build. An agent/QA seat with adb still
 reconciles `versionCode` + SHA-256 + signers per the five-point chain above;
 the owner-visible `versionName` is the cross-check that the UI reports the same
 train. Never let a `versionName`-only reading stand in for the `versionCode`/
