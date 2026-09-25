@@ -8964,6 +8964,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.FirstContentReady)
         delay(1L)
 
         assertEquals(listOf(false), repository.getThreadIncludeFollowedSummaries)
@@ -9125,6 +9126,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.FirstContentReady)
         delay(1L)
 
         assertEquals(listOf(false), repository.getThreadIncludeFollowedSummaries)
@@ -9139,6 +9141,81 @@ class SharedThreadStoreTest {
                     it.contains("emitted=false")
             }
         )
+        scope.cancel()
+    }
+
+    @Test
+    fun earlySummaryResultStashesUntilFirstContentReady() = runBlocking {
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Content(threadSnapshot(body = "stable body")),
+                threadReplySummariesResult = replySummaries(replyCount = 7),
+            ).also {
+                it.threadReplySummariesStarted = CompletableDeferred()
+                it.releaseThreadReplySummaries = CompletableDeferred()
+                it.ignoreThreadReplySummariesCancellation = true
+            }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    testSharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                        conversationRepository = repository,
+                    ),
+                scope = scope,
+            )
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        repository.threadReplySummariesStarted?.await()
+        assertEquals(
+            listOf(ThreadId("channel-1") to listOf(MessageId("m1"))),
+            repository.getThreadReplySummariesRequests
+        )
+        repository.releaseThreadReplySummaries?.complete(Unit)
+        yield()
+        assertEquals(0, store.state.value.payload.messages.single().replyCount)
+
+        store.accept(SharedThreadIntent.FirstContentReady)
+        yield()
+        delay(1L)
+        assertEquals(7, store.state.value.payload.messages.single().replyCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun lateSummaryResultAppliesImmediatelyAfterFirstContentReady() = runBlocking {
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Content(threadSnapshot(body = "stable body")),
+                threadReplySummariesResult = replySummaries(replyCount = 7),
+            ).also {
+                it.threadReplySummariesStarted = CompletableDeferred()
+                it.releaseThreadReplySummaries = CompletableDeferred()
+                it.ignoreThreadReplySummariesCancellation = true
+            }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    testSharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                        conversationRepository = repository,
+                    ),
+                scope = scope,
+            )
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.FirstContentReady)
+        repository.threadReplySummariesStarted?.await()
+        repository.releaseThreadReplySummaries?.complete(Unit)
+        yield()
+        delay(1L)
+        assertEquals(7, store.state.value.payload.messages.single().replyCount)
         scope.cancel()
     }
 

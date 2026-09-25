@@ -5821,6 +5821,7 @@ internal class SharedThreadStore(
     private var visiblePayloadOwnerScopeId: String? = null
     private var firstContentReadyRouteKey: String? = null
     private var pendingAuxiliaryHydration: PendingAuxiliaryHydration? = null
+    private var pendingSecondaryTimelineApply: PendingSecondaryTimelineApply? = null
     private var routeStaleToken = MviStaleToken.Initial
     private var routeStaleTokenValue = MviStaleToken.Initial.value
     private var nextThreadRepliesRebaselineGeneration: Long = 0L
@@ -5862,6 +5863,12 @@ internal class SharedThreadStore(
         val launchMembersHydration: Boolean
     )
 
+    private data class PendingSecondaryTimelineApply(
+        val routePayload: KuiklyThreadScreenPayload,
+        val staleToken: MviStaleToken,
+        val apply: suspend () -> Unit,
+    )
+
     private fun KuiklyThreadScreenPayload.realtimeGapRouteIdentity(): ThreadRouteIdentity =
         resolveThreadRouteIdentity()
 
@@ -5887,6 +5894,7 @@ internal class SharedThreadStore(
                 }
                 secondaryTimelineRefreshJob?.cancel()
                 secondaryTimelineRefreshJob = null
+                pendingSecondaryTimelineApply = null
                 focusedOriginHydrationJob?.cancel()
                 focusedOriginHydrationJob = null
                 homeContextHydrationJob?.cancel()
@@ -6041,6 +6049,7 @@ internal class SharedThreadStore(
         lastRoutePayload = null
         firstContentReadyRouteKey = null
         pendingAuxiliaryHydration = null
+        pendingSecondaryTimelineApply = null
         advanceRouteStaleToken()
         reducePayloadPatch(cachePayload = true) { currentPayload ->
             if (currentPayload.newerMessagesStatus == "loading") {
@@ -6078,6 +6087,7 @@ internal class SharedThreadStore(
         lastRoutePayload = routeContextPayload
         firstContentReadyRouteKey = null
         pendingAuxiliaryHydration = null
+        pendingSecondaryTimelineApply = null
         val routeIdentity = routeContextPayload.resolveThreadRouteIdentity()
         val threadId = routeIdentity.timelineKey
         dataSource.onReplyCacheFirstFrameAdmissionForTest?.invoke()
@@ -6781,6 +6791,28 @@ internal class SharedThreadStore(
             "thread_first_content_ready threadId=${currentPayload.sourceThreadId.orEmpty()} routeKey=$routeKey"
         )
         launchPendingAuxiliaryHydrationIfReady()
+        launchPendingSecondaryTimelineApplyIfReady()
+    }
+
+    private fun launchPendingSecondaryTimelineApplyIfReady() {
+        val pending = pendingSecondaryTimelineApply ?: return
+        val pendingRouteKey = pending.routePayload.resolveThreadRouteIdentity().instanceKey
+        if (firstContentReadyRouteKey != pendingRouteKey) {
+            // The route changed before first content became ready; drop the
+            // stashed apply so an old route's result can never resurface.
+            pendingSecondaryTimelineApply = null
+            return
+        }
+        if (!pending.staleToken.isCurrent(routeStaleToken)) {
+            pendingSecondaryTimelineApply = null
+            diagnosticsLogger?.invoke(
+                "thread_secondary_refresh_result threadId=${pending.routePayload.sourceThreadId.orEmpty()} " +
+                    "ignored=true reason=stale_route stage=pending_apply"
+            )
+            return
+        }
+        pendingSecondaryTimelineApply = null
+        scope.launch { pending.apply() }
     }
 
     private fun launchPendingAuxiliaryHydrationIfReady() {
@@ -7549,35 +7581,54 @@ internal class SharedThreadStore(
                 }
             }
         }
-        val replyIdentities =
-            repliesPageIdentity?.let { page -> patch.threadRepliesScopeIdentities(page, latest) }.orEmpty()
-        val committed =
-            if (replyIdentities.isEmpty()) {
-                commitSecondary(emptyMap())
-            } else {
-                threadRepliesSyncHost.withCurrentAcceptedProjections(replyIdentities) { accepted ->
-                    commitSecondary(accepted)
+        suspend fun applyPatch() {
+            val replyIdentities =
+                repliesPageIdentity?.let { page -> patch.threadRepliesScopeIdentities(page, latest) }.orEmpty()
+            val committed =
+                if (replyIdentities.isEmpty()) {
+                    commitSecondary(emptyMap())
+                } else {
+                    threadRepliesSyncHost.withCurrentAcceptedProjections(replyIdentities) { accepted ->
+                        commitSecondary(accepted)
+                    }
                 }
+            if (committed != true) {
+                if (committed == null) {
+                    dropForOwnerChange("commit")
+                } else {
+                    abortRebaseline()
+                }
+                return
             }
-        if (committed != true) {
-            if (committed == null) {
-                dropForOwnerChange("commit")
-            } else {
-                abortRebaseline()
+            committedPayload?.let { payload ->
+                dataSource.cachePayload(
+                    payload = payload,
+                    ownerScopeId = expectedProvenance.threadPayloadOwnerScopeId.orEmpty(),
+                    expectedProvenance = expectedProvenance,
+                )
             }
-            return
-        }
-        committedPayload?.let { payload ->
-            dataSource.cachePayload(
-                payload = payload,
-                ownerScopeId = expectedProvenance.threadPayloadOwnerScopeId.orEmpty(),
-                expectedProvenance = expectedProvenance,
+            diagnosticsLogger?.invoke(
+                "thread_secondary_refresh_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                    "emitted=$emitted messages=${patch.messages.size} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
             )
         }
-        diagnosticsLogger?.invoke(
-            "thread_secondary_refresh_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
-                "emitted=$emitted messages=${patch.messages.size} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-        )
+        if (firstContentReadyRouteKey == routePayload.resolveThreadRouteIdentity().instanceKey) {
+            applyPatch()
+        } else {
+            // First frame is not up yet (or the route moved on): stash the
+            // fully-built patch instead of painting the secondary timeline.
+            // launchPendingSecondaryTimelineApplyIfReady() flushes or drops it.
+            pendingSecondaryTimelineApply =
+                PendingSecondaryTimelineApply(
+                    routePayload = routePayload,
+                    staleToken = staleToken,
+                    apply = { applyPatch() },
+                )
+            diagnosticsLogger?.invoke(
+                "thread_secondary_refresh_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                    "result=pending_first_content durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
+        }
     }
 
     /**
@@ -8407,6 +8458,7 @@ internal class SharedThreadStore(
         loadJob = null
         secondaryTimelineRefreshJob?.cancel()
         secondaryTimelineRefreshJob = null
+        pendingSecondaryTimelineApply = null
         val staleToken = advanceRouteStaleToken()
         diagnosticsLogger?.invoke(
             "thread_jump_to_latest result=requested visibleMessages=${initial.messages.size} " +
