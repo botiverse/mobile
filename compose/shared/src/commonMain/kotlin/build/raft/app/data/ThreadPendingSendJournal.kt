@@ -370,3 +370,5 @@ internal data class ThreadPendingSendJournalFailureInjector(
 
     fun rejectDeleteSafely(): Boolean = runCatching { rejectDelete() }.getOrDefault(true)
 }
+
+// CI probe: force run_ohos path selection; no behavior change.
