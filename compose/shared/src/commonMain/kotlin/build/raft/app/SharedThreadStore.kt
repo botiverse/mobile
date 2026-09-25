@@ -5457,6 +5457,12 @@ internal data class SharedThreadState(
     val canonicalAccessResolved: Boolean = false,
     val initialHomeAccessLookupComplete: Boolean = false,
     val initialHomeAccessCandidate: ConversationAccessCandidate? = null,
+    /**
+     * task #326 diagnostics: result kind + EmptyReason of the last canonical
+     * refresh, so a stuck "loading" shell can be told apart from a resolved-but-
+     * empty thread without a repro bundle.
+     */
+    val lastRefreshResultReason: String? = null,
     val replyParentAuthority: ReplyParentAuthorityStatus = ReplyParentAuthorityStatus.Resolving,
     val writeActionsEnabled: Boolean = false,
     val channelProfileUpdateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
@@ -5535,6 +5541,8 @@ internal data class SharedThreadRenderSlice(
     val highlightedMentions: Set<String>,
     val accessResolution: ThreadAccessResolution,
     val canonicalAccessResolved: Boolean,
+    val initialHomeAccessLookupComplete: Boolean,
+    val lastRefreshResultReason: String?,
     val replyParentAuthority: ReplyParentAuthorityStatus,
     val writeActionsEnabled: Boolean,
     val channelProfileUpdateStatus: ChannelProfileUpdateStatus,
@@ -5549,6 +5557,8 @@ private fun SharedThreadState.toRenderSlice(): SharedThreadRenderSlice =
         highlightedMentions = highlightedMentions,
         accessResolution = accessResolution,
         canonicalAccessResolved = canonicalAccessResolved,
+        initialHomeAccessLookupComplete = initialHomeAccessLookupComplete,
+        lastRefreshResultReason = lastRefreshResultReason,
         replyParentAuthority = replyParentAuthority,
         writeActionsEnabled = writeActionsEnabled,
         channelProfileUpdateStatus = channelProfileUpdateStatus,
@@ -6626,6 +6636,7 @@ internal class SharedThreadStore(
                                         payload = authorityProjectedPayload,
                                         accessResolution = projectedAccessResolution,
                                         canonicalAccessResolved = canonicalAccessResolved,
+                                        lastRefreshResultReason = result.diagnosticsResultReason(),
                                         writeActionsEnabled =
                                             authorityProjectedPayload.hasWriteAuthorityForAccess(
                                                 accessResolution = projectedAccessResolution,
@@ -11422,6 +11433,14 @@ private fun KuiklyThreadScreenPayload.withTerminalAccessWriteAuthorityClosed(
         )
     } else {
         this
+    }
+
+private fun DataResult<*>.diagnosticsResultReason(): String =
+    when (this) {
+        is DataResult.Content -> "content"
+        is DataResult.Empty -> "empty:${reason.name}"
+        is DataResult.Error -> "error:${error.code}"
+        is DataResult.NoPermission -> "no_permission:${blocker.code}"
     }
 
 private fun DataResult<*>.resolvesCanonicalConversationAccess(): Boolean =
