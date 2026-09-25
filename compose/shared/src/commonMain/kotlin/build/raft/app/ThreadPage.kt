@@ -10776,7 +10776,21 @@ private fun SharedThreadRouteContentContent(
                             if (loadingPayload == null) {
                                 bridge.toast(localizedUnableToOpenTarget("#${itemId.removePrefix("#").take(31)}"))
                             } else {
-                                onOpenThreadPayload(loadingPayload)
+                                val currentRouteIdentity = renderedThread.resolveThreadRouteIdentity()
+                                val targetRouteIdentity = loadingPayload.resolveThreadRouteIdentity()
+                                if (currentRouteIdentity.canRetainThreadPageFor(targetRouteIdentity)) {
+                                    val targetFocusedMessageId = loadingPayload.focusedMessageId
+                                    if (!targetFocusedMessageId.isNullOrBlank()) {
+                                        threadViewModel.dispatch(
+                                            SharedThreadIntent.FocusMessage(
+                                                messageId = targetFocusedMessageId,
+                                                switchToTab = loadingPayload.selectedTab
+                                            )
+                                        )
+                                    }
+                                } else {
+                                    onOpenThreadPayload(loadingPayload)
+                                }
                             }
                         } finally {
                             finishMarkdownReferencePending(markdownPendingToken)
@@ -10819,7 +10833,21 @@ private fun SharedThreadRouteContentContent(
                                             "threadId=${result.data.streamChannelId.orEmpty()} " +
                                             "focusedMessageId=${result.data.focusedMessageId.orEmpty()}"
                                     )
-                                    onOpenThreadPayload(result.data)
+                                    val currentRouteIdentity = renderedThread.resolveThreadRouteIdentity()
+                                    val targetRouteIdentity = result.data.resolveThreadRouteIdentity()
+                                    if (currentRouteIdentity.canRetainThreadPageFor(targetRouteIdentity)) {
+                                        val targetFocusedMessageId = result.data.focusedMessageId
+                                        if (!targetFocusedMessageId.isNullOrBlank()) {
+                                            threadViewModel.dispatch(
+                                                SharedThreadIntent.FocusMessage(
+                                                    messageId = targetFocusedMessageId,
+                                                    switchToTab = result.data.selectedTab
+                                                )
+                                            )
+                                        }
+                                    } else {
+                                        onOpenThreadPayload(result.data)
+                                    }
                                 }
                                 is DataResult.Empty -> {
                                     bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))

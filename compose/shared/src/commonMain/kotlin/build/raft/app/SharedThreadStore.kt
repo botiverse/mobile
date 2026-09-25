@@ -9249,7 +9249,8 @@ internal class SharedThreadStore(
         reducePayloadPatch {
             it.copy(
                 selectedTab = switchToTab?.takeIf { tab -> tab.isNotBlank() } ?: it.selectedTab,
-                focusedMessageId = normalizedMessageId
+                focusedMessageId = normalizedMessageId,
+                focusedMessageRequestNonce = nextThreadFocusedMessageRequestNonce()
             )
         }
     }
