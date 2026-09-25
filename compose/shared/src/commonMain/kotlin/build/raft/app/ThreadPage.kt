@@ -9699,6 +9699,7 @@ private fun SharedThreadRouteContentContent(
             accessResolution = renderSlice.accessResolution,
             canonicalAccessResolved = renderSlice.canonicalAccessResolved,
             initialHomeAccessLookupComplete = renderSlice.initialHomeAccessLookupComplete,
+            lastRefreshResultReason = renderSlice.lastRefreshResultReason,
             replyParentAuthority = renderSlice.replyParentAuthority,
             writeActionsEnabled = renderSlice.writeActionsEnabled,
             channelProfileUpdateStatus = renderSlice.channelProfileUpdateStatus,
@@ -12959,6 +12960,7 @@ private data class ThreadPageContentData(
     val accessResolution: ThreadAccessResolution,
     val canonicalAccessResolved: Boolean,
     val initialHomeAccessLookupComplete: Boolean,
+    val lastRefreshResultReason: String?,
     val replyParentAuthority: ReplyParentAuthorityStatus,
     val writeActionsEnabled: Boolean,
     val channelProfileUpdateStatus: ChannelProfileUpdateStatus,
@@ -13053,6 +13055,7 @@ fun ThreadPageContent(
     accessResolution: ThreadAccessResolution,
     canonicalAccessResolved: Boolean,
     initialHomeAccessLookupComplete: Boolean = false,
+    lastRefreshResultReason: String? = null,
     replyParentAuthority: ReplyParentAuthorityStatus = ReplyParentAuthorityStatus.Resolving,
     writeActionsEnabled: Boolean,
     channelProfileUpdateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
@@ -13143,6 +13146,7 @@ fun ThreadPageContent(
                 accessResolution = accessResolution,
                 canonicalAccessResolved = canonicalAccessResolved,
                 initialHomeAccessLookupComplete = initialHomeAccessLookupComplete,
+                lastRefreshResultReason = lastRefreshResultReason,
                 replyParentAuthority = replyParentAuthority,
                 writeActionsEnabled = writeActionsEnabled,
                 channelProfileUpdateStatus = channelProfileUpdateStatus,
@@ -13362,6 +13366,7 @@ private fun ThreadPageContentContent(
                 "accessResolution=${accessResolution.name} " +
                 "canonicalAccessResolved=$canonicalAccessResolved " +
                 "initialHomeAccessLookupComplete=${data.initialHomeAccessLookupComplete} " +
+                "lastRefreshResult=${data.lastRefreshResultReason ?: "none"} " +
                 "branch=${if (renderEarlyLoadingShell) "early_loading" else "tab_content"}"
         )
     }
