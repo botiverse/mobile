@@ -3257,6 +3257,50 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun emptyChannelFromLaunchPlaceholderShowsNoMessagesNotLoading() = runBlocking {
+        // task #326: a channel that resolves to Content with zero messages (in the
+        // joined home directory) must not keep the route placeholder's "Loading..."
+        // as its empty-state title — otherwise the empty channel shows 「加载中」 forever.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository =
+                    FakeConversationRepository(
+                        threadResult =
+                            DataResult.Content(
+                                threadSnapshot(messages = emptyList(), conversation = conversationSummary())
+                            )
+                    ),
+                channelRepository = FakeChannelRepository { DataResult.Content(joinedHomeSnapshot()) }
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(
+            SharedThreadIntent.Start(
+                basePayload().copy(
+                    status = "loading",
+                    emptyTitle = ThreadRouteLoadingPlaceholderTitle,
+                    emptyDetail = ""
+                )
+            )
+        )
+        withTimeout(1_000) {
+            while (store.state.value.payload.status == "loading") {
+                delay(10)
+            }
+        }
+
+        val resolved = store.state.value.payload
+        assertEquals("empty", resolved.status)
+        assertEquals("No messages yet", resolved.emptyTitle)
+        assertEquals("This conversation has no messages yet.", resolved.emptyDetail)
+        scope.cancel()
+    }
+
+    @Test
     fun emptyReplyThreadStillFailsClosedWithoutParentAccessCandidate() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val route =

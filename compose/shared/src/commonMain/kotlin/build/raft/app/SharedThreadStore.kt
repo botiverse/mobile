@@ -9443,8 +9443,8 @@ private fun KuiklyThreadScreenPayload.asRefreshEmpty(base: KuiklyThreadScreenPay
         canLoadMoreAfter = false,
         olderMessagesStatus = "idle",
         newerMessagesStatus = "idle",
-        emptyTitle = "No messages yet",
-        emptyDetail = "This conversation has no messages yet."
+        emptyTitle = ThreadEmptyConversationTitle,
+        emptyDetail = ThreadEmptyConversationDetail
     )
 
 private fun KuiklyThreadScreenPayload.asLoadedEmptyReplyThreadPayload(): KuiklyThreadScreenPayload =
@@ -9503,6 +9503,33 @@ private fun KuiklyThreadScreenPayload.originDiagnostics(): String =
         "originStatus=$originStatus hasOriginMessage=${originMessage != null} " +
         "hasOriginPreview=${!originPreview.isNullOrBlank()}"
 
+// task #326: the launch placeholder payload seeds emptyTitle with this literal; a resolved
+// (non-loading) merge must not carry it forward into an empty/content frame, or the empty
+// state shows "Loading..." forever.
+internal const val ThreadRouteLoadingPlaceholderTitle = "Loading..."
+internal const val ThreadEmptyConversationTitle = "No messages yet"
+internal const val ThreadEmptyConversationDetail = "This conversation has no messages yet."
+
+internal fun KuiklyThreadScreenPayload.mergedEmptyTitleWith(base: KuiklyThreadScreenPayload): String =
+    if (
+        base.emptyTitle == ThreadRouteLoadingPlaceholderTitle &&
+            status in setOf("empty", "content")
+    ) {
+        emptyTitle
+    } else {
+        base.emptyTitle
+    }
+
+internal fun KuiklyThreadScreenPayload.mergedEmptyDetailWith(base: KuiklyThreadScreenPayload): String =
+    if (
+        base.emptyTitle == ThreadRouteLoadingPlaceholderTitle &&
+            status in setOf("empty", "content")
+    ) {
+        emptyDetail
+    } else {
+        base.emptyDetail
+    }
+
 internal fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
     (if (hasResolvedReplyThreadStreamFrom(base)) {
         copy(
@@ -9521,8 +9548,8 @@ internal fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreen
                 base.knownMarkdownChannelNames.ifEmpty { knownMarkdownChannelNames },
             knownMarkdownDirectMessagePeerNames =
                 base.knownMarkdownDirectMessagePeerNames.ifEmpty { knownMarkdownDirectMessagePeerNames },
-            emptyTitle = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) emptyTitle else base.emptyTitle,
-            emptyDetail = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) emptyDetail else base.emptyDetail
+            emptyTitle = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) emptyTitle else mergedEmptyTitleWith(base),
+            emptyDetail = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) emptyDetail else mergedEmptyDetailWith(base)
         )
     } else {
         copy(
@@ -9544,8 +9571,8 @@ internal fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreen
             knownMarkdownDirectMessagePeerNames =
                 base.knownMarkdownDirectMessagePeerNames.ifEmpty { knownMarkdownDirectMessagePeerNames },
             composer = base.composer.takeUnless { it.isDefaultThreadComposer() } ?: composer,
-            emptyTitle = base.emptyTitle,
-            emptyDetail = base.emptyDetail
+            emptyTitle = mergedEmptyTitleWith(base),
+            emptyDetail = mergedEmptyDetailWith(base)
         )
     }).withReplyParentRouteIdentityFrom(base)
 
@@ -12026,7 +12053,12 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
     return base.copy(
         title = headerContext.title,
         subtitle = headerContext.subtitle,
-        status = if (cachedMessages.isEmpty() && headerContext.originMessage == null && tasks.isEmpty()) "empty" else "content",
+        status =
+            if (cachedMessages.isEmpty() && headerContext.originMessage == null && tasks.isEmpty()) {
+                "empty"
+            } else {
+                "content"
+            },
         sourceThreadId = sourceThreadId,
         surfaceKind = surfaceKind,
         channelKind = channelKind ?: base.channelKind,
@@ -12044,8 +12076,30 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         focusedMessageRequestNonce = base.focusedMessageRequestNonce,
         originStatus = headerContext.originStatus,
         originErrorCode = headerContext.originErrorCode,
-        emptyTitle = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) ThreadReplyEmptyTitle else base.emptyTitle,
-        emptyDetail = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) ThreadReplyEmptyDetail else base.emptyDetail,
+        emptyTitle =
+            if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+                ThreadReplyEmptyTitle
+            } else if (
+                cachedMessages.isEmpty() && headerContext.originMessage == null && tasks.isEmpty() &&
+                    base.emptyTitle == ThreadRouteLoadingPlaceholderTitle
+            ) {
+                // task #326: the route placeholder's "Loading..." must not survive into a
+                // resolved empty channel frame, or the empty state shows "加载中" forever.
+                ThreadEmptyConversationTitle
+            } else {
+                base.emptyTitle
+            },
+        emptyDetail =
+            if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+                ThreadReplyEmptyDetail
+            } else if (
+                cachedMessages.isEmpty() && headerContext.originMessage == null && tasks.isEmpty() &&
+                    base.emptyTitle == ThreadRouteLoadingPlaceholderTitle
+            ) {
+                ThreadEmptyConversationDetail
+            } else {
+                base.emptyDetail
+            },
         composer = resolvedCapabilityComposer,
         showTaskOpenActions = base.showTaskOpenActions && supportsChannelTasks,
         showTaskStatusActions = base.showTaskStatusActions && supportsChannelTasks,
