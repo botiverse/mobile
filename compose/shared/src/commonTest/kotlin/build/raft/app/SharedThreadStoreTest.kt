@@ -126,6 +126,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
@@ -153,6 +154,7 @@ import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlin.test.fail
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
@@ -15498,6 +15500,14 @@ class SharedThreadStoreTest {
                                 )
                         )
                     ),
+                newerResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            body = "gap body",
+                            id = "m12",
+                            seq = 12
+                        )
+                    ),
                 threadReplySummariesResult =
                     DataResult.Content(
                         ThreadReplySummariesSnapshot(
@@ -15551,12 +15561,19 @@ class SharedThreadStoreTest {
 
         store.accept(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 90))
 
-        withTimeout(5_000) {
-            while (api.syncSinceSeqs != listOf(10L)) delay(10)
+        try {
+            withTimeout(5_000) {
+                while (repository.syncNewerRequests.map { it.second } != listOf(10L)) delay(10)
+            }
+        } catch (e: TimeoutCancellationException) {
+            fail(
+                "timed out waiting for syncNewerMessages, " +
+                    "syncs=${repository.syncNewerRequests} logs=$logs"
+            )
         }
         val payload = store.state.value.payload
         assertEquals(listOf("current body", "gap body"), payload.messages.map { it.body })
-        assertEquals(listOf(10L), api.syncSinceSeqs)
+        assertEquals(listOf(10L), repository.syncNewerRequests.map { it.second })
         withTimeout(5_000) {
             while (
                 logs.none { it.startsWith("thread_secondary_backfill") && it.contains("trigger=resume_gap") }
@@ -15578,8 +15595,6 @@ class SharedThreadStoreTest {
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
                 newerBodyText = syncResponse("stale gap body", id = "m11", seq = 11)
             )
-        api.syncStarted = CompletableDeferred()
-        api.releaseSync = CompletableDeferred()
         val repository =
             FakeConversationRepository(
                 threadResult =
@@ -15607,6 +15622,8 @@ class SharedThreadStoreTest {
                         )
                     )
             )
+        repository.syncNewerStarted = CompletableDeferred()
+        repository.releaseSyncNewer = CompletableDeferred()
         val logs = mutableListOf<String>()
         val dataSource =
             testSharedThreadDataSource(
@@ -15621,10 +15638,10 @@ class SharedThreadStoreTest {
         val gapJob = launch {
             store.accept(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 90))
         }
-        api.syncStarted?.await()
+        repository.syncNewerStarted?.await()
         api.bodyText = messagesResponse("foreground body", id = "m20", seq = 20, historyLimited = false)
         store.accept(SharedThreadIntent.Refresh)
-        api.releaseSync?.complete(Unit)
+        repository.releaseSyncNewer?.complete(Unit)
         withTimeout(10_000) { gapJob.join() }
         delay(1L)
 
@@ -16214,6 +16231,8 @@ class SharedThreadStoreTest {
     ) : ConversationRepository {
         var getThreadStarted: CompletableDeferred<Unit>? = null
         var releaseGetThread: CompletableDeferred<Unit>? = null
+        var syncNewerStarted: CompletableDeferred<Unit>? = null
+        var releaseSyncNewer: CompletableDeferred<Unit>? = null
         var threadReplySummariesStarted: CompletableDeferred<Unit>? = null
         var releaseThreadReplySummaries: CompletableDeferred<Unit>? = null
         var ignoreThreadReplySummariesCancellation: Boolean = false
@@ -16368,6 +16387,8 @@ class SharedThreadStoreTest {
         ): DataResult<ThreadSnapshot> {
             syncNewerRequests += threadId to sinceSeq
             syncNewerLimits += limit
+            syncNewerStarted?.complete(Unit)
+            releaseSyncNewer?.await()
             return newerResult
         }
 
