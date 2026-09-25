@@ -4597,6 +4597,64 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun pinDuringConcurrentSidebarOrderFetchDiscardsTheLateStaleResult() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        var loadCalls = 0
+        // First call = the concurrent first-paint fetch; it stays blocked past the
+        // 300ms cap so home publishes channels alone. Second call = the Pin's own
+        // ensureSidebarOrderLoaded fetch while the deferred is still in flight.
+        val firstPaintGate = CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>()
+        val pinBaseGate = CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>()
+        val pinBase = SettingsServerSidebarOrderSnapshot(pinnedChannelIds = emptyList())
+        val pinnedSnapshot = pinBase.copy(pinnedChannelIds = listOf("channel-1"), pinnedOrder = listOf("channel-1"))
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = source(api = RecordingHomeApi()),
+                scope = scope,
+                loadSidebarOrder = { _ ->
+                    loadCalls += 1
+                    if (loadCalls == 1) firstPaintGate.await() else pinBaseGate.await()
+                },
+                updateSidebarOrder = { _ -> DataResult.Content(pinnedSnapshot) }
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        // The 300ms first-paint cap elapses: home publishes channels alone.
+        val early = store.state.value.content as SharedHomeContentState.Content
+        assertNull(early.snapshot.sidebarOrder)
+
+        // The Pin lands while the deferred is still in flight: the optimistic
+        // apply bumps sidebarPinChangeVersion and writes the pin under the mutex.
+        pinBaseGate.complete(DataResult.Content(pinBase))
+        store.accept(SharedHomeIntent.TogglePinned("channel-1"))
+        awaitCondition {
+            (store.state.value.content as? SharedHomeContentState.Content)
+                ?.snapshot?.sidebarOrder?.pinnedChannelIds == listOf("channel-1")
+        }
+
+        // The late-arriving first-paint result does NOT contain the pin (it was
+        // fetched before the mutation). It must be dropped inside sidebarOrderMutex
+        // because sidebarPinChangeVersion changed — not clobber the pin.
+        firstPaintGate.complete(DataResult.Content(SettingsServerSidebarOrderSnapshot(pinnedChannelIds = emptyList())))
+        awaitCondition { loadCalls >= 2 }
+        delay(50) // let the late-merge coroutine run inside the mutex
+        val after =
+            (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(
+            listOf("channel-1"),
+            after?.pinnedChannelIds,
+            "a pin dispatched while the deferred was in flight must survive the late stale merge"
+        )
+        assertEquals(
+            listOf("channel-1"),
+            after?.pinnedOrder,
+            "the pin must not be clobbered by the pre-mutation sidebar-order result"
+        )
+        scope.cancel()
+    }
+
+    @Test
     fun persistedHomeSnapshotKeepsSidebarOrderForColdStartPaint() {
         // task #322: artin's "下次启动一次出齐" requirement — the first-paint snapshot that
         // carries a concurrently-fetched sidebarOrder must keep it through the durable
