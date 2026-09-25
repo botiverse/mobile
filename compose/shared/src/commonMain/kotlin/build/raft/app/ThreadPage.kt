@@ -5922,7 +5922,7 @@ private fun SharedThreadRouteContentContent(
         }
     }
 
-    LaunchedEffect(active, threadVisibleResumeGate) {
+    LaunchedEffect(active, threadVisibleResumeGate, threadVisibleResumeGate.pendingVisibleResume) {
         if (active) {
             threadVisibleResumeGate.onRouteBecameVisible()
                 ?.let(::applyThreadVisibleResumePlan)
@@ -21071,7 +21071,11 @@ internal fun threadVisibleResumePlan(routeActive: Boolean): ThreadVisibleResumeP
     }
 
 internal class ThreadVisibleResumeGate {
-    private var pendingVisibleResume = false
+    // Snapshot state: a pending resume must itself re-trigger the drain effect,
+    // because the lifecycle listener can latch it after `active` already
+    // became true (the listener reads a stale rememberUpdatedState snapshot).
+    var pendingVisibleResume by mutableStateOf(false)
+        private set
 
     fun onLifecycleVisibleResume(routeActive: Boolean): ThreadVisibleResumePlan? {
         if (!routeActive) {
