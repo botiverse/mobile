@@ -38,7 +38,7 @@ key must never leave the Hands service boundary.
 Use the same release input shape as Android:
 
 ```text
-versionCode = x * 1_000_000 + y * 10_000 + z * 100 + build
+versionCode = x * 10_000_000 + y * 100_000 + z * 1_000 + build
 versionName = x.y.z[-suffix]
 ```
 
