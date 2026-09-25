@@ -5541,6 +5541,8 @@ private fun SlockAppShellReadyContent(
                             remember(appShellServerMembersStore, readyServerId) {
                                 slockMemberAvatarResolver(appShellServerMembersStore, readyServerId)
                             }
+                        val liveDmsTimeContext =
+                            hostThreadTimeContextProvider.current?.withTimeFormat(sessionTimeFormat) ?: threadTimeContext
                         SharedDmsScreen(
                             active = active,
                             directMessages = projectedDirectMessages,
@@ -5553,7 +5555,7 @@ private fun SlockAppShellReadyContent(
                             currentServerId = readyServerId,
                             agentStatusResolver = createChannelAgentStatusResolver,
                             memberAvatarResolver = dmsMemberAvatarResolver,
-                            timeContext = threadTimeContext,
+                            timeContext = liveDmsTimeContext,
                             refreshing = sharedHomeHeaderRefreshing(homeState),
                             onRefresh = {
                                 homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)

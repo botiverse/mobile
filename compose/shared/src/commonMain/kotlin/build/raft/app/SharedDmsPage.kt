@@ -3,11 +3,17 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import build.raft.app.data.ProcessSlockDatetimeFoundationOwner
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
+import build.raft.app.model.MillisPerDay
+import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.SlockTimeContext
+import build.raft.app.model.SlockTimeFormat24Hour
 import build.raft.app.model.ThreadId
+import build.raft.app.model.floorDiv
 import build.raft.app.model.formatSlockTimestampLabel
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.resources.MR
@@ -85,6 +91,8 @@ internal fun SharedDmsScreen(
         }
     }
 
+    val inheritedTimeContext = LocalSlockTimeContextProvider.current?.current
+    val effectiveTimeContext = resolveEffectiveDmsTimeContext(timeContext, inheritedTimeContext)
     val effectiveUnreadCount = totalUnreadCount ?: remember(directMessages) { totalWeChatDmUnreadCount(directMessages) }
 
     Column(
@@ -128,7 +136,7 @@ internal fun SharedDmsScreen(
                         currentServerId = currentServerId,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
-                        timeContext = timeContext,
+                        timeContext = effectiveTimeContext,
                     )
                     if (index < sortedItems.lastIndex) {
                         Row(
@@ -200,7 +208,7 @@ internal fun SlockWeChatDirectMessageRow(
     ) ?: item.avatarWireValue
 
     val inheritedTimeContext = LocalSlockTimeContextProvider.current?.current
-    val effectiveTimeContext = timeContext ?: inheritedTimeContext
+    val effectiveTimeContext = resolveEffectiveDmsTimeContext(timeContext, inheritedTimeContext)
     val timestampText = formatSlockTimestampLabel(item.lastMessageAt ?: item.createdAt, effectiveTimeContext)
     val previewText = formatWeChatConversationPreview(item)
     val draftLabel = stringResource(MR.strings.thread_inline_draft)
@@ -349,6 +357,48 @@ internal fun SlockWeChatDirectMessageRow(
             }
         }
     }
+}
+
+/**
+ * Resolves a fully-anchored [SlockTimeContext] for Direct Message rows.
+ *
+ * Format requirement (task #402): [formatSlockTimestampLabel] requires a non-null [SlockTimeContext.todayEpochDay]
+ * or [SlockTimeContext.nowEpochMillis] to resolve relative and calendar day boundaries; without either,
+ * it falls back to the raw unformatted ISO timestamp string (e.g. "2026-09-25T05:07:23.669Z").
+ *
+ * Resolution precedence:
+ * 1. If [explicit] already carries an anchored date/time reference (e.g. unit tests, fixed visual fixtures),
+ *    trust it directly.
+ * 2. If [inherited] from [LocalSlockTimeContextProvider] carries an anchored reference, use its live
+ *    [todayEpochDay] and [nowEpochMillis], merging any explicit [localOffsetMinutes] or [timeFormat] capabilities.
+ * 3. Fallback: anchor against the current system wall clock via [defaultNowMillis] and calculate [todayEpochDay]
+ *    from local offset so DM timestamps never display raw ISO strings.
+ */
+internal fun resolveEffectiveDmsTimeContext(
+    explicit: SlockTimeContext?,
+    inherited: SlockTimeContext?
+): SlockTimeContext {
+    if (explicit?.todayEpochDay != null || explicit?.nowEpochMillis != null) {
+        return explicit
+    }
+    if (inherited?.todayEpochDay != null || inherited?.nowEpochMillis != null) {
+        return inherited.copy(
+            localOffsetMinutes = explicit?.localOffsetMinutes ?: inherited.localOffsetMinutes,
+            timeFormat = explicit?.timeFormat ?: inherited.timeFormat
+        )
+    }
+    val base = explicit ?: inherited
+    val now = defaultNowMillis()
+    val offset = base?.localOffsetMinutes
+        ?: ProcessSlockDatetimeFoundationOwner.localOffsetMinutesAt(now, legacyOffsetMinutes = 0)
+    val timeFormat = base?.timeFormat ?: SlockTimeFormat24Hour
+    val today = floorDiv(now + offset.toLong() * MillisPerMinute, MillisPerDay)
+    return SlockTimeContext(
+        localOffsetMinutes = offset,
+        todayEpochDay = today,
+        nowEpochMillis = now,
+        timeFormat = timeFormat
+    )
 }
 
 /**
