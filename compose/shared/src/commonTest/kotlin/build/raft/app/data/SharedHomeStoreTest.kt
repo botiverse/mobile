@@ -4566,11 +4566,7 @@ class SharedHomeStoreTest {
 
     @Test
     fun sidebarOrderFetchLateStillMergesFromSameRequestWithoutRefetch() = runBlocking {
-        // Real background dispatcher: the gated deferred must be completable by the
-        // test body while the fetch is genuinely in flight. On Unconfined the
-        // fetch's scope.async runs eagerly on the runBlocking test thread and its
-        // .await() suspends the test body, deadlocking it.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         var loadCalls = 0
         val gate = CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>()
         val store =
@@ -4605,12 +4601,7 @@ class SharedHomeStoreTest {
 
     @Test
     fun pinDuringConcurrentSidebarOrderFetchDiscardsTheLateStaleResult() = runBlocking {
-        // Real background dispatcher: the concurrent first-paint fetch's scope.async
-        // must run off the test thread so the gated deferred (firstPaintGate) can be
-        // completed by the test body while the fetch is genuinely in flight. On
-        // Unconfined the async runs eagerly on the test thread and its .await()
-        // would suspend the whole runBlocking body, deadlocking the test.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         var loadCalls = 0
         // First call = the concurrent first-paint fetch; it stays blocked past the
         // 300ms cap so home publishes channels alone. Later calls (the Pin's own
