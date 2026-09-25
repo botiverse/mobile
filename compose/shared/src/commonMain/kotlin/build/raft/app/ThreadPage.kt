@@ -23,6 +23,7 @@ import build.raft.app.base.putIfAbsent
 import build.raft.app.base.bridgeModule
 import build.raft.app.base.reduceAttachmentDownloadProgress
 import build.raft.app.data.PlatformFile
+import build.raft.app.data.ThreadPendingSendInFlightRegistry
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
 import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.realtime.RealtimeEventMapper
@@ -191,6 +192,7 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.formatSlockTimestampEpochMillis
 import build.raft.app.model.formatSlockTimestampLabel
+import build.raft.app.network.SlockRequestTimeoutException
 import build.raft.app.network.sync.ThreadRepliesReadModel
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
@@ -370,6 +372,12 @@ private const val ThreadComposerMentionActionRemoveDelayMs = 750L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 private const val ThreadSendSilentRetryDelayMs = 900L
 private const val ThreadSendMaxSilentRetries = 2
+
+// task #1134: a send request whose socket stays open without a response beyond this bound is
+// treated as a timeout so the row converges to failed + retry instead of hanging in "发送中"
+// forever. Client-side cancellation may still leave a committed server request; the journaled
+// randomId makes the follow-up retry idempotent server-side.
+private const val ThreadSendRequestTimeoutMs = 30_000L
 private const val ThreadLocalizedFeedbackPlaceholder = "__RAFT_VALUE__"
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 internal const val ThreadRelativeTimestampSlotWidthDp = 112f
@@ -5927,6 +5935,9 @@ private fun SharedThreadRouteContentContent(
                         event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
                         event == SlockRealtimeNotifyContract.LifecycleVisibleShow
                     ) {
+                        // Foreground is a drainer trigger: re-evaluate journaled sends whose
+                        // network may have returned while the app was backgrounded.
+                        threadViewModel.triggerPendingSendDrain("foreground_$event")
                         threadVisibleResumeGate
                             .onLifecycleVisibleResume(latestRouteActive)
                             ?.let {
@@ -7938,6 +7949,10 @@ private fun SharedThreadRouteContentContent(
                     "bodyLength" to context.body.length.toString()
                 )
         )
+        // Registers this send's randomId with the process-wide in-flight fence BEFORE the job
+        // starts, so the pending-send drainer never treats a journaled row as orphaned while an
+        // attempt owns it. invokeOnCompletion covers every return/cancellation path.
+        ThreadPendingSendInFlightRegistry.begin(context.randomId)
         threadSendScope.launch {
             fun sendAuthorityStillCurrent(): Boolean =
                 dataSource.isCurrentReplyCacheProvenanceForLocalSend(sendProvenance) &&
@@ -7995,13 +8010,18 @@ private fun SharedThreadRouteContentContent(
                 val attempt = sendAttemptState.attempt
                 val sendResult =
                     runCatchingPreservingCancellation {
-                        dataSource.sendMessage(
-                            channelId = context.channelId,
-                            body = context.body,
-                            asTask = context.asTask,
-                            attachmentIds = context.attachmentIds,
-                            randomId = sendAttemptState.randomId
-                        )
+                        withTimeoutOrNull(ThreadSendRequestTimeoutMs) {
+                            dataSource.sendMessage(
+                                channelId = context.channelId,
+                                body = context.body,
+                                asTask = context.asTask,
+                                attachmentIds = context.attachmentIds,
+                                randomId = sendAttemptState.randomId
+                            )
+                        }
+                            ?: throw SlockRequestTimeoutException(
+                                "send request exceeded ${ThreadSendRequestTimeoutMs}ms"
+                            )
                     }
                 val sendException = sendResult.exceptionOrNull()
                 if (sendException != null) {
@@ -8173,7 +8193,7 @@ private fun SharedThreadRouteContentContent(
                 }
                 return@launch
             }
-        }
+        }.invokeOnCompletion { ThreadPendingSendInFlightRegistry.end(context.randomId) }
     }
     fun handleAttachmentUploadFailure(
         errorCode: String,
