@@ -95,7 +95,21 @@ internal object AndroidHistoricalProcessExitDiagnostics {
                     exits = snapshots,
                     packageInstalledAtMillis = packageInstalledAtMillis,
                     lastReportedAtMillis = lastReportedAtMillis
-                ) ?: return
+                )
+            if (latestMetadata == null) {
+                val newest = snapshots.maxByOrNull { it.timestampMillis }
+                SlockAndroidLocalDiagnostics.recordLog(
+                    level = "info",
+                    tag = Tag,
+                    message =
+                        "previous_process_exit_not_reported " +
+                            "records=${snapshots.size} " +
+                            "newestTimestampMillis=${newest?.timestampMillis ?: -1L} " +
+                            "newestReason=${newest?.let { historicalProcessExitReasonLabel(it.reasonCode) } ?: "none"} " +
+                            "cutoff=${maxOf(packageInstalledAtMillis, lastReportedAtMillis)}"
+                )
+                return
+            }
             val latestExit =
                 historicalExits.first { exit ->
                     exit.timestamp == latestMetadata.timestampMillis &&
