@@ -2304,7 +2304,7 @@ private fun SlockFilePreviewStandalonePageContent() {
      * Returns a `file://` URL for the cached file, or null when there is no usable
      * private copy (or the payload is not a thread attachment).
      */
-    private suspend fun slockFilePreviewPrivateCachedOpenUrl(
+    suspend fun slockFilePreviewPrivateCachedOpenUrl(
         payload: SlockFilePreviewPayload,
         owner: AttachmentOwnerLease
     ): String? {
