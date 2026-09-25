@@ -2094,7 +2094,6 @@ internal class SharedHomeStore(
                     request = request,
                     snapshot = freshSnapshot
                 )
-                loadAndMergeSidebarOrder()
             }
         }
     }
@@ -2396,27 +2395,6 @@ internal class SharedHomeStore(
             serverId = normalizedServerId,
             canManageMachines = server?.toServerSummary()?.permissions?.canManageMachines == true
         )
-    }
-
-    /**
-     * #211: load the current server's sidebar-order snapshot and merge it
-     * into the active `HomeSnapshot`. Safe to call from any load path; if
-     * the active content is not `Content` (e.g. Loading / Empty / Error),
-     * the result is dropped because there is no snapshot to attach it to.
-     * Held under [sidebarOrderMutex] so it never races with a Pin/Unpin
-     * dispatched before the initial load resolves.
-     */
-    private suspend fun loadAndMergeSidebarOrder() {
-        sidebarOrderMutex.withLock {
-            val current = _state.value.content as? SharedHomeContentState.Content ?: return@withLock
-            when (val result = loadSidebarOrder(current.snapshot.server.id)) {
-                is DataResult.Content ->
-                    applySidebarOrderLocally(serverId = current.snapshot.server.id, next = result.data)
-                is DataResult.Empty,
-                is DataResult.Error,
-                is DataResult.NoPermission -> Unit
-            }
-        }
     }
 
     /**
