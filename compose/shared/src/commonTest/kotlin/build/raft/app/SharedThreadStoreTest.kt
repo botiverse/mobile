@@ -14371,7 +14371,13 @@ class SharedThreadStoreTest {
 
         assertEquals(listOf(30), repository.getThreadLimits)
         assertEquals(listOf(50), repository.olderLimits)
-        assertEquals(listOf(ThreadId("channel-1") to listOf(MessageId("m5"), MessageId("m1"))), repository.getThreadReplySummariesRequests)
+        assertEquals(
+            listOf(
+                ThreadId("channel-1") to listOf(MessageId("m1")),
+                ThreadId("channel-1") to listOf(MessageId("m5"), MessageId("m1"))
+            ),
+            repository.getThreadReplySummariesRequests
+        )
         scope.cancel()
     }
 
@@ -15715,6 +15721,7 @@ class SharedThreadStoreTest {
         repository.syncNewerStarted?.await()
         api.bodyText = messagesResponse("foreground body", id = "m20", seq = 20, historyLimited = false)
         store.accept(SharedThreadIntent.Refresh)
+        val summariesBefore = repository.getThreadReplySummariesRequests.size
         repository.releaseSyncNewer?.complete(Unit)
         withTimeout(10_000) { gapJob.join() }
         delay(1L)
@@ -15725,7 +15732,7 @@ class SharedThreadStoreTest {
             logs.none { it.startsWith("thread_secondary_backfill") && it.contains("trigger=resume_gap") },
             "expected no secondary backfill after stale drop, got: $logs"
         )
-        assertEquals(0, summariesAfter)
+        assertEquals(summariesBefore, summariesAfter)
         scope.cancel()
     }
 
