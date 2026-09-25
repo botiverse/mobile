@@ -2914,6 +2914,7 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportDestination;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportMimeType;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportPermissionStatus;
+@property(nonatomic, weak, nullable) UIViewController *slock_sharePresenterController;
 @property(nonatomic, copy, nullable) KuiklyRenderCallback slock_attachmentPickerCallback;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentPickerChannelId;
 @property(nonatomic) BOOL slock_attachmentPickerCompressImages;
@@ -3873,7 +3874,9 @@ static NSString *SlockAttachmentStoreRoot() {
     NSString *base = urls.firstObject ?: NSTemporaryDirectory();
     NSString *root = [[base stringByAppendingPathComponent:@"Raft"] stringByAppendingPathComponent:@"Attachments"];
     // Attachment caches must not be synced to iCloud backup (they're re-downloadable).
-    [NSURL fileURLWithPath:root].setResourceValue:@YES forKey:NSURLIsExcludedFromBackupKey error:nil];
+    [[NSURL fileURLWithPath:root isDirectory:YES] setResourceValue:@YES
+                                                          forKey:NSURLIsExcludedFromBackupKey
+                                                           error:nil];
     return root;
 }
 
@@ -4014,7 +4017,7 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
     NSString *cachedDir = SlockAttachmentCacheDirectory(
         SlockBridgeString(params[@"ownerKey"] ?: params[@"owner"]),
         SlockBridgeString(params[@"attachmentId"]));
-    NSDictionary *status = cachedPath
+    NSDictionary *status = cachedDir
         ? SlockAttachmentCacheStatusDict(cachedDir)
         : @{ @"status" : @"missing" };
     callback(status);
@@ -4026,7 +4029,7 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
     NSString *cachedDir = SlockAttachmentCacheDirectory(
         SlockBridgeString(params[@"ownerKey"] ?: params[@"owner"]),
         SlockBridgeString(params[@"attachmentId"]));
-    BOOL removed = cachedPath &&
+    BOOL removed = cachedDir &&
         [NSFileManager.defaultManager removeItemAtPath:cachedDir error:nil];
     if (callback) {
         callback(@{ @"status" : removed ? @"ok" : @"missing" });
@@ -4924,22 +4927,6 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     }
     if (callback) {
         callback(result);
-    }
-}
-
-- (void)attachmentCacheStatus:(NSDictionary *)args {
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
-    if (callback) {
-        callback([self slock_unsupportedResultWithCode:@"attachment_cache_unavailable"
-                                               message:@"Attachment cache is out of scope for iOS P0 host bridge"]);
-    }
-}
-
-- (void)deleteAttachmentCache:(NSDictionary *)args {
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
-    if (callback) {
-        callback([self slock_unsupportedResultWithCode:@"attachment_cache_unavailable"
-                                               message:@"Attachment cache is out of scope for iOS P0 host bridge"]);
     }
 }
 
