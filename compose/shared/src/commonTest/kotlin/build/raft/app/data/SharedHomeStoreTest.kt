@@ -4619,7 +4619,7 @@ class SharedHomeStoreTest {
                 scope = scope,
                 loadSidebarOrder = { _ ->
                     loadCalls += 1
-                    if (loadCalls == 1) firstPaintGate.await() else pinBase
+                    if (loadCalls == 1) firstPaintGate.await() else DataResult.Content(pinBase)
                 },
                 updateSidebarOrder = { _ -> DataResult.Content(pinnedSnapshot) }
             )
