@@ -3,8 +3,10 @@
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tempfile
+import textwrap
 import unittest
 
 
@@ -85,7 +87,91 @@ class UptermWorkflowTest(unittest.TestCase):
         self.assertNotIn('--allow-local-tcp-forwarding', source)
         self.assertIn('uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6', source)
         self.assertIn('          retention-days: 1\n', source)
-        self.assertIn('          rm -rf -- "$UPTERM_ROOT"\n', source)
+        self.assertEqual(source.count('XDG_RUNTIME_DIR="$UPTERM_RUNTIME"'), 3)
+        self.assertIn('              XDG_RUNTIME_DIR="$UPTERM_RUNTIME" \\\n', source)
+        self.assertNotIn('session stop "$UPTERM_NAME" || true', source)
+        self.assertIn('          if [ "$stop_status" -ne 0 ]; then\n', source)
+        self.assertIn('          rm -rf -- "$UPTERM_ROOT" "$UPTERM_RUNTIME"\n', source)
+
+    def cleanup_script(self):
+        tail = self.workflow.split(
+            '      - name: Stop the session and remove ephemeral material\n', 1
+        )[1]
+        script = re.search(r'        run: \|\n((?:          .*\n)+)', tail).group(1)
+        return textwrap.dedent(script)
+
+    def test_stop_failure_is_red_and_preserves_both_diagnostic_roots(self):
+        run_id = f'test-{os.getpid()}'
+        with tempfile.TemporaryDirectory() as runner_temp:
+            directory_name = f'task15-upterm-{run_id}'
+            root = Path(runner_temp) / directory_name
+            runtime = Path('/tmp') / f'task15-upterm-runtime-{run_id}'
+            root.mkdir()
+            runtime.mkdir()
+            fake = root / 'upterm'
+            receipt = Path(runner_temp) / 'runtime-receipt'
+            fake.write_text(
+                '#!/bin/sh\nprintf "%s\\n" "$XDG_RUNTIME_DIR" > "$RECEIPT"\nexit 42\n'
+            )
+            fake.chmod(0o755)
+            try:
+                result = subprocess.run(
+                    ['bash', '-c', self.cleanup_script()],
+                    env=dict(
+                        os.environ,
+                        RUNNER_TEMP=runner_temp,
+                        UPTERM_DIR_NAME=directory_name,
+                        UPTERM_NAME=f'task15-xcode-{run_id}',
+                        UPTERM_RUNTIME=str(runtime),
+                        GITHUB_RUN_ID=run_id,
+                        XDG_RUNTIME_DIR='/host/inherited-runtime',
+                        RECEIPT=str(receipt),
+                    ),
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(result.returncode, 42, result.stderr)
+                self.assertTrue(root.exists())
+                self.assertTrue(runtime.exists())
+                self.assertIn('preserving diagnostics', result.stdout)
+                self.assertEqual(receipt.read_text().strip(), str(runtime))
+            finally:
+                shutil.rmtree(root, ignore_errors=True)
+                shutil.rmtree(runtime, ignore_errors=True)
+
+    def test_successful_stop_removes_both_diagnostic_roots(self):
+        run_id = f'test-success-{os.getpid()}'
+        with tempfile.TemporaryDirectory() as runner_temp:
+            directory_name = f'task15-upterm-{run_id}'
+            root = Path(runner_temp) / directory_name
+            runtime = Path('/tmp') / f'task15-upterm-runtime-{run_id}'
+            root.mkdir()
+            runtime.mkdir()
+            fake = root / 'upterm'
+            receipt = Path(runner_temp) / 'runtime-receipt'
+            fake.write_text(
+                '#!/bin/sh\nprintf "%s\\n" "$XDG_RUNTIME_DIR" > "$RECEIPT"\nexit 0\n'
+            )
+            fake.chmod(0o755)
+            result = subprocess.run(
+                ['bash', '-c', self.cleanup_script()],
+                env=dict(
+                    os.environ,
+                    RUNNER_TEMP=runner_temp,
+                    UPTERM_DIR_NAME=directory_name,
+                    UPTERM_NAME=f'task15-xcode-{run_id}',
+                    UPTERM_RUNTIME=str(runtime),
+                    GITHUB_RUN_ID=run_id,
+                    XDG_RUNTIME_DIR='/host/inherited-runtime',
+                    RECEIPT=str(receipt),
+                ),
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(receipt.read_text().strip(), str(runtime))
+            self.assertFalse(root.exists())
+            self.assertFalse(runtime.exists())
 
     def test_removing_any_dispatch_guard_is_rejected(self):
         mutations = [
@@ -95,6 +181,7 @@ class UptermWorkflowTest(unittest.TestCase):
             ("inputs.confirm == 'task15-readonly-upterm'", 'true'),
             ('            --read-only \\\n', ''),
             ('            --no-sftp \\\n', ''),
+            ('          export XDG_RUNTIME_DIR="$UPTERM_RUNTIME"\n', ''),
         ]
         for old, new in mutations:
             with self.subTest(old=old):
@@ -102,6 +189,10 @@ class UptermWorkflowTest(unittest.TestCase):
                     mutated = self.workflow.replace(old, new, 1)
                     if '            --' in old:
                         self.assert_session_source(mutated)
+                    elif 'XDG_RUNTIME_DIR' in old:
+                        self.assertEqual(
+                            mutated.count('XDG_RUNTIME_DIR="$UPTERM_RUNTIME"'), 3
+                        )
                     else:
                         self.assert_boundary(mutated)
 

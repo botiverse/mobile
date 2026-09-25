@@ -60,6 +60,7 @@ jobs:
     env:
       UPTERM_DIR_NAME: task15-upterm-${{ github.run_id }}
       UPTERM_NAME: task15-xcode-${{ github.run_id }}
+      UPTERM_RUNTIME: /tmp/task15-upterm-runtime-${{ github.run_id }}
     steps:
       - name: Install a checksum-pinned ephemeral Upterm binary
         shell: bash
@@ -72,7 +73,12 @@ jobs:
             "$RUNNER_TEMP"/"$UPTERM_DIR_NAME") ;;
             *) echo '::error::Unexpected Upterm root' >&2; exit 1 ;;
           esac
-          mkdir -p "$UPTERM_ROOT/home" "$UPTERM_ROOT/state"
+          case "$UPTERM_RUNTIME" in
+            /tmp/task15-upterm-runtime-"$GITHUB_RUN_ID") ;;
+            *) echo '::error::Unexpected Upterm runtime root' >&2; exit 1 ;;
+          esac
+          mkdir -p "$UPTERM_ROOT/home" "$UPTERM_ROOT/state" "$UPTERM_RUNTIME"
+          chmod 700 "$UPTERM_RUNTIME"
           curl --proto '=https' --tlsv1.2 -fsSL \
             -o "$UPTERM_ROOT/upterm.tar.gz" \
             https://github.com/owenthereal/upterm/releases/download/v0.31.0/upterm_darwin_arm64.tar.gz
@@ -124,6 +130,7 @@ jobs:
           export HOME="$UPTERM_ROOT/home"
           export XDG_CONFIG_HOME="$UPTERM_ROOT/home/.config"
           export XDG_STATE_HOME="$UPTERM_ROOT/state"
+          export XDG_RUNTIME_DIR="$UPTERM_RUNTIME"
           "$UPTERM_ROOT/upterm" host \
             --detach \
             --accept \
@@ -155,6 +162,7 @@ jobs:
           export HOME="$UPTERM_ROOT/home"
           export XDG_CONFIG_HOME="$UPTERM_ROOT/home/.config"
           export XDG_STATE_HOME="$UPTERM_ROOT/state"
+          export XDG_RUNTIME_DIR="$UPTERM_RUNTIME"
           "$UPTERM_ROOT/upterm" session wait "$UPTERM_NAME"
 
       - name: Stop the session and remove ephemeral material
@@ -168,10 +176,23 @@ jobs:
             "$RUNNER_TEMP"/"$UPTERM_DIR_NAME") ;;
             *) echo '::error::Unexpected Upterm root' >&2; exit 1 ;;
           esac
+          case "$UPTERM_RUNTIME" in
+            /tmp/task15-upterm-runtime-"$GITHUB_RUN_ID") ;;
+            *) echo '::error::Unexpected Upterm runtime root' >&2; exit 1 ;;
+          esac
+          stop_status=0
           if [ -x "$UPTERM_ROOT/upterm" ]; then
             HOME="$UPTERM_ROOT/home" \
               XDG_CONFIG_HOME="$UPTERM_ROOT/home/.config" \
               XDG_STATE_HOME="$UPTERM_ROOT/state" \
-              "$UPTERM_ROOT/upterm" session stop "$UPTERM_NAME" || true
+              XDG_RUNTIME_DIR="$UPTERM_RUNTIME" \
+              "$UPTERM_ROOT/upterm" session stop "$UPTERM_NAME"
+            stop_status=$?
           fi
-          rm -rf -- "$UPTERM_ROOT"
+          if [ "$stop_status" -ne 0 ]; then
+            echo "::error::Upterm stop failed with status $stop_status; preserving diagnostics"
+            echo "root=$UPTERM_ROOT"
+            echo "runtime=$UPTERM_RUNTIME"
+            exit "$stop_status"
+          fi
+          rm -rf -- "$UPTERM_ROOT" "$UPTERM_RUNTIME"
