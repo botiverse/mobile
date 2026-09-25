@@ -2295,6 +2295,32 @@ private fun SlockFilePreviewStandalonePageContent() {
             ) as? DataResult.Content
         )?.data
     }
+
+    /**
+     * task #319: a private staging copy may already exist for an attachment the user
+     * already opened/downloaded. Probe the cache before resolving a fresh signed URL —
+     * on a hit the caller can open the local file directly and skip the
+     * `attachments/{id}/url` round-trip (and the no-op download flow it used to spin up).
+     * Returns a `file://` URL for the cached file, or null when there is no usable
+     * private copy (or the payload is not a thread attachment).
+     */
+    suspend fun slockFilePreviewPrivateCachedOpenUrl(
+        payload: SlockFilePreviewPayload,
+        owner: AttachmentOwnerLease
+    ): String? {
+        if (payload.source != SlockFilePreviewSourceThreadAttachment) return null
+        val status =
+            bridge.attachmentCacheStatus(
+                attachmentId = payload.attachmentCacheId(),
+                fileName = payload.attachmentCacheFileName(),
+                owner = owner,
+                mimeType = payload.externalMimeType
+            ) ?: return null
+        if (!status.optBoolean("privateCached", false)) return null
+        val path = status.optString("privatePath").takeIf { it.isNotBlank() } ?: return null
+        return "file://$path"
+    }
+
     suspend fun openPayloadExternally(
         currentPayload: SlockFilePreviewPayload,
         policy: SlockFilePreviewExternalOpenPolicy,
@@ -2315,6 +2341,15 @@ private fun SlockFilePreviewStandalonePageContent() {
                         // Native code will fail closed before private materialization if readback misses.
                         currentPayload.externalUrl.orEmpty()
                     } else if (currentPayload.source == SlockFilePreviewSourceThreadAttachment) {
+                        // task #319: a private staging copy may already exist for an
+                        // attachment the user already opened/downloaded. Probe the cache
+                        // before resolving a fresh signed URL — on a hit we can open the
+                        // local file directly and skip the attachments/{id}/url round-trip
+                        // (and the no-op download flow it used to spin up).
+                        slockFilePreviewPrivateCachedOpenUrl(
+                            payload = currentPayload,
+                            owner = operation.owner
+                        ) ?:
                         // A URL hydrated for rendering is not durable action authority. Resolve a
                         // fresh attachment URL inside the authenticated pre/post-operation fence.
                         resolveRemoteExternalUrl(currentPayload)
