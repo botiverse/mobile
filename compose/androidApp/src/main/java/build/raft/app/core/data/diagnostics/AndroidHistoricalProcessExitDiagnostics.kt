@@ -4,6 +4,7 @@ import android.app.ActivityManager
 import android.app.ApplicationExitInfo
 import android.content.Context
 import android.os.Build
+import java.io.File
 
 internal data class HistoricalProcessExitSnapshot(
     val timestampMillis: Long,
@@ -58,6 +59,7 @@ internal fun historicalProcessExitReasonLabel(reasonCode: Int): String =
 
 internal object AndroidHistoricalProcessExitDiagnostics {
     private const val Tag = "SlockAndroidProcessExit"
+    private const val ProcessExitTraceMaxBytes = 512 * 1024
     private const val PreferencesName = "raft-process-exit-diagnostics"
     private const val LastReportedTimestampKey = "last-reported-timestamp-millis"
     private const val MaxHistoricalExits = 8
@@ -109,6 +111,9 @@ internal object AndroidHistoricalProcessExitDiagnostics {
                             latestExit.traceInputStream?.use { true } ?: false
                         }.getOrDefault(false)
                 )
+            runCatching {
+                persistLatestTrace(appContext, latestExit)
+            }
             preferences.edit().putLong(LastReportedTimestampKey, latest.timestampMillis).apply()
             SlockAndroidLocalDiagnostics.recordLog(
                 level = "warn",
@@ -122,5 +127,38 @@ internal object AndroidHistoricalProcessExitDiagnostics {
                 message = "previous_process_exit_read_failed class=${error.javaClass.name}"
             )
         }
+    }
+
+    private fun persistLatestTrace(appContext: Context, latestExit: ApplicationExitInfo) {
+        val input = latestExit.traceInputStream ?: return
+        val dir = File(appContext.filesDir, "process_exit_traces").apply { mkdirs() }
+        dir.listFiles()?.forEach { it.delete() }
+        val file = File(dir, "exit-${latestExit.timestamp}.txt")
+        val buffer = ByteArray(8192)
+        var total = 0
+        input.use { stream ->
+            file.outputStream().buffered().use { out ->
+                while (true) {
+                    val read = stream.read(buffer)
+                    if (read <= 0) break
+                    val allowed = (ProcessExitTraceMaxBytes - total).coerceAtMost(read)
+                    if (allowed <= 0) break
+                    out.write(buffer, 0, allowed)
+                    total += allowed
+                }
+            }
+        }
+        if (total == 0) file.delete()
+    }
+
+    internal fun traceFiles(context: Context): List<File> {
+        val dir = File(context.applicationContext.filesDir, "process_exit_traces")
+        return traceFilesIn(dir)
+    }
+
+    internal fun traceFilesIn(dir: File): List<File> {
+        if (!dir.isDirectory) return emptyList()
+        return dir.listFiles()?.filter { it.isFile && it.length() > 0L }?.sortedBy { it.name }
+            ?: emptyList()
     }
 }
