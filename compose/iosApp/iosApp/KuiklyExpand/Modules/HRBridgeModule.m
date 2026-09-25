@@ -46,6 +46,7 @@ static NSUInteger const SlockThreadImageCompressionMaxRequestIdLength = 128;
 static NSUInteger const SlockThreadImageCompressionMaxFileNameLength = 256;
 static NSString *const SlockAttachmentExportDestinationFiles = @"files";
 static NSString *const SlockAttachmentExportDestinationPhotos = @"photos";
+static NSString *const SlockAttachmentExportDestinationOpen = @"open";
 static NSString *const SlockThreadShareImageDirectoryName = @"RaftThreadShareImages";
 static NSTimeInterval const SlockThreadShareImageMaximumAgeSeconds = 24.0 * 60.0 * 60.0;
 static NSString *const SlockBridgeReplaceCurrentPageKey = @"slockReplaceCurrentPage";
@@ -3936,6 +3937,11 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
     if (!callback) {
         return;
     }
+    if (self.slock_attachmentExportCallback) {
+        callback(@{ @"status" : @"failed", @"reason" : @"busy",
+                    @"message" : @"Another file operation is already active" });
+        return;
+    }
 
     NSDictionary *params = SlockBridgeParams(args);
     NSString *ownerKey = SlockBridgeString(params[@"ownerKey"] ?: params[@"owner"]);
@@ -3971,39 +3977,32 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
         callback(@{ @"status" : @"failed", @"reason" : @"no_cache_path" });
         return;
     }
-    NSString *requestId = NSUUID.UUID.UUIDString;
+    NSString *urlText = SlockBridgeString(params[@"url"]);
+    if (urlText.length == 0) {
+        callback(@{ @"status" : @"failed", @"reason" : @"missing_url" });
+        return;
+    }
     self.slock_attachmentExportDownloadId = downloadId;
     self.slock_attachmentExportURL = [NSURL fileURLWithPath:cachedPath];
+    self.slock_attachmentExportDestination = SlockAttachmentExportDestinationOpen;
+    self.slock_attachmentExportFileName = fileName;
+    self.slock_attachmentExportMimeType = SlockBridgeString(params[@"mimeType"]);
+    self.slock_attachmentExportCallback = callback;
     __weak HRBridgeModule *weakSelf = self;
     NSString *attemptToken =
         [SharedAttachmentDownloadCoordinator.shared startDownloadId:downloadId
                                                           targetKey:cachedPath
-                                                         targetPath:cachedPath];
+                                                                url:urlText
+                                                         targetPath:cachedPath
+                                                           observer:self];
     if (attemptToken.length == 0) {
         callback(@{ @"status" : @"failed", @"reason" : @"download_start_failed",
                     @"message" : @"Unable to start attachment download" });
+        self.slock_attachmentExportCallback = nil;
+        self.slock_attachmentExportURL = nil;
         return;
     }
     self.slock_attachmentExportRequestId = attemptToken;
-    self.slock_attachmentExportCallback = ^(NSDictionary *result) {
-        HRBridgeModule *strongSelf = weakSelf;
-        if ([result[@"status"] isEqualToString:@"complete"] ||
-            [result[@"status"] isEqualToString:@"ok"] ||
-            [result[@"status"] isEqualToString:@"opened"]) {
-            NSURL *fileURL = [NSURL fileURLWithPath:cachedPath];
-            if (fileURL) {
-                [strongSelf slock_presentShareItems:@[ fileURL ] attempt:1];
-                callback(@{ @"status" : @"opened", @"cached" : @YES,
-                            @"uri" : fileURL.absoluteString ?: @"" });
-                return;
-            }
-        }
-        callback(@{
-            @"status" : @"failed",
-            @"reason" : result[@"status"] ?: @"download_failed",
-            @"message" : result[@"message"] ?: @"Unable to download attachment",
-        });
-    };
 }
 
 - (void)attachmentCacheStatus:(NSDictionary *)args {
@@ -4294,6 +4293,29 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
             return;
         }
         strongSelf.slock_attachmentExportSizeBytes = @(result.downloadedBytes);
+        if ([strongSelf.slock_attachmentExportDestination isEqualToString:SlockAttachmentExportDestinationOpen]) {
+            // Open-with: the file is a persistent local copy — present the share sheet on it,
+            // do NOT call slock_finishAttachmentExport (it deletes the parent dir) or the
+            // save-to-files picker. Clear state and report success, keeping the file.
+            KuiklyRenderCallback openCallback = strongSelf.slock_attachmentExportCallback;
+            [strongSelf slock_presentShareItems:@[ targetURL ] attempt:1];
+            strongSelf.slock_attachmentExportCallback = nil;
+            strongSelf.slock_attachmentExportRequestId = nil;
+            strongSelf.slock_attachmentExportDownloadId = nil;
+            strongSelf.slock_attachmentExportURL = nil;
+            strongSelf.slock_attachmentExportFileName = nil;
+            strongSelf.slock_attachmentExportSizeBytes = nil;
+            strongSelf.slock_attachmentExportDestination = nil;
+            strongSelf.slock_attachmentExportMimeType = nil;
+            if (openCallback) {
+                openCallback(@{
+                    @"status" : @"opened",
+                    @"cached" : @YES,
+                    @"uri" : targetURL.absoluteString ?: @"",
+                });
+            }
+            return;
+        }
         if ([strongSelf.slock_attachmentExportDestination isEqualToString:SlockAttachmentExportDestinationPhotos]) {
             [strongSelf slock_saveAttachmentExportToPhotos];
             return;
