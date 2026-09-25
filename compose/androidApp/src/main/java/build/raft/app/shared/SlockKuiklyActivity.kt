@@ -7492,30 +7492,21 @@ internal class SlockKuiklyBridgeModule(
         val owner = request.attachmentOwnerLease()
                 ?: return mapOf("status" to "failed", "cached" to false, "message" to "Authentication required")
         if (!ProcessAndroidAttachmentOwners.admit(owner)) {
-            return mapOf("status" to "cancelled", "cached" to false, "message" to "Attachment scope retired")
+                return mapOf("status" to "cancelled", "cached" to false, "message" to "Attachment scope retired")
         }
         val identity = request.publicAttachmentIdentity(owner)
         val authority = ProcessAndroidAttachmentPublicDownloads.get(appContext)
+        val privateTarget =
+                attachmentCacheFile(request, owner.principalKey)
+        val privateCached = privateTarget.isUsableAttachmentCacheFile()
         return runCatching {
                     authority.withIdentityLock(identity) {
                         val committed = authority.resolve(identity)
-                        val privateTarget =
-                                attachmentCacheFile(request, owner.principalKey)
-                        val privateCached = privateTarget.isUsableAttachmentCacheFile()
-                        mapOf(
-                                "status" to "ok",
-                                // Public MediaStore hit AND private cache hit — callers that
-                                // only need "is there a usable local copy" should read
-                                // `cached` (public) vs `privateCached` (private staging dir).
-                                "cached" to (committed != null || privateCached),
-                                "privateCached" to privateCached,
-                                "privatePath" to
-                                        if (privateCached) privateTarget.absolutePath else "",
-                                "active" to false,
-                                "attemptToken" to "",
-                                "recordVersion" to (committed?.generation ?: -1L),
-                                "sizeBytes" to (committed?.sizeBytes ?: 0L),
-                                "uri" to committed?.uri.orEmpty()
+                        attachmentCacheStatusPayload(
+                                committed = committed,
+                                privateCached = privateCached,
+                                privatePath =
+                                        if (privateCached) privateTarget.absolutePath else ""
                         )
                     }
                 }
@@ -8647,6 +8638,29 @@ internal fun attachmentSavePreparationFailurePayload(
                             "message" to "Unable to prepare attachment storage"
                     )
         }
+
+/**
+ * task #319: payload for `attachmentCacheStatus`. `cached` is strictly "public download
+ * committed" — it drives the Download-vs-Open-with UI choice and must NOT count the
+ * private staging copy. The private copy is reported separately on `privateCached` +
+ * `privatePath` so the open path can reuse it without re-fetching the signed URL.
+ */
+internal fun attachmentCacheStatusPayload(
+        committed: AndroidAttachmentPublicRecord?,
+        privateCached: Boolean,
+        privatePath: String
+): Map<String, Any> =
+        mapOf(
+                "status" to "ok",
+                "cached" to (committed != null),
+                "privateCached" to privateCached,
+                "privatePath" to privatePath,
+                "active" to false,
+                "attemptToken" to "",
+                "recordVersion" to (committed?.generation ?: -1L),
+                "sizeBytes" to (committed?.sizeBytes ?: 0L),
+                "uri" to committed?.uri.orEmpty()
+        )
 
 internal fun attachmentDownloadFailurePayload(
         failure: AttachmentDownloadFailedException
