@@ -2912,6 +2912,7 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
 @property(nonatomic) BOOL slock_attachmentExportTrackProgress;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportDestination;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportMimeType;
+@property(nonatomic, weak, nullable) UIViewController *slock_sharePresenterController;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportPermissionStatus;
 @property(nonatomic, copy, nullable) KuiklyRenderCallback slock_attachmentPickerCallback;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentPickerChannelId;
@@ -3905,6 +3906,10 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
     if (!callback) {
         return;
     }
+    // The user just tapped "Open with" while this page is certainly on screen.
+    // Capture the presenter now (weak) so the async download/export can present on it
+    // even if this page later detaches — rather than re-deriving it after the async work.
+    self.slock_sharePresenterController = [self slock_currentViewController];
     if (self.slock_attachmentExportCallback) {
         callback(@{
             @"status" : @"failed",
@@ -5250,7 +5255,14 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 }
 
 - (void)slock_presentShareItems:(NSArray *)items attempt:(NSInteger)attempt {
-    UIViewController *controller = [self slock_currentViewController];
+    // Prefer the presenter captured at tap time (weak; survives page detach via the
+    // stored reference). If it's gone, fall back to the current frontmost controller —
+    // Signal's frontmostViewController pattern, so presentation never depends on the
+    // originating page still being alive.
+    UIViewController *controller = self.slock_sharePresenterController;
+    if (!controller) {
+        controller = [self slock_currentViewController];
+    }
     if (!controller) {
         NSString *reason = [self slock_shareControllerFailureReason];
         if (attempt < 2) {
