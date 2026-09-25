@@ -627,6 +627,13 @@ internal class SlockSharedStoreProvider private constructor(
                     // account, environment, or successor generation.
                 }
             if (committed) {
+                // task #329: memoized per-member read flows are owner-bound recipes;
+                // drop them on auth-terminal cleanup so a successor generation never
+                // inherits cross-account member read edges.
+                serverMembersStore.clearScopedReadCaches()
+                shellServerMembersStores.entries().forEach { (_, store) ->
+                    store.clearScopedReadCaches()
+                }
                 shellConversationIdentityHubs.entries().forEach { (_, hub) -> hub.clear() }
                 clearActiveServerSelectionsIfUnchanged(selectionReceipts)
             }
@@ -1519,7 +1526,7 @@ internal class SlockSharedStoreProvider private constructor(
         homeActivityStoreScopes.remove(scope)?.cancel()
         shellNetworkClients.remove(scope)
         shellAuthStores.remove(scope)
-        shellServerMembersStores.remove(scope)
+        shellServerMembersStores.remove(scope)?.clearScopedReadCaches()
         shellRealtimeDomainEventOwners.remove(scope)
         shellAgentDetailStores.remove(scope)
         shellComputersStores.remove(scope)?.dispatch(SharedComputersIntent.Clear)
