@@ -3870,7 +3870,10 @@ static NSString *SlockAttachmentStoreRoot() {
     NSArray<NSString *> *urls = NSSearchPathForDirectoriesInDomains(
         NSApplicationSupportDirectory, NSUserDomainMask, YES);
     NSString *base = urls.firstObject ?: NSTemporaryDirectory();
-    return [[base stringByAppendingPathComponent:@"Raft"] stringByAppendingPathComponent:@"Attachments"];
+    NSString *root = [[base stringByAppendingPathComponent:@"Raft"] stringByAppendingPathComponent:@"Attachments"];
+    // Attachment caches must not be synced to iCloud backup (they're re-downloadable).
+    [NSURL fileURLWithPath:root].setResourceValue:@YES forKey:NSURLIsExcludedFromBackupKey error:nil];
+    return root;
 }
 
 NSString *SlockAttachmentSafeComponent(NSString *raw) {
@@ -3887,30 +3890,43 @@ NSString *SlockAttachmentCacheKey(NSString *ownerKey, NSString *attachmentId) {
     return owner.length ? [owner stringByAppendingFormat:@"-%@", attachment] : attachment;
 }
 
-static NSString *SlockAttachmentCachedPath(NSString *ownerKey, NSString *attachmentId, NSString *fileName) {
+// OHOS key scheme: directory keyed by <ownerKey>-<safe(attachmentId)>, the file lives
+// inside it; lookups only need the directory, never the filename.
+static NSString *SlockAttachmentCacheDirectory(NSString *ownerKey, NSString *attachmentId) {
     NSString *key = SlockAttachmentCacheKey(ownerKey, attachmentId);
     if (key.length == 0) return nil;
-    NSString *leaf = SlockAttachmentSafeComponent(fileName ?: @"attachment");
-    if (leaf.length == 0) leaf = @"attachment";
-    return [SlockAttachmentStoreRoot() stringByAppendingFormat:@"/%@-%@", key, leaf];
+    return [SlockAttachmentStoreRoot() stringByAppendingFormat:@"/%@", key];
 }
 
-static NSDictionary *SlockAttachmentCacheStatusDict(NSURL *fileURL) {
+static NSString *SlockAttachmentCachedFilePath(NSString *ownerKey, NSString *attachmentId, NSString *fileName) {
+    NSString *dir = SlockAttachmentCacheDirectory(ownerKey, attachmentId);
+    if (!dir) return nil;
+    NSString *leaf = SlockAttachmentSafeComponent(fileName ?: @"attachment");
+    if (leaf.length == 0) leaf = @"attachment";
+    return [dir stringByAppendingFormat:@"/%@", leaf];
+}
+
+static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
     NSFileManager *fm = NSFileManager.defaultManager;
-    NSDictionary<NSString *, id> *attrs = [fm attributesOfItemAtPath:fileURL.path error:nil];
+    NSArray<NSString *> *files = [fm contentsOfDirectoryAtPath:directoryPath error:nil];
+    if (files.count == 0) {
+        return @{ @"status" : @"missing" };
+    }
+    NSString *filePath = [directoryPath stringByAppendingFormat:@"/%@", files.firstObject];
+    NSDictionary<NSString *, id> *attrs = [fm attributesOfItemAtPath:filePath error:nil];
     NSNumber *size = attrs[NSFileSize];
-    NSNumber *mtimeMs = attrs[NSFileModificationDate]
-        ? @((long long)([attrs[NSFileModificationDate] timeIntervalSince1970] * 1000.0))
-        : @0;
     if (!size || size.longLongValue <= 0) {
         return @{ @"status" : @"missing" };
     }
+    NSNumber *mtimeMs = attrs[NSFileModificationDate]
+        ? @((long long)([attrs[NSFileModificationDate] timeIntervalSince1970] * 1000.0))
+        : @0;
     return @{
         @"status" : @"ok",
         @"cached" : @YES,
         @"recordVersion" : mtimeMs,
         @"sizeBytes" : size,
-        @"uri" : fileURL.absoluteString ?: @"",
+        @"uri" : [NSURL fileURLWithPath:filePath].absoluteString ?: @"",
         @"storageKind" : @"app_private",
     };
 }
@@ -3922,7 +3938,7 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSURL *fileURL) {
     }
 
     NSDictionary *params = SlockBridgeParams(args);
-    NSString *ownerKey = SlockBridgeString(params[@"ownerKey"] ?: params[@"owner"] ?: params[@"serverId"]);
+    NSString *ownerKey = SlockBridgeString(params[@"ownerKey"] ?: params[@"owner"]);
     NSString *attachmentId = SlockBridgeString(params[@"attachmentId"]);
     NSString *fileName = SlockBridgeString(params[@"fileName"]) ?: @"attachment";
     NSString *downloadId = SlockBridgeString(params[@"downloadId"]) ?: attachmentId;
@@ -3932,9 +3948,10 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSURL *fileURL) {
     // then prefer it with a frontmost fallback — Signal AttachmentSharing L117.
     self.slock_sharePresenterController = [self slock_currentViewController];
 
-    NSString *cachedPath = SlockAttachmentCachedPath(ownerKey, attachmentId, fileName);
+    NSString *cachedDir = SlockAttachmentCacheDirectory(ownerKey, attachmentId);
+    NSString *cachedPath = SlockAttachmentCachedFilePath(ownerKey, attachmentId, fileName);
     NSDictionary *status = cachedPath
-        ? SlockAttachmentCacheStatusDict([NSURL fileURLWithPath:cachedPath])
+        ? SlockAttachmentCacheStatusDict(cachedDir)
         : @{ @"status" : @"missing" };
 
     if ([status[@"cached"] boolValue]) {
@@ -3948,39 +3965,45 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSURL *fileURL) {
         return;
     }
 
-    // Download to the persistent path, then share. Reuses the same coordinator the
-    // export path uses; on success we now have a durable local copy for next time.
+    // Download directly to the persistent cache path (not the throwaway temp dir the
+    // export path uses). On success we have a durable local copy and present the share.
+    if (!cachedPath || !downloadId) {
+        callback(@{ @"status" : @"failed", @"reason" : @"no_cache_path" });
+        return;
+    }
+    NSString *requestId = NSUUID.UUID.UUIDString;
+    self.slock_attachmentExportDownloadId = downloadId;
+    self.slock_attachmentExportURL = [NSURL fileURLWithPath:cachedPath];
     __weak HRBridgeModule *weakSelf = self;
-    [self slock_startAttachmentExport:@{
-        @"params" : @{
-            @"url" : params[@"url"] ?: @"",
-            @"downloadId" : downloadId ?: @"",
-            @"fileName" : fileName,
-            @"mimeType" : params[@"mimeType"] ?: @"",
-            @"ownerKey" : ownerKey ?: @"",
-            @"attachmentId" : attachmentId ?: @"",
-            @"targetPath" : cachedPath ?: @"",
-        },
-        KR_CALLBACK_KEY : ^(NSDictionary *result) {
-            HRBridgeModule *strongSelf = weakSelf;
-            if ([result[@"status"] isEqualToString:@"ok"] ||
-                [result[@"status"] isEqualToString:@"opened"]) {
-                NSString *uri = result[@"uri"];
-                NSURL *fileURL = uri.length ? [NSURL URLWithString:uri]
-                                            : (cachedPath ? [NSURL fileURLWithPath:cachedPath] : nil);
-                if (fileURL) {
-                    [strongSelf slock_presentShareItems:@[ fileURL ] attempt:1];
-                    callback(@{ @"status" : @"opened", @"cached" : @YES, @"uri" : fileURL.absoluteString ?: @"" });
-                    return;
-                }
+    NSString *attemptToken =
+        [SharedAttachmentDownloadCoordinator.shared startDownloadId:downloadId
+                                                          targetKey:cachedPath
+                                                         targetPath:cachedPath];
+    if (attemptToken.length == 0) {
+        callback(@{ @"status" : @"failed", @"reason" : @"download_start_failed",
+                    @"message" : @"Unable to start attachment download" });
+        return;
+    }
+    self.slock_attachmentExportRequestId = attemptToken;
+    self.slock_attachmentExportCallback = ^(NSDictionary *result) {
+        HRBridgeModule *strongSelf = weakSelf;
+        if ([result[@"status"] isEqualToString:@"complete"] ||
+            [result[@"status"] isEqualToString:@"ok"] ||
+            [result[@"status"] isEqualToString:@"opened"]) {
+            NSURL *fileURL = [NSURL fileURLWithPath:cachedPath];
+            if (fileURL) {
+                [strongSelf slock_presentShareItems:@[ fileURL ] attempt:1];
+                callback(@{ @"status" : @"opened", @"cached" : @YES,
+                            @"uri" : fileURL.absoluteString ?: @"" });
+                return;
             }
-            callback(@{
-                @"status" : @"failed",
-                @"reason" : result[@"status"] ?: @"download_failed",
-                @"message" : result[@"message"] ?: @"Unable to download attachment",
-            });
-        },
-    } destination:SlockAttachmentExportDestinationFiles];
+        }
+        callback(@{
+            @"status" : @"failed",
+            @"reason" : result[@"status"] ?: @"download_failed",
+            @"message" : result[@"message"] ?: @"Unable to download attachment",
+        });
+    };
 }
 
 - (void)attachmentCacheStatus:(NSDictionary *)args {
@@ -3989,12 +4012,11 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSURL *fileURL) {
         return;
     }
     NSDictionary *params = SlockBridgeParams(args);
-    NSString *cachedPath = SlockAttachmentCachedPath(
-        SlockBridgeString(params[@"ownerKey"] ?: params[@"owner"] ?: params[@"serverId"]),
-        SlockBridgeString(params[@"attachmentId"]),
-        SlockBridgeString(params[@"fileName"]));
+    NSString *cachedDir = SlockAttachmentCacheDirectory(
+        SlockBridgeString(params[@"ownerKey"] ?: params[@"owner"]),
+        SlockBridgeString(params[@"attachmentId"]));
     NSDictionary *status = cachedPath
-        ? SlockAttachmentCacheStatusDict([NSURL fileURLWithPath:cachedPath])
+        ? SlockAttachmentCacheStatusDict(cachedDir)
         : @{ @"status" : @"missing" };
     callback(status);
 }
@@ -4002,12 +4024,11 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSURL *fileURL) {
 - (void)deleteAttachmentCache:(NSDictionary *)args {
     KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
     NSDictionary *params = SlockBridgeParams(args);
-    NSString *cachedPath = SlockAttachmentCachedPath(
-        SlockBridgeString(params[@"ownerKey"] ?: params[@"owner"] ?: params[@"serverId"]),
-        SlockBridgeString(params[@"attachmentId"]),
-        SlockBridgeString(params[@"fileName"]));
+    NSString *cachedDir = SlockAttachmentCacheDirectory(
+        SlockBridgeString(params[@"ownerKey"] ?: params[@"owner"]),
+        SlockBridgeString(params[@"attachmentId"]));
     BOOL removed = cachedPath &&
-        [NSFileManager.defaultManager removeItemAtPath:cachedPath error:nil];
+        [NSFileManager.defaultManager removeItemAtPath:cachedDir error:nil];
     if (callback) {
         callback(@{ @"status" : removed ? @"ok" : @"missing" });
     }
