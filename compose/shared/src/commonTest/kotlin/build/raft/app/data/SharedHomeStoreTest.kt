@@ -4543,6 +4543,60 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun firstHomePaintCarriesConcurrentSidebarOrderWhenFetchIsFast() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sidebarOrder = SettingsServerSidebarOrderSnapshot(channelOrder = listOf("channel-pinned"))
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = source(api = RecordingHomeApi()),
+                scope = scope,
+                loadSidebarOrder = { _ -> DataResult.Content(sidebarOrder) }
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        val content = store.state.value.content as SharedHomeContentState.Content
+        assertEquals(
+            listOf("channel-pinned"),
+            content.snapshot.sidebarOrder?.channelOrder,
+            "a fast sidebar-order fetch must land in the first home paint, not append after it"
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun sidebarOrderFetchLateStillMergesFromSameRequestWithoutRefetch() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        var loadCalls = 0
+        val gate = CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>()
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = source(api = RecordingHomeApi()),
+                scope = scope,
+                loadSidebarOrder = { _ ->
+                    loadCalls += 1
+                    gate.await()
+                }
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        // The 300ms first-paint cap elapses: home publishes channels alone.
+        val early = store.state.value.content as SharedHomeContentState.Content
+        assertNull(early.snapshot.sidebarOrder)
+
+        // When the in-flight request resolves, the deferred result merges under the
+        // sidebarOrderMutex — same request, no second fetch.
+        gate.complete(DataResult.Content(SettingsServerSidebarOrderSnapshot(channelOrder = listOf("late-pinned"))))
+        awaitCondition {
+            (store.state.value.content as? SharedHomeContentState.Content)
+                ?.snapshot?.sidebarOrder?.channelOrder == listOf("late-pinned")
+        }
+        assertEquals(1, loadCalls, "the late-arriving sidebar must reuse the in-flight request, not refetch")
+        scope.cancel()
+    }
+
+    @Test
     fun togglePinnedOptimisticallyUpdatesAndPatchesSidebarOrder() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val initial = SettingsServerSidebarOrderSnapshot(

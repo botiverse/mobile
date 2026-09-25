@@ -1884,21 +1884,50 @@ internal class SharedHomeStore(
         // task #322: the sidebar-order fetch runs concurrently with the home request.
         // Wait a short cap for it before building the published content so the pinned
         // section lands in the same frame as the channel list; on timeout the home
-        // content publishes channels alone and `applySidebarOrderLocally` merges the
-        // sidebar in when the request resolves.
-        val freshSnapshotWithSidebar =
+        // content publishes channels alone and the deferred result merges under
+        // `sidebarOrderMutex` when it resolves (same result, no second request).
+        val earlySidebarOrder =
             runCatching {
                 sidebarOrderDeferred?.let { deferred ->
                     withTimeoutOrNull(SIDEBAR_ORDER_FIRST_PAINT_WAIT_MS) { deferred.await() }
                 }
-            }.getOrNull()?.let { sidebarResult ->
-                if (sidebarResult is DataResult.Content && freshSnapshot != null) {
-                    sidebarOrderByServer[freshSnapshot.server.id] = sidebarResult.data
-                    freshSnapshot.copy(sidebarOrder = sidebarResult.data)
-                } else {
-                    freshSnapshot
+            }.getOrNull()
+        val freshSnapshotWithSidebar =
+            if (
+                earlySidebarOrder is DataResult.Content &&
+                    freshSnapshot != null &&
+                    activeServer == freshSnapshot.server.id
+            ) {
+                sidebarOrderByServer[freshSnapshot.server.id] = earlySidebarOrder.data
+                freshSnapshot.copy(sidebarOrder = earlySidebarOrder.data)
+            } else {
+                freshSnapshot
+            }
+        // On timeout or a non-Content early result, still reuse the in-flight deferred so
+        // the late-arriving order merges under sidebarOrderMutex — the same request's
+        // result, no second fetch, and Pin/Unpin dispatched meanwhile stays serialized.
+        if (
+            sidebarOrderDeferred != null &&
+                freshSnapshotWithSidebar === freshSnapshot
+        ) {
+            sidebarOrderDeferred?.let { deferred ->
+                scope.launch {
+                    val lateResult = deferred.await()
+                    if (lateResult is DataResult.Content && activeServer != null) {
+                        sidebarOrderMutex.withLock {
+                            val current =
+                                _state.value.content as? SharedHomeContentState.Content ?: return@withLock
+                            if (current.snapshot.server.id == activeServer) {
+                                applySidebarOrderLocally(
+                                    serverId = current.snapshot.server.id,
+                                    next = lateResult.data
+                                )
+                            }
+                        }
+                    }
                 }
-            } ?: freshSnapshot
+            }
+        }
         val result =
             when (dataResult) {
                 is DataResult.Content ->
