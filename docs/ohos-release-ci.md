@@ -62,7 +62,7 @@ enter the semantic version components. `version_build` must be between 0 and
 The workflow computes the integer version code as:
 
 ```text
-major * 1,000,000 + minor * 10,000 + patch * 100 + build
+major * 10,000,000 + minor * 100,000 + patch * 1,000 + build
 ```
 
 `compose/ohosApp/AppScope/app.json5` may still contain placeholder
