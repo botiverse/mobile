@@ -44,3 +44,6 @@ jobs:
 
       - name: Test bootstrap main-ref boundary
         run: python3 scripts/ci/test_ios_bootstrap_workflow.py
+
+      - name: Test one-time Upterm inspection boundary
+        run: python3 scripts/ci/test_ios_runner_upterm_workflow.py
