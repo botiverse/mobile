@@ -7968,15 +7968,15 @@ private fun SharedThreadRouteContentContent(
                 }
             }
 
-            fun keepSendingUnconfirmed(result: String, errorCode: String?, httpCode: Int? = null) {
+            suspend fun keepSendingUnconfirmed(result: String, errorCode: String?, httpCode: Int? = null) {
                 bridge.logWarn(
                     "thread_send_unconfirmed localMessageId=$localMessageId " +
                         "channelId=${context.channelId} result=$result code=${errorCode.orEmpty()} " +
-                        "httpCode=${httpCode?.toString().orEmpty()} action=keep_sending"
+                        "httpCode=${httpCode?.toString().orEmpty()} action=mark_failed"
                 )
-                // The request may already have committed server-side. The durable journal remains
-                // the authority until a canonical randomId echo consumes it or the user retries
-                // explicitly with that same idempotency key. Never auto-resend after recreation.
+                // The request may already have committed server-side. A retry uses the same
+                // randomId, so the server-side idempotency key prevents a duplicate message.
+                markFailed(errorCode, "Delivery could not be confirmed. Tap retry to try again.")
             }
 
             val sendAttemptState =
