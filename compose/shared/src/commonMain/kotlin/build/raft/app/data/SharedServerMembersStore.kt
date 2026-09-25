@@ -48,6 +48,13 @@ data class SharedServerMembersEntry(
     val status: SharedServerMembersLoadStatus = SharedServerMembersLoadStatus.Idle,
     val errorCode: String? = null
 ) {
+    // task #329: memberId -> profile index, built once per entry instance so
+    // per-member read edges (status/profile flows, sync lookups) stop paying an
+    // O(N) linear scan per emission across every mounted row.
+    val membersById: Map<String, MemberProfile> by lazy {
+        members.associateBy { it.id.value.trim() }
+    }
+
     fun snapshotOrNull(): MemberSnapshot? =
         server?.let { MemberSnapshot(server = it, members = members) }
 }
@@ -181,8 +188,8 @@ data class SharedServerMembersState(
         val rosterMember =
             entries
                 .asSequence()
-                .flatMap { it.members.asSequence() }
-                .firstOrNull { it.kind == MemberKind.Agent && it.id.value.trim() == cleanMemberId }
+                .mapNotNull { it.membersById[cleanMemberId] }
+                .firstOrNull { it.kind == MemberKind.Agent }
         val member =
             rosterMember
                 ?: profileCacheByServerId
@@ -212,8 +219,8 @@ data class SharedServerMembersState(
         val entries = listOfNotNull(entriesByServerId[cleanServerId])
         return entries
             .asSequence()
-            .flatMap { it.members.asSequence() }
-            .firstOrNull { it.id.value.trim() == cleanMemberId }
+            .mapNotNull { it.membersById[cleanMemberId] }
+            .firstOrNull()
             ?: profileCacheByServerId
                 .asSequence()
                 .filter { it.key == cleanServerId }
@@ -601,8 +608,8 @@ class SharedServerMembersStore internal constructor(
     ): ScopedMemberProfileResolution {
         val rosterMember =
             _state.value.entryFor(serverId)
-                ?.members
-                ?.firstOrNull { it.id.value.trim() == memberId }
+                ?.membersById
+                ?.get(memberId)
         if (rosterMember != null) return ScopedMemberProfileResolution(rosterMember, authoritative = true)
         val channelMember =
             currentOwnerChannelMemberSlices(serverId)
@@ -747,6 +754,14 @@ class SharedServerMembersStore internal constructor(
             .distinctUntilChanged()
     }
 
+    // task #329: per-member read edges are memoized so a Members page mounting
+    // hundreds of rows shares one upstream chain per memberId instead of each
+    // row re-subscribing its own entryFlow/presence combine (O(N) flow mounts and
+    // O(N) linear scans per update). Keyed on the normalized tuple; cleared with
+    // the store's lifecycle (flows are cold, cached instance is just a recipe).
+    private val memberStatusFlows = mutableMapOf<Pair<String, String>, Flow<SharedServerMemberStatus?>>()
+    private val memberProfileFlows = mutableMapOf<Pair<String, String>, Flow<MemberProfile?>>()
+
     fun memberStatusFlow(
         serverId: ServerId?,
         memberId: String?
@@ -754,7 +769,15 @@ class SharedServerMembersStore internal constructor(
         val cleanServerId = serverId?.value.normalizedServerMembersId()
         val cleanMemberId = memberId.normalizedServerMembersId()
         if (cleanServerId == null || cleanMemberId == null) return flowOf(null)
-        val scopedServerId = ServerId(cleanServerId)
+        return memberStatusFlows.getOrPut(cleanServerId to cleanMemberId) {
+            buildMemberStatusFlow(ServerId(cleanServerId), cleanMemberId)
+        }
+    }
+
+    private fun buildMemberStatusFlow(
+        scopedServerId: ServerId,
+        cleanMemberId: String
+    ): Flow<SharedServerMemberStatus?> {
         // task #136: presence comes straight from the process registry's owner
         // partition — the SSOT read edge. flatMapLatest over the owner flow so
         // this mounted flow rebinds automatically on login / account switch /
@@ -800,7 +823,9 @@ class SharedServerMembersStore internal constructor(
         val cleanServerId = serverId?.value.normalizedServerMembersId()
         val cleanMemberId = memberId.normalizedServerMembersId()
         if (cleanServerId == null || cleanMemberId == null) return flowOf(null)
-        return scopedMemberProfileFlow(ServerId(cleanServerId), cleanMemberId)
+        return memberProfileFlows.getOrPut(cleanServerId to cleanMemberId) {
+            scopedMemberProfileFlow(ServerId(cleanServerId), cleanMemberId)
+        }
     }
 
     private fun scopedMemberProfileFlow(
@@ -825,7 +850,7 @@ class SharedServerMembersStore internal constructor(
             emitAll(
                 serverMembersEntryFlow(serverId)
                     .flatMapLatest { entry ->
-                        val rosterMember = entry.members.firstOrNull { it.id.value.trim() == memberId }
+                        val rosterMember = entry.membersById[memberId]
                         if (rosterMember != null) {
                             flowOf(ScopedMemberProfileResolution(rosterMember, authoritative = true))
                         } else {

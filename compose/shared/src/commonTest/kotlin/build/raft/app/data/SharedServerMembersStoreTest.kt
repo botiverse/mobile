@@ -3058,6 +3058,53 @@ class SharedServerMembersStoreTest {
         assertEquals(Presence.Active, hydrated?.presence)
     }
 
+    @Test
+    fun memberStatusAndProfileFlowsAreMemoizedPerServerMemberPair() = runBlocking {
+        val serverId = ServerId("server-1")
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(
+                    member("agent-1", "Agent").copy(
+                        kind = MemberKind.Agent,
+                        agentStatus = AgentStatus.Working,
+                        presence = Presence.Active
+                    )
+                )
+            )
+        )
+
+        // task #329: repeated calls for the same normalized (server, member) pair must
+        // share one upstream flow recipe so N mounted rows don't each rebuild the
+        // entryFlow/presence combine and rescan the roster.
+        assertTrue(
+            store.memberStatusFlow(serverId, "agent-1") ===
+                store.memberStatusFlow(serverId, "agent-1"),
+            "memberStatusFlow should return the memoized instance for the same pair"
+        )
+        assertTrue(
+            store.memberProfileFlow(serverId, "agent-1") ===
+                store.memberProfileFlow(serverId, "agent-1"),
+            "memberProfileFlow should return the memoized instance for the same pair"
+        )
+        // Distinct members and servers must not collide.
+        assertTrue(
+            store.memberStatusFlow(serverId, "agent-2") !==
+                store.memberStatusFlow(serverId, "agent-1")
+        )
+        assertTrue(
+            store.memberStatusFlow(ServerId("server-2"), "agent-1") !==
+                store.memberStatusFlow(serverId, "agent-1")
+        )
+
+        // Behaviour parity: the memoized flow still resolves the seeded status.
+        assertEquals(
+            AgentStatus.Working,
+            store.memberStatusFlow(serverId, "agent-1").first()?.status
+        )
+    }
+
     private class FakeMemberRepository : MemberRepository {
         val membersByServer = mutableMapOf("server-1" to listOf(member("u1", "Cindy")))
         val channelMembersByChannel = mutableMapOf<String, List<MemberProfile>>()
@@ -3205,3 +3252,4 @@ private fun List<MemberProfile>.upsertFakeMember(member: MemberProfile): List<Me
     val current = filterNot { it.id == member.id && it.kind == member.kind }
     return current + member
 }
+
