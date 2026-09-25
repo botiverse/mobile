@@ -9443,8 +9443,8 @@ private fun KuiklyThreadScreenPayload.asRefreshEmpty(base: KuiklyThreadScreenPay
         canLoadMoreAfter = false,
         olderMessagesStatus = "idle",
         newerMessagesStatus = "idle",
-        emptyTitle = "No messages yet",
-        emptyDetail = "This conversation has no messages yet."
+        emptyTitle = ThreadEmptyConversationTitle,
+        emptyDetail = ThreadEmptyConversationDetail
     )
 
 private fun KuiklyThreadScreenPayload.asLoadedEmptyReplyThreadPayload(): KuiklyThreadScreenPayload =
@@ -9507,6 +9507,8 @@ private fun KuiklyThreadScreenPayload.originDiagnostics(): String =
 // (non-loading) merge must not carry it forward into an empty/content frame, or the empty
 // state shows "Loading..." forever.
 internal const val ThreadRouteLoadingPlaceholderTitle = "Loading..."
+internal const val ThreadEmptyConversationTitle = "No messages yet"
+internal const val ThreadEmptyConversationDetail = "This conversation has no messages yet."
 
 internal fun KuiklyThreadScreenPayload.mergedEmptyTitleWith(base: KuiklyThreadScreenPayload): String =
     if (
@@ -12083,7 +12085,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
             ) {
                 // task #326: the route placeholder's "Loading..." must not survive into a
                 // resolved empty channel frame, or the empty state shows "加载中" forever.
-                "No messages yet"
+                ThreadEmptyConversationTitle
             } else {
                 base.emptyTitle
             },
@@ -12094,7 +12096,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
                 cachedMessages.isEmpty() && headerContext.originMessage == null && tasks.isEmpty() &&
                     base.emptyTitle == ThreadRouteLoadingPlaceholderTitle
             ) {
-                "This conversation has no messages yet."
+                ThreadEmptyConversationDetail
             } else {
                 base.emptyDetail
             },
