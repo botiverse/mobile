@@ -61,6 +61,7 @@
     <string name="common_open">Open</string>
     <string name="common_send">Send</string>
     <string name="common_share">Share</string>
+    <string name="share_open_failed">Couldn\'t open the share sheet. Please try again.</string>
     <string name="common_stop">Stop</string>
     <string name="common_yes">Yes</string>
     <string name="common_no">No</string>

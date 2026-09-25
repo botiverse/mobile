@@ -5245,20 +5245,66 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         return;
     }
     SlockBridgeRunOnMain(^{
-        UIViewController *controller = [self slock_currentViewController];
-        if (!controller) {
-            NSLog(@"[%@][warn] share skipped missing controller", SlockBridgeDefaultLogTag);
+        [self slock_presentShareItems:items attempt:1];
+    });
+}
+
+- (void)slock_presentShareItems:(NSArray *)items attempt:(NSInteger)attempt {
+    UIViewController *controller = [self slock_currentViewController];
+    if (!controller) {
+        NSString *reason = [self slock_shareControllerFailureReason];
+        if (attempt < 2) {
+            SlockDiagnosticsRecord(
+                @"warn", @"SlockShare",
+                [NSString stringWithFormat:@"share_present_retry attempt=%ld reason=%@",
+                 (long)attempt, reason]);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self slock_presentShareItems:items attempt:attempt + 1];
+            });
             return;
         }
-        UIActivityViewController *activityController = [[UIActivityViewController alloc] initWithActivityItems:items applicationActivities:nil];
-        UIPopoverPresentationController *popover = activityController.popoverPresentationController;
-        if (popover) {
-            popover.sourceView = controller.view;
-            popover.sourceRect = CGRectMake(CGRectGetMidX(controller.view.bounds), CGRectGetMidY(controller.view.bounds), 1, 1);
-            popover.permittedArrowDirections = 0;
+        SlockDiagnosticsRecord(
+            @"error", @"SlockShare",
+            [NSString stringWithFormat:@"share_present_failed attempt=%ld reason=%@",
+             (long)attempt, reason]);
+        [self slock_showToast:SharedSlockHostStrings.shared.shareOpenFailed];
+        return;
+    }
+    UIActivityViewController *activityController = [[UIActivityViewController alloc] initWithActivityItems:items applicationActivities:nil];
+    UIPopoverPresentationController *popover = activityController.popoverPresentationController;
+    if (popover) {
+        popover.sourceView = controller.view;
+        popover.sourceRect = CGRectMake(CGRectGetMidX(controller.view.bounds), CGRectGetMidY(controller.view.bounds), 1, 1);
+        popover.permittedArrowDirections = 0;
+    }
+    [controller presentViewController:activityController animated:YES completion:nil];
+}
+
+- (NSString *)slock_shareControllerFailureReason {
+    BOOL hasForegroundActiveScene = YES;
+    if (@available(iOS 13.0, *)) {
+        hasForegroundActiveScene = NO;
+        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if (scene.activationState == UISceneActivationStateForegroundActive &&
+                [scene isKindOfClass:UIWindowScene.class]) {
+                hasForegroundActiveScene = YES;
+                break;
+            }
         }
-        [controller presentViewController:activityController animated:YES completion:nil];
-    });
+    }
+    return SlockShareControllerFailureReason(
+        self.hr_rootView.window != nil, hasForegroundActiveScene);
+}
+
+NSString *SlockShareControllerFailureReason(BOOL hasRootViewWindow,
+                                            BOOL hasForegroundActiveScene) {
+    if (!hasRootViewWindow) {
+        return @"detached_root";
+    }
+    if (!hasForegroundActiveScene) {
+        return @"scene_inactive";
+    }
+    return @"no_controller";
 }
 
 - (UIViewController *)slock_currentViewController {

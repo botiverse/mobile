@@ -61,6 +61,7 @@
     <string name="common_open">打开</string>
     <string name="common_send">发送</string>
     <string name="common_share">分享</string>
+    <string name="share_open_failed">无法打开分享面板，请重试</string>
     <string name="common_stop">停止</string>
     <string name="common_yes">是</string>
     <string name="common_no">否</string>
