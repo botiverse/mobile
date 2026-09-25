@@ -290,7 +290,13 @@ class ThreadMessageLongPressSurfaceTest {
         assertNull(gate.onLifecycleVisibleResume(routeActive = false))
         assertTrue(gate.pendingVisibleResume)
 
-        gate.onRouteBecameVisible()
+        assertEquals(
+            ThreadVisibleResumePlan(
+                refreshVisibleConversation = true,
+                rejoinVisibleRooms = true
+            ),
+            gate.onRouteBecameVisible()
+        )
         assertFalse(gate.pendingVisibleResume)
     }
 
@@ -305,6 +311,7 @@ class ThreadMessageLongPressSurfaceTest {
             ),
             gate.onLifecycleVisibleResume(routeActive = true)
         )
+        assertFalse(gate.pendingVisibleResume)
         assertNull(gate.onRouteBecameVisible())
     }
 }
