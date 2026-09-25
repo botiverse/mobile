@@ -385,8 +385,11 @@ class ThreadPendingSendDrainerTest {
             errorMessage: String?
         ): Boolean {
             markFailedCalls += localId to errorCode.orEmpty()
-            rows.replaceAll { row ->
-                if (row.id == localId) row.copy(deliveryState = ThreadMessageDeliveryFailed) else row
+            // Index loop instead of MutableList.replaceAll, which is JVM-only and fails the
+            // OHOS (Kotlin/Native) commonTest compile.
+            for (index in rows.indices) {
+                val row = rows[index]
+                if (row.id == localId) rows[index] = row.copy(deliveryState = ThreadMessageDeliveryFailed)
             }
             return true
         }
