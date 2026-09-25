@@ -5925,7 +5925,13 @@ private fun SharedThreadRouteContentContent(
     LaunchedEffect(active, threadVisibleResumeGate, threadVisibleResumeGate.pendingVisibleResume) {
         if (active) {
             threadVisibleResumeGate.onRouteBecameVisible()
-                ?.let(::applyThreadVisibleResumePlan)
+                ?.let {
+                    bridge.log(
+                        "thread_lifecycle_resume_drained refresh=${it.refreshVisibleConversation} " +
+                            "rejoin=${it.rejoinVisibleRooms} shell=${storeScope.shellInstanceId}"
+                    )
+                    applyThreadVisibleResumePlan(it)
+                }
         }
     }
 
@@ -5964,15 +5970,20 @@ private fun SharedThreadRouteContentContent(
                         event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
                         event == SlockRealtimeNotifyContract.LifecycleVisibleShow
                     ) {
-                        threadVisibleResumeGate
-                            .onLifecycleVisibleResume(latestRouteActive)
-                            ?.let {
-                                bridge.log(
-                                    "thread_lifecycle_refresh_dispatch refresh=${it.refreshVisibleConversation} " +
-                                        "rejoin=${it.rejoinVisibleRooms}"
-                                )
-                                applyThreadVisibleResumePlan(it)
-                            }
+                        val resumePlan =
+                            threadVisibleResumeGate.onLifecycleVisibleResume(latestRouteActive)
+                        if (resumePlan == null) {
+                            bridge.log(
+                                "thread_lifecycle_resume_latched event=$event " +
+                                    "routeActive=$latestRouteActive shell=${storeScope.shellInstanceId}"
+                            )
+                        } else {
+                            bridge.log(
+                                "thread_lifecycle_refresh_dispatch refresh=${resumePlan.refreshVisibleConversation} " +
+                                    "rejoin=${resumePlan.rejoinVisibleRooms}"
+                            )
+                            applyThreadVisibleResumePlan(resumePlan)
+                        }
                     }
                 }
             }
