@@ -39,5 +39,24 @@ FOUNDATION_EXTERN NSString *SlockShareControllerFailureReason(
     BOOL hasRootViewWindow,
     BOOL hasForegroundActiveScene
 );
+/**
+ * Picks which controller to present the share sheet on, mirroring Signal's
+ * frontmost-or-captured order: prefer the presenter captured at tap time, else
+ * the current frontmost controller, else nil. Pure function for tests.
+ */
+FOUNDATION_EXTERN UIViewController * _Nullable SlockSharePresenterController(
+    UIViewController * _Nullable capturedPresenter,
+    UIViewController * _Nullable frontmostPresenter
+);
+/**
+ * Sanitizes a single path component for the persistent attachment store key.
+ * Pure function for tests.
+ */
+FOUNDATION_EXTERN NSString *SlockAttachmentSafeComponent(NSString *raw);
+/**
+ * Builds the persistent attachment cache key `<ownerKey>-<safe(attachmentId)>`
+ * (OHOS SlockOhosPrivateAttachmentStore scheme; empty owner yields just the id).
+ */
+FOUNDATION_EXTERN NSString *SlockAttachmentCacheKey(NSString *ownerKey, NSString *attachmentId);
 
 NS_ASSUME_NONNULL_END

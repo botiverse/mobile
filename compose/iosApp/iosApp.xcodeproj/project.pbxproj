@@ -45,6 +45,7 @@
 		D43B80412E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80462E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m */; };
 		D43B80422E19000100C0DE12 /* SlockSandboxWebViewTests.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80452E19000100C0DE12 /* SlockSandboxWebViewTests.m */; };
 		J0NY00010000000000000001 /* SlockShareControllerFailureReasonTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00020000000000000001 /* SlockShareControllerFailureReasonTests.m */; };
+		J0NY00030000000000000001 /* SlockIosOpenAttachmentTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00040000000000000001 /* SlockIosOpenAttachmentTests.m */; };
 		D43B80432E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80462E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m */; };
 		D46363012E17000100C0DE09 /* SlockIosMobileOAuthHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D46363022E17000100C0DE09 /* SlockIosMobileOAuthHost.swift */; };
 		D49163022E14000100C0DE01 /* space_grotesk_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163122E14000100C0DE01 /* space_grotesk_regular.ttf */; };
@@ -121,6 +122,7 @@
 		D43B80352E18000100C0DE11 /* SlockStackedItemTabBarTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockStackedItemTabBarTests.m; sourceTree = "<group>"; };
 		D43B80452E19000100C0DE12 /* SlockSandboxWebViewTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockSandboxWebViewTests.m; sourceTree = "<group>"; };
 		J0NY00020000000000000001 /* SlockShareControllerFailureReasonTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockShareControllerFailureReasonTests.m; sourceTree = "<group>"; };
+		J0NY00040000000000000001 /* SlockIosOpenAttachmentTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockIosOpenAttachmentTests.m; sourceTree = "<group>"; };
 		D43B80462E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockSandboxWebViewNavigationCommit.m; sourceTree = "<group>"; };
 		D43B80472E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockSandboxWebViewNavigationCommit.h; sourceTree = "<group>"; };
 		D46363022E17000100C0DE09 /* SlockIosMobileOAuthHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosMobileOAuthHost.swift; sourceTree = "<group>"; };
@@ -281,6 +283,7 @@
 				D43B80352E18000100C0DE11 /* SlockStackedItemTabBarTests.m */,
 				D43B80452E19000100C0DE12 /* SlockSandboxWebViewTests.m */,
 				J0NY00020000000000000001 /* SlockShareControllerFailureReasonTests.m */,
+				J0NY00040000000000000001 /* SlockIosOpenAttachmentTests.m */,
 			);
 			path = iosAppTests;
 			sourceTree = "<group>";
@@ -730,6 +733,7 @@
 				D43B80322E18000100C0DE11 /* SlockStackedItemTabBarTests.m in Sources */,
 				D43B80422E19000100C0DE12 /* SlockSandboxWebViewTests.m in Sources */,
 				J0NY00010000000000000001 /* SlockShareControllerFailureReasonTests.m in Sources */,
+				J0NY00030000000000000001 /* SlockIosOpenAttachmentTests.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
