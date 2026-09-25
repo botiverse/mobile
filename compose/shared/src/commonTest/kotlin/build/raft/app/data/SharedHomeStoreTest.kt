@@ -4602,7 +4602,7 @@ class SharedHomeStoreTest {
         // carries a concurrently-fetched sidebarOrder must keep it through the durable
         // persist slice, so a cold start reads the pinned section back out with channels.
         val snapshot =
-            sampleHome("server-1").copy(
+            sampleHome(ServerId("server-1")).copy(
                 sidebarOrder =
                     SettingsServerSidebarOrderSnapshot(
                         channelOrder = listOf("channel-pinned"),
