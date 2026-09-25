@@ -24201,10 +24201,20 @@ internal fun Modifier.threadMessageLongPressActions(
                     val gestureToken = gestureOwner.tapMovementGate.currentGestureToken()
                     val compositionLease =
                         gestureOwner.captureActiveLease(gestureToken.compositionGeneration)
-                            ?: return@detectTapGestures
+                            ?: run {
+                                diagnosticsLogger(
+                                    "thread_message_long_press_no_lease messageId=$messageId"
+                                )
+                                return@detectTapGestures
+                            }
                     val callbacks =
                         gestureOwner.callbacksSnapshot(compositionLease)
-                            ?: return@detectTapGestures
+                            ?: run {
+                                diagnosticsLogger(
+                                    "thread_message_long_press_no_callbacks messageId=$messageId"
+                                )
+                                return@detectTapGestures
+                            }
                     val movementDecision = gestureOwner.tapMovementGate.decision(gestureToken)
                     val directPointerMovementDetected =
                         movementDecision.reason == "movement" || movementDecision.reason == "multi_touch"
