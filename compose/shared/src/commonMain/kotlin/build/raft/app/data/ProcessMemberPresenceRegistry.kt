@@ -198,15 +198,17 @@ internal fun processPresenceBindingTransition(
     registry: ProcessMemberPresenceRegistry,
     onBindingRetired: (ProcessPresenceAuthContext) -> Unit = {},
     onBindingBound: (ProcessPresenceAuthContext) -> Unit = {},
-    currentEnvironmentId: () -> String,
     /**
      * Same-binding auth revision rotation (transparent token refresh): the binding identity
      * (environment + principal) is unchanged, only the authority generation advanced. Defaults
      * to [onBindingRetired] (delete semantics) so existing callers keep their behavior; the
      * pending-send journal wires this to rehome rows into the successor generation instead.
+     * Declared BEFORE [currentEnvironmentId] so existing trailing-lambda call sites (which bind
+     * the trailing lambda to currentEnvironmentId) keep compiling unchanged.
      */
     onBindingAuthRevisionRotated: (retired: ProcessPresenceAuthContext, bound: ProcessPresenceAuthContext) -> Unit =
         { retired, _ -> onBindingRetired(retired) },
+    currentEnvironmentId: () -> String,
 ): (RealtimeAuthRevision) -> Unit = { revision ->
     val principal = revision.session?.principalId?.trim()?.takeIf { it.isNotBlank() }
     val environmentId = currentEnvironmentId()

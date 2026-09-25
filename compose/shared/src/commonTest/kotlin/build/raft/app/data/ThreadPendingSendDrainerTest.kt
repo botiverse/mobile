@@ -85,7 +85,7 @@ class ThreadPendingSendDrainerTest {
         val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = true) }
         val send = RecordingSend()
         send.results += ThreadApiResult.Failure(code = 429)
-        send.results += successPage()
+        send.results += ThreadApiResult.Success(successPage())
         val wakeups = mutableListOf<Long>()
         val drainer = drainer(store = store, send = send.handler, wakeups = wakeups)
 
@@ -150,7 +150,10 @@ class ThreadPendingSendDrainerTest {
     fun emptySuccessResponseIsTreatedAsTerminalFailure() = runBlocking {
         val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = true) }
         val send = RecordingSend()
-        send.results += ThreadMessagesPage(messages = emptyList(), canLoadMoreBefore = false, canLoadMoreAfter = false)
+        send.results +=
+            ThreadApiResult.Success(
+                ThreadMessagesPage(messages = emptyList(), canLoadMoreBefore = false, canLoadMoreAfter = false),
+            )
         val drainer = drainer(store = store, send = send.handler)
 
         drainer.drainOnceForTests("start")
@@ -165,7 +168,7 @@ class ThreadPendingSendDrainerTest {
         val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = true) }
         val send = RecordingSend()
         send.throwables += SlockRequestTimeoutException("send request exceeded 30000ms")
-        send.results += successPage()
+        send.results += ThreadApiResult.Success(successPage())
         val drainer = drainer(store = store, send = send.handler)
 
         drainer.drainOnceForTests("start")
@@ -320,17 +323,19 @@ class ThreadPendingSendDrainerTest {
                 randomIds += context.randomId.orEmpty()
                 throwables.removeFirstOrNull()?.let { throw it }
                 results.removeFirstOrNull()
-                    ?: ThreadMessagesPage(
-                        messages = listOf(WireMessage(id = "wire-${randomIds.size}", content = "hello")),
-                        canLoadMoreBefore = false,
-                        canLoadMoreAfter = false,
+                    ?: ThreadApiResult.Success(
+                        ThreadMessagesPage(
+                            messages = listOf(WireMessage(id = "wire-${randomIds.size}", content = "hello")),
+                            canLoadMoreBefore = false,
+                            canLoadMoreAfter = false,
+                        ),
                     )
             }
     }
 
     private class FakeDrainStore : ThreadPendingSendDrainStore {
         val rows = mutableListOf<KuiklyThreadMessageItem>()
-        val markFailedCalls = mutableListOf<Pair<String, String?>>()
+        val markFailedCalls = mutableListOf<Pair<String, String>>()
         val consumedRandomIds = mutableListOf<String>()
         val secondPass = CompletableDeferred<Unit>()
         var rowsForDrainCalls = 0
