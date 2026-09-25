@@ -129,7 +129,7 @@ on:
         type: string
         default: "0"
       version_build:
-        description: "versionCode build (x*1_000_000 + y*10_000 + z*100 + build)"
+        description: "versionCode build (x*10_000_000 + y*100_000 + z*1_000 + build, 0-999)"
         required: true
         type: string
         default: "0"
@@ -373,9 +373,9 @@ jobs:
           PATCH="${{ needs.resolve.outputs.version_patch }}"
           BUILD="${{ needs.resolve.outputs.version_build }}"
           SUFFIX="${{ needs.resolve.outputs.version_suffix }}"
-          # versionCode = X*1_000_000 + Y*10_000 + Z*100 + build (per
-          # docs/android-hands-release-practices-2026-07-02.md)
-          VERSION_CODE=$((MAJOR * 1000000 + MINOR * 10000 + PATCH * 100 + BUILD))
+          # versionCode = X*10_000_000 + Y*100_000 + Z*1_000 + build (0-999),
+          # via scripts/ci/version_code.sh (authoritative single formula).
+          VERSION_CODE="$(scripts/ci/version_code.sh "$MAJOR" "$MINOR" "$PATCH" "$BUILD")"
           if [ -n "$SUFFIX" ]; then
             VERSION_NAME="${MAJOR}.${MINOR}.${PATCH}-${SUFFIX}"
           else
@@ -398,6 +398,7 @@ jobs:
             "-PversionY=${{ needs.resolve.outputs.version_minor }}"
             "-PversionZ=${{ needs.resolve.outputs.version_patch }}"
             "-PversionBuild=${{ needs.resolve.outputs.version_build }}"
+            "-PversionCode=${{ steps.resolve.outputs.version_code }}"
           )
           case "${{ needs.resolve.outputs.dex_packaging }}" in
             current) ;;

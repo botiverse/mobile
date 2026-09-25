@@ -106,8 +106,8 @@ jobs:
             echo "version_patch must be an integer from 0 to 99" >&2
             exit 1
           fi
-          if ! [[ "${ALPHA_VERSION_BUILD}" =~ ^[0-9]{1,2}$ ]]; then
-            echo "version_build must be an integer from 0 to 99" >&2
+          if ! [[ "${ALPHA_VERSION_BUILD}" =~ ^[0-9]{1,3}$ ]]; then
+            echo "version_build must be an integer from 0 to 999" >&2
             exit 1
           fi
           ./gradlew \
@@ -116,6 +116,7 @@ jobs:
             :androidApp:copyHandsNativeSymbols \
             "-PversionZ=${ALPHA_VERSION_PATCH}" \
             "-PversionBuild=${ALPHA_VERSION_BUILD}" \
+            "-PversionCode=$(scripts/ci/version_code.sh 1 0 "${ALPHA_VERSION_PATCH}" "${ALPHA_VERSION_BUILD}")" \
             -PversionSuffix=alpha \
             --no-daemon --max-workers=${{ env.GRADLE_MAX_WORKERS }} --console=plain --stacktrace
 

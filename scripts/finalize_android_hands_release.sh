@@ -62,7 +62,7 @@ version_code() {
   [[ "${major}" =~ ^[0-9]+$ && "${minor}" =~ ^[0-9]+$ && "${patch}" =~ ^[0-9]+$ ]] ||
     die "--version must be x.y.z"
   [[ "${VERSION_BUILD}" =~ ^[0-9]+$ ]] || die "--build must be a non-negative integer"
-  printf '%s\n' "$((major * 1000000 + minor * 10000 + patch * 100 + VERSION_BUILD))"
+  scripts/ci/version_code.sh "${major}" "${minor}" "${patch}" "${VERSION_BUILD}"
 }
 
 while [ "$#" -gt 0 ]; do
