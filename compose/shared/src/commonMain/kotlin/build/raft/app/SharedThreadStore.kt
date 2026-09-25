@@ -68,7 +68,9 @@ import build.raft.app.data.ThreadRouteId
 import build.raft.app.data.ThreadReplySummariesSnapshot
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.ThreadApiResult
+import build.raft.app.data.ThreadPendingSendDrainer
 import build.raft.app.data.ThreadPendingSendJournal
+import build.raft.app.data.ThreadPendingSendJournalDrainStore
 import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
 import build.raft.app.data.ThreadAttachmentOpenTarget
 import build.raft.app.data.ThreadMessagesPage
@@ -1642,6 +1644,8 @@ internal class SharedThreadDataSource(
         readReplyResolutionScope()?.let { scope ->
             ReplyCacheProducerContext(scope.session, scope.provenance)
         }
+
+    internal fun pendingSendJournalOrNull(): ThreadPendingSendJournal? = pendingSendJournal
 
     /** Durable admission gate for a local send. Must complete before the caller starts HTTP. */
     internal fun persistPendingLocalSend(
@@ -5732,6 +5736,44 @@ internal class SharedThreadStore(
             .map { threadState -> threadState.highlightedMentions }
             .distinctUntilChanged()
 
+    // Event-driven drainer for durably journaled pending sends. Resends reuse the journaled
+    // randomId so a request that committed server-side before its response was lost is deduped
+    // by the server rather than duplicated; row fencing stays with the journal's exact
+    // provenance/route partition.
+    private val pendingSendDrainer: ThreadPendingSendDrainer? =
+        dataSource.pendingSendJournalOrNull()?.let { journal ->
+            ThreadPendingSendDrainer(
+                drainStore = ThreadPendingSendJournalDrainStore(journal),
+                scope = scope,
+                provenanceResolver = { dataSource.currentReplyCacheProvenance() },
+                routeResolver = { _state.value.payload.resolveThreadRouteIdentity() },
+                send = { context ->
+                    dataSource.sendMessage(
+                        context.channelId,
+                        context.body,
+                        context.asTask,
+                        context.attachmentIds,
+                        context.randomId,
+                    )
+                },
+                onSent = { localId, page, provenance, route ->
+                    accept(
+                        SharedThreadIntent.ReplaceLocalSendWithSentPage(
+                            localId,
+                            page,
+                            provenance,
+                            route,
+                        )
+                    )
+                },
+                logger = { message -> diagnosticsLogger?.invoke(message) },
+            )
+        }
+
+    internal fun triggerPendingSendDrain(reason: String) {
+        pendingSendDrainer?.trigger(reason)
+    }
+
     private var loadJob: Job? = null
     private var enteredScopeSnapshotJob: Job? = null
     private var secondaryTimelineRefreshJob: Job? = null
@@ -5845,6 +5887,10 @@ internal class SharedThreadStore(
             is SharedThreadIntent.SetPagingAvailability ->
                 scope.launch { accept(intent) }
             is SharedThreadIntent.ApplyRealtimeEvent -> {
+                // An accepted realtime frame (even one later dropped as stale) is an
+                // authoritative online witness: let the pending-send drainer re-evaluate
+                // journaled rows. Throttled inside the drainer.
+                pendingSendDrainer?.onAuthoritativeOnline()
                 scope.launch {
                     applyRealtimeEvent(
                         event = intent.event,
@@ -6153,6 +6199,10 @@ internal class SharedThreadStore(
         ) {
             reduceState(_state.value.copy(highlightedMentions = session.threadSelfMentionNames()))
         }
+        // Process restart / page entry: adopt journaled sends whose owning attempt died and
+        // resume automatic retries. Fire-and-forget; the drainer no-ops until provenance and a
+        // send-valid route are available.
+        pendingSendDrainer?.onStoreStarted()
         if (rememberedAccessFailure != null) {
             diagnosticsLogger?.invoke(
                 "thread_start_access_failure_reused route=${routeIdentity.instanceKey} " +
@@ -8766,6 +8816,9 @@ internal class SharedThreadStore(
                 ownerScopeId = currentProvenance.threadPayloadOwnerScopeId.orEmpty(),
                 expectedProvenance = currentProvenance
             )
+            // The failure just landed in the journal as durable: arm the drainer so the
+            // automatic retry path owns it from here (backoff + online/foreground triggers).
+            pendingSendDrainer?.onSendFailed()
         }
     }
 
@@ -9313,6 +9366,10 @@ internal class SharedThreadViewModel(
 
     fun dispatch(intent: SharedThreadIntent) {
         store.dispatch(intent)
+    }
+
+    internal fun triggerPendingSendDrain(reason: String) {
+        store.triggerPendingSendDrain(reason)
     }
 
     fun admitLocalSend(

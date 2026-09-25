@@ -198,6 +198,16 @@ internal fun processPresenceBindingTransition(
     registry: ProcessMemberPresenceRegistry,
     onBindingRetired: (ProcessPresenceAuthContext) -> Unit = {},
     onBindingBound: (ProcessPresenceAuthContext) -> Unit = {},
+    /**
+     * Same-binding auth revision rotation (transparent token refresh): the binding identity
+     * (environment + principal) is unchanged, only the authority generation advanced. Defaults
+     * to [onBindingRetired] (delete semantics) so existing callers keep their behavior; the
+     * pending-send journal wires this to rehome rows into the successor generation instead.
+     * Declared BEFORE [currentEnvironmentId] so existing trailing-lambda call sites (which bind
+     * the trailing lambda to currentEnvironmentId) keep compiling unchanged.
+     */
+    onBindingAuthRevisionRotated: (retired: ProcessPresenceAuthContext, bound: ProcessPresenceAuthContext) -> Unit =
+        { retired, _ -> onBindingRetired(retired) },
     currentEnvironmentId: () -> String,
 ): (RealtimeAuthRevision) -> Unit = { revision ->
     val principal = revision.session?.principalId?.trim()?.takeIf { it.isNotBlank() }
@@ -213,14 +223,13 @@ internal fun processPresenceBindingTransition(
         previous.environmentId == environmentId
     ) {
         // A token/auth-generation rotation keeps the presence facts and the
-        // registry write generation alive, but the old generation's durable
-        // client-owned projections are no longer reachable under the new
-        // authority. Retire that exact generation before publishing its
-        // successor so pending sends cannot accumulate as orphaned rows.
-        if (previous.authorityGeneration != revision.generation) {
-            onBindingRetired(previous)
-        }
+        // registry write generation alive. Durable client-owned projections keyed by the old
+        // authority generation are either rehomed into the successor (pending sends, via
+        // onBindingAuthRevisionRotated) or retired (default), never silently orphaned.
         val bound = previous.copy(authorityGeneration = revision.generation)
+        if (previous.authorityGeneration != revision.generation) {
+            onBindingAuthRevisionRotated(previous, bound)
+        }
         presenceAuthContext.value = bound
         onBindingBound(bound)
     } else {

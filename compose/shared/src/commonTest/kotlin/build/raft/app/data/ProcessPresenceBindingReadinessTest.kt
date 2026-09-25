@@ -75,6 +75,50 @@ class ProcessPresenceBindingReadinessTest {
         assertEquals(2L, context.value?.authorityGeneration)
     }
 
+    // task #1134: with a rotation hook wired (the pending-send journal's rehome), a same-binding
+    // token refresh routes to the hook with (retired, bound) and never to delete semantics,
+    // while a principal switch keeps retire/delete semantics for the old binding.
+    @Test
+    fun sameBindingRotationRoutesToRotationHookWhilePrincipalSwitchStillRetires() {
+        val context = MutableStateFlow<ProcessPresenceAuthContext?>(null)
+        val registry = ProcessMemberPresenceRegistry()
+        val retired = mutableListOf<ProcessPresenceAuthContext>()
+        val rotations = mutableListOf<Pair<Long, Long>>()
+        val transition =
+            processPresenceBindingTransition(
+                presenceAuthContext = context,
+                registry = registry,
+                onBindingRetired = { retired += it },
+                currentEnvironmentId = { "env-1" },
+                onBindingAuthRevisionRotated = { old, new ->
+                    rotations += old.authorityGeneration to new.authorityGeneration
+                },
+            )
+        fun revision(generation: Long, principal: String) =
+            RealtimeAuthRevision(
+                generation = generation,
+                session =
+                    RealtimeAuthoritySession(
+                        principalId = principal,
+                        serverIds = listOf("server-1"),
+                        environmentId = "env-test",
+                    ),
+            )
+
+        transition(revision(1L, "user-1"))
+        transition(revision(2L, "user-1"))
+        assertEquals(listOf(1L to 2L), rotations)
+        assertEquals(emptyList(), retired)
+
+        // A principal switch is a binding change, not a rotation: the old binding is retired
+        // (journal keeps delete semantics for rows it must not carry across accounts).
+        transition(revision(3L, "user-2"))
+        assertEquals(listOf(1L to 2L), rotations)
+        assertEquals(listOf(2L), retired.map { it.authorityGeneration })
+        assertEquals("user-2", context.value?.accountId)
+        assertEquals(3L, context.value?.authorityGeneration)
+    }
+
     private class ReadinessHarness(
         throwingDiagnosticsLogger: Boolean = false,
         invalidationOverride: ((Set<RealtimeGrantRecord>) -> Unit)? = null,
