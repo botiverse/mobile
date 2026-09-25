@@ -27,6 +27,8 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.time.TimeSource
@@ -759,8 +761,23 @@ class SharedServerMembersStore internal constructor(
     // row re-subscribing its own entryFlow/presence combine (O(N) flow mounts and
     // O(N) linear scans per update). Keyed on the normalized tuple; cleared with
     // the store's lifecycle (flows are cold, cached instance is just a recipe).
+    private val memberReadFlowsLock = SynchronizedObject()
     private val memberStatusFlows = mutableMapOf<Pair<String, String>, Flow<SharedServerMemberStatus?>>()
     private val memberProfileFlows = mutableMapOf<Pair<String, String>, Flow<MemberProfile?>>()
+
+    /**
+     * Drops memoized per-member read flows. Call on session clear / account
+     * switch / shell-scope release so a new owner generation never reuses a
+     * recipe that was bound to a retired auth context (the flows are cold and
+     * rebind through presenceOwnerFlow, but the recipe map itself must not grow
+     * unbounded or leak cross-account memberIds).
+     */
+    fun clearScopedReadCaches() {
+        synchronized(memberReadFlowsLock) {
+            memberStatusFlows.clear()
+            memberProfileFlows.clear()
+        }
+    }
 
     fun memberStatusFlow(
         serverId: ServerId?,
@@ -769,8 +786,10 @@ class SharedServerMembersStore internal constructor(
         val cleanServerId = serverId?.value.normalizedServerMembersId()
         val cleanMemberId = memberId.normalizedServerMembersId()
         if (cleanServerId == null || cleanMemberId == null) return flowOf(null)
-        return memberStatusFlows.getOrPut(cleanServerId to cleanMemberId) {
-            buildMemberStatusFlow(ServerId(cleanServerId), cleanMemberId)
+        return synchronized(memberReadFlowsLock) {
+            memberStatusFlows.getOrPut(cleanServerId to cleanMemberId) {
+                buildMemberStatusFlow(ServerId(cleanServerId), cleanMemberId)
+            }
         }
     }
 
@@ -823,8 +842,10 @@ class SharedServerMembersStore internal constructor(
         val cleanServerId = serverId?.value.normalizedServerMembersId()
         val cleanMemberId = memberId.normalizedServerMembersId()
         if (cleanServerId == null || cleanMemberId == null) return flowOf(null)
-        return memberProfileFlows.getOrPut(cleanServerId to cleanMemberId) {
-            scopedMemberProfileFlow(ServerId(cleanServerId), cleanMemberId)
+        return synchronized(memberReadFlowsLock) {
+            memberProfileFlows.getOrPut(cleanServerId to cleanMemberId) {
+                scopedMemberProfileFlow(ServerId(cleanServerId), cleanMemberId)
+            }
         }
     }
 

@@ -3105,6 +3105,34 @@ class SharedServerMembersStoreTest {
         )
     }
 
+    @Test
+    fun clearScopedReadCachesDropsMemoizedFlows() = runBlocking {
+        val serverId = ServerId("server-1")
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(member("agent-1", "Agent").copy(kind = MemberKind.Agent))
+            )
+        )
+
+        val before = store.memberStatusFlow(serverId, "agent-1")
+        assertTrue(before === store.memberStatusFlow(serverId, "agent-1"))
+
+        store.clearScopedReadCaches()
+
+        assertTrue(
+            before !== store.memberStatusFlow(serverId, "agent-1"),
+            "session/account clear must mint fresh recipes so retired auth-bound " +
+                "read edges cannot be reused"
+        )
+        assertTrue(
+            store.memberStatusFlow(serverId, "agent-1") ===
+                store.memberStatusFlow(serverId, "agent-1"),
+            "post-clear calls re-memoize normally"
+        )
+    }
+
     private class FakeMemberRepository : MemberRepository {
         val membersByServer = mutableMapOf("server-1" to listOf(member("u1", "Cindy")))
         val channelMembersByChannel = mutableMapOf<String, List<MemberProfile>>()
