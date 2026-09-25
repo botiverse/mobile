@@ -8887,7 +8887,11 @@ class SharedThreadStoreTest {
         assertEquals("reply-5", firstVisibleMessage.firstUnreadReplyMessageId)
         assertEquals(listOf("reply-5"), firstVisibleMessage.inlineReplies?.replies?.map { it.messageId })
         assertEquals("明启", firstVisibleMessage.inlineReplies?.replies?.single()?.senderDisplayName)
-        assertTrue(repository.getThreadReplySummariesRequests.isEmpty())
+        delay(1L)
+        assertEquals(
+            listOf(ThreadId("channel-1") to listOf(MessageId("m1"))),
+            repository.getThreadReplySummariesRequests
+        )
         scope.cancel()
     }
 
@@ -8960,7 +8964,6 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
-        assertTrue(repository.getThreadReplySummariesRequests.isEmpty())
         store.accept(SharedThreadIntent.FirstContentReady)
         delay(1L)
 
@@ -9123,10 +9126,6 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
-        assertTrue(
-            repository.getThreadReplySummariesRequests.isEmpty(),
-            "thread summaries must not race the first content frame or bottom anchor"
-        )
         store.accept(SharedThreadIntent.FirstContentReady)
         delay(1L)
 
@@ -9142,6 +9141,81 @@ class SharedThreadStoreTest {
                     it.contains("emitted=false")
             }
         )
+        scope.cancel()
+    }
+
+    @Test
+    fun earlySummaryResultStashesUntilFirstContentReady() = runBlocking {
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Content(threadSnapshot(body = "stable body")),
+                threadReplySummariesResult = replySummaries(replyCount = 7),
+            ).also {
+                it.threadReplySummariesStarted = CompletableDeferred()
+                it.releaseThreadReplySummaries = CompletableDeferred()
+                it.ignoreThreadReplySummariesCancellation = true
+            }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    testSharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                        conversationRepository = repository,
+                    ),
+                scope = scope,
+            )
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        repository.threadReplySummariesStarted?.await()
+        assertEquals(
+            listOf(ThreadId("channel-1") to listOf(MessageId("m1"))),
+            repository.getThreadReplySummariesRequests
+        )
+        repository.releaseThreadReplySummaries?.complete(Unit)
+        yield()
+        assertEquals(0, store.state.value.payload.messages.single().replyCount)
+
+        store.accept(SharedThreadIntent.FirstContentReady)
+        yield()
+        delay(1L)
+        assertEquals(7, store.state.value.payload.messages.single().replyCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun lateSummaryResultAppliesImmediatelyAfterFirstContentReady() = runBlocking {
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Content(threadSnapshot(body = "stable body")),
+                threadReplySummariesResult = replySummaries(replyCount = 7),
+            ).also {
+                it.threadReplySummariesStarted = CompletableDeferred()
+                it.releaseThreadReplySummaries = CompletableDeferred()
+                it.ignoreThreadReplySummariesCancellation = true
+            }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    testSharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                        conversationRepository = repository,
+                    ),
+                scope = scope,
+            )
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.FirstContentReady)
+        repository.threadReplySummariesStarted?.await()
+        repository.releaseThreadReplySummaries?.complete(Unit)
+        yield()
+        delay(1L)
+        assertEquals(7, store.state.value.payload.messages.single().replyCount)
         scope.cancel()
     }
 
@@ -14297,7 +14371,13 @@ class SharedThreadStoreTest {
 
         assertEquals(listOf(30), repository.getThreadLimits)
         assertEquals(listOf(50), repository.olderLimits)
-        assertEquals(listOf(ThreadId("channel-1") to listOf(MessageId("m5"), MessageId("m1"))), repository.getThreadReplySummariesRequests)
+        assertEquals(
+            listOf(
+                ThreadId("channel-1") to listOf(MessageId("m1")),
+                ThreadId("channel-1") to listOf(MessageId("m5"), MessageId("m1"))
+            ),
+            repository.getThreadReplySummariesRequests
+        )
         scope.cancel()
     }
 
@@ -15641,6 +15721,7 @@ class SharedThreadStoreTest {
         repository.syncNewerStarted?.await()
         api.bodyText = messagesResponse("foreground body", id = "m20", seq = 20, historyLimited = false)
         store.accept(SharedThreadIntent.Refresh)
+        val summariesBefore = repository.getThreadReplySummariesRequests.size
         repository.releaseSyncNewer?.complete(Unit)
         withTimeout(10_000) { gapJob.join() }
         delay(1L)
@@ -15651,7 +15732,7 @@ class SharedThreadStoreTest {
             logs.none { it.startsWith("thread_secondary_backfill") && it.contains("trigger=resume_gap") },
             "expected no secondary backfill after stale drop, got: $logs"
         )
-        assertEquals(0, summariesAfter)
+        assertEquals(summariesBefore, summariesAfter)
         scope.cancel()
     }
 
