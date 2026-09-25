@@ -1,22 +1,37 @@
 package build.raft.app
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * task #386/#388: the system back key must be consumed by More sub-pages (returning to the
- * hub) instead of falling through to the root shell handler, which closes the whole page.
+ * task #401 (supersedes the #386 hub page): in Slack-nav mode the More tab is an action menu.
+ * Every More tap — including a re-tap while More is already selected — must reopen the menu,
+ * so the user can never get stuck on the last-opened sub-page.
  */
 class SlockSlackNavMoreHubTest {
 
     @Test
-    fun systemBackIsConsumedBySubPagesOnly() {
-        // The hub itself keeps the root shell back behavior (page-level back).
-        assertFalse(slockSlackNavMoreShouldConsumeSystemBack(SlockSlackNavMoreDestination.Hub))
-        // Every demoted sub-destination intercepts back and returns to the hub.
-        assertTrue(slockSlackNavMoreShouldConsumeSystemBack(SlockSlackNavMoreDestination.Tasks))
-        assertTrue(slockSlackNavMoreShouldConsumeSystemBack(SlockSlackNavMoreDestination.Members))
-        assertTrue(slockSlackNavMoreShouldConsumeSystemBack(SlockSlackNavMoreDestination.Settings))
+    fun everyMoreTapInSlackNavOpensMenu() {
+        assertTrue(slockSlackNavMoreTapOpensMenu(slackNavMode = true, tappedTab = SlockSlackNavTabs.More))
+    }
+
+    @Test
+    fun otherTabsAndLegacyModeKeepNormalTabSwitching() {
+        assertFalse(slockSlackNavMoreTapOpensMenu(slackNavMode = true, tappedTab = SlockSlackNavTabs.Home))
+        assertFalse(slockSlackNavMoreTapOpensMenu(slackNavMode = true, tappedTab = SlockSlackNavTabs.Dms))
+        assertFalse(slockSlackNavMoreTapOpensMenu(slackNavMode = true, tappedTab = SlockSlackNavTabs.Activity))
+        // Gate off: legacy four-tab bar has no More tab; nothing is intercepted.
+        assertFalse(slockSlackNavMoreTapOpensMenu(slackNavMode = false, tappedTab = SlockSlackNavTabs.More))
+        assertFalse(slockSlackNavMoreTapOpensMenu(slackNavMode = false, tappedTab = "settings"))
+    }
+
+    @Test
+    fun menuOffersExactlyTasksMembersSettings() {
+        assertEquals(
+            listOf("Tasks", "Members", "Settings"),
+            SlockSlackNavMoreDestination.entries.map { it.name }
+        )
     }
 }
