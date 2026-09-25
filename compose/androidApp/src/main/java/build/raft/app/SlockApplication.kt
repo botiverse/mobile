@@ -29,6 +29,7 @@ class SlockApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        recordCoroutineWorkerKeepAliveDiagnostics()
         ProcessAndroidAttachmentPublicDownloads.start(this)
         ProcessAndroidAttachmentMediaStoreCleanup.start(this)
         SlockAndroidLocalDiagnostics.init(this)
@@ -138,4 +139,24 @@ internal const val COROUTINE_WORKER_KEEP_ALIVE_PROPERTY =
  */
 internal fun installCoroutineWorkerKeepAlive() {
     System.setProperty(COROUTINE_WORKER_KEEP_ALIVE_PROPERTY, COROUTINE_WORKER_KEEP_ALIVE_SEC)
+}
+
+/**
+ * Read back the keep-alive the DefaultScheduler actually consumed (task #312). Reflects
+ * the internal `TasksKt.IDLE_WORKER_KEEP_ALIVE_NS` so a device diagnostics bundle can
+ * confirm the pin took effect at runtime. Best-effort; never throws.
+ */
+private fun SlockApplication.recordCoroutineWorkerKeepAliveDiagnostics() {
+    val readBack =
+        runCatching {
+            val tasksClass = Class.forName("kotlinx.coroutines.scheduling.TasksKt")
+            val field = tasksClass.getDeclaredField("IDLE_WORKER_KEEP_ALIVE_NS")
+            field.isAccessible = true
+            field.getLong(null)
+        }.getOrElse { -1L }
+    SlockAndroidLocalDiagnostics.recordLog(
+        "info",
+        "SlockCoroutineWorkerKeepAlive",
+        "coroutine_keepalive_ns=$readBack property=$COROUTINE_WORKER_KEEP_ALIVE_SEC"
+    )
 }
