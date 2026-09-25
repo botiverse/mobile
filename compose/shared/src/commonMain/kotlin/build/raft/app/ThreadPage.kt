@@ -5,6 +5,7 @@ import build.raft.app.components.SlockAttachmentPreviewCard
 import build.raft.app.components.SlockAttachmentPreviewCardWidth
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalInputField
+import build.raft.app.components.SlockExternalBridgeBadge
 import build.raft.app.components.SlockChipLoadingIndicator
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalSearchField
@@ -15507,6 +15508,9 @@ private fun ThreadPageHeader(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
+                    if (headerDisplay.surfaceKind == KuiklyThreadSurfaceKind.Channel) {
+                        SlockExternalBridgeBadge(headerDisplay.bridgeProvider)
+                    }
                     if (activityMutedIndicatorVisible) {
                         ThreadActivityMutedBadge()
                     }

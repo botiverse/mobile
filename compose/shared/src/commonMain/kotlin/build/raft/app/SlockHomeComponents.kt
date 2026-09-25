@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalPanel
+import build.raft.app.components.SlockExternalBridgeBadge
+import build.raft.app.components.externalBridgeBadgeVisible
 import build.raft.app.components.SlockSkeleton
 import build.raft.app.components.SlockSkeletonVariant
 import build.raft.app.data.ChannelRepository
@@ -347,7 +349,9 @@ data class SlockHomeConversationItem(
     val joined: Boolean = true,
     val archived: Boolean = false,
     val activityMuted: Boolean = false,
-    val activityMuteSupported: Boolean = false
+    val activityMuteSupported: Boolean = false,
+    // task #396: external bridge provider ("slack") from `channel.bridge.provider`.
+    val bridgeProvider: String? = null
 )
 
 data class SlockHomeServerDrawerSection(
@@ -613,7 +617,8 @@ private data class ChannelRowContent(
     val badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud,
     val hasDraft: Boolean = false,
     val muted: Boolean = false,
-    val joined: Boolean = true
+    val joined: Boolean = true,
+    val bridgeProvider: String? = null
 ) {
     fun defaultInteractionIdentity(): String = "channel:$symbol:$name"
 }
@@ -2364,6 +2369,7 @@ private fun SlockStructuralHomeShellContent(
                                                         joined = pinned.joined,
                                                         hasDraft = pinned.hasDraft,
                                                         muted = pinned.activityMuted,
+                                                        bridgeProvider = pinned.bridgeProvider,
                                                         badge = badgeProjection.label,
                                                         badgeTone = badgeProjection.tone
                                                     ),
@@ -2414,6 +2420,7 @@ private fun SlockStructuralHomeShellContent(
                                                         joined = channel.joined,
                                                         hasDraft = channel.hasDraft,
                                                         muted = channel.activityMuted,
+                                                        bridgeProvider = channel.bridgeProvider,
                                                         badge = badgeProjection.label,
                                                         badgeTone = badgeProjection.tone
                                                     ),
@@ -2478,6 +2485,7 @@ private fun SlockStructuralHomeShellContent(
                                                         joined = channel.joined,
                                                         hasDraft = channel.hasDraft,
                                                         muted = channel.activityMuted,
+                                                        bridgeProvider = channel.bridgeProvider,
                                                         badge = badgeProjection.label,
                                                         badgeTone = badgeProjection.tone
                                                     ),
@@ -4839,6 +4847,7 @@ private fun HomeServerDrawerConversationRow(
                     joined = item.joined,
                     hasDraft = item.hasDraft,
                     muted = item.activityMuted,
+                    bridgeProvider = item.bridgeProvider,
                     badge = badgeProjection.label,
                     badgeTone = badgeProjection.tone
                 ),
@@ -5766,6 +5775,10 @@ private fun ChannelRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (externalBridgeBadgeVisible(content.bridgeProvider)) {
+                    Spacer(Modifier.width(ChannelRowMutedIconGap))
+                    SlockExternalBridgeBadge(content.bridgeProvider)
+                }
                 if (mutedIndicatorIcon != null) {
                     Spacer(Modifier.width(ChannelRowMutedIconGap))
                     SlockLucideIcon(

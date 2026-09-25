@@ -37,6 +37,19 @@ private val homeJson = Json {
     coerceInputValues = true
 }
 
+/**
+ * task #396: presentation-only external bridge metadata attached by the server's
+ * `channelService.attachExternalBridgeMetadata` to `GET /channels` and `GET /channels/:id`
+ * (`bridge?: { provider: "slack"; providerConversationId; state: "active" | "paused" | "quarantined" }`).
+ * Secret-free; mobile only reads [provider] to render the `[Slack]` badge (Web Sidebar parity).
+ */
+@Serializable
+data class HomeChannelBridgeWireDto(
+    val provider: String? = null,
+    val providerConversationId: String? = null,
+    val state: String? = null,
+)
+
 @Serializable
 data class HomeChannelWireDto(
     val id: String,
@@ -54,6 +67,7 @@ data class HomeChannelWireDto(
     val jointPeerStatus: String? = null,
     val jointBillingLocked: Boolean? = null,
     val jointOverLimitGraceEndsAt: String? = null,
+    val bridge: HomeChannelBridgeWireDto? = null,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false,
@@ -106,6 +120,7 @@ private data class HomeChannelDetailWireDto(
     val jointPeerStatus: String? = null,
     val jointBillingLocked: Boolean? = null,
     val jointOverLimitGraceEndsAt: String? = null,
+    val bridge: HomeChannelBridgeWireDto? = null,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false,
@@ -163,6 +178,7 @@ internal fun parseSlockChannelDetail(
             jointPeerStatus = wire.jointPeerStatus,
             jointBillingLocked = wire.jointBillingLocked,
             jointOverLimitGraceEndsAt = wire.jointOverLimitGraceEndsAt,
+            bridge = wire.bridge,
             activityMuted = wire.activityMuted,
             muteFromSeq = wire.muteFromSeq,
             activityMuteSupported = wire.activityMuteSupported,
@@ -337,6 +353,9 @@ fun parseSharedChannelDeleteResult(bodyText: String, channelId: ChannelId): Chan
         if (decoded.ok) ChannelDeleteResult(channelId = channelId, deleted = true) else null
     }.getOrNull()
 
+internal fun HomeChannelBridgeWireDto?.normalizedBridgeProviderOrNull(): String? =
+    this?.provider?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+
 private fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
     val isJoint =
         type.equals("joint", ignoreCase = true) ||
@@ -361,6 +380,7 @@ private fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
         jointPeerStatus = jointPeerStatus?.takeIf { it.isNotBlank() },
         jointBillingLocked = jointBillingLocked,
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt?.takeIf { it.isNotBlank() },
+        bridgeProvider = bridge.normalizedBridgeProviderOrNull(),
         activityNotificationPreference =
             ChannelActivityNotificationPreference(
                 activityMuted = activityMuted,

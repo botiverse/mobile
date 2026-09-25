@@ -193,6 +193,9 @@ sealed interface HomeConversationRow {
     val jointPeerStatus: String?
     val jointBillingLocked: Boolean?
     val jointOverLimitGraceEndsAt: String?
+    /** task #396: external bridge provider (e.g. "slack"); only channels carry one. */
+    val bridgeProvider: String?
+        get() = null
     val activityNotificationPreference: ChannelActivityNotificationPreference
     val permissions: ConversationPermissions
 
@@ -241,6 +244,7 @@ data class HomeChannelRow(
     override val jointPeerStatus: String? = null,
     override val jointBillingLocked: Boolean? = null,
     override val jointOverLimitGraceEndsAt: String? = null,
+    override val bridgeProvider: String? = null,
     override val activityNotificationPreference: ChannelActivityNotificationPreference =
         ChannelActivityNotificationPreference.Unsupported,
     override val permissions: ConversationPermissions = ConversationPermissions()
@@ -324,6 +328,7 @@ fun HomeConversationRow.toConversationSummary(): ConversationSummary =
         jointPeerStatus = jointPeerStatus,
         jointBillingLocked = jointBillingLocked,
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
+        bridgeProvider = bridgeProvider,
         activityNotificationPreference = activityNotificationPreference,
         permissions = permissions
     )
@@ -364,6 +369,7 @@ fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
         jointPeerStatus = jointPeerStatus,
         jointBillingLocked = jointBillingLocked,
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
+        bridgeProvider = bridgeProvider,
         activityNotificationPreference = activityNotificationPreference,
         permissions = permissions
     )

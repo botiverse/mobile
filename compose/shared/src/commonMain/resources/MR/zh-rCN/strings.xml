@@ -967,6 +967,7 @@
     <string name="member_label_no_creator">未分配创建者</string>
     <string name="member_label_activity_only">仅动态</string>
     <string name="member_label_active">活跃</string>
+    <string name="channel_bridge_provider_slack">Slack</string>
     <string name="member_label_muted">已静音</string>
     <string name="member_label_agent_dm">Agent 私信</string>
     <string name="member_label_show_more">展开</string>

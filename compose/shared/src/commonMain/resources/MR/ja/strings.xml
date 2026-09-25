@@ -962,6 +962,7 @@
     <string name="member_label_no_creator">作成者が割り当てられていません</string>
     <string name="member_label_activity_only">アクティビティのみ</string>
     <string name="member_label_active">アクティブ</string>
+    <string name="channel_bridge_provider_slack">Slack</string>
     <string name="member_label_muted">ミュート中</string>
     <string name="member_label_agent_dm">エージェント DM</string>
     <string name="member_label_show_more">もっと見る</string>

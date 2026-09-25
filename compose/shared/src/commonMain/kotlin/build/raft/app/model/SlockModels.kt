@@ -124,6 +124,7 @@ data class ConversationSummary(
     val jointPeerStatus: String? = null,
     val jointBillingLocked: Boolean? = null,
     val jointOverLimitGraceEndsAt: String? = null,
+    val bridgeProvider: String? = null,
     val activityNotificationPreference: ChannelActivityNotificationPreference = ChannelActivityNotificationPreference.Unsupported,
     val permissions: ConversationPermissions = ConversationPermissions()
 ) {

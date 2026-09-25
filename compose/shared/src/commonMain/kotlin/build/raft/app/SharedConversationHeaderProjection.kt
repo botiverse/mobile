@@ -20,7 +20,9 @@ internal data class ThreadHeaderDisplayModel(
     val channelKind: String,
     val dmPeerAvatarWireValue: String? = null,
     val dmPeerAvatarLabel: String = title.take(2).uppercase(),
-    val dmPeerIdentity: MemberDetailIdentity? = null
+    val dmPeerIdentity: MemberDetailIdentity? = null,
+    // task #396: Channel-surface only; reply threads / DMs never show the bridge badge.
+    val bridgeProvider: String? = null
 )
 
 internal sealed interface ThreadHeaderProjectionInput {
@@ -299,7 +301,8 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
                 title = threadHeaderDisplayTitle(directory.title, surfaceKind),
                 subtitle = directory.subtitle?.takeIf { it.isNotBlank() },
                 surfaceKind = surfaceKind,
-                channelKind = directory.channelKind
+                channelKind = directory.channelKind,
+                bridgeProvider = directory.bridgeProvider
             )
         KuiklyThreadSurfaceKind.ReplyThread ->
             ThreadHeaderDisplayModel(

@@ -110,7 +110,8 @@ fun ConversationSummary.withTitleFallback(fallback: ConversationSummary?): Conve
         jointPeerStatus = jointPeerStatus ?: fallback.jointPeerStatus.takeIf { sameConversation },
         jointBillingLocked = jointBillingLocked ?: fallback.jointBillingLocked.takeIf { sameConversation },
         jointOverLimitGraceEndsAt =
-            jointOverLimitGraceEndsAt ?: fallback.jointOverLimitGraceEndsAt.takeIf { sameConversation }
+            jointOverLimitGraceEndsAt ?: fallback.jointOverLimitGraceEndsAt.takeIf { sameConversation },
+        bridgeProvider = bridgeProvider ?: fallback.bridgeProvider.takeIf { sameConversation }
     )
 }
 

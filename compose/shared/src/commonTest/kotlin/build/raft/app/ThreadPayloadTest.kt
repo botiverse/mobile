@@ -2636,6 +2636,33 @@ class ThreadPayloadTest {
         assertEquals("Message #首页专修", payload.resolveThreadComposer(displayName = headerDisplay.title).placeholder)
     }
 
+    // task #396: a Slack-bridged channel's header carries the bridge provider for the `[Slack]` tag;
+    // an unbridged channel and a DM never do.
+    @Test
+    fun appShellChannelHeaderProjectionCarriesSlackBridgeProvider() {
+        val bridged =
+            ConversationSummary(
+                threadId = ThreadId("channel-bridged"),
+                channelId = ChannelId("channel-bridged"),
+                kind = ConversationKind.Channel,
+                name = "slack-sync",
+                bridgeProvider = "slack",
+                permissions = ConversationPermissions(canSend = true)
+            )
+        val plain = bridged.copy(threadId = ThreadId("channel-plain"), channelId = ChannelId("channel-plain"), bridgeProvider = null)
+
+        val bridgedHeader =
+            buildAppShellThreadPayloadFromSummary(bridged)
+                .threadHeaderDisplayModelFromDirectory(bridged.toConversationHeaderProjection())
+        val plainHeader =
+            buildAppShellThreadPayloadFromSummary(plain)
+                .threadHeaderDisplayModelFromDirectory(plain.toConversationHeaderProjection())
+
+        assertEquals(KuiklyThreadSurfaceKind.Channel, bridgedHeader.surfaceKind)
+        assertEquals("slack", bridgedHeader.bridgeProvider)
+        assertEquals(null, plainHeader.bridgeProvider)
+    }
+
     @Test
     fun directoryProjectionUpdatesThreadHeaderWithoutChangingRouteIdentity() {
         val payload =

@@ -58,7 +58,9 @@ internal data class SharedConversationDirectoryProjection(
         ChannelActivityNotificationPreference.Unsupported,
     val permissions: ConversationPermissions = ConversationPermissions(),
     val jointBillingLocked: Boolean? = null,
-    val jointOverLimitGraceEndsAt: String? = null
+    val jointOverLimitGraceEndsAt: String? = null,
+    // task #396: external bridge provider ("slack") carried from `channel.bridge.provider`.
+    val bridgeProvider: String? = null
 ) {
     val activityMuted: Boolean
         get() = activityNotificationPreference.activityMuted
@@ -447,7 +449,8 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
         activityNotificationPreference = activityNotificationPreference,
         permissions = permissions,
         jointBillingLocked = jointBillingLocked,
-        jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt
+        jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
+        bridgeProvider = if (kind == ConversationKind.Thread) null else bridgeProvider
     )
 }
 

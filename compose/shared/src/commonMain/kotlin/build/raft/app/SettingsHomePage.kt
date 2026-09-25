@@ -22379,7 +22379,8 @@ internal data class SharedHomeConversationRowSeed(
     val fallbackJoined: Boolean = true,
     val fallbackArchived: Boolean = false,
     val fallbackActivityMuted: Boolean = false,
-    val fallbackActivityMuteSupported: Boolean = false
+    val fallbackActivityMuteSupported: Boolean = false,
+    val fallbackBridgeProvider: String? = null
 )
 
 internal data class SharedHomeConversationRowProjector(
@@ -22475,7 +22476,8 @@ private fun HomeConversationRow.toSharedHomeConversationRowSeed(): SharedHomeCon
         fallbackJoined = joined && permissions.canRead,
         fallbackArchived = archived,
         fallbackActivityMuted = activityMuted,
-        fallbackActivityMuteSupported = activityMuteSupported
+        fallbackActivityMuteSupported = activityMuteSupported,
+        fallbackBridgeProvider = bridgeProvider
     )
 
 private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
@@ -22513,7 +22515,8 @@ private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
         joined = directoryProjection?.joined ?: fallbackJoined,
         archived = directoryProjection?.archived ?: fallbackArchived,
         activityMuted = directoryProjection?.activityMuted ?: fallbackActivityMuted,
-        activityMuteSupported = directoryProjection?.activityMuteSupported ?: fallbackActivityMuteSupported
+        activityMuteSupported = directoryProjection?.activityMuteSupported ?: fallbackActivityMuteSupported,
+        bridgeProvider = directoryProjection?.bridgeProvider ?: fallbackBridgeProvider
     )
 }
 
