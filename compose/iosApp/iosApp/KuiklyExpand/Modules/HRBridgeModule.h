@@ -40,4 +40,15 @@ FOUNDATION_EXTERN NSString *SlockShareControllerFailureReason(
     BOOL hasForegroundActiveScene
 );
 
+/**
+ * Picks which controller to present the share sheet on, mirroring Signal's
+ * "frontmost or captured" order: prefer the presenter captured at tap time,
+ * else the current frontmost controller, else nil. Pure function so it can be
+ * unit-tested without a live view hierarchy.
+ */
+FOUNDATION_EXTERN UIViewController * _Nullable SlockSharePresenterController(
+    UIViewController * _Nullable capturedPresenter,
+    UIViewController * _Nullable frontmostPresenter
+);
+
 NS_ASSUME_NONNULL_END

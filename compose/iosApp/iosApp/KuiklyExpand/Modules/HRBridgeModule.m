@@ -5255,14 +5255,8 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 }
 
 - (void)slock_presentShareItems:(NSArray *)items attempt:(NSInteger)attempt {
-    // Prefer the presenter captured at tap time (weak; survives page detach via the
-    // stored reference). If it's gone, fall back to the current frontmost controller —
-    // Signal's frontmostViewController pattern, so presentation never depends on the
-    // originating page still being alive.
-    UIViewController *controller = self.slock_sharePresenterController;
-    if (!controller) {
-        controller = [self slock_currentViewController];
-    }
+    UIViewController *controller = SlockSharePresenterController(
+        self.slock_sharePresenterController, [self slock_currentViewController]);
     if (!controller) {
         NSString *reason = [self slock_shareControllerFailureReason];
         if (attempt < 2) {
@@ -5290,6 +5284,14 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         popover.permittedArrowDirections = 0;
     }
     [controller presentViewController:activityController animated:YES completion:nil];
+}
+
+UIViewController *SlockSharePresenterController(UIViewController *capturedPresenter,
+                                                UIViewController *frontmostPresenter) {
+    // Tap-time captured presenter first (weak; survives page detach via the stored
+    // reference). Else the current frontmost controller — Signal's frontmostViewController
+    // pattern, so presentation never depends on the originating page still being alive.
+    return capturedPresenter ?: frontmostPresenter;
 }
 
 - (NSString *)slock_shareControllerFailureReason {
