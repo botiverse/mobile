@@ -63,26 +63,21 @@ class AndroidHistoricalProcessExitDiagnosticsTest {
     }
 
     @Test
-    fun traceFilesReturnsEmptyWhenDirectoryMissing() {
-        val context =
-            androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
-        val dir = java.io.File(context.filesDir, "process_exit_traces")
-        dir.deleteRecursively()
+    fun traceFilesInReturnsEmptyWhenDirectoryMissing() {
+        val dir = java.io.File.createTempFile("exit-trace-missing", "").apply { delete() }
 
-        assertTrue(AndroidHistoricalProcessExitDiagnostics.traceFiles(context).isEmpty())
+        assertTrue(AndroidHistoricalProcessExitDiagnostics.traceFilesIn(dir).isEmpty())
     }
 
     @Test
-    fun traceFilesListsPersistedTracesInSortedOrder() {
-        val context =
-            androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
-        val dir = java.io.File(context.filesDir, "process_exit_traces").apply { mkdirs() }
+    fun traceFilesInListsPersistedTracesInSortedOrder() {
+        val dir = java.io.File.createTempFile("exit-trace-dir", "").apply { delete(); mkdirs() }
         try {
             java.io.File(dir, "exit-2000.txt").writeText("b")
             java.io.File(dir, "exit-1000.txt").writeText("a")
             java.io.File(dir, "empty.txt").writeText("")
 
-            val files = AndroidHistoricalProcessExitDiagnostics.traceFiles(context)
+            val files = AndroidHistoricalProcessExitDiagnostics.traceFilesIn(dir)
             assertEquals(listOf("exit-1000.txt", "exit-2000.txt"), files.map { it.name })
         } finally {
             dir.deleteRecursively()

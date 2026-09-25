@@ -153,6 +153,10 @@ internal object AndroidHistoricalProcessExitDiagnostics {
 
     internal fun traceFiles(context: Context): List<File> {
         val dir = File(context.applicationContext.filesDir, "process_exit_traces")
+        return traceFilesIn(dir)
+    }
+
+    internal fun traceFilesIn(dir: File): List<File> {
         if (!dir.isDirectory) return emptyList()
         return dir.listFiles()?.filter { it.isFile && it.length() > 0L }?.sortedBy { it.name }
             ?: emptyList()
