@@ -1,6 +1,12 @@
 package build.raft.app.data
 
 import build.raft.app.model.ServerId
+import com.tencent.kmm.network.export.NetworkAppIdentity
+import com.tencent.kmm.network.export.NetworkUserAgent
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -544,5 +550,51 @@ class SharedServerFeatureFlagsTest {
         assertEquals("feature-flags/evaluate", client.lastPath)
         assertTrue(body.contains("\"platform\":\"mobile\""), "request must send platform=mobile, got: $body")
         assertTrue(body.contains("\"serverId\":\"s1\""), "request must send serverId, got: $body")
+    }
+
+    @Test
+    fun networkApiSendsClientContextForOsAndBuildTargeting() = runBlocking {
+        // task #1144: server rules can require an OS and a minimum build; the client reports both.
+        val client = BodyCapturingClient(ok("""{"evaluations":[]}"""))
+        SlockFeatureFlagsNetworkApi(client) {
+            FeatureFlagClientContext(os = "android", appVersion = "1.12.0", buildNumber = "1120131", buildType = "alpha")
+        }.evaluate(server, REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        val body = Json.parseToJsonElement(client.lastBody ?: error("no request body captured")).jsonObject
+        assertEquals("android", body["os"]?.jsonPrimitive?.content)
+        assertEquals("1.12.0", body["appVersion"]?.jsonPrimitive?.content)
+        assertEquals("1120131", body["buildNumber"]?.jsonPrimitive?.content)
+        assertEquals("alpha", body["buildType"]?.jsonPrimitive?.content)
+        assertEquals("mobile", body["platform"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun missingAppIdentityIsSentAsNullNotAsAGuess() = runBlocking {
+        val client = BodyCapturingClient(ok("""{"evaluations":[]}"""))
+        SlockFeatureFlagsNetworkApi(client) {
+            FeatureFlagClientContext(os = "ios", appVersion = null, buildNumber = null, buildType = null)
+        }.evaluate(server, REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        val body = Json.parseToJsonElement(client.lastBody ?: error("no request body captured")).jsonObject
+        assertEquals("ios", body["os"]?.jsonPrimitive?.content)
+        assertEquals(JsonNull, body["buildNumber"])
+        assertEquals(JsonNull, body["appVersion"])
+    }
+
+    @Test
+    fun productionClientContextReadsTheUserAgentIdentity() {
+        val previous = NetworkUserAgent.appIdentity
+        try {
+            NetworkUserAgent.appIdentity =
+                NetworkAppIdentity(name = "Raft", version = " 1.12.0 ", buildNumber = "1120131", buildType = "")
+            val context = currentFeatureFlagClientContext()
+            assertTrue(context.os in setOf("android", "ios", "ohos"), context.os)
+            assertEquals("1.12.0", context.appVersion)
+            assertEquals("1120131", context.buildNumber)
+            assertEquals(null, context.buildType) // blank is unknown, not ""
+
+            NetworkUserAgent.appIdentity = null
+            assertEquals(null, currentFeatureFlagClientContext().buildNumber)
+        } finally {
+            NetworkUserAgent.appIdentity = previous
+        }
     }
 }

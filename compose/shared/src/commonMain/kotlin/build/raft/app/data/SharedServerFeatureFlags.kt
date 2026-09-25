@@ -100,6 +100,12 @@ private data class FeatureFlagEvaluateRequestBody(
     // encodeDefaults=true, so the default is emitted on the wire; the server treats an omitted platform as
     // all-platform, so sending "mobile" is what makes a mobile-only rollout target this client.
     val platform: String = FEATURE_FLAG_PLATFORM_MOBILE,
+    // task #1144: lets server rules require an OS and a minimum build. Null = unknown; the server treats
+    // it as "rule does not match".
+    val os: String? = null,
+    val appVersion: String? = null,
+    val buildNumber: String? = null,
+    val buildType: String? = null,
 )
 
 @Serializable
@@ -136,17 +142,27 @@ interface SlockFeatureFlagsApi {
 
 internal class SlockFeatureFlagsNetworkApi(
     private val networkClient: SlockNetworkClient,
+    private val clientContext: () -> FeatureFlagClientContext = ::currentFeatureFlagClientContext,
 ) : SlockFeatureFlagsApi {
-    override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
-        networkClient.request(
+    override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse {
+        val client = clientContext()
+        return networkClient.request(
             priority = DataRequestPriority.Background,
             path = "feature-flags/evaluate",
             method = "POST",
             serverIdOverride = serverId,
             bodyText = featureFlagsJson.encodeToString(
-                FeatureFlagEvaluateRequestBody(serverId = serverId.value, keys = keys),
+                FeatureFlagEvaluateRequestBody(
+                    serverId = serverId.value,
+                    keys = keys,
+                    os = client.os,
+                    appVersion = client.appVersion,
+                    buildNumber = client.buildNumber,
+                    buildType = client.buildType,
+                ),
             ),
         )
+    }
 }
 
 /**
