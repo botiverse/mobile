@@ -211,4 +211,74 @@ class SharedDmsPageTest {
         assertEquals(0, totalWeChatDmUnreadCount(noUnreadItems))
         assertEquals("私信", formatWeChatDmHeaderTitle(baseTitle, totalWeChatDmUnreadCount(noUnreadItems)))
     }
+
+    @Test
+    fun testResolveEffectiveDmsTimeContextWithAnchoredExplicitContext() {
+        val explicit = SlockTimeContext(
+            localOffsetMinutes = 0,
+            todayEpochDay = 20593L,
+            nowEpochMillis = 1779278400000L
+        )
+        val inherited = SlockTimeContext(
+            localOffsetMinutes = 480,
+            todayEpochDay = 20594L,
+            nowEpochMillis = 1779364800000L
+        )
+        val resolved = resolveEffectiveDmsTimeContext(explicit, inherited)
+        assertEquals(explicit, resolved)
+    }
+
+    @Test
+    fun testResolveEffectiveDmsTimeContextMergesLiveInheritedWhenExplicitLacksAnchors() {
+        // Regression test for Task #402:
+        // When explicit context (such as threadTimeContext) only has capabilities
+        // (localOffsetMinutes, timeFormat) without todayEpochDay or nowEpochMillis,
+        // it must NOT shadow the live inherited context from LocalSlockTimeContextProvider.
+        val staticExplicit = SlockTimeContext(
+            localOffsetMinutes = 480,
+            todayEpochDay = null,
+            nowEpochMillis = null,
+            timeFormat = "12h"
+        )
+        val liveInherited = SlockTimeContext(
+            localOffsetMinutes = 480,
+            todayEpochDay = 20593L, // 2026-05-20
+            nowEpochMillis = 1779278400000L,
+            timeFormat = "24h"
+        )
+
+        // Raw static context alone would fail and return raw ISO timestamp
+        val rawTimestamp = "2026-05-20T14:25:00+08:00"
+        assertEquals(rawTimestamp, formatSlockTimestampLabel(rawTimestamp, staticExplicit))
+
+        // When resolved through resolveEffectiveDmsTimeContext, it takes live anchors and formats properly
+        val resolved = resolveEffectiveDmsTimeContext(staticExplicit, liveInherited)
+        assertEquals(20593L, resolved.todayEpochDay)
+        assertEquals(1779278400000L, resolved.nowEpochMillis)
+        assertEquals("12h", resolved.timeFormat)
+        assertEquals(480, resolved.localOffsetMinutes)
+
+        val formatted = formatSlockTimestampLabel(rawTimestamp, resolved)
+        assertEquals("02:25 PM", formatted)
+    }
+
+    @Test
+    fun testResolveEffectiveDmsTimeContextFallbackWhenBothLackAnchors() {
+        // When both explicit and inherited lack todayEpochDay/nowEpochMillis,
+        // it must anchor to the current system clock and compute todayEpochDay
+        val staticContext = SlockTimeContext(
+            localOffsetMinutes = 0,
+            todayEpochDay = null,
+            nowEpochMillis = null
+        )
+        val resolved = resolveEffectiveDmsTimeContext(staticContext, null)
+        assertNotNull(resolved.todayEpochDay)
+        assertNotNull(resolved.nowEpochMillis)
+        assertEquals(0, resolved.localOffsetMinutes)
+
+        // Null explicit and inherited context also safely produces an anchored context
+        val resolvedFromNull = resolveEffectiveDmsTimeContext(null, null)
+        assertNotNull(resolvedFromNull.todayEpochDay)
+        assertNotNull(resolvedFromNull.nowEpochMillis)
+    }
 }
