@@ -356,7 +356,7 @@ class ThreadPendingSendDrainerTest {
             errorCode: String?,
             errorMessage: String?
         ): Boolean {
-            markFailedCalls += localId to errorCode
+            markFailedCalls += localId to errorCode.orEmpty()
             rows.replaceAll { row ->
                 if (row.id == localId) row.copy(deliveryState = ThreadMessageDeliveryFailed) else row
             }
