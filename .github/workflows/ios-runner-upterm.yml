@@ -89,7 +89,7 @@ jobs:
           chmod 700 "$UPTERM_ROOT/upterm"
           ssh-keygen -q -t ed25519 -N '' -f "$UPTERM_ROOT/host_key"
           cat > "$UPTERM_ROOT/known_hosts" <<'KNOWN_HOSTS'
-          uptermd.upterm.dev ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICiecex8Dq718eSe1CCLgLvDmI7AagvCtax7brPFWkh4
+          @cert-authority uptermd.upterm.dev ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICiecex8Dq718eSe1CCLgLvDmI7AagvCtax7brPFWkh4
           KNOWN_HOSTS
           cat > "$UPTERM_ROOT/diagnose_xcode.sh" <<'DIAGNOSE'
           #!/bin/bash
