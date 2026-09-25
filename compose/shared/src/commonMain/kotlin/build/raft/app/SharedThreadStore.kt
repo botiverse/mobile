@@ -6741,17 +6741,34 @@ internal class SharedThreadStore(
             pendingAuxiliaryHydration = null
             return
         }
+        if (launchSecondaryTimelineRefresh) {
+            // The caller only sets this flag once the visible payload already has
+            // renderable thread content, so the reply-summaries fetch does not
+            // depend on FirstContentReady. Launch it immediately instead of
+            // parking it behind the UI signal (~400ms) and let it race ahead of
+            // the first frame.
+            diagnosticsLogger?.invoke(
+                "thread_auxiliary_hydration result=launched_immediate " +
+                    "threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                    "secondary=true members=$launchMembersHydration"
+            )
+            launchSecondaryTimelineRefresh(routePayload, staleToken)
+        }
+        if (!launchMembersHydration) {
+            pendingAuxiliaryHydration = null
+            return
+        }
         pendingAuxiliaryHydration =
             PendingAuxiliaryHydration(
                 routePayload = routePayload,
                 staleToken = staleToken,
-                launchSecondaryTimelineRefresh = launchSecondaryTimelineRefresh,
+                launchSecondaryTimelineRefresh = false,
                 launchMembersHydration = launchMembersHydration
             )
         diagnosticsLogger?.invoke(
             "thread_auxiliary_hydration result=queued " +
                 "threadId=${routePayload.sourceThreadId.orEmpty()} " +
-                "secondary=$launchSecondaryTimelineRefresh members=$launchMembersHydration"
+                "secondary=false members=$launchMembersHydration"
         )
         launchPendingAuxiliaryHydrationIfReady()
     }

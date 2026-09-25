@@ -8887,7 +8887,11 @@ class SharedThreadStoreTest {
         assertEquals("reply-5", firstVisibleMessage.firstUnreadReplyMessageId)
         assertEquals(listOf("reply-5"), firstVisibleMessage.inlineReplies?.replies?.map { it.messageId })
         assertEquals("明启", firstVisibleMessage.inlineReplies?.replies?.single()?.senderDisplayName)
-        assertTrue(repository.getThreadReplySummariesRequests.isEmpty())
+        delay(1L)
+        assertEquals(
+            listOf(ThreadId("channel-1") to listOf(MessageId("m1"))),
+            repository.getThreadReplySummariesRequests
+        )
         scope.cancel()
     }
 
@@ -8960,8 +8964,6 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
-        assertTrue(repository.getThreadReplySummariesRequests.isEmpty())
-        store.accept(SharedThreadIntent.FirstContentReady)
         delay(1L)
 
         assertEquals(listOf(false), repository.getThreadIncludeFollowedSummaries)
@@ -9123,11 +9125,6 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
-        assertTrue(
-            repository.getThreadReplySummariesRequests.isEmpty(),
-            "thread summaries must not race the first content frame or bottom anchor"
-        )
-        store.accept(SharedThreadIntent.FirstContentReady)
         delay(1L)
 
         assertEquals(listOf(false), repository.getThreadIncludeFollowedSummaries)
