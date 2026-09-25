@@ -126,6 +126,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
@@ -153,6 +154,7 @@ import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlin.test.fail
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
@@ -15471,6 +15473,188 @@ class SharedThreadStoreTest {
         scope.cancel()
     }
 
+    @Test
+    fun realtimeGapRecoveryWithNewArrivalsBackfillsSecondaryTimeline() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerBodyText = syncResponse("gap body", id = "m12", seq = 12)
+            )
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            body = "current body",
+                            messages =
+                                listOf(
+                                    message(
+                                        threadId = "channel-1",
+                                        id = "m10",
+                                        seq = 10,
+                                        body = "current body",
+                                        threadChannelId = "thread-m10",
+                                        replyCount = 0
+                                    )
+                                )
+                        )
+                    ),
+                newerResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            body = "gap body",
+                            id = "m12",
+                            seq = 12
+                        )
+                    ),
+                threadReplySummariesResult =
+                    DataResult.Content(
+                        ThreadReplySummariesSnapshot(
+                            threads =
+                                listOf(
+                                    InboxItem(
+                                        key = "thread:m10",
+                                        kind = InboxItemKind.Thread,
+                                        channelId = ChannelId("thread-m10"),
+                                        channelName = "reply thread",
+                                        threadChannelId = ChannelId("thread-m10"),
+                                        parentChannelId = ChannelId("channel-1"),
+                                        parentMessageId = MessageId("m10"),
+                                        replyCount = 7,
+                                        unreadCount = 2,
+                                        firstUnreadMessageId = MessageId("reply-6"),
+                                        latestReplies =
+                                            listOf(
+                                                ReplyPreview(
+                                                    messageId = "reply-6",
+                                                    seq = 6,
+                                                    content = "first unread",
+                                                    senderId = "u2",
+                                                    senderType = "human",
+                                                    senderName = "cindy",
+                                                    senderAvatarUrl = null,
+                                                    createdAt = "2026-05-19T16:06:00Z",
+                                                    senderDisplayName = "Cindy",
+                                                )
+                                            )
+                                    )
+                                ),
+                            followedThreadKeys = setOf("thread:m10")
+                        )
+                    )
+            )
+        val logs = mutableListOf<String>()
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository = repository,
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+        store.accept(SharedThreadIntent.FirstContentReady)
+        delay(1L)
+
+        val summariesBefore = repository.getThreadReplySummariesRequests.size
+
+        store.accept(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 90))
+
+        try {
+            withTimeout(5_000) {
+                while (repository.syncNewerRequests.map { it.second } != listOf(10L)) delay(10)
+            }
+        } catch (e: TimeoutCancellationException) {
+            fail(
+                "timed out waiting for syncNewerMessages, " +
+                    "syncs=${repository.syncNewerRequests} logs=$logs"
+            )
+        }
+        val payload = store.state.value.payload
+        assertEquals(listOf("current body", "gap body"), payload.messages.map { it.body })
+        assertEquals(listOf(10L), repository.syncNewerRequests.map { it.second })
+        withTimeout(5_000) {
+            while (
+                logs.none { it.startsWith("thread_secondary_backfill") && it.contains("trigger=resume_gap") }
+            ) {
+                delay(10)
+            }
+        }
+        withTimeout(5_000) {
+            while (repository.getThreadReplySummariesRequests.size <= summariesBefore) delay(10)
+        }
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeGapRecoveryStaleDropSkipsSecondaryBackfill() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerBodyText = syncResponse("stale gap body", id = "m11", seq = 11)
+            )
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            body = "foreground body",
+                            messages =
+                                listOf(
+                                    message(
+                                        threadId = "channel-1",
+                                        id = "m20",
+                                        seq = 20,
+                                        body = "foreground body",
+                                        threadChannelId = "thread-m20",
+                                        replyCount = 0
+                                    )
+                                )
+                        )
+                    ),
+                threadReplySummariesResult =
+                    DataResult.Content(
+                        ThreadReplySummariesSnapshot(
+                            threads = emptyList(),
+                            followedThreadKeys = emptySet()
+                        )
+                    )
+            )
+        repository.syncNewerStarted = CompletableDeferred()
+        repository.releaseSyncNewer = CompletableDeferred()
+        val logs = mutableListOf<String>()
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository = repository,
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        val gapJob = launch {
+            store.accept(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 90))
+        }
+        repository.syncNewerStarted?.await()
+        api.bodyText = messagesResponse("foreground body", id = "m20", seq = 20, historyLimited = false)
+        store.accept(SharedThreadIntent.Refresh)
+        repository.releaseSyncNewer?.complete(Unit)
+        withTimeout(10_000) { gapJob.join() }
+        delay(1L)
+
+        val summariesAfter = repository.getThreadReplySummariesRequests.size
+        assertTrue(logs.any { it.startsWith("thread_realtime_gap_stale_drop") && it.contains("reason=stale_token") })
+        assertTrue(
+            logs.none { it.startsWith("thread_secondary_backfill") && it.contains("trigger=resume_gap") },
+            "expected no secondary backfill after stale drop, got: $logs"
+        )
+        assertEquals(0, summariesAfter)
+        scope.cancel()
+    }
+
     internal class FakeThreadApi(
         var bodyText: String = messagesResponse("network body"),
         var olderBodyText: String = messagesResponse("older body", id = "older", seq = 1, historyLimited = false),
@@ -16047,6 +16231,8 @@ class SharedThreadStoreTest {
     ) : ConversationRepository {
         var getThreadStarted: CompletableDeferred<Unit>? = null
         var releaseGetThread: CompletableDeferred<Unit>? = null
+        var syncNewerStarted: CompletableDeferred<Unit>? = null
+        var releaseSyncNewer: CompletableDeferred<Unit>? = null
         var threadReplySummariesStarted: CompletableDeferred<Unit>? = null
         var releaseThreadReplySummaries: CompletableDeferred<Unit>? = null
         var ignoreThreadReplySummariesCancellation: Boolean = false
@@ -16201,6 +16387,8 @@ class SharedThreadStoreTest {
         ): DataResult<ThreadSnapshot> {
             syncNewerRequests += threadId to sinceSeq
             syncNewerLimits += limit
+            syncNewerStarted?.complete(Unit)
+            releaseSyncNewer?.await()
             return newerResult
         }
 

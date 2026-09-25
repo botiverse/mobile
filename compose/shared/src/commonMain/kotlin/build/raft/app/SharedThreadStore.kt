@@ -8565,6 +8565,12 @@ internal class SharedThreadStore(
         // (`fetchReplyThreadTailGapPayload`) instead of the `messageSync` delta.
         // Armed once a delta pass cannot satisfy the reply-count target.
         var tailFallbackArmed = false
+        // Set when any Content page merged genuinely new messages into the
+        // timeline. Resume arrivals land here (messageSync 200), but nothing
+        // else re-triggers the secondary (thread summary / followed) refresh
+        // that the initial route load performs — so reply summaries stay stale
+        // until the next full route reload (task #317).
+        var mergedNewArrivals = false
         try {
             while (true) {
                 val requestSnapshot =
@@ -8680,6 +8686,9 @@ internal class SharedThreadStore(
                                 }
                                 latestPayload.withThreadContentProjectionFrom(selected)
                             }
+                            if (madeProgress) {
+                                mergedNewArrivals = true
+                            }
                             val replyCountShortfall =
                                 replyCountTarget != null &&
                                     merged.loadedReplyTimelineCount() < replyCountTarget
@@ -8761,7 +8770,7 @@ internal class SharedThreadStore(
                             "replyCount=${replyCountTarget ?: -1}"
                     )
                 }
-                if (!shouldContinue) return
+                if (!shouldContinue) break
                 nextRequest = nextRequest.copy(sinceSeq = nextSinceSeq)
             }
         } finally {
@@ -8782,6 +8791,29 @@ internal class SharedThreadStore(
                 }
             }
         }
+        if (!mergedNewArrivals) return
+        val latest = _state.value.payload
+        if (
+            !staleTokenStillCurrent(
+                staleToken,
+                "thread_secondary_backfill",
+                "after_gap_recovery",
+                initial,
+                latest,
+            ) ||
+            !routeStillCurrent(
+                initial,
+                "thread_secondary_backfill",
+                "after_gap_recovery",
+                latest,
+            )
+        ) {
+            return
+        }
+        diagnosticsLogger?.invoke(
+            "thread_secondary_backfill threadId=${initial.sourceThreadId.orEmpty()} trigger=resume_gap"
+        )
+        launchSecondaryTimelineRefresh(initial, staleToken)
     }
 
     private suspend fun appendSentPage(page: ThreadMessagesPage) {
