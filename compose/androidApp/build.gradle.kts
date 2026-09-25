@@ -311,16 +311,23 @@ fun slockBuildConfigInt(name: String, fallback: Int, vararg aliases: String): In
 fun slockBuildConfigBoolean(name: String, fallback: Boolean): Boolean =
     slockBuildConfigRawString(name)?.lowercase()?.toBooleanStrictOrNull() ?: fallback
 
+fun slockComputeAndroidVersionCode(major: Int, minor: Int, patch: Int, build: Int): Int =
+    // Mirrors scripts/ci/version_code.sh (task #321): major*10M + minor*100k + patch*1k + build.
+    // Kept as a Kotlin-level formula so no shell invocation is needed during the build.
+    major * 10_000_000 + minor * 100_000 + patch * 1_000 + build
+
 val slockAndroidVersionMajor = slockBuildConfigInt("versionX", 1, "SLOCK_ANDROID_VERSION_MAJOR")
 val slockAndroidVersionMinor = slockBuildConfigInt("versionY", 0, "SLOCK_ANDROID_VERSION_MINOR")
 val slockAndroidVersionPatch = slockBuildConfigInt("versionZ", 0, "SLOCK_ANDROID_VERSION_PATCH")
 val slockAndroidVersionBuild = slockBuildConfigInt("versionBuild", 0, "SLOCK_ANDROID_VERSION_BUILD")
 val slockAndroidVersionCode =
     slockBuildConfigRawString("versionCode", "SLOCK_ANDROID_VERSION_CODE")?.toIntOrNull()
-        ?: (slockAndroidVersionMajor * 1_000_000 +
-            slockAndroidVersionMinor * 10_000 +
-            slockAndroidVersionPatch * 100 +
-            slockAndroidVersionBuild)
+        ?: slockComputeAndroidVersionCode(
+            slockAndroidVersionMajor,
+            slockAndroidVersionMinor,
+            slockAndroidVersionPatch,
+            slockAndroidVersionBuild
+        )
 val slockAndroidVersionSuffix = slockBuildConfigRawString("versionSuffix", "SLOCK_ANDROID_VERSION_SUFFIX")
 val slockAndroidVersionName =
     slockBuildConfigRawString("versionName", "SLOCK_ANDROID_VERSION_NAME")

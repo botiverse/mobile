@@ -75,7 +75,7 @@ version_code() {
   if [ -n "${SLOCK_ANDROID_VERSION_CODE:-}" ]; then
     printf '%s\n' "${SLOCK_ANDROID_VERSION_CODE}"
   else
-    printf '%s\n' "$((VERSION_X * 1000000 + VERSION_Y * 10000 + VERSION_Z * 100 + VERSION_BUILD))"
+    scripts/ci/version_code.sh "${VERSION_X}" "${VERSION_Y}" "${VERSION_Z}" "${VERSION_BUILD}"
   fi
 }
 

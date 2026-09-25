@@ -67,7 +67,7 @@ Once frozen:
 For example, version `1.2.2` build `0` has versionCode `1020200`:
 
 ```text
-versionCode = major * 1_000_000 + minor * 10_000 + patch * 100 + build
+versionCode = major * 10_000_000 + minor * 100_000 + patch * 1_000 + build
 ```
 
 Build `1` is required when rebuilding the same semantic version for a client
