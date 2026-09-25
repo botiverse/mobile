@@ -77,7 +77,12 @@ class UptermWorkflowTest(unittest.TestCase):
         source = self.workflow
         self.assertIn('v0.31.0/upterm_darwin_arm64.tar.gz\n', source)
         self.assertIn('ce20d99c1ab41ba20ee3241db60773c766514b90e1a71bae11e279791516a85b', source)
-        self.assertIn('uptermd.upterm.dev ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICiecex8Dq718eSe1CCLgLvDmI7AagvCtax7brPFWkh4', source)
+        self.assertIn('@cert-authority uptermd.upterm.dev ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICiecex8Dq718eSe1CCLgLvDmI7AagvCtax7brPFWkh4', source)
+        self.assertNotIn(
+            '\n          uptermd.upterm.dev ssh-ed25519 '
+            'AAAAC3NzaC1lZDI1NTE5AAAAICiecex8Dq718eSe1CCLgLvDmI7AagvCtax7brPFWkh4\n',
+            source,
+        )
         self.assertIn('            --read-only \\\n', source)
         self.assertIn('            --no-sftp \\\n', source)
         self.assertIn('            --private-key "$UPTERM_ROOT/host_key" \\\n', source)
