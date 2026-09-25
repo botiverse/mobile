@@ -4566,7 +4566,11 @@ class SharedHomeStoreTest {
 
     @Test
     fun sidebarOrderFetchLateStillMergesFromSameRequestWithoutRefetch() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        // Real background dispatcher: the gated deferred must be completable by the
+        // test body while the fetch is genuinely in flight. On Unconfined the
+        // fetch's scope.async runs eagerly on the runBlocking test thread and its
+        // .await() suspends the test body, deadlocking it.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         var loadCalls = 0
         val gate = CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>()
         val store =
@@ -4580,14 +4584,17 @@ class SharedHomeStoreTest {
                 }
             )
 
-        store.accept(SharedHomeIntent.Start)
+        val startJob = scope.launch { store.accept(SharedHomeIntent.Start) }
         // The 300ms first-paint cap elapses: home publishes channels alone.
-        val early = store.state.value.content as SharedHomeContentState.Content
-        assertNull(early.snapshot.sidebarOrder)
+        awaitCondition {
+            (store.state.value.content as? SharedHomeContentState.Content)?.snapshot != null
+        }
+        assertNull((store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder)
 
         // When the in-flight request resolves, the deferred result merges under the
         // sidebarOrderMutex — same request, no second fetch.
         gate.complete(DataResult.Content(SettingsServerSidebarOrderSnapshot(channelOrder = listOf("late-pinned"))))
+        startJob.join()
         awaitCondition {
             (store.state.value.content as? SharedHomeContentState.Content)
                 ?.snapshot?.sidebarOrder?.channelOrder == listOf("late-pinned")
@@ -4631,6 +4638,9 @@ class SharedHomeStoreTest {
                 (store.state.value.content as? SharedHomeContentState.Content)
                     ?.snapshot?.sidebarOrder == null
         }
+        assertNull(
+            (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        )
 
         // The Pin lands while the deferred is still in flight: ensureSidebarOrderLoaded
         // finds no cached order, fetches the empty base under sidebarOrderMutex, then
