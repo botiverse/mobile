@@ -9520,7 +9520,7 @@ internal fun KuiklyThreadScreenPayload.mergedEmptyTitleWith(base: KuiklyThreadSc
         base.emptyTitle
     }
 
-internal fun KuiklyThreadScreenPayload.mergedEmptyDetailWith(base: KuiklyThreadScreenPayload): String? =
+internal fun KuiklyThreadScreenPayload.mergedEmptyDetailWith(base: KuiklyThreadScreenPayload): String =
     if (
         base.emptyTitle == ThreadRouteLoadingPlaceholderTitle &&
             status in setOf("empty", "content")
