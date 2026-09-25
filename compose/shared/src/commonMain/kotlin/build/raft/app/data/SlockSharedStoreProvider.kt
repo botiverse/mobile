@@ -1674,7 +1674,12 @@ internal class SlockSharedStoreProvider private constructor(
                 "shared_network_file_resolver",
                 "storage_scope=${platformFileResolverBinding.scope}"
             )
-            val avatarCacheMetadataStore = SqlDelightSlockAvatarCacheMetadataStore(database)
+            // task #323: keep avatar metadata SQLite I/O off the Kuikly frame thread.
+            val avatarCacheMetadataStore =
+                DispatchingSlockAvatarCacheMetadataStore(
+                    delegate = SqlDelightSlockAvatarCacheMetadataStore(database),
+                    dispatcher = SlockAvatarDbDispatcher
+                )
             val avatarCacheCoordinator =
                 SlockAvatarCacheCoordinator(avatarCacheMetadataStore, ::defaultNowMillis)
             val avatarOwnerResolver: suspend (String?) -> SlockAvatarCacheOwner? = { requestedServerId ->
