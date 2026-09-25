@@ -4,6 +4,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
@@ -11,12 +12,11 @@ import java.util.concurrent.TimeUnit
  * kotlinx.coroutines DefaultScheduler never enters tryTerminateWorker, making the
  * setName-inside-synchronized(workers) SuspendThreadByPeer deadlock path unreachable.
  *
- * These tests intentionally reflect into the library's internal `TasksKt` to prove the
- * scheduler actually consumed the pinned value — not just that we set a property. If a
- * future coroutines upgrade renames or moves the field, they fail loudly as a canary.
- * `IDLE_WORKER_KEEP_ALIVE_NS` is read once at `TasksKt` class init, so this class must run
- * before any other coroutine use in its JVM; run it in its own forked JVM (forkEvery) or
- * first in the suite.
+ * `IDLE_WORKER_KEEP_ALIVE_NS` is read once at `TasksKt` class init, so proving the
+ * scheduler consumed the pin requires a JVM where the property is set before any coroutine
+ * use. That ordering can't be guaranteed inside the shared test JVM (any earlier test that
+ * touches Dispatchers latches the field at the 60s default), so the consume-check runs in a
+ * spawned child JVM that controls its own init order — independent of forkEvery ordering.
  */
 class SlockCoroutineWorkerKeepAliveTest {
     @After
@@ -44,19 +44,40 @@ class SlockCoroutineWorkerKeepAliveTest {
     }
 
     @Test
-    fun schedulerConsumesThePinnedKeepAlive() {
-        installCoroutineWorkerKeepAlive()
+    fun schedulerConsumesThePinnedKeepAliveInAFreshJvm() {
+        val javaBin =
+            File(System.getProperty("java.home"), "bin/java").absolutePath
+        val classPath = System.getProperty("java.class.path")
+        val process =
+            ProcessBuilder(
+                    javaBin,
+                    "-cp",
+                    classPath,
+                    "build.raft.app.SlockCoroutineWorkerKeepAliveProbe"
+                )
+                .redirectErrorStream(true)
+                .start()
+        val output = process.inputStream.bufferedReader().readText()
+        val exit = process.waitFor()
+        assertEquals("probe exited=$exit output=$output", 0, exit)
+        assertEquals(
+            TimeUnit.SECONDS.toNanos(COROUTINE_WORKER_KEEP_ALIVE_SEC.toLong()).toString(),
+            output.trim()
+        )
+    }
+}
 
-        // Read the internal field the DefaultScheduler actually uses. Loading TasksKt reads
-        // the system property once, so this must happen before any Dispatchers/Default use.
+/**
+ * Spawned in a fresh JVM by [SlockCoroutineWorkerKeepAliveTest]. Sets the pin before any
+ * coroutine class loads, then prints the keep-alive the scheduler actually consumed.
+ */
+internal object SlockCoroutineWorkerKeepAliveProbe {
+    @JvmStatic
+    fun main(args: Array<String>) {
+        installCoroutineWorkerKeepAlive()
         val tasksClass = Class.forName("kotlinx.coroutines.scheduling.TasksKt")
         val field = tasksClass.getDeclaredField("IDLE_WORKER_KEEP_ALIVE_NS")
         field.isAccessible = true
-        val keepAliveNs = field.getLong(null)
-
-        assertEquals(
-            TimeUnit.SECONDS.toNanos(COROUTINE_WORKER_KEEP_ALIVE_SEC.toLong()),
-            keepAliveNs
-        )
+        print(field.getLong(null))
     }
 }
