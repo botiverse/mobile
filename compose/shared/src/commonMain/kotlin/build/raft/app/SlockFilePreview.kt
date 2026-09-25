@@ -14,6 +14,7 @@ import build.raft.app.data.AttachmentPreviewContent
 import build.raft.app.data.AuthenticatedRouteAuthorityGateway
 import build.raft.app.data.AuthenticatedRouteOperationRunner
 import build.raft.app.data.AuthenticatedRouteOwner
+import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.parseSharedAttachmentPreview
 import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.DataResult
@@ -34,10 +35,12 @@ import build.raft.app.data.SlockThreadApiClient
 import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadApiResult
+import build.raft.kuiklybase.datetime.Clock
 import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
 import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.model.MemberId
 import build.raft.app.model.SlockWorkspaceFilePreview
+import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.network.binaryDownloadUrlDiagnostics
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
@@ -148,6 +151,7 @@ import kotlin.math.sqrt
 import kotlin.random.Random
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
+import kotlin.time.Duration.Companion.milliseconds
 
 internal const val SLOCK_FILE_PREVIEW_PAGE = "compose_file_preview"
 internal const val SLOCK_COMPOSER_IMAGE_EDIT_EVENT = "slock.composerImageEdit"
@@ -1298,13 +1302,77 @@ internal object SlockFilePreviewLaunchPayloadStore {
 }
 
 /**
+ * task #287: process-local memo for signed attachment URLs used by remote
+ * File Preview routes. The signed URL is owner-scoped, so the key carries the
+ * normalized durable owner; entries expire on a fixed TTL because the wire
+ * `expiresAt` is advisory-only today and a conservative clock window is the
+ * safer bound. Re-opening the same image inside the TTL skips both the REST
+ * round-trip and the re-download (the image cache stays warm on the same URL).
+ */
+internal data class SlockFilePreviewAttachmentUrlCacheKey(
+    val owner: AuthenticatedRouteOwner,
+    val attachmentId: String,
+    val disposition: String,
+)
+
+internal class SlockFilePreviewAttachmentUrlCache(
+    private val maxEntries: Int = 64
+) {
+    private val lock = SynchronizedObject()
+    private val entries = LinkedHashMap<SlockFilePreviewAttachmentUrlCacheKey, Pair<String, TimeMark>>()
+
+    fun get(key: SlockFilePreviewAttachmentUrlCacheKey): String? {
+        val entry =
+            synchronized(lock) {
+                entries[key] ?: return null
+            }
+        return if (!entry.second.hasPassedNow()) entry.first else null
+    }
+
+    /**
+     * @param expiresAtEpochMillis wall-clock expiry parsed from the wire `expiresAt`; when null
+     * (absent/unparseable) the URL lifetime is unknown and the entry is NOT stored.
+     * @param expirySafetyMarginMillis subtracted from `expiresAt` so a nearly-dead URL is never
+     * replayed (default 60 s). Entries that would expire inside the margin are not stored.
+     */
+    fun put(
+        key: SlockFilePreviewAttachmentUrlCacheKey,
+        url: String,
+        expiresAtEpochMillis: Long? = null,
+        expirySafetyMarginMillis: Long = 60_000L
+    ) {
+        val trimmed = url.trim()
+        if (trimmed.isEmpty()) return
+        // expiresAt absent/unparseable => lifetime unknown => never cache (Argus review on
+        // PR #2618): caching a URL of unknown TTL is exactly the case that can 403 later.
+        val serverExpiry = expiresAtEpochMillis ?: return
+        val lifetimeMillis = serverExpiry - currentEpochMillis() - expirySafetyMarginMillis
+        if (lifetimeMillis <= 0) return
+        synchronized(lock) {
+            entries[key] = trimmed to TimeSource.Monotonic.markNow().plus(lifetimeMillis.milliseconds)
+            while (entries.size > maxEntries) {
+                val oldest = entries.keys.firstOrNull() ?: break
+                entries.remove(oldest)
+            }
+        }
+    }
+
+    internal var currentEpochMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() }
+}
+
+private val ProcessSlockFilePreviewAttachmentUrlCache = SlockFilePreviewAttachmentUrlCache()
+
+internal fun slockFilePreviewAttachmentUrlCache(): SlockFilePreviewAttachmentUrlCache =
+    ProcessSlockFilePreviewAttachmentUrlCache
+
+/**
  * File Preview's route-local authenticated operation boundary. The durable
  * owner is identity-only; every network operation captures a fresh transient
  * receipt and drops a late result when environment/account/token/selection
  * authority changes while the request is in flight.
  */
 internal class SlockFilePreviewRemoteOperationScope(
-    owner: AuthenticatedRouteOwner,
+    internal val owner: AuthenticatedRouteOwner,
     gateway: AuthenticatedRouteAuthorityGateway
 ) {
     private val runner = AuthenticatedRouteOperationRunner(owner, gateway)
@@ -1355,8 +1423,66 @@ private suspend fun SlockFilePreviewRemoteOperationScope.loadPreview(
     diagnosticsLogger: (String) -> Unit,
     memberWarningLogger: (String) -> Unit,
     memberLogger: (String) -> Unit
-): DataResult<SlockFilePreviewPayload?> =
-    run { networkClient ->
+): DataResult<SlockFilePreviewPayload?> {
+    // task #287: reuse the signed image URL inside its TTL so a repeated
+    // preview open skips both the REST call and the re-download.
+    if (payload.source == SlockFilePreviewSourceThreadAttachment &&
+        payload.kind == "loading" &&
+        payload.requestedKind == "image"
+    ) {
+        val cacheKey =
+            owner.normalizedOrNull()?.let { normalizedOwner ->
+                SlockFilePreviewAttachmentUrlCacheKey(
+                    owner = normalizedOwner,
+                    attachmentId = payload.attachmentId.trim(),
+                    disposition = "inline"
+                )
+            }
+        val cachedUrl =
+            cacheKey?.takeIf { it.attachmentId.isNotBlank() }
+                ?.let(slockFilePreviewAttachmentUrlCache()::get)
+        if (cachedUrl != null) {
+            diagnosticsLogger(
+                "attachment_url cache=hit attachment=${payload.attachmentId.take(8)}"
+            )
+            return DataResult.Content(
+                payload.copy(
+                    kind = "image",
+                    titleDesc = MR.strings.file_preview_image.desc(),
+                    imageUrl = cachedUrl,
+                    message = "",
+                    messageDesc = null,
+                    error = null
+                )
+            )
+        }
+        var resolvedExpiresAt: String? = null
+        val result =
+            run { networkClient ->
+                DataResult.Content(
+                    payload.loadThreadAttachmentPreview(
+                        threadApi = filePreviewThreadApi(networkClient, diagnosticsLogger),
+                        networkClient = networkClient,
+                        truncatedPreviewHint = truncatedPreviewHint,
+                        expiresAtSink = { resolvedExpiresAt = it }
+                    )
+                )
+            }
+        val resolved = (result as? DataResult.Content)?.data
+        if (cacheKey != null && resolved?.kind == "image" && !resolved.imageUrl.isNullOrBlank()) {
+            slockFilePreviewAttachmentUrlCache().put(
+                key = cacheKey,
+                url = resolved.imageUrl.orEmpty(),
+                expiresAtEpochMillis = parseSlockTimestampEpochMillisOrNull(resolvedExpiresAt)
+            )
+            diagnosticsLogger(
+                "attachment_url cache=store attachment=${payload.attachmentId.take(8)} " +
+                    "expiresAt=${resolvedExpiresAt ?: "none"}"
+            )
+        }
+        return result
+    }
+    return run { networkClient ->
         val next =
             when (payload.source) {
                 SlockFilePreviewSourceThreadAttachment ->
@@ -1380,6 +1506,7 @@ private suspend fun SlockFilePreviewRemoteOperationScope.loadPreview(
             }
         DataResult.Content(next)
     }
+}
 
 private suspend fun SlockFilePreviewRemoteOperationScope.resolveExternalUrl(
     payload: SlockFilePreviewPayload,
@@ -6504,7 +6631,8 @@ internal fun agentWorkspaceLazyPreviewPayload(agentId: String, path: String): Sl
 private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
     threadApi: SlockThreadApiClient,
     networkClient: SlockNetworkClient,
-    truncatedPreviewHint: String
+    truncatedPreviewHint: String,
+    expiresAtSink: ((String?) -> Unit)? = null
 ): SlockFilePreviewPayload? {
     if (source != SlockFilePreviewSourceThreadAttachment || attachmentId.isBlank() || kind != "loading") return null
     val wantsMarkdown =
@@ -6553,7 +6681,7 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
     return when {
         wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient, truncatedPreviewHint)
         wantsXlsx -> loadThreadXlsxAttachmentPreview(networkClient)
-        wantsImage -> loadThreadImageAttachmentPreview(threadApi)
+        wantsImage -> loadThreadImageAttachmentPreview(threadApi, expiresAtSink)
         wantsVideo -> loadThreadVideoAttachmentPreview(threadApi)
         wantsAudio -> loadThreadVideoAttachmentPreview(threadApi, title = MR.strings.file_preview_audio.desc(), audioOnly = true)
         wantsHtml -> loadThreadHtmlAttachmentPreview(threadApi)
@@ -6569,11 +6697,15 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
 }
 
 private suspend fun SlockFilePreviewPayload.loadThreadImageAttachmentPreview(
-    threadApi: SlockThreadApiClient
+    threadApi: SlockThreadApiClient,
+    expiresAtSink: ((String?) -> Unit)? = null
 ): SlockFilePreviewPayload {
     val remoteImageUrl =
         when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
-            is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
+            is ThreadApiResult.Success -> {
+                expiresAtSink?.invoke(response.data.expiresAt)
+                response.data.url.takeIf { it.isNotBlank() }
+            }
             is ThreadApiResult.Failure -> null
         }
     // Kuikly Compose image rendering already caches by source URL through
