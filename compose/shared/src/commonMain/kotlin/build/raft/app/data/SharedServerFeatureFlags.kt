@@ -172,6 +172,11 @@ class SharedServerFeatureFlags(
     private val keys: List<String> = REGISTERED_SERVER_FEATURE_FLAG_KEYS,
     private val diagnosticsLogger: ((String) -> Unit)? = null,
     private val diagnosticOverride: ServerFeatureFlagDiagnosticOverride? = null,
+    /**
+     * Durable last-known values (task #1133). Consulted by [isEnabled] only while this process has no
+     * online evaluation for the server yet; every accepted evaluation overwrites it.
+     */
+    private val lastKnown: ServerFeatureFlagLastKnownStore? = null,
     // Kept last so existing trailing-lambda constructions keep binding here.
     private val onEvaluation: ((ServerId, String, Boolean, String?, String?, String?, Long) -> Unit)? = null,
 ) {
@@ -197,7 +202,27 @@ class SharedServerFeatureFlags(
         serverId?.let { snapshots[it.value] } ?: ServerFeatureFlagSnapshot.Unresolved
 
     fun isEnabled(serverId: ServerId?, key: String): Boolean =
-        applyDiagnosticOverride(serverId, key, snapshotFor(serverId).isEnabled(key))
+        applyDiagnosticOverride(serverId, key, serverEffective(serverId, key))
+
+    /**
+     * An online evaluation from this process always decides. Before the first one lands (offline cold
+     * start, or the short window before evaluate returns) a stored last-known value decides instead.
+     */
+    private fun serverEffective(serverId: ServerId?, key: String): Boolean {
+        val online = serverId?.let { snapshots[it.value] }
+        if (online != null || serverId == null) return online?.isEnabled(key) == true
+        val stored = lastKnown?.read(serverId, key) ?: return false
+        logLastKnownUse(serverId, key, stored)
+        return stored
+    }
+
+    private val loggedLastKnownUses = mutableSetOf<String>()
+
+    private fun logLastKnownUse(serverId: ServerId, key: String, value: Boolean) {
+        val logger = diagnosticsLogger ?: return
+        val first = synchronized(stateLock) { loggedLastKnownUses.add("${serverId.value}|$key|$value") }
+        if (first) logger("feature_flags last_known_used server=${serverId.value} key=$key enabled=$value")
+    }
 
     private fun applyDiagnosticOverride(serverId: ServerId?, key: String, serverEffective: Boolean): Boolean =
         diagnosticOverride?.finalEffective(serverId, key, serverEffective) ?: serverEffective
@@ -312,6 +337,8 @@ class SharedServerFeatureFlags(
         shouldPublish: () -> Boolean = { true },
     ): ServerFeatureFlagSnapshot {
         val globalRequestGeneration = featureFlagRequestGeneration.incrementAndGet()
+        // Captured before the request: the result is stored as last-known only for the binding that asked.
+        val lastKnownScope = lastKnown?.scopeFor(serverId)
         val requestGeneration = synchronized(stateLock) {
             (nextRequestGenerationByServer[serverId.value] ?: 0L).plus(1L).also { generation ->
                 nextRequestGenerationByServer[serverId.value] = generation
@@ -365,6 +392,16 @@ class SharedServerFeatureFlags(
         // global fact (Android's environment-wide transport kill), so it receives every decoded success
         // with the global request generation and performs its own ordering/active-selection checks.
         if (accepted == null) return snapshotFor(serverId)
+        if (accepted && lastKnown != null) {
+            val stored = lastKnownScope?.let { scope -> lastKnown.writeIfCurrent(scope, snapshot.values) } == true
+            val persistedKeys = snapshot.values.keys.filter { it in lastKnown.keys }
+            if (persistedKeys.isNotEmpty()) {
+                diagnosticsLogger?.invoke(
+                    "feature_flags last_known_${if (stored) "stored" else "skipped"} server=${serverId.value} " +
+                        persistedKeys.joinToString(" ") { "$it=${snapshot.values[it] == true}" }
+                )
+            }
+        }
         for (evaluation in observedEvaluations.values) {
             runCatching {
                 onEvaluation?.invoke(

@@ -1867,6 +1867,13 @@ internal class SlockSharedStoreProvider private constructor(
             // registry writeGeneration always come from ONE coordinated
             // transition — a second writer here could interleave and publish
             // a torn (authority generation, registry generation) pair.
+            // task #1133: last server evaluation of the offline-cache flag, so an offline cold start gates
+            // like the last online session. Keyed by (environment, account, server) — not by token.
+            val serverFeatureFlagLastKnown =
+                ServerFeatureFlagLastKnownStore(
+                    store = sharedPreferenceStore,
+                    currentBinding = { presenceAuthContext.value?.toServerFeatureFlagLastKnownBinding() },
+                )
             CoroutineScope(SupervisorJob()).launch {
                 authStore.authSessionEvents.collect { event ->
                     when (event) {
@@ -1878,6 +1885,7 @@ internal class SlockSharedStoreProvider private constructor(
                             }
                         is AuthSessionEvent.Cleared ->
                             {
+                                serverFeatureFlagLastKnown.clearAll()
                                 ProcessDiagnosticFeatureFlagOverrides.registry.clearObservations()
                                 processServerMembersCore.invalidateAll(reason = "cleared")
                                 activityUnreadSummaryStore.invalidateAll(reason = "cleared")
@@ -1913,6 +1921,7 @@ internal class SlockSharedStoreProvider private constructor(
                                 .finalEffective
                         }
                     },
+                    lastKnown = serverFeatureFlagLastKnown,
                     onEvaluation = { serverId, key, enabled, reason, variant, environmentId, evaluationGeneration ->
                         if (key == ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY && environmentId != null) {
                             SlockNetworkKmmRecoveryRemoteFlagBridge
