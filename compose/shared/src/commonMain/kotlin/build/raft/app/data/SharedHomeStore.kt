@@ -51,6 +51,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -1820,6 +1822,16 @@ internal class SharedHomeStore(
             activeServer?.let { server ->
                 readReceiptOwnerFactory?.invoke(server.value, activeSession.user.id)
             }
+        // task #322: fire the sidebar-order fetch concurrently with the home request so
+        // the pinned section can land in the same frame as the channel list instead of
+        // being appended after it. `applySidebarOrderLocally` merges it on arrival; the
+        // bounded await below only waits a short cap before publishing channels alone.
+        val sidebarOrderDeferred =
+            activeServer?.let { serverId ->
+                scope.async {
+                    runCatching { loadSidebarOrder(serverId) }.getOrNull()
+                }
+            }
         val dataResult = dataSource.loadHome(serverId = activeServer, priority = priority, forceNetwork = forceNetwork)
         if (sessionGeneration != homeSessionGeneration.value) {
             diagnosticsLogger("home_network_result_drop reason=session_generation_changed")
@@ -1869,11 +1881,29 @@ internal class SharedHomeStore(
             } else {
                 rawSnapshot
             }
+        // task #322: the sidebar-order fetch runs concurrently with the home request.
+        // Wait a short cap for it before building the published content so the pinned
+        // section lands in the same frame as the channel list; on timeout the home
+        // content publishes channels alone and `applySidebarOrderLocally` merges the
+        // sidebar in when the request resolves.
+        val freshSnapshotWithSidebar =
+            runCatching {
+                sidebarOrderDeferred?.let { deferred ->
+                    withTimeoutOrNull(SIDEBAR_ORDER_FIRST_PAINT_WAIT_MS) { deferred.await() }
+                }
+            }.getOrNull()?.let { sidebarResult ->
+                if (sidebarResult is DataResult.Content && freshSnapshot != null) {
+                    sidebarOrderByServer[freshSnapshot.server.id] = sidebarResult.data
+                    freshSnapshot.copy(sidebarOrder = sidebarResult.data)
+                } else {
+                    freshSnapshot
+                }
+            } ?: freshSnapshot
         val result =
             when (dataResult) {
                 is DataResult.Content ->
                     createHomeContent(
-                        snapshot = requireNotNull(freshSnapshot),
+                        snapshot = requireNotNull(freshSnapshotWithSidebar),
                         session = activeSession,
                         contentRefreshing = false,
                         previousContent = previousContent
@@ -1919,7 +1949,7 @@ internal class SharedHomeStore(
                 } else {
                     _state.value.serverActivityUnread
                 }
-            val nextContent = result
+        val nextContent = result
             // #81: derive the badge projection from the fresh snapshot.
             // - On success: source comes from the parser (SERVER_UNREAD_SUMMARY
             //   or CHANNEL_DM_FALLBACK), isStale is false, lastUpdated advances.
@@ -3595,6 +3625,11 @@ private data class BackgroundUnreadScopeProjection(
 }
 
 private const val BackgroundUnreadSeqBucketLimit = 256
+
+// task #322: cap on how long the first home paint waits for the concurrent sidebar-order
+// fetch before publishing channels alone. Kept short so a slow pinned-order endpoint
+// can't delay the channel list; the sidebar still merges on arrival when it's late.
+private const val SIDEBAR_ORDER_FIRST_PAINT_WAIT_MS = 300L
 
 private data class HomeRealtimeConversationPatch(
     val conversation: ConversationSummary,
