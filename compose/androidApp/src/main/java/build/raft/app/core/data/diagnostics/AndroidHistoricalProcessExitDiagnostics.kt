@@ -4,6 +4,7 @@ import android.app.ActivityManager
 import android.app.ApplicationExitInfo
 import android.content.Context
 import android.os.Build
+import java.io.File
 
 internal data class HistoricalProcessExitSnapshot(
     val timestampMillis: Long,
