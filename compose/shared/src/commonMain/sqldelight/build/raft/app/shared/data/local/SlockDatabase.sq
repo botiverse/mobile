@@ -1238,6 +1238,30 @@ WHERE environmentId = ?
   AND principalId = ?
   AND authGeneration = ?;
 
+selectThreadPendingSendsForAuthRevision:
+SELECT *
+FROM threadPendingSendEntity
+WHERE environmentId = ?
+  AND principalId = ?
+  AND authGeneration = ?;
+
+-- Same-binding token rotation: move rows into the successor auth revision instead of
+-- deleting them, so a journaled pending send stays reachable after a 401 refresh.
+-- ownerScopeId embeds authGeneration, so both columns must move together; the per-row
+-- selectionGeneration component is recomputed by the caller from the row itself.
+rehomeThreadPendingSendAuthRevision:
+UPDATE threadPendingSendEntity
+SET authGeneration = :newAuthGeneration,
+    ownerScopeId = :newOwnerScopeId
+WHERE environmentId = :environmentId
+  AND principalId = :principalId
+  AND serverId = :serverId
+  AND ownerScopeId = :oldOwnerScopeId
+  AND authGeneration = :oldAuthGeneration
+  AND selectionGeneration = :selectionGeneration
+  AND routeInstanceKey = :routeInstanceKey
+  AND localId = :localId;
+
 deleteThreadPendingSendsForPrincipalBeforeAuthRevision:
 DELETE FROM threadPendingSendEntity
 WHERE environmentId = ?

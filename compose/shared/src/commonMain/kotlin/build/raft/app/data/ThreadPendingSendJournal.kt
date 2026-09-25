@@ -266,6 +266,70 @@ internal class ThreadPendingSendJournal(
     }
 
     /**
+     * Same-binding token rotation (401 -> silent refresh, authGeneration+1 with the binding
+     * unchanged): move the principal's rows from the retired auth revision into the successor
+     * revision instead of deleting them, so a journaled pending send stays reachable for
+     * restore, drain, and terminal cleanup. This mirrors
+     * [ReplyCacheProvenance.isCurrentOrSuccessorForLocalSend]: environment/principal are the
+     * binding identity here, each row keeps its own serverId/selectionGeneration fence, and a
+     * principal/server switch still goes through [clearForAuthRevision] (delete semantics).
+     *
+     * ownerScopeId embeds authGeneration, so every rehomed row gets a freshly joined scope id
+     * from its own columns. Returns the number of rehomed rows (0 on any failure).
+     */
+    fun rehomeAuthRevision(
+        environmentId: String,
+        principalId: String,
+        fromAuthGeneration: Long,
+        toAuthGeneration: Long,
+    ): Int = synchronized(lock) {
+        if (
+            environmentId.isBlank() || principalId.isBlank() ||
+            fromAuthGeneration <= 0L || toAuthGeneration <= fromAuthGeneration
+        ) {
+            return@synchronized 0
+        }
+        var rehomed = 0
+        val succeeded =
+            runCatching {
+                database.transactionBlocking {
+                    val rows =
+                        database.queries.selectThreadPendingSendsForAuthRevision(
+                            environmentId = environmentId,
+                            principalId = principalId,
+                            authGeneration = fromAuthGeneration,
+                        ).executeAsList()
+                    rows.forEach { row ->
+                        val newOwnerScopeId =
+                            listOf(
+                                row.environmentId,
+                                row.principalId,
+                                row.serverId,
+                                toAuthGeneration.toString(),
+                                row.selectionGeneration.toString()
+                            ).joinToString("\u001f")
+                        database.queries.rehomeThreadPendingSendAuthRevision(
+                            newAuthGeneration = toAuthGeneration,
+                            newOwnerScopeId = newOwnerScopeId,
+                            environmentId = row.environmentId,
+                            principalId = row.principalId,
+                            serverId = row.serverId,
+                            oldOwnerScopeId = row.ownerScopeId,
+                            oldAuthGeneration = fromAuthGeneration,
+                            selectionGeneration = row.selectionGeneration,
+                            routeInstanceKey = row.routeInstanceKey,
+                            localId = row.localId,
+                        )
+                        rehomed += 1
+                    }
+                }
+            }.isSuccess
+        // The count is only meaningful when the transaction committed; a rolled-back
+        // transaction rehomed nothing.
+        if (succeeded) rehomed else 0
+    }
+
+    /**
      * Retire every persisted generation for a principal strictly older than
      * the exact generation currently observed by the authority binding.  This is used
      * on process recreation, where there is no in-memory predecessor to feed

@@ -233,6 +233,79 @@ class ThreadPendingSendJournalTest {
         }
     }
 
+    // task #1134: same-binding token rotation (401 -> silent refresh, authGeneration+1) rehomes
+    // journaled rows into the successor partition instead of deleting them, so the drainer can
+    // still adopt and resend with the same randomId after a reconnect-triggered refresh.
+    @Test
+    fun rehomeAuthRevisionMovesRowsIntoSuccessorPartitionKeepingRandomIdAndFailureState() {
+        withDatabase { path ->
+            val route = route()
+            val old = provenance(authGeneration = 10L)
+            val successor = provenance(authGeneration = 11L)
+            JdbcSqliteDriver(url(path)).use { driver ->
+                val journal = journal(driver)
+                assertTrue(journal.persistSending(old, route, message("local-send-old", "random-old")))
+                assertTrue(journal.markFailed(old, route, "local-send-old", "network_unavailable", "offline"))
+
+                assertEquals(
+                    1,
+                    journal.rehomeAuthRevision(
+                        environmentId = old.environmentId,
+                        principalId = old.principalId,
+                        fromAuthGeneration = 10L,
+                        toAuthGeneration = 11L,
+                    ),
+                )
+
+                assertTrue(journal.restore(old, route).isEmpty())
+                val restored = journal.restore(successor, route)
+                assertEquals(1, restored.size)
+                assertEquals("local-send-old", restored.single().id)
+                assertEquals("random-old", restored.single().pendingSendContext?.randomId)
+                assertEquals(ThreadMessageDeliveryFailed, restored.single().deliveryState)
+                assertEquals("network_unavailable", restored.single().pendingSendErrorCode)
+                // The rehomed row remains terminally consumable under the successor partition.
+                assertEquals(
+                    ThreadPendingSendJournal.ConsumeResult.Deleted,
+                    journal.consumeCanonicalRandomId(successor, route, "random-old"),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun rehomeAuthRevisionRefusesForeignPrincipalsAndNonForwardMoves() {
+        withDatabase { path ->
+            val route = route()
+            val old = provenance(authGeneration = 10L)
+            val successor = provenance(authGeneration = 11L)
+            val foreign = provenance(principalId = "principal-b", authGeneration = 10L)
+            JdbcSqliteDriver(url(path)).use { driver ->
+                val journal = journal(driver)
+                assertTrue(journal.persistSending(old, route, message("local-send-old", "random-old")))
+                assertTrue(journal.persistSending(foreign, route, message("local-send-foreign", "random-foreign")))
+
+                // Only the named principal's partition moves; the foreign principal's row stays
+                // exactly where a binding switch would expect to find (and refuse) it.
+                assertEquals(
+                    1,
+                    journal.rehomeAuthRevision(old.environmentId, old.principalId, 10L, 11L),
+                )
+                assertTrue(journal.restore(old, route).isEmpty())
+                assertEquals(1, journal.restore(successor, route).size)
+                assertEquals(1, journal.restore(foreign, route).size)
+
+                // Same/backwards generation and blank identities are rejected without writes.
+                assertEquals(0, journal.rehomeAuthRevision(old.environmentId, old.principalId, 11L, 11L))
+                assertEquals(0, journal.rehomeAuthRevision(old.environmentId, old.principalId, 11L, 10L))
+                assertEquals(0, journal.rehomeAuthRevision("", old.principalId, 10L, 12L))
+                assertEquals(0, journal.rehomeAuthRevision(old.environmentId, old.principalId, 0L, 12L))
+                assertEquals(1, journal.restore(successor, route).size)
+                assertEquals(1, journal.restore(foreign, route).size)
+            }
+        }
+    }
+
     @Test
     fun terminalCleanupIsBoundToIdentityAndGenerationAcrossSuccessorAndForeignRows() {
         withDatabase { path ->

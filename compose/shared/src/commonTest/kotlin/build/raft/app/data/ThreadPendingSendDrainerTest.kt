@@ -10,16 +10,20 @@ import build.raft.app.ThreadRouteIdentity
 import build.raft.app.network.SlockRequestTimeoutException
 import build.raft.app.network.retry.RetryPolicy
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.backgroundScope
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-@OptIn(ExperimentalCoroutinesApi::class)
+// OHOS commonTest has no kotlinx-coroutines-test KLIB (scripts/ci/check_commontest_crossplatform_deps.py):
+// every test here is runBlocking + CompletableDeferred barriers + injected wakeup capture, with
+// zero reliance on virtual time.
 class ThreadPendingSendDrainerTest {
 
     @AfterTest
@@ -28,14 +32,13 @@ class ThreadPendingSendDrainerTest {
     }
 
     @Test
-    fun drainsFailedRowWithSameRandomIdAndConsumesOnSuccess() = runTest {
+    fun drainsFailedRowWithSameRandomIdAndConsumesOnSuccess() = runBlocking {
         val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = true) }
         val send = RecordingSend()
         val sent = mutableListOf<String>()
         val drainer = drainer(store = store, send = send.handler, onSent = { localId, _, _, _ -> sent += localId })
 
-        drainer.onStoreStarted()
-        advanceUntilIdle()
+        drainer.drainOnceForTests("start")
 
         assertEquals(listOf("random-1"), send.randomIds)
         assertEquals(listOf("random-1"), store.consumedRandomIds)
@@ -44,13 +47,12 @@ class ThreadPendingSendDrainerTest {
     }
 
     @Test
-    fun adoptsStaleSendingRowWhoseOwningAttemptDied() = runTest {
+    fun adoptsStaleSendingRowWhoseOwningAttemptDied() = runBlocking {
         val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = false) }
         val send = RecordingSend()
         val drainer = drainer(store = store, send = send.handler)
 
-        drainer.onStoreStarted()
-        advanceUntilIdle()
+        drainer.drainOnceForTests("start")
 
         // The orphaned "sending" row is flipped to failed BEFORE the resend so the UI keeps an
         // explicit retry affordance even if every automatic attempt is later exhausted.
@@ -60,14 +62,13 @@ class ThreadPendingSendDrainerTest {
     }
 
     @Test
-    fun skipsRowWhoseRandomIdHasALiveInProcessAttempt() = runTest {
+    fun skipsRowWhoseRandomIdHasALiveInProcessAttempt() = runBlocking {
         val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = true) }
         val send = RecordingSend()
         val drainer = drainer(store = store, send = send.handler)
 
         ThreadPendingSendInFlightRegistry.begin("random-1")
-        drainer.onStoreStarted()
-        advanceUntilIdle()
+        drainer.drainOnceForTests("realtime")
 
         assertEquals(emptyList(), send.randomIds)
         assertEquals(emptyList(), store.consumedRandomIds)
@@ -75,50 +76,57 @@ class ThreadPendingSendDrainerTest {
 
         // Once the live attempt ends, the same row becomes drain-eligible again.
         ThreadPendingSendInFlightRegistry.end("random-1")
-        drainer.trigger("manual")
-        advanceUntilIdle()
+        drainer.drainOnceForTests("realtime")
         assertEquals(listOf("random-1"), send.randomIds)
     }
 
     @Test
-    fun retryableFailureBacksOffAndRetriesWithSameRandomIdUntilSuccess() = runTest {
+    fun retryableFailureBacksOffAndRetriesWithSameRandomIdUntilSuccess() = runBlocking {
         val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = true) }
         val send = RecordingSend()
         send.results += ThreadApiResult.Failure(code = 429)
         send.results += successPage()
-        val drainer = drainer(store = store, send = send.handler)
+        val wakeups = mutableListOf<Long>()
+        val drainer = drainer(store = store, send = send.handler, wakeups = wakeups)
 
-        drainer.onStoreStarted()
-        advanceUntilIdle()
+        drainer.drainOnceForTests("send_failed")
+
+        assertEquals(listOf("random-1"), send.randomIds)
+        assertEquals(listOf("local-1" to "http_429"), store.markFailedCalls)
+        assertEquals(listOf(0L), wakeups)
+        assertEquals(1, drainer.recordedAttemptsForTests("local-1"))
+        assertEquals(emptyList(), store.consumedRandomIds)
+
+        // The backoff wakeup fires (driven manually here; production arms a delayed re-trigger).
+        drainer.drainOnceForTests("backoff")
 
         assertEquals(listOf("random-1", "random-1"), send.randomIds)
-        assertEquals(listOf("local-1" to "http_429"), store.markFailedCalls)
         assertEquals(listOf("random-1"), store.consumedRandomIds)
         assertEquals(0, drainer.recordedAttemptsForTests("local-1"))
     }
 
     @Test
-    fun nonRetryableFailureStopsAfterSingleAttemptAndLeavesRowFailed() = runTest {
+    fun nonRetryableFailureStopsAfterSingleAttemptAndLeavesRowFailed() = runBlocking {
         val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = true) }
         val send = RecordingSend()
         send.results += ThreadApiResult.Failure(code = 400)
-        val drainer = drainer(store = store, send = send.handler)
+        val wakeups = mutableListOf<Long>()
+        val drainer = drainer(store = store, send = send.handler, wakeups = wakeups)
 
-        drainer.onStoreStarted()
-        advanceUntilIdle()
+        drainer.drainOnceForTests("send_failed")
 
         assertEquals(listOf("random-1"), send.randomIds)
         assertEquals(listOf("local-1" to "http_400"), store.markFailedCalls)
         assertEquals(emptyList(), store.consumedRandomIds)
+        assertEquals(emptyList(), wakeups)
         assertEquals(4, drainer.recordedAttemptsForTests("local-1"))
         // A later trigger must not send again: the manual retry button owns it from here.
-        drainer.trigger("realtime")
-        advanceUntilIdle()
+        drainer.drainOnceForTests("realtime")
         assertEquals(listOf("random-1"), send.randomIds)
     }
 
     @Test
-    fun attemptBudgetExhaustionStopsAutomaticRetries() = runTest {
+    fun attemptBudgetExhaustionStopsAutomaticRetries() = runBlocking {
         val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = true) }
         val send = RecordingSend()
         repeat(10) { send.results += ThreadApiResult.Failure(code = 500) }
@@ -126,11 +134,12 @@ class ThreadPendingSendDrainerTest {
             drainer(
                 store = store,
                 send = send.handler,
-                policy = RetryPolicy(maxAttempts = 2, baseDelayMillis = 100L, maxDelayMillis = 1_000L),
+                policy = RetryPolicy(maxAttempts = 2, baseDelayMillis = 0L, maxDelayMillis = 0L),
             )
 
-        drainer.onStoreStarted()
-        advanceUntilIdle()
+        drainer.drainOnceForTests("start")
+        drainer.drainOnceForTests("backoff")
+        drainer.drainOnceForTests("backoff")
 
         assertEquals(2, send.randomIds.size)
         assertEquals(2, drainer.recordedAttemptsForTests("local-1"))
@@ -138,14 +147,13 @@ class ThreadPendingSendDrainerTest {
     }
 
     @Test
-    fun emptySuccessResponseIsTreatedAsTerminalFailure() = runTest {
+    fun emptySuccessResponseIsTreatedAsTerminalFailure() = runBlocking {
         val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = true) }
         val send = RecordingSend()
         send.results += ThreadMessagesPage(messages = emptyList(), canLoadMoreBefore = false, canLoadMoreAfter = false)
         val drainer = drainer(store = store, send = send.handler)
 
-        drainer.onStoreStarted()
-        advanceUntilIdle()
+        drainer.drainOnceForTests("start")
 
         assertEquals(listOf("local-1" to "empty_response"), store.markFailedCalls)
         assertEquals(emptyList(), store.consumedRandomIds)
@@ -153,15 +161,15 @@ class ThreadPendingSendDrainerTest {
     }
 
     @Test
-    fun timeoutExceptionIsClassifiedAndBackedOff() = runTest {
+    fun timeoutExceptionIsClassifiedAndBackedOff() = runBlocking {
         val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = true) }
         val send = RecordingSend()
         send.throwables += SlockRequestTimeoutException("send request exceeded 30000ms")
         send.results += successPage()
         val drainer = drainer(store = store, send = send.handler)
 
-        drainer.onStoreStarted()
-        advanceUntilIdle()
+        drainer.drainOnceForTests("start")
+        drainer.drainOnceForTests("backoff")
 
         assertEquals(listOf("local-1" to "thread_send_timeout"), store.markFailedCalls)
         assertEquals(listOf("random-1", "random-1"), send.randomIds)
@@ -169,49 +177,56 @@ class ThreadPendingSendDrainerTest {
     }
 
     @Test
-    fun realtimeTriggersAreThrottledToOneDrainPerInterval() = runTest {
+    fun realtimeTriggersAreThrottledToOneDrainPerInterval() {
         val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = true) }
-        val send = RecordingSend()
-        repeat(5) { send.results += ThreadApiResult.Failure(code = 400) }
         val drainer =
             drainer(
                 store = store,
-                send = send.handler,
+                send = RecordingSend().handler,
                 realtimeTriggerMinIntervalMs = 3_600_000L,
             )
 
         drainer.onAuthoritativeOnline()
         drainer.onAuthoritativeOnline()
         drainer.onAuthoritativeOnline()
-        advanceUntilIdle()
 
-        assertEquals(1, store.rowsForDrainCalls)
+        assertEquals(1, drainer.realtimeTriggersAcceptedForTests)
     }
 
     @Test
-    fun triggersArrivingDuringADrainCoalesceIntoOneFollowUpPass() = runTest {
+    fun triggersArrivingDuringADrainCoalesceIntoOneFollowUpPass() = runBlocking {
         val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = true) }
-        val gate = CompletableDeferred<Unit>()
-        val send = RecordingSend(beforeResult = { gate.await() })
+        val sendStarted = CompletableDeferred<Unit>()
+        val releaseSend = CompletableDeferred<Unit>()
+        val send = RecordingSend(beforeResult = {
+            sendStarted.complete(Unit)
+            releaseSend.await()
+        })
         send.results += ThreadApiResult.Failure(code = 400)
-        val drainer = drainer(store = store, send = send.handler)
+        val consumerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val drainer = drainer(store = store, send = send.handler, scope = consumerScope)
 
-        drainer.trigger("start")
-        testScheduler.runCurrent()
-        drainer.trigger("realtime")
-        drainer.trigger("foreground")
-        drainer.trigger("send_failed")
-        gate.complete(Unit)
-        advanceUntilIdle()
+            drainer.trigger("start")
+            withTimeout(5_000) { sendStarted.await() }
+            // These pile up while the first pass is blocked inside the send.
+            drainer.trigger("realtime")
+            drainer.trigger("foreground")
+            drainer.trigger("send_failed")
+            releaseSend.complete(Unit)
+            withTimeout(5_000) { store.secondPass.await() }
 
-        // One in-flight pass + one coalesced follow-up pass; the follow-up finds the row
-        // terminally failed (attempt budget spent), so the wire saw exactly one request.
-        assertEquals(listOf("random-1"), send.randomIds)
-        assertEquals(2, store.rowsForDrainCalls)
+            // One in-flight pass + one coalesced follow-up pass; the follow-up finds the row
+            // terminally failed (attempt budget spent), so the wire saw exactly one request.
+            assertEquals(2, store.rowsForDrainCalls)
+            assertEquals(listOf("random-1"), send.randomIds)
+        } finally {
+            consumerScope.cancel()
+        }
     }
 
     @Test
-    fun missingProvenanceOrInvalidRouteIsANoOp() = runTest {
+    fun missingProvenanceOrInvalidRouteIsANoOp() = runBlocking {
         val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = true) }
         val send = RecordingSend()
         val drainer =
@@ -221,9 +236,8 @@ class ThreadPendingSendDrainerTest {
                 provenance = null,
             )
 
-        drainer.onStoreStarted()
-        drainer.onForeground()
-        advanceUntilIdle()
+        drainer.drainOnceForTests("start")
+        drainer.drainOnceForTests("foreground")
 
         assertEquals(0, store.rowsForDrainCalls)
         assertEquals(emptyList(), send.randomIds)
@@ -236,18 +250,21 @@ class ThreadPendingSendDrainerTest {
             { _, _, _, _ -> },
         provenance: ReplyCacheProvenance? = provenance(),
         route: ThreadRouteIdentity? = route(),
-        policy: RetryPolicy = RetryPolicy(maxAttempts = 4, baseDelayMillis = 100L, maxDelayMillis = 1_000L),
+        policy: RetryPolicy = RetryPolicy(maxAttempts = 4, baseDelayMillis = 0L, maxDelayMillis = 0L),
         realtimeTriggerMinIntervalMs: Long = 0L,
+        scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        wakeups: MutableList<Long>? = null,
     ): ThreadPendingSendDrainer =
         ThreadPendingSendDrainer(
             drainStore = store,
-            scope = backgroundScope,
+            scope = scope,
             provenanceResolver = { provenance },
             routeResolver = { route },
             send = send,
             onSent = onSent,
             policy = policy,
             realtimeTriggerMinIntervalMs = realtimeTriggerMinIntervalMs,
+            wakeupSchedulerOverride = wakeups?.let { captured -> { ms -> captured += ms } },
         )
 
     private fun provenance() =
@@ -315,6 +332,7 @@ class ThreadPendingSendDrainerTest {
         val rows = mutableListOf<KuiklyThreadMessageItem>()
         val markFailedCalls = mutableListOf<Pair<String, String?>>()
         val consumedRandomIds = mutableListOf<String>()
+        val secondPass = CompletableDeferred<Unit>()
         var rowsForDrainCalls = 0
 
         override fun rowsForDrain(
@@ -322,6 +340,7 @@ class ThreadPendingSendDrainerTest {
             route: ThreadRouteIdentity
         ): List<KuiklyThreadMessageItem> {
             rowsForDrainCalls += 1
+            if (rowsForDrainCalls == 2) secondPass.complete(Unit)
             return rows.toList()
         }
 

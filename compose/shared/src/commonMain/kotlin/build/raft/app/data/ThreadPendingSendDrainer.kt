@@ -144,7 +144,14 @@ internal class ThreadPendingSendDrainer(
     private val backoff: BackoffCalculator = BackoffCalculator(),
     private val inFlight: ThreadPendingSendInFlightRegistry = ThreadPendingSendInFlightRegistry,
     private val realtimeTriggerMinIntervalMs: Long = 10_000L,
-    private val logger: (String) -> Unit = {}
+    private val logger: (String) -> Unit = {},
+    /**
+     * Test seam for backoff wakeups: production leaves this null and [scheduleWakeup] arms a
+     * delayed re-trigger on [scope]; tests capture the delay and drive the follow-up drain
+     * manually, keeping every assertion free of wall-clock sleeps (commonTest has no
+     * kotlinx-coroutines-test KLIB on OHOS — see scripts/ci/check_commontest_crossplatform_deps.py).
+     */
+    private val wakeupSchedulerOverride: ((Long) -> Unit)? = null
 ) {
     private val triggers = Channel<String>(capacity = Channel.UNLIMITED)
     private val consumerLock = SynchronizedObject()
@@ -153,6 +160,11 @@ internal class ThreadPendingSendDrainer(
     private val attemptsByRow = mutableMapOf<String, Int>()
     private val notBeforeByRow = mutableMapOf<String, TimeMark>()
     private var lastRealtimeTrigger: TimeMark? = null
+
+    /** Counts online triggers that passed the throttle — lets tests assert throttling
+     * synchronously without running the consumer loop. */
+    internal var realtimeTriggersAcceptedForTests = 0
+        private set
 
     fun onStoreStarted() = trigger("start")
 
@@ -168,6 +180,7 @@ internal class ThreadPendingSendDrainer(
             return
         }
         lastRealtimeTrigger = now
+        realtimeTriggersAcceptedForTests += 1
         trigger("realtime")
     }
 
@@ -344,6 +357,10 @@ internal class ThreadPendingSendDrainer(
     }
 
     private fun scheduleWakeup(delayMs: Long) {
+        wakeupSchedulerOverride?.let { override ->
+            override(delayMs)
+            return
+        }
         // A single wakeup is enough: when it fires the drain pass re-evaluates every row's
         // deadline, and stricter triggers (realtime/foreground) can always arrive sooner.
         if (wakeupJob?.isActive == true) return
@@ -355,4 +372,8 @@ internal class ThreadPendingSendDrainer(
     }
 
     internal fun recordedAttemptsForTests(localId: String): Int = attemptsByRow[localId] ?: 0
+
+    /** Test seam: run one drain pass synchronously (the production path reaches this only
+     * through the coalescing consumer loop). */
+    internal suspend fun drainOnceForTests(reason: String) = drainOnce(reason)
 }

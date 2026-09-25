@@ -2073,6 +2073,28 @@ internal class SlockSharedStoreProvider private constructor(
                                     )
                                 }
                             },
+                            // Same-binding token rotation (401 -> silent refresh): rehome the
+                            // principal's journaled pending sends into the successor auth
+                            // revision instead of retiring them, so an offline send admitted
+                            // before the refresh stays reachable for drain/restore. Binding
+                            // changes (logout/account switch) keep delete semantics via
+                            // onBindingRetired above.
+                            onBindingAuthRevisionRotated = { retired, bound ->
+                                val rehomed = threadPendingSendJournal.rehomeAuthRevision(
+                                    environmentId = retired.environmentId,
+                                    principalId = retired.accountId,
+                                    fromAuthGeneration = retired.authorityGeneration,
+                                    toAuthGeneration = bound.authorityGeneration,
+                                )
+                                realtimeAuthorityDiagnosticsLogger(
+                                    "thread_pending_send_auth_revision_rehomed " +
+                                        "environmentId=${retired.environmentId} " +
+                                        "principalId=${retired.accountId} " +
+                                        "fromAuthGeneration=${retired.authorityGeneration} " +
+                                        "toAuthGeneration=${bound.authorityGeneration} " +
+                                        "rehomed=$rehomed"
+                                )
+                            },
                         ),
                 )
             // Pixel-avatar runtime table (task #352): apply the MMKV-cached document
