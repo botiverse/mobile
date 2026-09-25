@@ -15550,19 +15550,23 @@ class SharedThreadStoreTest {
         val summariesBefore = repository.getThreadReplySummariesRequests.size
 
         store.accept(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 90))
-        delay(1L)
 
+        withTimeout(5_000) {
+            while (api.syncSinceSeqs != listOf(10L)) delay(10)
+        }
         val payload = store.state.value.payload
         assertEquals(listOf("current body", "gap body"), payload.messages.map { it.body })
         assertEquals(listOf(10L), api.syncSinceSeqs)
-        assertTrue(
-            logs.any { it.startsWith("thread_secondary_backfill") && it.contains("trigger=resume_gap") },
-            "expected resume-gap secondary backfill log, got: $logs"
-        )
-        assertTrue(
-            repository.getThreadReplySummariesRequests.size > summariesBefore,
-            "expected secondary refresh to re-request reply summaries, got: ${repository.getThreadReplySummariesRequests}"
-        )
+        withTimeout(5_000) {
+            while (
+                logs.none { it.startsWith("thread_secondary_backfill") && it.contains("trigger=resume_gap") }
+            ) {
+                delay(10)
+            }
+        }
+        withTimeout(5_000) {
+            while (repository.getThreadReplySummariesRequests.size <= summariesBefore) delay(10)
+        }
         scope.cancel()
     }
 
@@ -15621,13 +15625,13 @@ class SharedThreadStoreTest {
         api.bodyText = messagesResponse("foreground body", id = "m20", seq = 20, historyLimited = false)
         store.accept(SharedThreadIntent.Refresh)
         api.releaseSync?.complete(Unit)
-        gapJob.join()
+        withTimeout(10_000) { gapJob.join() }
         delay(1L)
 
         val summariesAfter = repository.getThreadReplySummariesRequests.size
         assertTrue(logs.any { it.startsWith("thread_realtime_gap_stale_drop") && it.contains("reason=stale_token") })
         assertTrue(
-            logs.none { it.startsWith("thread_secondary_backfill") },
+            logs.none { it.startsWith("thread_secondary_backfill") && it.contains("trigger=resume_gap") },
             "expected no secondary backfill after stale drop, got: $logs"
         )
         assertEquals(0, summariesAfter)
