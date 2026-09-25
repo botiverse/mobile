@@ -4597,6 +4597,24 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun persistedHomeSnapshotKeepsSidebarOrderForColdStartPaint() {
+        // task #322: artin's "下次启动一次出齐" requirement — the first-paint snapshot that
+        // carries a concurrently-fetched sidebarOrder must keep it through the durable
+        // persist slice, so a cold start reads the pinned section back out with channels.
+        val snapshot =
+            sampleHome("server-1").copy(
+                sidebarOrder =
+                    SettingsServerSidebarOrderSnapshot(
+                        channelOrder = listOf("channel-pinned"),
+                        pinnedChannelIds = listOf("channel-pinned")
+                    )
+            )
+        val pruned = snapshot.pruneForHomeIdentityPersist()
+        assertEquals(listOf("channel-pinned"), pruned.sidebarOrder?.channelOrder)
+        assertEquals(listOf("channel-pinned"), pruned.sidebarOrder?.pinnedChannelIds)
+    }
+
+    @Test
     fun togglePinnedOptimisticallyUpdatesAndPatchesSidebarOrder() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val initial = SettingsServerSidebarOrderSnapshot(

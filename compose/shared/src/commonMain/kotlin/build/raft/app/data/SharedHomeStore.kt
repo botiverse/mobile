@@ -173,6 +173,12 @@ internal class SharedHomeStore(
     // base snapshot and clobber any server-side pinned list.
     private val sidebarOrderMutex = Mutex()
     private val sidebarOrderByServer = linkedMapOf<ServerId, SettingsServerSidebarOrderSnapshot>()
+    // task #322: version counter for local pin mutations (TogglePinned / SetPinnedSortMode /
+    // PerReceiverPinnedChanged). The concurrent sidebar-order fetch snapshots this at
+    // launch and, before applying a late-arriving result, re-checks it inside
+    // `sidebarOrderMutex`: if a pin landed meanwhile, the deferred stale result is
+    // dropped instead of clobbering the authoritative pin.
+    private var sidebarPinChangeVersion: Long = 0L
     private var channelActivityMuteRequestSeq: Long = 0L
     private val channelActivityMuteRequests = linkedMapOf<ChannelId, ChannelActivityMuteRequest>()
     private val backgroundUnreadByScope =
@@ -1826,6 +1832,7 @@ internal class SharedHomeStore(
         // the pinned section can land in the same frame as the channel list instead of
         // being appended after it. `applySidebarOrderLocally` merges it on arrival; the
         // bounded await below only waits a short cap before publishing channels alone.
+        val sidebarFetchPinChangeVersion = sidebarPinChangeVersion
         val sidebarOrderDeferred =
             activeServer?.let { serverId ->
                 scope.async {
@@ -1917,7 +1924,13 @@ internal class SharedHomeStore(
                         sidebarOrderMutex.withLock {
                             val current =
                                 _state.value.content as? SharedHomeContentState.Content ?: return@withLock
-                            if (current.snapshot.server.id == activeServer) {
+                            // A pin dispatched between this fetch's launch and its late
+                            // apply already wrote the authoritative snapshot — drop the
+                            // stale deferred result instead of clobbering the pin.
+                            if (
+                                current.snapshot.server.id == activeServer &&
+                                    sidebarPinChangeVersion == sidebarFetchPinChangeVersion
+                            ) {
                                 applySidebarOrderLocally(
                                     serverId = current.snapshot.server.id,
                                     next = lateResult.data
@@ -2573,6 +2586,7 @@ internal class SharedHomeStore(
         }
         val target = current.snapshot.pinnedToggleTarget(intent)
         val next = previous.withToggledPinnedTarget(target)
+        sidebarPinChangeVersion += 1
         applySidebarOrderLocally(serverId = serverId, next = next)
         val request = SettingsServerSidebarOrderUpdateRequest(
             pinned = next.pinned
@@ -2601,6 +2615,7 @@ internal class SharedHomeStore(
         }
         if (previous.pinnedSortMode == mode.wireValue) return
         val next = previous.copy(pinnedSortMode = mode.wireValue)
+        sidebarPinChangeVersion += 1
         applySidebarOrderLocally(serverId = serverId, next = next)
         val request = SettingsServerSidebarOrderUpdateRequest(
             pinnedSortMode = mode.wireValue
@@ -3132,6 +3147,7 @@ internal class SharedHomeStore(
             scope = PerReceiverStateScope.Pinned,
             incomingVersion = update.version
         )
+        sidebarPinChangeVersion += 1
         return applySidebarOrderLocally(
             serverId = update.serverId,
             next = update.sidebarOrder
