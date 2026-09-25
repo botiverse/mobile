@@ -7499,9 +7499,18 @@ internal class SlockKuiklyBridgeModule(
         return runCatching {
                     authority.withIdentityLock(identity) {
                         val committed = authority.resolve(identity)
+                        val privateTarget =
+                                attachmentCacheFile(request, owner.principalKey)
+                        val privateCached = privateTarget.isUsableAttachmentCacheFile()
                         mapOf(
                                 "status" to "ok",
-                                "cached" to (committed != null),
+                                // Public MediaStore hit AND private cache hit — callers that
+                                // only need "is there a usable local copy" should read
+                                // `cached` (public) vs `privateCached` (private staging dir).
+                                "cached" to (committed != null || privateCached),
+                                "privateCached" to privateCached,
+                                "privatePath" to
+                                        if (privateCached) privateTarget.absolutePath else "",
                                 "active" to false,
                                 "attemptToken" to "",
                                 "recordVersion" to (committed?.generation ?: -1L),
