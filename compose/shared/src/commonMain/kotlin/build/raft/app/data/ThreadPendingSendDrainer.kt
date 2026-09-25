@@ -216,6 +216,12 @@ internal class ThreadPendingSendDrainer(
                 ?: return
         val rows = drainStore.rowsForDrain(provenance, route)
         if (rows.isEmpty()) return
+        // A cold store start only adopts orphaned "sending" rows (the attempt that owned them
+        // died with the process). Rows already marked failed wait for a live trigger — send
+        // failure, authoritative online, foreground, backoff wake — or for an explicit user
+        // retry: process recreation alone must never auto-send (old contract pinned by
+        // ThreadPendingSendStoreIntegrationTest).
+        val includeFailedRetries = reason != "start"
         var drained = 0
         for (row in rows) {
             val context = row.pendingSendContext ?: continue
@@ -224,6 +230,22 @@ internal class ThreadPendingSendDrainer(
             val failed = row.deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true)
             val sending = row.deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true)
             if (!failed && !sending) continue
+            if (failed) {
+                if (!includeFailedRetries) continue
+                // Only transient failures are eligible for automatic resend; a permanent
+                // failure (e.g. http_400) keeps the row failed for the manual retry button.
+                // A missing code means the failure predates classification — retrying with the
+                // same randomId is idempotent, so allow it.
+                val rowErrorCode = row.pendingSendErrorCode
+                if (rowErrorCode != null &&
+                    !threadSendShouldSilentlyRetry(
+                        rowErrorCode,
+                        rowErrorCode.removePrefix("http_").toIntOrNull(),
+                    )
+                ) {
+                    continue
+                }
+            }
             if (sending) {
                 // No live attempt in this process owns this randomId, so the attempt that wrote
                 // this row died (process kill or scope loss). Flip the row to failed first so the

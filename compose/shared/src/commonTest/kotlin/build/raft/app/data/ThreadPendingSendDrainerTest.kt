@@ -38,11 +38,39 @@ class ThreadPendingSendDrainerTest {
         val sent = mutableListOf<String>()
         val drainer = drainer(store = store, send = send.handler, onSent = { localId, _, _, _ -> sent += localId })
 
-        drainer.drainOnceForTests("start")
+        drainer.drainOnceForTests("send_failed")
 
         assertEquals(listOf("random-1"), send.randomIds)
         assertEquals(listOf("random-1"), store.consumedRandomIds)
         assertEquals(listOf("local-1"), sent)
+        assertTrue(store.rows.isEmpty())
+    }
+
+    @Test
+    fun storeStartAdoptsSendingOrphansButNeverAutoSendsFailedRows() = runBlocking {
+        val store =
+            FakeDrainStore().apply {
+                rows += pendingMessage("local-orphan", "random-orphan", failed = false)
+                rows +=
+                    pendingMessage("local-failed", "random-failed", failed = true)
+                        .copy(pendingSendErrorCode = "thread_send_network")
+            }
+        val send = RecordingSend()
+        val drainer = drainer(store = store, send = send.handler)
+
+        drainer.drainOnceForTests("start")
+
+        // The orphaned "sending" row is adopted and resent; the failed row stays untouched —
+        // process recreation alone must never auto-send (the live-trigger drain below can).
+        assertEquals(listOf("random-orphan"), send.randomIds)
+        assertEquals(listOf("local-orphan" to "thread_send_adopted_stale"), store.markFailedCalls)
+        assertEquals(listOf("random-orphan"), store.consumedRandomIds)
+        assertEquals(listOf("local-failed"), store.rows.map { it.id })
+
+        drainer.drainOnceForTests("authoritative_online")
+
+        assertEquals(listOf("random-orphan", "random-failed"), send.randomIds)
+        assertEquals(listOf("random-orphan", "random-failed"), store.consumedRandomIds)
         assertTrue(store.rows.isEmpty())
     }
 
@@ -156,7 +184,7 @@ class ThreadPendingSendDrainerTest {
             )
         val drainer = drainer(store = store, send = send.handler)
 
-        drainer.drainOnceForTests("start")
+        drainer.drainOnceForTests("send_failed")
 
         assertEquals(listOf("local-1" to "empty_response"), store.markFailedCalls)
         assertEquals(emptyList(), store.consumedRandomIds)
@@ -171,7 +199,7 @@ class ThreadPendingSendDrainerTest {
         send.results += ThreadApiResult.Success(successPage())
         val drainer = drainer(store = store, send = send.handler)
 
-        drainer.drainOnceForTests("start")
+        drainer.drainOnceForTests("send_failed")
         drainer.drainOnceForTests("backoff")
 
         assertEquals(listOf("local-1" to "thread_send_timeout"), store.markFailedCalls)
@@ -210,7 +238,7 @@ class ThreadPendingSendDrainerTest {
         try {
             val drainer = drainer(store = store, send = send.handler, scope = consumerScope)
 
-            drainer.trigger("start")
+            drainer.trigger("send_failed")
             withTimeout(5_000) { sendStarted.await() }
             // These pile up while the first pass is blocked inside the send.
             drainer.trigger("realtime")
