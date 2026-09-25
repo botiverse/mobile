@@ -4598,13 +4598,18 @@ class SharedHomeStoreTest {
 
     @Test
     fun pinDuringConcurrentSidebarOrderFetchDiscardsTheLateStaleResult() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        // Real background dispatcher: the concurrent first-paint fetch's scope.async
+        // must run off the test thread so the gated deferred (firstPaintGate) can be
+        // completed by the test body while the fetch is genuinely in flight. On
+        // Unconfined the async runs eagerly on the test thread and its .await()
+        // would suspend the whole runBlocking body, deadlocking the test.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         var loadCalls = 0
         // First call = the concurrent first-paint fetch; it stays blocked past the
-        // 300ms cap so home publishes channels alone. Second call = the Pin's own
-        // ensureSidebarOrderLoaded fetch while the deferred is still in flight.
+        // 300ms cap so home publishes channels alone. Later calls (the Pin's own
+        // ensureSidebarOrderLoaded fetch while the deferred is still in flight)
+        // return an empty base synchronously — no suspension inside sidebarOrderMutex.
         val firstPaintGate = CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>()
-        val pinBaseGate = CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>()
         val pinBase = SettingsServerSidebarOrderSnapshot(pinnedChannelIds = emptyList())
         val pinnedSnapshot = pinBase.copy(pinnedChannelIds = listOf("channel-1"), pinnedOrder = listOf("channel-1"))
         val store =
@@ -4614,19 +4619,22 @@ class SharedHomeStoreTest {
                 scope = scope,
                 loadSidebarOrder = { _ ->
                     loadCalls += 1
-                    if (loadCalls == 1) firstPaintGate.await() else pinBaseGate.await()
+                    if (loadCalls == 1) firstPaintGate.await() else pinBase
                 },
                 updateSidebarOrder = { _ -> DataResult.Content(pinnedSnapshot) }
             )
 
-        store.accept(SharedHomeIntent.Start)
+        val startJob = scope.launch { store.accept(SharedHomeIntent.Start) }
         // The 300ms first-paint cap elapses: home publishes channels alone.
-        val early = store.state.value.content as SharedHomeContentState.Content
-        assertNull(early.snapshot.sidebarOrder)
+        awaitCondition {
+            (store.state.value.content as? SharedHomeContentState.Content)?.snapshot != null &&
+                (store.state.value.content as? SharedHomeContentState.Content)
+                    ?.snapshot?.sidebarOrder == null
+        }
 
-        // The Pin lands while the deferred is still in flight: the optimistic
-        // apply bumps sidebarPinChangeVersion and writes the pin under the mutex.
-        pinBaseGate.complete(DataResult.Content(pinBase))
+        // The Pin lands while the deferred is still in flight: ensureSidebarOrderLoaded
+        // finds no cached order, fetches the empty base under sidebarOrderMutex, then
+        // the optimistic apply bumps sidebarPinChangeVersion and writes the pin.
         store.accept(SharedHomeIntent.TogglePinned("channel-1"))
         awaitCondition {
             (store.state.value.content as? SharedHomeContentState.Content)
@@ -4637,8 +4645,11 @@ class SharedHomeStoreTest {
         // fetched before the mutation). It must be dropped inside sidebarOrderMutex
         // because sidebarPinChangeVersion changed — not clobber the pin.
         firstPaintGate.complete(DataResult.Content(SettingsServerSidebarOrderSnapshot(pinnedChannelIds = emptyList())))
+        startJob.join()
         awaitCondition { loadCalls >= 2 }
-        delay(50) // let the late-merge coroutine run inside the mutex
+        // Give the spawned late-merge coroutine a beat to run under the mutex, then
+        // assert the pin survived and the stale result was discarded.
+        delay(50)
         val after =
             (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
         assertEquals(
