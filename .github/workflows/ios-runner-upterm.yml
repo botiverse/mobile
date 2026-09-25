@@ -182,12 +182,15 @@ jobs:
           esac
           stop_status=0
           if [ -x "$UPTERM_ROOT/upterm" ]; then
-            HOME="$UPTERM_ROOT/home" \
-              XDG_CONFIG_HOME="$UPTERM_ROOT/home/.config" \
-              XDG_STATE_HOME="$UPTERM_ROOT/state" \
-              XDG_RUNTIME_DIR="$UPTERM_RUNTIME" \
-              "$UPTERM_ROOT/upterm" session stop "$UPTERM_NAME"
-            stop_status=$?
+            if HOME="$UPTERM_ROOT/home" \
+                XDG_CONFIG_HOME="$UPTERM_ROOT/home/.config" \
+                XDG_STATE_HOME="$UPTERM_ROOT/state" \
+                XDG_RUNTIME_DIR="$UPTERM_RUNTIME" \
+                "$UPTERM_ROOT/upterm" session stop "$UPTERM_NAME"; then
+              stop_status=0
+            else
+              stop_status=$?
+            fi
           fi
           if [ "$stop_status" -ne 0 ]; then
             echo "::error::Upterm stop failed with status $stop_status; preserving diagnostics"

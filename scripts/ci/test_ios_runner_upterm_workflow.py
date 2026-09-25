@@ -116,7 +116,10 @@ class UptermWorkflowTest(unittest.TestCase):
             fake.chmod(0o755)
             try:
                 result = subprocess.run(
-                    ['bash', '-c', self.cleanup_script()],
+                    [
+                        'bash', '--noprofile', '--norc', '-e', '-o', 'pipefail',
+                        '-c', self.cleanup_script(),
+                    ],
                     env=dict(
                         os.environ,
                         RUNNER_TEMP=runner_temp,
@@ -154,7 +157,10 @@ class UptermWorkflowTest(unittest.TestCase):
             )
             fake.chmod(0o755)
             result = subprocess.run(
-                ['bash', '-c', self.cleanup_script()],
+                [
+                    'bash', '--noprofile', '--norc', '-e', '-o', 'pipefail',
+                    '-c', self.cleanup_script(),
+                ],
                 env=dict(
                     os.environ,
                     RUNNER_TEMP=runner_temp,
