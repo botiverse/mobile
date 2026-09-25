@@ -16,6 +16,7 @@
 
 🐛 **Fixed**
 
+- Fixed a broad set of experience issues and improved stability
 - Fixed a crash when opening some threads (Android verification error and a files-page null pointer)
 - Fixed opening a local image preview after scrolling channels hanging on a spinner with an unresponsive button
 - Fixed image previews flickering and reloading; eliminated avatar and image flicker across the app
