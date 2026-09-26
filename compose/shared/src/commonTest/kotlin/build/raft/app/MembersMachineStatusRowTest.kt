@@ -229,4 +229,62 @@ class MembersMachineStatusRowTest {
         ).map { it.resource() }
         assertEquals(6, resources.toSet().size)
     }
+
+    // --- task #336: machineId-vs-server-list gate for the agent-detail Computer link ---------
+
+    @Test
+    fun knownStateIsAbsentWhenMachineIdIsBlank() {
+        assertEquals(
+            MembersAgentComputerKnownState.Absent,
+            membersAgentComputerKnownState(
+                machineId = " ",
+                machines = listOf(machine("m-1")),
+                loadStatus = SharedComputersLoadStatus.Loaded,
+                hasSnapshot = true
+            )
+        )
+    }
+
+    @Test
+    fun knownStateIsUnknownWhileStoreHasNotAnswered() {
+        // machineId present but store still loading: the link stays (three-state, same
+        // Loading/answered split as membersMachineStatusRow).
+        assertEquals(
+            MembersAgentComputerKnownState.Unknown,
+            membersAgentComputerKnownState(
+                machineId = "m-1",
+                machines = emptyList(),
+                loadStatus = SharedComputersLoadStatus.Idle,
+                hasSnapshot = false
+            )
+        )
+    }
+
+    @Test
+    fun knownStateIsAbsentOnceSnapshotProvesMachineNotOnThisServer() {
+        // #336 root case: agent detail carries a machineId the current server does not list
+        // -> link must be withdrawn instead of opening a guaranteed 404.
+        assertEquals(
+            MembersAgentComputerKnownState.Absent,
+            membersAgentComputerKnownState(
+                machineId = "m-gone",
+                machines = listOf(machine("m-1"), machine("m-2")),
+                loadStatus = SharedComputersLoadStatus.Loaded,
+                hasSnapshot = true
+            )
+        )
+    }
+
+    @Test
+    fun knownStateIsPresentWhenLoadedSliceContainsTheMachine() {
+        assertEquals(
+            MembersAgentComputerKnownState.Present,
+            membersAgentComputerKnownState(
+                machineId = "m-2",
+                machines = listOf(machine("m-1"), machine("m-2")),
+                loadStatus = SharedComputersLoadStatus.Loaded,
+                hasSnapshot = true
+            )
+        )
+    }
 }

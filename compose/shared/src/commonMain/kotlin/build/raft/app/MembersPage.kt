@@ -862,13 +862,47 @@ internal fun memberDetailAgentPanelTabOrderServerId(
     routeServerId.cleanMemberDetailServerId()
         ?: payloadSourceServerId.cleanMemberDetailServerId()
 
+/**
+ * Task #336: `machineKnown` is the "this machineId is registered on the current
+ * server" gate. The web Computers surface 404s when the App opens a machineId
+ * the server does not list, so the link must not exist then. The gate is a
+ * three-state enum mirroring [membersMachineStatusRow]: [Unknown] while the
+ * computers store has not answered (keep the affordance), [Absent] once a
+ * loaded snapshot proves the machine is not on this server (withdraw it).
+ */
+internal enum class MembersAgentComputerKnownState {
+    Unknown,
+    Present,
+    Absent,
+}
+
+internal fun membersAgentComputerKnownState(
+    machineId: String?,
+    machines: List<ComputerSummary>,
+    loadStatus: SharedComputersLoadStatus,
+    hasSnapshot: Boolean
+): MembersAgentComputerKnownState {
+    val id = machineId?.trim()?.takeIf { it.isNotBlank() }
+        ?: return MembersAgentComputerKnownState.Absent
+    if (!hasSnapshot && loadStatus != SharedComputersLoadStatus.Loaded) {
+        return MembersAgentComputerKnownState.Unknown
+    }
+    return if (machines.any { it.id == id }) {
+        MembersAgentComputerKnownState.Present
+    } else {
+        MembersAgentComputerKnownState.Absent
+    }
+}
+
 internal fun membersAgentComputerNavigationTarget(
     serverId: String?,
     summaryMachineId: String?,
     memberMachineId: String?,
     accessMode: MemberDetailAccessMode,
+    machineKnown: MembersAgentComputerKnownState = MembersAgentComputerKnownState.Unknown,
 ): SettingsComputerRouteIdentity? {
     if (!accessMode.allowsPrivateAgentSurfaces) return null
+    if (machineKnown == MembersAgentComputerKnownState.Absent) return null
     val normalizedServerId = serverId.cleanMemberDetailServerId() ?: return null
     val normalizedMachineId =
         summaryMachineId?.trim()?.takeIf { it.isNotBlank() }
@@ -3550,12 +3584,24 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                 val agentMachineId =
                     selectedAgentDetail.summary?.machineId
                         ?: member.membersComputerId
+                // Task #336: gate the "Computer" link on the machine actually being
+                // registered on this server. Same three-state source as
+                // machineStatusRow: while the computers store has not answered the
+                // link stays (unknown), once a snapshot proves the machine is not
+                // here the link is withdrawn instead of opening a guaranteed 404.
+                val computerSliceForLink = computersState.selectComputerServerSlice(statusLookupServerId)
                 val computerNavigationTarget =
                     membersAgentComputerNavigationTarget(
                         serverId = current.server.id.value,
                         summaryMachineId = selectedAgentDetail.summary?.machineId,
                         memberMachineId = member.membersComputerId,
                         accessMode = current.accessMode,
+                        machineKnown = membersAgentComputerKnownState(
+                            machineId = agentMachineId,
+                            machines = computerSliceForLink.machines,
+                            loadStatus = computerSliceForLink.status,
+                            hasSnapshot = computerSliceForLink.hasSnapshot,
+                        ),
                     )
                 val onOpenComputer: (() -> Unit)? =
                     computerNavigationTarget?.let { target ->
