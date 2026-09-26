@@ -47,28 +47,6 @@ class ReleaseAcceptanceContractTest(unittest.TestCase):
         with self.assertRaisesRegex(ContractError, "must preserve the unified Android/iOS contract"):
             load_contract(self.case_dir)
 
-    def test_case_referencing_production_server_is_rejected(self) -> None:
-        # Absence half of the server polarity pair (task #171): re-introducing
-        # a "choose 'Raft Android'" instruction — the exact July incident text
-        # — must fail the contract, in any case file and any field.
-        path = self.case_dir / "07-thread-reply.yaml"
-        path.write_text(
-            path.read_text(encoding="utf-8")
-            + "\nnotes: \"If a server picker appears choose 'Raft Android'.\"\n",
-            encoding="utf-8",
-        )
-        with self.assertRaisesRegex(ContractError, "references the production server"):
-            load_contract(self.case_dir)
-
-    def test_production_server_ban_is_case_insensitive(self) -> None:
-        path = self.case_dir / "10-dm-open-and-send.yaml"
-        path.write_text(
-            path.read_text(encoding="utf-8") + "\nnotes: \"use raft android\"\n",
-            encoding="utf-8",
-        )
-        with self.assertRaisesRegex(ContractError, "references the production server"):
-            load_contract(self.case_dir)
-
     def test_login_case_must_name_the_qa_server(self) -> None:
         # Presence half: deleting OranixSlockTest from the login case would
         # leave the server picker to the model — the checker must go red on

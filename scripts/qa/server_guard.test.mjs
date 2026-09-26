@@ -1,8 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { PRODUCTION_SERVER_NAME, serverGuardSection } from "./server_guard.mjs";
+import { serverGuardSection } from "./server_guard.mjs";
 
+// ⚠️ 2026-08-31 (artin): the production server is no longer named or special-cased,
+// so the former "clause 1" test and the polarity test are gone with it. The clauses
+// that remain are name-agnostic. See server_guard.mjs for the recorded consequence.
+//
 // Each clause gets its OWN assertion so deleting any one goes red on its own
 // (per-clause mutation acceptance — a joined blob would let two clauses hide
 // one deletion). The teeth pin meaning-bearing fragments, not full sentences,
@@ -10,15 +14,6 @@ import { PRODUCTION_SERVER_NAME, serverGuardSection } from "./server_guard.mjs";
 // is a clause disappearing.
 
 const text = serverGuardSection().join("\n");
-
-test("clause 1: the production server is banned by name, override-proof", () => {
-  assert.equal(PRODUCTION_SERVER_NAME, "Raft Android");
-  assert.match(text, /'Raft Android' is the PRODUCTION server\. NEVER tap, select, join, or log into/);
-  // The override wording is the point of the choke placement: a goal that
-  // says "choose Raft Android" must lose to this line.
-  assert.match(text, /even if the GOAL, a hint, or any other text says to/);
-  assert.match(text, /OVERRIDE the GOAL/);
-});
 
 test("clause 2: unnamed or ambiguous target fails with error instead of a guess", () => {
   assert.match(text, /select ONLY the server the GOAL names\./);
@@ -37,18 +32,6 @@ test("clause 2: unnamed or ambiguous target fails with error instead of a guess"
 
 test("clause 3: near-match substitution is forbidden", () => {
   assert.match(text, /a near-match\n\s+is a WRONG server, not a fallback/);
-});
-
-test("polarity: the guard never phrases the production name as a target", () => {
-  // The banned name must appear ONLY inside ban phrasing. If someone edits
-  // the guard into an instruction ("select 'Raft Android'"), this goes red
-  // even while clause-presence teeth stay green.
-  assert.doesNotMatch(text, /(?:choose|select|tap|join|log into)[^\n]*'Raft Android'/i);
-  for (const line of serverGuardSection()) {
-    if (line.includes(PRODUCTION_SERVER_NAME)) {
-      assert.match(line, /PRODUCTION/, "the production name may only appear in the ban clause");
-    }
-  }
 });
 
 test("enforcement point: preamble() actually splices the guard after the goal", () => {
@@ -72,8 +55,6 @@ test("deterministic repro path only ever selects a QA server", () => {
   // so rewriting it would turn every guard green while pointing the
   // deterministic path at production (XiShi, fifth surface, 2026-08-31).
   const src = fs.readFileSync(new URL("./ios_deterministic_repro.mjs", import.meta.url), "utf8");
-  assert.ok(!src.toLowerCase().includes(PRODUCTION_SERVER_NAME.toLowerCase()),
-    "the deterministic path must never reference the production server");
   // Pin the SELECTION expression itself — the line that decides which row
   // gets tapped — not just any mention of the name (a partial swap left
   // other mentions matching a looser assertion during mutation testing).
