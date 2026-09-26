@@ -688,7 +688,13 @@ class SharedThreadInitialAccessTest {
             // from Saved) must not sit on "checking permissions" forever. Only
             // a network-authoritative directory snapshot may attest the parent
             // is gone; a cache/refresh-pending miss stays Unknown.
+            //
+            // CI watchdog note: same shape as parentDeletedRecomputesToWritable
+            // - injected lookup deadline plus bounded waits that dump state on
+            // timeout, so a regression fails fast and readably.
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val lookupDeadline = CompletableDeferred<Unit>()
+            val diagnostics = mutableListOf<String>()
             val route = replyThreadInitialAccessPayload()
             val home = replyThreadAccessHomeSnapshot(joined = true, canSend = true)
             val channelRepository =
@@ -716,15 +722,46 @@ class SharedThreadInitialAccessTest {
                             channelRepository = channelRepository,
                         ),
                     scope = scope,
+                    diagnosticsLogger = { diagnostics.add(it) },
+                    initialAccessLookupDeadline = { lookupDeadline.await() },
                 )
 
+            fun dumpState(reason: String): Nothing {
+                val s = store.state.value
+                throw AssertionError(
+                    "$reason\nlastState: authority=${s.replyParentAuthority} " +
+                        "lookupComplete=${s.initialHomeAccessLookupComplete} " +
+                        "canonicalResolved=${s.canonicalAccessResolved} " +
+                        "accessResolution=${s.accessResolution} " +
+                        "parentChannelId=${s.payload.parentChannelId} " +
+                        "parentMessageId=${s.payload.parentMessageId} " +
+                        "joined=${s.payload.joined} canSend=${s.payload.canSend} " +
+                        "composerEnabled=${s.payload.composer.enabled} " +
+                        "writeActions=${s.writeActionsEnabled}\n" +
+                        "diagnostics:\n" + diagnostics.joinToString("\n") { "  $it" }
+                )
+            }
+            suspend fun awaitAuthority(
+                expected: ReplyParentAuthorityStatus,
+                requireLookupComplete: Boolean = false,
+            ) {
+                try {
+                    withTimeout(10_000) {
+                        store.state.filter { state ->
+                            (!requireLookupComplete || state.initialHomeAccessLookupComplete) &&
+                                state.replyParentAuthority == expected
+                        }.first()
+                    }
+                } catch (_: TimeoutCancellationException) {
+                    dumpState("timed out waiting for authority=$expected")
+                }
+            }
+
             store.accept(SharedThreadIntent.Start(route))
+            lookupDeadline.complete(Unit)
             // Directory read completed but has no parent row and no candidate:
             // canonical reply content is readable, so authority is Unknown.
-            store.state.filter { state ->
-                state.initialHomeAccessLookupComplete &&
-                    state.replyParentAuthority == ReplyParentAuthorityStatus.Unknown
-            }.first()
+            awaitAuthority(ReplyParentAuthorityStatus.Unknown, requireLookupComplete = true)
             assertFalse(store.state.value.writeActionsEnabled)
 
             // A missing row in a non-authoritative snapshot (durable identity
@@ -754,9 +791,7 @@ class SharedThreadInitialAccessTest {
                     authoritative = true,
                 )
             )
-            store.state.filter { state ->
-                state.replyParentAuthority == ReplyParentAuthorityStatus.ParentDeleted
-            }.first()
+            awaitAuthority(ReplyParentAuthorityStatus.ParentDeleted)
             assertFalse(store.state.value.writeActionsEnabled)
             assertFalse(store.state.value.payload.composer.enabled)
             scope.cancel()
