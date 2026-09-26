@@ -338,7 +338,7 @@ val slockAndroidVersionName =
             append(".")
             append(slockAndroidVersionPatch)
             slockAndroidVersionSuffix?.let { append("-").append(it) }
-            append("+").append(slockGitCommit())
+            if (slockAndroidVersionSuffix != null) append("+").append(slockGitCommit())
             if (slockWorkingTreeDirty()) append("-dirty")
         }
 
