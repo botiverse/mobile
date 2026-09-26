@@ -125,7 +125,8 @@ class ThreadPendingSendDrainerTest {
                 },
             )
 
-        drainer.drainOnceForTests("start")
+        // Failed rows are excluded on cold-start triggers; a realtime trigger drives the retry.
+        drainer.drainOnceForTests("realtime")
 
         // http_400 is non-retryable, so the first failure is terminal and notifies once.
         assertEquals(listOf("local-1" to "http_400"), failedCallbacks)
