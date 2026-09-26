@@ -60,6 +60,54 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
+    fun journalAdmissionClearsPersistedDraftAndFailureDoesNotRestoreIt() {
+        // #1134 cell 3 (Argus ruling): once the send is admitted to the pending-send
+        // journal, the journal row owns crash protection, so the admission path dispatches
+        // BeginSend + CompleteSend immediately. A mid-send process kill must restart with
+        // an empty composer (the journaled row renders sending/failed instead), and a
+        // later inline failure must not resurrect the draft text.
+        val storage = InMemorySlockKeyValueStore()
+        val persistence = SharedThreadComposerDraftPersistence(storage)
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val draftKey = "send=channel-journal|parent=_|mention=channel-journal"
+        val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-journal"),
+                draftKey = draftKey
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "offline body"))
+        store.dispatch(SharedThreadComposerDraftIntent.Flush)
+        assertEquals("offline body", persistence.read(draftKey)?.text)
+
+        // Journal-admitted path: editor clears at BeginSend, durable record clears at
+        // the admission-time CompleteSend.
+        store.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+        store.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
+        assertEquals(null, persistence.read(draftKey))
+
+        // Simulated process kill + rebuild: the draft must not come back.
+        val restarted = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        restarted.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-journal"),
+                draftKey = draftKey
+            )
+        )
+        assertEquals("", restarted.state.value.seedText)
+
+        // A later inline failure (network down) leaves the composer and persistence
+        // empty — the failed journal row carries the retry affordance.
+        restarted.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+        restarted.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
+        restarted.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
+        assertEquals("", restarted.state.value.seedText)
+        assertEquals(null, persistence.read(draftKey))
+    }
+
+    @Test
     fun originalImagePreferenceIsNotWrittenToPersistedDraft() {
         val storage = InMemorySlockKeyValueStore()
         val persistence = SharedThreadComposerDraftPersistence(storage)

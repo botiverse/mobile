@@ -124,8 +124,55 @@ class ThreadPendingSendJournalTest {
                 assertTrue(restarted.restore(provenance.copy(environmentId = "env-b"), route).isEmpty())
                 assertTrue(restarted.restore(provenance.copy(principalId = "principal-b"), route).isEmpty())
                 assertTrue(restarted.restore(provenance.copy(serverId = "server-b"), route).isEmpty())
-                assertTrue(restarted.restore(provenance.copy(selectionGeneration = 21L), route).isEmpty())
+                // Durable visibility keys on the stable identity only: generation columns
+                // (selection epoch, auth generation) fence in-process writes, never whether
+                // a journaled orphan can be seen after a restart or re-selection.
+                assertEquals(
+                    listOf(message),
+                    restarted.restore(provenance.copy(selectionGeneration = 21L), route)
+                )
+                assertEquals(
+                    listOf(message),
+                    restarted.restore(provenance.copy(authGeneration = 11L), route)
+                )
                 assertTrue(restarted.restore(provenance, route(serverId = "channel-b")).isEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun drainPathAdoptsOrphansAcrossGenerationAndScopeChanges() {
+        withDatabase { path ->
+            val written = provenance(authGeneration = 10L, selectionGeneration = 20L)
+            val route = route()
+            val message = message("local-send-orphan", "random-orphan")
+
+            JdbcSqliteDriver(url(path)).use { driver ->
+                val journal = journal(driver)
+                assertTrue(journal.persistSending(written, route, message))
+            }
+
+            // Process restart + server re-selection + auth rotation: the row was written
+            // under older generations, and this process cannot reproduce the old owner
+            // scope. The drain path must still see, mark, and consume it (#1134 cell 3).
+            JdbcSqliteDriver(url(path)).use { driver ->
+                val restarted = journal(driver)
+                val current = provenance(authGeneration = 11L, selectionGeneration = 21L)
+                assertEquals(listOf(message), restarted.restore(current, route))
+                assertTrue(
+                    restarted.markFailedForDrain(
+                        current,
+                        route,
+                        message.id,
+                        "thread_send_adopted_stale",
+                        null
+                    )
+                )
+                assertEquals(
+                    ThreadPendingSendJournal.ConsumeResult.Deleted,
+                    restarted.consumeCanonicalRandomId(current, route, "random-orphan")
+                )
+                assertTrue(restarted.restore(current, route).isEmpty())
             }
         }
     }
@@ -227,7 +274,8 @@ class ThreadPendingSendJournalTest {
                 assertTrue(journal.persistSending(old, route, message("local-send-old", "random-old")))
                 assertTrue(journal.persistSending(successor, route, message("local-send-new", "random-new")))
                 assertTrue(journal.clearForAuthRevision(old.environmentId, old.principalId, old.authGeneration))
-                assertTrue(journal.restore(old, route).isEmpty())
+                assertEquals(0L, countRowsAtAuthGeneration(driver, old, 10L))
+                assertEquals(1L, countRowsAtAuthGeneration(driver, successor, 11L))
                 assertEquals(1, journal.restore(successor, route).size)
             }
         }
@@ -257,7 +305,8 @@ class ThreadPendingSendJournalTest {
                     ),
                 )
 
-                assertTrue(journal.restore(old, route).isEmpty())
+                assertEquals(0L, countRowsAtAuthGeneration(driver, old, 10L))
+                assertEquals(1L, countRowsAtAuthGeneration(driver, successor, 11L))
                 val restored = journal.restore(successor, route)
                 assertEquals(1, restored.size)
                 assertEquals("local-send-old", restored.single().id)
@@ -291,7 +340,9 @@ class ThreadPendingSendJournalTest {
                     1,
                     journal.rehomeAuthRevision(old.environmentId, old.principalId, 10L, 11L),
                 )
-                assertTrue(journal.restore(old, route).isEmpty())
+                assertEquals(0L, countRowsAtAuthGeneration(driver, old, 10L))
+                assertEquals(1L, countRowsAtAuthGeneration(driver, successor, 11L))
+                assertEquals(1L, countRowsAtAuthGeneration(driver, foreign, 10L))
                 assertEquals(1, journal.restore(successor, route).size)
                 assertEquals(1, journal.restore(foreign, route).size)
 
@@ -338,7 +389,8 @@ class ThreadPendingSendJournalTest {
                     )
                 )
 
-                assertTrue(journal.restore(terminal, route).isEmpty())
+                assertEquals(0L, countRowsAtAuthGeneration(driver, terminal, 10L))
+                assertEquals(1L, countRowsAtAuthGeneration(driver, successor, 11L))
                 assertEquals(1, journal.restore(successor, route).size)
                 assertEquals(1, journal.restore(foreignPrincipal, route).size)
                 assertEquals(1, journal.restore(foreignEnvironment, route).size)
@@ -371,9 +423,11 @@ class ThreadPendingSendJournalTest {
                     )
                 )
 
-                assertTrue(journal.restore(old, route).isEmpty())
-                assertEquals(1, journal.restore(current, route).size)
-                assertEquals(1, journal.restore(future, route).size)
+                assertEquals(0L, countRowsAtAuthGeneration(driver, old, 10L))
+                assertEquals(1L, countRowsAtAuthGeneration(driver, current, 11L))
+                assertEquals(1L, countRowsAtAuthGeneration(driver, future, 12L))
+                // restore() intentionally sees every generation of the stable identity.
+                assertEquals(2, journal.restore(current, route).size)
             }
         }
     }
@@ -587,6 +641,35 @@ class ThreadPendingSendJournalTest {
     }
 
     private fun url(path: java.nio.file.Path): String = "jdbc:sqlite:${path.toAbsolutePath()}"
+
+    /**
+     * Partition-content assertion: with durable visibility keyed on the stable identity,
+     * "the old auth partition is gone" must be asserted on the authGeneration column
+     * directly, not via restore() (which intentionally sees all generations).
+     */
+    private fun countRowsAtAuthGeneration(
+        driver: JdbcSqliteDriver,
+        provenance: ReplyCacheProvenance,
+        authGeneration: Long,
+    ): Long =
+        driver.executeQuery(
+            identifier = null,
+            sql = """
+                SELECT COUNT(*) FROM threadPendingSendEntity
+                WHERE environmentId = ? AND principalId = ? AND serverId = ? AND authGeneration = ?
+            """.trimIndent(),
+            mapper = { cursor ->
+                cursor.next()
+                QueryResult.Value(cursor.getLong(0) ?: 0L)
+            },
+            parameters = 4,
+            binders = {
+                bindString(0, provenance.environmentId)
+                bindString(1, provenance.principalId)
+                bindString(2, provenance.serverId)
+                bindLong(3, authGeneration)
+            },
+        ).value
 
     private fun provenance(
         environmentId: String = "env-a",

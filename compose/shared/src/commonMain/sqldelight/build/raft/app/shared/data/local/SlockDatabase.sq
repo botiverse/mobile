@@ -1232,6 +1232,34 @@ WHERE environmentId = ?
   AND routeInstanceKey = ?
   AND randomId = ?;
 
+-- Drain-path visibility: durable rows belong to a stable identity (environment,
+-- account, server). Generation/scope columns only fence in-process concurrent
+-- writes, never whether a journaled orphan can be seen and adopted.
+selectThreadPendingSendForStableIdentity:
+SELECT *
+FROM threadPendingSendEntity
+WHERE environmentId = ?
+  AND principalId = ?
+  AND serverId = ?
+ORDER BY createdAtMs, localId;
+
+updateThreadPendingSendFailureForStableIdentity:
+UPDATE threadPendingSendEntity
+SET status = 'failed', lastErrorCode = ?, lastErrorMessage = ?
+WHERE environmentId = ?
+  AND principalId = ?
+  AND serverId = ?
+  AND routeInstanceKey = ?
+  AND localId = ?;
+
+deleteThreadPendingSendByRandomIdForStableIdentity:
+DELETE FROM threadPendingSendEntity
+WHERE environmentId = ?
+  AND principalId = ?
+  AND serverId = ?
+  AND routeInstanceKey = ?
+  AND randomId = ?;
+
 deleteThreadPendingSendsForAuthRevision:
 DELETE FROM threadPendingSendEntity
 WHERE environmentId = ?

@@ -99,7 +99,7 @@ internal class ThreadPendingSendJournalDrainStore(
         localId: String,
         errorCode: String?,
         errorMessage: String?
-    ): Boolean = journal.markFailed(provenance, route, localId, errorCode, errorMessage)
+    ): Boolean = journal.markFailedForDrain(provenance, route, localId, errorCode, errorMessage)
 
     override fun consumeByRandomId(
         provenance: ReplyCacheProvenance,
@@ -210,12 +210,23 @@ internal class ThreadPendingSendDrainer(
     }
 
     private suspend fun drainOnce(reason: String) {
-        val provenance = provenanceResolver() ?: return
+        val provenance =
+            provenanceResolver()
+                ?: run {
+                    logger("thread_pending_send_drain_skip reason=$reason cause=no_provenance")
+                    return
+                }
         val route =
             routeResolver()?.takeIf { it.hasCompleteReplyIdentity && it.isValidPendingSendRoute() }
-                ?: return
+                ?: run {
+                    logger("thread_pending_send_drain_skip reason=$reason cause=route_not_ready")
+                    return
+                }
         val rows = drainStore.rowsForDrain(provenance, route)
-        if (rows.isEmpty()) return
+        if (rows.isEmpty()) {
+            logger("thread_pending_send_drain_skip reason=$reason cause=no_rows")
+            return
+        }
         // A cold store start only adopts orphaned "sending" rows (the attempt that owned them
         // died with the process). Rows already marked failed wait for a live trigger — send
         // failure, authoritative online, foreground, backoff wake — or for an explicit user

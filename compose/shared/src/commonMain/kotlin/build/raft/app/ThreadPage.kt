@@ -9071,6 +9071,14 @@ private fun SharedThreadRouteContentContent(
             return false
         }
         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+        // The journal row now owns crash protection for this send (restart adoption,
+        // failed row with retry), so the persisted composer draft must be cleared at
+        // admission — otherwise a mid-send process kill leaves a second copy of the same
+        // text that reloads into the composer and invites a duplicate send (#1134 cell 3,
+        // Argus ruling). Journal-write failure keeps the draft because admission already
+        // returned false above. CompleteSend only clears the durable record; the send
+        // completion below still dispatches its own CompleteSend for mention actions.
+        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
         sendPendingLocalMessage(
             localMessageId = localMessageId,
             context = pendingContext,
