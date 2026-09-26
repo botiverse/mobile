@@ -124,8 +124,55 @@ class ThreadPendingSendJournalTest {
                 assertTrue(restarted.restore(provenance.copy(environmentId = "env-b"), route).isEmpty())
                 assertTrue(restarted.restore(provenance.copy(principalId = "principal-b"), route).isEmpty())
                 assertTrue(restarted.restore(provenance.copy(serverId = "server-b"), route).isEmpty())
-                assertTrue(restarted.restore(provenance.copy(selectionGeneration = 21L), route).isEmpty())
+                // Durable visibility keys on the stable identity only: generation columns
+                // (selection epoch, auth generation) fence in-process writes, never whether
+                // a journaled orphan can be seen after a restart or re-selection.
+                assertEquals(
+                    listOf(message),
+                    restarted.restore(provenance.copy(selectionGeneration = 21L), route)
+                )
+                assertEquals(
+                    listOf(message),
+                    restarted.restore(provenance.copy(authGeneration = 11L), route)
+                )
                 assertTrue(restarted.restore(provenance, route(serverId = "channel-b")).isEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun drainPathAdoptsOrphansAcrossGenerationAndScopeChanges() {
+        withDatabase { path ->
+            val written = provenance(authGeneration = 10L, selectionGeneration = 20L)
+            val route = route()
+            val message = message("local-send-orphan", "random-orphan")
+
+            JdbcSqliteDriver(url(path)).use { driver ->
+                val journal = journal(driver)
+                assertTrue(journal.persistSending(written, route, message))
+            }
+
+            // Process restart + server re-selection + auth rotation: the row was written
+            // under older generations, and this process cannot reproduce the old owner
+            // scope. The drain path must still see, mark, and consume it (#1134 cell 3).
+            JdbcSqliteDriver(url(path)).use { driver ->
+                val restarted = journal(driver)
+                val current = provenance(authGeneration = 11L, selectionGeneration = 21L)
+                assertEquals(listOf(message), restarted.restore(current, route))
+                assertTrue(
+                    restarted.markFailedForDrain(
+                        current,
+                        route,
+                        message.id,
+                        "thread_send_adopted_stale",
+                        null
+                    )
+                )
+                assertEquals(
+                    ThreadPendingSendJournal.ConsumeResult.Deleted,
+                    restarted.consumeCanonicalRandomId(current, route, "random-orphan")
+                )
+                assertTrue(restarted.restore(current, route).isEmpty())
             }
         }
     }
