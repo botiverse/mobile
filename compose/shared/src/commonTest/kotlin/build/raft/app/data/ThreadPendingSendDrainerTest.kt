@@ -93,13 +93,13 @@ class ThreadPendingSendDrainerTest {
     fun notifiesRowFailedWhenAdoptingStaleSendingRow() = runBlocking {
         val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = false) }
         val send = RecordingSend()
-        val failedCallbacks = mutableListOf<Pair<String, String?>>()
+        val failedCallbacks = mutableListOf<Pair<String, String>>()
         val drainer =
             drainer(
                 store = store,
                 send = send.handler,
                 onRowFailed = { localId, _, _, errorCode, _ ->
-                    failedCallbacks += localId to errorCode
+                    failedCallbacks += localId to errorCode.orEmpty()
                 },
             )
 
@@ -115,13 +115,13 @@ class ThreadPendingSendDrainerTest {
         val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = true) }
         val send = RecordingSend()
         send.results += ThreadApiResult.Failure(code = 400)
-        val failedCallbacks = mutableListOf<Pair<String, String?>>()
+        val failedCallbacks = mutableListOf<Pair<String, String>>()
         val drainer =
             drainer(
                 store = store,
                 send = send.handler,
                 onRowFailed = { localId, _, _, errorCode, _ ->
-                    failedCallbacks += localId to errorCode
+                    failedCallbacks += localId to errorCode.orEmpty()
                 },
             )
 
