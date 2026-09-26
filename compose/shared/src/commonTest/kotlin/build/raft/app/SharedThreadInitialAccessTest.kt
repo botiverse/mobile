@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -766,7 +768,15 @@ class SharedThreadInitialAccessTest {
         // directory row reappears (restored/recreated channel, or the deletion
         // notice raced a live snapshot), authority recomputes like any other
         // candidate-derived state.
+        //
+        // CI watchdog note: the lookup deadline is injected as a barrier so no
+        // real wall-clock wait can park the runBlocking dispatcher, and each
+        // state wait carries an explicit timeout that dumps the last observed
+        // state plus the diagnostics trail. If a pass regresses this case the
+        // failure is a readable assertion, not a 60s JVM kill.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val lookupDeadline = CompletableDeferred<Unit>()
+        val diagnostics = mutableListOf<String>()
         val route = replyThreadInitialAccessPayload()
         val channelRepository =
             FakeChannelRepository(
@@ -793,13 +803,45 @@ class SharedThreadInitialAccessTest {
                         channelRepository = channelRepository,
                     ),
                 scope = scope,
+                diagnosticsLogger = { diagnostics.add(it) },
+                initialAccessLookupDeadline = { lookupDeadline.await() },
             )
 
+        fun dumpState(reason: String): Nothing {
+            val s = store.state.value
+            throw AssertionError(
+                "$reason\nlastState: authority=${s.replyParentAuthority} " +
+                    "lookupComplete=${s.initialHomeAccessLookupComplete} " +
+                    "canonicalResolved=${s.canonicalAccessResolved} " +
+                    "accessResolution=${s.accessResolution} " +
+                    "parentChannelId=${s.payload.parentChannelId} " +
+                    "parentMessageId=${s.payload.parentMessageId} " +
+                    "joined=${s.payload.joined} canSend=${s.payload.canSend} " +
+                    "composerEnabled=${s.payload.composer.enabled} " +
+                    "writeActions=${s.writeActionsEnabled}\n" +
+                    "diagnostics:\n" + diagnostics.joinToString("\n") { "  $it" }
+            )
+        }
+        suspend fun awaitAuthority(
+            expected: ReplyParentAuthorityStatus,
+            requireLookupComplete: Boolean = false,
+        ) {
+            try {
+                withTimeout(10_000) {
+                    store.state.filter { state ->
+                        (!requireLookupComplete || state.initialHomeAccessLookupComplete) &&
+                            state.replyParentAuthority == expected
+                    }.first()
+                }
+            } catch (_: TimeoutCancellationException) {
+                dumpState("timed out waiting for authority=$expected")
+            }
+        }
+
         store.accept(SharedThreadIntent.Start(route))
-        store.state.filter { state ->
-            state.initialHomeAccessLookupComplete &&
-                state.replyParentAuthority == ReplyParentAuthorityStatus.Unknown
-        }.first()
+        // Release the lookup barrier so no real timeout wait is in play.
+        lookupDeadline.complete(Unit)
+        awaitAuthority(ReplyParentAuthorityStatus.Unknown, requireLookupComplete = true)
         store.accept(
             SharedThreadIntent.ApplyParentDirectoryHint(
                 parentChannelId = "channel-1",
@@ -810,9 +852,7 @@ class SharedThreadInitialAccessTest {
                 authoritative = true,
             )
         )
-        store.state.filter { state ->
-            state.replyParentAuthority == ReplyParentAuthorityStatus.ParentDeleted
-        }.first()
+        awaitAuthority(ReplyParentAuthorityStatus.ParentDeleted)
 
         store.accept(
             SharedThreadIntent.ApplyParentDirectoryHint(
@@ -823,9 +863,7 @@ class SharedThreadInitialAccessTest {
                 canSend = true,
             )
         )
-        store.state.filter { state ->
-            state.replyParentAuthority == ReplyParentAuthorityStatus.Writable
-        }.first()
+        awaitAuthority(ReplyParentAuthorityStatus.Writable)
         assertTrue(store.state.value.writeActionsEnabled)
         assertTrue(store.state.value.payload.composer.enabled)
         scope.cancel()
