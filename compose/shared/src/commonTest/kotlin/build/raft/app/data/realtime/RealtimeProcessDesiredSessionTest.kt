@@ -119,6 +119,49 @@ class RealtimeProcessDesiredSessionTest {
     }
 
     @Test
+    fun sameBindingTokenRotationReauthsWithoutIdentityReplacement() {
+        // task #333: a silent token refresh bumps authGeneration + accessToken on the
+        // SAME binding (environmentId / socketUrl / principalId / connectionFamilyId
+        // unchanged). It must re-auth the socket (forceReconnect, re-issue desired)
+        // but NOT disconnectAll / process_identity_replaced / server_removed — those
+        // are reserved for a real binding swap and are what kicks the UI back to the
+        // server list.
+        val previous = desired(serverIds = setOf("server-a"))
+        val next =
+            previous.copy(
+                authGeneration = previous.authGeneration + 1,
+                accessToken = "token-rotated",
+            )
+
+        val plan = reconcileRealtimeProcessDesiredSession(previous, next)
+
+        assertFalse(plan.disconnectAll)
+        assertEquals(emptySet(), plan.disconnectServerIds)
+        assertEquals(setOf("server-a"), plan.connectServerIds)
+        assertTrue(plan.forceReconnect)
+    }
+
+    @Test
+    fun tokenRotationStillDropsServersThatLeftTheDesiredSet() {
+        // Same binding credential rotation AND a server leaving the desired set:
+        // re-auth the kept server but still disconnect the removed one.
+        val previous = desired(serverIds = setOf("server-a", "server-b"))
+        val next =
+            previous.copy(
+                authGeneration = previous.authGeneration + 1,
+                accessToken = "token-rotated",
+                serverIds = setOf("server-a"),
+            )
+
+        val plan = reconcileRealtimeProcessDesiredSession(previous, next)
+
+        assertFalse(plan.disconnectAll)
+        assertEquals(setOf("server-b"), plan.disconnectServerIds)
+        assertEquals(setOf("server-a"), plan.connectServerIds)
+        assertTrue(plan.forceReconnect)
+    }
+
+    @Test
     fun logoutDisconnectsAllWithoutStartingReplacement() {
         val plan =
             reconcileRealtimeProcessDesiredSession(
