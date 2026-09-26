@@ -312,6 +312,7 @@
     <string name="thread_state_no_messages">まだメッセージはありません</string>
     <string name="thread_state_no_messages_detail">この会話にはまだメッセージがありません。</string>
     <string name="thread_parent_authority_resolving">権限を確認しているため、現在は送信できません</string>
+    <string name="thread_parent_channel_deleted_composer">チャンネルが削除されたため送信できません</string>
     <string name="thread_action_join_channel">チャンネルに参加</string>
     <string name="thread_timestamp_now">1 分以内</string>
     <string name="relative_time_unknown">時刻不明</string>

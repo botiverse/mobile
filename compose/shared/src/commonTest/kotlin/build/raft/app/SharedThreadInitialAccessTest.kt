@@ -678,4 +678,156 @@ class SharedThreadInitialAccessTest {
         assertTrue(store.state.value.writeActionsEnabled)
         scope.cancel()
     }
+
+    @Test
+    fun authoritativeParentAbsenceMarksParentDeletedAndNonAuthoritativeAbsenceStaysUnknown() =
+        runBlocking {
+            // task #339: opening a reply thread inside a deleted channel (e.g.
+            // from Saved) must not sit on "checking permissions" forever. Only
+            // a network-authoritative directory snapshot may attest the parent
+            // is gone; a cache/refresh-pending miss stays Unknown.
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val route = replyThreadInitialAccessPayload()
+            val home = replyThreadAccessHomeSnapshot(joined = true, canSend = true)
+            val channelRepository =
+                FakeChannelRepository(
+                    channelsResult = { serverId ->
+                        DataResult.Content(
+                            ChannelSnapshot(
+                                server = ServerSummary(id = serverId, name = "One"),
+                                channels = emptyList(),
+                            )
+                        )
+                    },
+                )
+            val store =
+                SharedThreadStore(
+                    dataSource =
+                        testSharedThreadDataSource(
+                            networkApi = ReplyThreadAccessNetworkApi,
+                            sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                            cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                            conversationRepository =
+                                ReplyThreadAccessConversationRepositoryRecorder(
+                                    replyResult = DataResult.Content(replyThreadAccessSnapshot())
+                                ),
+                            channelRepository = channelRepository,
+                        ),
+                    scope = scope,
+                )
+
+            store.accept(SharedThreadIntent.Start(route))
+            // Directory read completed but has no parent row and no candidate:
+            // canonical reply content is readable, so authority is Unknown.
+            store.state.filter { state ->
+                state.initialHomeAccessLookupComplete &&
+                    state.replyParentAuthority == ReplyParentAuthorityStatus.Unknown
+            }.first()
+            assertFalse(store.state.value.writeActionsEnabled)
+
+            // A missing row in a non-authoritative snapshot (durable identity
+            // cache or refresh pending) cannot upgrade anything.
+            store.accept(
+                SharedThreadIntent.ApplyParentDirectoryHint(
+                    parentChannelId = "channel-1",
+                    parentMessageId = "m1",
+                    present = false,
+                    joined = false,
+                    canSend = false,
+                    authoritative = false,
+                )
+            )
+            assertEquals(ReplyParentAuthorityStatus.Unknown, store.state.value.replyParentAuthority)
+            assertFalse(store.state.value.writeActionsEnabled)
+
+            // A missing row in a network-authoritative snapshot means the
+            // channel was deleted.
+            store.accept(
+                SharedThreadIntent.ApplyParentDirectoryHint(
+                    parentChannelId = "channel-1",
+                    parentMessageId = "m1",
+                    present = false,
+                    joined = false,
+                    canSend = false,
+                    authoritative = true,
+                )
+            )
+            store.state.filter { state ->
+                state.replyParentAuthority == ReplyParentAuthorityStatus.ParentDeleted
+            }.first()
+            assertFalse(store.state.value.writeActionsEnabled)
+            assertFalse(store.state.value.payload.composer.enabled)
+            scope.cancel()
+        }
+
+    @Test
+    fun parentDeletedRecomputesToWritableWhenParentRowReappears() = runBlocking {
+        // task #339 follow-through: ParentDeleted is not a dead end - if the
+        // directory row reappears (restored/recreated channel, or the deletion
+        // notice raced a live snapshot), authority recomputes like any other
+        // candidate-derived state.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val route = replyThreadInitialAccessPayload()
+        val channelRepository =
+            FakeChannelRepository(
+                channelsResult = { serverId ->
+                    DataResult.Content(
+                        ChannelSnapshot(
+                            server = ServerSummary(id = serverId, name = "One"),
+                            channels = emptyList(),
+                        )
+                    )
+                },
+            )
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    testSharedThreadDataSource(
+                        networkApi = ReplyThreadAccessNetworkApi,
+                        sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                        conversationRepository =
+                            ReplyThreadAccessConversationRepositoryRecorder(
+                                replyResult = DataResult.Content(replyThreadAccessSnapshot())
+                            ),
+                        channelRepository = channelRepository,
+                    ),
+                scope = scope,
+            )
+
+        store.accept(SharedThreadIntent.Start(route))
+        store.state.filter { state ->
+            state.initialHomeAccessLookupComplete &&
+                state.replyParentAuthority == ReplyParentAuthorityStatus.Unknown
+        }.first()
+        store.accept(
+            SharedThreadIntent.ApplyParentDirectoryHint(
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                present = false,
+                joined = false,
+                canSend = false,
+                authoritative = true,
+            )
+        )
+        store.state.filter { state ->
+            state.replyParentAuthority == ReplyParentAuthorityStatus.ParentDeleted
+        }.first()
+
+        store.accept(
+            SharedThreadIntent.ApplyParentDirectoryHint(
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                present = true,
+                joined = true,
+                canSend = true,
+            )
+        )
+        store.state.filter { state ->
+            state.replyParentAuthority == ReplyParentAuthorityStatus.Writable
+        }.first()
+        assertTrue(store.state.value.writeActionsEnabled)
+        assertTrue(store.state.value.payload.composer.enabled)
+        scope.cancel()
+    }
 }

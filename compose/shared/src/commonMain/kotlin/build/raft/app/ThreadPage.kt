@@ -5457,8 +5457,8 @@ private fun SharedThreadRouteContentContent(
             payload.parentMessageId?.takeIf { it.isNotBlank() }
                 ?: payload.originParentMessageId?.takeIf { it.isNotBlank() }
                 ?: return@LaunchedEffect
-        val snapshot =
-            (sharedHomeState.content as? SharedHomeContentState.Content)?.baseSnapshot
+        val homeContent = sharedHomeState.content as? SharedHomeContentState.Content
+        val snapshot = homeContent?.baseSnapshot
         val parentRow =
             snapshot?.channels?.firstOrNull { it.channelId?.value == parentChannelId }
                 ?: snapshot?.directMessages?.firstOrNull { it.channelId?.value == parentChannelId }
@@ -5469,6 +5469,13 @@ private fun SharedThreadRouteContentContent(
                 present = parentRow != null,
                 joined = parentRow?.joined == true && parentRow.archived == false,
                 canSend = parentRow?.permissions?.canSend == true,
+                // Only a live network snapshot (not the durable identity cache,
+                // and not one still awaiting refresh) may attest that a missing
+                // parent row means the channel was deleted.
+                authoritative =
+                    homeContent != null &&
+                        !homeContent.isDurableIdentityCache &&
+                        !homeContent.needsNetworkRefresh,
             )
         )
     }
@@ -14203,12 +14210,15 @@ private fun ThreadPageContentContent(
             } else if (
                 !writeActionsEnabled &&
                 payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
-                replyParentAuthority == ReplyParentAuthorityStatus.Unknown
+                (replyParentAuthority == ReplyParentAuthorityStatus.Unknown ||
+                    replyParentAuthority == ReplyParentAuthorityStatus.ParentDeleted)
             ) {
                 // Task #228 successor direction B: "authority undetermined" is
                 // never rendered as a silently vanished composer - the user
                 // gets an explicit explanation and the state upgrades itself
                 // event-driven when the parent directory row arrives.
+                // Task #339: an authoritative directory miss says the channel
+                // was deleted instead of implying permissions are resolving.
                 Column(
                     modifier =
                         Modifier.fillMaxWidth()
@@ -14217,7 +14227,14 @@ private fun ThreadPageContentContent(
                             .padding(horizontal = 12.dp, vertical = 10.dp)
                 ) {
                     Text(
-                        text = stringResource(MR.strings.thread_parent_authority_resolving),
+                        text =
+                            stringResource(
+                                when (replyParentAuthority) {
+                                    ReplyParentAuthorityStatus.ParentDeleted ->
+                                        MR.strings.thread_parent_channel_deleted_composer
+                                    else -> MR.strings.thread_parent_authority_resolving
+                                }
+                            ),
                         style = SlockType.Body.copy(
                             fontSize = 13.sp,
                             lineHeight = 18.sp,

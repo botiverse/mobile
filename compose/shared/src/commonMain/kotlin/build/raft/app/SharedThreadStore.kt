@@ -5515,6 +5515,11 @@ internal enum class ReplyParentAuthorityStatus {
      *  or a server-provided parentAccess fact arrives. */
     Unknown,
 
+    /** Network-authoritative Home directory attests the parent row is gone:
+     *  the channel was deleted. A later [ApplyParentDirectoryHint] with
+     *  `present = true` (recreated/restored row) recomputes from here. */
+    ParentDeleted,
+
 }
 
 internal enum class ChannelProfileUpdateStatus {
@@ -5619,6 +5624,10 @@ internal sealed interface SharedThreadIntent {
         val present: Boolean,
         val joined: Boolean,
         val canSend: Boolean,
+        /** True only when the hint's snapshot is network-authoritative
+         *  (not a durable identity cache and not pending a refresh); a row
+         *  absence read from such a snapshot means the channel is deleted. */
+        val authoritative: Boolean = false,
     ) : SharedThreadIntent
     data object RetryAccessResolution : SharedThreadIntent
     data class AppendSentPage(val page: ThreadMessagesPage) : SharedThreadIntent
@@ -7118,6 +7127,9 @@ internal class SharedThreadStore(
      * retry loop, no network. Only upgrades [ReplyParentAuthorityStatus.Unknown]
      * or recomputes a candidate-derived [ReplyParentAuthorityStatus.Denied];
      * terminal NoPermission/Error and non-reply surfaces are untouched.
+     * A network-authoritative hint with `present = false` attests the parent
+     * channel was deleted and lands in [ReplyParentAuthorityStatus.ParentDeleted];
+     * a later `present = true` hint (recreated/restored row) recomputes from there.
      */
     private suspend fun applyParentDirectoryHint(hint: SharedThreadIntent.ApplyParentDirectoryHint) {
         val state = _state.value
@@ -7139,7 +7151,35 @@ internal class SharedThreadStore(
         val routeIdentity = payload.resolveThreadRouteIdentity()
         if (routeIdentity.parentKey != "$parentChannelId:$parentMessageId") return
         if (!hint.present) {
-            // Row absent: nothing new to learn - the state stays Unknown/Resolving.
+            if (!hint.authoritative) {
+                // Row absent in a non-authoritative snapshot: nothing new to
+                // learn - the state stays Unknown/Resolving.
+                return
+            }
+            initialAccessStateMutex.withLock {
+                val current = _state.value
+                // Re-check under the lock: a route/account switch may have
+                // landed while the hint was queued on the dispatcher.
+                if (current.payload.parentChannelId != parentChannelId ||
+                    current.payload.sourceThreadId != payload.sourceThreadId ||
+                    current.accessResolution == ThreadAccessResolution.NoPermission ||
+                    current.accessResolution == ThreadAccessResolution.Error
+                ) {
+                    return
+                }
+                // A network-authoritative directory read that no longer lists
+                // the parent means the channel was deleted.
+                diagnosticsLogger?.invoke(
+                    "thread_parent_authority_hint_applied threadId=${current.payload.sourceThreadId.orEmpty()} " +
+                        "authority=${ReplyParentAuthorityStatus.ParentDeleted} present=false authoritative=true"
+                )
+                reduceState(
+                    current.copy(
+                        replyParentAuthority = ReplyParentAuthorityStatus.ParentDeleted,
+                        writeActionsEnabled = false,
+                    )
+                )
+            }
             return
         }
         if (state.replyParentAuthority == ReplyParentAuthorityStatus.Writable &&
