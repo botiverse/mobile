@@ -5358,6 +5358,9 @@ internal class SharedThreadDataSource(
             (messages.map { it.id } + listOfNotNull(originMessage?.id))
                 .map { it.trim() }
                 .filter { it.isNotBlank() }
+                // Local sends (sending / failed / journal-restored) have no server row, so they can never be
+                // saved, and their ids are not UUIDs: older servers fail the whole batch with a 500 (task #335).
+                .filterNot { it.startsWith(ThreadTransientLocalSendIdPrefix) }
                 .distinct()
                 .map(::MessageId)
         if (messageIds.isEmpty()) return this

@@ -12619,6 +12619,83 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun savedStatusCheckNeverSendsLocalSendIds() = runBlocking {
+        // task #335: local sends have no server row and non-UUID ids; the server's saved/check used to 500
+        // on them, dropping the saved markers of the whole screen.
+        val savedStatusRepository = FakeSavedStatusRepository(savedIds = setOf(MessageId("m1")))
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                savedStatusRepository = savedStatusRepository
+            )
+        val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
+        val serverMessage = payload.messages.single()
+        val withLocalSends =
+            payload.copy(
+                messages =
+                    payload.messages +
+                        serverMessage.copy(id = "${ThreadTransientLocalSendIdPrefix}thread-1", deliveryState = ThreadMessageDeliverySending) +
+                        serverMessage.copy(id = "${ThreadTransientLocalSendIdPrefix}thread-2", deliveryState = ThreadMessageDeliveryFailed)
+            )
+
+        val enriched = dataSource.enrichSavedStatus(withLocalSends)
+
+        assertEquals(listOf(listOf(MessageId(serverMessage.id))), savedStatusRepository.checkedMessageIds)
+        assertEquals(serverMessage.id == "m1", enriched.messages.first().isSaved)
+        assertEquals(3, enriched.messages.size, "local sends stay in the timeline, only the lookup skips them")
+    }
+
+    @Test
+    fun savedStatusCheckRebuildsIdsFromTheCurrentPayloadEachTime() = runBlocking {
+        // Same request size is not the same request: a fixed-size window of fixed-length ids keeps the byte
+        // count constant while its content changes (task #335 follow-up).
+        val savedStatusRepository = FakeSavedStatusRepository(savedIds = emptySet())
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                savedStatusRepository = savedStatusRepository
+            )
+        val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
+        val template = payload.messages.single()
+        val first = payload.copy(messages = listOf(template.copy(id = "a1"), template.copy(id = "a2")))
+        val second = payload.copy(messages = listOf(template.copy(id = "a2"), template.copy(id = "a3")))
+
+        dataSource.enrichSavedStatus(first)
+        dataSource.enrichSavedStatus(second)
+
+        assertEquals(
+            listOf(listOf(MessageId("a1"), MessageId("a2")), listOf(MessageId("a2"), MessageId("a3"))),
+            savedStatusRepository.checkedMessageIds
+        )
+    }
+
+    @Test
+    fun savedStatusCheckIsSkippedWhenOnlyLocalSendsAreOnScreen() = runBlocking {
+        val savedStatusRepository = FakeSavedStatusRepository(savedIds = emptySet())
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                savedStatusRepository = savedStatusRepository
+            )
+        val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
+        val onlyLocal =
+            payload.copy(
+                messages = listOf(payload.messages.single().copy(id = "${ThreadTransientLocalSendIdPrefix}thread-3")),
+                originMessage = null
+            )
+
+        dataSource.enrichSavedStatus(onlyLocal)
+
+        assertEquals(emptyList(), savedStatusRepository.checkedMessageIds)
+    }
+
+    @Test
     fun warmSavedProjectionSurvivesPrimaryRefreshUntilSavedAuthorityCommits() = runBlocking {
         val savedLookupStarted = CompletableDeferred<Unit>()
         val releaseSavedLookup = CompletableDeferred<DataResult<SavedMessageStatusSnapshot>>()
