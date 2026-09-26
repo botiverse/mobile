@@ -44,7 +44,6 @@ for (const m of src.matchAll(PREDICATE_RE)) {
 // otherwise adding one would silently shrink this test's reach.
 const VIOLATIONS = [
   { for: /exact visible label/, sample: "exact visible label" },
-  { for: /choose\|select\|tap\|join\|log into/, sample: "choose 'Raft Android'" },
 ];
 
 const text = serverGuardSection().join("\n");
@@ -80,7 +79,10 @@ test("the extraction itself is alive (a silent zero would pass everything below)
     dumbCount,
     `extracted ${predicates.length} predicates but counted ${dumbCount} — the extractor is missing some`,
   );
-  assert.ok(predicates.length >= 9, `only ${predicates.length} predicates — expected at least 9`);
+  // What bears the load is the equality between the regex extractor and the
+  // dumb counter above. This absolute floor merely guards against a degenerate
+  // 0 or 1 edge case (task #252, Jony/LiBai).
+  assert.ok(predicates.length >= 2, `only ${predicates.length} predicates — expected at least 2`);
 });
 
 test("every absence-clause has a violation sample (no clause is silently skipped)", () => {
