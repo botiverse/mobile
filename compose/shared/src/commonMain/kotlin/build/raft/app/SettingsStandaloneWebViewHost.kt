@@ -232,6 +232,7 @@ internal fun StandaloneSettingsWebViewPage(
     title: String,
     iconName: SlockLucideIconName,
     spec: StandaloneSettingsWebViewSpec,
+    isComputerDetail: Boolean = false,
 ) {
     SettingsWebViewPageScaffold(
         pager = pager,
@@ -245,6 +246,7 @@ internal fun StandaloneSettingsWebViewPage(
             spec = spec,
             controller = controller,
             onNavigationStateChange = onNavigationStateChange,
+            isComputerDetail = isComputerDetail,
         )
     }
 }
@@ -401,6 +403,7 @@ private fun StandaloneSettingsWebViewBody(
     spec: StandaloneSettingsWebViewSpec,
     controller: SlockWebViewController,
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit,
+    isComputerDetail: Boolean = false,
 ) {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val sharedStores = remember(bridge) { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
@@ -417,8 +420,18 @@ private fun StandaloneSettingsWebViewBody(
         }
     val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, sharedStores.authStore)
     val webBaseUrl = standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore)
-    LaunchedEffect(spec.surface) {
-        bridge.log("settings_${spec.surface.diagnosticsName}_open")
+    LaunchedEffect(spec.surface, spec) {
+        // Computers opens two distinct pages (list vs machine detail) that share one
+        // surface name; tagging the target keeps the diagnostic unambiguous (#336).
+        val targetTag = when {
+            spec.surface != SettingsWebViewSurface.Computers -> null
+            isComputerDetail -> "detail"
+            else -> "list"
+        }
+        bridge.log(
+            "settings_${spec.surface.diagnosticsName}_open" +
+                (targetTag?.let { " target=$it" } ?: "")
+        )
     }
     StandaloneSettingsWebViewContent(
         authSnapshot = authSnapshot,

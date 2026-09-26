@@ -68,4 +68,38 @@ class MembersAgentComputerNavigationTest {
             ),
         )
     }
+
+
+    @Test
+    fun machineAbsentFromCurrentServerComputersCannotNavigate() {
+        assertNull(
+            membersAgentComputerNavigationTarget(
+                serverId = "server-1",
+                summaryMachineId = "machine-1",
+                memberMachineId = null,
+                accessMode = MemberDetailAccessMode.LocalFull,
+                machineKnown = MembersAgentComputerKnownState.Absent,
+            ),
+        )
+    }
+
+    @Test
+    fun machinePresentOrStoreStillLoadingKeepsTheTarget() {
+        val expected = SettingsComputerRouteIdentity(serverId = "server-1", machineId = "machine-1")
+        listOf(
+            MembersAgentComputerKnownState.Unknown,
+            MembersAgentComputerKnownState.Present,
+        ).forEach { state ->
+            assertEquals(
+                expected,
+                membersAgentComputerNavigationTarget(
+                    serverId = "server-1",
+                    summaryMachineId = "machine-1",
+                    memberMachineId = null,
+                    accessMode = MemberDetailAccessMode.LocalFull,
+                    machineKnown = state,
+                ),
+            )
+        }
+    }
 }
