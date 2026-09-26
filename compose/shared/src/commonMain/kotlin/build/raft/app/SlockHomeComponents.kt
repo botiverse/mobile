@@ -6570,7 +6570,8 @@ private fun SlockAvatarHttpImage(
         val row = diagnostics ?: return@LaunchedEffect
         row.logger(
             "thread_avatar_painter messageHash=${row.messageHash} authorHash=${row.authorHash} " +
-                "source=${loadKey.diagnosticsSource} activeEndpoint=${loadState.endpoint.diagnosticsName()} " +
+                "source=${loadKey.diagnosticsSource} ${activeSource.slockAvatarDiagnosticsUrlShape(apiBaseUrl)} " +
+                "activeEndpoint=${loadState.endpoint.diagnosticsName()} " +
                 "painter=${loadState.painter.diagnosticsName()} " +
                 "cache=${loadState.diagnosticsCacheState(lease?.ownerToken)}"
         )
