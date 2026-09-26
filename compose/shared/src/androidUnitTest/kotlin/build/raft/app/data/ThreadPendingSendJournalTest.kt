@@ -664,10 +664,10 @@ class ThreadPendingSendJournalTest {
             },
             parameters = 4,
             binders = {
-                bindString(1, provenance.environmentId)
-                bindString(2, provenance.principalId)
-                bindString(3, provenance.serverId)
-                bindLong(4, authGeneration)
+                bindString(0, provenance.environmentId)
+                bindString(1, provenance.principalId)
+                bindString(2, provenance.serverId)
+                bindLong(3, authGeneration)
             },
         ).value
 
