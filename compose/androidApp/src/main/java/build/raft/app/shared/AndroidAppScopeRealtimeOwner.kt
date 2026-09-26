@@ -421,14 +421,15 @@ internal object AndroidAppScopeRealtimeOwner {
                 connectionFamilyId = witness.connectionFamilyId,
                 accessToken = accessToken,
             )
-        val identityChanged = multiSessionIdentity != null && multiSessionIdentity != nextIdentity
+        val previousIdentity = multiSessionIdentity
+        val identityChanged = previousIdentity != null && previousIdentity != nextIdentity
         // task #333: identity = the env/account binding (socketUrl, environmentId,
         // principalId, connectionFamilyId). A silent token rotation bumps authGeneration
         // and accessToken on the SAME binding — a credential refresh, not an identity
         // replacement. Only a real binding change may disconnect-all with
         // process_identity_replaced; a credential rotation just re-auths the socket.
         val bindingReplaced =
-            multiSessionIdentity != null && !multiSessionIdentity.sameBindingAs(nextIdentity)
+            previousIdentity != null && !previousIdentity.sameBindingAs(nextIdentity)
         if (bindingReplaced) {
             multiSessionRegistry?.disconnectAll("process_identity_replaced")
             multiSessionRegistry = null
