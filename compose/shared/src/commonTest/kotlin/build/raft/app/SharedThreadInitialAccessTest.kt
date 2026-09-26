@@ -694,12 +694,24 @@ class SharedThreadInitialAccessTest {
             // timeout, so a regression fails fast and readably.
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
             val lookupDeadline = CompletableDeferred<Unit>()
+            // The directory-lookup apply pass must run AFTER the canonical
+            // reply refresh applies: it never recomputes replyParentAuthority
+            // itself, and hints are gated on canonicalAccessResolved. Releasing
+            // the lookup only once canonical access is resolved mirrors the
+            // ordering hintsForOtherParentsOrBeforeLookupCompletionAreIgnored
+            // relies on; the deadline stays injected as a backstop only.
+            val releaseLookup = CompletableDeferred<Unit>()
+            var firstLookupCall = true
             val diagnostics = mutableListOf<String>()
             val route = replyThreadInitialAccessPayload()
             val home = replyThreadAccessHomeSnapshot(joined = true, canSend = true)
             val channelRepository =
                 FakeChannelRepository(
                     channelsResult = { serverId ->
+                        if (firstLookupCall) {
+                            firstLookupCall = false
+                            releaseLookup.await()
+                        }
                         DataResult.Content(
                             ChannelSnapshot(
                                 server = ServerSummary(id = serverId, name = "One"),
@@ -757,8 +769,23 @@ class SharedThreadInitialAccessTest {
                 }
             }
 
+            suspend fun awaitCanonicalResolved() {
+                try {
+                    withTimeout(10_000) {
+                        store.state.filter { it.canonicalAccessResolved }.first()
+                    }
+                } catch (_: TimeoutCancellationException) {
+                    dumpState("timed out waiting for canonicalAccessResolved")
+                }
+            }
+
             store.accept(SharedThreadIntent.Start(route))
             lookupDeadline.complete(Unit)
+            // The directory lookup parks inside getChannels until canonical
+            // reply access resolves; only then is the lookup released so the
+            // apply pass (and every hint gate after it) sees the real order.
+            awaitCanonicalResolved()
+            releaseLookup.complete(Unit)
             // Directory read completed but has no parent row and no candidate:
             // canonical reply content is readable, so authority is Unknown.
             awaitAuthority(ReplyParentAuthorityStatus.Unknown, requireLookupComplete = true)
@@ -808,14 +835,23 @@ class SharedThreadInitialAccessTest {
         // real wall-clock wait can park the runBlocking dispatcher, and each
         // state wait carries an explicit timeout that dumps the last observed
         // state plus the diagnostics trail. If a pass regresses this case the
-        // failure is a readable assertion, not a 60s JVM kill.
+        // failure is a readable assertion, not a 60s JVM kill. Parking the
+        // first directory lookup until canonical access is resolved mirrors
+        // the ordering hintsForOtherParentsOrBeforeLookupCompletionAreIgnored
+        // relies on; the deadline stays injected as a backstop only.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val lookupDeadline = CompletableDeferred<Unit>()
+        val releaseLookup = CompletableDeferred<Unit>()
+        var firstLookupCall = true
         val diagnostics = mutableListOf<String>()
         val route = replyThreadInitialAccessPayload()
         val channelRepository =
             FakeChannelRepository(
                 channelsResult = { serverId ->
+                    if (firstLookupCall) {
+                        firstLookupCall = false
+                        releaseLookup.await()
+                    }
                     DataResult.Content(
                         ChannelSnapshot(
                             server = ServerSummary(id = serverId, name = "One"),
@@ -872,10 +908,25 @@ class SharedThreadInitialAccessTest {
                 dumpState("timed out waiting for authority=$expected")
             }
         }
+        suspend fun awaitCanonicalResolved() {
+            try {
+                withTimeout(10_000) {
+                    store.state.filter { it.canonicalAccessResolved }.first()
+                }
+            } catch (_: TimeoutCancellationException) {
+                dumpState("timed out waiting for canonicalAccessResolved")
+            }
+        }
 
         store.accept(SharedThreadIntent.Start(route))
-        // Release the lookup barrier so no real timeout wait is in play.
         lookupDeadline.complete(Unit)
+        // The directory lookup parks inside getChannels until canonical
+        // reply access resolves; only then is the lookup released so the
+        // apply pass (and every hint gate after it) sees the real order.
+        awaitCanonicalResolved()
+        releaseLookup.complete(Unit)
+        // Directory read completed but has no parent row and no candidate:
+        // canonical reply content is readable, so authority is Unknown.
         awaitAuthority(ReplyParentAuthorityStatus.Unknown, requireLookupComplete = true)
         store.accept(
             SharedThreadIntent.ApplyParentDirectoryHint(
