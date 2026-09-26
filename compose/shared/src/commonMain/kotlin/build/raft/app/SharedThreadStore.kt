@@ -5776,6 +5776,15 @@ internal class SharedThreadStore(
                         )
                     )
                 },
+                onRowFailed = { localId, provenance, route, errorCode, errorMessage ->
+                    emitLocalSendFailureProjection(
+                        messageId = localId,
+                        errorCode = errorCode,
+                        errorMessage = errorMessage,
+                        expectedProvenance = provenance,
+                        expectedRoute = route,
+                    )
+                },
                 logger = { message -> diagnosticsLogger?.invoke(message) },
             )
         }
@@ -8810,6 +8819,38 @@ internal class SharedThreadStore(
             )
             return
         }
+        if (emitLocalSendFailureProjection(
+                messageId = messageId,
+                errorCode = errorCode,
+                errorMessage = errorMessage,
+                expectedProvenance = expectedProvenance,
+                expectedRoute = expectedRoute,
+            )
+        ) {
+            // The failure just landed in the journal as durable: arm the drainer so the
+            // automatic retry path owns it from here (backoff + online/foreground triggers).
+            pendingSendDrainer?.onSendFailed()
+        }
+    }
+
+    /**
+     * Hot-updates the open page's payload for a pending-send row that just turned failed, so the
+     * failure marker + retry affordance render without requiring a page re-entry. Used by both the
+     * live send path ([applyLocalSendFailure]) and the drain path, whose terminal/adoption failures
+     * previously only wrote the journal and left the open page stale until re-entry (#1134 cell 3
+     * follow-up).
+     *
+     * @return true when the open payload carries this route and the projection was applied.
+     */
+    private fun emitLocalSendFailureProjection(
+        messageId: String,
+        errorCode: String?,
+        errorMessage: String?,
+        expectedProvenance: ReplyCacheProvenance,
+        expectedRoute: ThreadRouteIdentity,
+    ): Boolean {
+        val currentProvenance =
+            dataSource.currentReplyCacheProvenanceForLocalSend(expectedProvenance) ?: return false
         val emitted =
             dataSource.withCurrentReplyCacheProvenanceForLocalSend(expectedProvenance) { _ ->
                 val payload = _state.value.payload
@@ -8827,10 +8868,8 @@ internal class SharedThreadStore(
                 ownerScopeId = currentProvenance.threadPayloadOwnerScopeId.orEmpty(),
                 expectedProvenance = currentProvenance
             )
-            // The failure just landed in the journal as durable: arm the drainer so the
-            // automatic retry path owns it from here (backoff + online/foreground triggers).
-            pendingSendDrainer?.onSendFailed()
         }
+        return emitted
     }
 
     private suspend fun dismissLocalFailedSend(messageId: String) {
