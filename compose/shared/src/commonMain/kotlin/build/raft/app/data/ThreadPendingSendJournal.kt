@@ -258,6 +258,7 @@ internal class ThreadPendingSendJournal(
         // written under an older generation/scope must still be consumed, otherwise the
         // echo leaves a zombie that later sends would duplicate (server dedupes by
         // randomId, so a stable-identity delete is safe).
+        if (!provenance.hasCompleteStableIdentity()) return@synchronized ConsumeResult.Failed
         if (failureInjector?.rejectDeleteSafely() == true) return@synchronized ConsumeResult.Failed
         var result = ConsumeResult.NotFound
         runCatching {
@@ -404,14 +405,22 @@ internal class ThreadPendingSendJournal(
             )
             .executeAsList()
 
+    /** Blank stable-identity keys fail closed, exactly like the fenced paths. */
+    private fun ReplyCacheProvenance.hasCompleteStableIdentity(): Boolean =
+        environmentId.isNotBlank() && principalId.isNotBlank() && serverId.isNotBlank()
+
     private fun stableIdentityRows(provenance: ReplyCacheProvenance): List<ThreadPendingSendEntity> =
-        database.queries
+        if (!provenance.hasCompleteStableIdentity()) {
+            emptyList()
+        } else {
+            database.queries
             .selectThreadPendingSendForStableIdentity(
                 environmentId = provenance.environmentId,
                 principalId = provenance.principalId,
                 serverId = provenance.serverId,
             )
             .executeAsList()
+        }
 
     private fun ThreadPendingSendEntity.matchesRoute(route: ThreadRouteIdentity): Boolean =
         persistedRouteOrNull()?.isPendingSendEquivalentTo(route) == true

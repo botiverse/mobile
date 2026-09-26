@@ -274,7 +274,8 @@ class ThreadPendingSendJournalTest {
                 assertTrue(journal.persistSending(old, route, message("local-send-old", "random-old")))
                 assertTrue(journal.persistSending(successor, route, message("local-send-new", "random-new")))
                 assertTrue(journal.clearForAuthRevision(old.environmentId, old.principalId, old.authGeneration))
-                assertTrue(journal.restore(old, route).isEmpty())
+                assertEquals(0L, countRowsAtAuthGeneration(driver, old, 10L))
+                assertEquals(1L, countRowsAtAuthGeneration(driver, successor, 11L))
                 assertEquals(1, journal.restore(successor, route).size)
             }
         }
@@ -304,7 +305,8 @@ class ThreadPendingSendJournalTest {
                     ),
                 )
 
-                assertTrue(journal.restore(old, route).isEmpty())
+                assertEquals(0L, countRowsAtAuthGeneration(driver, old, 10L))
+                assertEquals(1L, countRowsAtAuthGeneration(driver, successor, 11L))
                 val restored = journal.restore(successor, route)
                 assertEquals(1, restored.size)
                 assertEquals("local-send-old", restored.single().id)
@@ -338,7 +340,9 @@ class ThreadPendingSendJournalTest {
                     1,
                     journal.rehomeAuthRevision(old.environmentId, old.principalId, 10L, 11L),
                 )
-                assertTrue(journal.restore(old, route).isEmpty())
+                assertEquals(0L, countRowsAtAuthGeneration(driver, old, 10L))
+                assertEquals(1L, countRowsAtAuthGeneration(driver, successor, 11L))
+                assertEquals(1L, countRowsAtAuthGeneration(driver, foreign, 10L))
                 assertEquals(1, journal.restore(successor, route).size)
                 assertEquals(1, journal.restore(foreign, route).size)
 
@@ -385,7 +389,8 @@ class ThreadPendingSendJournalTest {
                     )
                 )
 
-                assertTrue(journal.restore(terminal, route).isEmpty())
+                assertEquals(0L, countRowsAtAuthGeneration(driver, terminal, 10L))
+                assertEquals(1L, countRowsAtAuthGeneration(driver, successor, 11L))
                 assertEquals(1, journal.restore(successor, route).size)
                 assertEquals(1, journal.restore(foreignPrincipal, route).size)
                 assertEquals(1, journal.restore(foreignEnvironment, route).size)
@@ -418,9 +423,11 @@ class ThreadPendingSendJournalTest {
                     )
                 )
 
-                assertTrue(journal.restore(old, route).isEmpty())
-                assertEquals(1, journal.restore(current, route).size)
-                assertEquals(1, journal.restore(future, route).size)
+                assertEquals(0L, countRowsAtAuthGeneration(driver, old, 10L))
+                assertEquals(1L, countRowsAtAuthGeneration(driver, current, 11L))
+                assertEquals(1L, countRowsAtAuthGeneration(driver, future, 12L))
+                // restore() intentionally sees every generation of the stable identity.
+                assertEquals(2, journal.restore(current, route).size)
             }
         }
     }
@@ -634,6 +641,35 @@ class ThreadPendingSendJournalTest {
     }
 
     private fun url(path: java.nio.file.Path): String = "jdbc:sqlite:${path.toAbsolutePath()}"
+
+    /**
+     * Partition-content assertion: with durable visibility keyed on the stable identity,
+     * "the old auth partition is gone" must be asserted on the authGeneration column
+     * directly, not via restore() (which intentionally sees all generations).
+     */
+    private fun countRowsAtAuthGeneration(
+        driver: JdbcSqliteDriver,
+        provenance: ReplyCacheProvenance,
+        authGeneration: Long,
+    ): Long =
+        driver.executeQuery(
+            identifier = null,
+            sql = """
+                SELECT COUNT(*) FROM threadPendingSendEntity
+                WHERE environmentId = ? AND principalId = ? AND serverId = ? AND authGeneration = ?
+            """.trimIndent(),
+            mapper = { cursor ->
+                cursor.next()
+                QueryResult.Value(cursor.getLong(0) ?: 0L)
+            },
+            parameters = 4,
+            binders = {
+                bindString(1, provenance.environmentId)
+                bindString(2, provenance.principalId)
+                bindString(3, provenance.serverId)
+                bindLong(4, authGeneration)
+            },
+        ).value
 
     private fun provenance(
         environmentId: String = "env-a",
