@@ -312,6 +312,7 @@
     <string name="thread_state_no_messages">No messages yet</string>
     <string name="thread_state_no_messages_detail">This conversation has no messages yet.</string>
     <string name="thread_parent_authority_resolving">Checking permissions - sending is temporarily unavailable</string>
+    <string name="thread_parent_channel_deleted_composer">Channel deleted - unable to send</string>
     <string name="thread_action_join_channel">Join channel</string>
     <string name="thread_timestamp_now">this minute</string>
     <string name="relative_time_unknown">unknown time</string>
