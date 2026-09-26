@@ -134,6 +134,19 @@ internal class ThreadPendingSendDrainer(
         provenance: ReplyCacheProvenance,
         route: ThreadRouteIdentity
     ) -> Unit,
+    /**
+     * Notified after a row durably turns failed under drain ownership (adoption of a stale
+     * in-flight row, or terminal failure after the last attempt). The journal write already
+     * happened; this hook lets the open page hot-update its projection so the failure marker +
+     * retry affordance render without a page re-entry (#1134 cell 3 follow-up).
+     */
+    private val onRowFailed: (
+        localId: String,
+        provenance: ReplyCacheProvenance,
+        route: ThreadRouteIdentity,
+        errorCode: String?,
+        errorMessage: String?,
+    ) -> Unit = { _, _, _, _, _ -> },
     private val policy: RetryPolicy =
         RetryPolicy(
             maxAttempts = 4,
@@ -261,13 +274,17 @@ internal class ThreadPendingSendDrainer(
                 // No live attempt in this process owns this randomId, so the attempt that wrote
                 // this row died (process kill or scope loss). Flip the row to failed first so the
                 // UI offers an explicit retry even if every automatic attempt below is exhausted.
-                drainStore.markFailed(
-                    provenance = provenance,
-                    route = route,
-                    localId = row.id,
-                    errorCode = "thread_send_adopted_stale",
-                    errorMessage = null
-                )
+                val adopted =
+                    drainStore.markFailed(
+                        provenance = provenance,
+                        route = route,
+                        localId = row.id,
+                        errorCode = "thread_send_adopted_stale",
+                        errorMessage = null
+                    )
+                if (adopted) {
+                    onRowFailed(row.id, provenance, route, "thread_send_adopted_stale", null)
+                }
             }
             val attempt = attemptsByRow[row.id] ?: 0
             if (attempt >= policy.maxAttempts) continue
@@ -361,13 +378,14 @@ internal class ThreadPendingSendDrainer(
         errorCode: String?,
         httpCode: Int?
     ) {
-        drainStore.markFailed(
-            provenance = provenance,
-            route = route,
-            localId = row.id,
-            errorCode = errorCode,
-            errorMessage = null
-        )
+        val markedFailed =
+            drainStore.markFailed(
+                provenance = provenance,
+                route = route,
+                localId = row.id,
+                errorCode = errorCode,
+                errorMessage = null
+            )
         val retryable = threadSendShouldSilentlyRetry(errorCode, httpCode)
         val nextDelay =
             if (retryable) backoff.delayMillis(attempt, policy) else null
@@ -378,6 +396,9 @@ internal class ThreadPendingSendDrainer(
                 "thread_pending_send_drain_terminal localId=${row.id} code=${errorCode.orEmpty()} " +
                     "http=${httpCode?.toString().orEmpty()} attempt=$attempt retryable=$retryable"
             )
+            if (markedFailed) {
+                onRowFailed(row.id, provenance, route, errorCode, null)
+            }
             return
         }
         attemptsByRow[row.id] = attempt + 1
