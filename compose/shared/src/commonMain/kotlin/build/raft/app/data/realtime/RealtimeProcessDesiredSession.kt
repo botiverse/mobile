@@ -132,17 +132,36 @@ internal fun reconcileRealtimeProcessDesiredSession(
             forceReconnect = forceReconnect,
         )
     }
-    val identityChanged =
+    // task #333: identity = the env/account binding (environmentId, socketUrl,
+    // principalId, connectionFamilyId). A silent token rotation bumps authGeneration
+    // and accessToken on the SAME binding — that is a credential refresh, not an
+    // identity replacement. Replacing the binding must tear the session down
+    // (disconnectAll + server_removed); a credential rotation must only re-auth the
+    // socket with the new token, keeping the session and the UI where it was.
+    val bindingChanged =
         old.environmentId != desired.environmentId ||
             old.socketUrl != desired.socketUrl ||
             old.principalId != desired.principalId ||
-            old.authGeneration != desired.authGeneration ||
-            old.connectionFamilyId != desired.connectionFamilyId ||
+            old.connectionFamilyId != desired.connectionFamilyId
+    val credentialsRotated =
+        old.authGeneration != desired.authGeneration ||
             old.accessToken != desired.accessToken
-    if (identityChanged) {
+    if (bindingChanged) {
         return RealtimeProcessDesiredSessionPlan(
             disconnectAll = true,
             disconnectServerIds = emptySet(),
+            connectServerIds = desired.serverIds,
+            forceReconnect = true,
+        )
+    }
+    if (credentialsRotated) {
+        // Same binding, new token: re-auth the live socket(s) but do NOT disconnect-
+        // all or report process_identity_replaced / server_removed. Re-issue the
+        // desired server set so the socket reconnects with the rotated token, and
+        // still drop any server that left the desired set.
+        return RealtimeProcessDesiredSessionPlan(
+            disconnectAll = false,
+            disconnectServerIds = old.serverIds - desired.serverIds,
             connectServerIds = desired.serverIds,
             forceReconnect = true,
         )
