@@ -4,6 +4,7 @@ import build.raft.app.network.SharedBinaryConditionalDownloadResult
 import build.raft.app.network.SharedBinaryConditionalHttpException
 import build.raft.app.network.SharedBinaryConditionalValidators
 import build.raft.app.network.SharedBinaryDownloader
+import build.raft.app.slockAvatarDiagnosticsHash
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -19,6 +20,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.time.TimeSource
 
 private const val SLOCK_AVATAR_MOUNTED_MODEL_PREFIX = "slock-avatar-render-v1:"
 private val SlockAvatarOpaqueKeyPattern = Regex("[0-9a-f]{64}")
@@ -249,6 +251,7 @@ internal class SlockAvatarMountedBinding(
     private val nativeProvider: () -> SlockAvatarMountedNativeProvider =
         SlockAvatarMountedNativeProviderRegistry::current,
     private val downloader: SlockAvatarConditionalDownloader = DefaultSlockAvatarConditionalDownloader,
+    private val diagnostics: (String) -> Unit = {},
     private val session: SlockAvatarMountedSession = SlockAvatarMountedSession()
 ) {
     private val handlesLock = SynchronizedObject()
@@ -271,11 +274,32 @@ internal class SlockAvatarMountedBinding(
         }
         val key = owner?.let { runCatching { SlockAvatarCacheKey(it, subject, slockAvatarContentIdentity(normalizedUrl)) }.getOrNull() }
         val provider = nativeProvider()
-        if (key == null) return legacyHandle(normalizedUrl)
+        if (key == null) {
+            diagnostics(
+                "avatar_mount result=legacy reason=${if (owner == null) "owner_null" else "key_null"} " +
+                    "serverHash=${serverId.slockAvatarDiagnosticsHash()} " +
+                    "subjectHash=${subject.diagnosticsHash()}"
+            )
+            return legacyHandle(normalizedUrl)
+        }
         val slot = key.nativeSlot()
         val inspection = runCatchingPreservingCancellation { provider.inspect(slot) }.getOrNull()
-            ?: return legacyHandle(normalizedUrl)
-        if (!inspection.supported) return legacyHandle(normalizedUrl)
+            ?: run {
+                diagnostics(
+                    "avatar_mount result=legacy reason=inspect_fail " +
+                        "serverHash=${serverId.slockAvatarDiagnosticsHash()} " +
+                        "subjectHash=${subject.diagnosticsHash()}"
+                )
+                return legacyHandle(normalizedUrl)
+            }
+        if (!inspection.supported) {
+            diagnostics(
+                "avatar_mount result=legacy reason=inspect_unsupported " +
+                    "serverHash=${serverId.slockAvatarDiagnosticsHash()} " +
+                    "subjectHash=${subject.diagnosticsHash()}"
+            )
+            return legacyHandle(normalizedUrl)
+        }
         session.snapshotFor(key.owner, key.subject)?.key?.takeIf { it != key }?.let { displaced ->
             publish(session.retireSubject(key.owner, key.subject))
             runCatchingPreservingCancellation { provider.retireSubject(displaced.nativeSlot()) }
@@ -287,6 +311,11 @@ internal class SlockAvatarMountedBinding(
                 coordinator.prepareRead(key, inspection.bytesAvailable, inspection.bytesDecodable)
             }.getOrElse {
                 session.dispose(token)
+                diagnostics(
+                    "avatar_mount result=legacy reason=prepare_fail " +
+                        "serverHash=${serverId.slockAvatarDiagnosticsHash()} " +
+                        "subjectHash=${subject.diagnosticsHash()}"
+                )
                 return legacyHandle(normalizedUrl)
             }
         session.seedPrepared(
@@ -422,6 +451,7 @@ internal class SlockAvatarMountedBinding(
             (runCatching { provider.beginStage(fence) }.getOrNull() as? SlockAvatarNativeStageOpen.Opened)?.sink
                 ?: return resolveTemporary(flight)
         var writeFailed = false
+        val startedAt = TimeSource.Monotonic.markNow()
         val response =
             try {
                 downloader.download(
@@ -446,6 +476,12 @@ internal class SlockAvatarMountedBinding(
             } catch (failure: Throwable) {
                 runCatching { sink.abort() }
                 if (failure is CancellationException) throw failure
+                diagnostics(
+                    "avatar_refresh_failure ${failure.diagnosticsKind(writeFailed)} " +
+                        "ms=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                        "serverHash=${flight.key.owner.serverId.slockAvatarDiagnosticsHash()} " +
+                        "subjectHash=${flight.key.subject.diagnosticsHash()}"
+                )
                 when {
                     failure === SlockAvatarStaleFlightException -> Unit
                     writeFailed || failure === SlockAvatarStageWriteException -> {
@@ -695,6 +731,21 @@ internal class SlockAvatarMountedBinding(
             handles[token.mountId] === handle && handle.refreshNeeded
         }
 }
+
+private fun SlockAvatarCacheSubject.diagnosticsHash(): String =
+    "$subjectKind:$subjectId".slockAvatarDiagnosticsHash()
+
+/**
+ * Bucketed failure kind for avatar refresh diagnostics. Never emits raw error text; the HTTP
+ * status is the only transport detail surfaced (Argus: failure=timeout|http_<code>|other).
+ */
+private fun Throwable.diagnosticsKind(writeFailed: Boolean): String =
+    when {
+        this === SlockAvatarStaleFlightException -> "failure=stale_flight"
+        writeFailed || this === SlockAvatarStageWriteException -> "failure=stage_write"
+        this is SharedBinaryConditionalHttpException -> "failure=http_$statusCode"
+        else -> "failure=transport"
+    }
 
 private object SlockAvatarStaleFlightException : IllegalStateException("stale avatar flight")
 private object SlockAvatarStageWriteException : IllegalStateException("avatar stage write failed")

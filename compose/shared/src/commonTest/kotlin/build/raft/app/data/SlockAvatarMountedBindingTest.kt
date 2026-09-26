@@ -546,6 +546,7 @@ class SlockAvatarMountedBindingTest {
         store: FakeMetadataStore = FakeMetadataStore(),
         provider: SlockAvatarMountedNativeProvider,
         downloader: SlockAvatarConditionalDownloader,
+        diagnostics: (String) -> Unit = {},
         currentOwner: suspend (String?) -> SlockAvatarCacheOwner? = { owner() }
     ): SlockAvatarMountedBinding {
         var nonce = 0
@@ -554,6 +555,7 @@ class SlockAvatarMountedBindingTest {
             currentOwner = currentOwner,
             nativeProvider = { provider },
             downloader = downloader,
+            diagnostics = diagnostics,
             session =
                 SlockAvatarMountedSession {
                     (++nonce).toString(16).padStart(64, '0')
@@ -813,5 +815,84 @@ class SlockAvatarMountedBindingTest {
 
     private companion object {
         const val RemoteUrl = "https://cdn.example/avatar.webp"
+    }
+
+    @Test
+    fun mountLegacyEmitsBucketedReasonWithoutRawIds() = runBlocking {
+        val lines = mutableListOf<String>()
+        val binding =
+            binding(
+                provider = FakeNativeProvider(),
+                downloader = RecordingDownloader(),
+                currentOwner = { null },
+                diagnostics = { lines += it }
+            )
+
+        binding.mount(subject(), RemoteUrl, serverId = "server-b")
+
+        assertEquals(1, lines.size)
+        assertTrue(lines[0].startsWith("avatar_mount result=legacy reason=owner_null"))
+        assertFalse(lines[0].contains("server-b"))
+        assertFalse(lines[0].contains("member-a"))
+    }
+
+    @Test
+    fun mountManagedEmitsNoLegacyLine() = runBlocking {
+        val lines = mutableListOf<String>()
+        val binding =
+            binding(
+                provider = FakeNativeProvider(),
+                downloader = RecordingDownloader(),
+                diagnostics = { lines += it }
+            )
+
+        binding.mount(subject(), RemoteUrl)
+
+        assertTrue(lines.none { it.contains("result=legacy") })
+    }
+
+    @Test
+    fun refreshFailureEmitsHttpKindAndDurationWithoutRawIds() = runBlocking {
+        val lines = mutableListOf<String>()
+        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 50L) }
+        val binding =
+            binding(
+                store = store,
+                provider = FakeNativeProvider(),
+                downloader = RecordingDownloader.httpFailure(500),
+                diagnostics = { lines += it }
+            )
+        val handle = binding.mount(subject(), RemoteUrl)
+
+        binding.refresh(handle)
+
+        val failure = assertNotNull(lines.firstOrNull { it.startsWith("avatar_refresh_failure") })
+        assertTrue(failure.contains("failure=http_500"))
+        assertTrue(failure.contains("ms="))
+        assertFalse(failure.contains("server-a"))
+        assertFalse(failure.contains("member-a"))
+        assertFalse(failure.contains(RemoteUrl))
+    }
+
+    @Test
+    fun refreshFailureEmitsTransportKindForNonHttpThrowables() = runBlocking {
+        val lines = mutableListOf<String>()
+        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 50L) }
+        val binding =
+            binding(
+                store = store,
+                provider = FakeNativeProvider(),
+                downloader =
+                    RecordingDownloader {
+                        throw IllegalStateException("socket broke")
+                    },
+                diagnostics = { lines += it }
+            )
+        val handle = binding.mount(subject(), RemoteUrl)
+
+        binding.refresh(handle)
+
+        val failure = assertNotNull(lines.firstOrNull { it.startsWith("avatar_refresh_failure") })
+        assertTrue(failure.contains("failure=transport"))
     }
 }

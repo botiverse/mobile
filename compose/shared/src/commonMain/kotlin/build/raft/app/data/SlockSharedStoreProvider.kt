@@ -1691,7 +1691,9 @@ internal class SlockSharedStoreProvider private constructor(
             val avatarMountedBinding =
                 SlockAvatarMountedBinding(
                     coordinator = avatarCacheCoordinator,
-                    currentOwner = avatarOwnerResolver
+                    currentOwner = avatarOwnerResolver,
+                    diagnostics =
+                        sharedInfoLogger("SlockAvatar", "avatar_mounted_binding")
                 )
             val avatarCacheRuntime =
                 SlockAvatarCacheRuntime(
