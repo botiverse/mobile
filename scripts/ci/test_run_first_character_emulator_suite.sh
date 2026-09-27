@@ -135,7 +135,7 @@ case "$output_file" in
     echo "ANDROID_IME_VISIBILITY_PROBE_PASS" > "$output_file"
     ;;
   composer-session-retirement-instrumentation.txt)
-    echo "SLOCK_COMPOSER_SESSION_RETIREMENT_PASS replacementFocused=true firstComposition=true firstSelection=true requestCount=1 imeSetupFailureDiagnostics=true" > "$output_file"
+    echo "SLOCK_COMPOSER_SESSION_RETIREMENT_PASS editorRetained=true retainedFocused=true draftClearedAfterSend=true firstComposition=true firstSelection=true requestCount=1 imeSetupFailureDiagnostics=true" > "$output_file"
     ;;
   thread-composer-suggestion-interaction-instrumentation.txt)
     echo "THREAD_COMPOSER_SUGGESTION_INTERACTION_PASS editorFocusedAfterTap=true text=#d imageAction=true outsideDismissed=true" > "$output_file"
