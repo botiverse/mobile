@@ -17,10 +17,8 @@
 🐛 **Fixed**
 
 - Fixed a broad set of experience issues and improved stability
-- Fixed a crash when opening some threads (Android verification error and a files-page null pointer)
 - Fixed opening a local image preview after scrolling channels hanging on a spinner with an unresponsive button
 - Fixed image previews flickering and reloading; eliminated avatar and image flicker across the app
-- Fixed inconsistent timestamps on DM conversation rows
 - Fixed the Activity feed not refreshing when returning from background
 - Fixed the "N replies" preview row taking a long time to appear when entering a channel from Activity, notifications, or search
 - Fixed the composer briefly missing then appearing when entering a thread

@@ -18,7 +18,6 @@
 🐛 **Fixed**
 
 - Fixed image previews flickering and reloading; eliminated avatar and image flicker across the app
-- Fixed inconsistent timestamps on DM conversation rows
 - Fixed the Activity feed not refreshing when returning from background
 - Fixed the "N replies" preview row taking a long time to appear when entering a channel from Activity, notifications, or search
 - Fixed the composer briefly missing then appearing when entering a thread
