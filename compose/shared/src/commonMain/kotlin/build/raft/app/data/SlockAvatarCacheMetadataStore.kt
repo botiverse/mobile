@@ -98,7 +98,10 @@ internal class SqlDelightSlockAvatarCacheMetadataStore(
             accountId = owner.accountId,
             serverId = owner.serverId,
             nowMs = nowMs,
-            limit = limit
+            limit = limit,
+            // The NOT EXISTS subquery makes SqlDelight generate a query-specific row type; map the
+            // identical column list back onto the table entity so both reads share one mapper.
+            mapper = ::AvatarCacheMetadataEntity
         ).executeAsList().mapNotNull { row ->
             // A row whose subject/content no longer parses is skipped, never fatal: prewarm is an
             // optimization and the exact mount path remains the authority.
