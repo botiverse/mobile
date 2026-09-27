@@ -428,6 +428,8 @@ internal class SlockSharedStoreProvider private constructor(
         SlockShellScopedStoreCache<SharedRealtimeRoomLeaseRegistry>()
     private val shellAdaptiveWorkspaceStores =
         SlockShellScopedStoreCache<SharedAdaptiveWorkspaceStore>()
+    private val shellAdaptiveScrollAnchorStores =
+        SlockShellScopedStoreCache<SharedAdaptiveScrollAnchorStore>()
     private val processReadReceiptLock = SynchronizedObject()
     private var processReadReceiptCoordinator: ReadReceiptCoordinator? = null
     private val processReadReceiptRepositories = mutableMapOf<ReadReceiptOwner, RealReadReceiptRepository>()
@@ -1155,6 +1157,9 @@ internal class SlockSharedStoreProvider private constructor(
 
     fun adaptiveWorkspaceStore(scope: SlockShellStoreScope): SharedAdaptiveWorkspaceStore =
         shellAdaptiveWorkspaceStores.getOrPut(scope) { SharedAdaptiveWorkspaceStore() }
+
+    fun adaptiveScrollAnchorStore(scope: SlockShellStoreScope): SharedAdaptiveScrollAnchorStore =
+        shellAdaptiveScrollAnchorStores.getOrPut(scope) { SharedAdaptiveScrollAnchorStore() }
 
     fun createAuthDataSourceForCurrentEnvironment(
         avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache
