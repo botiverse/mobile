@@ -251,7 +251,7 @@ run_assertion_hook() {
       grep -Fq 'ANDROID_IME_VISIBILITY_PROBE_PASS' "$output" || return 1
       ;;
     composer-session-retirement)
-      grep -Fq 'SLOCK_COMPOSER_SESSION_RETIREMENT_PASS replacementFocused=true firstComposition=true firstSelection=true requestCount=1 imeSetupFailureDiagnostics=true' "$output" || return 1
+      grep -Fq 'SLOCK_COMPOSER_SESSION_RETIREMENT_PASS editorRetained=true retainedFocused=true draftClearedAfterSend=true firstComposition=true firstSelection=true requestCount=1 imeSetupFailureDiagnostics=true' "$output" || return 1
       ;;
     thread-composer-suggestion-interaction)
       grep -Fq 'THREAD_COMPOSER_SUGGESTION_INTERACTION_PASS editorFocusedAfterTap=true text=#d imageAction=true outsideDismissed=true' "$output" || return 1
