@@ -73,6 +73,13 @@ internal class SlockAvatarCacheCoordinator(
     suspend fun storedState(key: SlockAvatarCacheKey): SlockAvatarCacheStoredState =
         store.read(key)
 
+    /** task #343: committed, unsuppressed rows for [owner], newest first (prewarm only). */
+    suspend fun committedForOwner(
+        owner: SlockAvatarCacheOwner,
+        limit: Long
+    ): List<SlockAvatarCacheMetadata> =
+        store.readCommittedForOwner(owner, nowMillis(), limit)
+
     suspend fun reportSuccessfulBytes(
         key: SlockAvatarCacheKey,
         sizeBytes: Long,

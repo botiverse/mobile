@@ -299,6 +299,38 @@ internal class SlockAvatarMountedSession(
             true
         }
 
+    /**
+     * task #343: cold-start prewarm. Seeds exact durable authority into a slot only when the slot
+     * is completely untouched in this process (no metadata, flight, or mount), atomically, so a
+     * concurrent live mount always wins and prewarm can never clear or displace it. Respects owner
+     * and subject terminal epochs the same way a fresh mount would.
+     */
+    fun seedIdle(
+        key: SlockAvatarCacheKey,
+        commitIdentity: SlockAvatarCommitIdentity,
+        validators: SlockAvatarValidators?,
+        modelRevision: Long
+    ): Boolean =
+        synchronized(lock) {
+            if (modelRevision <= 0L) return@synchronized false
+            val slot = key.mountedSlot()
+            if (
+                metadata.containsKey(slot) ||
+                    activeFlights.containsKey(slot) ||
+                    mounts.values.any { it.token.key.mountedSlot() == slot }
+            ) {
+                return@synchronized false
+            }
+            metadata[slot] =
+                SlockAvatarMountedMetadata(
+                    key = key,
+                    commitIdentity = commitIdentity,
+                    validators = validators,
+                    modelRevision = modelRevision
+                )
+            true
+        }
+
     /** Seeds exact SQL authority while allowing a missing native body to suppress old validators. */
     fun seedPrepared(
         token: SlockAvatarMountToken,

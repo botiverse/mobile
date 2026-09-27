@@ -1702,6 +1702,25 @@ internal class SlockSharedStoreProvider private constructor(
                     mountedBinding = avatarMountedBinding,
                     logger = sharedWarnLogger("SlockAvatarCache", "avatar_cache_runtime")
                 )
+            // task #343: seed the mounted session from durable rows once the owner resolves, so a
+            // cold start paints cached avatars on the first frame instead of waiting per-row mounts.
+            // Re-attempted on auth changes (login, server/binding switch); one run per owner.
+            CoroutineScope(SupervisorJob()).launch {
+                runCatchingPreservingCancellation {
+                    avatarMountedBinding.prewarmOwner(authStore.readSession()?.currentServerId)
+                }
+                authStore.authSessionEvents.collect { event ->
+                    when (event) {
+                        is AuthSessionEvent.Authenticated,
+                        is AuthSessionEvent.BindingMetadataChanged ->
+                            runCatchingPreservingCancellation {
+                                avatarMountedBinding.prewarmOwner(authStore.readSession()?.currentServerId)
+                            }
+                        is AuthSessionEvent.Cleared,
+                        is AuthSessionEvent.TokensRotated -> Unit
+                    }
+                }
+            }
             val authDataSource =
                 createSharedAuthDataSourceForCurrentEnvironment(
                     apiEnvironmentStore = apiEnvironmentStore,
