@@ -88,13 +88,13 @@ private fun String.raftInlineRefRange(start: Int): IntRange? {
     }
     if (isRaftMarkdownEscaped(start) || !isRaftInlineRefBoundary(start - 1)) return null
     return when {
-        startsWith("dm:@", start, ignoreCase = true) -> raftDirectMessageThreadRange(start)
+        startsWith("dm:@", start, ignoreCase = true) -> raftDirectMessageRange(start)
         this[start] == '@' -> raftMentionRange(start)
         else -> raftHashRange(start)
     }
 }
 
-private fun String.raftDirectMessageThreadRange(start: Int): IntRange? {
+private fun String.raftDirectMessageRange(start: Int): IntRange? {
     val peerStart = start + 4
     if (peerStart >= length || !this[peerStart].isRaftAsciiWordCharacter()) return null
     var peerEnd = peerStart + 1
@@ -113,17 +113,23 @@ private fun String.raftDirectMessageThreadRange(start: Int): IntRange? {
         if (kindEnd == null) return raftMalformedDirectMessageKindRange(start, peerEnd)
         peerEnd = kindEnd
     }
-    // A DM thread is an atomic form. A missing or malformed suffix must fall
-    // back to the ordinary @mention candidate inside it, never a partial DM ref.
-    if (peerEnd >= length || this[peerEnd] != ':') return null
-    val shortStart = peerEnd + 1
-    var shortEnd = shortStart
-    while (shortEnd < length && shortEnd - shortStart < 8 && this[shortEnd].isRaftShortIdPart()) {
-        shortEnd++
+    // A peer longer than the scan cap is not a DM target at all.
+    if (peerEnd < length && (this[peerEnd].isRaftDirectMessagePeerPart() || this[peerEnd] == '~')) return null
+    // `dm:@peer:short` is the DM thread form. Without a valid short id the
+    // token is the plain DM form `dm:@peer` (Web `createRaftDmRefRegex`: the
+    // thread pass runs first, then the DM pass claims the peer part only).
+    if (peerEnd < length && this[peerEnd] == ':') {
+        val shortStart = peerEnd + 1
+        var shortEnd = shortStart
+        while (shortEnd < length && shortEnd - shortStart < 8 && this[shortEnd].isRaftShortIdPart()) {
+            shortEnd++
+        }
+        val shortLength = shortEnd - shortStart
+        if (shortLength in 6..8 && (shortEnd >= length || !this[shortEnd].isRaftShortIdPart())) {
+            return start until shortEnd
+        }
     }
-    val shortLength = shortEnd - shortStart
-    if (shortLength !in 6..8 || (shortEnd < length && this[shortEnd].isRaftShortIdPart())) return null
-    return start until shortEnd
+    return start until peerEnd
 }
 
 private val RaftDirectMessagePeerKinds = listOf("agent", "human")

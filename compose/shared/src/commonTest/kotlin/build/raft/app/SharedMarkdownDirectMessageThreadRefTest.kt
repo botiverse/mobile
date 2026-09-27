@@ -29,6 +29,8 @@ class SharedMarkdownDirectMessageThreadRefTest {
     fun dmThreadNavigationRemainsAvailableWithoutWriteAccess() {
         assertFalse(threadEventRequiresWriteAccess("openMarkdownDirectMessageThreadRef"))
         assertTrue(threadEventAllowed(writeActionsEnabled = false, "openMarkdownDirectMessageThreadRef"))
+        assertFalse(threadEventRequiresWriteAccess("openMarkdownDirectMessage"))
+        assertTrue(threadEventAllowed(writeActionsEnabled = false, "openMarkdownDirectMessage"))
     }
 
     @Test
@@ -425,7 +427,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
     }
 
     @Test
-    fun kindPinnedDmRefOpensTheMatchingTwinAndBareTwinFailsClosed() {
+    fun kindPinnedDmRefOpensTheMatchingTwinAndBareTwinOpensTheFirstDm() {
         val home = twinHomeSnapshot(withHumanDm = true)
         val profiles = twinProfiles()
 
@@ -443,16 +445,15 @@ class SharedMarkdownDirectMessageThreadRefTest {
         assertEquals(TwinAgentDmId, resolve("skyzh~agent"))
         assertEquals(TwinHumanDmId, resolve("skyzh~human"))
         assertEquals(TwinAgentDmId, resolve("SkyZH~agent"))
-        assertEquals(null, resolve("skyzh"))
+        // Web `findDmByPeer`: a bare twin name opens the first DM in list order.
+        assertEquals(TwinAgentDmId, resolve("skyzh"))
         assertEquals(null, resolve("skyzh~bot"))
         assertEquals(null, resolve("skyzh~"))
         assertEquals(null, resolve("~agent"))
     }
 
     @Test
-    fun bareTwinFailsClosedEvenWhenOnlyOneTwinDmExists() {
-        // Web #8415: a human and an agent sharing the name is enough; the
-        // missing human DM does not make the bare name mean the agent.
+    fun bareTwinOpensTheOnlyExistingTwinDm() {
         val home = twinHomeSnapshot(withHumanDm = false)
         val profiles = twinProfiles()
 
@@ -464,20 +465,62 @@ class SharedMarkdownDirectMessageThreadRefTest {
                 knownMemberProfilesById = profiles
             )?.channelId?.value
 
-        assertEquals(null, resolve("skyzh"))
+        assertEquals(TwinAgentDmId, resolve("skyzh"))
         assertEquals(TwinAgentDmId, resolve("skyzh~agent"))
         assertEquals(null, resolve("skyzh~human"))
-        assertEquals(listOf("skyzh~agent"), home.knownMarkdownDirectMessagePeerNames(profiles).filter { it.startsWith("skyzh") })
+        assertEquals(
+            listOf("skyzh", "skyzh~agent"),
+            home.knownMarkdownDirectMessagePeerNames(profiles).filter { it.startsWith("skyzh") }.sorted()
+        )
     }
 
     @Test
-    fun knownDmPeerNamesListOnlyKindedFormsForTwinsAndBothFormsOtherwise() {
+    fun bareTwinFollowsHomeListOrder() {
+        val home = twinHomeSnapshot(withHumanDm = true)
+        val humanFirst = home.copy(directMessages = home.directMessages.sortedBy { it.channelId.value != TwinHumanDmId })
+
+        assertEquals(
+            TwinHumanDmId,
+            resolveMarkdownChannelConversation(
+                home = humanFirst,
+                channelLabel = "skyzh",
+                requiredKind = ConversationKind.DirectMessage,
+                knownMemberProfilesById = twinProfiles()
+            )?.channelId?.value
+        )
+    }
+
+    @Test
+    fun bareAndKindedDmRefsWithoutShortIdOpenTheDm() {
+        val home = twinHomeSnapshot(withHumanDm = true)
+        val profiles = twinProfiles()
+
+        fun open(label: String) =
+            buildMarkdownChannelLaunchPayload(
+                currentPayload = KuiklyThreadScreenPayload(),
+                home = home,
+                channelLabel = label,
+                requiredKind = ConversationKind.DirectMessage,
+                knownMemberProfilesById = profiles
+            )
+
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, open("skyzh~human")?.surfaceKind)
+        assertEquals(TwinHumanDmId, open("skyzh~human")?.streamChannelId)
+        assertEquals(TwinAgentDmId, open("skyzh~agent")?.streamChannelId)
+        assertEquals(TwinAgentDmId, open("skyzh")?.streamChannelId)
+        assertEquals(FridayDmId, open("friday")?.streamChannelId)
+        assertEquals(null, open("friday~human"))
+        assertEquals(null, open("nobody"))
+    }
+
+    @Test
+    fun knownDmPeerNamesListBareAndKindedFormsForTwins() {
         val home = twinHomeSnapshot(withHumanDm = true)
         val known = home.knownMarkdownDirectMessagePeerNames(twinProfiles()).map { it.lowercase() }
 
         assertTrue("skyzh~agent" in known)
         assertTrue("skyzh~human" in known)
-        assertFalse(known.any { it.equals("skyzh", ignoreCase = true) })
+        assertEquals(1, known.count { it == "skyzh" })
         assertTrue("friday" in known)
         assertTrue("friday~agent" in known)
         assertFalse("friday~human" in known)
@@ -506,7 +549,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
     }
 
     @Test
-    fun routeLocalAliasesDoNotReadmitBareTwin() {
+    fun routeLocalAliasesKeepBareTwin() {
         val payload =
             KuiklyThreadScreenPayload(
                 surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
@@ -520,7 +563,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
 
         assertTrue("skyzh~agent" in known)
         assertTrue("skyzh~human" in known)
-        assertFalse("skyzh" in known)
+        assertTrue("skyzh" in known)
         assertTrue("friday" in known)
     }
 

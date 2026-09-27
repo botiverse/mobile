@@ -3770,14 +3770,22 @@ internal class SharedThreadDataSource(
 
     suspend fun markdownChannelLaunchPayload(
         currentPayload: KuiklyThreadScreenPayload,
-        channelLabel: String
+        channelLabel: String,
+        requiredKind: ConversationKind? = null
     ): KuiklyThreadScreenPayload? {
         val session = readSession() ?: return null
         val home = currentHomeSnapshot(session) ?: return null
         return buildMarkdownChannelLaunchPayload(
             currentPayload = currentPayload,
             home = home,
-            channelLabel = channelLabel
+            channelLabel = channelLabel,
+            requiredKind = requiredKind,
+            knownMemberProfilesById =
+                if (requiredKind == ConversationKind.DirectMessage) {
+                    currentKnownMarkdownMemberProfilesById(home)
+                } else {
+                    emptyMap()
+                }
         )
     }
 
@@ -10099,12 +10107,16 @@ private fun KuiklyThreadScreenPayload.withResolvedReplyThreadRouteIntentFrom(
 internal fun buildMarkdownChannelLaunchPayload(
     currentPayload: KuiklyThreadScreenPayload,
     home: HomeSnapshot,
-    channelLabel: String
+    channelLabel: String,
+    requiredKind: ConversationKind? = null,
+    knownMemberProfilesById: Map<String, MemberProfile> = emptyMap()
 ): KuiklyThreadScreenPayload? {
     val channel =
         resolveMarkdownChannelConversation(
             home = home,
             channelLabel = channelLabel,
+            requiredKind = requiredKind,
+            knownMemberProfilesById = knownMemberProfilesById,
             currentPayload = currentPayload
         ) ?: return null
     val conversation = channel.toThreadLaunchConversationIdentity()
@@ -10179,7 +10191,8 @@ internal fun resolveMarkdownChannelConversation(
     val rawKey = channelLabel.markdownChannelLookupKey()
     if (rawKey.isBlank()) return null
     // DM refs may pin the peer kind (`dm:@skyzh~agent`). A bare name that a
-    // human and an agent share names two DMs; never guess a side (Web #8415).
+    // human and an agent share opens the first matching DM, like Web
+    // `findDmByPeer` (see the end of this function).
     val directMessagePeerRef =
         if (requiredKind == ConversationKind.DirectMessage) {
             parseRaftDirectMessagePeerRef(rawKey) ?: return null
@@ -10188,12 +10201,6 @@ internal fun resolveMarkdownChannelConversation(
         }
     val key = directMessagePeerRef?.peerName ?: rawKey
     val requiredPeerKind = directMessagePeerRef?.peerKind
-    if (directMessagePeerRef != null &&
-        requiredPeerKind == null &&
-        key in home.markdownDirectMessageTwinPeerKeys(knownMemberProfilesById)
-    ) {
-        return null
-    }
     fun ConversationSummary.matchesRequiredPeerKind(): Boolean =
         requiredPeerKind == null || directMessagePeerType.parsedMemberKindOrNull() == requiredPeerKind
 
@@ -10281,7 +10288,17 @@ internal fun resolveMarkdownChannelConversation(
                     }
             }
             .distinctBy { it.messageStreamChannelId().value }
-    return matches.singleOrNull()
+    matches.singleOrNull()?.let { return it }
+    // Web `findDmByPeer` resolves a bare human/agent twin name to the first
+    // matching DM in list order. Other alias collisions still fail closed.
+    return if (directMessagePeerRef != null &&
+        requiredPeerKind == null &&
+        key in home.markdownDirectMessageTwinPeerKeys(knownMemberProfilesById)
+    ) {
+        matches.firstOrNull()
+    } else {
+        null
+    }
 }
 
 internal fun MemberProfile.matchesMarkdownChannelLabel(label: String): Boolean {
@@ -10307,11 +10324,11 @@ private fun ConversationSummary.markdownDirectMessagePeerAliases(
 }
 
 /**
- * DM peer names a markdown `dm:@peer:short` ref may resolve to without
- * guessing. Each DM contributes its bare aliases plus kind-pinned
- * `alias~agent` / `alias~human` forms. A bare alias that maps to more than one
- * DM, or that a human and an agent share (Web #8415 twin rule: even when only
- * one of the two DMs exists yet), is left out so the ref stays plain text.
+ * DM peer names a markdown `dm:@peer[:short]` ref may resolve to. Each DM
+ * contributes its bare aliases plus kind-pinned `alias~agent` / `alias~human`
+ * forms. A bare name that a human and an agent share stays linkable and opens
+ * the first matching DM (Web `findDmByPeer`); any other bare alias that maps
+ * to more than one DM is left out so the ref stays plain text.
  */
 internal fun HomeSnapshot.knownMarkdownDirectMessagePeerNames(
     knownMemberProfilesById: Map<String, MemberProfile>
@@ -10326,25 +10343,24 @@ internal fun HomeSnapshot.knownMarkdownDirectMessagePeerNames(
         conversation.markdownDirectMessagePeerAliases(knownMemberProfilesById).forEach { alias ->
             val key = alias.markdownChannelLookupKey()
             if (key.isBlank()) return@forEach
-            if (key !in twinKeys) {
-                aliasesByLookupKey.getOrPut(key) { mutableListOf() } += conversationId to alias
-            }
+            aliasesByLookupKey.getOrPut(key) { mutableListOf() } += conversationId to alias
             if (peerKind == MemberKind.Agent || peerKind == MemberKind.Human) {
                 val kindedAlias = formatRaftDirectMessagePeerRef(alias, peerKind)
                 aliasesByLookupKey.getOrPut(kindedAlias.lowercase()) { mutableListOf() } += conversationId to kindedAlias
             }
         }
     }
-    return aliasesByLookupKey.values.mapNotNull { matches ->
+    return aliasesByLookupKey.mapNotNull { (key, matches) ->
         matches.firstOrNull()?.second?.takeIf {
-            matches.map { match -> match.first }.distinct().size == 1
+            key in twinKeys || matches.map { match -> match.first }.distinct().size == 1
         }
     }
 }
 
 /**
  * Lower-cased names held by both a human and an agent in this server. A bare
- * `dm:@name` ref to one of them is ambiguous and must carry `~agent`/`~human`.
+ * `dm:@name` ref to one of them opens the first matching DM (Web parity);
+ * `~agent` / `~human` pins the side.
  */
 internal fun HomeSnapshot.markdownDirectMessageTwinPeerKeys(
     knownMemberProfilesById: Map<String, MemberProfile>

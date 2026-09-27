@@ -67,13 +67,15 @@ class RaftMarkdownDialectTest {
     }
 
     @Test
-    fun rejectsMalformedDmThreadFormsWithoutConsumingTheirMentionFallback() {
+    fun malformedDmThreadSuffixDegradesToTheBareDmRef() {
+        // Web: the thread pass fails, then `createRaftDmRefRegex` claims
+        // `dm:@artin` and leaves the bad suffix as plain text.
         val source =
             "dm:@artin:12345 dm:@artin:123456789 dm:@artin:12zzzz " +
                 "dm:@发布者:DEADBEEF dm:@release.bot:DEADBEEF"
 
         assertEquals(
-            listOf("@artin", "@artin", "@artin", "@发布者", "dm:@release.bot:DEADBEEF"),
+            listOf("dm:@artin", "dm:@artin", "dm:@artin", "@发布者", "dm:@release.bot:DEADBEEF"),
             source.raftRefs(),
         )
     }
@@ -106,8 +108,12 @@ class RaftMarkdownDialectTest {
     }
 
     @Test
-    fun kindPinnedDmRefWithoutThreadSuffixKeepsMentionFallback() {
-        assertEquals(listOf("@skyzh"), "dm:@skyzh~agent later".raftRefs())
+    fun dmRefsWithoutThreadSuffixAreOneRef() {
+        assertEquals(
+            listOf("dm:@skyzh~agent", "dm:@skyzh~human", "dm:@skyzh", "dm:@release.bot", "dm:@skyzh."),
+            // Like Web `[\w.-]+`, a trailing dot stays part of the peer token.
+            "dm:@skyzh~agent later, dm:@skyzh~human, dm:@skyzh dm:@release.bot dm:@skyzh.".raftRefs()
+        )
     }
 
     @Test
