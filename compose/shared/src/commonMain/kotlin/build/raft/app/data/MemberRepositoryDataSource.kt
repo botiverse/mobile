@@ -32,6 +32,17 @@ private val memberRepositoryJson = Json {
     encodeDefaults = true
 }
 
+// task #152: the PATCH `runtimeConfig` object must match the web/create wire shape —
+// absent optional fields are OMITTED, never serialized as explicit `null`. The server
+// validates any non-undefined value (e.g. `loadLocalPlugins !== undefined` must be a
+// boolean on builtin and is rejected on every other runtime), so `"loadLocalPlugins":null`
+// 400'd every non-Built-in runtime save. Mirrors AgentsApi's create-body encoder.
+private val agentRuntimeConfigUpdateJson = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+    explicitNulls = false
+}
+
 private fun PlatformFile.toAgentAvatarMultipartFile(): MultipartFile =
     MultipartFile(
         name = "avatar",
@@ -1185,7 +1196,7 @@ private fun RuntimeModelConfig.toAgentModelWireValue(): String =
 private fun build.raft.app.model.RuntimeConfig.toAgentUpdateJson(
     retainOmittedBuiltInProviderSecret: Boolean
 ): JsonElement {
-    val encoded = memberRepositoryJson.encodeToJsonElement(this).jsonObject
+    val encoded = agentRuntimeConfigUpdateJson.encodeToJsonElement(this).jsonObject
     if (!retainOmittedBuiltInProviderSecret || runtime != "builtin") return encoded
     val provider = encoded["provider"] as? JsonObject ?: return encoded
     val providerWithoutSecret =
