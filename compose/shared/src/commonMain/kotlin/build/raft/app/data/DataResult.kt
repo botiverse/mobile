@@ -76,6 +76,7 @@ enum class ErrorPresentationKey {
     ServerUnavailable,
     ItemNotFound,
     PermissionDenied,
+    EdgeBlocked,
     AttachmentTooLarge,
     TooManyAttempts,
     ResponseUnreadable,
@@ -113,7 +114,24 @@ fun ScreenError.isAuthSessionError(): Boolean =
 fun String?.isAuthSessionErrorCode(): Boolean =
     this == "auth_required" || this == "auth_session" || this == "unauthenticated"
 
+/**
+ * Machine-readable marker the network executor substitutes for edge/CDN
+ * intercepts (CloudFront-style 403s whose body is HTML rather than the API
+ * envelope). Localized network copy must always win over this opaque marker.
+ */
+internal fun String?.isEdgeBlockedMarker(): Boolean =
+    this?.trim()?.lowercase() == "edge_blocked"
+
 internal fun ScreenError.errorPresentation(): ErrorPresentation {
+    if (serverMessage.isEdgeBlockedMarker()) {
+        // The marker is an internal wire fact, not human-readable copy; the
+        // localized network-blocked sentence always wins.
+        return ErrorPresentation(
+            key = ErrorPresentationKey.EdgeBlocked,
+            rawServerMessage = serverMessage,
+            rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst
+        )
+    }
     val key = code.errorPresentationKeyOrNull()
     return ErrorPresentation(
         key = key ?: ErrorPresentationKey.Generic,
@@ -128,7 +146,13 @@ internal fun ScreenError.errorPresentation(): ErrorPresentation {
 }
 
 internal fun PermissionBlocker.errorPresentation(): ErrorPresentation =
-    if (isAuthSessionBlocker() || code.isHttpStatusPresentationCode(401)) {
+    if (serverMessage.isEdgeBlockedMarker()) {
+        ErrorPresentation(
+            key = ErrorPresentationKey.EdgeBlocked,
+            rawServerMessage = serverMessage,
+            rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst
+        )
+    } else if (isAuthSessionBlocker() || code.isHttpStatusPresentationCode(401)) {
         ErrorPresentation(
             key = ErrorPresentationKey.SessionExpired,
             rawServerMessage = serverMessage,
@@ -177,6 +201,7 @@ internal fun String?.errorPresentationKeyOrNull(): ErrorPresentationKey? {
     if (!normalized.looksLikeErrorCode()) return null
     val lower = normalized.lowercase()
     return when {
+        "edge_blocked" in lower -> ErrorPresentationKey.EdgeBlocked
         lower.isAuthSessionErrorCode() || lower.isHttpStatusPresentationCode(401) ||
             "auth" in lower || "unauthenticated" in lower -> ErrorPresentationKey.SessionExpired
         "dns" in lower || "host" in lower || "unreachable" in lower ->

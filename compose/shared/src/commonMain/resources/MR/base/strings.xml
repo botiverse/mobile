@@ -13,6 +13,7 @@
     <string name="error_server_unavailable">The server is unavailable right now. Please try again shortly.</string>
     <string name="error_item_not_found">This item could not be found. It may have been moved or deleted.</string>
     <string name="error_permission_denied">You do not have permission to view this page.</string>
+    <string name="error_edge_blocked">The network blocked this request. Try another network or turn off your proxy.</string>
     <string name="error_attachment_too_large">The attachment is too large. Choose a smaller file and try again.</string>
     <string name="error_too_many_attempts">Too many attempts. Please wait a moment and try again.</string>
     <string name="error_response_unreadable">The response could not be read. Please try again.</string>
