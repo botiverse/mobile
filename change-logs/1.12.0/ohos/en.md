@@ -23,3 +23,4 @@
 - Fixed the "N replies" preview row taking a long time to appear when entering a channel from Activity, notifications, or search
 - Fixed the composer briefly missing then appearing when entering a thread
 - Attachment cards no longer show a "Comments" button; comments are still available from the preview page's action bar
+- Fixed tapping your own DM tag in a DM conversation doing nothing: in DM threads it now stays aligned with the current DM; in channels it navigates to the original author
