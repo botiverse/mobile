@@ -172,6 +172,8 @@ import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
 import build.raft.app.model.providerLabel
 import build.raft.app.markdown.LocalSlockMessagePermalinkLabelResolver
+import build.raft.app.markdown.RaftDirectMessagePeerKindSeparator
+import build.raft.app.markdown.formatRaftDirectMessagePeerRef
 import build.raft.app.markdown.LocalSlockMarkdownRenderConfig
 import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.markdown.LocalSlockMarkdownPlainCandidateSession
@@ -3054,20 +3056,34 @@ internal fun KuiklyThreadScreenPayload.toKnownMarkdownMentionNameSet(): Set<Stri
         }
     }
 
-internal fun KuiklyThreadScreenPayload.toKnownMarkdownDirectMessagePeerNameSet(): Set<String> =
-    buildSet {
-        knownMarkdownDirectMessagePeerNames.forEach { name -> addKnownThreadMentionValue(name) }
-        dmPeerName?.let { addKnownThreadMentionValue(it) }
-        dmPeerIdentity?.let { identity -> addKnownThreadMentionValue(identity.memberId.value) }
-        if (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
-            parentSurfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
-            channelKind == "dm" ||
-            parentChannelKind == "dm"
-        ) {
-            members.forEach { member -> addKnownThreadMentionValues(member) }
-            memberCandidates.forEach { member -> addKnownThreadMentionValues(member) }
+internal fun KuiklyThreadScreenPayload.toKnownMarkdownDirectMessagePeerNameSet(): Set<String> {
+    val homeNames = buildSet { knownMarkdownDirectMessagePeerNames.forEach { name -> addKnownThreadMentionValue(name) } }
+    val names =
+        buildSet {
+            addAll(homeNames)
+            dmPeerName?.let { addKnownThreadMentionValue(it) }
+            dmPeerIdentity?.let { identity ->
+                addKnownThreadMentionValue(identity.memberId.value)
+                dmPeerName?.let { name -> addKnownThreadMentionValue(formatRaftDirectMessagePeerRef(name, identity.kind)) }
+            }
+            if (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
+                parentSurfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
+                channelKind == "dm" ||
+                parentChannelKind == "dm"
+            ) {
+                members.forEach { member -> addKnownThreadMentionValues(member) }
+                memberCandidates.forEach { member -> addKnownThreadMentionValues(member) }
+            }
         }
+    // The Home-derived list is authoritative for human/agent twins: it lists
+    // only `name~agent` / `name~human` for a shared name. Do not let a bare
+    // route-local alias (current DM peer, roster) re-admit the ambiguous form.
+    return names.filterTo(mutableSetOf()) { name ->
+        RaftDirectMessagePeerKindSeparator in name ||
+            name in homeNames ||
+            homeNames.none { known -> known.substringBefore(RaftDirectMessagePeerKindSeparator) == name && known != name }
     }
+}
 
 internal fun KuiklyThreadScreenPayload.toKnownMarkdownTaskNumberSetOrNull(): Set<Int>? =
     knownMarkdownTaskNumbers.takeIf { it.isNotEmpty() }

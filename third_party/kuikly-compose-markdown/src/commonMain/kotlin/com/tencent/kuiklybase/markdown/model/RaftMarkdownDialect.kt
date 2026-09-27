@@ -103,6 +103,16 @@ private fun String.raftDirectMessageThreadRange(start: Int): IntRange? {
         peerEnd++
         count++
     }
+    // `dm:@name~agent` / `dm:@name~human` pins the peer kind when a human and
+    // an agent share a name (Web `RAFT_REF_DM_PEER_PATTERN`). `~` never occurs
+    // in a name, so any other suffix is not a DM target: claim the whole
+    // malformed token so the app layer renders it as plain text instead of
+    // letting the `@name` inside it become a different target.
+    if (peerEnd < length && this[peerEnd] == '~') {
+        val kindEnd = raftDirectMessagePeerKindEnd(peerEnd)
+        if (kindEnd == null) return raftMalformedDirectMessageKindRange(start, peerEnd)
+        peerEnd = kindEnd
+    }
     // A DM thread is an atomic form. A missing or malformed suffix must fall
     // back to the ordinary @mention candidate inside it, never a partial DM ref.
     if (peerEnd >= length || this[peerEnd] != ':') return null
@@ -114,6 +124,33 @@ private fun String.raftDirectMessageThreadRange(start: Int): IntRange? {
     val shortLength = shortEnd - shortStart
     if (shortLength !in 6..8 || (shortEnd < length && this[shortEnd].isRaftShortIdPart())) return null
     return start until shortEnd
+}
+
+private val RaftDirectMessagePeerKinds = listOf("agent", "human")
+
+/** End offset after a valid `~agent` / `~human` suffix starting at [tildeIndex], or null. */
+private fun String.raftDirectMessagePeerKindEnd(tildeIndex: Int): Int? {
+    val kindStart = tildeIndex + 1
+    val kind = RaftDirectMessagePeerKinds.firstOrNull { startsWith(it, kindStart) } ?: return null
+    val kindEnd = kindStart + kind.length
+    if (kindEnd < length && (this[kindEnd].isRaftDirectMessagePeerPart() || this[kindEnd] == '~')) return null
+    return kindEnd
+}
+
+/**
+ * `dm:@name~<unknown>[:short]`, mirroring Web `createRaftMalformedDmKindRefRegex`
+ * (`dm:@[\w.-]+~[\w.~-]*(?::[\da-f]{6,8})?`).
+ */
+private fun String.raftMalformedDirectMessageKindRange(start: Int, tildeIndex: Int): IntRange {
+    var end = tildeIndex + 1
+    while (end < length && (this[end].isRaftDirectMessagePeerPart() || this[end] == '~')) end++
+    if (end < length && this[end] == ':') {
+        val shortStart = end + 1
+        var shortEnd = shortStart
+        while (shortEnd < length && shortEnd - shortStart < 8 && this[shortEnd].isRaftShortIdPart()) shortEnd++
+        if (shortEnd - shortStart >= 6) end = shortEnd
+    }
+    return start until end
 }
 
 private fun String.raftMentionRange(start: Int): IntRange? {

@@ -3,6 +3,7 @@ package build.raft.app.markdown
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.assertNull
 
 class SlockRichTextContractTest {
@@ -222,6 +223,39 @@ class SlockRichTextContractTest {
         assertEquals(SlockRichTextRefKind.DirectMessageThread, action.refKind)
         assertEquals("artin", action.directMessagePeerName)
         assertEquals("1c50c30a", action.threadShortId)
+    }
+
+    @Test
+    fun kindPinnedDirectMessageThreadRefCarriesKindedPeerAndRejectsTheBareTwin() {
+        // `skyzh` is held by a human and an agent: Home only lists kinded forms.
+        val context = SlockRichTextContext(knownDirectMessagePeers = setOf("skyzh~agent", "skyzh~human"))
+        val document =
+            buildSlockRichTextDocument(
+                "Open dm:@skyzh~agent:1c50c30a, dm:@skyzh~human:2d60d40b and dm:@skyzh:3e70e50c",
+                context
+            )
+
+        assertEquals(
+            listOf("skyzh~agent", "skyzh~human"),
+            document.actions.filter { it.refKind == SlockRichTextRefKind.DirectMessageThread }.map { it.directMessagePeerName }
+        )
+        assertFalse(document.inlineTokens.any { it.sourceText == "dm:@skyzh:3e70e50c" })
+        assertFalse(document.inlineTokens.any { it.sourceText == "@skyzh" })
+    }
+
+    @Test
+    fun unknownPeerKindSuffixStaysPlainText() {
+        val document =
+            buildSlockRichTextDocument(
+                "Open dm:@skyzh~bot:1c50c30a",
+                SlockRichTextContext(
+                    knownMentions = setOf("skyzh"),
+                    knownDirectMessagePeers = setOf("skyzh", "skyzh~agent", "skyzh~human")
+                )
+            )
+
+        assertFalse(document.inlineTokens.any { it.kind == SlockRichTextInlineKind.SlockRef })
+        assertTrue(document.actions.isEmpty())
     }
 
     @Test
