@@ -62,17 +62,28 @@ must remain separate for the exact being reviewed.
    `CURRENT_PROJECT_VERSION=1`). Do not rewrite those placeholders into the
    freeze tree, and do not fail preflight merely because the source defaults
    are still present. The version gate is: allocate monotonic coordinates,
-   inject them at workflow dispatch, then verify the signed artifacts. Android
-   and OHOS normally use the train semantic version; iOS may keep a separate
-   App Store marketing version and a monotonic `CFBundleVersion`.
-9. When the release owner says **publish iOS** or **publish to TestFlight**
-   without narrowing the boundary, the delivery contract ends only after the
-   selected testers have actually been notified. Upload completion, an ASC
-   `VALID` build, beta-group assignment, localized What to Test, Beta App
-   Review approval, or a build that is merely eligible for notification are
-   intermediate states. A narrower instruction such as `upload only`,
-   `internal only`, `submit for review`, or `do not notify` overrides this
-   default and must be repeated in the receipt.
+   inject them at workflow dispatch, then verify the signed artifacts. Android,
+   OHOS and iOS all use the train semantic version (artin, 2026-09-27: iOS
+   1.12.0 ships as marketing version `1.12.0` build 1, not `1.0.0`). iOS
+   dispatches `version_major/minor/patch` = the train version and
+   `version_build` restarting at 1 per marketing version; the resulting
+   `CFBundleVersion` comes from `scripts/ci/version_code.sh` and stays
+   monotonic across trains.
+9. TestFlight is **internal first, external only after artin has tested**
+   (artin, 2026-09-27). When the release owner says **publish iOS** or
+   **publish to TestFlight** without naming an audience, the contract is:
+   upload the verified Hands IPA, assign it to the named internal group
+   (Botiverse `e10b6b3e-000d-4cbe-a160-2a9275f76977`) with What to Test,
+   fresh-read `internal_build_state=IN_BETA_TESTING`, then report to artin
+   and **stop**. External groups (What to Test, Beta App Review, tester
+   notification) require a separate, explicit go from artin given after he
+   has tested that exact build; an earlier publish instruction never carries
+   over to external. Once external is authorized, that contract ends only
+   after the selected external testers have actually been notified; upload
+   completion, ASC `VALID`, group assignment, What to Test, Beta App Review
+   approval, or notification eligibility are intermediate states. A narrower
+   instruction such as `upload only` or `do not notify` still overrides and
+   must be repeated in the receipt.
 9a. A standing owner directive may make **TestFlight internal** the default
     after every successful iOS Hands draft. Record the named internal group
     in the release plan. Each later iOS rebuild on that train is uploaded and
@@ -318,7 +329,7 @@ The release plan names each platform's intended boundary. Examples:
 | iOS Hands | Activate exact draft | Yes |
 | TestFlight upload | Upload verified Hands IPA | Yes, unless the plan has standing internal-after-draft |
 | TestFlight internal | Assign named internal group | Yes, unless the plan has standing internal-after-draft for that named group |
-| TestFlight external | Assign named group, What to Test, Beta Review, notification | Yes |
+| TestFlight external | Assign named group, What to Test, Beta Review, notification | Yes — only after artin has tested the exact build internally |
 | App Store production | Submit/publish production version | Yes |
 | Community | Post approved announcement | Yes |
 
@@ -363,10 +374,11 @@ the exact status once more before reporting completion.
 
 Internal groups and external groups are separate audiences. The release plan
 must name which audience the owner's publish instruction covers. If it says
-only `publish iOS/TestFlight`, the Raft Mobile default is the currently selected
-external tester audience plus notification; do not silently substitute an
-internal all-builds group. App Store production remains a separate mutation
-and is never implied by TestFlight publication.
+only `publish iOS/TestFlight`, the Raft Mobile default is the named internal
+group only (rule 9); do not promote to external until artin has tested the
+exact build and explicitly approves external distribution. App Store
+production remains a separate mutation and is never implied by TestFlight
+publication.
 
 Android and iOS do not need the same delivery mechanism. A valid paired train
 may end with Android Hands active and iOS Hands draft while the same IPA is in

@@ -59,9 +59,9 @@ prevents release artifacts from falling back to the project defaults
 `MARKETING_VERSION=1.0` / `CURRENT_PROJECT_VERSION=1`. Those project defaults
 are expected in frozen source. Preflight must not fail because the Xcode
 project still shows `1.0` / `1`; the version gate is dispatch injection plus
-artifact readback. iOS may keep App Store marketing version `1.0.0` and a
-monotonic `CFBundleVersion` (for example `1000022`) while Android uses the
-train semantic version.
+artifact readback. Since 1.12.0 (artin, 2026-09-27) iOS uses the train
+semantic version as its marketing version (for example `1.12.0`, build 1 ⇒
+`CFBundleVersion` `11200001`); builds up to 1.11.0 shipped as `1.0.0`.
 
 ## GitHub Actions
 
@@ -174,10 +174,13 @@ publication. After processing:
    `hands builds testflight-groups`.
 2. Publish the exact build to the owner-selected audience with localized What
    to Test. External publication uses `--distribution external`.
-3. When the owner says `publish iOS` or `publish to TestFlight` without a
-   narrower boundary, include `--notify-testers`. This is part of publication,
-   not an optional follow-up. Only `upload only`, `submit for review`,
-   `internal only`, or an explicit `do not notify` stops earlier.
+3. Internal first: a bare `publish iOS` / `publish to TestFlight` means the
+   named internal group only; stop and report to artin. External
+   publication needs a separate explicit go from artin after he has tested
+   the exact build. Once external is authorized, include `--notify-testers`;
+   that is part of external publication, not an optional follow-up. Only
+   `upload only`, `submit for review`, or an explicit `do not notify` stops
+   earlier.
 4. Preserve the mutating publish response. For an already-approved build it
    must report `notification=sent` (or `already_sent` on an idempotent replay).
    Do not combine this receipt-producing call with `--wait`: the current CLI's
