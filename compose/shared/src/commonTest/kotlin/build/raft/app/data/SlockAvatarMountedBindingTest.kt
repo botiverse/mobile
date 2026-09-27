@@ -33,6 +33,7 @@ class SlockAvatarMountedBindingTest {
 
         val peeked = assertNotNull(binding.peekInitialManagedModel(subject(), RemoteUrl))
         assertNotNull(parseSlockAvatarMountedRenderModel(peeked))
+        Unit
     }
 
     @Test
