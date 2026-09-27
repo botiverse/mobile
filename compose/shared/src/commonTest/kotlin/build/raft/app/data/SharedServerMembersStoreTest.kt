@@ -70,8 +70,9 @@ class SharedServerMembersStoreTest {
             "https://cdn.raft.build/avatars/agents/cafebabecafebabecafebabecafebabe.webp"
 
         store.seedThreadAuthorProfiles(serverId, listOf(fallback), source = "sparse")
-        assertEquals(
-            "pixel:robot",
+        // A render-time pixel fallback is not member data: a sparse author snapshot must not
+        // write `pixel:robot` into the SSOT where it would outrank a later/parallel avatarUrl.
+        assertNull(
             store.state.value.memberProfile(serverId, "agent-1")?.avatar?.wireValue
         )
 
@@ -3280,4 +3281,3 @@ private fun List<MemberProfile>.upsertFakeMember(member: MemberProfile): List<Me
     val current = filterNot { it.id == member.id && it.kind == member.kind }
     return current + member
 }
-
