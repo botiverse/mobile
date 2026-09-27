@@ -63,7 +63,15 @@ class SlockThreadImePaintConnectedTest {
             lateinit var retiredEditor: EditText
             scenario.onActivity { activity ->
                 retiredEditor = requireNotNull(activity.window.decorView.findAttachedComposerEditText())
-                assertTrue("retired editor should accept focus", retiredEditor.requestFocus())
+            }
+            // Drive focus through the same bounded wait as the rest of the suite:
+            // a present-but-not-yet-focusable editor (window focus still settling on
+            // a slow CI emulator) makes the one-shot requestFocus() flake.
+            waitUntil(RenderTimeoutMs, "retired editor focused") {
+                scenario.onActivity { retiredEditor.requestFocus() }
+                retiredEditor.hasFocus()
+            }
+            scenario.onActivity { activity ->
                 val inputMethodManager =
                     activity.getSystemService(InputMethodManager::class.java)
                 inputMethodManager.showSoftInput(retiredEditor, InputMethodManager.SHOW_IMPLICIT)
