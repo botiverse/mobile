@@ -2,10 +2,45 @@ package build.raft.app
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SlockAvatarHttpLoadCoordinatorTest {
+    @Test
+    fun genericIconIsAFailureAffordanceNotALoadingPlaceholder() {
+        // task #343: cold start must go blank -> real avatar, never default icon -> real avatar.
+        assertFalse(slockAvatarHttpShowsFallback(SlockAvatarHttpLoadSnapshot()))
+        assertFalse(
+            slockAvatarHttpShowsFallback(
+                SlockAvatarHttpLoadSnapshot(
+                    cache = SlockAvatarHttpCacheState.InFlight,
+                    painter = SlockAvatarHttpPainterPhase.Loading
+                )
+            )
+        )
+        assertFalse(
+            slockAvatarHttpShowsFallback(
+                SlockAvatarHttpLoadSnapshot(
+                    cache = SlockAvatarHttpCacheState.Ready,
+                    painter = SlockAvatarHttpPainterPhase.Success
+                )
+            )
+        )
+        assertTrue(
+            slockAvatarHttpShowsFallback(SlockAvatarHttpLoadSnapshot(cache = SlockAvatarHttpCacheState.Cooldown))
+        )
+        assertTrue(
+            slockAvatarHttpShowsFallback(
+                SlockAvatarHttpLoadSnapshot(
+                    cache = SlockAvatarHttpCacheState.Ready,
+                    painter = SlockAvatarHttpPainterPhase.Error
+                )
+            )
+        )
+    }
+
     @Test
     fun sameUploadedAvatarRowsJoinOneActiveRequestAndReuseReadyCache() {
         val coordinator =

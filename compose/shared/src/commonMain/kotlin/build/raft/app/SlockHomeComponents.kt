@@ -6403,8 +6403,11 @@ internal fun SlockAvatar(
     // Thread — that's a lot of recompositions on scroll, so we want to know whether
     // it's the identify / http-fetch / render / fallback-default that's hot.
     val displayAvatarWireValue = avatarWireValue?.appAvatarWireValueOrNull()
-    val httpAvatarSource = remember(displayAvatarWireValue) {
+    val gravatarHttpSource = remember(displayAvatarWireValue) {
         displayAvatarWireValue?.gravatarAvatarHttpUrlOrNull()
+    }
+    val httpAvatarSource = remember(displayAvatarWireValue, gravatarHttpSource) {
+        gravatarHttpSource
             ?: displayAvatarWireValue?.takeIf {
                 it.startsWith("http://") || it.startsWith("https://")
             }
@@ -6425,13 +6428,19 @@ internal fun SlockAvatar(
                 .border(borderWidth, SlockColor.BorderBlack),
             contentAlignment = Alignment.Center
         ) {
-            DefaultUserAvatarIcon(avatarSize)
+            // task #343: an uploaded avatar must not flash the generic icon while its cached
+            // bytes are still being resolved (cold start reads them from SQLite + native). Keep
+            // the neutral background until the load settles; draw the icon only on a definitive
+            // failure. Gravatar keeps the immediate icon: it is often unreachable (CN) and the
+            // icon is its expected fallback.
+            if (gravatarHttpSource != null) DefaultUserAvatarIcon(avatarSize)
             SlockAvatarHttpImage(
                 source = httpAvatarSource,
                 modifier = Modifier.fillMaxSize(),
                 diagnostics = diagnostics,
                 cacheSubject = cacheSubject,
-                cacheServerId = cacheServerId
+                cacheServerId = cacheServerId,
+                fallback = { if (gravatarHttpSource == null) DefaultUserAvatarIcon(avatarSize) }
             )
         }
         else -> traceMarkdownSection(SlockAvatarTraceNames.FALLBACK_DEFAULT, displayAvatarWireValue?.length ?: 0) {
@@ -6446,7 +6455,8 @@ private fun SlockAvatarHttpImage(
     modifier: Modifier = Modifier,
     diagnostics: SlockAvatarRowDiagnostics? = null,
     cacheSubject: SlockAvatarCacheSubject? = null,
-    cacheServerId: String? = null
+    cacheServerId: String? = null,
+    fallback: @Composable () -> Unit = {}
 ) {
     val apiBaseUrl =
         SlockSharedStoreRegistry.currentOrNull()
@@ -6473,6 +6483,7 @@ private fun SlockAvatarHttpImage(
         }
     val loadStateFlow = remember(loadKey) { slockAvatarHttpLoadCoordinator.stateFlow(loadKey) }
     val loadState by loadStateFlow.collectAsState()
+    if (slockAvatarHttpShowsFallback(loadState)) fallback()
     var lease by remember(loadKey) { mutableStateOf<SlockAvatarHttpLoadLease?>(null) }
     val activeSource = loadKey.sourceFor(loadState.endpoint) ?: return
     val avatarMountedBinding = SlockSharedStoreRegistry.currentOrNull()?.avatarMountedBinding
@@ -6615,6 +6626,17 @@ private fun SlockAvatarHttpImage(
         contentScale = ContentScale.FillBounds
     )
 }
+
+/**
+ * task #343: the generic avatar icon is a failure affordance, not a loading placeholder. It is
+ * shown only once the HTTP load has settled on failure (cooldown), or a ready generation failed to
+ * render. Idle / in-flight loads keep the neutral background so a cold start goes straight from
+ * blank to the real avatar instead of flashing the default icon first.
+ */
+internal fun slockAvatarHttpShowsFallback(loadState: SlockAvatarHttpLoadSnapshot): Boolean =
+    loadState.cache == SlockAvatarHttpCacheState.Cooldown ||
+        (loadState.cache == SlockAvatarHttpCacheState.Ready &&
+            loadState.painter == SlockAvatarHttpPainterPhase.Error)
 
 /**
  * A committed mounted descriptor is already fenced by environment/account/server/subject/content
