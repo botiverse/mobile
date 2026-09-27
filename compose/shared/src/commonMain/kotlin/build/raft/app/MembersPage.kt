@@ -257,6 +257,36 @@ private val MembersPageInset = SlockSpacing.Md
 // React Sidebar members view: scroll container `px-2` (8px) + per-row/section `px-2` (8px) = 16px
 // total; the container half lives on the LazyColumn, the row half on each row/header.
 internal val MembersListContainerInset = 8.dp
+
+/**
+ * Spec (task #12 §3): single-pane body content may not stretch unbounded on wide
+ * windows — at most 720dp and centered, with side margins >=24dp on DualPane
+ * windows. The cap is measured against the actual content-slot width, not the
+ * whole window, so any future chrome (e.g. the nav rail) that narrows the slot
+ * automatically keeps margins honest instead of over-claiming space.
+ *
+ * Compact windows are untouched: when the slot is <=720dp the content fills it
+ * exactly as before (no new padding is introduced for narrow screens).
+ */
+internal val MembersListContentMaxWidth = 720.dp
+internal val MembersListContentMinSideMargin = 24.dp
+
+/**
+ * §3 cap, gated on the window's DualPane layout fact and measured against the
+ * actual content-slot width:
+ * - Compact windows (paneLayout != DualPane): return slotWidth unchanged — no
+ *   new padding or cap on narrow screens, whatever the slot happens to be.
+ * - DualPane windows: content = min(720dp, slotWidth - 48dp), so the >=24dp
+ *   side margins hold even if rail chrome narrows the slot below 840+48.
+ */
+internal fun membersListContentMaxWidth(
+    slotWidth: Dp,
+    paneLayout: SlockAdaptivePaneLayout,
+): Dp {
+    if (paneLayout != SlockAdaptivePaneLayout.DualPane) return slotWidth
+    val cap = slotWidth - MembersListContentMinSideMargin * 2
+    return if (cap < MembersListContentMaxWidth) cap else MembersListContentMaxWidth
+}
 internal val MembersListHorizontalInset = 8.dp
 internal val MembersListAvatarSize = 18.dp
 internal val MembersListRowMinHeight = 34.dp
@@ -1283,9 +1313,16 @@ internal class ComposeMembersSmokePage : build.raft.app.base.BasePager() {
 
 @Page(MEMBERS_PAGE, supportInLocal = true)
 internal class ComposeMembersPage : AuthenticatedProductPager(AuthenticatedProductRoute.Members) {
+    private var adaptivePane by mutableStateOf(SlockAdaptivePaneState())
+
     override fun willInit() {
         super.willInit()
-        setAuthenticatedContent { MembersPageContent() }
+        setAuthenticatedContent { MembersPageContent(paneLayout = adaptivePane.layout) }
+    }
+
+    override fun onSlockAdaptivePaneChanged(eventData: JSONObject) {
+        val event = eventData.toSlockAdaptivePaneEventOrNull() ?: return
+        adaptivePane = reduceSlockAdaptivePane(adaptivePane, event)
     }
 }
 
@@ -1852,7 +1889,9 @@ private fun String.toMembersAgentDetailVisualMode(): MembersAgentDetailVisualMod
     }
 
 @Composable
-internal fun MembersPageContent() {
+internal fun MembersPageContent(
+    paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
+) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
     val errorStrings = localizedErrorPresentationStrings()
@@ -2266,6 +2305,7 @@ internal fun MembersPageContent() {
         refreshing = membersRefreshing,
         onBack = { bridge.closePage() },
         onRefresh = refreshMembers,
+        paneLayout = paneLayout,
         onAddHuman = { /* humans "+" wired via addHumanSubmit below */ },
         onOpenMemberDetail = { member ->
             scope.launch {
@@ -4554,6 +4594,7 @@ internal fun MembersRouteContent(
     scrollToTopRequest: Int = 0,
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
+    paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
     onRefresh: () -> Unit = {}
 ) {
     MembersListContent(
@@ -4571,7 +4612,8 @@ internal fun MembersRouteContent(
         bottomContentPadding = bottomContentPadding,
         scrollToTopRequest = scrollToTopRequest,
         initialListState = initialListState,
-        onListStateSnapshot = onListStateSnapshot
+        onListStateSnapshot = onListStateSnapshot,
+        paneLayout = paneLayout
     )
 }
 
@@ -4592,6 +4634,7 @@ internal fun MembersListContent(
     scrollToTopRequest: Int = 0,
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
+    paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
     onRefresh: () -> Unit = {}
 ) {
     val createAgentSubmit = createAgent.createAgentSubmit
@@ -4716,13 +4759,21 @@ internal fun MembersListContent(
             .background(SlockColor.SurfaceWhite)
     ) {
         MembersPageHeader(title = displayTitle, refreshing = refreshing, onBack = onBack)
+        BoxWithConstraints(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+        val lazyMaxWidth = maxWidth
         LazyColumn(
             state = listState,
             // React parity: the web members view pads the scroll container itself (Sidebar
             // sidebarScrollClassName `px-2`) on top of the per-row/section `px-2`, totalling 16px.
             // Rows/headers here carry MembersListHorizontalInset (8dp), so the container level was
             // the missing half — without it the list sits 8dp from the screen edge (task #140).
-            modifier = Modifier.fillMaxSize().padding(horizontal = MembersListContainerInset),
+            modifier = Modifier
+                .widthIn(max = membersListContentMaxWidth(lazyMaxWidth, paneLayout))
+                .fillMaxSize()
+                .padding(horizontal = MembersListContainerInset),
             verticalArrangement = Arrangement.spacedBy(MembersListRowSpacing),
             beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
         ) {
@@ -4837,6 +4888,7 @@ internal fun MembersListContent(
                 }
             }
             item { Spacer(Modifier.height(bottomContentPadding)) }
+        }
         }
     }
     val submit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = createAgentSubmit

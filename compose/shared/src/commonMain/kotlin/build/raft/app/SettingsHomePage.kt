@@ -5683,6 +5683,7 @@ private fun SlockAppShellReadyContent(
                                 prewarmAdmissionGate.invalidate("members_scroll")
                                 membersListState = it
                             },
+                            paneLayout = shellScope.adaptivePane.layout,
                             onForegroundActivity = { reason ->
                                 prewarmAdmissionGate.invalidate("members_$reason")
                             }
@@ -16645,6 +16646,7 @@ private fun SharedMembersScreen(
     scrollToTopRequest: Int = 0,
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
+    paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
     onForegroundActivity: (String) -> Unit = {}
 ) {
     val errorStrings = localizedErrorPresentationStrings()
@@ -16958,6 +16960,7 @@ private fun SharedMembersScreen(
             MembersRouteContent(
                 payload = renderMembersPayload,
                 refreshing = refreshing,
+                paneLayout = paneLayout,
                 onAddHuman = {
                     onForegroundActivity("add_human")
                     loadInviteJoinLink()
