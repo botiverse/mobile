@@ -156,24 +156,21 @@ path, expected = sys.argv[1], int(sys.argv[2])
 with open(path, encoding="utf-8") as source:
     payload = json.load(source)
 
-codes = []
-statuses = []
-def visit(value):
-    if isinstance(value, dict):
-        for key, child in value.items():
-            if key in {"version_code", "versionCode"} and str(child).isdigit():
-                codes.append(int(child))
-            if key in {"status", "release_status", "releaseStatus"} and isinstance(child, str):
-                statuses.append(child.lower())
-            visit(child)
-    elif isinstance(value, list):
-        for child in value:
-            visit(child)
-visit(payload)
-if expected not in codes:
-    raise SystemExit(f"Hands draft does not report expected versionCode {expected}; saw {codes or 'none'}")
-if statuses and "draft" not in statuses:
-    raise SystemExit(f"Hands release is not a draft; saw statuses {statuses}")
+release = payload.get("release") if isinstance(payload, dict) else None
+if not isinstance(release, dict):
+    raise SystemExit("Hands release response has no release object")
+status = release.get("status")
+if not isinstance(status, str) or not status:
+    raise SystemExit("Hands release response has no release.status; refusing to publish")
+if status.lower() != "draft":
+    raise SystemExit(f"Hands release is not a draft; release.status={status}")
+
+build = payload.get("build")
+code = build.get("version_code") if isinstance(build, dict) else None
+if not str(code).isdigit():
+    raise SystemExit("Hands release response has no build.version_code; refusing to publish")
+if int(code) != expected:
+    raise SystemExit(f"Hands draft does not report expected versionCode {expected}; saw {code}")
 PY
 
 run_hands releases update "${HANDS_APP_SLUG}" "${RELEASE_ID}" \
