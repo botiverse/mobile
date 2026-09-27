@@ -115,6 +115,87 @@ class MessageParserTest {
     }
 
     @Test
+    fun parsesContextEmbeddedThreadSummariesLikeThePageParser() {
+        // Task #1142: the server embeds the same summary record on the context endpoint; an
+        // anchored open (Activity row, notification, search) must get reply rows on the first
+        // frame instead of waiting for the targeted refetch.
+        val payload =
+            parseSharedMessageContext(
+                """
+                {
+                  "channelId": "channel-1",
+                  "targetMessageId": "parent-1",
+                  "hasOlder": true,
+                  "hasNewer": false,
+                  "messages": [
+                    {
+                      "id": "parent-1",
+                      "seq": 10,
+                      "channelId": "channel-1",
+                      "senderType": "user",
+                      "senderId": "u-1",
+                      "senderName": "Artin",
+                      "messageType": "chat",
+                      "content": "parent",
+                      "createdAt": "2026-07-25T14:00:00.000Z"
+                    }
+                  ],
+                  "threadSummariesByParentMessageId": {
+                    "parent-1": {
+                      "threadChannelId": "thread-1",
+                      "replyCount": 5,
+                      "unreadCount": 2,
+                      "firstUnreadMessageId": "reply-4"
+                    }
+                  },
+                  "historyLimited": false,
+                  "channelArchived": false
+                }
+                """.trimIndent(),
+                fallbackThreadId = ThreadId("channel-1"),
+            )
+
+        assertEquals(ThreadReplySummariesAuthority.Embedded, payload.replySummariesAuthority)
+        assertEquals("parent-1", payload.targetMessageId?.value)
+        assertEquals(true, payload.hasOlder)
+        val summary = payload.threadSummaries.threads.single()
+        assertEquals("parent-1", summary.parentMessageId?.value)
+        assertEquals("thread-1", summary.threadChannelId?.value)
+        assertEquals(5, summary.replyCount)
+        assertEquals(2, summary.unreadCount)
+        assertEquals("reply-4", summary.firstUnreadMessageId?.value)
+    }
+
+    @Test
+    fun contextMalformedEmbeddedSummariesAreEmbeddedInvalidNotUnavailable() {
+        // The distinction drives whether the store still waits for the targeted refetch:
+        // a present-but-malformed record must not be read as "the server sent nothing".
+        fun parse(summaryField: String) =
+            parseSharedMessageContext(
+                """{"channelId":"channel-1","messages":[]$summaryField}""",
+                fallbackThreadId = ThreadId("channel-1"),
+            ).replySummariesAuthority
+        assertEquals(ThreadReplySummariesAuthority.Embedded, parse(""", "threadSummariesByParentMessageId": {}"""))
+        assertEquals(ThreadReplySummariesAuthority.EmbeddedInvalid, parse(""", "threadSummariesByParentMessageId": []"""))
+        assertEquals(ThreadReplySummariesAuthority.EmbeddedInvalid, parse(""", "threadSummariesByParentMessageId": null"""))
+        assertEquals(
+            ThreadReplySummariesAuthority.EmbeddedInvalid,
+            parse(""", "threadSummariesByParentMessageId": {"parent-1": "not-an-object"}"""),
+        )
+    }
+
+    @Test
+    fun contextWithoutEmbeddedSummariesStaysUnavailable() {
+        val payload =
+            parseSharedMessageContext(
+                """{"channelId":"channel-1","messages":[]}""",
+                fallbackThreadId = ThreadId("channel-1"),
+            )
+        assertEquals(ThreadReplySummariesAuthority.Unavailable, payload.replySummariesAuthority)
+        assertEquals(0, payload.threadSummaries.threads.size)
+    }
+
+    @Test
     fun parsesThreadSummaryIntoDomainMessageReplyMetadata() {
         val payload =
             parseSharedChannelMessages(

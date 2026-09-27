@@ -615,6 +615,7 @@ class DirectAttachmentUploadNetworkContractTest {
             method: String,
             headers: Map<String, String>,
             bodyBytes: ByteArray,
+            onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
         ): SlockHttpExecutorResponse {
             byteBodies += ByteBody(url = url, headers = headers, bytes = bodyBytes)
             bytesFailure?.let { throw it }
@@ -627,6 +628,7 @@ class DirectAttachmentUploadNetworkContractTest {
             method: String,
             headers: Map<String, String>,
             body: SlockHttpFileBody,
+            onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
         ): SlockHttpExecutorResponse {
             fileBodies += body
             consumeFile(body)

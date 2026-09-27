@@ -561,6 +561,7 @@ private fun SharedAgentDetailState.applyAgentActivityUpdate(
 ): SharedAgentDetailState {
     if (event.kind != MemberKind.Agent) return this
     val agentId = event.memberId
+    if (this.agentId != agentId) return this
     if (!event.shouldApplyAfter(agentActivitySeq[agentId])) return this
     val nextActivityLog = agentActivityLogs[agentId].orEmpty().withRealtimeAgentActivity(event, observedAtMillis)
     val nextRealtimeActivityLog =

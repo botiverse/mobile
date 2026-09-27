@@ -79,6 +79,7 @@ internal data class SlockAvatarHttpLoadLease(
 internal class SlockAvatarHttpLoadCoordinator(
     private val maxEntries: Int = 256,
     private val failureCooldownMillis: Long = DEFAULT_FAILURE_COOLDOWN_MILLIS,
+    private val stuckOwnerTimeoutMillis: Long = DEFAULT_STUCK_OWNER_TIMEOUT_MILLIS,
     private val nowMillis: () -> Long = { processOrigin.elapsedNow().inWholeMilliseconds }
 ) {
     private class Entry(
@@ -87,6 +88,32 @@ internal class SlockAvatarHttpLoadCoordinator(
     ) {
         val state = MutableStateFlow(initial)
         var observerCount: Int = 0
+
+        /**
+         * Last time the in-flight owner showed progress (lease issued/adopted or a painter phase
+         * reported). An owner that stays alive but never reports — e.g. its composition is kept
+         * alive but frozen offscreen — is treated as adoptable once this goes stale.
+         */
+        var ownerProgressMillis: Long = 0L
+
+        /**
+         * Consecutive failure count since the last success/idle reset. Drives the bounded
+         * exponential cooldown: each failed generation doubles the wait, so a transient
+         * network error recovers in seconds while a permanently absent resource backs
+         * off to the cap instead of spamming the transport.
+         */
+        var consecutiveFailures: Int = 0
+    }
+
+    private fun cooldownDelayMillis(failures: Int): Long {
+        // First failure waits the base delay; each subsequent consecutive failure doubles
+        // it, capped at the configured maximum so absent resources don't retry forever.
+        val base = failureCooldownMillis.coerceAtMost(MAX_SINGLE_FAILURE_COOLDOWN_MILLIS)
+        var delay = base
+        repeat((failures - 1).coerceAtLeast(0)) {
+            delay = (delay * 2L).coerceAtMost(failureCooldownMillis)
+        }
+        return delay.coerceAtMost(failureCooldownMillis)
     }
 
     private val lock = SynchronizedObject()
@@ -97,6 +124,7 @@ internal class SlockAvatarHttpLoadCoordinator(
     init {
         require(maxEntries > 0)
         require(failureCooldownMillis > 0L)
+        require(stuckOwnerTimeoutMillis > 0L)
     }
 
     fun stateFlow(key: SlockAvatarHttpLoadKey): StateFlow<SlockAvatarHttpLoadSnapshot> =
@@ -133,12 +161,22 @@ internal class SlockAvatarHttpLoadCoordinator(
                 // An in-flight request with no owner (its composable owner left the viewport while
                 // observers remain) is inheritable: a new row adopts the existing generation so the
                 // same download keeps running instead of restarting from byte 0.
-                if (current.ownerToken != null) return@synchronized null
+                // The same applies when the owner token is set but the owner stopped reporting
+                // progress past stuckOwnerTimeoutMillis — e.g. a keep-alive offscreen composition
+                // that still holds the lease but whose fetch pipeline no longer runs. Adoption
+                // bumps the owner token, so a late-waking old owner can no longer write phases.
+                if (
+                    current.ownerToken != null &&
+                    nowMillis() - entry.ownerProgressMillis <= stuckOwnerTimeoutMillis
+                ) {
+                    return@synchronized null
+                }
                 val adopted =
                     SlockAvatarHttpLoadLease(
                         generation = current.generation,
                         ownerToken = ++nextOwnerToken
                     )
+                entry.ownerProgressMillis = nowMillis()
                 entry.state.value = current.copy(ownerToken = adopted.ownerToken)
                 touchLocked(entry)
                 return@synchronized adopted
@@ -149,6 +187,7 @@ internal class SlockAvatarHttpLoadCoordinator(
                     generation = current.generation + 1L,
                     ownerToken = ++nextOwnerToken
                 )
+            entry.ownerProgressMillis = nowMillis()
             entry.state.value =
                 SlockAvatarHttpLoadSnapshot(
                     generation = lease.generation,
@@ -170,8 +209,10 @@ internal class SlockAvatarHttpLoadCoordinator(
             val entry = entries[key] ?: return@synchronized
             val current = entry.state.value
             if (!current.isOwnedBy(lease)) return@synchronized
+            entry.ownerProgressMillis = nowMillis()
             when (painter) {
                 SlockAvatarHttpPainterPhase.Success -> {
+                    entry.consecutiveFailures = 0
                     entry.state.value =
                         current.copy(
                             painter = painter,
@@ -190,11 +231,12 @@ internal class SlockAvatarHttpLoadCoordinator(
                                 painter = SlockAvatarHttpPainterPhase.Empty
                             )
                         } else {
+                            entry.consecutiveFailures += 1
                             current.copy(
                                 painter = painter,
                                 cache = SlockAvatarHttpCacheState.Cooldown,
                                 ownerToken = null,
-                                retryAtMillis = nowMillis() + failureCooldownMillis
+                                retryAtMillis = nowMillis() + cooldownDelayMillis(entry.consecutiveFailures)
                             )
                         }
                 }
@@ -215,12 +257,13 @@ internal class SlockAvatarHttpLoadCoordinator(
             if (current.generation != generation || current.cache != SlockAvatarHttpCacheState.Ready) {
                 return@synchronized
             }
+            entry.consecutiveFailures += 1
             entry.state.value =
                 current.copy(
                     painter = SlockAvatarHttpPainterPhase.Error,
                     cache = SlockAvatarHttpCacheState.Cooldown,
                     ownerToken = null,
-                    retryAtMillis = nowMillis() + failureCooldownMillis
+                    retryAtMillis = nowMillis() + cooldownDelayMillis(entry.consecutiveFailures)
                 )
             touchLocked(entry)
         }
@@ -240,6 +283,7 @@ internal class SlockAvatarHttpLoadCoordinator(
                     // of resetting to Idle so a surviving row can adopt it and continue the download.
                     current.copy(ownerToken = null)
                 } else {
+                    entry.consecutiveFailures = 0
                     current.copy(
                         painter = SlockAvatarHttpPainterPhase.Empty,
                         cache = SlockAvatarHttpCacheState.Idle,
@@ -286,6 +330,14 @@ internal class SlockAvatarHttpLoadCoordinator(
 
     internal companion object {
         const val DEFAULT_FAILURE_COOLDOWN_MILLIS = 5 * 60 * 1_000L
+        const val DEFAULT_STUCK_OWNER_TIMEOUT_MILLIS = 30_000L
+
+        /**
+         * Upper bound on the first (single-failure) cooldown step. Transient errors
+         * recover after roughly this long; consecutive failures double toward
+         * [DEFAULT_FAILURE_COOLDOWN_MILLIS].
+         */
+        const val MAX_SINGLE_FAILURE_COOLDOWN_MILLIS = 10_000L
         private val processOrigin = TimeSource.Monotonic.markNow()
     }
 }

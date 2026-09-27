@@ -23,7 +23,7 @@ import kotlin.time.TimeSource
  * All platforms route HTTP through the KuiklyBase NetworkKMM client
  * (task #12): OHOS because Ktor CIO has no native TLS there (task #6),
  * Android/iOS so the app has one explicit network stack with pooling
- * owned by the infra library (raft.4).
+ * owned by the infra library (raft.6).
  */
 internal fun createPlatformSlockHttpExecutor(
     warningLogger: (String) -> Unit
@@ -89,6 +89,16 @@ private const val SLOCK_UPLOAD_CONNECT_TIMEOUT_MILLIS = 10_000L
  * transfer failures.
  */
 private const val SLOCK_BYTES_CONNECT_TIMEOUT_MILLIS = 10_000L
+
+/**
+ * task #321 / #783 follow-up (human ruling by @artin on 2026-09-11 in
+ * `#proj-mobile:aaad615a`): the presigned direct-upload PUT carries the same
+ * file stream as multipart, but a 160 MiB cross-region PUT can legitimately
+ * outlive the multipart 3-minute budget. Direct-upload streaming file bodies
+ * therefore get a 30-minute total budget; multipart streaming keeps
+ * [SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS] unchanged.
+ */
+internal const val SLOCK_DIRECT_UPLOAD_TOTAL_TIMEOUT_MILLIS = 1_800_000L
 
 /**
  * Only multipart requests that stream a fileRef body get the upload budget;
@@ -328,6 +338,7 @@ internal class NetworkKmmSlockHttpExecutor(
         method: String,
         headers: Map<String, String>,
         bodyBytes: ByteArray,
+        onUploadProgress: ((SlockTransferProgress) -> Unit)?,
     ): SlockHttpExecutorResponse =
         executeBinary(
             priority = priority,
@@ -340,6 +351,7 @@ internal class NetworkKmmSlockHttpExecutor(
             connectTimeoutMillis = SLOCK_BYTES_CONNECT_TIMEOUT_MILLIS,
             bodyKind = "bytes",
             http1Only = true,
+            onUploadProgress = onUploadProgress,
         )
 
     override suspend fun executeFile(
@@ -348,6 +360,7 @@ internal class NetworkKmmSlockHttpExecutor(
         method: String,
         headers: Map<String, String>,
         body: SlockHttpFileBody,
+        onUploadProgress: ((SlockTransferProgress) -> Unit)?,
     ): SlockHttpExecutorResponse =
         executeBinary(
             priority = priority,
@@ -361,10 +374,11 @@ internal class NetworkKmmSlockHttpExecutor(
                 openStreamBlock = { _ -> body.openStream() },
             ),
             requestBytes = body.contentLength,
-            totalTimeoutMillis = SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS,
+            totalTimeoutMillis = SLOCK_DIRECT_UPLOAD_TOTAL_TIMEOUT_MILLIS,
             connectTimeoutMillis = SLOCK_UPLOAD_CONNECT_TIMEOUT_MILLIS,
             bodyKind = "file",
             http1Only = true,
+            onUploadProgress = onUploadProgress,
         )
 
     private suspend fun executeBinary(
@@ -378,6 +392,7 @@ internal class NetworkKmmSlockHttpExecutor(
         connectTimeoutMillis: Long,
         bodyKind: String,
         http1Only: Boolean = false,
+        onUploadProgress: ((SlockTransferProgress) -> Unit)?,
     ): SlockHttpExecutorResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         // Presigned URLs are bearer capabilities.  Never include the URL (or its query) in
@@ -406,6 +421,19 @@ internal class NetworkKmmSlockHttpExecutor(
                 request.flagHttp1Only(warningLogger)
             }
             traceHeaders.forEach { (name, value) -> request.setHeader(name, value) }
+            if (onUploadProgress != null) {
+                request.progress =
+                    NetworkProgressCallbacks(
+                        uploadProgress = { progress ->
+                            onUploadProgress(
+                                SlockTransferProgress(
+                                    bytesTransferred = progress.bytesTransferred,
+                                    bytesTotal = progress.bytesTotal,
+                                )
+                            )
+                        }
+                    )
+            }
             val response = executeNetworkRequest(
                 request = request,
                 methodClass = SlockNetworkMethodClass.ProcessMutation,

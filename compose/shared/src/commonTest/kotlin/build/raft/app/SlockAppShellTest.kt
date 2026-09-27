@@ -2347,10 +2347,10 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun foregroundBannerDropsReplyThreadWhenParentKindUnresolved() {
-        // t5/#419 A1: a reply thread whose parent kind can't be resolved (parentChannelKind
-        // absent -> #249 drops the parent projection; the parent id only self-resolves the
-        // thread via alias) must be suppressed, never silently opened on the channel surface.
+    fun foregroundBannerOpensReplyThreadWhenParentKindUnresolved() {
+        // #304/#307: a reply thread whose parent kind can't be resolved (parentChannelKind
+        // absent) still carries a trustworthy source tuple — the banner is given and the
+        // thread opens with the parent kind left null rather than being suppressed.
         val message =
             appShellForegroundTestMessage(
                 id = "reply-1",
@@ -2387,8 +2387,13 @@ class SlockAppShellTest {
                 conversationDirectory = directory
             )
 
-        assertNull(result.banner)
-        assertEquals("conversation_missing", result.suppressReason)
+        val banner = assertNotNull(result.banner)
+        assertNull(result.suppressReason)
+        assertEquals(ConversationKind.Thread, banner.conversation.kind)
+        assertEquals("parent-channel", banner.conversation.thread?.parentChannelId?.value)
+        assertEquals("parent-message", banner.conversation.thread?.parentMessageId?.value)
+        assertNull(banner.conversation.thread?.parentSurfaceKind)
+        assertNull(banner.conversation.thread?.parentChannelKind)
     }
 
     @Test
@@ -2886,7 +2891,7 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun resolveOpenRequestKeepsMismatchedActivityPendingWithoutTypedSourceParentKind() {
+    fun resolveOpenRequestOpensMismatchedActivityWithoutTypedSourceParentKind() {
         val directory =
             slockConversationDirectoryStateFromProjections(
                 listOf(
@@ -2922,7 +2927,8 @@ class SlockAppShellTest {
                 threadChannelId = ChannelId("reply-stream"),
                 parentChannelId = ChannelId("joint-local-parent"),
                 parentChannelName = "member-visible-joint",
-                // The mismatched directory must not supply this missing source type.
+                // task #304: even though the mismatched directory cannot supply the
+                // missing parent kind, the source tuple alone is trusted to open.
                 parentChannelKind = null,
                 parentMessageId = MessageId("parent-message"),
                 latestActivityMessageId = MessageId("reply-1")
@@ -2936,13 +2942,29 @@ class SlockAppShellTest {
                 diagnosticsLogger = logs::add
             )
 
-        val pending = assertNotNull(resolution as? ConversationOpenResolution.Pending)
-        assertEquals("thread_parent_unresolved", pending.reason)
-        assertEquals("joint-local-parent", pending.sourceMessageIdentity.parentChannelId)
-        assertNull(pending.sourceMessageIdentity.parentConversationKind)
+        val request = assertNotNull((resolution as? ConversationOpenResolution.Resolved)?.request)
+        assertEquals(ConversationKind.Thread, request.conversationIdentity.kind)
+        val thread = assertNotNull(request.conversationIdentity.thread)
+        assertEquals("joint-local-parent", thread.parentChannelId.value)
+        assertEquals("parent-message", thread.parentMessageId.value)
+        assertNull(thread.parentSurfaceKind)
+        assertNull(thread.parentChannelKind)
+        assertEquals("reply-1", request.anchorMessageId)
+        val launchPayload =
+            assertNotNull(
+                buildAppShellThreadPayload(
+                    conversation = request.conversationIdentity,
+                    anchorMessageId = request.anchorMessageId,
+                    originFallback = request.originFallback
+                )
+            )
+        assertEquals("reply-stream", launchPayload.sourceThreadId)
+        assertEquals("reply-stream", launchPayload.streamChannelId)
+        assertEquals("joint-local-parent", launchPayload.parentChannelId)
+        assertEquals("parent-message", launchPayload.parentMessageId)
         val log = assertNotNull(logs.firstOrNull())
         assertTrue(log.contains("activityThreadProjectionMismatch=true"), log)
-        assertTrue(log.contains("pending:thread_parent_unresolved"), log)
+        assertTrue(log.contains("result=resolved:Thread"), log)
     }
 
     @Test

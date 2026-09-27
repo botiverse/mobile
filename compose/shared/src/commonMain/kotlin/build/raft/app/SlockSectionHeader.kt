@@ -61,7 +61,8 @@ internal enum class SlockMainTabHeaderSurface(
     Members(SlockLucideIconName.Users),
     Tasks(SlockLucideIconName.SquareCheckBig),
     Settings(SlockLucideIconName.Settings),
-    Dms(SlockLucideIconName.MessageSquare)
+    Dms(SlockLucideIconName.MessageSquare),
+    More(SlockLucideIconName.Ellipsis)
 }
 
 internal object SlockCollapsibleSectionTokens {

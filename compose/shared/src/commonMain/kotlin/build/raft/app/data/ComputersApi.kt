@@ -864,11 +864,12 @@ private fun AgentCreateFormDefinitionDto.toBuiltInPiDomain(
 ): SharedAgentCreateFormDefinition? {
     if (dataSchema.type != "object" || dataSchema.additionalProperties) return null
     val properties = dataSchema.properties.mapValues { (_, field) -> field.toDomain() ?: return null }
-    if (properties.keys != setOf("providerId", "apiKey", "baseUrl", "supportsImageInput", "model", "envVars")) return null
+    if (properties.keys != setOf("providerId", "apiKey", "baseUrl", "supportsImageInput", "model", "loadLocalPlugins", "envVars")) return null
     if (properties["providerId"] != SharedAgentCreateFieldSchema.StringField("Provider", 1, null, false)) return null
     if (properties["apiKey"] != SharedAgentCreateFieldSchema.StringField("API Key", 1, null, true)) return null
     if (properties["baseUrl"] != SharedAgentCreateFieldSchema.StringField("Base URL", 1, "uri", false)) return null
     if (properties["supportsImageInput"] != SharedAgentCreateFieldSchema.BooleanField("Image input")) return null
+    if (properties["loadLocalPlugins"] != SharedAgentCreateFieldSchema.BooleanField("Load local Pi plugins")) return null
     if (properties["model"] != SharedAgentCreateFieldSchema.StringField("Model", 1, null, false)) return null
     if (properties["envVars"] != SharedAgentCreateFieldSchema.StringMapField("Environment Variables")) return null
     val required = dataSchema.required.map { it.trim() }
@@ -876,10 +877,10 @@ private fun AgentCreateFormDefinitionDto.toBuiltInPiDomain(
     if (required.toSet() != setOf("providerId", "apiKey", "model")) return null
     val order = uiSchema.order.map { it.trim() }
     if (order.any { it.isBlank() } || order.distinct().size != order.size || order.toSet() != properties.keys) return null
-    if (order != listOf("providerId", "apiKey", "baseUrl", "supportsImageInput", "model", "envVars")) return null
+    if (order != listOf("providerId", "apiKey", "baseUrl", "supportsImageInput", "model", "loadLocalPlugins", "envVars")) return null
     val advancedPointers = uiSchema.layout.advanced.map { it.trim() }
     if (advancedPointers.any { !it.isPropertyPointerTo(properties.keys) }) return null
-    if (advancedPointers != listOf("/envVars")) return null
+    if (advancedPointers != listOf("/loadLocalPlugins", "/envVars")) return null
     val visibility =
         uiSchema.visibility.map { rule ->
             val pointer = rule.pointer.trim()

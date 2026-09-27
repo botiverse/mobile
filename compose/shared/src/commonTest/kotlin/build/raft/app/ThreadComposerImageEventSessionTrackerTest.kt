@@ -71,7 +71,8 @@ class ThreadComposerImageEventSessionTrackerTest {
                 sizeBytes = 10L,
                 groupId = "group-a",
                 groupIndex = 0,
-                groupTotal = 2
+                groupTotal = 2,
+                replaceAttachmentId = ""
             )
         assertIs<ThreadComposerImageEventBatchOffer.Added>(
             accumulator.offer(ThreadComposerImageEventBatchItem(JSONObject(), payload))

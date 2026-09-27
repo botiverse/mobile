@@ -771,7 +771,9 @@ internal fun slockMarkdownAnnotator(
                 allowLocalFallback = child.type != RaftMarkdownTokenTypes.REFERENCE,
             )
         },
-        inlineContent = { emptyMap() },
+        inlineContent = {
+            rendererInput.activeActionSpinnerInlineContent()
+        },
         config = markdownAnnotatorConfig(eolAsNewLine = softLineBreaksAsNewLines)
     )
 }
@@ -780,7 +782,7 @@ private data class SlockRichTextRendererInput(
     val document: SlockRichTextDocument,
     val capabilities: SlockRichTextCapabilities
 ) {
-    private val slockRefTokens: List<SlockRichTextInlineToken> =
+    val slockRefTokens: List<SlockRichTextInlineToken> =
         document.inlineTokens
             .filter { token -> token.kind == SlockRichTextInlineKind.SlockRef && token.actionId != null }
             .sortedBy { token -> token.range.start }
@@ -790,6 +792,15 @@ private data class SlockRichTextRendererInput(
     val slockRefTokenCount: Int = slockRefTokens.size
     val inlineCodeTokenCount: Int =
         document.inlineTokens.count { token -> token.kind == SlockRichTextInlineKind.InlineCode }
+
+    fun activeActionSpinnerInlineContent(): Map<String, InlineTextContent> {
+        val activeTokens = slockRefTokens.filter { it.active && it.trailingIndicator.isEmpty() && it.actionId != null }
+        if (activeTokens.isEmpty()) return emptyMap()
+        return activeTokens.associate { token ->
+            val actionId = requireNotNull(token.actionId)
+            slockMarkdownActionSpinnerInlineId(actionId) to slockMarkdownActionSpinnerInlineTextContent()
+        }
+    }
 
     fun actionFor(token: SlockRichTextInlineToken): SlockRichTextAction? =
         token.actionId?.let(actionsById::get)
@@ -814,6 +825,26 @@ private data class SlockRichTextRendererInput(
         }
     }
 }
+
+internal fun slockMarkdownActionSpinnerInlineId(actionId: String): String =
+    "slock-markdown-action-spinner:$actionId"
+
+internal fun slockMarkdownActionSpinnerInlineTextContent(): InlineTextContent =
+    InlineTextContent(
+        placeholder =
+            Placeholder(
+                width = 12.sp,
+                height = 12.sp,
+            )
+    ) {
+        SlockLucideIcon(
+            name = SlockLucideIconName.LoaderCircle,
+            modifier = Modifier.size(12.dp),
+            color = SlockColor.TextBlackArgb,
+            strokeWidth = 2f,
+            spinning = true,
+        )
+    }
 
 private data class SlockRichTextSplitTagStart(
     val token: SlockRichTextInlineToken,
@@ -1014,6 +1045,10 @@ private fun AnnotatedString.Builder.appendSlockRichTextToken(
         )
     ) {
         append(label)
+        if (token.active && token.trailingIndicator.isEmpty()) {
+            append(" ")
+            appendInlineContent(slockMarkdownActionSpinnerInlineId(action.id), "\uFFFC")
+        }
     }
     pop()
 }
@@ -1938,7 +1973,7 @@ fun SlockMarkdownBody(
     inlineContentScope: String? = null,
     activeTagKey: String? = null,
     activeActionId: String? = null,
-    activeActionIndicator: String = SlockMarkdownPendingActionIndicator,
+    activeActionIndicator: String = "",
     sectionHeadingTopPadding: Dp = 0.dp,
     onSectionHeadingPositioned: ((Rect) -> Unit)? = null,
     softLineBreaksAsNewLines: Boolean = true,
@@ -2168,11 +2203,14 @@ fun SlockMarkdownBody(
     // annotator MUST be folded into this revision value, or the vendor memo
     // will serve stale output for it.
     val annotationRevision: List<String?> =
-        if (resolveTagLabel == null || richTextDocument.actions.isEmpty()) {
-            emptyList()
-        } else {
-            richTextDocument.actions.map { action ->
-                currentResolveTagLabel?.invoke(action.toThreadMarkdownTag())
+        buildList {
+            if (bodyActiveActionId != null) add("activeAction:$bodyActiveActionId")
+            if (bodyActiveTagKey != null) add("activeTag:$bodyActiveTagKey")
+            if (activeActionIndicator.isNotEmpty()) add("indicator:$activeActionIndicator")
+            if (resolveTagLabel != null && richTextDocument.actions.isNotEmpty()) {
+                richTextDocument.actions.forEach { action ->
+                    add(currentResolveTagLabel?.invoke(action.toThreadMarkdownTag()))
+                }
             }
         }
     val padding = remember {
@@ -2849,6 +2887,8 @@ private fun slockRichTextChromeKind(
     active: Boolean = false
 ): SlockRichTextChromeKind =
     when {
+        active && (kind == ThreadMarkdownTagKind.ChannelThread || kind == ThreadMarkdownTagKind.DirectMessageThread) ->
+            SlockRichTextChromeKind.Thread
         active -> SlockRichTextChromeKind.Active
         kind == ThreadMarkdownTagKind.UserMention && highlighted -> SlockRichTextChromeKind.SelfMention
         kind == ThreadMarkdownTagKind.UserMention -> SlockRichTextChromeKind.OrdinaryMention

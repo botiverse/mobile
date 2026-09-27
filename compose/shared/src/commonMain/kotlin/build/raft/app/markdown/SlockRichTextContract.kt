@@ -31,7 +31,8 @@ data class SlockRichTextInlineToken(
     val styleTokenId: String? = chrome?.styleToken?.id,
     val actionId: String? = null,
     val refKind: SlockRichTextRefKind? = null,
-    val trailingIndicator: String = ""
+    val trailingIndicator: String = "",
+    val active: Boolean = false
 )
 
 enum class SlockRichTextInlineKind(val wireValue: String) {
@@ -324,7 +325,8 @@ internal fun buildSlockRichTextDocumentFromMarkdownPlan(
                             ),
                         actionId = action.id,
                         refKind = tag.kind.toRichTextRefKind(),
-                        trailingIndicator = activeActionIndicator.takeIf { actionPending }.orEmpty()
+                        trailingIndicator = activeActionIndicator.takeIf { actionPending }.orEmpty(),
+                        active = actionPending
                     )
             }
         }
@@ -446,6 +448,8 @@ private fun ThreadMarkdownTag.toRichTextChromeKind(
     active: Boolean
 ): SlockRichTextChromeKind =
     when {
+        active && (kind == ThreadMarkdownTagKind.ChannelThread || kind == ThreadMarkdownTagKind.DirectMessageThread) ->
+            SlockRichTextChromeKind.Thread
         active -> SlockRichTextChromeKind.Active
         kind == ThreadMarkdownTagKind.UserMention && highlighted -> SlockRichTextChromeKind.SelfMention
         kind == ThreadMarkdownTagKind.UserMention -> SlockRichTextChromeKind.OrdinaryMention
