@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HANDS_CLI="${HANDS_CLI:-hands}"
-HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-@botiverse/hands-cli@0.5.2}"
+HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-@botiverse/hands-cli@0.5.17}"
 HANDS_NPM_REGISTRY="${HANDS_NPM_REGISTRY:-https://registry.npmjs.org/}"
 HANDS_API="${HANDS_API:-https://hands.build}"
 HANDS_APP_SLUG="${HANDS_APP_SLUG:-raft-android}"
@@ -129,7 +129,25 @@ PUBLIC_JSON="$(mktemp)"
 trap 'rm -f "${RELEASE_JSON}" "${PUBLIC_JSON}"' EXIT
 
 run_hands whoami
-run_hands releases show "${HANDS_APP_SLUG}" "${RELEASE_ID}" --json >"${RELEASE_JSON}"
+# `hands releases show --json` prints human text on CLI 0.5.17, so read the
+# release through the raw API instead. Resolve the app slug to its id first.
+APPS_JSON="$(mktemp)"
+trap 'rm -f "${RELEASE_JSON}" "${PUBLIC_JSON}" "${APPS_JSON}"' EXIT
+run_hands api GET /api/apps --json >"${APPS_JSON}"
+APP_ID="$(python3 - "${APPS_JSON}" "${HANDS_APP_SLUG}" <<'PY'
+import json
+import sys
+
+path, slug = sys.argv[1], sys.argv[2]
+with open(path, encoding="utf-8") as source:
+    payload = json.load(source)
+matches = [app["id"] for app in payload.get("apps", []) if app.get("slug") == slug]
+if len(matches) != 1:
+    raise SystemExit(f"expected exactly one Hands app with slug {slug}; saw {len(matches)}")
+print(matches[0])
+PY
+)"
+run_hands api GET "/api/apps/${APP_ID}/releases/${RELEASE_ID}" --json >"${RELEASE_JSON}"
 python3 - "${RELEASE_JSON}" "${EXPECTED_CODE}" <<'PY'
 import json
 import sys
@@ -138,24 +156,21 @@ path, expected = sys.argv[1], int(sys.argv[2])
 with open(path, encoding="utf-8") as source:
     payload = json.load(source)
 
-codes = []
-statuses = []
-def visit(value):
-    if isinstance(value, dict):
-        for key, child in value.items():
-            if key in {"version_code", "versionCode"} and str(child).isdigit():
-                codes.append(int(child))
-            if key in {"status", "release_status", "releaseStatus"} and isinstance(child, str):
-                statuses.append(child.lower())
-            visit(child)
-    elif isinstance(value, list):
-        for child in value:
-            visit(child)
-visit(payload)
-if expected not in codes:
-    raise SystemExit(f"Hands draft does not report expected versionCode {expected}; saw {codes or 'none'}")
-if statuses and "draft" not in statuses:
-    raise SystemExit(f"Hands release is not a draft; saw statuses {statuses}")
+release = payload.get("release") if isinstance(payload, dict) else None
+if not isinstance(release, dict):
+    raise SystemExit("Hands release response has no release object")
+status = release.get("status")
+if not isinstance(status, str) or not status:
+    raise SystemExit("Hands release response has no release.status; refusing to publish")
+if status.lower() != "draft":
+    raise SystemExit(f"Hands release is not a draft; release.status={status}")
+
+build = payload.get("build")
+code = build.get("version_code") if isinstance(build, dict) else None
+if not str(code).isdigit():
+    raise SystemExit("Hands release response has no build.version_code; refusing to publish")
+if int(code) != expected:
+    raise SystemExit(f"Hands draft does not report expected versionCode {expected}; saw {code}")
 PY
 
 run_hands releases update "${HANDS_APP_SLUG}" "${RELEASE_ID}" \

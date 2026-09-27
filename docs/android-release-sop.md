@@ -379,7 +379,7 @@ hands whoami
 ```
 
 Hands CLI `0.5.2` or newer is required for `HANDS_BEARER_TOKEN`. The finalizer
-falls back to `@botiverse/hands-cli@0.5.2` from the official npm registry when
+falls back to `@botiverse/hands-cli@0.5.17` from the official npm registry when
 `hands` is not installed. This avoids delayed package-mirror propagation;
 override `HANDS_NPM_REGISTRY` only for a trusted registry that already carries
 the required CLI version.
