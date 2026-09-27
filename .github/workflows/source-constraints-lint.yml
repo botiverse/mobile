@@ -36,6 +36,7 @@ on:
       - "third_party/kuikly-compose-markdown/**"
       - "scripts/ci/check_source_constraints.py"
       - "scripts/ci/check_string_edge_spaces.py"
+      - "scripts/ci/verify_no_production_visual_pages.py"
       - ".github/workflows/source-constraints-lint.yml"
   push:
     branches:
@@ -76,3 +77,10 @@ jobs:
 
       - name: Enforce string edge-space check
         run: python3 scripts/ci/check_string_edge_spaces.py
+
+      # task #194: verifyNoProductionVisualPages as a required CI gate.
+      - name: Self-test verify no production visual pages
+        run: python3 scripts/ci/verify_no_production_visual_pages.py --self-test
+
+      - name: Enforce no production visual pages
+        run: python3 scripts/ci/verify_no_production_visual_pages.py
