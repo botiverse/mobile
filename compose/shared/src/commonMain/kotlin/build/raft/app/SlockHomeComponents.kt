@@ -6566,18 +6566,6 @@ private fun SlockAvatarHttpImage(
         }
     }
 
-    LaunchedEffect(diagnostics, loadKey, loadState, lease?.ownerToken) {
-        val row = diagnostics ?: return@LaunchedEffect
-        row.logger(
-            "thread_avatar_painter messageHash=${row.messageHash} authorHash=${row.authorHash} " +
-                "source=${loadKey.diagnosticsSource} ${activeSource.slockAvatarDiagnosticsUrlShape(apiBaseUrl)} " +
-                "activeEndpoint=${loadState.endpoint.diagnosticsName()} " +
-                "model=${if (parseSlockAvatarMountedRenderModel(candidateImageModel) != null) "managed" else "url"} " +
-                "painter=${loadState.painter.diagnosticsName()} " +
-                "cache=${loadState.diagnosticsCacheState(lease?.ownerToken)}"
-        )
-    }
-
     val candidateImageModel =
         if (avatarMountedBinding == null || cacheSubject == null) {
             activeSource
@@ -6591,6 +6579,17 @@ private fun SlockAvatarHttpImage(
                 ?: initialManagedModel
                 ?: activeSource
         }
+    LaunchedEffect(diagnostics, loadKey, loadState, lease?.ownerToken, candidateImageModel) {
+        val row = diagnostics ?: return@LaunchedEffect
+        row.logger(
+            "thread_avatar_painter messageHash=${row.messageHash} authorHash=${row.authorHash} " +
+                "source=${loadKey.diagnosticsSource} ${activeSource.slockAvatarDiagnosticsUrlShape(apiBaseUrl)} " +
+                "activeEndpoint=${loadState.endpoint.diagnosticsName()} " +
+                "model=${if (parseSlockAvatarMountedRenderModel(candidateImageModel) != null) "managed" else "url"} " +
+                "painter=${loadState.painter.diagnosticsName()} " +
+                "cache=${loadState.diagnosticsCacheState(lease?.ownerToken)}"
+        )
+    }
     val imageModel =
         slockAvatarHttpAdmittedImageModel(
             candidateImageModel = candidateImageModel,
