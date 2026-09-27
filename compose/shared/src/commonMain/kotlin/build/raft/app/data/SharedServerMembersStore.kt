@@ -981,6 +981,40 @@ class SharedServerMembersStore internal constructor(
         )
     }
 
+    /**
+     * Shape-only diagnostic for the avatarUrl-loss lane behind task #344: logs whenever a
+     * merge turns a previously concrete `avatarUrl`/`avatar` into null. Emits member/server
+     * hashes plus the incoming avatar bucket — never the raw URL.
+     */
+    private fun logMemberAvatarUrlDropped(
+        serverKey: String,
+        existing: MemberProfile,
+        incoming: MemberProfile,
+        merged: MemberProfile,
+        source: String
+    ) {
+        val hadConcrete =
+            !existing.avatarUrl.isNullOrBlank() ||
+                (existing.avatar as? AvatarReference.Url) != null
+        val lostConcrete =
+            merged.avatarUrl.isNullOrBlank() &&
+                (merged.avatar as? AvatarReference.Url) == null
+        if (!hadConcrete || !lostConcrete) return
+        val incomingAvatarKind =
+            when {
+                incoming.avatar is AvatarReference.Url ||
+                    incoming.avatarUrl?.startsWith("http") == true -> "url"
+                incoming.avatar != null -> "pixel"
+                else -> "none"
+            }
+        logger(
+            "member_avatar_url_dropped source=$source " +
+                "serverHash=${serverKey.slockAvatarDiagnosticsHash()} " +
+                "memberHash=${existing.id.value.slockAvatarDiagnosticsHash()} " +
+                "incomingAvatar=$incomingAvatarKind"
+        )
+    }
+
     private fun cacheProfiles(
         key: String,
         profiles: List<MemberProfile>,
@@ -2877,36 +2911,6 @@ private fun MemberProfile.withCachedAvatarCandidate(candidate: MemberProfile): M
  * Shape-only diagnostic for the avatarUrl-loss lane behind task #344: logs whenever a
  * merge turns a previously concrete `avatarUrl`/`avatar` into null. Emits member/server
  * hashes plus the incoming avatar bucket — never the raw URL.
- */
-private fun SharedServerMembersStore.logMemberAvatarUrlDropped(
-    serverKey: String,
-    existing: MemberProfile,
-    incoming: MemberProfile,
-    merged: MemberProfile,
-    source: String
-) {
-    val hadConcrete =
-        !existing.avatarUrl.isNullOrBlank() ||
-            (existing.avatar as? AvatarReference.Url) != null
-    val lostConcrete =
-        merged.avatarUrl.isNullOrBlank() &&
-            (merged.avatar as? AvatarReference.Url) == null
-    if (!hadConcrete || !lostConcrete) return
-    val incomingAvatarKind =
-        when {
-            incoming.avatar is AvatarReference.Url ||
-                incoming.avatarUrl?.startsWith("http") == true -> "url"
-            incoming.avatar != null -> "pixel"
-            else -> "none"
-        }
-    logger(
-        "member_avatar_url_dropped source=$source " +
-            "serverHash=${serverKey.slockAvatarDiagnosticsHash()} " +
-            "memberHash=${existing.id.value.slockAvatarDiagnosticsHash()} " +
-            "incomingAvatar=$incomingAvatarKind"
-    )
-}
-
 private fun List<MemberProfile>.toServerMembersMemberSuggestions(
     localServerId: String? = null
 ): List<SharedMembersMemberSuggestion> =
