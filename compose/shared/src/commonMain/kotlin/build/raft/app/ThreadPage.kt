@@ -13985,7 +13985,11 @@ private fun ThreadPageContentContent(
                 )
             } else if (accessResolution == ThreadAccessResolution.NoPermission) {
                 ThreadStateMessage(
-                    stringResource(MR.strings.thread_state_no_permission),
+                    if (payload.errorServerMessage.isEdgeBlockedMarker()) {
+                        stringResource(MR.strings.thread_state_edge_blocked)
+                    } else {
+                        stringResource(MR.strings.thread_state_no_permission)
+                    },
                     if (payload.errorServerMessage.isEdgeBlockedMarker()) {
                         stringResource(MR.strings.error_edge_blocked)
                     } else {
@@ -15793,7 +15797,11 @@ private fun ThreadChatTabContent(
             )
         "no_permission" ->
             ThreadStateMessage(
-                stringResource(MR.strings.thread_state_no_permission),
+                if (renderConfig.errorServerMessage.isEdgeBlockedMarker()) {
+                    stringResource(MR.strings.thread_state_edge_blocked)
+                } else {
+                    stringResource(MR.strings.thread_state_no_permission)
+                },
                 if (renderConfig.errorServerMessage.isEdgeBlockedMarker()) {
                     stringResource(MR.strings.error_edge_blocked)
                 } else {

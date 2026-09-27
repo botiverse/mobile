@@ -192,8 +192,8 @@ internal fun ThreadFilesContent(
             "no_permission" ->
                 if (payload.errorServerMessage.isEdgeBlockedMarker()) {
                     ThreadFilesStateMessage(
-                        stringResource(MR.strings.error_edge_blocked),
-                        payload.errorCode ?: "edge_blocked"
+                        stringResource(MR.strings.thread_state_edge_blocked),
+                        stringResource(MR.strings.error_edge_blocked)
                     )
                 } else {
                     ThreadFilesStateMessage(
