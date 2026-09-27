@@ -419,10 +419,11 @@ scripts/finalize_android_hands_release.sh \
 `--confirm-publish` is deliberately mandatory. It is an operator assertion
 that the owner has given the release go; it is not a replacement for that go.
 
-After the public verification passes, create the annotated `vX.Y.Z` tag only
-if the release owner wants a git audit tag. The tag must point at the verified
-source commit and must never be used to re-trigger the Android release
-workflow. iOS uses a separate platform- and build-qualified audit tag because
+After the public verification passes, create and push the annotated `vX.Y.Z`
+git audit tag. This is required, not optional (artin, 2026-09-27). The tag
+must point at the verified source commit, its message should record the
+versionCode, Hands release id, APK SHA-256 and CI run, and it must never be
+used to re-trigger the Android release workflow. iOS uses a separate platform- and build-qualified audit tag because
 its marketing version can stay fixed across TestFlight builds; follow
 [iOS Hands Release Practices](ios-hands-release-practices-2026-07-09.md#post-delivery-git-audit-tag)
 instead of reusing an Android `vX.Y.Z` tag.
@@ -436,7 +437,7 @@ history.
 After activation and public endpoint verification:
 
 1. Record the released source commit, versionCode, Hands release id, APK
-   SHA-256, approved notes, smoke evidence, and optional audit tag.
+   SHA-256, approved notes, smoke evidence, and the `vX.Y.Z` audit tag.
 2. Open a PR from `release-X.Y.Z` to `main`. Do not push directly to `main`.
 3. Review the complete merge diff. `main` may have advanced during
    stabilization, so resolve conflicts by preserving both the shipped fixes
