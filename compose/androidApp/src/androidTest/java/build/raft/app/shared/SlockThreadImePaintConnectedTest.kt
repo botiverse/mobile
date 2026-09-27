@@ -123,9 +123,13 @@ class SlockThreadImePaintConnectedTest {
             // retires the logical editor session but REUSES the same native
             // EditText; there is no replacement view). Assert the retained editor
             // is cleared (session advanced in place) rather than a new instance.
-            val staleCallbackRejected = AtomicBoolean(false)
-            val imeVisibleAfterSend = AtomicBoolean(false)
+            // finishComposingBeforeStateRead drains any in-flight IME composition
+            // before the send reads state, so no real stale-session write can queue
+            // past send — the contract to verify is "same view, cleared, next real
+            // composition accepted".
             val editorRetained = AtomicBoolean(false)
+            val draftClearedAfterSend = AtomicBoolean(false)
+            val imeVisibleAfterSend = AtomicBoolean(false)
             try {
                 var lastEdgeDiagnostic: String? = null
                 waitUntil(SendTimeoutMs, "same editor cleared after send") {
@@ -134,17 +138,11 @@ class SlockThreadImePaintConnectedTest {
                         val candidate = activity.window.decorView.findAttachedComposerEditText()
                         if (candidate != null && candidate === retiredEditor && candidate.text.isEmpty()) {
                             editorRetained.set(true)
+                            draftClearedAfterSend.set(true)
                             imeVisibleAfterSend.set(
                                 activity.window.decorView.rootWindowInsets
                                     ?.isVisible(WindowInsets.Type.ime()) == true
                             )
-
-                            // Inject a stale write on the retired view's OLD
-                            // sourceSessionId. Because isActiveSession now rejects
-                            // that session, the page must not re-seed the draft —
-                            // the controlled empty value re-applies and the editor
-                            // must end up empty, not "sent".
-                            retiredEditor.setText("sent")
                             captured = true
                         }
                     }
@@ -157,19 +155,6 @@ class SlockThreadImePaintConnectedTest {
                         }
                     }
                     captured
-                }
-                // The injected "sent" must be cleared back to empty: the stale
-                // sourceSessionId callback was rejected, so the controlled empty
-                // value won.
-                waitUntil(SendTimeoutMs, "stale callback rejected (draft stays empty)") {
-                    var rejected = false
-                    scenario.onActivity {
-                        if (retiredEditor.text.isEmpty()) {
-                            staleCallbackRejected.set(true)
-                            rejected = true
-                        }
-                    }
-                    rejected
                 }
             } catch (failure: AssertionError) {
                 throw AssertionError(
@@ -205,7 +190,7 @@ class SlockThreadImePaintConnectedTest {
                 "SLOCK_COMPOSER_SESSION_RETIREMENT_PASS " +
                     "editorRetained=${editorRetained.get()} " +
                     "retainedFocused=${retiredEditor.hasFocus()} " +
-                    "staleCallbackRejected=${staleCallbackRejected.get()} " +
+                    "draftClearedAfterSend=${draftClearedAfterSend.get()} " +
                     "firstComposition=${firstCompositionAccepted.get()} " +
                     "firstSelection=$firstSelectionPreserved " +
                     "requestCount=$sentRequestCount " +

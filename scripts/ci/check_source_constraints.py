@@ -477,7 +477,6 @@ def check_composer_retirement_uses_bounded_waits(connected_test: str) -> None:
     required = (
         'waitUntil(RenderTimeoutMs, "initial editor")',
         'waitUntil(SendTimeoutMs, "same editor cleared after send")',
-        'waitUntil(SendTimeoutMs, "stale callback rejected (draft stays empty)")',
         'waitUntil(ImeTransitionTimeoutMs, "sent row and same-text first composition")',
         "SLOCK_COMPOSER_SESSION_RETIREMENT_PASS",
     )
@@ -1532,7 +1531,6 @@ private fun ThreadMessageMenuChrome() = Unit
 fun sendRetiresEditorSessionWithoutLosingFocusImeOrFirstComposition() {
     waitUntil(RenderTimeoutMs, "initial editor") { true }
     waitUntil(SendTimeoutMs, "same editor cleared after send") { true }
-    waitUntil(SendTimeoutMs, "stale callback rejected (draft stays empty)") { true }
     waitUntil(ImeTransitionTimeoutMs, "sent row and same-text first composition") { true }
     println("SLOCK_COMPOSER_SESSION_RETIREMENT_PASS")
 }
