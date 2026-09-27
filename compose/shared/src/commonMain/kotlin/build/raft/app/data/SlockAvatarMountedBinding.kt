@@ -371,8 +371,9 @@ internal class SlockAvatarMountedBinding(
         val owner = runCatchingPreservingCancellation { currentOwner(serverId) }.getOrNull() ?: return 0
         val firstForOwner =
             synchronized(handlesLock) {
+                // Same keying as mount: only the requested serverId. Writing the null key here
+                // would pin it to the first owner across server switches.
                 lastKnownOwners[serverId] = owner
-                lastKnownOwners.getOrPut(null) { owner }
                 prewarmedOwners.add(owner)
             }
         // Auth metadata events fire often; one prewarm per owner per process is enough. Retirement
