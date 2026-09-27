@@ -3374,10 +3374,22 @@ class SharedThreadStoreTest {
         assertEquals(ThreadAccessResolution.NoPermission, noPermission.accessResolution)
         assertFalse(noPermission.canonicalAccessResolved)
         assertEquals("no_permission", noPermission.payload.status)
+        assertEquals(null, noPermission.payload.errorServerMessage)
         assertFalse(noPermission.writeActionsEnabled)
         assertFalse(noPermission.payload.joined)
         assertFalse(noPermission.payload.canSend)
         assertFalse(noPermission.payload.composer.enabled)
+
+        val edgeBlocked =
+            resolve(
+                DataResult.NoPermission(
+                    PermissionBlocker(code = "thread_forbidden", serverMessage = "edge_blocked")
+                )
+            )
+        assertEquals(ThreadAccessResolution.NoPermission, edgeBlocked.accessResolution)
+        assertEquals("no_permission", edgeBlocked.payload.status)
+        assertEquals("edge_blocked", edgeBlocked.payload.errorServerMessage)
+        assertFalse(edgeBlocked.writeActionsEnabled)
 
         val error = resolve(DataResult.Error(ScreenError(code = "offline", retryable = true)))
         assertEquals(ThreadAccessResolution.Error, error.accessResolution)

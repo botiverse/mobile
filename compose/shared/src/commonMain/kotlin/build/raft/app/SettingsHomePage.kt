@@ -235,6 +235,7 @@ import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_RESET
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_START
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_STOP
 import build.raft.app.data.isAuthSessionError
+import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.data.isSubmittableChannelName
 import build.raft.app.data.KuiklyAuthSessionEvents
 import build.raft.app.data.isRefreshing
@@ -1730,10 +1731,14 @@ internal fun sharedHomeSearchErrorDisplay(
     )
 
 @Composable
-private fun localizedSharedHomeErrorDisplay(code: String): SlockHomeInlineError =
+private fun localizedSharedHomeErrorDisplay(
+    code: String,
+    serverMessage: String? = null
+): SlockHomeInlineError =
     SlockHomeInlineError(
         title =
             when {
+                serverMessage.isEdgeBlockedMarker() -> stringResource(MR.strings.home_error_unavailable)
                 ScreenError(code, retryable = false).isAuthSessionError() -> stringResource(MR.strings.home_error_session_expired)
                 code.contains("permission", ignoreCase = true) -> stringResource(MR.strings.home_error_unavailable)
                 code.contains("timeout", ignoreCase = true) -> stringResource(MR.strings.home_error_timeout)
@@ -1743,6 +1748,7 @@ private fun localizedSharedHomeErrorDisplay(code: String): SlockHomeInlineError 
             },
         detail =
             when {
+                serverMessage.isEdgeBlockedMarker() -> stringResource(MR.strings.error_edge_blocked)
                 ScreenError(code, retryable = false).isAuthSessionError() -> stringResource(MR.strings.home_error_session_detail)
                 code.contains("permission", ignoreCase = true) -> stringResource(MR.strings.home_error_unavailable_detail)
                 code.contains("timeout", ignoreCase = true) -> stringResource(MR.strings.home_error_timeout_detail)
@@ -17376,7 +17382,8 @@ private fun SharedHomeScreen(
                     prefersChineseCommunity = prefersChineseCommunity,
                     topSafeAreaOverride = topSafeAreaOverride,
                     bottomContentPadding = bottomContentPadding,
-                    inlineError = localizedSharedHomeErrorDisplay(current.code),
+                    inlineError =
+                        localizedSharedHomeErrorDisplay(current.code, serverMessage = current.serverMessage),
                     onInlineErrorAction = { onIntent(SharedHomeIntent.Refresh) },
                     onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                     onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
@@ -17397,7 +17404,8 @@ private fun SharedHomeScreen(
                     onCreateChannelClick = onCreateChannel
                 )
             } else {
-                val error = localizedSharedHomeErrorDisplay(current.code)
+                val error =
+                    localizedSharedHomeErrorDisplay(current.code, serverMessage = current.serverMessage)
                 PageErrorContent(
                     title = "Home",
                     subtitle = "Workspace",

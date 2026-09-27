@@ -1876,13 +1876,19 @@ internal class SharedHomeStore(
                     diagnosticsLogger(
                         "home_ui_error source=shared_home_load code=${dataResult.error.code} mapped=${_state.value.content.refreshFailureMapping()}"
                     )
-                    _state.value.content.asRefreshFailed(dataResult.error.code)
+                    _state.value.content.asRefreshFailed(
+                        dataResult.error.code,
+                        serverMessage = dataResult.error.serverMessage
+                    )
                 }
                 is DataResult.NoPermission -> {
                     diagnosticsLogger(
                         "home_ui_error source=shared_home_load code=${dataResult.blocker.code} mapped=${_state.value.content.refreshFailureMapping()}"
                     )
-                    _state.value.content.asRefreshFailed(dataResult.blocker.code)
+                    _state.value.content.asRefreshFailed(
+                        dataResult.blocker.code,
+                        serverMessage = dataResult.blocker.serverMessage
+                    )
                 }
             }
         val resultServerId = (result as? SharedHomeContentState.Content)?.snapshot?.server?.id
@@ -4302,7 +4308,11 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
 sealed interface SharedHomeContentState {
     data class Loading(val session: StoredAuthSession? = null) : SharedHomeContentState
     data class Empty(val session: StoredAuthSession) : SharedHomeContentState
-    data class Error(val code: String, val session: StoredAuthSession? = null) : SharedHomeContentState
+    data class Error(
+        val code: String,
+        val session: StoredAuthSession? = null,
+        val serverMessage: String? = null
+    ) : SharedHomeContentState
     data class Content(
         val snapshot: HomeSnapshot,
         val session: StoredAuthSession,
@@ -4330,12 +4340,17 @@ private fun SharedHomeContentState.asRefreshing(
         is SharedHomeContentState.Error -> SharedHomeContentState.Loading(session ?: this.session)
     }
 
-private fun SharedHomeContentState.asRefreshFailed(code: String): SharedHomeContentState =
+private fun SharedHomeContentState.asRefreshFailed(
+    code: String,
+    serverMessage: String? = null
+): SharedHomeContentState =
     when (this) {
         is SharedHomeContentState.Content -> copy(contentRefreshing = false)
-        is SharedHomeContentState.Empty -> SharedHomeContentState.Error(code, session)
-        is SharedHomeContentState.Loading -> SharedHomeContentState.Error(code, session)
-        is SharedHomeContentState.Error -> copy(code = code)
+        is SharedHomeContentState.Empty ->
+            SharedHomeContentState.Error(code, session, serverMessage = serverMessage)
+        is SharedHomeContentState.Loading ->
+            SharedHomeContentState.Error(code, session, serverMessage = serverMessage)
+        is SharedHomeContentState.Error -> copy(code = code, serverMessage = serverMessage)
     }
 
 private fun SharedHomeContentState.sessionOrNull(): StoredAuthSession? =

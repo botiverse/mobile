@@ -6553,7 +6553,7 @@ internal class SharedThreadStore(
                     // the cached first-frame candidate is unrecoverable-stale
                     // (permission/visibility change) — drop it. Transient
                     // network errors deliberately keep the warm cache.
-                    latest.asRefreshNoPermission(basePayload, result.blocker.code)
+                    latest.asRefreshNoPermission(basePayload, result.blocker.code, result.blocker.serverMessage)
                 }
             }.copy(
                 backgroundRefreshing = false,
@@ -9496,14 +9496,15 @@ internal class SharedThreadViewModel(
 
 private fun KuiklyThreadScreenPayload.asRefreshFailed(code: String): KuiklyThreadScreenPayload =
     if (hasRenderableThreadContent()) {
-        copy(status = "content", backgroundRefreshing = false, errorCode = code)
+        copy(status = "content", backgroundRefreshing = false, errorCode = code, errorServerMessage = null)
     } else {
-        copy(status = "error", backgroundRefreshing = false, errorCode = code)
+        copy(status = "error", backgroundRefreshing = false, errorCode = code, errorServerMessage = null)
     }
 
 private fun KuiklyThreadScreenPayload.asRefreshNoPermission(
     base: KuiklyThreadScreenPayload,
-    code: String
+    code: String,
+    serverMessage: String? = null
 ): KuiklyThreadScreenPayload =
     withRouteContext(base)
         .withoutThreadTimelineContent()
@@ -9511,6 +9512,7 @@ private fun KuiklyThreadScreenPayload.asRefreshNoPermission(
             status = "no_permission",
             backgroundRefreshing = false,
             errorCode = code,
+            errorServerMessage = serverMessage,
             focusedMessageId = base.focusedMessageId,
             focusedMessageRequestNonce = base.focusedMessageRequestNonce
         )
@@ -9520,6 +9522,7 @@ private fun KuiklyThreadScreenPayload.asRefreshEmpty(base: KuiklyThreadScreenPay
         status = "empty",
         backgroundRefreshing = false,
         errorCode = null,
+        errorServerMessage = null,
         messages = emptyList(),
         canLoadMoreBefore = false,
         canLoadMoreAfter = false,
