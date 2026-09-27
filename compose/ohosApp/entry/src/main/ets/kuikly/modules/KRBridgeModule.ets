@@ -224,6 +224,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly THREAD_ATTACHMENT_UPLOAD = "threadAttachmentUpload";
   static readonly COMPRESS_THREAD_IMAGE = "compressThreadImage";
   static readonly CANCEL_COMPRESS_THREAD_IMAGE = "cancelCompressThreadImage";
+  static readonly APP_BADGE = "appBadge";
   static readonly ATTACHMENT_CACHE_MAX_FILES = 80;
   static readonly ATTACHMENT_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
   static readonly HANDS_FEEDBACK_MAX_ATTACHMENTS = 3;
@@ -379,6 +380,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.CANCEL_COMPRESS_THREAD_IMAGE: {
         this.cancelCompressThreadImage(params);
+        break;
+      }
+      case KRBridgeModule.APP_BADGE: {
+        this.appBadge(params);
         break;
       }
       default: {
@@ -1178,6 +1183,31 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   }
 
   private reportDT(params: KRAny) {
+  }
+
+  private appBadge(params: KRAny) {
+    const records = this.parseRecord(params);
+    const countValue = records["count"];
+    const count = typeof countValue === 'number' ? Math.max(0, Math.floor(countValue)) : 0;
+    const source = typeof records["source"] === 'string' ? records["source"] as string : "unknown";
+    const isStale = records["isStale"] === true;
+    // notificationManager.setBadgeNumber never prompts the user; notification authorization
+    // only gates notification posting, not the launcher badge surface itself.
+    notificationManager.setBadgeNumber(count).then((): void => {
+      SlockOhosDiagnostics.record(
+        "HRBridgeModule",
+        `appBadge count=${count} source=${source} stale=${isStale}`,
+        Date.now(),
+        "info"
+      );
+    }).catch((err: BusinessError): void => {
+      SlockOhosDiagnostics.record(
+        "HRBridgeModule",
+        `appBadge setBadgeNumber failed code=${err.code} message=${err.message}`,
+        Date.now(),
+        "warn"
+      );
+    });
   }
 
   private performanceScene(params: KRAny) {
