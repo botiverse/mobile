@@ -3009,6 +3009,32 @@ private fun SlockAppShellReadyContent(
         )
     val adaptiveRoomLeaseRegistry =
         remember(sharedStores, storeScope) { sharedStores.realtimeRoomLeaseRegistry(storeScope) }
+    fun rejectPendingAdaptiveDetailOpens(
+        dropped: Map<String, build.raft.app.data.PendingAdaptiveDetailOpen>,
+        reason: String,
+    ) {
+        val anchorStore = sharedStores.adaptiveScrollAnchorStore(storeScope)
+        dropped.forEach { (requestId, pending) ->
+            anchorStore.discard(
+                shellInstanceId = storeScope.shellInstanceId,
+                identity = pending.identity,
+                requestId = requestId,
+            )
+            sharedStores.eventBus.post(
+                eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+                eventData =
+                    SlockAdaptiveDetailOpenAck(
+                        shellInstanceId = storeScope.shellInstanceId,
+                        requestId = requestId,
+                        accepted = false,
+                        reason = reason,
+                    ).toJson(),
+                crossProcess = true,
+                source = "adaptive_detail_open_dropped",
+            )
+        }
+    }
+
     fun releaseAdaptiveHandoffLease(expectedGeneration: Long? = null) {
         val owner = adaptiveWorkspaceStore.snapshot().handoffRoomLeaseOwner ?: return
         if (expectedGeneration != null && owner.generation != expectedGeneration) return
@@ -3063,6 +3089,7 @@ private fun SlockAppShellReadyContent(
         }
         val serverId = readyServerId?.trim()?.takeIf(String::isNotBlank)
         if (!adaptiveHomeWorkspaceEnabled || serverId == null) {
+            val droppedOpens = adaptiveWorkspaceStore.snapshot().pendingDetailOpens
             adaptiveWorkspaceStore.update { current ->
                 current.copy(
                     workspace =
@@ -3070,8 +3097,10 @@ private fun SlockAppShellReadyContent(
                             reduceSlockAdaptiveWorkspace(state, SlockAdaptiveWorkspaceIntent.TerminalReset)
                         },
                     launchPayload = null,
+                    pendingDetailOpens = emptyMap(),
                 )
             }
+            rejectPendingAdaptiveDetailOpens(droppedOpens, "workspace_reset")
             releaseAdaptiveHandoffLease()
             adaptiveDefaultLandingServerId = null
             return@LaunchedEffect
@@ -3083,12 +3112,16 @@ private fun SlockAppShellReadyContent(
                     serverId = serverId,
                 )
         if (next.serverId != serverId) {
+            val droppedOpens = adaptiveWorkspaceStore.snapshot().pendingDetailOpens
             next =
                 reduceSlockAdaptiveWorkspace(
                     next,
                     SlockAdaptiveWorkspaceIntent.AuthorityChanged(serverId),
                 )
-            adaptiveWorkspaceStore.update { current -> current.copy(launchPayload = null) }
+            adaptiveWorkspaceStore.update { current ->
+                current.copy(launchPayload = null, pendingDetailOpens = emptyMap())
+            }
+            rejectPendingAdaptiveDetailOpens(droppedOpens, "authority_changed")
             releaseAdaptiveHandoffLease()
             adaptiveDefaultLandingServerId = null
         }
@@ -3107,7 +3140,100 @@ private fun SlockAppShellReadyContent(
         adaptiveWorkspaceStore.update { current -> current.copy(workspace = next) }
     }
     DisposableEffect(sharedStores, storeScope.shellInstanceId) {
-        val subscription =
+        val openSubscription =
+            sharedStores.eventBus.observe(
+                eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_EVENT,
+                crossProcess = true,
+            ) { eventData ->
+                val request = eventData?.toSlockAdaptiveDetailOpenRequestOrNull()
+                    ?: return@observe
+                if (request.shellInstanceId != storeScope.shellInstanceId) return@observe
+                val session = adaptiveWorkspaceStore.snapshot()
+                val (nextSession, decision) =
+                    evaluateSlockAdaptiveDetailOpen(
+                        request = request,
+                        workspaceEnabled = adaptiveHomeWorkspaceEnabled,
+                        session = session,
+                        // Hard off until the native route-token-verified commit action lands
+                        // (task #18, Jony follow-up); keeps the merged protocol inert.
+                        nativeGuardedCommitAvailable = false,
+                    )
+                if (nextSession != session) {
+                    adaptiveWorkspaceStore.update { nextSession }
+                }
+                when (decision) {
+                    is SlockAdaptiveDetailOpenDecision.Rejected -> {
+                        sharedStores.eventBus.post(
+                            eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+                            eventData =
+                                SlockAdaptiveDetailOpenAck(
+                                    shellInstanceId = storeScope.shellInstanceId,
+                                    requestId = request.requestId,
+                                    accepted = false,
+                                    reason = decision.reason,
+                                ).toJson(),
+                            crossProcess = true,
+                            source = "adaptive_detail_open_rejected",
+                        )
+                        sharedStores
+                            .adaptiveScrollAnchorStore(storeScope)
+                            .discard(
+                                shellInstanceId = storeScope.shellInstanceId,
+                                identity = request.identity,
+                                requestId = request.requestId,
+                            )
+                    }
+                    is SlockAdaptiveDetailOpenDecision.Accepted -> {
+                        // Ack is held until the destination pane child reports READY (mount +
+                        // draft/viewport restore), not merely received. See the
+                        // SLOCK_ADAPTIVE_DETAIL_READY_EVENT subscription below.
+                    }
+                }
+            }
+        val readySubscription =
+            sharedStores.eventBus.observe(
+                eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+                crossProcess = true,
+            ) { eventData ->
+                val shellId = eventData?.optString(SLOCK_ADAPTIVE_DETAIL_SHELL_ID)?.trim()
+                    ?: return@observe
+                if (shellId != storeScope.shellInstanceId) return@observe
+                val identityKey = eventData.optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY).trim()
+                val generation =
+                    eventData.optDouble(SLOCK_ADAPTIVE_DETAIL_GENERATION, 0.0).toLong()
+                if (identityKey.isBlank() || generation <= 0L) return@observe
+                val session = adaptiveWorkspaceStore.snapshot()
+                val (nextSession, pending) =
+                    completeSlockAdaptiveDetailOpen(
+                        identityKey = identityKey,
+                        generation = generation,
+                        session = session,
+                    )
+                if (pending == null) return@observe
+                adaptiveWorkspaceStore.update { nextSession }
+                // Commit: the destination restored and reported READY; consume the staged
+                // viewport record exactly once, under this request's fence.
+                sharedStores
+                    .adaptiveScrollAnchorStore(storeScope)
+                    .consume(
+                        shellInstanceId = storeScope.shellInstanceId,
+                        identity = pending.identity,
+                        requestId = pending.requestId,
+                    )
+                sharedStores.eventBus.post(
+                    eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+                    eventData =
+                        SlockAdaptiveDetailOpenAck(
+                            shellInstanceId = storeScope.shellInstanceId,
+                            requestId = pending.requestId,
+                            accepted = true,
+                            generation = generation,
+                        ).toJson(),
+                    crossProcess = true,
+                    source = "adaptive_detail_open_ready",
+                )
+            }
+        val closeSubscription =
             sharedStores.eventBus.observe(
                 eventName = SLOCK_ADAPTIVE_DETAIL_CLOSE_EVENT,
                 crossProcess = true,
@@ -3140,7 +3266,11 @@ private fun SlockAppShellReadyContent(
                     )
                 }
             }
-        onDispose { subscription.close() }
+        onDispose {
+            openSubscription.close()
+            readySubscription.close()
+            closeSubscription.close()
+        }
     }
     val tasksServerMembersEntry by remember(appShellServerMembersStore, readyServerId) {
         val serverId = readyServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)

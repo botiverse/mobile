@@ -10084,6 +10084,9 @@ private fun SharedThreadRouteContentContent(
             },
             onVisibleReadTailChange = { index -> visibleReadTailIndex = index },
             visibleReadTailIndex = visibleReadTailIndex,
+            adaptiveCloseRequest = adaptiveCloseRequest,
+            adaptiveStoreScope = storeScope,
+            adaptiveEventBus = eventBus,
             onLoadNewer = {
                 threadViewModel.loadNewerPage()
             },
@@ -13274,6 +13277,10 @@ private data class ThreadPageContentData(
     val currentServerSlug: String?,
     val translationStore: SharedMessageTranslationStore?,
     val visibleReadTailIndex: Int?,
+    /** A4 destination contract (task #18, spec §9): non-null when hosted as a detail pane. */
+    val adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest?,
+    val adaptiveStoreScope: SlockShellStoreScope,
+    val adaptiveEventBus: SlockEventBus,
     val onThreadEvent: ThreadEventHandler,
 )
 
@@ -13394,6 +13401,9 @@ fun ThreadPageContent(
     onFirstContentReady: () -> Unit = {},
     visibleReadTailIndex: Int? = null,
     onVisibleReadTailChange: (Int?) -> Unit = {},
+    adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest? = null,
+    adaptiveStoreScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
+    adaptiveEventBus: SlockEventBus,
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     onJumpToLatest: suspend () -> Boolean,
     onBack: () -> Unit,
@@ -13462,6 +13472,9 @@ fun ThreadPageContent(
                 currentServerSlug = currentServerSlug,
                 translationStore = translationStore,
                 visibleReadTailIndex = visibleReadTailIndex,
+                adaptiveCloseRequest = adaptiveCloseRequest,
+                adaptiveStoreScope = adaptiveStoreScope,
+                adaptiveEventBus = adaptiveEventBus,
                 onThreadEvent = onThreadEvent,
             ),
         callbacks =
@@ -13584,6 +13597,9 @@ private fun ThreadPageContentContent(
     val onSaveShareImage = callbacks.onSaveShareImage
     val onFirstContentReady = callbacks.onFirstContentReady
     val visibleReadTailIndex = data.visibleReadTailIndex
+    val adaptiveCloseRequest = data.adaptiveCloseRequest
+    val adaptiveStoreScope = data.adaptiveStoreScope
+    val adaptiveEventBus = data.adaptiveEventBus
     val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
     val onLoadNewer = callbacks.onLoadNewer
     val onJumpToLatest = callbacks.onJumpToLatest
@@ -14394,7 +14410,10 @@ private fun ThreadPageContentContent(
                         translationStore = translationStore,
                         onThreadContentReady = onFirstContentReady,
                         onVisibleReadTailChange = onVisibleReadTailChange,
-                        visibleReadTailIndex = visibleReadTailIndex
+                        visibleReadTailIndex = visibleReadTailIndex,
+                        adaptiveCloseRequest = adaptiveCloseRequest,
+                        adaptiveStoreScope = adaptiveStoreScope,
+                        adaptiveEventBus = adaptiveEventBus
                     )
                 KuiklyThreadTab.Tasks ->
                     ThreadTasksTab(
@@ -15731,6 +15750,10 @@ private data class ThreadChatTabData(
     val selectedShareMessageIds: Set<String>,
     val translationStore: SharedMessageTranslationStore?,
     val visibleReadTailIndex: Int?,
+    /** A4 destination contract (task #18, spec §9): non-null when hosted as a detail pane. */
+    val adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest?,
+    val adaptiveStoreScope: SlockShellStoreScope,
+    val adaptiveEventBus: SlockEventBus,
 )
 
 /** task #346: callback payload of [ThreadChatTab]. See ThreadChatTabData. */
@@ -15825,7 +15848,10 @@ fun ThreadChatTab(
     translationStore: SharedMessageTranslationStore? = null,
     onThreadContentReady: () -> Unit = {},
     visibleReadTailIndex: Int? = null,
-    onVisibleReadTailChange: (Int?) -> Unit = {}
+    onVisibleReadTailChange: (Int?) -> Unit = {},
+    adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest? = null,
+    adaptiveStoreScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
+    adaptiveEventBus: SlockEventBus,
 )
  {
     ThreadChatTabContent(
@@ -15872,6 +15898,9 @@ fun ThreadChatTab(
                 selectedShareMessageIds = selectedShareMessageIds,
                 translationStore = translationStore,
                 visibleReadTailIndex = visibleReadTailIndex,
+                adaptiveCloseRequest = adaptiveCloseRequest,
+                adaptiveStoreScope = adaptiveStoreScope,
+                adaptiveEventBus = adaptiveEventBus,
             ),
         callbacks =
             ThreadChatTabCallbacks(
@@ -15970,6 +15999,9 @@ private fun ThreadChatTabContent(
     val translationStore = data.translationStore
     val onThreadContentReady = callbacks.onThreadContentReady
     val visibleReadTailIndex = data.visibleReadTailIndex
+    val adaptiveCloseRequest = data.adaptiveCloseRequest
+    val adaptiveStoreScope = data.adaptiveStoreScope
+    val adaptiveEventBus = data.adaptiveEventBus
     val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
@@ -16064,7 +16096,10 @@ private fun ThreadChatTabContent(
                     onToggleShareSelection = onToggleShareSelection,
                     onOpenForwardBundle = onOpenForwardBundle,
                     translationStore = translationStore,
-                    onThreadContentReady = onThreadContentReady
+                    onThreadContentReady = onThreadContentReady,
+                    adaptiveCloseRequest = adaptiveCloseRequest,
+                    adaptiveStoreScope = adaptiveStoreScope,
+                    adaptiveEventBus = adaptiveEventBus
                 )
             } else {
                 ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
@@ -16154,7 +16189,10 @@ private fun ThreadChatTabContent(
                     onToggleShareSelection = onToggleShareSelection,
                     onOpenForwardBundle = onOpenForwardBundle,
                     translationStore = translationStore,
-                    onThreadContentReady = onThreadContentReady
+                    onThreadContentReady = onThreadContentReady,
+                    adaptiveCloseRequest = adaptiveCloseRequest,
+                    adaptiveStoreScope = adaptiveStoreScope,
+                    adaptiveEventBus = adaptiveEventBus
                 )
             } else {
                 LaunchedEffect(threadInstanceKey, timelineSlice.status) {
@@ -16228,7 +16266,10 @@ private fun ThreadChatTabContent(
                 translationStore = translationStore,
                 onThreadContentReady = onThreadContentReady,
                 onVisibleReadTailChange = onVisibleReadTailChange,
-                visibleReadTailIndex = visibleReadTailIndex
+                visibleReadTailIndex = visibleReadTailIndex,
+                adaptiveCloseRequest = adaptiveCloseRequest,
+                adaptiveStoreScope = adaptiveStoreScope,
+                adaptiveEventBus = adaptiveEventBus
             )
     }
 }
@@ -16527,6 +16568,10 @@ private data class ThreadMessagesListData(
     val selectedShareMessageIds: Set<String>,
     val translationStore: SharedMessageTranslationStore?,
     val visibleReadTailIndex: Int?,
+    /** A4 destination contract: non-null marks this list as a detail-pane child. */
+    val adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest?,
+    val adaptiveStoreScope: SlockShellStoreScope,
+    val adaptiveEventBus: SlockEventBus?,
 )
 
 /** task #346: callback payload of [ThreadMessagesList]. See ThreadMessagesListData. */
@@ -16622,7 +16667,10 @@ fun ThreadMessagesList(
     translationStore: SharedMessageTranslationStore? = null,
     onThreadContentReady: () -> Unit = {},
     visibleReadTailIndex: Int? = null,
-    onVisibleReadTailChange: (Int?) -> Unit = {}
+    onVisibleReadTailChange: (Int?) -> Unit = {},
+    adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest? = null,
+    adaptiveStoreScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
+    adaptiveEventBus: SlockEventBus? = null
 )
  {
     ThreadMessagesListContent(
@@ -16669,6 +16717,9 @@ fun ThreadMessagesList(
                 selectedShareMessageIds = selectedShareMessageIds,
                 translationStore = translationStore,
                 visibleReadTailIndex = visibleReadTailIndex,
+                adaptiveCloseRequest = adaptiveCloseRequest,
+                adaptiveStoreScope = adaptiveStoreScope,
+                adaptiveEventBus = adaptiveEventBus,
             ),
         callbacks =
             ThreadMessagesListCallbacks(
@@ -16767,6 +16818,9 @@ private fun ThreadMessagesListContent(
     val translationStore = data.translationStore
     val onThreadContentReady = callbacks.onThreadContentReady
     val visibleReadTailIndex = data.visibleReadTailIndex
+    val adaptiveCloseRequest = data.adaptiveCloseRequest
+    val adaptiveStoreScope = data.adaptiveStoreScope
+    val adaptiveEventBus = data.adaptiveEventBus
     val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
     if (timelineSlice.messages.isEmpty() && timelineSlice.originStatus == "none") {
         LaunchedEffect(threadInstanceKey, timelineSlice.status) {
@@ -16938,6 +16992,71 @@ private fun ThreadMessagesListContent(
     // The durable anchor remains lifecycle-persisted, while the route-local frontier advances on
     // every visible-window change. This makes the pill converge as the user reads and prevents a
     // locally-sent row that is already on screen from being counted as unread.
+    // A4 destination side (task #18, spec §9): a pane child (adaptiveCloseRequest != null)
+    // restores the staged viewport anchor against its own message ordering — canonical message
+    // id first, list index only as fallback — then posts READY so the shell can ack the pending
+    // adoption. The staged record is deliberately NOT consumed here: the shell consumes it only
+    // when the transfer is committed (ack sent), so a rejected or failed transfer keeps the
+    // anchor available for a retry. Pages without a staged anchor (entry-redirect opens) still
+    // report READY; the shell ignores it when nothing is pending.
+    val closeReq = adaptiveCloseRequest
+    val adaptivePager = LocalActivity.current.getPager() as Pager
+    val adaptiveSharedStores = remember(adaptivePager) {
+        SlockSharedStoreRegistry.get(Utils.bridgeModule(adaptivePager.pagerId))
+    }
+    var adaptiveReadyPosted by remember(threadInstanceKey) { mutableStateOf(false) }
+    LaunchedEffect(closeReq, renderPayload.messages.size, adaptiveReadyPosted) {
+        val request = closeReq ?: return@LaunchedEffect
+        if (adaptiveReadyPosted) return@LaunchedEffect
+        if (renderPayload.status != "success" && renderPayload.messages.isEmpty()) {
+            return@LaunchedEffect
+        }
+        val identity =
+            adaptiveSharedStores
+                .adaptiveWorkspaceStore(adaptiveStoreScope)
+                .snapshot()
+                .workspace
+                ?.selection
+                ?.takeIf { sel -> sel.identity.key == request.identityKey }
+                ?.identity
+            ?: run {
+                adaptiveReadyPosted = true
+                return@LaunchedEffect
+            }
+        val anchorStore = adaptiveSharedStores.adaptiveScrollAnchorStore(adaptiveStoreScope)
+        val anchor = anchorStore.peek(adaptiveStoreScope.shellInstanceId, identity)
+        if (anchor != null && !anchor.atLatest) {
+            val firstMessageIndex = renderPayload.firstMessageListItemIndex()
+            val locatedIndex =
+                anchor.messageId
+                    ?.let { id -> renderPayload.messages.indexOfFirst { m -> m.id == id } }
+                    ?.takeIf { it >= 0 }
+                    ?.let { it + firstMessageIndex }
+            if (locatedIndex != null) {
+                listState.awaitThreadMessagesLayoutFrame()
+                listState.scrollToItem(locatedIndex, anchor.messageOffsetPx)
+            } else if (
+                anchor.fallbackIndex >= 0 &&
+                anchor.fallbackIndex < (listState.layoutInfo.totalItemsCount.takeIf { it > 0 } ?: Int.MAX_VALUE)
+            ) {
+                listState.awaitThreadMessagesLayoutFrame()
+                listState.scrollToItem(anchor.fallbackIndex, anchor.messageOffsetPx)
+            }
+        }
+        adaptiveReadyPosted = true
+        val eventBus = adaptiveEventBus ?: return@LaunchedEffect
+        eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+            eventData =
+                JSONObject()
+                    .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, request.shellInstanceId)
+                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, request.generation.toDouble()),
+            crossProcess = true,
+            source = "adaptive_detail_ready",
+        )
+    }
+
     val unreadJumpAtCanonicalBottom =
         threadUnreadJumpAtCanonicalBottom(
             canLoadMoreAfter = renderPayload.canLoadMoreAfter,
