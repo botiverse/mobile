@@ -216,6 +216,7 @@ fun TabPager(
                                         edgeGuardGestureDecision(
                                             horizontalDragDp = (change.position.x - o.x) / density.density,
                                             verticalDragDp = (change.position.y - o.y) / density.density,
+                                            canScrollBackward = pagerState.currentPage > 0,
                                         )
                                     ) {
                                         EdgeGuardGestureDecision.Claim -> claimed = true
@@ -272,16 +273,21 @@ internal enum class EdgeGuardGestureDecision {
  * classification is unit-testable ([TabPagerEdgeGuardDecisionTest]) — the
  * interception around it is port behaviour only runtime acceptance can
  * verify. Ties go to Claim: the guard exists exactly for horizontal edge
- * gestures.
+ * gestures, except when [canScrollBackward] is false (e.g. at page 0), where
+ * rightward drags release to the platform back gesture instead of being
+ * claimed and consumed.
  */
 internal fun edgeGuardGestureDecision(
     horizontalDragDp: Float,
     verticalDragDp: Float,
     claimSlopDp: Float = EdgeGuardClaimSlopDp,
+    canScrollBackward: Boolean = true,
 ): EdgeGuardGestureDecision {
     val dx = abs(horizontalDragDp)
     val dy = abs(verticalDragDp)
     return when {
+        !canScrollBackward && horizontalDragDp >= claimSlopDp && horizontalDragDp >= dy ->
+            EdgeGuardGestureDecision.Release
         dx >= claimSlopDp && dx >= dy -> EdgeGuardGestureDecision.Claim
         dy >= claimSlopDp && dy > dx -> EdgeGuardGestureDecision.Release
         else -> EdgeGuardGestureDecision.Undecided
