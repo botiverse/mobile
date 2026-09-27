@@ -182,6 +182,13 @@ internal sealed interface SlockAdaptiveWorkspaceIntent {
     data class AuthorityChanged(val serverId: String) : SlockAdaptiveWorkspaceIntent
 
     data object TerminalReset : SlockAdaptiveWorkspaceIntent
+
+    /**
+     * Single-pane Back on the detail root: dismiss the selection so Home shows its list again.
+     * Unlike [CloseDetail] this needs no key/generation proof (the parent itself is authoritative)
+     * and bumps the generation so late detail-side callbacks can no longer match the old slot.
+     */
+    data object DismissDetail : SlockAdaptiveWorkspaceIntent
 }
 
 internal fun reduceSlockAdaptiveWorkspace(
@@ -243,6 +250,16 @@ internal fun reduceSlockAdaptiveWorkspace(
                 selection = null,
                 generationCursor = state.generationCursor.nextAdaptiveGeneration(),
             )
+
+        SlockAdaptiveWorkspaceIntent.DismissDetail ->
+            if (state.selection == null) {
+                state
+            } else {
+                state.copy(
+                    selection = null,
+                    generationCursor = state.generationCursor.nextAdaptiveGeneration(),
+                )
+            }
     }
 
 internal fun SlockAdaptiveWorkspaceState.acceptsDetailCallback(
