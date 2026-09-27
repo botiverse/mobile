@@ -2907,10 +2907,6 @@ private fun MemberProfile.withCachedAvatarCandidate(candidate: MemberProfile): M
     )
 }
 
-/**
- * Shape-only diagnostic for the avatarUrl-loss lane behind task #344: logs whenever a
- * merge turns a previously concrete `avatarUrl`/`avatar` into null. Emits member/server
- * hashes plus the incoming avatar bucket — never the raw URL.
 private fun List<MemberProfile>.toServerMembersMemberSuggestions(
     localServerId: String? = null
 ): List<SharedMembersMemberSuggestion> =
