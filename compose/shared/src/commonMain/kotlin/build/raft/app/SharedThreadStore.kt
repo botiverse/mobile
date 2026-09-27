@@ -11353,6 +11353,7 @@ internal fun KuiklyThreadScreenPayload.withContentSliceFrom(patch: KuiklyThreadS
         olderMessagesStatus = patch.olderMessagesStatus,
         newerMessagesStatus = patch.newerMessagesStatus,
         errorCode = patch.errorCode,
+        errorServerMessage = patch.errorServerMessage,
         emptyTitle = patch.emptyTitle,
         emptyDetail = patch.emptyDetail,
         replySummariesAuthority = patch.replySummariesAuthority,

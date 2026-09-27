@@ -43,6 +43,7 @@ class KmmResourceI18nTest {
                 MR.strings.error_server_unavailable,
                 MR.strings.error_item_not_found,
                 MR.strings.error_permission_denied,
+                MR.strings.error_edge_blocked,
                 MR.strings.error_attachment_too_large,
                 MR.strings.error_too_many_attempts,
                 MR.strings.error_response_unreadable,
