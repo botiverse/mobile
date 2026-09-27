@@ -226,9 +226,10 @@ class SlockRichTextContractTest {
     }
 
     @Test
-    fun kindPinnedDirectMessageThreadRefCarriesKindedPeerAndRejectsTheBareTwin() {
-        // `skyzh` is held by a human and an agent: Home only lists kinded forms.
-        val context = SlockRichTextContext(knownDirectMessagePeers = setOf("skyzh~agent", "skyzh~human"))
+    fun kindPinnedDirectMessageThreadRefCarriesKindedPeerAndBareTwinStaysLinkable() {
+        // `skyzh` is held by a human and an agent: Home lists the bare name too
+        // (opens the first DM, Web `findDmByPeer`) plus both kinded forms.
+        val context = SlockRichTextContext(knownDirectMessagePeers = setOf("skyzh", "skyzh~agent", "skyzh~human"))
         val document =
             buildSlockRichTextDocument(
                 "Open dm:@skyzh~agent:1c50c30a, dm:@skyzh~human:2d60d40b and dm:@skyzh:3e70e50c",
@@ -236,11 +237,28 @@ class SlockRichTextContractTest {
             )
 
         assertEquals(
-            listOf("skyzh~agent", "skyzh~human"),
+            listOf("skyzh~agent", "skyzh~human", "skyzh"),
             document.actions.filter { it.refKind == SlockRichTextRefKind.DirectMessageThread }.map { it.directMessagePeerName }
         )
-        assertFalse(document.inlineTokens.any { it.sourceText == "dm:@skyzh:3e70e50c" })
         assertFalse(document.inlineTokens.any { it.sourceText == "@skyzh" })
+    }
+
+    @Test
+    fun directMessageRefWithoutShortIdBecomesDirectMessageAction() {
+        val document =
+            buildSlockRichTextDocument(
+                "Open dm:@skyzh~human, dm:@skyzh and dm:@nobody",
+                SlockRichTextContext(knownDirectMessagePeers = setOf("skyzh", "skyzh~agent", "skyzh~human"))
+            )
+
+        assertEquals(
+            listOf("dm:@skyzh~human" to "skyzh~human", "dm:@skyzh" to "skyzh"),
+            document.actions.map { action ->
+                assertEquals(SlockRichTextRefKind.DirectMessage, action.refKind)
+                action.label to action.directMessagePeerName
+            }
+        )
+        assertFalse(document.inlineTokens.any { it.kind == SlockRichTextInlineKind.SlockRef && it.sourceText.contains("nobody") })
     }
 
     @Test

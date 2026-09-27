@@ -96,7 +96,8 @@ private fun isMarkdownRerenderTagValid(tag: ThreadMarkdownTag): Boolean =
     when (tag.kind) {
         ThreadMarkdownTagKind.Task -> true
         ThreadMarkdownTagKind.UserMention -> tag.label.removePrefix("@").equals("artin", ignoreCase = true)
-        ThreadMarkdownTagKind.DirectMessageThread ->
+        ThreadMarkdownTagKind.DirectMessageThread,
+        ThreadMarkdownTagKind.DirectMessage ->
             tag.directMessagePeerName.equals("artin", ignoreCase = true)
         ThreadMarkdownTagKind.Channel,
         ThreadMarkdownTagKind.ChannelThread -> {

@@ -182,6 +182,7 @@ enum class SlockRichTextRefKind(val wireValue: String) {
     Channel("channel"),
     Thread("thread"),
     DirectMessageThread("directMessageThread"),
+    DirectMessage("directMessage"),
     Task("task"),
     UserMention("userMention")
 }
@@ -408,6 +409,8 @@ private fun SlockRichTextContext.toMarkdownTagValidator(): (ThreadMarkdownTag) -
             ThreadMarkdownTagKind.DirectMessageThread ->
                 directMessagePeerKeys.contains(tag.directMessagePeerName.orEmpty().trim().lowercase()) &&
                     !tag.threadShortId.isNullOrBlank()
+            ThreadMarkdownTagKind.DirectMessage ->
+                directMessagePeerKeys.contains(tag.directMessagePeerName.orEmpty().trim().lowercase())
             ThreadMarkdownTagKind.Channel ->
                 channelKeys.contains(tag.channelName.orEmpty().trim().lowercase())
             ThreadMarkdownTagKind.ChannelThread ->
@@ -456,6 +459,7 @@ private fun ThreadMarkdownTag.toRichTextChromeKind(
         kind == ThreadMarkdownTagKind.Channel -> SlockRichTextChromeKind.Channel
         kind == ThreadMarkdownTagKind.ChannelThread -> SlockRichTextChromeKind.Thread
         kind == ThreadMarkdownTagKind.DirectMessageThread -> SlockRichTextChromeKind.Thread
+        kind == ThreadMarkdownTagKind.DirectMessage -> SlockRichTextChromeKind.Channel
         kind == ThreadMarkdownTagKind.Task -> SlockRichTextChromeKind.Task
         else -> SlockRichTextChromeKind.OrdinaryMention
     }
@@ -465,6 +469,7 @@ private fun ThreadMarkdownTagKind.toRichTextRefKind(): SlockRichTextRefKind =
         ThreadMarkdownTagKind.Channel -> SlockRichTextRefKind.Channel
         ThreadMarkdownTagKind.ChannelThread -> SlockRichTextRefKind.Thread
         ThreadMarkdownTagKind.DirectMessageThread -> SlockRichTextRefKind.DirectMessageThread
+        ThreadMarkdownTagKind.DirectMessage -> SlockRichTextRefKind.DirectMessage
         ThreadMarkdownTagKind.Task -> SlockRichTextRefKind.Task
         ThreadMarkdownTagKind.UserMention -> SlockRichTextRefKind.UserMention
     }

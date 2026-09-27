@@ -3075,14 +3075,7 @@ internal fun KuiklyThreadScreenPayload.toKnownMarkdownDirectMessagePeerNameSet()
                 memberCandidates.forEach { member -> addKnownThreadMentionValues(member) }
             }
         }
-    // The Home-derived list is authoritative for human/agent twins: it lists
-    // only `name~agent` / `name~human` for a shared name. Do not let a bare
-    // route-local alias (current DM peer, roster) re-admit the ambiguous form.
-    return names.filterTo(mutableSetOf()) { name ->
-        RaftDirectMessagePeerKindSeparator in name ||
-            name in homeNames ||
-            homeNames.none { known -> known.substringBefore(RaftDirectMessagePeerKindSeparator) == name && known != name }
-    }
+    return names
 }
 
 internal fun KuiklyThreadScreenPayload.toKnownMarkdownTaskNumberSetOrNull(): Set<Int>? =
@@ -3132,6 +3125,8 @@ internal fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
         ThreadMarkdownTagKind.DirectMessageThread ->
             directMessagePeerName.orEmpty().normalizedThreadMentionLookupKey() in knownDirectMessagePeerNames &&
                 !threadShortId.isNullOrBlank()
+        ThreadMarkdownTagKind.DirectMessage ->
+            directMessagePeerName.orEmpty().normalizedThreadMentionLookupKey() in knownDirectMessagePeerNames
         ThreadMarkdownTagKind.Channel,
         ThreadMarkdownTagKind.ChannelThread -> {
             val key =
@@ -10842,14 +10837,33 @@ private fun SharedThreadRouteContentContent(
                         }
                     }
                 }
-                action == "openMarkdownChannel" && !itemId.isNullOrBlank() -> {
+                (action == "openMarkdownChannel" || action == "openMarkdownDirectMessage") && !itemId.isNullOrBlank() -> {
                     val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
                     if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
+                    val openDirectMessage = action == "openMarkdownDirectMessage"
                     coroutineScope.launch {
                         try {
-                            val loadingPayload = dataSource.markdownChannelLaunchPayload(renderedThread, itemId)
+                            val loadingPayload =
+                                dataSource.markdownChannelLaunchPayload(
+                                    currentPayload = renderedThread,
+                                    channelLabel = itemId,
+                                    requiredKind =
+                                        if (openDirectMessage) {
+                                            ConversationKind.DirectMessage
+                                        } else {
+                                            null
+                                        }
+                                )
                             if (loadingPayload == null) {
-                                bridge.toast(localizedUnableToOpenTarget("#${itemId.removePrefix("#").take(31)}"))
+                                bridge.toast(
+                                    localizedUnableToOpenTarget(
+                                        if (openDirectMessage) {
+                                            "dm:@${itemId.take(28)}"
+                                        } else {
+                                            "#${itemId.removePrefix("#").take(31)}"
+                                        }
+                                    )
+                                )
                             } else {
                                 val currentRouteIdentity = renderedThread.resolveThreadRouteIdentity()
                                 val targetRouteIdentity = loadingPayload.resolveThreadRouteIdentity()
@@ -10894,7 +10908,7 @@ private fun SharedThreadRouteContentContent(
                                         threadShortId = tab,
                                         requiredParentKind =
                                             if (action == "openMarkdownDirectMessageThreadRef") {
-                                                build.raft.app.model.ConversationKind.DirectMessage
+                                                ConversationKind.DirectMessage
                                             } else {
                                                 null
                                             }
@@ -12216,7 +12230,7 @@ internal fun String.toSlockThreadWebLinkTarget(): SlockThreadWebLinkTarget? {
             channelId = target.channelId.value,
             messageId = target.messageId.value,
             routeKind =
-                if (target.routeKind == build.raft.app.model.ConversationKind.DirectMessage) {
+                if (target.routeKind == ConversationKind.DirectMessage) {
                     KuiklyThreadSurfaceKind.DirectMessage
                 } else {
                     KuiklyThreadSurfaceKind.Channel
@@ -14114,6 +14128,14 @@ private fun ThreadPageContentContent(
                     "openMarkdownThreadRef",
                     tag.label,
                     tab = tag.threadShortId,
+                    markdownActionId = actionId
+                )
+            }
+            ThreadMarkdownTagKind.DirectMessage -> {
+                onThreadEvent(
+                    "openMarkdownDirectMessage",
+                    tag.directMessagePeerName ?: tag.label,
+                    tab = tag.kind.name,
                     markdownActionId = actionId
                 )
             }
