@@ -88,6 +88,11 @@ jobs:
       version_name: ${{ steps.parameters.outputs.version_name }}
       version_code: ${{ steps.parameters.outputs.version_code }}
     steps:
+      - name: Checkout version formula
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts/ci
+          sparse-checkout-cone-mode: false
       - name: Validate and resolve version
         id: parameters
         shell: bash
