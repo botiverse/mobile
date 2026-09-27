@@ -3054,8 +3054,9 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
             result = @{ @"requestId": SlockBridgeString(params[@"requestId"]),
                         @"status": @"rejected", @"reason": @"unsupported_source" };
         }
-        // A committed source can already be destroyed. Success is delivered to the target pager.
-        if (callback && ![result[@"status"] isEqual:@"committed"]) callback(result);
+        // Even a failed stack readback may follow removal. Commit never calls a source callback.
+        // Shared receives the target event, or retains state on timeout if no target survived.
+        if (callback && ![SlockBridgeString(params[@"action"]) isEqual:@"commit"]) callback(result);
     });
 }
 

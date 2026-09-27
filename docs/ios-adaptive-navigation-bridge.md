@@ -19,7 +19,7 @@ is not a completion barrier. This PR reuses the native reader, it does not wire 
 
 ## `HRBridgeModule.adaptiveNavigation`
 
-Asynchronous JSON under the normal `KR_PARAM_KEY` envelope; prepare/cancel and failed commit
+Asynchronous JSON under the normal `KR_PARAM_KEY` envelope; prepare/cancel
 return via `KR_CALLBACK_KEY`. UIKit access and commit execute on the main thread. No registration
 change: the existing ObjC `HRBridgeModule` runtime class exports the selector.
 
@@ -44,8 +44,9 @@ The authoritative commit result is a pager event on the **prepared target AppShe
 sourceControllerToken,targetControllerToken}}`. The envelope here describes the event name/data;
 the actual `sendWithEvent` payload is the data object. Success is `status:"committed"` and is
 emitted only after UIKit reports removal of the exact source and the exact target is now top.
-A source callback is deliberately not invoked for success: its renderer can already be destroyed.
-Failed commit returns to a live source callback and also sends a target event if the target survives.
+Commit never invokes a source callback, even on failure: its renderer may already be destroyed
+before stack readback fails. All commit results use the target event when a prepared target survives.
+An unprepared/unsupported commit has no target; shared must time out while preserving state.
 
 Shared must match requestId + native controller identities + its current authority, accept success
 idempotently, then consume the matching anchor. ACK/READY/prepare are never commit success.
