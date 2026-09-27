@@ -95,6 +95,8 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberId
+import build.raft.app.markdown.formatRaftDirectMessagePeerRef
+import build.raft.app.markdown.parseRaftDirectMessagePeerRef
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.MemberProfile
@@ -10174,10 +10176,31 @@ internal fun resolveMarkdownChannelConversation(
     currentPayload: KuiklyThreadScreenPayload? = null,
     threadShortId: String? = null
 ): ConversationSummary? {
-    val key = channelLabel.markdownChannelLookupKey()
-    if (key.isBlank()) return null
+    val rawKey = channelLabel.markdownChannelLookupKey()
+    if (rawKey.isBlank()) return null
+    // DM refs may pin the peer kind (`dm:@skyzh~agent`). A bare name that a
+    // human and an agent share names two DMs; never guess a side (Web #8415).
+    val directMessagePeerRef =
+        if (requiredKind == ConversationKind.DirectMessage) {
+            parseRaftDirectMessagePeerRef(rawKey) ?: return null
+        } else {
+            null
+        }
+    val key = directMessagePeerRef?.peerName ?: rawKey
+    val requiredPeerKind = directMessagePeerRef?.peerKind
+    if (directMessagePeerRef != null &&
+        requiredPeerKind == null &&
+        key in home.markdownDirectMessageTwinPeerKeys(knownMemberProfilesById)
+    ) {
+        return null
+    }
+    fun ConversationSummary.matchesRequiredPeerKind(): Boolean =
+        requiredPeerKind == null || directMessagePeerType.parsedMemberKindOrNull() == requiredPeerKind
 
-    if (requiredKind == ConversationKind.DirectMessage && home.currentMember.matchesMarkdownChannelLabel(channelLabel)) {
+    if (requiredKind == ConversationKind.DirectMessage &&
+        home.currentMember.matchesMarkdownChannelLabel(key) &&
+        (requiredPeerKind == null || home.currentMember.kind == requiredPeerKind)
+    ) {
         val currentDmChannelId = currentPayload?.let { payload ->
             when {
                 payload.parentSurfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
@@ -10228,6 +10251,7 @@ internal fun resolveMarkdownChannelConversation(
                 val matchByAuthor =
                     home.directMessages
                         .map { it.toConversationSummary() }
+                        .filter { dm -> dm.matchesRequiredPeerKind() }
                         .firstOrNull { dm ->
                             (authorId.isNotBlank() && dm.presenceMemberId?.value == authorId) ||
                                 dm.markdownDirectMessagePeerAliases(knownMemberProfilesById).any { alias ->
@@ -10249,8 +10273,9 @@ internal fun resolveMarkdownChannelConversation(
             .filter { conversation ->
                 (requiredKind == null || conversation.kind == requiredKind) &&
                     if (requiredKind == ConversationKind.DirectMessage) {
-                        conversation.markdownDirectMessagePeerAliases(knownMemberProfilesById)
-                            .any { alias -> alias.markdownChannelLookupKey() == key }
+                        conversation.matchesRequiredPeerKind() &&
+                            conversation.markdownDirectMessagePeerAliases(knownMemberProfilesById)
+                                .any { alias -> alias.markdownChannelLookupKey() == key }
                     } else {
                         conversation.name.markdownChannelLookupKey() == key
                     }
@@ -10281,18 +10306,32 @@ private fun ConversationSummary.markdownDirectMessagePeerAliases(
         .distinctBy { it.lowercase() }
 }
 
-private fun HomeSnapshot.knownMarkdownDirectMessagePeerNames(
+/**
+ * DM peer names a markdown `dm:@peer:short` ref may resolve to without
+ * guessing. Each DM contributes its bare aliases plus kind-pinned
+ * `alias~agent` / `alias~human` forms. A bare alias that maps to more than one
+ * DM, or that a human and an agent share (Web #8415 twin rule: even when only
+ * one of the two DMs exists yet), is left out so the ref stays plain text.
+ */
+internal fun HomeSnapshot.knownMarkdownDirectMessagePeerNames(
     knownMemberProfilesById: Map<String, MemberProfile>
 ): List<String> {
+    val twinKeys = markdownDirectMessageTwinPeerKeys(knownMemberProfilesById)
     val aliasesByLookupKey = linkedMapOf<String, MutableList<Pair<String, String>>>()
     directMessages.forEach { row ->
         val conversation = row.toConversationSummary()
         val conversationId = conversation.messageStreamChannelId().value.trim()
         if (conversationId.isBlank()) return@forEach
+        val peerKind = conversation.directMessagePeerType.parsedMemberKindOrNull()
         conversation.markdownDirectMessagePeerAliases(knownMemberProfilesById).forEach { alias ->
             val key = alias.markdownChannelLookupKey()
-            if (key.isNotBlank()) {
+            if (key.isBlank()) return@forEach
+            if (key !in twinKeys) {
                 aliasesByLookupKey.getOrPut(key) { mutableListOf() } += conversationId to alias
+            }
+            if (peerKind == MemberKind.Agent || peerKind == MemberKind.Human) {
+                val kindedAlias = formatRaftDirectMessagePeerRef(alias, peerKind)
+                aliasesByLookupKey.getOrPut(kindedAlias.lowercase()) { mutableListOf() } += conversationId to kindedAlias
             }
         }
     }
@@ -10301,6 +10340,31 @@ private fun HomeSnapshot.knownMarkdownDirectMessagePeerNames(
             matches.map { match -> match.first }.distinct().size == 1
         }
     }
+}
+
+/**
+ * Lower-cased names held by both a human and an agent in this server. A bare
+ * `dm:@name` ref to one of them is ambiguous and must carry `~agent`/`~human`.
+ */
+internal fun HomeSnapshot.markdownDirectMessageTwinPeerKeys(
+    knownMemberProfilesById: Map<String, MemberProfile>
+): Set<String> {
+    val kindsByKey = mutableMapOf<String, MutableSet<MemberKind>>()
+    fun record(name: String?, kind: MemberKind?) {
+        if (kind != MemberKind.Human && kind != MemberKind.Agent) return
+        val key = name?.markdownChannelLookupKey().orEmpty()
+        if (key.isNotBlank()) kindsByKey.getOrPut(key) { mutableSetOf() } += kind
+    }
+    knownMemberProfilesById.values.forEach { profile -> record(profile.handle, profile.kind) }
+    record(currentMember.handle, currentMember.kind)
+    directMessages.forEach { row ->
+        val conversation = row.toConversationSummary()
+        val peerKind = conversation.directMessagePeerType.parsedMemberKindOrNull()
+        val profile = conversation.presenceMemberId?.value?.trim()?.let(knownMemberProfilesById::get)
+        record(profile?.handle, peerKind)
+        record(conversation.name, peerKind)
+    }
+    return kindsByKey.filterValues { it.size > 1 }.keys
 }
 
 private fun String.markdownChannelLookupKey(): String =

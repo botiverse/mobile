@@ -79,6 +79,38 @@ class RaftMarkdownDialectTest {
     }
 
     @Test
+    fun recognizesKindPinnedDmThreadRefsAsOneRef() {
+        val source = "Open dm:@skyzh~agent:1c50c30a or dm:@skyzh~human:DEADBEEF now."
+
+        assertEquals(
+            listOf("dm:@skyzh~agent:1c50c30a", "dm:@skyzh~human:DEADBEEF"),
+            source.raftRefs(),
+        )
+    }
+
+    @Test
+    fun unknownDmPeerKindClaimsTheWholeTokenInsteadOfFallingBackToMention() {
+        // Web `createRaftMalformedDmKindRefRegex`: the token is claimed so the
+        // app layer renders it as plain text, never as an `@skyzh` mention.
+        val source = "dm:@skyzh~bot:1c50c30a dm:@skyzh~agentx:1c50c30a dm:@skyzh~:1c50c30a dm:@skyzh~agent~human:1c50c30a"
+
+        assertEquals(
+            listOf(
+                "dm:@skyzh~bot:1c50c30a",
+                "dm:@skyzh~agentx:1c50c30a",
+                "dm:@skyzh~:1c50c30a",
+                "dm:@skyzh~agent~human:1c50c30a",
+            ),
+            source.raftRefs(),
+        )
+    }
+
+    @Test
+    fun kindPinnedDmRefWithoutThreadSuffixKeepsMentionFallback() {
+        assertEquals(listOf("@skyzh"), "dm:@skyzh~agent later".raftRefs())
+    }
+
+    @Test
     fun markdownOwnedRangesSuppressDmThreadRefs() {
         val source =
             "`dm:@artin:1c50c30a` [dm:@artin:1c50c30a](https://example.test) " +

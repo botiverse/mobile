@@ -653,7 +653,8 @@ private fun String.isThreadDirectMessageReference(): Boolean {
     val peerStart = 4
     val colonIndex = indexOf(':', peerStart)
     if (colonIndex <= peerStart || colonIndex == lastIndex) return false
-    val peerName = substring(peerStart, colonIndex)
+    val peerRef = parseRaftDirectMessagePeerRef(substring(peerStart, colonIndex)) ?: return false
+    val peerName = peerRef.peerName
     if (!peerName.first().isAsciiWordCharacter() || peerName.any { !it.isRaftDirectMessagePeerPart() }) return false
     val shortId = substring(colonIndex + 1)
     return shortId.length in 6..8 && shortId.all(Char::isThreadShortIdPart)

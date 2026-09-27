@@ -424,6 +424,137 @@ class SharedMarkdownDirectMessageThreadRefTest {
         assertFalse(current.resolveThreadRouteIdentity().canRetainThreadPageFor(otherDm.resolveThreadRouteIdentity()))
     }
 
+    @Test
+    fun kindPinnedDmRefOpensTheMatchingTwinAndBareTwinFailsClosed() {
+        val home = twinHomeSnapshot(withHumanDm = true)
+        val profiles = twinProfiles()
+
+        fun resolve(label: String) =
+            buildMarkdownThreadRefLaunchPayload(
+                currentPayload = KuiklyThreadScreenPayload(),
+                home = home,
+                channelLabel = label,
+                threadShortId = ShortId,
+                requiredParentKind = ConversationKind.DirectMessage,
+                knownMemberProfilesById = profiles,
+                parentMessageId = ParentMessageId
+            )?.parentChannelId
+
+        assertEquals(TwinAgentDmId, resolve("skyzh~agent"))
+        assertEquals(TwinHumanDmId, resolve("skyzh~human"))
+        assertEquals(TwinAgentDmId, resolve("SkyZH~agent"))
+        assertEquals(null, resolve("skyzh"))
+        assertEquals(null, resolve("skyzh~bot"))
+        assertEquals(null, resolve("skyzh~"))
+        assertEquals(null, resolve("~agent"))
+    }
+
+    @Test
+    fun bareTwinFailsClosedEvenWhenOnlyOneTwinDmExists() {
+        // Web #8415: a human and an agent sharing the name is enough; the
+        // missing human DM does not make the bare name mean the agent.
+        val home = twinHomeSnapshot(withHumanDm = false)
+        val profiles = twinProfiles()
+
+        fun resolve(label: String) =
+            resolveMarkdownChannelConversation(
+                home = home,
+                channelLabel = label,
+                requiredKind = ConversationKind.DirectMessage,
+                knownMemberProfilesById = profiles
+            )?.channelId?.value
+
+        assertEquals(null, resolve("skyzh"))
+        assertEquals(TwinAgentDmId, resolve("skyzh~agent"))
+        assertEquals(null, resolve("skyzh~human"))
+        assertEquals(listOf("skyzh~agent"), home.knownMarkdownDirectMessagePeerNames(profiles).filter { it.startsWith("skyzh") })
+    }
+
+    @Test
+    fun knownDmPeerNamesListOnlyKindedFormsForTwinsAndBothFormsOtherwise() {
+        val home = twinHomeSnapshot(withHumanDm = true)
+        val known = home.knownMarkdownDirectMessagePeerNames(twinProfiles()).map { it.lowercase() }
+
+        assertTrue("skyzh~agent" in known)
+        assertTrue("skyzh~human" in known)
+        assertFalse(known.any { it.equals("skyzh", ignoreCase = true) })
+        assertTrue("friday" in known)
+        assertTrue("friday~agent" in known)
+        assertFalse("friday~human" in known)
+    }
+
+    @Test
+    fun wrongKindForUniquePeerDoesNotResolve() {
+        val home = twinHomeSnapshot(withHumanDm = true)
+        val resolved =
+            resolveMarkdownChannelConversation(
+                home = home,
+                channelLabel = "friday~human",
+                requiredKind = ConversationKind.DirectMessage,
+                knownMemberProfilesById = twinProfiles()
+            )
+        assertEquals(null, resolved)
+        assertEquals(
+            FridayDmId,
+            resolveMarkdownChannelConversation(
+                home = home,
+                channelLabel = "friday",
+                requiredKind = ConversationKind.DirectMessage,
+                knownMemberProfilesById = twinProfiles()
+            )?.channelId?.value
+        )
+    }
+
+    @Test
+    fun routeLocalAliasesDoNotReadmitBareTwin() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                channelKind = "dm",
+                dmPeerName = "skyzh",
+                dmPeerIdentity = MemberDetailIdentity(MemberId("skyzh-agent"), MemberKind.Agent),
+                knownMarkdownDirectMessagePeerNames = listOf("skyzh~agent", "skyzh~human", "friday", "friday~agent")
+            )
+
+        val known = payload.toKnownMarkdownDirectMessagePeerNameSet()
+
+        assertTrue("skyzh~agent" in known)
+        assertTrue("skyzh~human" in known)
+        assertFalse("skyzh" in known)
+        assertTrue("friday" in known)
+    }
+
+    private fun twinProfiles(): Map<String, MemberProfile> =
+        listOf(
+            MemberProfile(id = MemberId("skyzh-human"), displayName = "Alex Chi", handle = "skyzh", kind = MemberKind.Human),
+            MemberProfile(id = MemberId("skyzh-agent"), displayName = "skyzh", handle = "skyzh", kind = MemberKind.Agent),
+            MemberProfile(id = MemberId("friday"), displayName = "Friday", handle = "friday", kind = MemberKind.Agent)
+        ).associateBy { it.id.value }
+
+    private fun twinHomeSnapshot(withHumanDm: Boolean): HomeSnapshot {
+        fun dm(id: String, name: String, peerId: String, peerType: String) =
+            ConversationSummary(
+                threadId = ThreadId(id),
+                channelId = ChannelId(id),
+                kind = ConversationKind.DirectMessage,
+                name = name,
+                directMessagePeerType = peerType,
+                presenceMemberId = MemberId(peerId)
+            ).toHomeDirectMessageRow()
+        return HomeSnapshot(
+            server = dmServer(),
+            currentMember = MemberProfile(id = MemberId("viewer"), displayName = "Viewer", handle = "viewer", kind = MemberKind.Human),
+            channels = emptyList(),
+            directMessages =
+                listOfNotNull(
+                    dm(TwinAgentDmId, "skyzh", "skyzh-agent", "agent"),
+                    if (withHumanDm) dm(TwinHumanDmId, "Alex Chi", "skyzh-human", "human") else null,
+                    dm(FridayDmId, "Friday", "friday", "agent")
+                ),
+            unreadTotal = 0
+        )
+    }
+
     private fun dmHomeSnapshot(dmName: String = "Artin"): HomeSnapshot {
         val peer = dmPeer()
         return HomeSnapshot(
@@ -483,5 +614,8 @@ class SharedMarkdownDirectMessageThreadRefTest {
         const val ParentMessageId = "parent-message-id"
         const val ThreadChannelId = "reply-thread-id"
         const val FocusedMessageId = "reply-message-id"
+        const val TwinAgentDmId = "dm-skyzh-agent"
+        const val TwinHumanDmId = "dm-skyzh-human"
+        const val FridayDmId = "dm-friday"
     }
 }
