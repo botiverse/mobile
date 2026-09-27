@@ -4203,6 +4203,24 @@ private fun SlockAppShellReadyContent(
         }
     }
 
+    fun dismissAdaptiveDetailSelection() {
+        val current = adaptiveWorkspaceStore.snapshot().workspace ?: return
+        val selection = current.selection ?: return
+        val next =
+            reduceSlockAdaptiveWorkspace(
+                current,
+                SlockAdaptiveWorkspaceIntent.DismissDetail,
+            )
+        releaseAdaptiveHandoffLease(selection.generation)
+        adaptiveWorkspaceStore.update { session ->
+            session.copy(
+                workspace = next,
+                launchPayload = null,
+            )
+        }
+        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
+    }
+
     fun popMainRoute(): Boolean {
         if (createChannelDialogOpen) {
             createChannelDialogOpen = false
@@ -4221,6 +4239,10 @@ private fun SlockAppShellReadyContent(
         if (selectedTab != "home") {
             selectAppShellTab("home")
             homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
+            return true
+        }
+        if (adaptiveWorkspaceState?.presentation == SlockAdaptiveWorkspacePresentation.DetailOnly) {
+            dismissAdaptiveDetailSelection()
             return true
         }
         return false
