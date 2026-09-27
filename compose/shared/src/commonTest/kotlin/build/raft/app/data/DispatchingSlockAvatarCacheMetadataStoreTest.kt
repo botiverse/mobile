@@ -23,6 +23,7 @@ class DispatchingSlockAvatarCacheMetadataStoreTest {
         val empty = SlockAvatarCacheStoredState(metadata = null, failure = null)
 
         store.read(key)
+        store.readCommittedForOwner(key.owner, nowMs = 0L, limit = 1L)
         store.restoreAfterNativeFinalizeFailure(key, empty, empty, guard)
         store.clearFailure(key)
         store.clearTemporaryFailures(key.owner)
@@ -32,7 +33,7 @@ class DispatchingSlockAvatarCacheMetadataStoreTest {
 
         assertEquals(
             listOf(
-                "read", "restoreAfterNativeFinalizeFailure", "clearFailure", "clearTemporaryFailures",
+                "read", "readCommittedForOwner", "restoreAfterNativeFinalizeFailure", "clearFailure", "clearTemporaryFailures",
                 "clearSubject", "clearOwner", "clearAll"
             ),
             delegate.calls.map { it.first }
@@ -60,6 +61,15 @@ class DispatchingSlockAvatarCacheMetadataStoreTest {
         override suspend fun read(key: SlockAvatarCacheKey): SlockAvatarCacheStoredState {
             record("read")
             return SlockAvatarCacheStoredState(metadata = null, failure = null)
+        }
+
+        override suspend fun readCommittedForOwner(
+            owner: SlockAvatarCacheOwner,
+            nowMs: Long,
+            limit: Long
+        ): List<SlockAvatarCacheMetadata> {
+            record("readCommittedForOwner")
+            return emptyList()
         }
 
         override suspend fun commitSuccess(
