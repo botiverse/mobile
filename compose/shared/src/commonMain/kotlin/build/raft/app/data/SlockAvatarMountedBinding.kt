@@ -257,6 +257,7 @@ internal class SlockAvatarMountedBinding(
     private val handlesLock = SynchronizedObject()
     private val handles = mutableMapOf<Long, SlockAvatarMountedHandle>()
     private val lastKnownOwners = mutableMapOf<String?, SlockAvatarCacheOwner>()
+    private val prewarmedOwners = mutableSetOf<SlockAvatarCacheOwner>()
     private val flightsMutex = Mutex()
     private val runningFlights = mutableMapOf<String, CompletableDeferred<Unit>>()
 
@@ -349,6 +350,62 @@ internal class SlockAvatarMountedBinding(
         return handle
     }
 
+    /**
+     * task #343: cold-start prewarm. On a fresh process the mounted session is empty, so
+     * [peekInitialManagedModel] misses and the first frame cannot paint durable avatars. Once the
+     * owner for [serverId] resolves, seed the session from the owner's exact committed rows whose
+     * native bytes are present and decodable, so first-frame peeks hit.
+     *
+     * Safety: runs only after the owner resolves (retire/epoch chains stay authoritative); seeds via
+     * [SlockAvatarMountedSession.seedIdle], which only fills slots untouched in this process, so a
+     * live mount, flight, or in-memory commit always wins; rows suppressed by an unexpired failure or
+     * without an exact commit identity are excluded by the store; validators are carried only when
+     * the native bytes can back a 304 (task #289).
+     *
+     * @return the number of slots seeded.
+     */
+    suspend fun prewarmOwner(serverId: String?, limit: Long = PrewarmOwnerLimit): Int {
+        val provider = nativeProvider()
+        // Before marking the owner: a platform provider registered later must still get a prewarm.
+        if (provider === UnsupportedSlockAvatarMountedNativeProvider) return 0
+        val owner = runCatchingPreservingCancellation { currentOwner(serverId) }.getOrNull() ?: return 0
+        val firstForOwner =
+            synchronized(handlesLock) {
+                // Same keying as mount: only the requested serverId. Writing the null key here
+                // would pin it to the first owner across server switches.
+                lastKnownOwners[serverId] = owner
+                prewarmedOwners.add(owner)
+            }
+        // Auth metadata events fire often; one prewarm per owner per process is enough. Retirement
+        // below re-arms it, since that clears the owner's session slots.
+        if (!firstForOwner) return 0
+        val rows =
+            runCatchingPreservingCancellation { coordinator.committedForOwner(owner, limit) }
+                .getOrElse {
+                    diagnostics("avatar_prewarm result=read_fail serverHash=${serverId.slockAvatarDiagnosticsHash()}")
+                    return 0
+                }
+        var seeded = 0
+        for (row in rows) {
+            val key = row.key
+            if (key.owner != owner || !row.hasExactCommitIdentity) continue
+            val identity = row.commitIdentity ?: continue
+            // Cheap pre-check; seedIdle re-checks atomically, so a live mount always wins.
+            if (session.snapshotFor(owner, key.subject) != null) continue
+            val inspection =
+                runCatchingPreservingCancellation { provider.inspect(key.nativeSlot()) }.getOrNull() ?: continue
+            if (!inspection.supported || !inspection.bytesAvailable || !inspection.bytesDecodable) continue
+            val validators =
+                runCatching { SlockAvatarValidators(eTag = row.eTag, lastModified = row.lastModified) }.getOrNull()
+            if (session.seedIdle(key, identity, validators, row.modelRevision)) seeded += 1
+        }
+        diagnostics(
+            "avatar_prewarm result=ok rows=${rows.size} seeded=$seeded " +
+                "serverHash=${serverId.slockAvatarDiagnosticsHash()}"
+        )
+        return seeded
+    }
+
     fun peekInitialManagedModel(
         subject: SlockAvatarCacheSubject,
         remoteUrl: String,
@@ -423,6 +480,7 @@ internal class SlockAvatarMountedBinding(
     }
 
     suspend fun retireOwner(owner: SlockAvatarCacheOwner): Boolean {
+        synchronized(handlesLock) { prewarmedOwners.remove(owner) }
         publish(session.retireOwner(owner))
         val provider = nativeProvider()
         if (provider === UnsupportedSlockAvatarMountedNativeProvider) return true
@@ -431,6 +489,7 @@ internal class SlockAvatarMountedBinding(
     }
 
     suspend fun clearAll(): Boolean {
+        synchronized(handlesLock) { prewarmedOwners.clear() }
         publish(session.clearAll())
         val provider = nativeProvider()
         if (provider === UnsupportedSlockAvatarMountedNativeProvider) return true
@@ -816,3 +875,6 @@ fun parseSlockAvatarMountedRenderModel(model: String): SlockAvatarMountedRenderD
         )
     }.getOrNull()
 }
+
+/** task #343: bounds cold-start prewarm (one native inspect per row). */
+internal const val PrewarmOwnerLimit: Long = 300L

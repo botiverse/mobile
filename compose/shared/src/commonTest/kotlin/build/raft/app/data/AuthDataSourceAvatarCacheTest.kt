@@ -91,6 +91,12 @@ class AuthDataSourceAvatarCacheTest {
     private class AuthAvatarMetadataStore : SlockAvatarCacheMetadataStore {
         val clearedOwners = mutableListOf<SlockAvatarCacheOwner>()
 
+        override suspend fun readCommittedForOwner(
+            owner: SlockAvatarCacheOwner,
+            nowMs: Long,
+            limit: Long
+        ): List<SlockAvatarCacheMetadata> = emptyList()
+
         override suspend fun read(key: SlockAvatarCacheKey): SlockAvatarCacheStoredState =
             SlockAvatarCacheStoredState(null, null)
 

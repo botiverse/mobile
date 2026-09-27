@@ -22,6 +22,57 @@ import kotlin.test.assertTrue
 
 class SlockAvatarMountedBindingTest {
     @Test
+    fun coldStartPrewarmLetsTheFirstFramePeekADurableAvatar() = runBlocking {
+        // task #343: a fresh process has an empty mounted session, so the first frame's peek
+        // missed and painted the default icon until the per-row mount finished.
+        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 500L) }
+        val binding = binding(store, FakeNativeProvider(), RecordingDownloader())
+        assertNull(binding.peekInitialManagedModel(subject(), RemoteUrl))
+
+        assertEquals(1, binding.prewarmOwner(serverId = null))
+
+        val peeked = assertNotNull(binding.peekInitialManagedModel(subject(), RemoteUrl))
+        assertNotNull(parseSlockAvatarMountedRenderModel(peeked))
+        Unit
+    }
+
+    @Test
+    fun prewarmSkipsRowsWhoseNativeBytesAreGone() = runBlocking {
+        // Same rule as task #289: metadata that outlived its bytes must not be rendered or revalidated.
+        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 500L) }
+        val binding = binding(store, FakeNativeProvider(bytesAvailable = false), RecordingDownloader())
+
+        assertEquals(0, binding.prewarmOwner(serverId = null))
+        assertNull(binding.peekInitialManagedModel(subject(), RemoteUrl))
+    }
+
+    @Test
+    fun prewarmRunsOncePerOwnerUntilTheOwnerIsRetired() = runBlocking {
+        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 500L) }
+        val binding = binding(store, FakeNativeProvider(), RecordingDownloader())
+
+        assertEquals(1, binding.prewarmOwner(serverId = null))
+        assertEquals(0, binding.prewarmOwner(serverId = null))
+        assertEquals(1, store.committedForOwnerCalls)
+
+        binding.retireOwner(owner())
+        assertNull(binding.peekInitialManagedModel(subject(), RemoteUrl))
+        assertEquals(1, binding.prewarmOwner(serverId = null))
+        assertEquals(2, store.committedForOwnerCalls)
+    }
+
+    @Test
+    fun prewarmNeverDisplacesALiveMount() = runBlocking {
+        val store = FakeMetadataStore()
+        val binding = binding(store, FakeNativeProvider(), RecordingDownloader())
+        val handle = binding.mount(subject(), RemoteUrl)
+        store.metadata = metadata(freshUntilMs = 500L)
+
+        assertEquals(0, binding.prewarmOwner(serverId = null))
+        assertTrue(binding.dispose(handle), "prewarm must leave the live mount current")
+    }
+
+    @Test
     fun unsupportedProviderUsesLegacyUrlBeforeTransport() = runBlocking {
         val downloader = RecordingDownloader()
         val binding = binding(provider = UnsupportedSlockAvatarMountedNativeProvider, downloader = downloader)
@@ -764,6 +815,20 @@ class SlockAvatarMountedBindingTest {
 
         override suspend fun read(key: SlockAvatarCacheKey) =
             SlockAvatarCacheStoredState(metadata?.takeIf { it.key == key }, failure?.takeIf { it.key == key })
+
+        var committedForOwnerCalls = 0
+
+        override suspend fun readCommittedForOwner(
+            owner: SlockAvatarCacheOwner,
+            nowMs: Long,
+            limit: Long
+        ): List<SlockAvatarCacheMetadata> {
+            committedForOwnerCalls += 1
+            val row = metadata?.takeIf { it.key.owner == owner && it.hasExactCommitIdentity }
+                ?: return emptyList()
+            if (failure?.let { it.key == row.key && it.retryAtMs > nowMs } == true) return emptyList()
+            return listOf(row)
+        }
 
         override suspend fun commitSuccess(
             metadata: SlockAvatarCacheMetadata,

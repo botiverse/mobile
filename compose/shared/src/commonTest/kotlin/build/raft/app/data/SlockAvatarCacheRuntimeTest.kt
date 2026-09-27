@@ -936,6 +936,17 @@ class SlockAvatarCacheRuntimeTest {
         var throwOnClearAll = false
         val clearedTemporaryFailureOwners = mutableListOf<SlockAvatarCacheOwner>()
 
+        override suspend fun readCommittedForOwner(
+            owner: SlockAvatarCacheOwner,
+            nowMs: Long,
+            limit: Long
+        ): List<SlockAvatarCacheMetadata> =
+            metadataBySlot.values
+                .filter { it.key.owner == owner && it.hasExactCommitIdentity }
+                .filter { row -> failureByKey[row.key]?.let { it.retryAtMs > nowMs } != true }
+                .sortedByDescending { it.validatedAtMs }
+                .take(limit.toInt())
+
         override suspend fun read(key: SlockAvatarCacheKey): SlockAvatarCacheStoredState =
             SlockAvatarCacheStoredState(
                 metadata = metadataBySlot[key.owner to key.subject],

@@ -12,6 +12,36 @@ import kotlin.test.assertTrue
 
 class SlockAvatarCacheMetadataStoreTest {
     @Test
+    fun committedForOwnerIsOwnerScopedSkipsSuppressedAndOrdersNewestFirst() = withStore { store ->
+        // task #343: the cold-start prewarm reads one owner's exact committed rows, minus resources
+        // still suppressed by an unexpired failure, newest validation first, bounded.
+        val older = key(subject = SlockAvatarCacheSubject.Member(MemberKind.Agent, "member-a"))
+        val newer = key(subject = SlockAvatarCacheSubject.Member(MemberKind.Human, "member-b"))
+        val suppressed = key(subject = SlockAvatarCacheSubject.Member(MemberKind.Agent, "member-c"))
+        val otherOwner = key(owner = owner(serverId = "server-b"))
+        store.commitSuccess(metadata(older).copy(validatedAtMs = 100L), currentGuard(older))
+        store.commitSuccess(metadata(newer).copy(validatedAtMs = 150L), currentGuard(newer))
+        store.commitSuccess(metadata(suppressed), currentGuard(suppressed))
+        store.commitSuccess(metadata(otherOwner), currentGuard(otherOwner))
+        val failure =
+            SlockAvatarCachePolicy.failure(
+                suppressed,
+                SlockAvatarCacheFailureKind.TemporaryTransport,
+                previous = null,
+                nowMs = 200L
+            )
+        store.commitFailure(failure, retireMatchingMetadata = false, currentGuard(suppressed))
+
+        val rows = store.readCommittedForOwner(owner(), nowMs = 1_000L, limit = 10L)
+        assertEquals(listOf(newer, older), rows.map { it.key })
+        assertTrue(rows.all { it.hasExactCommitIdentity })
+
+        val afterRetry = store.readCommittedForOwner(owner(), nowMs = failure.retryAtMs + 1L, limit = 10L)
+        assertTrue(afterRetry.any { it.key == suppressed })
+        assertEquals(1, store.readCommittedForOwner(owner(), nowMs = 1_000L, limit = 1L).size)
+    }
+
+    @Test
     fun metadataAndFailuresAreOwnerSubjectAndResourceScoped() = withStore { store ->
         val key = key()
         val metadata = metadata(key)
