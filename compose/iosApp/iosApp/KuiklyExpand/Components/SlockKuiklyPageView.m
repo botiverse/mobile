@@ -362,8 +362,10 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
 - (void)syncChildVisibility {
     BOOL shouldBeRendered = self.childActive && self.childView != nil;
     BOOL shouldBeLifecycleVisible = shouldBeRendered && self.viewDidAppear && self.pageDidAppear;
-    // Preserve content only while the app is inactive for the system snapshot.
-    BOOL shouldKeepSnapshotContent = shouldBeRendered || (self.childView != nil && self.appWantsSnapshot);
+    // Keep only the active child's pixels for the system snapshot. Unhiding every
+    // mounted tab paints a later one (Settings) over Home while the tab bar still
+    // says Home.
+    BOOL shouldKeepSnapshotContent = shouldBeRendered;
     self.contentContainerView.hidden = !shouldKeepSnapshotContent;
     self.userInteractionEnabled = shouldBeRendered;
     self.childView.hidden = !shouldKeepSnapshotContent;
