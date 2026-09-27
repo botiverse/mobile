@@ -111,48 +111,57 @@ class SlockThreadImePaintConnectedTest {
                     failure,
                 )
             }
-            val firstCompositionAccepted = AtomicBoolean(false)
-            val retiredDetachedAtReplacement = AtomicBoolean(false)
-            val imeVisibleAtReplacement = AtomicBoolean(false)
-            lateinit var replacementEditor: EditText
+            // task #465 (artin ruling: keep the current product contract — send
+            // retires the logical editor session but REUSES the same native
+            // EditText; there is no replacement view). Assert the retained editor
+            // is cleared (session advanced in place) rather than a new instance.
+            val staleCallbackRejected = AtomicBoolean(false)
+            val imeVisibleAfterSend = AtomicBoolean(false)
+            val editorRetained = AtomicBoolean(false)
             try {
                 var lastEdgeDiagnostic: String? = null
-                waitUntil(SendTimeoutMs, "first attached replacement editor") {
+                waitUntil(SendTimeoutMs, "same editor cleared after send") {
                     var captured = false
                     scenario.onActivity { activity ->
                         val candidate = activity.window.decorView.findAttachedComposerEditText()
-                        if (candidate != null && candidate !== retiredEditor) {
-                            replacementEditor = candidate
-                            retiredDetachedAtReplacement.set(!retiredEditor.isAttachedToWindow)
-                            assertTrue("replacement editor must start empty", candidate.text.isEmpty())
-                            imeVisibleAtReplacement.set(
+                        if (candidate != null && candidate === retiredEditor && candidate.text.isEmpty()) {
+                            editorRetained.set(true)
+                            imeVisibleAfterSend.set(
                                 activity.window.decorView.rootWindowInsets
                                     ?.isVisible(WindowInsets.Type.ime()) == true
                             )
 
-                            // Force the already-retired view's queued callback at the earliest point
-                            // where its replacement is reachable. It must neither refill the new
-                            // editor nor consume the replacement's first real IME state.
+                            // Inject a stale write on the retired view's OLD
+                            // sourceSessionId. Because isActiveSession now rejects
+                            // that session, the page must not re-seed the draft —
+                            // the controlled empty value re-applies and the editor
+                            // must end up empty, not "sent".
                             retiredEditor.setText("sent")
-                            assertTrue("retired editor callback must not refill replacement draft", candidate.text.isEmpty())
-                            val connection = requireNotNull(candidate.onCreateInputConnection(EditorInfo()))
-                            firstCompositionAccepted.set(connection.setComposingText("sent", 1))
                             captured = true
                         }
                     }
                     if (!captured) {
-                        // Probe (task #465 N=2): on each view-system edge, record
-                        // the attached/tree editor identity — separates "state
-                        // emitted a new instanceId but attach lags" from "nothing
-                        // emitted at all". Throttled to changes only.
                         val diagnostic =
                             scenario.composerRetirementDiagnostics(nonce, retiredEditor)
                         if (diagnostic != lastEdgeDiagnostic) {
                             lastEdgeDiagnostic = diagnostic
-                            println("replacementEditorWait edge: $diagnostic")
+                            println("retainedEditorWait edge: $diagnostic")
                         }
                     }
                     captured
+                }
+                // The injected "sent" must be cleared back to empty: the stale
+                // sourceSessionId callback was rejected, so the controlled empty
+                // value won.
+                waitUntil(SendTimeoutMs, "stale callback rejected (draft stays empty)") {
+                    var rejected = false
+                    scenario.onActivity {
+                        if (retiredEditor.text.isEmpty()) {
+                            staleCallbackRejected.set(true)
+                            rejected = true
+                        }
+                    }
+                    rejected
                 }
             } catch (failure: AssertionError) {
                 throw AssertionError(
@@ -161,11 +170,18 @@ class SlockThreadImePaintConnectedTest {
                     failure,
                 )
             }
-            assertTrue("first replacement composition must be accepted at attach", firstCompositionAccepted.get())
+            // A REAL first composition on the retained editor must still be
+            // accepted — same view, no focus/IME loss.
+            val firstCompositionAccepted = AtomicBoolean(false)
+            scenario.onActivity {
+                val connection = requireNotNull(retiredEditor.onCreateInputConnection(EditorInfo()))
+                firstCompositionAccepted.set(connection.setComposingText("sent", 1))
+            }
+            assertTrue("first composition on retained editor must be accepted", firstCompositionAccepted.get())
             waitUntil(ImeTransitionTimeoutMs, "sent row and same-text first composition") {
                 ThreadNewerAutoPaginationVisualFixtureProbe.sentRequestCount(nonce) >= 1 &&
                 scenario.currentComposerEditText()?.let { editor ->
-                    editor === replacementEditor && editor.isAttachedToWindow &&
+                    editor === retiredEditor && editor.isAttachedToWindow &&
                     editor.text.toString() == "sent" &&
                         BaseInputConnection.getComposingSpanStart(editor.text) == 0 &&
                         BaseInputConnection.getComposingSpanEnd(editor.text) == 4 &&
@@ -176,17 +192,17 @@ class SlockThreadImePaintConnectedTest {
             val sentRequestCount = ThreadNewerAutoPaginationVisualFixtureProbe.sentRequestCount(nonce)
             assertEquals("session retirement send must issue exactly one request", 1, sentRequestCount)
             val firstSelectionPreserved =
-                replacementEditor.selectionStart == 4 && replacementEditor.selectionEnd == 4
+                retiredEditor.selectionStart == 4 && retiredEditor.selectionEnd == 4
             val receipt =
                 "SLOCK_COMPOSER_SESSION_RETIREMENT_PASS " +
-                    "replacementFocused=${replacementEditor.hasFocus()} " +
+                    "editorRetained=${editorRetained.get()} " +
+                    "retainedFocused=${retiredEditor.hasFocus()} " +
+                    "staleCallbackRejected=${staleCallbackRejected.get()} " +
                     "firstComposition=${firstCompositionAccepted.get()} " +
                     "firstSelection=$firstSelectionPreserved " +
                     "requestCount=$sentRequestCount " +
                     "imeSetupFailureDiagnostics=$imeSetupFailureDiagnosticsVerified " +
-                    "retiredDetachedAtSample=${retiredDetachedAtReplacement.get()} " +
-                    "retiredDetachedFinal=${!retiredEditor.isAttachedToWindow} " +
-                    "imeVisibleAtAttachSample=${imeVisibleAtReplacement.get()} " +
+                    "imeVisibleAfterSend=${imeVisibleAfterSend.get()} " +
                     "imeNeverHiddenDuringSample=${!imeHiddenDuringReplacement.get()}"
             instrumentation.sendStatus(
                 0,
