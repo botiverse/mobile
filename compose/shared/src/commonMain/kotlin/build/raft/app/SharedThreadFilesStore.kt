@@ -123,19 +123,22 @@ internal class SharedThreadFilesStore(
                         hasMore = false,
                         loadingMore = false,
                         nextCursor = null,
-                        errorCode = null
+                        errorCode = null,
+                        errorServerMessage = null
                     )
                 is DataResult.Error ->
                     latest.payload.copy(
                         status = if (latest.payload.items.isEmpty()) "error" else "content",
                         loadingMore = false,
-                        errorCode = result.error.code
+                        errorCode = result.error.code,
+                        errorServerMessage = null
                     )
                 is DataResult.NoPermission ->
                     latest.payload.copy(
                         status = "no_permission",
                         loadingMore = false,
-                        errorCode = result.blocker.requiredCapability ?: result.blocker.code
+                        errorCode = result.blocker.requiredCapability ?: result.blocker.code,
+                        errorServerMessage = result.blocker.serverMessage
                     )
             }
         reduce(latest.copy(payload = nextPayload, requestInFlight = false))

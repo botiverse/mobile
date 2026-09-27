@@ -602,6 +602,13 @@ private fun NetworkResponse.toExecutorResponse(redactSensitive: Boolean = false)
             errorBodyText =
                 if (redactSensitive) {
                     "attachment_presigned_upload_http_$status"
+                } else if (isEdgeBlockedErrorBody(status, headers, text)) {
+                    // An edge layer (CDN/proxy/WAF) answered 403 with an HTML
+                    // page instead of the API's JSON envelope. Re-encode it as
+                    // the canonical marker so route adapters surface
+                    // serverMessage="edge_blocked" and the UI shows the
+                    // network-blocked copy instead of "no permission".
+                    """{"error":"edge_blocked"}"""
                 } else {
                     (text ?: error?.message)?.redactNetworkErrorText()
                 },
@@ -609,6 +616,32 @@ private fun NetworkResponse.toExecutorResponse(redactSensitive: Boolean = false)
             responseHeaders = if (redactSensitive) emptyMap() else headers
         )
     }
+}
+
+/**
+ * True when a 403 response body is not the API's JSON error envelope but an
+ * HTML block page produced by an edge layer (CDN/WAF/corporate proxy).
+ *
+ * Two signals, either is sufficient:
+ * - a `Content-Type: text/html` response header, or
+ * - a body that starts with `<` after whitespace — the API never emits XML/HTML
+ *   payloads, and JSON bodies always start with `{` or `[`.
+ */
+internal fun isEdgeBlockedErrorBody(
+    status: Int,
+    headers: Map<String, List<String>>,
+    bodyText: String?
+): Boolean {
+    if (status != 403) return false
+    val contentType =
+        headers.entries
+            .firstOrNull { (name, _) -> name.equals("Content-Type", ignoreCase = true) }
+            ?.value
+            ?.firstOrNull()
+            ?.substringBefore(';')
+            ?.trim()
+    if (contentType != null && contentType.equals("text/html", ignoreCase = true)) return true
+    return bodyText?.trimStart()?.startsWith("<") == true
 }
 
 private fun SlockNetworkRequestLifetimeOutcome.Retired.toExecutorResponse(): SlockHttpExecutorResponse {

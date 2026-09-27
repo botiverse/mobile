@@ -143,6 +143,7 @@ import build.raft.app.data.TasksUiState
 import build.raft.app.data.resolveSharedTaskReference
 import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.data.isAuthSessionErrorCode
+import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.data.actionCardFromMessageMetadata
 import build.raft.app.data.authLossTokenFingerprint
 import build.raft.app.data.canonicalServerMembersMentionHandle
@@ -1721,6 +1722,7 @@ internal data class KuiklyThreadScreenPayload(
     val olderMessagesStatus: String = "idle",
     val newerMessagesStatus: String = "idle",
     val errorCode: String? = null,
+    val errorServerMessage: String? = null,
     val emptyTitle: String = "No messages yet",
     val emptyDetail: String = "This conversation has no messages yet.",
     val composer: KuiklyThreadComposerPayload = KuiklyThreadComposerPayload(),
@@ -3128,6 +3130,7 @@ internal fun KuiklyThreadScreenPayload.resolveTaskAssigneeDisplayName(
 internal data class ThreadTimelineRenderConfig(
     val backgroundRefreshing: Boolean,
     val errorCode: String?,
+    val errorServerMessage: String? = null,
     val originPreview: String?,
     val originErrorCode: String?,
     val timeContext: SlockTimeContext,
@@ -3138,6 +3141,7 @@ internal fun KuiklyThreadScreenPayload.toThreadTimelineRenderConfig(): ThreadTim
     ThreadTimelineRenderConfig(
         backgroundRefreshing = backgroundRefreshing,
         errorCode = errorCode,
+        errorServerMessage = errorServerMessage,
         originPreview = originPreview,
         originErrorCode = originErrorCode,
         timeContext = toSlockTimeContext(),
@@ -13937,6 +13941,7 @@ private fun ThreadPageContentContent(
         remember(
             payload.backgroundRefreshing,
             payload.errorCode,
+            payload.errorServerMessage,
             payload.originPreview,
             payload.originErrorCode,
             payload.localOffsetMinutes,
@@ -13980,8 +13985,16 @@ private fun ThreadPageContentContent(
                 )
             } else if (accessResolution == ThreadAccessResolution.NoPermission) {
                 ThreadStateMessage(
-                    stringResource(MR.strings.thread_state_no_permission),
-                    stringResource(MR.strings.thread_error_no_permission)
+                    if (payload.errorServerMessage.isEdgeBlockedMarker()) {
+                        stringResource(MR.strings.thread_state_edge_blocked)
+                    } else {
+                        stringResource(MR.strings.thread_state_no_permission)
+                    },
+                    if (payload.errorServerMessage.isEdgeBlockedMarker()) {
+                        stringResource(MR.strings.error_edge_blocked)
+                    } else {
+                        stringResource(MR.strings.thread_error_no_permission)
+                    }
                 )
             } else if (renderEarlyLoadingShell) {
                 ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
@@ -15784,8 +15797,16 @@ private fun ThreadChatTabContent(
             )
         "no_permission" ->
             ThreadStateMessage(
-                stringResource(MR.strings.thread_state_no_permission),
-                stringResource(MR.strings.thread_error_no_permission)
+                if (renderConfig.errorServerMessage.isEdgeBlockedMarker()) {
+                    stringResource(MR.strings.thread_state_edge_blocked)
+                } else {
+                    stringResource(MR.strings.thread_state_no_permission)
+                },
+                if (renderConfig.errorServerMessage.isEdgeBlockedMarker()) {
+                    stringResource(MR.strings.error_edge_blocked)
+                } else {
+                    stringResource(MR.strings.thread_error_no_permission)
+                }
             )
         "empty" ->
             if (timelineSlice.originStatus != "none") {
