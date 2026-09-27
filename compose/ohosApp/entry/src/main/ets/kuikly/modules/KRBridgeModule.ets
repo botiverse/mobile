@@ -382,6 +382,12 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         break;
       }
       default: {
+        SlockOhosDiagnostics.record(
+          "HRBridgeModule",
+          `unsupported bridge method dropped: ${method}`,
+          Date.now(),
+          "warn"
+        );
         if (callback !== undefined && callback !== null) {
           callback({
             "code": -1,
