@@ -14,6 +14,8 @@ import build.raft.app.model.ServerSummary
 import build.raft.app.model.avatarSlotResolution
 import build.raft.app.model.hidesHumanDirectoryForViewer
 import build.raft.app.model.isAgentFallbackAvatarWireValue
+import build.raft.app.slockAvatarDiagnosticsHash
+import build.raft.app.slockAvatarDiagnosticsSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -938,7 +940,19 @@ class SharedServerMembersStore internal constructor(
         val incomingById = eligibleProfiles.associateBy { it.id.value.trim() }
         val enrichedDirectory =
             previous?.members.orEmpty().map { member ->
-                incomingById[member.id.value.trim()]?.let(member::mergeAuthoritativeProfile) ?: member
+                incomingById[member.id.value.trim()]
+                    ?.let { incoming ->
+                        member.mergeAuthoritativeProfile(incoming).also { merged ->
+                            logMemberAvatarUrlDropped(
+                                serverKey = key,
+                                existing = member,
+                                incoming = incoming,
+                                merged = merged,
+                                source = "roster_merge"
+                            )
+                        }
+                    }
+                    ?: member
             }
         putEntry(
             key,
@@ -972,6 +986,40 @@ class SharedServerMembersStore internal constructor(
         )
     }
 
+    /**
+     * Shape-only diagnostic for the avatarUrl-loss lane behind task #344: logs whenever a
+     * merge turns a previously concrete `avatarUrl`/`avatar` into null. Emits member/server
+     * hashes plus the incoming avatar bucket — never the raw URL.
+     */
+    private fun logMemberAvatarUrlDropped(
+        serverKey: String,
+        existing: MemberProfile,
+        incoming: MemberProfile,
+        merged: MemberProfile,
+        source: String
+    ) {
+        val hadConcrete =
+            !existing.avatarUrl.isNullOrBlank() ||
+                (existing.avatar as? AvatarReference.Url) != null
+        val lostConcrete =
+            merged.avatarUrl.isNullOrBlank() &&
+                (merged.avatar as? AvatarReference.Url) == null
+        if (!hadConcrete || !lostConcrete) return
+        val incomingAvatarKind =
+            when {
+                incoming.avatar is AvatarReference.Url ||
+                    incoming.avatarUrl?.startsWith("http") == true -> "url"
+                incoming.avatar != null -> "pixel"
+                else -> "none"
+            }
+        logger(
+            "member_avatar_url_dropped source=$source " +
+                "serverHash=${serverKey.slockAvatarDiagnosticsHash()} " +
+                "memberHash=${existing.id.value.slockAvatarDiagnosticsHash()} " +
+                "incomingAvatar=$incomingAvatarKind"
+        )
+    }
+
     private fun cacheProfiles(
         key: String,
         profiles: List<MemberProfile>,
@@ -985,11 +1033,20 @@ class SharedServerMembersStore internal constructor(
             if (profileKey.isNotBlank()) {
                 merged[profileKey] =
                     merged[profileKey]?.let { existing ->
-                        if (authoritativeAvatar) {
-                            existing.mergeAuthoritativeProfile(profile)
-                        } else {
-                            existing.mergeSeedProfile(profile)
-                        }
+                        val next =
+                            if (authoritativeAvatar) {
+                                existing.mergeAuthoritativeProfile(profile)
+                            } else {
+                                existing.mergeSeedProfile(profile)
+                            }
+                        logMemberAvatarUrlDropped(
+                            serverKey = key,
+                            existing = existing,
+                            incoming = profile,
+                            merged = next,
+                            source = if (authoritativeAvatar) "cache_authoritative" else "cache_seed"
+                        )
+                        next
                     } ?: profile
             }
         }
@@ -1727,6 +1784,25 @@ class SharedServerMembersStore internal constructor(
                                 profiles = snapshot.members
                             )
                             cacheProfiles(normalizedKey, snapshot.members)
+                            // task #344 evidence lane: if this roster refresh replaced a member's
+                            // concrete avatar with nothing, say which wire shape arrived. The
+                            // `roster_merge`/`cache_*` lanes catch merge-path drops; this one
+                            // catches a wholesale roster swap that carries a sparse member.
+                            val previousById =
+                                _state.value.entriesByServerId[normalizedKey]
+                                    ?.members
+                                    ?.associateBy { it.id.value.trim() }
+                                    .orEmpty()
+                            snapshot.members.forEach { next ->
+                                val prior = previousById[next.id.value.trim()] ?: return@forEach
+                                logMemberAvatarUrlDropped(
+                                    serverKey = normalizedKey,
+                                    existing = prior,
+                                    incoming = next,
+                                    merged = next,
+                                    source = "roster_swap"
+                                )
+                            }
                             putEntry(
                                 normalizedKey,
                                 SharedServerMembersEntry(
