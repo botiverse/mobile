@@ -100,4 +100,64 @@ class TabPagerEdgeGuardDecisionTest {
             edgeGuardGestureDecision(horizontalDragDp = 1f, verticalDragDp = 3f),
         )
     }
+
+    @Test
+    fun `when cannot scroll backward rightward drag past slop releases for system back gesture`() {
+        // Task #151: On the first tab (canScrollBackward == false), a rightward drag
+        // must not be claimed/consumed by the edge guard so iOS fullscreen/edge pop
+        // gesture is not cancelled by preventTouch(true).
+        assertEquals(
+            EdgeGuardGestureDecision.Release,
+            edgeGuardGestureDecision(
+                horizontalDragDp = 6f,
+                verticalDragDp = 1f,
+                canScrollBackward = false,
+            ),
+        )
+        assertEquals(
+            EdgeGuardGestureDecision.Release,
+            edgeGuardGestureDecision(
+                horizontalDragDp = 12f,
+                verticalDragDp = 0f,
+                canScrollBackward = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `when cannot scroll backward leftward drag past slop still claims`() {
+        // Forward swipe from tab 0 to tab 1 is still guarded if born inside an inset.
+        assertEquals(
+            EdgeGuardGestureDecision.Claim,
+            edgeGuardGestureDecision(
+                horizontalDragDp = -8f,
+                verticalDragDp = 2f,
+                canScrollBackward = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `when cannot scroll backward rightward sub-slop jitter stays undecided`() {
+        assertEquals(
+            EdgeGuardGestureDecision.Undecided,
+            edgeGuardGestureDecision(
+                horizontalDragDp = 3f,
+                verticalDragDp = 1f,
+                canScrollBackward = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `when cannot scroll backward rightward diagonal tie releases`() {
+        assertEquals(
+            EdgeGuardGestureDecision.Release,
+            edgeGuardGestureDecision(
+                horizontalDragDp = 6f,
+                verticalDragDp = 6f,
+                canScrollBackward = false,
+            ),
+        )
+    }
 }
