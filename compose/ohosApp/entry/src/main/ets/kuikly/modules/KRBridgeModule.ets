@@ -382,10 +382,12 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         break;
       }
       default: {
-        callback({
-          "code": -1,
-          "message": "Method not implemented"
-        });
+        if (callback !== undefined && callback !== null) {
+          callback({
+            "code": -1,
+            "message": "Method not implemented"
+          });
+        }
         break;
       }
     }
