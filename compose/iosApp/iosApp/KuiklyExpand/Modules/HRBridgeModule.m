@@ -3042,6 +3042,23 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
     });
 }
 
+- (void)adaptiveNavigation:(NSDictionary *)args {
+    NSDictionary *params = SlockBridgeParams(args);
+    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    SlockBridgeRunOnMain(^{
+        UIViewController *controller = self.hr_rootView.kr_viewController;
+        NSDictionary *result;
+        if ([controller isKindOfClass:KuiklyRenderViewController.class]) {
+            result = [(KuiklyRenderViewController *)controller slockAdaptiveNavigation:params root:self.hr_rootView];
+        } else {
+            result = @{ @"requestId": SlockBridgeString(params[@"requestId"]),
+                        @"status": @"rejected", @"reason": @"unsupported_source" };
+        }
+        // A committed source can already be destroyed. Success is delivered to the target pager.
+        if (callback && ![result[@"status"] isEqual:@"committed"]) callback(result);
+    });
+}
+
 - (void)conversationForwardGesture:(NSDictionary *)args {
     NSDictionary *params = SlockBridgeParams(args);
     BOOL enabled = SlockBridgeBool(params[@"enabled"]);

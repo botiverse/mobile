@@ -15,6 +15,9 @@ NS_ASSUME_NONNULL_BEGIN
  */
 - (instancetype)initWithPageName:(NSString *)pageName pageData:(NSDictionary *)pageData;
 
+/** Dormant A4 bridge: prepare/commit/cancel. Only the controller-owned root may call it. */
+- (NSDictionary *)slockAdaptiveNavigation:(NSDictionary *)params root:(UIView *)root;
+
 /** Emits an intent-only pager event; shared code revalidates and rebuilds the route. */
 - (void)slockRequestConversationForward;
 @end

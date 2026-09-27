@@ -1,4 +1,5 @@
 #import "KuiklyRenderViewController.h"
+#import "SlockAdaptiveNavigationSession.h"
 #import "Modules/HRBridgeModule.h"
 #import "UINavigationController+FDFullscreenPopGesture.h"
 #import "iosApp-Swift.h"
@@ -79,6 +80,12 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
 @end
 
 @implementation KuiklyRenderViewController {
+    NSString *_slockControllerToken;
+    NSUInteger _slockNavigationRevision;
+    NSString *_slockNavigationGeometry;
+    SlockAdaptiveNavigationSession *_slockNavigationSession;
+    __weak KuiklyRenderViewController *_slockNavigationTarget;
+    __weak UIWindow *_slockNavigationWindow;
     NSString *_pageName;
     NSDictionary *_pageData;
     BOOL _slockConversationForwardGestureEnabled;
@@ -89,6 +96,11 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
 - (instancetype)initWithPageName:(NSString *)pageName pageData:(NSDictionary *)pageData {
     if (self = [super init]) {
         pageData = [self p_mergeExtParamsWithOriditalParam:pageData];
+        _slockControllerToken = NSUUID.UUID.UUIDString;
+        _slockNavigationSession = [SlockAdaptiveNavigationSession new];
+        [NSNotificationCenter.defaultCenter addObserver:self
+            selector:@selector(slockInvalidateAdaptiveNavigation)
+            name:UIApplicationWillResignActiveNotification object:nil];
         _pageName = [pageName copy] ?: @"";
         _pageData = pageData;
         _delegator = [[KuiklyRenderViewControllerBaseDelegator alloc] initWithPageName:pageName pageData:pageData];
@@ -132,6 +144,7 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     [_delegator viewDidLayoutSubviews];
+    [self slockRefreshNavigationGeometry];
     [self slockPublishAdaptivePaneForCurrentBounds:@"layout"];
 
 }
@@ -153,6 +166,7 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
     _slockAdaptivePanePublishingActive = NO;
+    [self slockInvalidateAdaptiveNavigation];
     [_delegator viewWillDisappear];
 }
 
@@ -164,6 +178,7 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
 - (void)viewWillTransitionToSize:(CGSize)size
        withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
     [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+    [self slockInvalidateAdaptiveNavigation];
     __weak typeof(self) weakSelf = self;
     [coordinator animateAlongsideTransition:nil completion:^(__unused id<UIViewControllerTransitionCoordinatorContext> context) {
         [weakSelf slockPublishAdaptivePaneForCurrentBounds:@"viewWillTransition"];
@@ -199,6 +214,98 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
                             ctrlPressed:NO
                             metaPressed:NO
                            shiftPressed:shiftPressed];
+}
+
+// A4 native primitives only. Shared admission remains false until the entire restore protocol works.
+- (void)slockInvalidateAdaptiveNavigation {
+    _slockNavigationRevision += 1;
+}
+
+- (void)slockRefreshNavigationGeometry {
+    UIWindow *window = self.viewIfLoaded.window;
+    NSString *geometry = [NSString stringWithFormat:@"%@|%@|%g", NSStringFromCGRect(window.bounds),
+                          NSStringFromCGRect(self.viewIfLoaded.bounds), window.screen.scale];
+    if (![_slockNavigationGeometry isEqual:geometry]) {
+        _slockNavigationGeometry = geometry;
+        [self slockInvalidateAdaptiveNavigation];
+    }
+}
+
+- (KuiklyRenderViewController *)slockAdaptiveNavigationTargetForRoot:(UIView *)root {
+    // Never fall back to the key window/top controller: a stale module must not acquire a new owner.
+    if (root != (id)_delegator.renderView || self.slockIsAppShellPage ||
+        ![_pageName isEqualToString:@"compose_thread"]) return nil;
+    UINavigationController *nav = self.navigationController;
+    UIWindow *window = self.viewIfLoaded.window;
+    if (!_slockAdaptivePanePublishingActive || window == nil ||
+        window.windowScene.activationState != UISceneActivationStateForegroundActive ||
+        nav.topViewController != self || nav.viewControllers.count < 2 ||
+        nav.transitionCoordinator != nil || self.transitionCoordinator != nil ||
+        self.presentedViewController != nil || nav.presentedViewController != nil ||
+        self.isBeingDismissed || self.isMovingFromParentViewController ||
+        window.bounds.size.width < 840.0) return nil;
+    UIViewController *previous = nav.viewControllers[nav.viewControllers.count - 2];
+    if (![previous isKindOfClass:KuiklyRenderViewController.class] ||
+        !((KuiklyRenderViewController *)previous).slockIsAppShellPage) return nil;
+    return (KuiklyRenderViewController *)previous;
+}
+
+- (NSDictionary *)slockAdaptiveNavigationContext:(KuiklyRenderViewController *)target {
+    [self slockRefreshNavigationGeometry];
+    return target ? @{ @"sourceControllerToken": _slockControllerToken,
+                       @"targetControllerToken": target->_slockControllerToken,
+                       @"sourceRevision": @(_slockNavigationRevision),
+                       @"geometry": _slockNavigationGeometry ?: @"" } : @{};
+}
+
+- (NSDictionary *)slockAdaptiveNavigation:(NSDictionary *)params root:(UIView *)root {
+    NSAssert(NSThread.isMainThread, @"Adaptive navigation must execute on the main thread");
+    NSString *(^string)(NSString *) = ^NSString *(NSString *key) {
+        return [params[key] isKindOfClass:NSString.class] ? params[key] : @"";
+    };
+    NSString *requestId = string(@"requestId");
+    NSString *action = string(@"action");
+    NSString *token = string(@"token");
+    if (root != (id)_delegator.renderView) {
+        return @{ @"requestId": requestId, @"status": @"rejected", @"reason": @"root_mismatch" };
+    }
+    if ([action isEqual:@"cancel"]) return [_slockNavigationSession cancel:requestId token:token];
+    KuiklyRenderViewController *target = [self slockAdaptiveNavigationTargetForRoot:root];
+    NSDictionary *context = [self slockAdaptiveNavigationContext:target];
+    NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
+    if ([action isEqual:@"prepare"]) {
+        NSDictionary *result = [_slockNavigationSession prepare:requestId context:context now:now];
+        if ([result[@"status"] isEqual:@"prepared"]) {
+            _slockNavigationTarget = target;
+            _slockNavigationWindow = self.viewIfLoaded.window;
+        }
+        return result;
+    }
+    if (![action isEqual:@"commit"]) {
+        return @{ @"requestId": requestId, @"status": @"rejected", @"reason": @"invalid_action" };
+    }
+    // Keep the destination alive through pop. Never use a source callback as the success receipt.
+    KuiklyRenderViewController *preparedTarget = _slockNavigationTarget;
+    if (target != preparedTarget || self.viewIfLoaded.window != _slockNavigationWindow) context = @{};
+    NSDictionary *result = [_slockNavigationSession commit:requestId token:token context:context now:now perform:^BOOL {
+        UINavigationController *nav = self.navigationController;
+        // Synchronous removal: UIKit stack mutation and its readback occur in this main-thread turn.
+        // No asynchronous animation completion can race a subsequent user navigation.
+        if (nav.topViewController != self || nav.viewControllers.count < 2 ||
+            nav.viewControllers[nav.viewControllers.count - 2] != preparedTarget) return NO;
+        UIViewController *removed = [nav popViewControllerAnimated:NO];
+        return removed == self && nav.topViewController == preparedTarget &&
+            ![nav.viewControllers containsObject:self];
+    }];
+    NSMutableDictionary *receipt = [result mutableCopy];
+    receipt[@"sourceControllerToken"] = _slockControllerToken;
+    receipt[@"targetControllerToken"] = preparedTarget ? preparedTarget->_slockControllerToken : @"";
+    // The destination revalidates requestId/authority before consuming any recovery state.
+    // Failure or a missing receipt never permits shared to consume the anchor.
+    if (preparedTarget) {
+        [preparedTarget.delegator sendWithEvent:@"slockAdaptiveNativeCommitResult" data:receipt];
+    }
+    return receipt;
 }
 
 #pragma mark - private

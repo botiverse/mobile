@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A42100010000000000000001 /* SlockAdaptiveNavigationSession.m in Sources */ = {isa = PBXBuildFile; fileRef = A42100020000000000000001 /* SlockAdaptiveNavigationSession.m */; };
 		0474A3F329F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m in Sources */ = {isa = PBXBuildFile; fileRef = 0474A3F229F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m */; };
 		04E32B3E29F01975000A6BC5 /* KRRouterHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = 04E32B3D29F01975000A6BC5 /* KRRouterHandler.m */; };
 		058557BB273AAA24004C7B11 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 058557BA273AAA24004C7B11 /* Assets.xcassets */; };
@@ -78,6 +79,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A42100020000000000000001 /* SlockAdaptiveNavigationSession.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockAdaptiveNavigationSession.m; sourceTree = "<group>"; };
+		A42100020000000000000002 /* SlockAdaptiveNavigationSession.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockAdaptiveNavigationSession.h; sourceTree = "<group>"; };
 		0423580F44476A8BFD9068C7 /* Pods-iosApp-iosAppTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp-iosAppTests.debug.xcconfig"; path = "Target Support Files/Pods-iosApp-iosAppTests/Pods-iosApp-iosAppTests.debug.xcconfig"; sourceTree = "<group>"; };
 		0474A3F129F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "UINavigationController+FDFullscreenPopGesture.h"; sourceTree = "<group>"; };
 		0474A3F229F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "UINavigationController+FDFullscreenPopGesture.m"; sourceTree = "<group>"; };
@@ -346,6 +349,8 @@
 				FF6B714D29A2A6BA009349F1 /* Handler */,
 				D43B80132E0E500100C0DE01 /* Components */,
 				FF6B714329A2A174009349F1 /* KuiklyRenderViewController.h */,
+				A42100020000000000000001 /* SlockAdaptiveNavigationSession.m */,
+				A42100020000000000000002 /* SlockAdaptiveNavigationSession.h */,
 				FF6B713F29A2A173009349F1 /* KuiklyRenderViewController.m */,
 				FF6B714029A2A173009349F1 /* Modules */,
 			);
@@ -690,6 +695,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				FF6B714429A2A174009349F1 /* KuiklyRenderViewController.m in Sources */,
+				A42100010000000000000001 /* SlockAdaptiveNavigationSession.m in Sources */,
 				04E32B3E29F01975000A6BC5 /* KRRouterHandler.m in Sources */,
 				0474A3F329F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m in Sources */,
 				2152FB042600AC8F00CF470E /* iOSApp.swift in Sources */,
