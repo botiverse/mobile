@@ -228,6 +228,11 @@ data class SharedServerMembersState(
                 .filter { it.key == cleanServerId }
                 .mapNotNull { it.value[cleanMemberId] }
                 .firstOrNull()
+            ?: channelMemberSlices
+                .asSequence()
+                .filter { it.key.serverId == cleanServerId }
+                .flatMap { it.value.members.asSequence() }
+                .firstOrNull { it.id.value.trim() == cleanMemberId }
     }
 
     internal fun canonicalMentionHandle(

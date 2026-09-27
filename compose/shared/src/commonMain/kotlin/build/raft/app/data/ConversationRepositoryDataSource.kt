@@ -23,6 +23,7 @@ import build.raft.app.model.threadIdentity
 import build.raft.app.model.topLevelThreadId
 import build.raft.app.network.MultipartFile
 import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -239,6 +240,15 @@ class RealConversationRepository private constructor(
      * reservation-bearing mutations and must not be reachable through a selector-backed facade. */
     private val directSessionAuthority: SlockExpectedAuthBinding? = null,
 ) : ConversationRepository, ProgressiveConversationAttachmentUploader {
+    /**
+     * Upper bound the targeted reply-summary join waits for the account-wide followed-thread
+     * list (task #1142). Channel summaries are the authority for reply rows; the followed list
+     * only decorates them with `isThreadFollowed`. On accounts following many threads that list
+     * is multi-megabyte and a slow link never delivered it before the user left, so the join
+     * never ran and an anchored channel page showed no reply rows at all. Tests shrink this.
+     */
+    internal var followedSummariesJoinBudgetMillis: Long = FOLLOWED_SUMMARIES_JOIN_BUDGET_MILLIS
+
     /** Public compatibility constructor for ordinary selector-backed repositories. */
     constructor(
         sessionStore: SlockAuthSessionStore,
@@ -365,7 +375,8 @@ class RealConversationRepository private constructor(
 
     override suspend fun putAttachmentUploadBytes(
         upload: AttachmentUploadSessionPut,
-        bytes: ByteArray
+        bytes: ByteArray,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
     ): DataResult<Unit> {
         if (directSessionAuthority == null) return directSessionAuthorityRequired()
         currentContext() ?: return authRequired()
@@ -379,6 +390,7 @@ class RealConversationRepository private constructor(
                     priority = DataRequestPriority.Foreground,
                     upload = upload,
                     bytes = bytes,
+                    onUploadProgress = onUploadProgress,
                 )
             }
         )
@@ -386,7 +398,8 @@ class RealConversationRepository private constructor(
 
     override suspend fun putAttachmentUploadFile(
         upload: AttachmentUploadSessionPut,
-        file: PlatformFile
+        file: PlatformFile,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
     ): DataResult<Unit> {
         if (directSessionAuthority == null) return directSessionAuthorityRequired()
         currentContext() ?: return authRequired()
@@ -400,6 +413,7 @@ class RealConversationRepository private constructor(
                     priority = DataRequestPriority.Foreground,
                     upload = upload,
                     file = file,
+                    onUploadProgress = onUploadProgress,
                 )
             }
         )
@@ -589,7 +603,16 @@ class RealConversationRepository private constructor(
                 )
             }
         val channelSummaries = channelSummariesDeferred.await()
-        val followedSummaries = followedSummariesDeferred.await()
+        // Task #1142: never let the account-wide followed list gate the channel summaries.
+        val followedSummaries =
+            withTimeoutOrNull(followedSummariesJoinBudgetMillis) { followedSummariesDeferred.await() }
+        if (followedSummaries == null) {
+            followedSummariesDeferred.cancel()
+            warningLogger(
+                "thread_summary_followed_budget_exceeded threadId=${threadId.value} " +
+                    "budgetMs=$followedSummariesJoinBudgetMillis"
+            )
+        }
         val channelThreads =
             (channelSummaries as? DataResult.Content)
                 ?.data
@@ -606,9 +629,10 @@ class RealConversationRepository private constructor(
         warningLogger(
             "thread_summary_load_result threadId=${threadId.value} " +
                 "channelSummaries=${channelThreads.size} followedSummaries=${followedForChannel.size} " +
+                "followedList=${if (followedSummaries == null) "budget_exceeded" else "ok"} " +
                 "mergedSummaries=${mergedThreads.size} durationMs=${loadStartedAt.elapsedNow().inWholeMilliseconds}"
         )
-        if (channelSummaries is DataResult.Error && followedSummaries is DataResult.Error) {
+        if (channelSummaries is DataResult.Error && followedSummaries !is DataResult.Content) {
             DataResult.Error(channelSummaries.error)
         } else {
             DataResult.Content(
@@ -1493,7 +1517,10 @@ class RealConversationRepository private constructor(
     ): DataResult<Unit> {
         return try {
             val response = block()
-            if (response.isSuccessful) {
+            // If-None-Match:* returns 412 when the object is already present. Treat that as a
+            // successful PUT so the caller can complete the same session instead of creating
+            // another reservation.
+            if (response.isSuccessful || response.code == 412) {
                 warningLogger(
                     "conversation_binary_result source=$source code=${response.code} " +
                         "result=content"
@@ -1526,6 +1553,7 @@ class RealConversationRepository private constructor(
 
     private companion object {
         const val MESSAGE_PAGE_LIMIT = 50
+        const val FOLLOWED_SUMMARIES_JOIN_BUDGET_MILLIS = 1_500L
         const val SYNC_PAGE_LIMIT = 200
     }
 }

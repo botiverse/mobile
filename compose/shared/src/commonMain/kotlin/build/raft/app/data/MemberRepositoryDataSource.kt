@@ -90,12 +90,14 @@ interface SlockNetworkClient {
         priority: DataRequestPriority,
         upload: AttachmentUploadSessionPut,
         bytes: ByteArray,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
     ): HomeNetworkResponse = authorityBindingRequiredResponse()
 
     suspend fun putAttachmentUploadFile(
         priority: DataRequestPriority,
         upload: AttachmentUploadSessionPut,
         file: PlatformFile,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
     ): HomeNetworkResponse = authorityBindingRequiredResponse()
 
     /**
@@ -193,6 +195,7 @@ internal interface AuthorityBoundSlockNetworkClient {
         upload: AttachmentUploadSessionPut,
         bytes: ByteArray,
         expectedAuthority: SlockExpectedAuthBinding,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
     ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
 
     suspend fun putAttachmentUploadFileBound(
@@ -200,6 +203,7 @@ internal interface AuthorityBoundSlockNetworkClient {
         upload: AttachmentUploadSessionPut,
         file: PlatformFile,
         expectedAuthority: SlockExpectedAuthBinding,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
     ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
 
     suspend fun prepareAttachmentUploadFileBound(
@@ -283,16 +287,18 @@ internal fun SlockNetworkClient.boundTo(expectedAuthority: SlockExpectedAuthBind
             priority: DataRequestPriority,
             upload: AttachmentUploadSessionPut,
             bytes: ByteArray,
+            onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
         ): HomeNetworkResponse =
-            bound?.putAttachmentUploadBytesBound(priority, upload, bytes, expectedAuthority)
+            bound?.putAttachmentUploadBytesBound(priority, upload, bytes, expectedAuthority, onUploadProgress)
                 ?: authorityBindingUnsupportedResponse()
 
         override suspend fun putAttachmentUploadFile(
             priority: DataRequestPriority,
             upload: AttachmentUploadSessionPut,
             file: PlatformFile,
+            onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
         ): HomeNetworkResponse =
-            bound?.putAttachmentUploadFileBound(priority, upload, file, expectedAuthority)
+            bound?.putAttachmentUploadFileBound(priority, upload, file, expectedAuthority, onUploadProgress)
                 ?: authorityBindingUnsupportedResponse()
 
         override suspend fun prepareAttachmentUploadFile(
@@ -1251,6 +1257,8 @@ private fun AddChannelMemberRequest.toBodyText(): String =
         MemberKind.Agent -> memberRepositoryJson.encodeToString(AddAgentChannelMemberRequestBody(memberId.value))
         MemberKind.Human -> memberRepositoryJson.encodeToString(AddUserChannelMemberRequestBody(memberId.value))
         MemberKind.System -> memberRepositoryJson.encodeToString(AddUserChannelMemberRequestBody(memberId.value))
+        // Unreachable: external projections can never be added as channel members.
+        MemberKind.External -> memberRepositoryJson.encodeToString(AddUserChannelMemberRequestBody(memberId.value))
     }
 
 private data class SharedNetworkServerContext(val session: StoredAuthSession, val server: ServerSummary)
@@ -1384,6 +1392,7 @@ private val MemberKind.channelMemberPathSegment: String
             MemberKind.Agent -> "agent"
             MemberKind.Human -> "user"
             MemberKind.System -> "system"
+            MemberKind.External -> "external"
         }
 
 private fun DataResult<MemberSnapshot>.logMemberCounts(

@@ -21,6 +21,7 @@ import build.raft.app.strictTaskStatusOrNull
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageType
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
+import build.raft.app.model.providerLabel
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -87,6 +88,7 @@ internal data class WireMessage(
     val senderType: String = "",
     val senderId: String = "",
     val senderName: String? = null,
+    val senderDescription: String? = null,
     val senderMembershipStatus: String? = null,
     val messageType: String? = null,
     val content: String = "",
@@ -111,6 +113,8 @@ internal data class WireMessage(
     val actionMetadata: WireActionCardMetadata? = null,
     val commentRef: WireCommentRef? = null,
     val forwardBundle: WireForwardMessageBundle? = null,
+    /** Slack-bridge external sender attribution (present iff senderType=external_projection). */
+    val externalAuthor: WireExternalAuthor? = null,
 )
 
 @Serializable
@@ -270,8 +274,15 @@ private fun WireMessage.toMessageItem(
         senderType.strictMemberKindOrNull(
             source = "thread_wire_sender",
             diagnostics = diagnostics,
-            contract = MemberKindWireContract.InternalActor,
+            contract = MemberKindWireContract.MessageSender,
         ) ?: return null
+    val external = senderKind == MemberKind.External
+    if (external && externalAuthor == null) {
+        diagnostics("projection_value_rejected source=thread_wire_sender field=externalAuthor value=missing messageId=$id")
+        return null
+    }
+    val resolvedExternalAuthor =
+        if (external) externalAuthor?.toExternalMessageAuthor(senderName) else null
     val authorKind = if (resolvedMessageType == MessageType.System) MemberKind.System else senderKind
     val hasTaskProjection = taskNumber != null || taskStatus != null
     val resolvedTaskStatus =
@@ -285,16 +296,21 @@ private fun WireMessage.toMessageItem(
                 contract = MemberKindWireContract.InternalActor,
             )
         }
-    val resolvedName = senderName?.takeIf { it.isNotBlank() } ?: "Unknown"
+    val resolvedName = resolvedExternalAuthor?.displayName
+        ?: senderName?.takeIf { it.isNotBlank() } ?: "Unknown"
     val summary = threadSummary
     return KuiklyThreadMessageItem(
         id = id,
         authorId = senderId.ifBlank { "unknown" },
         authorName = resolvedName,
+        authorDescription =
+            resolvedExternalAuthor?.providerLabel()
+                ?: senderDescription?.takeIf { it.isNotBlank() },
         authorKind = authorKind.memberKindWireValue(),
         isOwn = currentUserId != null && senderId == currentUserId,
         avatarLabel = resolvedName.take(1).uppercase(),
-        avatarWireValue = null,
+        avatarWireValue = resolvedExternalAuthor?.avatarUrl,
+        externalAuthor = resolvedExternalAuthor,
         senderMembershipStatus = senderMembershipStatus?.takeIf { it.isNotBlank() },
         timestampLabel = createdAt.orEmpty(),
         createdAtEpochMillis = parseSlockTimestampEpochMillisOrNull(createdAt),

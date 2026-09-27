@@ -58,8 +58,14 @@ import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SlockEventBus
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.DataResult
 import build.raft.app.data.DirectAttachmentUploadOperation
+import build.raft.app.data.ThreadComposerDirectUploadDecision
+import build.raft.app.data.ThreadComposerDirectUploadPhase
+import build.raft.app.data.resolveThreadComposerDirectUpload
+import build.raft.app.data.ThreadComposerDirectUploadClientRequestIds
+import build.raft.app.data.newAttachmentUploadClientRequestId
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.KeyValueThreadReadAnchorStore
@@ -155,6 +161,7 @@ import build.raft.app.data.messageBodyFontSizeOwnerKey
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.ExternalMessageAuthor
 import build.raft.app.model.ForwardMessageAttachment
 import build.raft.app.model.ForwardMessageBundle
 import build.raft.app.model.ForwardMessageItem
@@ -163,6 +170,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
+import build.raft.app.model.providerLabel
 import build.raft.app.markdown.LocalSlockMessagePermalinkLabelResolver
 import build.raft.app.markdown.LocalSlockMarkdownRenderConfig
 import build.raft.app.markdown.SlockMarkdownBody
@@ -1116,10 +1124,6 @@ internal fun ThreadRouteMountPlan.toThreadRouteScaffoldPlan(): ThreadRouteScaffo
         mountFeatureBody = this == ThreadRouteMountPlan.FeatureSurfaces
     )
 
-internal fun threadRouteScaffoldUsesBrandedLoadingSurface(
-    scaffoldPlan: ThreadRouteScaffoldPlan
-): Boolean = scaffoldPlan.mountLoadingBody && !scaffoldPlan.mountFeatureBody
-
 internal data class ThreadFeatureOwnerMountPlan(
     val mountChatTimeline: Boolean,
     val mountComposer: Boolean,
@@ -1221,7 +1225,7 @@ internal fun threadTaskAssigneeRows(
 ): List<MemberProfile?> {
     val normalized = search.trim()
     return (listOf<MemberProfile?>(null) + assigneeOptions)
-        .filter { row -> row == null || row.kind != MemberKind.System }
+        .filter { row -> row == null || (row.kind != MemberKind.System && row.kind != MemberKind.External) }
         .filter { row -> row == null || normalized.isEmpty() || row.displayName.contains(normalized, ignoreCase = true) }
         .sortedWith(
             Comparator<MemberProfile?> { a, b ->
@@ -2027,6 +2031,7 @@ internal fun KuiklyThreadScreenPayload.threadConversationPinTarget(
             MemberKind.Agent -> "agent"
             MemberKind.Human -> "human"
             MemberKind.System -> return null
+            MemberKind.External -> return null
         }
     return ThreadConversationPinTarget(
         conversationId = conversationId,
@@ -2484,12 +2489,16 @@ private fun KuiklyThreadMemberItem.memberDetailIdentity(): MemberDetailIdentity?
         source = MemberDetailIdentitySource.ThreadMember
     )
 
-private fun KuiklyThreadMessageItem.memberDetailIdentity(): MemberDetailIdentity? =
-    memberDetailIdentityFromWire(
+private fun KuiklyThreadMessageItem.memberDetailIdentity(): MemberDetailIdentity? {
+    // External authors are never member-detail identities; short-circuit before the
+    // Identity contract rejects "external" with a diagnostic on every tap.
+    if (externalAuthor != null) return null
+    return memberDetailIdentityFromWire(
         memberId = authorId,
         kindWireValue = authorKind,
         source = MemberDetailIdentitySource.ThreadMessageAuthor
     )
+}
 
 internal fun KuiklyThreadMessageItem.threadAuthorGestureIdentity(): String =
     "${id.trim()}|${authorId.trim()}|${authorKind.trim().lowercase()}"
@@ -2532,6 +2541,8 @@ internal data class KuiklyThreadMessageItem(
     val isOwn: Boolean = false,
     val avatarLabel: String = "",
     val avatarWireValue: String? = null,
+    /** Slack-bridge external sender attribution (senderType=external_projection). */
+    val externalAuthor: ExternalMessageAuthor? = null,
     val senderMembershipStatus: String? = null,
     val authorDeletedAt: String? = null,
     val timestampLabel: String = "",
@@ -3046,6 +3057,16 @@ internal fun KuiklyThreadScreenPayload.toKnownMarkdownMentionNameSet(): Set<Stri
 internal fun KuiklyThreadScreenPayload.toKnownMarkdownDirectMessagePeerNameSet(): Set<String> =
     buildSet {
         knownMarkdownDirectMessagePeerNames.forEach { name -> addKnownThreadMentionValue(name) }
+        dmPeerName?.let { addKnownThreadMentionValue(it) }
+        dmPeerIdentity?.let { identity -> addKnownThreadMentionValue(identity.memberId.value) }
+        if (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
+            parentSurfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
+            channelKind == "dm" ||
+            parentChannelKind == "dm"
+        ) {
+            members.forEach { member -> addKnownThreadMentionValues(member) }
+            memberCandidates.forEach { member -> addKnownThreadMentionValues(member) }
+        }
     }
 
 internal fun KuiklyThreadScreenPayload.toKnownMarkdownTaskNumberSetOrNull(): Set<Int>? =
@@ -5136,7 +5157,8 @@ private fun ThreadMessageVisualCard(
             ) {
                 ThreadMessageStaticAvatar(
                     avatarLabel = message.avatarLabel,
-                    avatarWireValue = avatarWireValue,
+                    avatarWireValue =
+                        if (message.externalAuthor != null) message.avatarWireValue else avatarWireValue,
                     status = null,
                     cacheSubject =
                         slockMemberAvatarCacheSubject(
@@ -5365,6 +5387,14 @@ private fun SharedThreadRouteContentContent(
     val onOpenChannelSettings = callbacks.onOpenChannelSettings
     val pager = LocalActivity.current.getPager() as Pager
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
+    val externalAuthorHintTemplate =
+        stringResource(MR.strings.thread_external_author_hint, ThreadLocalizedFeedbackPlaceholder)
+    // task #395: external (Slack-bridge) authors have no member profile; the avatar/name
+    // tap surfaces a provider identity hint instead of silently doing nothing.
+    val onExternalAuthorHint: (KuiklyThreadMessageItem) -> Unit = { message ->
+        val provider = message.externalAuthor?.providerLabel() ?: "external"
+        bridge.toast(externalAuthorHintTemplate.replace(ThreadLocalizedFeedbackPlaceholder, provider))
+    }
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val messageBodyFontSizeState by sharedStores.messageBodyFontSizeStore.state.collectAsState()
     val messageBodySettingsNetworkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
@@ -5648,6 +5678,13 @@ private fun SharedThreadRouteContentContent(
                 diagnosticsLogger = { message -> bridge.log("thread_avatar_member $message") }
             )
         }
+    val memberModelLabelResolver =
+        remember(serverMembersStore, headerProjectionServerId) {
+            slockMemberModelLabelResolver(
+                serverMembersStore = serverMembersStore,
+                serverId = headerProjectionServerId?.value,
+            )
+        }
     val initialDirectoryConversationProjections =
         remember(
             conversationIdentityProvider,
@@ -5904,10 +5941,16 @@ private fun SharedThreadRouteContentContent(
         }
     }
 
-    LaunchedEffect(active, threadVisibleResumeGate) {
+    LaunchedEffect(active, threadVisibleResumeGate, threadVisibleResumeGate.pendingVisibleResume) {
         if (active) {
             threadVisibleResumeGate.onRouteBecameVisible()
-                ?.let(::applyThreadVisibleResumePlan)
+                ?.let {
+                    bridge.log(
+                        "thread_lifecycle_resume_drained refresh=${it.refreshVisibleConversation} " +
+                            "rejoin=${it.rejoinVisibleRooms} shell=${storeScope.shellInstanceId}"
+                    )
+                    applyThreadVisibleResumePlan(it)
+                }
         }
     }
 
@@ -5949,15 +5992,20 @@ private fun SharedThreadRouteContentContent(
                         // Foreground is a drainer trigger: re-evaluate journaled sends whose
                         // network may have returned while the app was backgrounded.
                         threadViewModel.triggerPendingSendDrain("foreground_$event")
-                        threadVisibleResumeGate
-                            .onLifecycleVisibleResume(latestRouteActive)
-                            ?.let {
-                                bridge.log(
-                                    "thread_lifecycle_refresh_dispatch refresh=${it.refreshVisibleConversation} " +
-                                        "rejoin=${it.rejoinVisibleRooms}"
-                                )
-                                applyThreadVisibleResumePlan(it)
-                            }
+                        val resumePlan =
+                            threadVisibleResumeGate.onLifecycleVisibleResume(latestRouteActive)
+                        if (resumePlan == null) {
+                            bridge.log(
+                                "thread_lifecycle_resume_latched event=$event " +
+                                    "routeActive=$latestRouteActive shell=${storeScope.shellInstanceId}"
+                            )
+                        } else {
+                            bridge.log(
+                                "thread_lifecycle_refresh_dispatch refresh=${resumePlan.refreshVisibleConversation} " +
+                                    "rejoin=${resumePlan.rejoinVisibleRooms}"
+                            )
+                            applyThreadVisibleResumePlan(resumePlan)
+                        }
                     }
                 }
             }
@@ -6186,6 +6234,9 @@ private fun SharedThreadRouteContentContent(
     }
     var attachmentUploadFilesByLocalId by remember(threadInstanceKey) {
         mutableStateOf<Map<ThreadAttachmentUploadAttemptIdentity, PlatformFile>>(emptyMap())
+    }
+    val threadDirectUploadClientRequestIds = remember(threadInstanceKey) {
+        ThreadComposerDirectUploadClientRequestIds()
     }
     // Rows restored from the durable draft are tracked separately from files admitted by the
     // currently mounted composer.  When a reused Thread instance moves to another draft key we
@@ -8253,7 +8304,9 @@ private fun SharedThreadRouteContentContent(
     suspend fun admittedComposerAttachmentFiles(
         files: List<PlatformFile>,
         maxBytesOverride: Long? = null,
+        skipClientSizeGate: Boolean = false,
     ): List<PlatformFile> {
+        if (skipClientSizeGate) return files
         val maxBytes =
             maxBytesOverride ?: when (val capability = dataSource.attachmentUploadMaxBytes()) {
                 is DataResult.Content -> capability.data
@@ -8299,36 +8352,44 @@ private fun SharedThreadRouteContentContent(
         // it for capabilities, upload, and compensation. This prevents a session/account/server
         // switch between those calls from silently falling back to an unbound repository.
         val directUploadOperation =
-            if (requireAllFiles) {
-                dataSource.captureDirectAttachmentUploadOperation { message -> bridge.log(message) }
-            } else {
-                null
-            }
+            dataSource.captureDirectAttachmentUploadOperation { message -> bridge.log(message) }
         if (requireAllFiles && directUploadOperation == null) {
             bridge.logWarn("thread_composer_attachment_batch_rejected reason=authority_unavailable")
             return false
         }
-        val directCapabilities =
+        val capabilitiesProbe =
             if (directUploadOperation != null) {
-                when (val result = directUploadOperation.capabilities()) {
-                    is DataResult.Content -> result.data
-                    is DataResult.NoPermission -> {
-                        routeAuthRequired(result)
-                        bridge.toast(attachmentLimitUnavailableLabel)
-                        return false
-                    }
-                    is DataResult.Empty,
-                    is DataResult.Error -> {
-                        bridge.toast(attachmentLimitUnavailableLabel)
-                        return false
-                    }
-                }
+                directUploadOperation.capabilities()
             } else {
                 null
             }
+        if (capabilitiesProbe is DataResult.NoPermission) {
+            routeAuthRequired(capabilitiesProbe)
+            if (requireAllFiles) {
+                bridge.toast(attachmentLimitUnavailableLabel)
+                return false
+            }
+        }
+        val capabilitiesCancelled =
+            (capabilitiesProbe as? DataResult.Error)?.error?.code.equals("cancelled", ignoreCase = true)
+        if (capabilitiesCancelled) {
+            return false
+        }
+        val directCapabilities =
+            (capabilitiesProbe as? DataResult.Content)?.data
+        // Per-file Thread path fail-opens to multipart when capabilities cannot be read.
+        // Gallery N/N remains fail-closed: it cannot compensate without an explicit capability.
+        if (requireAllFiles && directCapabilities == null) {
+            bridge.toast(attachmentLimitUnavailableLabel)
+            return false
+        }
         val admittedFiles = admittedComposerAttachmentFiles(
             files = files,
             maxBytesOverride = directCapabilities?.maxBytes,
+            // Caller sizeBytes is an untrusted hint. Direct and fail-open paths
+            // decide TooLarge/threshold only after authority-bound prepare/stat
+            // (or skip the gate entirely when capabilities cannot be read).
+            skipClientSizeGate = true,
         )
         if (admittedFiles.isEmpty() || (requireAllFiles && admittedFiles.size != files.size)) {
             if (requireAllFiles && admittedFiles.size != files.size) {
@@ -8820,6 +8881,13 @@ private fun SharedThreadRouteContentContent(
             val localAttachmentId = file.id.takeIf { it.isNotBlank() } ?: continue
             val admission = admittedLocalAdmissions[localAttachmentId] ?: continue
             val admittedSourceAttachment = localAttachments.firstOrNull { it.id == localAttachmentId }
+            val identity = threadAttachmentUploadAttemptIdentity(localAttachmentId, draftKey)
+            val clientRequestId =
+                if (identity != null) {
+                    threadDirectUploadClientRequestIds.idFor(identity)
+                } else {
+                    newAttachmentUploadClientRequestId()
+                }
             val attemptToken =
                 attachmentUploadOrchestrator.launch(
                     localAttachmentId = localAttachmentId,
@@ -8841,29 +8909,163 @@ private fun SharedThreadRouteContentContent(
                         val uploadResult =
                             withContext(Dispatchers.Default) {
                                 attachmentUploadSemaphore.withPermit {
-                                    dataSource.uploadAttachments(
-                                        channelId = channelId,
-                                        files = listOf(file),
-                                        onProgress = { progress ->
-                                            coroutineScope.launch {
-                                                attachmentUploadOrchestrator.publishIfAccepted(
-                                                    localAttachmentId,
-                                                    draftKey,
-                                                    uploadAttemptToken
-                                                ) {
-                                                    composerDraftViewModel.accept(
-                                                        SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
-                                                            attachmentId = localAttachmentId,
-                                                            bytesTransferred = progress.bytesTransferred,
-                                                            bytesTotal = progress.bytesTotal,
-                                                            expectedDraftKey = draftKey,
-                                                            expectedAdmission = admission
-                                                        )
+                                    val resolvedUpload =
+                                        when (
+                                            val resolved =
+                                                resolveThreadComposerDirectUpload(
+                                                    file = file,
+                                                    capabilities = directCapabilities,
+                                                    cancelled = false,
+                                                    prepare = { candidate ->
+                                                        val operation = directUploadOperation
+                                                        if (operation == null) {
+                                                            DataResult.Error(
+                                                                ScreenError(
+                                                                    code = "attachment_size_unavailable",
+                                                                    retryable = true,
+                                                                )
+                                                            )
+                                                        } else {
+                                                            operation.prepare(candidate)
+                                                        }
+                                                    },
+                                                )
+                                        ) {
+                                            is DataResult.Content -> resolved.data
+                                            is DataResult.Error ->
+                                                return@withPermit resolved
+                                            is DataResult.NoPermission ->
+                                                return@withPermit resolved
+                                            is DataResult.Empty ->
+                                                return@withPermit DataResult.Error(
+                                                    ScreenError(
+                                                        code = "attachment_size_unavailable",
+                                                        retryable = false,
                                                     )
+                                                )
+                                        }
+                                    val uploadFile = resolvedUpload.file
+                                    val decision = resolvedUpload.decision
+                                    fun publishPhaseProgress(phase: ThreadComposerDirectUploadPhase) {
+                                        val transferred =
+                                            when (phase) {
+                                                ThreadComposerDirectUploadPhase.Creating -> 1L
+                                                ThreadComposerDirectUploadPhase.Putting -> 2L
+                                                ThreadComposerDirectUploadPhase.Verifying -> 3L
+                                            }
+                                        coroutineScope.launch {
+                                            attachmentUploadOrchestrator.publishIfAccepted(
+                                                localAttachmentId,
+                                                draftKey,
+                                                uploadAttemptToken
+                                            ) {
+                                                composerDraftViewModel.accept(
+                                                    SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
+                                                        attachmentId = localAttachmentId,
+                                                        bytesTransferred = transferred,
+                                                        bytesTotal = 3L,
+                                                        expectedDraftKey = draftKey,
+                                                        expectedAdmission = admission
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    }
+                                    when (decision) {
+                                        ThreadComposerDirectUploadDecision.Cancelled ->
+                                            DataResult.Error(ScreenError(code = "cancelled", retryable = false))
+                                        ThreadComposerDirectUploadDecision.TooLarge ->
+                                            DataResult.Error(
+                                                ScreenError(code = "UPLOAD_TOO_LARGE", retryable = false)
+                                            )
+                                        ThreadComposerDirectUploadDecision.Direct -> {
+                                            val operation = directUploadOperation
+                                            if (operation == null) {
+                                                dataSource.uploadAttachments(
+                                                    channelId = channelId,
+                                                    files = listOf(uploadFile),
+                                                    onProgress = { progress ->
+                                                        coroutineScope.launch {
+                                                            attachmentUploadOrchestrator.publishIfAccepted(
+                                                                localAttachmentId,
+                                                                draftKey,
+                                                                uploadAttemptToken
+                                                            ) {
+                                                                composerDraftViewModel.accept(
+                                                                    SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
+                                                                        attachmentId = localAttachmentId,
+                                                                        bytesTransferred = progress.bytesTransferred,
+                                                                        bytesTotal = progress.bytesTotal,
+                                                                        expectedDraftKey = draftKey,
+                                                                        expectedAdmission = admission
+                                                                    )
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                )
+                                            } else {
+                                                when (
+                                                    val one =
+                                                        operation.uploadOneThreadFile(
+                                                            channelId = ChannelId(channelId),
+                                                            file = uploadFile,
+                                                            clientRequestId = clientRequestId,
+                                                            onPhase = ::publishPhaseProgress,
+                                                            onUploadProgress = { progress ->
+                                                                coroutineScope.launch {
+                                                                    attachmentUploadOrchestrator.publishIfAccepted(
+                                                                        localAttachmentId,
+                                                                        draftKey,
+                                                                        uploadAttemptToken
+                                                                    ) {
+                                                                        composerDraftViewModel.accept(
+                                                                            SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
+                                                                                attachmentId = localAttachmentId,
+                                                                                bytesTransferred = progress.bytesTransferred,
+                                                                                bytesTotal = progress.bytesTotal,
+                                                                                expectedDraftKey = draftKey,
+                                                                                expectedAdmission = admission
+                                                                            )
+                                                                        )
+                                                                    }
+                                                                }
+                                                            },
+                                                        )
+                                                ) {
+                                                    is DataResult.Content ->
+                                                        DataResult.Content(AttachmentUploadResult(listOf(one.data)))
+                                                    is DataResult.Error -> one
+                                                    is DataResult.NoPermission -> one
+                                                    is DataResult.Empty -> one
                                                 }
                                             }
                                         }
-                                    )
+                                        ThreadComposerDirectUploadDecision.LegacyMultipart ->
+                                            dataSource.uploadAttachments(
+                                                channelId = channelId,
+                                                files = listOf(uploadFile),
+                                                onProgress = { progress ->
+                                                    coroutineScope.launch {
+                                                        attachmentUploadOrchestrator.publishIfAccepted(
+                                                            localAttachmentId,
+                                                            draftKey,
+                                                            uploadAttemptToken
+                                                        ) {
+                                                            composerDraftViewModel.accept(
+                                                                SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
+                                                                    attachmentId = localAttachmentId,
+                                                                    bytesTransferred = progress.bytesTransferred,
+                                                                    bytesTotal = progress.bytesTotal,
+                                                                    expectedDraftKey = draftKey,
+                                                                    expectedAdmission = admission
+                                                                )
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            )
+                                    }
                                 }
                             }
                         val published =
@@ -9473,9 +9675,8 @@ private fun SharedThreadRouteContentContent(
                             withContext(NonCancellable) {
                                 uploadComposerAttachmentFiles(
                                     files = files,
-                                    // 1.11.0 bleed-stop: 1.10.0 admitted per file. requireAllFiles
-                                    // would reject the whole gallery pick if one image exceeds
-                                    // maxBytes. Replacement ids stay keyed by local file id.
+                                    // Per-file admission: one oversize or failed image must not
+                                    // reject the rest. Direct vs multipart is chosen per file.
                                     requireAllFiles = false,
                                     replaceAttachmentIdsByLocalId = replaceAttachmentIdsByLocalId
                                 )
@@ -9796,9 +9997,11 @@ private fun SharedThreadRouteContentContent(
             },
             onDownloadFilesAttachment = { attachment -> saveAttachmentExternally(attachment) },
             onOpenMemberProfile = { identity -> onOpenMemberProfile(renderedThread, renderedTimelineSlice, identity) },
+            onExternalAuthor = onExternalAuthorHint,
             highlightedMentions = highlightedMentions,
             agentStatusResolver = agentStatusResolver,
             memberAvatarResolver = memberAvatarResolver,
+            memberModelLabelResolver = memberModelLabelResolver,
             diagnosticsLogger = { bridge.log(it) },
             onLayoutGeneration = { width, height ->
                 performanceGenerationCounter.nextLayout(width, height)?.let { generation ->
@@ -9831,7 +10034,6 @@ private fun SharedThreadRouteContentContent(
             pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
             markdownReferencePendingActionId = markdownReferencePending.active?.actionId,
             attachmentOpenStates = attachmentOpenStates,
-            attachmentCommentsEnabled = attachmentCommentsEnabled && renderSlice.writeActionsEnabled,
             composerSendKeyEnabled = composerSendKeyEnabled,
             newDesignSettingsEnabled = chatLayoutPreferenceStore::readNewDesignSettingsEnabledSync,
             longMessageCollapseEnabled = longMessageCollapseEnabled,
@@ -10633,7 +10835,21 @@ private fun SharedThreadRouteContentContent(
                             if (loadingPayload == null) {
                                 bridge.toast(localizedUnableToOpenTarget("#${itemId.removePrefix("#").take(31)}"))
                             } else {
-                                onOpenThreadPayload(loadingPayload)
+                                val currentRouteIdentity = renderedThread.resolveThreadRouteIdentity()
+                                val targetRouteIdentity = loadingPayload.resolveThreadRouteIdentity()
+                                if (currentRouteIdentity.canRetainThreadPageFor(targetRouteIdentity)) {
+                                    val targetFocusedMessageId = loadingPayload.focusedMessageId
+                                    if (!targetFocusedMessageId.isNullOrBlank()) {
+                                        threadViewModel.dispatch(
+                                            SharedThreadIntent.FocusMessage(
+                                                messageId = targetFocusedMessageId,
+                                                switchToTab = loadingPayload.selectedTab
+                                            )
+                                        )
+                                    }
+                                } else {
+                                    onOpenThreadPayload(loadingPayload)
+                                }
                             }
                         } finally {
                             finishMarkdownReferencePending(markdownPendingToken)
@@ -10676,7 +10892,21 @@ private fun SharedThreadRouteContentContent(
                                             "threadId=${result.data.streamChannelId.orEmpty()} " +
                                             "focusedMessageId=${result.data.focusedMessageId.orEmpty()}"
                                     )
-                                    onOpenThreadPayload(result.data)
+                                    val currentRouteIdentity = renderedThread.resolveThreadRouteIdentity()
+                                    val targetRouteIdentity = result.data.resolveThreadRouteIdentity()
+                                    if (currentRouteIdentity.canRetainThreadPageFor(targetRouteIdentity)) {
+                                        val targetFocusedMessageId = result.data.focusedMessageId
+                                        if (!targetFocusedMessageId.isNullOrBlank()) {
+                                            threadViewModel.dispatch(
+                                                SharedThreadIntent.FocusMessage(
+                                                    messageId = targetFocusedMessageId,
+                                                    switchToTab = result.data.selectedTab
+                                                )
+                                            )
+                                        }
+                                    } else {
+                                        onOpenThreadPayload(result.data)
+                                    }
                                 }
                                 is DataResult.Empty -> {
                                     bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
@@ -12876,12 +13106,7 @@ private class ThreadRouteScaffoldSlots(
 private fun ThreadRouteScaffold(
     slots: ThreadRouteScaffoldSlots
 ) {
-    val surfaceColor =
-        if (threadRouteScaffoldUsesBrandedLoadingSurface(slots.scaffoldPlan)) {
-            SlockColor.SurfaceCream
-        } else {
-            SlockColor.SurfaceWhite
-        }
+    val surfaceColor = SlockColor.SurfaceWhite
     key(slots.scaffoldPlan.rootIdentity) {
         Box(
             modifier =
@@ -12932,7 +13157,7 @@ private fun ThreadDeferredLoadingRouteContent(
                         Modifier
                             .weight(1f)
                             .fillMaxWidth()
-                            .background(SlockColor.SurfaceCream)
+                            .background(SlockColor.SurfaceWhite)
                 ) {
                     ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
                 }
@@ -13011,7 +13236,6 @@ private data class ThreadPageContentData(
     val pendingTaskConvertMessageIds: Set<String>,
     val markdownReferencePendingActionId: String?,
     val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
-    val attachmentCommentsEnabled: Boolean,
     val composerSendKeyEnabled: Boolean,
     val longMessageCollapseEnabled: Boolean,
     val singleTapOpensThreadEnabled: Boolean,
@@ -13036,8 +13260,10 @@ private class ThreadPageContentCallbacks(
     val onOpenFilesAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
     val onDownloadFilesAttachment: (KuiklyThreadAttachmentItem) -> Unit,
     val onOpenMemberProfile: (MemberDetailIdentity) -> Unit,
+    val onExternalAuthor: (KuiklyThreadMessageItem) -> Unit,
     val agentStatusResolver: SlockAgentStatusResolver,
     val memberAvatarResolver: SlockMemberAvatarResolver,
+    val memberModelLabelResolver: SlockMemberModelLabelResolver,
     val diagnosticsLogger: (String) -> Unit,
     val onLayoutGeneration: (width: Int, height: Int) -> Unit,
     val onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit,
@@ -13111,9 +13337,11 @@ fun ThreadPageContent(
     onOpenFilesAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
     onDownloadFilesAttachment: (KuiklyThreadAttachmentItem) -> Unit,
     onOpenMemberProfile: (MemberDetailIdentity) -> Unit,
+    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
     diagnosticsLogger: (String) -> Unit = {},
     onLayoutGeneration: (width: Int, height: Int) -> Unit = { _, _ -> },
     onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit = { _, _ -> },
@@ -13122,7 +13350,6 @@ fun ThreadPageContent(
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     markdownReferencePendingActionId: String? = null,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
-    attachmentCommentsEnabled: Boolean = false,
     composerSendKeyEnabled: Boolean = false,
     newDesignSettingsEnabled: () -> Boolean = { false },
     longMessageCollapseEnabled: Boolean = false,
@@ -13197,7 +13424,6 @@ fun ThreadPageContent(
                 pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 markdownReferencePendingActionId = markdownReferencePendingActionId,
                 attachmentOpenStates = attachmentOpenStates,
-                attachmentCommentsEnabled = attachmentCommentsEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
@@ -13221,8 +13447,10 @@ fun ThreadPageContent(
                 onOpenFilesAttachment = onOpenFilesAttachment,
                 onDownloadFilesAttachment = onDownloadFilesAttachment,
                 onOpenMemberProfile = onOpenMemberProfile,
+                onExternalAuthor = onExternalAuthor,
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
+                memberModelLabelResolver = memberModelLabelResolver,
                 diagnosticsLogger = diagnosticsLogger,
                 onLayoutGeneration = onLayoutGeneration,
                 onComposerLayoutProbe = onComposerLayoutProbe,
@@ -13300,9 +13528,11 @@ private fun ThreadPageContentContent(
     val onOpenFilesAttachment = callbacks.onOpenFilesAttachment
     val onDownloadFilesAttachment = callbacks.onDownloadFilesAttachment
     val onOpenMemberProfile = callbacks.onOpenMemberProfile
+    val onExternalAuthor = callbacks.onExternalAuthor
     val highlightedMentions = data.highlightedMentions
     val agentStatusResolver = callbacks.agentStatusResolver
     val memberAvatarResolver = callbacks.memberAvatarResolver
+    val memberModelLabelResolver = callbacks.memberModelLabelResolver
     val diagnosticsLogger = callbacks.diagnosticsLogger
     val onLayoutGeneration = callbacks.onLayoutGeneration
     val onComposerLayoutProbe = callbacks.onComposerLayoutProbe
@@ -13311,7 +13541,6 @@ private fun ThreadPageContentContent(
     val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
     val markdownReferencePendingActionId = data.markdownReferencePendingActionId
     val attachmentOpenStates = data.attachmentOpenStates
-    val attachmentCommentsEnabled = data.attachmentCommentsEnabled
     val composerSendKeyEnabled = data.composerSendKeyEnabled
     val newDesignSettingsEnabled = callbacks.newDesignSettingsEnabled
     val longMessageCollapseEnabled = data.longMessageCollapseEnabled
@@ -13894,7 +14123,17 @@ private fun ThreadPageContentContent(
             payload.toKnownMarkdownMentionNameSet()
         }
     val knownMarkdownDirectMessagePeerNames =
-        remember(payload.knownMarkdownDirectMessagePeerNames) {
+        remember(
+            payload.knownMarkdownDirectMessagePeerNames,
+            payload.dmPeerName,
+            payload.dmPeerIdentity,
+            payload.surfaceKind,
+            payload.parentSurfaceKind,
+            payload.channelKind,
+            payload.parentChannelKind,
+            payload.members,
+            payload.memberCandidates
+        ) {
             payload.toKnownMarkdownDirectMessagePeerNameSet()
         }
     val knownMarkdownTaskNumbers =
@@ -14018,11 +14257,11 @@ private fun ThreadPageContentContent(
                         highlightedMentions = highlightedMentions,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
+                        memberModelLabelResolver = memberModelLabelResolver,
                         inlineReplyParticipantsById = inlineReplyParticipantsById,
                         pendingActionCardIds = pendingActionCardIds,
                         pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                         attachmentOpenStates = attachmentOpenStates,
-                        attachmentCommentsEnabled = attachmentCommentsEnabled,
                         writeActionsEnabled = writeActionsEnabled,
                         currentServerSlug = currentServerSlug,
                         contentExtrasVisible = contentExtrasVisible,
@@ -14039,6 +14278,7 @@ private fun ThreadPageContentContent(
                         onLoadNewer = onLoadNewer,
                         onJumpToLatest = onJumpToLatest,
                         onOpenMember = onOpenMemberProfile,
+                        onExternalAuthor = onExternalAuthor,
                         onMentionAuthor = { message ->
                             val handle = mentionHandleResolver(message)
                             if (showComposerForSelectedTab && handle != null) {
@@ -14861,7 +15101,7 @@ private fun ThreadPageHeader(
                         ThreadMembersHeaderButton(count = payload.membersCount, onClick = onShowMembers)
                     }
                     if (payload.threadHeaderOpenInParentActionVisible()) {
-                        ThreadHeaderIconButton(icon = SlockLucideIconName.ExternalLink, onClick = onOpenInChannel)
+                        ThreadHeaderIconButton(icon = SlockLucideIconName.MapPin, onClick = onOpenInChannel)
                     }
                 }
                 }
@@ -15432,7 +15672,6 @@ private data class ThreadChatTabData(
     val pendingActionCardIds: Set<String>,
     val pendingTaskConvertMessageIds: Set<String>,
     val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
-    val attachmentCommentsEnabled: Boolean,
     val writeActionsEnabled: Boolean,
     val currentServerSlug: String?,
     val contentExtrasVisible: Boolean,
@@ -15460,11 +15699,13 @@ private data class ThreadChatTabData(
 private class ThreadChatTabCallbacks(
     val agentStatusResolver: SlockAgentStatusResolver,
     val memberAvatarResolver: SlockMemberAvatarResolver,
+    val memberModelLabelResolver: SlockMemberModelLabelResolver,
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
     val resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
     val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     val onJumpToLatest: suspend () -> Boolean,
     val onOpenMember: (MemberDetailIdentity) -> Unit,
+    val onExternalAuthor: (KuiklyThreadMessageItem) -> Unit,
     val onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     val onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     val onOpenMarkdownUrl: (String) -> Unit,
@@ -15501,11 +15742,11 @@ fun ThreadChatTab(
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
     inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
-    attachmentCommentsEnabled: Boolean = false,
     writeActionsEnabled: Boolean = true,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
@@ -15522,6 +15763,7 @@ fun ThreadChatTab(
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     onJumpToLatest: suspend () -> Boolean,
     onOpenMember: (MemberDetailIdentity) -> Unit,
+    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
@@ -15571,7 +15813,6 @@ fun ThreadChatTab(
                 pendingActionCardIds = pendingActionCardIds,
                 pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 attachmentOpenStates = attachmentOpenStates,
-                attachmentCommentsEnabled = attachmentCommentsEnabled,
                 writeActionsEnabled = writeActionsEnabled,
                 currentServerSlug = currentServerSlug,
                 contentExtrasVisible = contentExtrasVisible,
@@ -15598,11 +15839,13 @@ fun ThreadChatTab(
             ThreadChatTabCallbacks(
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
+                memberModelLabelResolver = memberModelLabelResolver,
                 isMarkdownTagValid = isMarkdownTagValid,
                 resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                 onLoadNewer = onLoadNewer,
                 onJumpToLatest = onJumpToLatest,
                 onOpenMember = onOpenMember,
+                onExternalAuthor = onExternalAuthor,
                 onMentionAuthor = onMentionAuthor,
                 onOpenMarkdownTag = onOpenMarkdownTag,
                 onOpenMarkdownUrl = onOpenMarkdownUrl,
@@ -15644,11 +15887,11 @@ private fun ThreadChatTabContent(
     val highlightedMentions = data.highlightedMentions
     val agentStatusResolver = callbacks.agentStatusResolver
     val memberAvatarResolver = callbacks.memberAvatarResolver
+    val memberModelLabelResolver = callbacks.memberModelLabelResolver
     val inlineReplyParticipantsById = data.inlineReplyParticipantsById
     val pendingActionCardIds = data.pendingActionCardIds
     val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
     val attachmentOpenStates = data.attachmentOpenStates
-    val attachmentCommentsEnabled = data.attachmentCommentsEnabled
     val writeActionsEnabled = data.writeActionsEnabled
     val currentServerSlug = data.currentServerSlug
     val contentExtrasVisible = data.contentExtrasVisible
@@ -15665,6 +15908,7 @@ private fun ThreadChatTabContent(
     val onLoadNewer = callbacks.onLoadNewer
     val onJumpToLatest = callbacks.onJumpToLatest
     val onOpenMember = callbacks.onOpenMember
+    val onExternalAuthor = callbacks.onExternalAuthor
     val onMentionAuthor = callbacks.onMentionAuthor
     val onOpenMarkdownTag = callbacks.onOpenMarkdownTag
     val onOpenMarkdownUrl = callbacks.onOpenMarkdownUrl
@@ -15739,11 +15983,11 @@ private fun ThreadChatTabContent(
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
+                    memberModelLabelResolver = memberModelLabelResolver,
                     inlineReplyParticipantsById = inlineReplyParticipantsById,
                     pendingActionCardIds = pendingActionCardIds,
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                     attachmentOpenStates = attachmentOpenStates,
-                    attachmentCommentsEnabled = attachmentCommentsEnabled,
                     writeActionsEnabled = writeActionsEnabled,
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
@@ -15760,6 +16004,7 @@ private fun ThreadChatTabContent(
                     onLoadNewer = onLoadNewer,
                     onJumpToLatest = onJumpToLatest,
                     onOpenMember = onOpenMember,
+                    onExternalAuthor = onExternalAuthor,
                     onMentionAuthor = onMentionAuthor,
                     onOpenMarkdownTag = onOpenMarkdownTag,
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
@@ -15828,11 +16073,11 @@ private fun ThreadChatTabContent(
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
+                    memberModelLabelResolver = memberModelLabelResolver,
                     inlineReplyParticipantsById = inlineReplyParticipantsById,
                     pendingActionCardIds = pendingActionCardIds,
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                     attachmentOpenStates = attachmentOpenStates,
-                    attachmentCommentsEnabled = attachmentCommentsEnabled,
                     writeActionsEnabled = writeActionsEnabled,
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
@@ -15849,6 +16094,7 @@ private fun ThreadChatTabContent(
                     onLoadNewer = onLoadNewer,
                     onJumpToLatest = onJumpToLatest,
                     onOpenMember = onOpenMember,
+                    onExternalAuthor = onExternalAuthor,
                     onMentionAuthor = onMentionAuthor,
                     onOpenMarkdownTag = onOpenMarkdownTag,
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
@@ -15900,11 +16146,11 @@ private fun ThreadChatTabContent(
                 highlightedMentions = highlightedMentions,
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
+                memberModelLabelResolver = memberModelLabelResolver,
                 inlineReplyParticipantsById = inlineReplyParticipantsById,
                 pendingActionCardIds = pendingActionCardIds,
                 pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 attachmentOpenStates = attachmentOpenStates,
-                attachmentCommentsEnabled = attachmentCommentsEnabled,
                 writeActionsEnabled = writeActionsEnabled,
                 currentServerSlug = currentServerSlug,
                 contentExtrasVisible = contentExtrasVisible,
@@ -15920,6 +16166,7 @@ private fun ThreadChatTabContent(
                 onLoadNewer = onLoadNewer,
                 onJumpToLatest = onJumpToLatest,
                 onOpenMember = onOpenMember,
+                onExternalAuthor = onExternalAuthor,
                 onMentionAuthor = onMentionAuthor,
                 onOpenMarkdownTag = onOpenMarkdownTag,
                 onOpenMarkdownUrl = onOpenMarkdownUrl,
@@ -16221,7 +16468,6 @@ private data class ThreadMessagesListData(
     val pendingActionCardIds: Set<String>,
     val pendingTaskConvertMessageIds: Set<String>,
     val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
-    val attachmentCommentsEnabled: Boolean,
     val writeActionsEnabled: Boolean,
     val currentServerSlug: String?,
     val contentExtrasVisible: Boolean,
@@ -16249,11 +16495,13 @@ private data class ThreadMessagesListData(
 private class ThreadMessagesListCallbacks(
     val agentStatusResolver: SlockAgentStatusResolver,
     val memberAvatarResolver: SlockMemberAvatarResolver,
+    val memberModelLabelResolver: SlockMemberModelLabelResolver,
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
     val resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
     val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     val onJumpToLatest: suspend () -> Boolean,
     val onOpenMember: (MemberDetailIdentity) -> Unit,
+    val onExternalAuthor: (KuiklyThreadMessageItem) -> Unit,
     val onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     val onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     val onOpenMarkdownUrl: (String) -> Unit,
@@ -16291,11 +16539,11 @@ fun ThreadMessagesList(
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
     inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
-    attachmentCommentsEnabled: Boolean = false,
     writeActionsEnabled: Boolean = true,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
@@ -16312,6 +16560,7 @@ fun ThreadMessagesList(
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     onJumpToLatest: suspend () -> Boolean,
     onOpenMember: (MemberDetailIdentity) -> Unit,
+    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
@@ -16361,7 +16610,6 @@ fun ThreadMessagesList(
                 pendingActionCardIds = pendingActionCardIds,
                 pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 attachmentOpenStates = attachmentOpenStates,
-                attachmentCommentsEnabled = attachmentCommentsEnabled,
                 writeActionsEnabled = writeActionsEnabled,
                 currentServerSlug = currentServerSlug,
                 contentExtrasVisible = contentExtrasVisible,
@@ -16388,11 +16636,13 @@ fun ThreadMessagesList(
             ThreadMessagesListCallbacks(
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
+                memberModelLabelResolver = memberModelLabelResolver,
                 isMarkdownTagValid = isMarkdownTagValid,
                 resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                 onLoadNewer = onLoadNewer,
                 onJumpToLatest = onJumpToLatest,
                 onOpenMember = onOpenMember,
+                onExternalAuthor = onExternalAuthor,
                 onMentionAuthor = onMentionAuthor,
                 onOpenMarkdownTag = onOpenMarkdownTag,
                 onOpenMarkdownUrl = onOpenMarkdownUrl,
@@ -16434,11 +16684,11 @@ private fun ThreadMessagesListContent(
     val highlightedMentions = data.highlightedMentions
     val agentStatusResolver = callbacks.agentStatusResolver
     val memberAvatarResolver = callbacks.memberAvatarResolver
+    val memberModelLabelResolver = callbacks.memberModelLabelResolver
     val inlineReplyParticipantsById = data.inlineReplyParticipantsById
     val pendingActionCardIds = data.pendingActionCardIds
     val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
     val attachmentOpenStates = data.attachmentOpenStates
-    val attachmentCommentsEnabled = data.attachmentCommentsEnabled
     val writeActionsEnabled = data.writeActionsEnabled
     val currentServerSlug = data.currentServerSlug
     val contentExtrasVisible = data.contentExtrasVisible
@@ -16455,6 +16705,7 @@ private fun ThreadMessagesListContent(
     val onLoadNewer = callbacks.onLoadNewer
     val onJumpToLatest = callbacks.onJumpToLatest
     val onOpenMember = callbacks.onOpenMember
+    val onExternalAuthor = callbacks.onExternalAuthor
     val onMentionAuthor = callbacks.onMentionAuthor
     val onOpenMarkdownTag = callbacks.onOpenMarkdownTag
     val onOpenMarkdownUrl = callbacks.onOpenMarkdownUrl
@@ -16757,6 +17008,14 @@ private fun ThreadMessagesListContent(
     var classicMenuOverrideMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     // task #569: long-press on a reaction chip shows who reacted.
     var reactionDetails by remember(threadInstanceKey) { mutableStateOf<ThreadReactionDetailsRequest?>(null) }
+    var authorDescriptionPopover by remember(threadInstanceKey) {
+        mutableStateOf<ThreadAuthorDescriptionPopoverRequest?>(null)
+    }
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            authorDescriptionPopover = null
+        }
+    }
     var taskStatusMenuMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var taskStatusMenuAnchor by remember(threadInstanceKey) { mutableStateOf<SlockPopoverAnchor?>(null) }
     var allowBottomAutoAnchor by remember(threadInstanceKey) {
@@ -18930,7 +19189,6 @@ private fun ThreadMessagesListContent(
                         highlightedMentions = highlightedMentions,
                         pendingActionCardIds = pendingActionCardIds,
                         attachmentOpenStates = attachmentOpenStates,
-                        attachmentCommentsEnabled = attachmentCommentsEnabled,
                         currentServerSlug = currentServerSlug,
                         contentExtrasVisible = contentExtrasVisible,
                         isMarkdownTagValid = isMarkdownTagValid,
@@ -18940,12 +19198,20 @@ private fun ThreadMessagesListContent(
                         diagnosticsLogger = diagnosticsLogger,
                         onThreadEvent = onThreadEvent,
                         onOpenMember = onOpenMember,
+                        onExternalAuthor = onExternalAuthor,
                         onShowReactionDetails = { reaction, anchor ->
                             reactionDetails =
                                 ThreadReactionDetailsRequest(
                                     emoji = reaction.emoji,
                                     names = reaction.reactorNames,
                                     count = reaction.count,
+                                    anchor = anchor
+                                )
+                        },
+                        onShowAuthorDescription = { description, anchor ->
+                            authorDescriptionPopover =
+                                ThreadAuthorDescriptionPopoverRequest(
+                                    description = description,
                                     anchor = anchor
                                 )
                         },
@@ -18962,6 +19228,7 @@ private fun ThreadMessagesListContent(
                         onMentionAuthor = onMentionAuthor,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
+                        memberModelLabelResolver = memberModelLabelResolver,
                         onOpenMarkdownTag = onOpenMarkdownTag,
                         onOpenMarkdownUrl = onOpenMarkdownUrl,
                         shareSelectionActive = shareSelectionActive,
@@ -19190,6 +19457,7 @@ private fun ThreadMessagesListContent(
                                 highlightedMentions = highlightedMentions,
                                 agentStatusResolver = agentStatusResolver,
                                 memberAvatarResolver = memberAvatarResolver,
+                                memberModelLabelResolver = memberModelLabelResolver,
                                 inlineReplyParticipantsById = inlineReplyParticipantsById,
                                 focused = activeFocusedMessageId == message.id || activeInlineSearchMessageId == message.id,
                                 shareSelectionActive = shareSelectionActive,
@@ -19221,6 +19489,7 @@ private fun ThreadMessagesListContent(
                                     }
                                 },
                                 onOpenMember = onOpenMember,
+                                onExternalAuthor = onExternalAuthor,
                                 onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
                                 onOpenTask = { onThreadEvent("openTask", it, null, null) },
                                 onOpenTaskStatusMenu = { anchor ->
@@ -19237,14 +19506,19 @@ private fun ThreadMessagesListContent(
                                             anchor = anchor
                                         )
                                 },
+                                onShowAuthorDescription = { description, anchor ->
+                                    authorDescriptionPopover =
+                                        ThreadAuthorDescriptionPopoverRequest(
+                                            description = description,
+                                            anchor = anchor
+                                        )
+                                },
                                 showReactionAddAction = renderPayload.showReactionActions && !message.hasLocalSendState(),
                                 onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
                                 timestampLabel = message.timestampLabel,
                                 compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message),
                                 onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                                 onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },
-                                attachmentCommentsEnabled = attachmentCommentsEnabled,
-                                onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", message.id, it, null) },
                                 onRetryLocalSend = { onThreadEvent("retryLocalSend", message.id, null, null) },
                                 onCopyLocalSendFailureDetails = {
                                     onThreadEvent("copyLocalSendFailureDetails", message.id, null, null)
@@ -19505,6 +19779,12 @@ private fun ThreadMessagesListContent(
             ThreadReactionDetailsTooltip(
                 details = details,
                 onDismiss = { reactionDetails = null }
+            )
+        }
+        authorDescriptionPopover?.let { request ->
+            ThreadAuthorDescriptionPopover(
+                request = request,
+                onDismiss = { authorDescriptionPopover = null }
             )
         }
         actionMessageId?.let { messageId ->
@@ -20947,7 +21227,11 @@ internal fun threadVisibleResumePlan(routeActive: Boolean): ThreadVisibleResumeP
     }
 
 internal class ThreadVisibleResumeGate {
-    private var pendingVisibleResume = false
+    // Snapshot state: a pending resume must itself re-trigger the drain effect,
+    // because the lifecycle listener can latch it after `active` already
+    // became true (the listener reads a stale rememberUpdatedState snapshot).
+    var pendingVisibleResume by mutableStateOf(false)
+        private set
 
     fun onLifecycleVisibleResume(routeActive: Boolean): ThreadVisibleResumePlan? {
         if (!routeActive) {
@@ -21783,7 +22067,6 @@ private data class ThreadMessageCardData(
     val activeMarkdownTagKey: String?,
     val timestampLabel: String,
     val compactTimestampLabel: String,
-    val attachmentCommentsEnabled: Boolean,
     val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     val pendingActionCardIds: Set<String>,
     val writeActionsEnabled: Boolean,
@@ -21808,6 +22091,7 @@ private class ThreadMessageCardCallbacks(
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
     val onShowActions: (SlockPopoverAnchor) -> Unit,
     val onOpenMember: (MemberDetailIdentity) -> Unit,
+    val onExternalAuthor: (KuiklyThreadMessageItem) -> Unit,
     val onOpenThread: (String) -> Unit,
     val onOpenTask: (String) -> Unit,
     val onOpenTaskStatusMenu: (SlockPopoverAnchor) -> Unit,
@@ -21816,7 +22100,6 @@ private class ThreadMessageCardCallbacks(
     val onOpenCommentHost: (KuiklyThreadMessageCommentRef) -> Unit,
     val onOpenAttachment: (String) -> Unit,
     val onDownloadAttachment: (String) -> Unit,
-    val onOpenAttachmentComments: (String) -> Unit,
     val onRetryLocalSend: () -> Unit,
     val onCopyLocalSendFailureDetails: () -> Unit,
     val onCommitActionCard: (String) -> Unit,
@@ -21825,6 +22108,7 @@ private class ThreadMessageCardCallbacks(
     val onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     val isMessageListScrolling: () -> Boolean,
     val memberAvatarResolver: SlockMemberAvatarResolver,
+    val memberModelLabelResolver: SlockMemberModelLabelResolver,
     val onToggleShareSelection: () -> Unit,
     val onToggleTranslationOriginal: () -> Unit,
     val onRetryTranslation: () -> Unit,
@@ -21832,6 +22116,7 @@ private class ThreadMessageCardCallbacks(
     val onToggleLongMessage: () -> Unit,
     val onLongPressInputReady: ((String) -> Unit)?,
     val quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)?,
+    val onShowAuthorDescription: ((String, SlockPopoverAnchor) -> Unit)? = null,
 )
 
 internal @Composable
@@ -21864,6 +22149,7 @@ fun ThreadMessageCard(
     compactTimestampLabel: String = timestampLabel,
     onShowActions: (SlockPopoverAnchor) -> Unit,
     onOpenMember: (MemberDetailIdentity) -> Unit,
+    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     onOpenThread: (String) -> Unit,
     onOpenTask: (String) -> Unit,
     onOpenTaskStatusMenu: (SlockPopoverAnchor) -> Unit,
@@ -21872,8 +22158,6 @@ fun ThreadMessageCard(
     onOpenCommentHost: (KuiklyThreadMessageCommentRef) -> Unit = {},
     onOpenAttachment: (String) -> Unit,
     onDownloadAttachment: (String) -> Unit = {},
-    attachmentCommentsEnabled: Boolean = false,
-    onOpenAttachmentComments: (String) -> Unit = {},
     onRetryLocalSend: () -> Unit = {},
     onCopyLocalSendFailureDetails: () -> Unit = {},
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
@@ -21888,6 +22172,7 @@ fun ThreadMessageCard(
     focused: Boolean = false,
     isMessageListScrolling: () -> Boolean = { false },
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
     inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
     shareSelectionActive: Boolean = false,
     selectedForShare: Boolean = false,
@@ -21902,6 +22187,7 @@ fun ThreadMessageCard(
     onLongPressInputReady: ((String) -> Unit)? = null,
     longPressGestureInstanceKey: Any = message.id,
     quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)? = null,
+    onShowAuthorDescription: ((String, SlockPopoverAnchor) -> Unit)? = null,
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 )
  {
@@ -21931,7 +22217,6 @@ fun ThreadMessageCard(
                 activeMarkdownTagKey = activeMarkdownTagKey,
                 timestampLabel = timestampLabel,
                 compactTimestampLabel = compactTimestampLabel,
-                attachmentCommentsEnabled = attachmentCommentsEnabled,
                 attachmentOpenStates = attachmentOpenStates,
                 pendingActionCardIds = pendingActionCardIds,
                 writeActionsEnabled = writeActionsEnabled,
@@ -21955,6 +22240,7 @@ fun ThreadMessageCard(
                 isMarkdownTagValid = isMarkdownTagValid,
                 onShowActions = onShowActions,
                 onOpenMember = onOpenMember,
+                onExternalAuthor = onExternalAuthor,
                 onOpenThread = onOpenThread,
                 onOpenTask = onOpenTask,
                 onOpenTaskStatusMenu = onOpenTaskStatusMenu,
@@ -21963,7 +22249,6 @@ fun ThreadMessageCard(
                 onOpenCommentHost = onOpenCommentHost,
                 onOpenAttachment = onOpenAttachment,
                 onDownloadAttachment = onDownloadAttachment,
-                onOpenAttachmentComments = onOpenAttachmentComments,
                 onRetryLocalSend = onRetryLocalSend,
                 onCopyLocalSendFailureDetails = onCopyLocalSendFailureDetails,
                 onCommitActionCard = onCommitActionCard,
@@ -21972,6 +22257,7 @@ fun ThreadMessageCard(
                 onMentionAuthor = onMentionAuthor,
                 isMessageListScrolling = isMessageListScrolling,
                 memberAvatarResolver = memberAvatarResolver,
+                memberModelLabelResolver = memberModelLabelResolver,
                 onToggleShareSelection = onToggleShareSelection,
                 onToggleTranslationOriginal = onToggleTranslationOriginal,
                 onRetryTranslation = onRetryTranslation,
@@ -21979,6 +22265,7 @@ fun ThreadMessageCard(
                 onToggleLongMessage = onToggleLongMessage,
                 onLongPressInputReady = onLongPressInputReady,
                 quotedPermalinkLoader = quotedPermalinkLoader,
+                onShowAuthorDescription = onShowAuthorDescription,
             ),
     )
 }
@@ -22017,6 +22304,7 @@ private fun ThreadMessageCardContent(
     val compactTimestampLabel = data.compactTimestampLabel
     val onShowActions = callbacks.onShowActions
     val onOpenMember = callbacks.onOpenMember
+    val onExternalAuthor = callbacks.onExternalAuthor
     val onOpenThread = callbacks.onOpenThread
     val onOpenTask = callbacks.onOpenTask
     val onOpenTaskStatusMenu = callbacks.onOpenTaskStatusMenu
@@ -22025,8 +22313,6 @@ private fun ThreadMessageCardContent(
     val onOpenCommentHost = callbacks.onOpenCommentHost
     val onOpenAttachment = callbacks.onOpenAttachment
     val onDownloadAttachment = callbacks.onDownloadAttachment
-    val attachmentCommentsEnabled = data.attachmentCommentsEnabled
-    val onOpenAttachmentComments = callbacks.onOpenAttachmentComments
     val onRetryLocalSend = callbacks.onRetryLocalSend
     val onCopyLocalSendFailureDetails = callbacks.onCopyLocalSendFailureDetails
     val attachmentOpenStates = data.attachmentOpenStates
@@ -22041,6 +22327,7 @@ private fun ThreadMessageCardContent(
     val focused = data.focused
     val isMessageListScrolling = callbacks.isMessageListScrolling
     val memberAvatarResolver = callbacks.memberAvatarResolver
+    val memberModelLabelResolver = callbacks.memberModelLabelResolver
     val inlineReplyParticipantsById = data.inlineReplyParticipantsById
     val shareSelectionActive = data.shareSelectionActive
     val selectedForShare = data.selectedForShare
@@ -22061,6 +22348,15 @@ private fun ThreadMessageCardContent(
             stringResource(MR.strings.thread_author_you)
         } else {
             message.authorName
+        }
+    // task #392 (port of Web PR #7545): agent model label, resolved live from
+    // the members directory — the message wire carries no model. `null` for
+    // humans, agents without a model, and while the roster is still loading.
+    val authorModelLabel =
+        if (message.isThreadAgentAuthor()) {
+            rememberSlockMemberModelLabel(memberModelLabelResolver, message.authorId)
+        } else {
+            null
         }
     val pointerSessionKey = LocalThreadMessagePointerSessionKey.current
     val horizontalArrangement =
@@ -22135,6 +22431,10 @@ private fun ThreadMessageCardContent(
                 "authorId=${message.authorId} authorKind=${message.authorKind} " +
                 "targetMemberId=${authorProfileIdentity?.memberId?.value.orEmpty()}"
         )
+        if (authorProfileIdentity == null && message.externalAuthor != null) {
+            onExternalAuthor(message)
+            return
+        }
         authorProfileIdentity?.let(onOpenMember)
     }
     val authorBadgeLabel = message.threadAuthorBadgeLabel()
@@ -22286,8 +22586,10 @@ private fun ThreadMessageCardContent(
                         timestampAlignment = Alignment.TopStart,
                         timestampTextAlign = TextAlign.Start,
                         avatarLabel = message.avatarLabel,
-                        avatarWireValue = avatarWireValue,
+                        avatarWireValue =
+                            if (message.externalAuthor != null) message.avatarWireValue else avatarWireValue,
                         avatarDiagnostics = avatarDiagnostics,
+                        external = message.externalAuthor != null,
                         cacheSubject =
                             slockMemberAvatarCacheSubject(
                                 message.authorKind.projectedMemberKindOrNull(),
@@ -22347,12 +22649,51 @@ private fun ThreadMessageCardContent(
                                                 .widthIn(max = 220.dp)
                                                 .clickable { openAuthorProfile("author_name") }
                                     )
+                                    // task #392 (port of Web PR #7545): agent
+                                    // model name, 11sp mono at 40% opacity,
+                                    // after the name, before badge/subtitle.
+                                    authorModelLabel?.let { modelLabel ->
+                                        Text(
+                                            text = modelLabel,
+                                            style =
+                                                SlockType.Caption.copy(
+                                                    fontFamily = SlockMonoFamily,
+                                                    fontSize = 11.sp,
+                                                    color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                                                ),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
                                     authorBadgeLabel?.let { label ->
                                         ThreadMessageAuthorBadge(label)
                                     }
                                     message.authorDescription?.let { description ->
+                                        val subtitleAnchor =
+                                            remember(message.id) {
+                                                SlockLiveRootAnchorRef(
+                                                    identity = "thread_author_subtitle:${message.id}"
+                                                )
+                                            }
+                                        val onShowDescription = callbacks.onShowAuthorDescription
+                                        val handleSubtitleClick: (() -> Unit)? =
+                                            if (onShowDescription != null && !shareSelectionActive && description.isNotBlank()) {
+                                                {
+                                                    tapMovementGate.rejectChildAction("author_subtitle")
+                                                    diagnosticsLogger("thread_author_subtitle_tap messageId=${message.id}")
+                                                    subtitleAnchor
+                                                        .resolve(SlockPopoverLocalPoint.BottomStart)
+                                                        ?.let { anchor ->
+                                                            onShowDescription(description, anchor)
+                                                        }
+                                                }
+                                            } else {
+                                                null
+                                            }
                                         ThreadMessageAuthorSubtitle(
-                                            description,
+                                            description = description,
+                                            rootAnchor = subtitleAnchor,
+                                            onClick = handleSubtitleClick,
                                             modifier = Modifier.weight(1f, fill = false)
                                         )
                                     }
@@ -22537,8 +22878,6 @@ private fun ThreadMessageCardContent(
                                     attachments = message.attachments,
                                     alignEnd = alignOwnMessageRight,
                                     attachmentOpenStates = attachmentOpenStates,
-                                    commentsEnabled = attachmentCommentsEnabled,
-                                    onOpenComments = onOpenAttachmentComments,
                                     onOpenAttachment = onOpenAttachment,
                                     onDownloadAttachment = onDownloadAttachment
                                 )
@@ -22613,8 +22952,10 @@ private fun ThreadMessageCardContent(
                         timestampAlignment = Alignment.TopEnd,
                         timestampTextAlign = TextAlign.End,
                         avatarLabel = message.avatarLabel,
-                        avatarWireValue = avatarWireValue,
+                        avatarWireValue =
+                            if (message.externalAuthor != null) message.avatarWireValue else avatarWireValue,
                         avatarDiagnostics = avatarDiagnostics,
+                        external = message.externalAuthor != null,
                         cacheSubject =
                             slockMemberAvatarCacheSubject(
                                 message.authorKind.projectedMemberKindOrNull(),
@@ -23991,6 +24332,118 @@ private val ThreadReactionDetailsHorizontalPadding = 8.dp
 // Rough per-character width at 12sp bold caption — only used to pre-size the
 // popover for viewport clamping; the row itself wraps its real content.
 private val ThreadReactionDetailsLabelCharWidth = 7.dp
+
+internal data class ThreadAuthorDescriptionPopoverRequest(
+    val description: String,
+    val anchor: SlockPopoverAnchor
+)
+
+internal const val ThreadAuthorDescriptionPopoverMaxWidthDp = 280f
+internal const val ThreadAuthorDescriptionPopoverMinWidthDp = 120f
+internal const val ThreadAuthorDescriptionPopoverHorizontalPaddingDp = 10f
+internal const val ThreadAuthorDescriptionPopoverVerticalPaddingDp = 8f
+internal const val ThreadAuthorDescriptionPopoverApproxCharWidthDp = 7.5f
+internal const val ThreadAuthorDescriptionPopoverLineHeightDp = 16f
+
+internal data class ThreadAuthorDescriptionPopoverDimensions(
+    val width: Dp,
+    val height: Dp
+)
+
+internal fun threadAuthorDescriptionPopoverDimensions(
+    description: String,
+    maxWidth: Dp = ThreadAuthorDescriptionPopoverMaxWidthDp.dp
+): ThreadAuthorDescriptionPopoverDimensions {
+    val clean = description.trim()
+    if (clean.isEmpty()) {
+        return ThreadAuthorDescriptionPopoverDimensions(
+            width = ThreadAuthorDescriptionPopoverMinWidthDp.dp,
+            height = 36.dp
+        )
+    }
+    val shadowOffset = SlockShadow.BrutalSmall
+    val strokeExtra = SlockStroke.Default * 2
+    val horizontalPadding = (ThreadAuthorDescriptionPopoverHorizontalPaddingDp * 2).dp
+    val verticalPadding = (ThreadAuthorDescriptionPopoverVerticalPaddingDp * 2).dp
+    val availableTextWidth = (maxWidth - horizontalPadding - strokeExtra).value.coerceAtLeast(60f)
+    val approxCharsPerLine = (availableTextWidth / ThreadAuthorDescriptionPopoverApproxCharWidthDp).toInt().coerceAtLeast(1)
+    val estimatedLines = ((clean.length + approxCharsPerLine - 1) / approxCharsPerLine).coerceAtLeast(1)
+
+    val estimatedWidth = if (estimatedLines == 1) {
+        val singleLineWidth = (clean.length * ThreadAuthorDescriptionPopoverApproxCharWidthDp).dp + horizontalPadding + strokeExtra + shadowOffset
+        singleLineWidth.coerceIn(ThreadAuthorDescriptionPopoverMinWidthDp.dp, maxWidth + shadowOffset)
+    } else {
+        maxWidth + shadowOffset
+    }
+    val estimatedHeight = (estimatedLines * ThreadAuthorDescriptionPopoverLineHeightDp).dp + verticalPadding + strokeExtra + shadowOffset
+    return ThreadAuthorDescriptionPopoverDimensions(
+        width = estimatedWidth,
+        height = estimatedHeight.coerceIn(36.dp, 320.dp)
+    )
+}
+
+@Composable
+private fun ThreadAuthorDescriptionPopover(
+    request: ThreadAuthorDescriptionPopoverRequest,
+    onDismiss: () -> Unit
+) {
+    val density = LocalDensity.current
+    val dimensions = threadAuthorDescriptionPopoverDimensions(request.description)
+    val estimatedSize =
+        with(density) {
+            Size(
+                width = dimensions.width.toPx(),
+                height = dimensions.height.toPx()
+            )
+        }
+    SlockAnchoredPopover(
+        anchor = request.anchor,
+        contentSize = estimatedSize,
+        onDismiss = onDismiss,
+        horizontalAutoFlip = true,
+        verticalPlacement = SlockFloatingVerticalPlacement.Auto,
+        dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis,
+        outsidePointerMode = SlockFloatingOverlayOutsidePointerMode.Dismiss
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .padding(end = SlockShadow.BrutalSmall, bottom = SlockShadow.BrutalSmall)
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .offset(x = SlockShadow.BrutalSmall, y = SlockShadow.BrutalSmall)
+                        .background(SlockColor.ShadowBlack)
+            )
+            Box(
+                modifier =
+                    Modifier
+                        .widthIn(min = ThreadAuthorDescriptionPopoverMinWidthDp.dp, max = ThreadAuthorDescriptionPopoverMaxWidthDp.dp)
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .slockFloatingContentClickTarget()
+                        .padding(
+                            horizontal = ThreadAuthorDescriptionPopoverHorizontalPaddingDp.dp,
+                            vertical = ThreadAuthorDescriptionPopoverVerticalPaddingDp.dp
+                        )
+            ) {
+                Text(
+                    text = request.description,
+                    style =
+                        SlockType.Caption.copy(
+                            fontFamily = SlockMonoFamily,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
+                            color = SlockColor.TextBlack
+                        ),
+                    color = SlockColor.TextBlack
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun ThreadReactionAddChipChrome() {
@@ -26150,7 +26603,6 @@ private fun ThreadOriginCard(
     highlightedMentions: Set<String>,
     pendingActionCardIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
-    attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
@@ -26160,12 +26612,15 @@ private fun ThreadOriginCard(
     diagnosticsLogger: (String) -> Unit = {},
     onThreadEvent: ThreadEventHandler,
     onOpenMember: (MemberDetailIdentity) -> Unit,
+    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     onShowActions: (KuiklyThreadMessageItem, SlockPopoverAnchor) -> Unit,
     onOpenTaskStatusMenu: (KuiklyThreadMessageItem, SlockPopoverAnchor) -> Unit,
     onShowReactionDetails: ((KuiklyThreadReactionItem, SlockPopoverAnchor) -> Unit)? = null,
+    onShowAuthorDescription: ((String, SlockPopoverAnchor) -> Unit)? = null,
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     shareSelectionActive: Boolean = false,
@@ -26233,6 +26688,7 @@ private fun ThreadOriginCard(
                             highlightedMentions = highlightedMentions,
                             agentStatusResolver = agentStatusResolver,
                             memberAvatarResolver = memberAvatarResolver,
+                            memberModelLabelResolver = memberModelLabelResolver,
                             shareSelectionActive = shareSelectionActive,
                             selectedForShare = origin.id in selectedShareMessageIds,
                             onToggleShareSelection = { onToggleShareSelection(origin.id) },
@@ -26252,18 +26708,18 @@ private fun ThreadOriginCard(
                             isMarkdownTagValid = isMarkdownTagValid,
                             onShowActions = { anchor -> onShowActions(origin, anchor) },
                             onOpenMember = onOpenMember,
+                            onExternalAuthor = onExternalAuthor,
                             onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
                             onOpenTask = { onThreadEvent("openTask", it, null, null) },
                             onOpenTaskStatusMenu = { anchor -> onOpenTaskStatusMenu(origin, anchor) },
                             onToggleReaction = { emoji -> onThreadEvent("toggleReaction", origin.id, null, emoji) },
                             onShowReactionDetails = onShowReactionDetails,
+                            onShowAuthorDescription = onShowAuthorDescription,
                             showReactionAddAction = timelineSlice.showReactionActions && contentExtrasVisible,
                             onOpenCommentHost = { onThreadEvent("openCommentHost", origin.id, null, null) },
                             timestampLabel = origin.timestampLabel,
                             onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                             onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },
-                            attachmentCommentsEnabled = attachmentCommentsEnabled,
-                            onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", origin.id, it, null) },
                             attachmentOpenStates = if (contentExtrasVisible) attachmentOpenStates else emptyMap(),
                             pendingActionCardIds = if (contentExtrasVisible) pendingActionCardIds else emptySet(),
                             onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
@@ -26294,8 +26750,26 @@ private fun ThreadOriginCard(
 
 // React parity: MessageItem's senderSubtitle — 12px mono at 40% black,
 // truncating flexibly between the name/badge and the timestamp.
+// Tapping truncated description opens Brutal Anchored Popover to display full description.
 @Composable
-private fun ThreadMessageAuthorSubtitle(description: String, modifier: Modifier = Modifier) {
+private fun ThreadMessageAuthorSubtitle(
+    description: String,
+    modifier: Modifier = Modifier,
+    rootAnchor: SlockLiveRootAnchorRef? = null,
+    onClick: (() -> Unit)? = null
+) {
+    val clickableModifier =
+        if (onClick != null) {
+            modifier.clickable(onClick = onClick)
+        } else {
+            modifier
+        }
+    val anchoredModifier =
+        if (rootAnchor != null) {
+            clickableModifier.slockCaptureLiveRootAnchor(rootAnchor)
+        } else {
+            clickableModifier
+        }
     Text(
         text = description,
         style =
@@ -26306,7 +26780,7 @@ private fun ThreadMessageAuthorSubtitle(description: String, modifier: Modifier 
         color = SlockColor.TextBlack.copy(alpha = 0.4f),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        modifier = modifier
+        modifier = anchoredModifier
     )
 }
 
@@ -26355,6 +26829,7 @@ private fun ThreadMessageAvatarSlot(
     status: SlockAgentStatusIndicatorState?,
     statusPulsing: () -> Boolean = { true },
     muted: Boolean = false,
+    external: Boolean = false,
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
 ) {
@@ -26377,6 +26852,7 @@ private fun ThreadMessageAvatarSlot(
                         status = status,
                         statusPulsing = statusPulsing,
                         muted = muted,
+                        external = external,
                         onClick = onClick,
                         onLongPress = onLongPress
                     )
@@ -26414,6 +26890,7 @@ private fun ThreadMessageAvatar(
     status: SlockAgentStatusIndicatorState?,
     statusPulsing: () -> Boolean = { true },
     muted: Boolean = false,
+    external: Boolean = false,
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
 ) {
@@ -26457,6 +26934,9 @@ private fun ThreadMessageAvatar(
             statusPulsing = status?.pulsing == true && statusPulsing()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
+                if (external && avatarSource == null) {
+                    ThreadExternalAuthorAvatarFallback(muted = muted)
+                } else {
                 SlockAvatar(
                     avatarWireValue = avatarSource,
                     label = avatarLabel,
@@ -26466,6 +26946,7 @@ private fun ThreadMessageAvatar(
                     borderWidth = SlockStroke.Default,
                     cacheSubject = cacheSubject
                 )
+                }
                 if (muted) {
                     Box(
                         modifier =
@@ -26476,6 +26957,22 @@ private fun ThreadMessageAvatar(
                 }
             }
         }
+    }
+}
+
+/** Distinct fallback for external (Slack-bridge) authors with no avatar on the wire. */
+@Composable
+private fun ThreadExternalAuthorAvatarFallback(muted: Boolean) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.AccentCyan)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .alpha(if (muted) 0.62f else 1f),
+        contentAlignment = Alignment.Center
+    ) {
+        SlockLucideIcon(SlockLucideIconName.Link, modifier = Modifier.size(20.dp), color = SlockColor.TextBlackArgb)
     }
 }
 
@@ -27007,18 +27504,11 @@ internal fun PlatformFile.isComposerImageOwnedTemporary(): Boolean {
     return !normalizedMime.startsWith("video/") && !hasVideoExtension
 }
 
-internal fun KuiklyThreadAttachmentItem.threadAttachmentCommentCountLabel(): String? =
-    commentCount
-        .takeIf { it > 0 && !isImageAttachment() && !isPdfAttachment() }
-        ?.let { count -> "$count ${if (count == 1) "comment" else "comments"}" }
-
 @Composable
 private fun ThreadMessageAttachments(
     attachments: List<KuiklyThreadAttachmentItem>,
     alignEnd: Boolean,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
-    commentsEnabled: Boolean = false,
-    onOpenComments: (String) -> Unit = {},
     onOpenAttachment: (String) -> Unit,
     onDownloadAttachment: (String) -> Unit = {}
 ) {
@@ -27054,10 +27544,8 @@ private fun ThreadMessageAttachments(
             ThreadAttachmentChip(
                 attachment = attachment,
                 openState = attachmentOpenStates[attachment.id],
-                commentsEnabled = commentsEnabled,
                 onOpen = { onOpenAttachment(attachment.id) },
-                onDownload = { onDownloadAttachment(attachment.id) },
-                onOpenComments = { onOpenComments(attachment.id) }
+                onDownload = { onDownloadAttachment(attachment.id) }
             )
         }
     }
@@ -27107,31 +27595,24 @@ private fun ThreadImageAttachmentTile(
 private fun ThreadAttachmentChip(
     attachment: KuiklyThreadAttachmentItem,
     openState: ThreadAttachmentOpenUiState?,
-    commentsEnabled: Boolean = false,
     onOpen: () -> Unit,
-    onDownload: () -> Unit = {},
-    onOpenComments: () -> Unit = {}
+    onDownload: () -> Unit = {}
 ) {
     if (attachment.isPreviewableVideoAttachment()) {
         ThreadInlineVideoAttachmentCard(
             attachment = attachment,
-            commentsEnabled = commentsEnabled,
-            onDownload = onDownload,
-            onOpenComments = onOpenComments
+            onDownload = onDownload
         )
         return
     }
     if (attachment.isPreviewableAudioAttachment()) {
         ThreadInlineAudioAttachmentCard(
             attachment = attachment,
-            commentsEnabled = commentsEnabled,
-            onDownload = onDownload,
-            onOpenComments = onOpenComments
+            onDownload = onDownload
         )
         return
     }
     val isOpening = openState.threadAttachmentIsOpening()
-    val canOpenComments = commentsEnabled && !attachment.isImageAttachment() && !attachment.isPdfAttachment()
     val meta = attachment.threadAttachmentChipMetaLine(stringResource(MR.strings.file_preview_html))
     val statusLabel = openState.localizedThreadAttachmentStatusLabel()
     val summaryLabel = statusLabel ?: attachment.threadAttachmentSummaryLine()?.localized()
@@ -27149,19 +27630,6 @@ private fun ThreadAttachmentChip(
             loading = isOpening,
             onClick = if (isOpening) ({}) else onOpen
         )
-        if (canOpenComments) {
-            SlockBrutalActionButton(
-                label = attachment.threadAttachmentCommentCountLabel() ?: "Comments",
-                onClick = onOpenComments,
-                modifier = Modifier.fillMaxWidth(),
-                backgroundColor = SlockColor.SurfaceCream,
-                minWidth = 0.dp,
-                minHeight = 30.dp,
-                leadingIcon = SlockLucideIconName.MessageCircle,
-                shadowOffset = 0.dp,
-                textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack)
-            )
-        }
     }
 }
 
@@ -29603,6 +30071,7 @@ private fun MemberProfile.toKuiklyThreadMemberItem(localServerId: ServerId? = nu
                     MemberKind.Agent -> "Agent"
                     MemberKind.Human -> "Member"
                     MemberKind.System -> "System"
+                    MemberKind.External -> "External"
                 },
         description = normalizedThreadMemberDescription(description),
         avatarUrl = avatarWireValueForAvatarSlot(),

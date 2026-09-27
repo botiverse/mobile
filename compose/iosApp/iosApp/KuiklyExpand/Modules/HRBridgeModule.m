@@ -46,6 +46,7 @@ static NSUInteger const SlockThreadImageCompressionMaxRequestIdLength = 128;
 static NSUInteger const SlockThreadImageCompressionMaxFileNameLength = 256;
 static NSString *const SlockAttachmentExportDestinationFiles = @"files";
 static NSString *const SlockAttachmentExportDestinationPhotos = @"photos";
+static NSString *const SlockAttachmentExportDestinationOpen = @"open";
 static NSString *const SlockThreadShareImageDirectoryName = @"RaftThreadShareImages";
 static NSTimeInterval const SlockThreadShareImageMaximumAgeSeconds = 24.0 * 60.0 * 60.0;
 static NSString *const SlockBridgeReplaceCurrentPageKey = @"slockReplaceCurrentPage";
@@ -2913,6 +2914,7 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportDestination;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportMimeType;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportPermissionStatus;
+@property(nonatomic, weak, nullable) UIViewController *slock_sharePresenterController;
 @property(nonatomic, copy, nullable) KuiklyRenderCallback slock_attachmentPickerCallback;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentPickerChannelId;
 @property(nonatomic) BOOL slock_attachmentPickerCompressImages;
@@ -3858,15 +3860,179 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
     }];
 }
 
+#pragma mark - Slock persistent attachment store
+
+// Persistent local copy keyed by <ownerKey>-<safe(attachmentId)>, matching the
+// OHOS SlockOhosPrivateAttachmentStore scheme (KRBridgeModule.ets:140-152).
+// Files live under Application Support/Slock/Attachments so they survive across
+// launches; "Open with" can then share the local file directly instead of
+// re-downloading to a throwaway temp dir each tap.
+
+static NSString *SlockAttachmentStoreRoot() {
+    NSArray<NSString *> *urls = NSSearchPathForDirectoriesInDomains(
+        NSApplicationSupportDirectory, NSUserDomainMask, YES);
+    NSString *base = urls.firstObject ?: NSTemporaryDirectory();
+    NSString *root = [[base stringByAppendingPathComponent:@"Raft"] stringByAppendingPathComponent:@"Attachments"];
+    // Attachment caches must not be synced to iCloud backup (they're re-downloadable).
+    [[NSURL fileURLWithPath:root isDirectory:YES] setResourceValue:@YES
+                                                          forKey:NSURLIsExcludedFromBackupKey
+                                                           error:nil];
+    return root;
+}
+
+NSString *SlockAttachmentSafeComponent(NSString *raw) {
+    if (raw.length == 0) return @"";
+    NSMutableCharacterSet *allowed = [NSMutableCharacterSet alphanumericCharacterSet];
+    [allowed addCharactersInString:@"-_."];
+    return [[raw componentsSeparatedByCharactersInSet:[allowed invertedSet]] componentsJoinedByString:@"_"];
+}
+
+NSString *SlockAttachmentCacheKey(NSString *ownerKey, NSString *attachmentId) {
+    NSString *owner = SlockAttachmentSafeComponent(ownerKey ?: @"");
+    NSString *attachment = SlockAttachmentSafeComponent(attachmentId ?: @"");
+    if (attachment.length == 0) return @"";
+    return owner.length ? [owner stringByAppendingFormat:@"-%@", attachment] : attachment;
+}
+
+// OHOS key scheme: directory keyed by <ownerKey>-<safe(attachmentId)>, the file lives
+// inside it; lookups only need the directory, never the filename.
+static NSString *SlockAttachmentCacheDirectory(NSString *ownerKey, NSString *attachmentId) {
+    NSString *key = SlockAttachmentCacheKey(ownerKey, attachmentId);
+    if (key.length == 0) return nil;
+    return [SlockAttachmentStoreRoot() stringByAppendingFormat:@"/%@", key];
+}
+
+static NSString *SlockAttachmentCachedFilePath(NSString *ownerKey, NSString *attachmentId, NSString *fileName) {
+    NSString *dir = SlockAttachmentCacheDirectory(ownerKey, attachmentId);
+    if (!dir) return nil;
+    NSString *leaf = SlockAttachmentSafeComponent(fileName ?: @"attachment");
+    if (leaf.length == 0) leaf = @"attachment";
+    return [dir stringByAppendingFormat:@"/%@", leaf];
+}
+
+static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSArray<NSString *> *files = [fm contentsOfDirectoryAtPath:directoryPath error:nil];
+    if (files.count == 0) {
+        return @{ @"status" : @"missing" };
+    }
+    NSString *filePath = [directoryPath stringByAppendingFormat:@"/%@", files.firstObject];
+    NSDictionary<NSString *, id> *attrs = [fm attributesOfItemAtPath:filePath error:nil];
+    NSNumber *size = attrs[NSFileSize];
+    if (!size || size.longLongValue <= 0) {
+        return @{ @"status" : @"missing" };
+    }
+    NSNumber *mtimeMs = attrs[NSFileModificationDate]
+        ? @((long long)([attrs[NSFileModificationDate] timeIntervalSince1970] * 1000.0))
+        : @0;
+    return @{
+        @"status" : @"ok",
+        @"cached" : @YES,
+        @"recordVersion" : mtimeMs,
+        @"sizeBytes" : size,
+        @"uri" : [NSURL fileURLWithPath:filePath].absoluteString ?: @"",
+        @"storageKind" : @"app_private",
+    };
+}
+
 - (void)openAttachment:(NSDictionary *)args {
     KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    if (!callback) {
+        return;
+    }
+    if (self.slock_attachmentExportCallback) {
+        callback(@{ @"status" : @"failed", @"reason" : @"busy",
+                    @"message" : @"Another file operation is already active" });
+        return;
+    }
+
+    NSDictionary *params = SlockBridgeParams(args);
+    NSString *ownerKey = SlockBridgeString(params[@"ownerKey"] ?: params[@"owner"]);
+    NSString *attachmentId = SlockBridgeString(params[@"attachmentId"]);
+    NSString *fileName = SlockBridgeString(params[@"fileName"]) ?: @"attachment";
+    NSString *downloadId = SlockBridgeString(params[@"downloadId"]) ?: attachmentId;
+    BOOL requirePublicDownload = [params[@"requirePublicDownload"] boolValue];
+
+    // Capture the presenter at tap time while the page is certainly alive (weak),
+    // then prefer it with a frontmost fallback — Signal AttachmentSharing L117.
+    self.slock_sharePresenterController = [self slock_currentViewController];
+
+    NSString *cachedDir = SlockAttachmentCacheDirectory(ownerKey, attachmentId);
+    NSString *cachedPath = SlockAttachmentCachedFilePath(ownerKey, attachmentId, fileName);
+    NSDictionary *status = cachedPath
+        ? SlockAttachmentCacheStatusDict(cachedDir)
+        : @{ @"status" : @"missing" };
+
+    if ([status[@"cached"] boolValue]) {
+        [self slock_presentShareItems:@[ [NSURL fileURLWithPath:cachedPath] ] attempt:1];
+        callback(@{ @"status" : @"opened", @"cached" : @YES, @"uri" : status[@"uri"] ?: @"" });
+        return;
+    }
+
+    if (requirePublicDownload) {
+        callback(@{ @"status" : @"missing" });
+        return;
+    }
+
+    // Download directly to the persistent cache path (not the throwaway temp dir the
+    // export path uses). On success we have a durable local copy and present the share.
+    if (!cachedPath || !downloadId) {
+        callback(@{ @"status" : @"failed", @"reason" : @"no_cache_path" });
+        return;
+    }
+    NSString *urlText = SlockBridgeString(params[@"url"]);
+    if (urlText.length == 0) {
+        callback(@{ @"status" : @"failed", @"reason" : @"missing_url" });
+        return;
+    }
+    self.slock_attachmentExportDownloadId = downloadId;
+    self.slock_attachmentExportURL = [NSURL fileURLWithPath:cachedPath];
+    self.slock_attachmentExportDestination = SlockAttachmentExportDestinationOpen;
+    self.slock_attachmentExportFileName = fileName;
+    self.slock_attachmentExportMimeType = SlockBridgeString(params[@"mimeType"]);
+    self.slock_attachmentExportCallback = callback;
+    __weak HRBridgeModule *weakSelf = self;
+    NSString *attemptToken =
+        [SharedAttachmentDownloadCoordinator.shared startDownloadId:downloadId
+                                                          targetKey:cachedPath
+                                                                url:urlText
+                                                         targetPath:cachedPath
+                                                           observer:self];
+    if (attemptToken.length == 0) {
+        callback(@{ @"status" : @"failed", @"reason" : @"download_start_failed",
+                    @"message" : @"Unable to start attachment download" });
+        self.slock_attachmentExportCallback = nil;
+        self.slock_attachmentExportURL = nil;
+        return;
+    }
+    self.slock_attachmentExportRequestId = attemptToken;
+}
+
+- (void)attachmentCacheStatus:(NSDictionary *)args {
+    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    if (!callback) {
+        return;
+    }
+    NSDictionary *params = SlockBridgeParams(args);
+    NSString *cachedDir = SlockAttachmentCacheDirectory(
+        SlockBridgeString(params[@"ownerKey"] ?: params[@"owner"]),
+        SlockBridgeString(params[@"attachmentId"]));
+    NSDictionary *status = cachedDir
+        ? SlockAttachmentCacheStatusDict(cachedDir)
+        : @{ @"status" : @"missing" };
+    callback(status);
+}
+
+- (void)deleteAttachmentCache:(NSDictionary *)args {
+    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    NSDictionary *params = SlockBridgeParams(args);
+    NSString *cachedDir = SlockAttachmentCacheDirectory(
+        SlockBridgeString(params[@"ownerKey"] ?: params[@"owner"]),
+        SlockBridgeString(params[@"attachmentId"]));
+    BOOL removed = cachedDir &&
+        [NSFileManager.defaultManager removeItemAtPath:cachedDir error:nil];
     if (callback) {
-        callback(@{
-            @"code" : @204,
-            @"bodyText" : @"",
-            @"errorCode" : @"attachment_open_unavailable",
-            @"errorBodyText" : @"Attachment opening is out of scope for iOS P0 host bridge"
-        });
+        callback(@{ @"status" : removed ? @"ok" : @"missing" });
     }
 }
 
@@ -4130,6 +4296,29 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
             return;
         }
         strongSelf.slock_attachmentExportSizeBytes = @(result.downloadedBytes);
+        if ([strongSelf.slock_attachmentExportDestination isEqualToString:SlockAttachmentExportDestinationOpen]) {
+            // Open-with: the file is a persistent local copy — present the share sheet on it,
+            // do NOT call slock_finishAttachmentExport (it deletes the parent dir) or the
+            // save-to-files picker. Clear state and report success, keeping the file.
+            KuiklyRenderCallback openCallback = strongSelf.slock_attachmentExportCallback;
+            [strongSelf slock_presentShareItems:@[ targetURL ] attempt:1];
+            strongSelf.slock_attachmentExportCallback = nil;
+            strongSelf.slock_attachmentExportRequestId = nil;
+            strongSelf.slock_attachmentExportDownloadId = nil;
+            strongSelf.slock_attachmentExportURL = nil;
+            strongSelf.slock_attachmentExportFileName = nil;
+            strongSelf.slock_attachmentExportSizeBytes = nil;
+            strongSelf.slock_attachmentExportDestination = nil;
+            strongSelf.slock_attachmentExportMimeType = nil;
+            if (openCallback) {
+                openCallback(@{
+                    @"status" : @"opened",
+                    @"cached" : @YES,
+                    @"uri" : targetURL.absoluteString ?: @"",
+                });
+            }
+            return;
+        }
         if ([strongSelf.slock_attachmentExportDestination isEqualToString:SlockAttachmentExportDestinationPhotos]) {
             [strongSelf slock_saveAttachmentExportToPhotos];
             return;
@@ -4741,22 +4930,6 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     }
 }
 
-- (void)attachmentCacheStatus:(NSDictionary *)args {
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
-    if (callback) {
-        callback([self slock_unsupportedResultWithCode:@"attachment_cache_unavailable"
-                                               message:@"Attachment cache is out of scope for iOS P0 host bridge"]);
-    }
-}
-
-- (void)deleteAttachmentCache:(NSDictionary *)args {
-    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
-    if (callback) {
-        callback([self slock_unsupportedResultWithCode:@"attachment_cache_unavailable"
-                                               message:@"Attachment cache is out of scope for iOS P0 host bridge"]);
-    }
-}
-
 - (NSString *)retireFilePreviewTemporaryFiles:(NSDictionary *)args {
     NSDictionary *params = SlockBridgeParams(args);
     NSString *sessionId = SlockBridgeString(params[@"sessionId"]);
@@ -5245,20 +5418,72 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         return;
     }
     SlockBridgeRunOnMain(^{
-        UIViewController *controller = [self slock_currentViewController];
-        if (!controller) {
-            NSLog(@"[%@][warn] share skipped missing controller", SlockBridgeDefaultLogTag);
+        [self slock_presentShareItems:items attempt:1];
+    });
+}
+
+- (void)slock_presentShareItems:(NSArray *)items attempt:(NSInteger)attempt {
+    UIViewController *controller = SlockSharePresenterController(
+        self.slock_sharePresenterController, [self slock_currentViewController]);
+    if (!controller) {
+        NSString *reason = [self slock_shareControllerFailureReason];
+        if (attempt < 2) {
+            SlockDiagnosticsRecord(
+                @"warn", @"SlockShare",
+                [NSString stringWithFormat:@"share_present_retry attempt=%ld reason=%@",
+                 (long)attempt, reason]);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self slock_presentShareItems:items attempt:attempt + 1];
+            });
             return;
         }
-        UIActivityViewController *activityController = [[UIActivityViewController alloc] initWithActivityItems:items applicationActivities:nil];
-        UIPopoverPresentationController *popover = activityController.popoverPresentationController;
-        if (popover) {
-            popover.sourceView = controller.view;
-            popover.sourceRect = CGRectMake(CGRectGetMidX(controller.view.bounds), CGRectGetMidY(controller.view.bounds), 1, 1);
-            popover.permittedArrowDirections = 0;
+        SlockDiagnosticsRecord(
+            @"error", @"SlockShare",
+            [NSString stringWithFormat:@"share_present_failed attempt=%ld reason=%@",
+             (long)attempt, reason]);
+        [self slock_showToast:SharedSlockHostStrings.shared.shareOpenFailed];
+        return;
+    }
+    UIActivityViewController *activityController = [[UIActivityViewController alloc] initWithActivityItems:items applicationActivities:nil];
+    UIPopoverPresentationController *popover = activityController.popoverPresentationController;
+    if (popover) {
+        popover.sourceView = controller.view;
+        popover.sourceRect = CGRectMake(CGRectGetMidX(controller.view.bounds), CGRectGetMidY(controller.view.bounds), 1, 1);
+        popover.permittedArrowDirections = 0;
+    }
+    [controller presentViewController:activityController animated:YES completion:nil];
+}
+
+UIViewController *SlockSharePresenterController(UIViewController *capturedPresenter,
+                                                UIViewController *frontmostPresenter) {
+    return capturedPresenter ?: frontmostPresenter;
+}
+
+- (NSString *)slock_shareControllerFailureReason {
+    BOOL hasForegroundActiveScene = YES;
+    if (@available(iOS 13.0, *)) {
+        hasForegroundActiveScene = NO;
+        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if (scene.activationState == UISceneActivationStateForegroundActive &&
+                [scene isKindOfClass:UIWindowScene.class]) {
+                hasForegroundActiveScene = YES;
+                break;
+            }
         }
-        [controller presentViewController:activityController animated:YES completion:nil];
-    });
+    }
+    return SlockShareControllerFailureReason(
+        self.hr_rootView.window != nil, hasForegroundActiveScene);
+}
+
+NSString *SlockShareControllerFailureReason(BOOL hasRootViewWindow,
+                                            BOOL hasForegroundActiveScene) {
+    if (!hasRootViewWindow) {
+        return @"detached_root";
+    }
+    if (!hasForegroundActiveScene) {
+        return @"scene_inactive";
+    }
+    return @"no_controller";
 }
 
 - (UIViewController *)slock_currentViewController {

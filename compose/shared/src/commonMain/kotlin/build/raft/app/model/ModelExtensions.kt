@@ -196,6 +196,7 @@ fun AgentProfile.toMemberProfile(): MemberProfile =
         presence = presence,
         agentStatus = agentStatus,
         isExternal = isExternal,
+        model = model,
         permissionBadges = permissionBadges
     )
 
