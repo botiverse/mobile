@@ -14,6 +14,7 @@ import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -338,6 +339,25 @@ class SlockAvatarMountedBindingTest {
         assertNull(downloader.lastValidators)
         assertNotNull(parseSlockAvatarMountedRenderModel(handle.imageModel.value.orEmpty()))
         Unit
+    }
+
+    @Test
+    fun missingNativeBytesDropsCoordinatorValidatorsSoRevalidationCannotEchoStaleDescriptor() = runBlocking {
+        // task #289: metadata with an eTag can outlive cacheDir bytes (system clear-cache or
+        // owner retirement clearing the file first). prepareRead must not surface validators
+        // then, or a 304 Keep would re-publish a descriptor whose bytes are gone forever.
+        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 500L) }
+        val coordinator = SlockAvatarCacheCoordinator(store) { 100L }
+
+        val missingBytes = coordinator.prepareRead(key(), bytesAvailable = false, bytesDecodable = true)
+        assertNull(missingBytes.validators)
+        assertIs<SlockAvatarCacheReadDecision.Fetch>(missingBytes.decision)
+
+        val undecodable = coordinator.prepareRead(key(), bytesAvailable = true, bytesDecodable = false)
+        assertNull(undecodable.validators)
+
+        val usable = coordinator.prepareRead(key(), bytesAvailable = true, bytesDecodable = true)
+        assertEquals("\"v1\"", usable.validators?.eTag)
     }
 
     @Test
