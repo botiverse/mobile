@@ -6572,6 +6572,7 @@ private fun SlockAvatarHttpImage(
             "thread_avatar_painter messageHash=${row.messageHash} authorHash=${row.authorHash} " +
                 "source=${loadKey.diagnosticsSource} ${activeSource.slockAvatarDiagnosticsUrlShape(apiBaseUrl)} " +
                 "activeEndpoint=${loadState.endpoint.diagnosticsName()} " +
+                "model=${if (parseSlockAvatarMountedRenderModel(candidateImageModel) != null) "managed" else "url"} " +
                 "painter=${loadState.painter.diagnosticsName()} " +
                 "cache=${loadState.diagnosticsCacheState(lease?.ownerToken)}"
         )
