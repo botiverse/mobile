@@ -25,7 +25,8 @@ change: the existing ObjC `HRBridgeModule` runtime class exports the selector.
 
 - Prepare: `{action:"prepare", requestId}`. Invoke from the standalone `compose_thread` root.
   Only an active, attached source that is the navigation top, directly above an AppShell,
-  without transition/modal, in a window at least 840 points wide can prepare.
+  without transition/modal (including container ancestors), in the active key window at least
+  840 points wide can prepare.
 - Prepared reply: `{status:"prepared", requestId, token, context, expiresInSeconds}`. `token`
   is an opaque one-request nonce. `context` has source/target controller tokens, sourceRevision
   and geometry. These are instance identities, not canonical conversation/server identities.

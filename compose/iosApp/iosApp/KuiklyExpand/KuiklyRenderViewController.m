@@ -237,13 +237,17 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
         ![_pageName isEqualToString:@"compose_thread"]) return nil;
     UINavigationController *nav = self.navigationController;
     UIWindow *window = self.viewIfLoaded.window;
-    if (!_slockAdaptivePanePublishingActive || window == nil ||
+    if (!_slockAdaptivePanePublishingActive || window == nil || !window.isKeyWindow ||
         window.windowScene.activationState != UISceneActivationStateForegroundActive ||
         nav.topViewController != self || nav.viewControllers.count < 2 ||
         nav.transitionCoordinator != nil || self.transitionCoordinator != nil ||
         self.presentedViewController != nil || nav.presentedViewController != nil ||
         self.isBeingDismissed || self.isMovingFromParentViewController ||
         window.bounds.size.width < 840.0) return nil;
+    // A SwiftUI/container ancestor can present a sheet without disappearing this child.
+    for (UIViewController *ancestor = self.parentViewController; ancestor; ancestor = ancestor.parentViewController) {
+        if (ancestor.presentedViewController || ancestor.transitionCoordinator || ancestor.isBeingDismissed) return nil;
+    }
     UIViewController *previous = nav.viewControllers[nav.viewControllers.count - 2];
     if (![previous isKindOfClass:KuiklyRenderViewController.class] ||
         !((KuiklyRenderViewController *)previous).slockIsAppShellPage) return nil;
