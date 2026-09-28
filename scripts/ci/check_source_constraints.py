@@ -516,7 +516,7 @@ def check_composer_native_send_snapshot_wiring(
         "templateChildren().firstNotNullOfOrNull",
         "val nativeEditorRoot = this",
         "nativeEditorRoot.findSlockNativeTextEditor()",
-        "nativeEditor.getTextInputState(callback)",
+        "nativeEditor.getTextInputState(",
     )
     for token in basic_required:
         if token not in basic_widget and token not in text_field:
@@ -1226,7 +1226,7 @@ onEvent("sendSnapshotUnavailable", "native_editor_unavailable", null, null)
     for source_name, token in (
         ("basic", "is AutoHeightTextAreaView -> this"),
         ("basic", "nativeEditorRoot.findSlockNativeTextEditor()"),
-        ("basic", "nativeEditor.getTextInputState(callback)"),
+        ("basic", "nativeEditor.getTextInputState("),
         ("composer", "if (pendingToken !== token) return false"),
         ("composer", "delay(ThreadComposerNativeSnapshotTimeoutMillis)"),
         ("composer", 'currentOnEvent("sendSnapshotUnavailable", "timeout", null, null)'),
