@@ -464,6 +464,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const context = getContext(this) as common.UIAbilityContext;
     context.startAbility({
       action: 'ohos.want.action.viewData',
+      entities: ['entity.system.browsable'],
       uri: url,
       type: payload['mimeType']
     }).catch((error: BusinessError) => {
