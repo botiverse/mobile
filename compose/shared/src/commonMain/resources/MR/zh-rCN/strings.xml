@@ -2110,5 +2110,4 @@
     <string name="runtime_form_v2_secret_keep_hint">留空则保留当前值。</string>
     <string name="runtime_form_v2_change_runtime">更换运行时</string>
     <string name="runtime_form_v2_load_failed">运行时表单加载失败（%1$s）。</string>
-    <string name="runtime_form_v2_marker">表单协议 v2</string>
 </resources>

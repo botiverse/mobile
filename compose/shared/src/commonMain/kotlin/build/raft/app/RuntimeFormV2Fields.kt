@@ -106,12 +106,6 @@ internal fun RuntimeFormV2Fields(
                 }
             }
         }
-        // Quiet marker so a verifier can tell which form path rendered.
-        Text(
-            text = stringResource(MR.strings.runtime_form_v2_marker),
-            style = SlockType.Caption,
-            color = SlockColor.TextMutedGray
-        )
     }
 }
 
