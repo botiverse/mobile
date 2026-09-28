@@ -17126,9 +17126,18 @@ private fun ThreadMessagesListContent(
         postDetailReadyTrace("effect_enter")
         // Gate: success is READY even with zero messages (empty thread); loading and
         // error states never pass.
-        if (!slockAdaptiveDetailReadyAllowed(timelineSlice.status, timelineSlice.messages.size)) {
-            postDetailReadyTrace("status_gate")
-            return@LaunchedEffect
+        when (evaluateSlockAdaptiveReadyGate(
+            adaptiveReadyPosted,
+            timelineSlice.status,
+            timelineSlice.messages.size,
+        )) {
+            SlockAdaptiveReadyGate.AlreadyPosted -> return@LaunchedEffect
+            SlockAdaptiveReadyGate.StatusBlocked -> {
+                postDetailReadyTrace("status_gate")
+                return@LaunchedEffect
+            }
+            SlockAdaptiveReadyGate.RestoreThenReady -> return@LaunchedEffect // continue below
+            SlockAdaptiveReadyGate.ReadyImmediately -> Unit
         }
         val identity =
             adaptiveSharedStores
@@ -17162,7 +17171,7 @@ private fun ThreadMessagesListContent(
         }
         // Non-empty payload: the restore+READY path continues after listState is created.
     }
-
+    if (timelineSlice.messages.isEmpty() && timelineSlice.originStatus == "none") {
         LaunchedEffect(threadInstanceKey, timelineSlice.status) {
             onThreadContentReady()
         }
@@ -17337,13 +17346,18 @@ private fun ThreadMessagesListContent(
     // staged record is deliberately NOT consumed here: the shell consumes it only when the
     // native commit receipt reports `committed`, so a rejected or failed transfer keeps the
     // anchor available for a retry.
-    LaunchedEffect(closeReq, renderPayload.messages.size, adaptiveReadyPosted) {
+    LaunchedEffect(closeReq, renderPayload.status, renderPayload.messages.size, adaptiveReadyPosted) {
         val request = closeReq ?: return@LaunchedEffect
         if (adaptiveReadyPosted) return@LaunchedEffect
-        if (!slockAdaptiveDetailReadyAllowed(renderPayload.status, renderPayload.messages.size)) {
+        if (
+            evaluateSlockAdaptiveReadyGate(
+                adaptiveReadyPosted,
+                renderPayload.status,
+                renderPayload.messages.size,
+            ) != SlockAdaptiveReadyGate.RestoreThenReady
+        ) {
             return@LaunchedEffect
         }
-        if (renderPayload.messages.isEmpty()) return@LaunchedEffect
         postDetailReadyTrace("effect_enter")
         val identity =
             adaptiveSharedStores

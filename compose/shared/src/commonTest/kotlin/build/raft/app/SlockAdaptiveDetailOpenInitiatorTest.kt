@@ -993,4 +993,59 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     fun readyGateRejectsNonSuccessEvenWithMessages() {
         assertFalse(slockAdaptiveDetailReadyAllowed(status = "loading", messagesCount = 12))
     }
+
+    // Transition coverage (Jony's review): the effects re-key on (status, messagesCount), so
+    // verify the gate evaluation across the exact sequences a pane child sees.
+
+    @Test
+    fun readyGateLoadingToSuccessEmptySequence() {
+        // loading(0) -> success(0): must flip StatusBlocked -> ReadyImmediately so the
+        // empty-thread destination posts READY instead of stranding in AckTimeout.
+        assertEquals(
+            SlockAdaptiveReadyGate.StatusBlocked,
+            evaluateSlockAdaptiveReadyGate(readyPosted = false, status = "loading", messagesCount = 0),
+        )
+        assertEquals(
+            SlockAdaptiveReadyGate.ReadyImmediately,
+            evaluateSlockAdaptiveReadyGate(readyPosted = false, status = "success", messagesCount = 0),
+        )
+    }
+
+    @Test
+    fun readyGateLoadingToSuccessNonEmptySequence() {
+        // loading(0) -> success(5): same count bucket change drives re-entry to
+        // RestoreThenReady (anchor restore + READY).
+        assertEquals(
+            SlockAdaptiveReadyGate.StatusBlocked,
+            evaluateSlockAdaptiveReadyGate(readyPosted = false, status = "loading", messagesCount = 0),
+        )
+        assertEquals(
+            SlockAdaptiveReadyGate.RestoreThenReady,
+            evaluateSlockAdaptiveReadyGate(readyPosted = false, status = "success", messagesCount = 5),
+        )
+    }
+
+    @Test
+    fun readyGateStaysClosedAfterReadyPosted() {
+        assertEquals(
+            SlockAdaptiveReadyGate.AlreadyPosted,
+            evaluateSlockAdaptiveReadyGate(readyPosted = true, status = "success", messagesCount = 0),
+        )
+        assertEquals(
+            SlockAdaptiveReadyGate.AlreadyPosted,
+            evaluateSlockAdaptiveReadyGate(readyPosted = true, status = "loading", messagesCount = 3),
+        )
+    }
+
+    @Test
+    fun readyGateErrorNeverReachesReady() {
+        assertEquals(
+            SlockAdaptiveReadyGate.StatusBlocked,
+            evaluateSlockAdaptiveReadyGate(readyPosted = false, status = "error", messagesCount = 0),
+        )
+        assertEquals(
+            SlockAdaptiveReadyGate.StatusBlocked,
+            evaluateSlockAdaptiveReadyGate(readyPosted = false, status = "error", messagesCount = 7),
+        )
+    }
 }
