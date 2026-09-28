@@ -151,7 +151,7 @@ class SlockAdaptiveDetailOpenInitiatorTest {
                     .put("shellInstanceId", shellId)
                     .put("requestId", "r4")
                     .put("accepted", true)
-                    .put("generation", 7.0),
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 7.0),
             crossProcess = false,
             source = "test",
         )
@@ -191,7 +191,7 @@ class SlockAdaptiveDetailOpenInitiatorTest {
                     .put("shellInstanceId", shellId)
                     .put("requestId", "r5")
                     .put("accepted", true)
-                    .put("generation", 3.0),
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 3.0),
             crossProcess = false,
             source = "test",
         )
@@ -238,7 +238,7 @@ class SlockAdaptiveDetailOpenInitiatorTest {
                     .put("shellInstanceId", shellId)
                     .put("requestId", "r6")
                     .put("accepted", true)
-                    .put("generation", 5.0),
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 5.0),
             crossProcess = false,
             source = "test",
         )
@@ -276,7 +276,7 @@ class SlockAdaptiveDetailOpenInitiatorTest {
                     .put("shellInstanceId", shellId)
                     .put("requestId", "r7")
                     .put("accepted", true)
-                    .put("generation", 6.0),
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 6.0),
             crossProcess = false,
             source = "test",
         )
@@ -354,5 +354,172 @@ class SlockAdaptiveDetailOpenInitiatorTest {
         // settle removes the pending unconditionally; the shell keeps it on failure simply
         // by not applying the returned session — so the observable contract is symmetric.
         assertTrue(nextSession.pendingDetailOpens.isEmpty())
+    }
+
+    @Test
+    fun coveredTopKeepsDockCommitWaitsForDestinationReady() = runBlocking {
+        val fixture = Fixture()
+        fixture.nativeReplies["prepare"] = preparedReply()
+        val initiator = SlockAdaptiveDetailOpenInitiator(
+            shellInstanceId = shellId,
+            hostId = hostId,
+            anchorStore = fixture.anchorStore,
+            eventBus = fixture.eventBus,
+            nowEpochMillis = { 0L },
+            nativeAdaptiveNavigation = { action, requestId, token ->
+                fixture.nativeCalls += Triple(action, requestId, token)
+                fixture.nativeReplies[action]
+            },
+            captureLatestDraft = { true },
+            captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
+        )
+        val outcome = async {
+            initiator.initiate(
+                identity, launchPayload, windowFact, "r9",
+                awaitReadyBeforeCommit = true,
+            )
+        }
+        yield()
+        fixture.eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+            eventData =
+                JSONObject()
+                    .put("shellInstanceId", shellId)
+                    .put("requestId", "r9")
+                    .put("accepted", true)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 11.0),
+            crossProcess = false,
+            source = "test",
+        )
+        yield()
+        // Accepted but destination not yet mounted: a covered-top transaction must not commit
+        // (pop) yet — the READY report is the only proof the handoff rendered.
+        assertEquals(
+            listOf(Triple("prepare", "r9", null)),
+            fixture.nativeCalls,
+            "covered-top commit must wait for destination READY",
+        )
+        fixture.eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+            eventData =
+                JSONObject()
+                    .put("shellInstanceId", shellId)
+                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, identity.key)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 11.0),
+            crossProcess = false,
+            source = "test",
+        )
+        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.Committed, outcome.await())
+        assertEquals(
+            listOf(Triple("prepare", "r9", null), Triple("commit", "r9", "one-shot")),
+            fixture.nativeCalls
+        )
+        assertNotNull(fixture.anchorStore.peek(shellId, identity))
+    }
+
+    @Test
+    fun readyForForeignGenerationDoesNotReleaseCoveredTopCommit() = runBlocking {
+        val fixture = Fixture()
+        fixture.nativeReplies["prepare"] = preparedReply()
+        val initiator = SlockAdaptiveDetailOpenInitiator(
+            shellInstanceId = shellId,
+            hostId = hostId,
+            anchorStore = fixture.anchorStore,
+            eventBus = fixture.eventBus,
+            nowEpochMillis = { 0L },
+            nativeAdaptiveNavigation = { action, requestId, token ->
+                fixture.nativeCalls += Triple(action, requestId, token)
+                fixture.nativeReplies[action]
+            },
+            captureLatestDraft = { true },
+            captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
+        )
+        val outcome = async {
+            initiator.initiate(
+                identity, launchPayload, windowFact, "r10",
+                awaitReadyBeforeCommit = true,
+            )
+        }
+        yield()
+        fixture.eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+            eventData =
+                JSONObject()
+                    .put("shellInstanceId", shellId)
+                    .put("requestId", "r10")
+                    .put("accepted", true)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 21.0),
+            crossProcess = false,
+            source = "test",
+        )
+        yield()
+        // A READY under a stale generation must not settle this adoption.
+        fixture.eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+            eventData =
+                JSONObject()
+                    .put("shellInstanceId", shellId)
+                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, identity.key)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 4.0),
+            crossProcess = false,
+            source = "test",
+        )
+        yield()
+        assertTrue(outcome.isActive, "a foreign-generation READY must not release the commit")
+        fixture.eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+            eventData =
+                JSONObject()
+                    .put("shellInstanceId", shellId)
+                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, identity.key)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 21.0),
+            crossProcess = false,
+            source = "test",
+        )
+        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.Committed, outcome.await())
+    }
+
+    @Test
+    fun readyTimeoutCancelsPreparedTransactionAndDiscardsAnchor() = runBlocking {
+        val fixture = Fixture()
+        fixture.nativeReplies["prepare"] = preparedReply()
+        val initiator = SlockAdaptiveDetailOpenInitiator(
+            shellInstanceId = shellId,
+            hostId = hostId,
+            anchorStore = fixture.anchorStore,
+            eventBus = fixture.eventBus,
+            nowEpochMillis = { 0L },
+            nativeAdaptiveNavigation = { action, requestId, token ->
+                fixture.nativeCalls += Triple(action, requestId, token)
+                fixture.nativeReplies[action]
+            },
+            captureLatestDraft = { true },
+            captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
+        )
+        val outcome = async {
+            initiator.initiate(
+                identity, launchPayload, windowFact, "r11",
+                awaitReadyBeforeCommit = true,
+                readyTimeoutMillis = 50L,
+            )
+        }
+        yield()
+        fixture.eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+            eventData =
+                JSONObject()
+                    .put("shellInstanceId", shellId)
+                    .put("requestId", "r11")
+                    .put("accepted", true)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 31.0),
+            crossProcess = false,
+            source = "test",
+        )
+        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.ReadyTimeout, outcome.await())
+        assertEquals(
+            listOf(Triple("prepare", "r11", null), Triple("cancel", "r11", "one-shot")),
+            fixture.nativeCalls
+        )
+        assertNull(fixture.anchorStore.peek(shellId, identity))
     }
 }
