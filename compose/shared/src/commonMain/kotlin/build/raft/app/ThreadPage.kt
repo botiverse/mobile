@@ -17273,6 +17273,9 @@ private fun ThreadMessagesListContent(
         if (renderPayload.status != "success" && renderPayload.messages.isEmpty()) {
             return@LaunchedEffect
         }
+        // task #28 observability (Jony's AckTimeout): each gate between mount and READY
+        // posts its own breadcrumb so a covered/inactive destination can be told apart —
+        // mount-without-ready vs selection-miss vs anchor-restore stall.
         val identity =
             adaptiveSharedStores
                 .adaptiveWorkspaceStore(adaptiveStoreScope)
@@ -17282,6 +17285,16 @@ private fun ThreadMessagesListContent(
                 ?.takeIf { sel -> sel.identity.key == request.identityKey }
                 ?.identity
             ?: run {
+                adaptiveEventBus.post(
+                    eventName = "adaptiveDetailReadyGate",
+                    eventData =
+                        JSONObject()
+                            .put("gate", "selection_miss")
+                            .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
+                            .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, request.generation.toDouble()),
+                    crossProcess = true,
+                    source = "adaptive_detail_ready_gate",
+                )
                 adaptiveReadyPosted = true
                 return@LaunchedEffect
             }
@@ -17307,6 +17320,16 @@ private fun ThreadMessagesListContent(
         }
         adaptiveReadyPosted = true
         val eventBus = adaptiveEventBus ?: return@LaunchedEffect
+        eventBus.post(
+            eventName = "adaptiveDetailReadyGate",
+            eventData =
+                JSONObject()
+                    .put("gate", "ready_post")
+                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, request.generation.toDouble()),
+            crossProcess = true,
+            source = "adaptive_detail_ready_gate",
+        )
         eventBus.post(
             eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
             eventData =
