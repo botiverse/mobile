@@ -878,7 +878,13 @@ data class AgentProfileUpdateRequest(
      * non-null runtimeConfig (see buildSharedAgentProfileUpdateBody); a null
      * value keeps the legacy no-ref retention path.
      */
-    val formDefinitionRef: SharedRuntimeFormDefinitionRef? = null
+    val formDefinitionRef: SharedRuntimeFormDefinitionRef? = null,
+    /**
+     * Runtime form v2 edit: `formDefinitionRef {protocolVersion:2}` + `formValues`.
+     * Use with includeRuntimeConfig = false; a blank writeOnly field (sent as "")
+     * means "keep the stored value".
+     */
+    val runtimeFormV2: build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody? = null
 )
 
 data class AgentAvatarUploadRequest(

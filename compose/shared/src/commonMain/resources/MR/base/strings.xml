@@ -2100,4 +2100,13 @@
     <string name="markdown_task_list_checkbox">Task list checkbox</string>
     <string name="markdown_task_list_checked">Completed</string>
     <string name="markdown_task_list_unchecked">Not completed</string>
+    <string name="runtime_form_v2_update_required">Update the app to edit this setting.</string>
+    <string name="runtime_form_v2_update_required_blocking">This agent has a required setting this app version cannot edit. Update the app to save changes.</string>
+    <string name="runtime_form_v2_error_required">Required</string>
+    <string name="runtime_form_v2_error_invalid_url">Enter a URL that starts with http:// or https://</string>
+    <string name="runtime_form_v2_error_not_a_choice">Choose one of the options</string>
+    <string name="runtime_form_v2_error_rejected">The server rejected this value</string>
+    <string name="runtime_form_v2_option_default">Default</string>
+    <string name="runtime_form_v2_secret_keep_hint">Leave blank to keep the current value.</string>
+    <string name="runtime_form_v2_change_runtime">Change runtime</string>
 </resources>

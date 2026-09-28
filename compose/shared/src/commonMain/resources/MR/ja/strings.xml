@@ -2093,4 +2093,13 @@
     <string name="markdown_task_list_checkbox">タスクリストのチェックボックス</string>
     <string name="markdown_task_list_checked">完了</string>
     <string name="markdown_task_list_unchecked">未完了</string>
+    <string name="runtime_form_v2_update_required">この設定を編集するにはアプリを更新してください。</string>
+    <string name="runtime_form_v2_update_required_blocking">このエージェントには、このバージョンのアプリでは編集できない必須設定があります。保存するにはアプリを更新してください。</string>
+    <string name="runtime_form_v2_error_required">必須項目です</string>
+    <string name="runtime_form_v2_error_invalid_url">http:// または https:// で始まる URL を入力してください</string>
+    <string name="runtime_form_v2_error_not_a_choice">選択肢から選んでください</string>
+    <string name="runtime_form_v2_error_rejected">サーバーがこの値を受け付けませんでした</string>
+    <string name="runtime_form_v2_option_default">デフォルト</string>
+    <string name="runtime_form_v2_secret_keep_hint">空欄のままにすると現在の値を保持します。</string>
+    <string name="runtime_form_v2_change_runtime">ランタイムを変更</string>
 </resources>

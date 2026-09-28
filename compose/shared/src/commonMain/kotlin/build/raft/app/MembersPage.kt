@@ -100,6 +100,8 @@ import build.raft.app.data.SharedHomeStore
 import build.raft.app.data.CREATE_AGENT_BUILTIN_RUNTIME_ID
 import build.raft.app.data.CREATE_AGENT_KIMI_SDK_RUNTIME_ID
 import build.raft.app.data.SharedRuntimeFormDefinitionRef
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
+import build.raft.app.data.toAgentDetailSummary
 import build.raft.app.data.buildBuiltInRuntimeConfig
 import build.raft.app.data.AGENT_CREATE_FORM_REFRESH_FAILED
 import build.raft.app.data.AGENT_CREATE_NAME_TAKEN
@@ -4741,6 +4743,8 @@ internal fun MembersListContent(
     var activeCreateAgent by remember(payload.instanceId) { mutableStateOf(false) }
     var createAgentSubmitting by remember { mutableStateOf(false) }
     var createAgentError by remember { mutableStateOf<String?>(null) }
+    // Runtime form v2: fields a rejected create pointed at (`/formValues/<field>`).
+    var createAgentErrorFields by remember { mutableStateOf(emptySet<String>()) }
     var activeInviteHuman by remember(payload.instanceId) { mutableStateOf(false) }
     var inviteHumanSubmitting by remember { mutableStateOf(false) }
     var inviteHumanError by remember { mutableStateOf<String?>(null) }
@@ -4985,6 +4989,7 @@ internal fun MembersListContent(
         SharedCreateAgentDialog(
             submitting = createAgentSubmitting,
             errorMessage = createAgentError,
+            errorFieldKeys = createAgentErrorFields,
             machines = createAgentMachines,
             machinesLoading = createAgentMachinesLoading,
             machinesErrorMessage = createAgentMachinesErrorMessage,
@@ -5005,9 +5010,11 @@ internal fun MembersListContent(
             onSubmit = { request ->
                 createAgentSubmitting = true
                 createAgentError = null
+                createAgentErrorFields = emptySet()
                 scope.launch {
                     val result = submit(request)
                     createAgentSubmitting = false
+                    createAgentErrorFields = (result as? DataResult.Error)?.error?.formFieldKeys.orEmpty().toSet()
                     when (result) {
                         is DataResult.Content -> {
                             activeCreateAgent = false
@@ -9295,6 +9302,12 @@ private fun MembersAgentRuntimeConfigSection(
     }
     var savingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
     var runtimeConfigError by remember(member.id.value) { mutableStateOf<String?>(null) }
+    // Runtime form v2 edit (flag `runtime_form_v2_web`); any v2 load failure or a runtime
+    // change hands the same editing session to the v1 dialog below.
+    val runtimeFormV2Access =
+        agentProfileEditAuthority?.serverId?.value?.let { createAgentFormStore?.runtimeFormV2Access(it) }
+    var runtimeFormV2Declined by remember(member.id.value, editingRuntimeConfig) { mutableStateOf(false) }
+    var runtimeFormV2ErrorFields by remember(member.id.value, editingRuntimeConfig) { mutableStateOf(emptySet<String>()) }
 
     LaunchedEffect(canonicalRuntimeId) {
         canonicalRuntimeId?.let { onAgentRuntimeModelsRequest(it, false) }
@@ -9417,6 +9430,82 @@ private fun MembersAgentRuntimeConfigSection(
         }
     }
 
+    fun saveRuntimeConfigV2(submit: RuntimeFormV2SubmitBody) {
+        val callback = onUpdateAgentProfile
+        val access = runtimeFormV2Access
+        if (
+            !canEdit ||
+                !runtimeStatusResolved ||
+                access == null ||
+                (agentDetailActions == null && callback == null) ||
+                savingRuntimeConfig
+        ) {
+            onUnavailableAction(runtimeEditingUnavailable)
+            return
+        }
+        val openedAuthority = runtimeEditorAuthority
+        val authorityCurrent = {
+            membersAgentProfileEditAuthorityMatches(
+                opened = openedAuthority,
+                current = currentProfileEditAuthority,
+                openedCatalogGeneration = 0L,
+                currentCatalogGeneration = 0L
+            )
+        }
+        if (!authorityCurrent()) {
+            runtimeConfigError = "agent_runtime_editor_stale"
+            onUnavailableAction(runtimeEditingUnavailable)
+            return
+        }
+        scope.launch {
+            savingRuntimeConfig = true
+            runtimeConfigError = null
+            runtimeFormV2ErrorFields = emptySet()
+            val result =
+                try {
+                    // Same runtime only (a runtime switch goes through v1), so an active agent restarts
+                    // to pick the change up, exactly as the v1 editor decides.
+                    val request = AgentProfileUpdateRequest(
+                        agentId = member.id,
+                        displayName = member.displayName,
+                        description = member.description?.takeIf { it.isNotBlank() },
+                        runtimeResetMode = if (activeAgent) AgentResetMode.Restart else null,
+                        runtimeFormV2 = submit
+                    )
+                    if (agentDetailActions != null) {
+                        agentDetailActions.updateAgentProfile(request)
+                    } else {
+                        requireNotNull(callback).invoke(request)
+                    }
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    DataResult.Error(ScreenError("agent_runtime_config_save_failed"))
+                }
+            if (!authorityCurrent()) return@launch
+            when (result) {
+                is DataResult.Content, is DataResult.Empty -> {
+                    (result as? DataResult.Content)?.let { onApplyAgentProfileResult(it.data) }
+                    // The server assembled the config; show what it stored rather than guessing locally.
+                    val stored = (access.loader.agent(member.id) as? DataResult.Content)?.data
+                    val config = (stored?.toAgentDetailSummary().toMembersRuntimeConfigResolution()
+                        as? MembersAgentRuntimeConfigResolution.Content)?.config
+                    val authority = runtimeEditorAuthority
+                    if (config != null && authority != null) onApplyAgentRuntimeConfigProjection(authority, config)
+                    editingRuntimeConfig = false
+                }
+                is DataResult.NoPermission ->
+                    runtimeConfigError =
+                        membersFormattedPermissionError(permissionErrorTemplate, result.blocker, errorStrings)
+                is DataResult.Error -> {
+                    runtimeFormV2ErrorFields = result.error.formFieldKeys.toSet()
+                    runtimeConfigError = membersFormattedScreenError(saveErrorTemplate, result.error, errorStrings)
+                }
+            }
+            savingRuntimeConfig = false
+        }
+    }
+
     // RUNTIME CONFIG section — mirrors React `AgentDetailPanel` runtime block:
     // key/value rows with brutal semantic chips, env vars embedded in the same
     // section, and a pencil entry point for the shared runtime-config editor.
@@ -9451,7 +9540,34 @@ private fun MembersAgentRuntimeConfigSection(
         MembersAgentRuntimeEnvVars(summary)
     }
 
-    if (editingRuntimeConfig && canonicalRuntimeConfig != null && runtimeStatusResolved) {
+    val runtimeFormV2MachineId = (summary?.machineId ?: member.membersComputerId)?.takeIf { it.isNotBlank() }
+    if (
+        editingRuntimeConfig && canonicalRuntimeConfig != null && runtimeStatusResolved &&
+            runtimeFormV2Access != null && !runtimeFormV2Declined && runtimeFormV2MachineId != null &&
+            canonicalRuntimeConfig.runtime in RUNTIME_FORM_V2_RUNTIME_IDS
+    ) {
+        MembersAgentRuntimeFormV2Dialog(
+            access = runtimeFormV2Access,
+            agentId = member.id,
+            machineId = runtimeFormV2MachineId,
+            saving = savingRuntimeConfig,
+            error = runtimeConfigError,
+            errorFieldKeys = runtimeFormV2ErrorFields,
+            onDismiss = {
+                if (!savingRuntimeConfig) {
+                    editingRuntimeConfig = false
+                    runtimeEditorAuthority = null
+                    runtimeConfigError = null
+                }
+            },
+            onLoadFailed = { runtimeFormV2Declined = true },
+            onChangeRuntime = {
+                runtimeConfigError = null
+                runtimeFormV2Declined = true
+            },
+            onSave = ::saveRuntimeConfigV2
+        )
+    } else if (editingRuntimeConfig && canonicalRuntimeConfig != null && runtimeStatusResolved) {
         MembersAgentRuntimeConfigDialog(
             initialConfig = canonicalRuntimeConfig,
             memberId = member.id,

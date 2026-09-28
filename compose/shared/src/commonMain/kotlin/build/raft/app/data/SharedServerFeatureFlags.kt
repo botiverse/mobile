@@ -62,6 +62,13 @@ const val ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY: String = "android_reused_
 /** Process-wide mobile transport variant. Missing/disabled/invalid evaluates to the product default curl_h2. */
 const val MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY: String = "mobile_curl_transport_v1"
 
+/**
+ * Runtime form protocol v2 for the create/edit agent forms (generic renderer). The same key the
+ * web reads (slock `RUNTIME_FORM_V2_WEB_FLAG_KEY`), so one switch turns v2 on for every client.
+ * Off, or when the v2 endpoints fail, the pinned v1 form is used unchanged.
+ */
+const val RUNTIME_FORM_V2_FEATURE_FLAG_KEY: String = "runtime_form_v2_web"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
@@ -76,6 +83,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
     ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY,
     MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY,
+    RUNTIME_FORM_V2_FEATURE_FLAG_KEY,
 )
 
 /**

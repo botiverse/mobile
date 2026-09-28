@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loader
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -41,8 +43,17 @@ internal class SharedCreateAgentFormStore(
     private val logger: (String) -> Unit = {},
     private val ownerProvider: suspend () -> SharedCreateAgentFormOwner? = {
         SharedCreateAgentFormOwner("test-environment", "test-account", "test-session")
-    }
+    },
+    private val runtimeFormV2Loader: RuntimeFormV2Loader? = null,
+    private val runtimeFormV2Enabled: (ServerId) -> Boolean = { false }
 ) {
+    /** Runtime form v2 for this server, or null while `runtime_form_v2_web` is off (v1 stays in use). */
+    fun runtimeFormV2Access(serverId: String): RuntimeFormV2Access? {
+        val loader = runtimeFormV2Loader ?: return null
+        val cleanServerId = serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId) ?: return null
+        return if (runtimeFormV2Enabled(cleanServerId)) RuntimeFormV2Access(loader, cleanServerId) else null
+    }
+
     private val mutex = Mutex()
     private val _state = MutableStateFlow(SharedCreateAgentFormStoreState())
     val state: StateFlow<SharedCreateAgentFormStoreState> = _state.asStateFlow()

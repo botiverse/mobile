@@ -39,6 +39,13 @@ import build.raft.app.data.SharedCreateAgentMachineFormKey
 import build.raft.app.data.CREATE_AGENT_KIMI_SDK_RUNTIME_ID
 import build.raft.app.data.SharedResolvedAgentCreateForm
 import build.raft.app.data.buildBuiltInRuntimeConfig
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loaded
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
+import build.raft.app.data.runtimeform.v2.applyRuntimeFormV2Change
+import build.raft.app.data.runtimeform.v2.initialRuntimeFormV2Values
+import build.raft.app.data.runtimeform.v2.runtimeFormV2Submission
+import build.raft.app.data.runtimeform.v2.validateRuntimeFormV2
 import build.raft.app.data.shouldClearBuiltInWriteOnlySecret
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
@@ -98,8 +105,20 @@ internal data class SharedCreateAgentDialogSubmit(
     val machineId: String?,
     val runtimeConfig: RuntimeConfig? = null,
     val formDefinitionRef: build.raft.app.data.SharedRuntimeFormDefinitionRef? = null,
-    val external: Boolean = false
+    val external: Boolean = false,
+    /** Runtime form v2: sent instead of runtimeConfig/formDefinitionRef. */
+    val runtimeFormV2: RuntimeFormV2SubmitBody? = null
 )
+
+private sealed interface RuntimeFormV2DialogLoad {
+    data object Idle : RuntimeFormV2DialogLoad
+    data object Loading : RuntimeFormV2DialogLoad
+    data class Ready(val loaded: RuntimeFormV2Loaded) : RuntimeFormV2DialogLoad
+    data object Failed : RuntimeFormV2DialogLoad
+}
+
+/** Runtimes whose create/edit form the server serves over runtime form v2. */
+internal val RUNTIME_FORM_V2_RUNTIME_IDS: Set<String> = setOf("builtin", CREATE_AGENT_KIMI_SDK_RUNTIME_ID)
 
 internal const val SharedCreateAgentDialogHostRoute = "create-agent"
 
@@ -194,7 +213,8 @@ internal fun SharedCreateAgentDialogSubmit.toCreateAgentRequest(): build.raft.ap
         runtimeConfig = runtimeConfig,
         formDefinitionRef = formDefinitionRef,
         external = external,
-        avatarUrl = randomCreateAgentAvatarWireValue()
+        avatarUrl = randomCreateAgentAvatarWireValue(),
+        runtimeFormV2 = runtimeFormV2
     )
 
 internal fun buildSharedCreateAgentDialogSubmit(
@@ -714,7 +734,7 @@ internal fun createAgentRuntimeModelReasoningSelection(
             )
     )
 
-private fun List<CreateAgentDropdownItem>.toBrutalSelectOptions(): List<SlockBrutalSelectOption> =
+internal fun List<CreateAgentDropdownItem>.toBrutalSelectOptions(): List<SlockBrutalSelectOption> =
     map { item -> SlockBrutalSelectOption(id = item.id, label = item.label, enabled = item.enabled) }
 
 // ── kimi-sdk reasoning effort (task #275) ────────────────────────────────────
@@ -827,6 +847,8 @@ internal fun SharedCreateAgentDialog(
     maxAgents: Int = -1,
     limitPlanLabel: String? = null,
     external: Boolean = false,
+    runtimeFormV2Override: RuntimeFormV2Access? = null,
+    errorFieldKeys: Set<String> = emptySet(),
     onDismiss: () -> Unit,
     onSubmit: (SharedCreateAgentDialogSubmit) -> Unit
 ) {
@@ -953,12 +975,32 @@ internal fun SharedCreateAgentDialog(
     ) {
         mutableStateOf(0)
     }
+    // Runtime form v2 (flag `runtime_form_v2_web`): null keeps the v1 form untouched.
+    // Read on every recomposition (value-equal), so a flag that resolves after open still applies.
+    val runtimeFormV2 = runtimeFormV2Override ?: createAgentFormStore?.runtimeFormV2Access(cleanCreateAgentServerId)
+    // Runtime form v2 needs only the live catalog to offer Built-in; its form comes from v2.
+    val builtInV2Offered =
+        runtimeFormV2 != null &&
+            builtInCatalog?.options?.any { it.runtimeId == "builtin" && it.selectable } == true
     val builtInRuntimeEnabled =
         canEnableBuiltInRuntime(
             hasFormOverride = builtInFormOverride != null,
             hasSupportedExactRef = builtInRef != null,
             hasResolvedExactForm = builtInForm != null
-        )
+        ) || builtInV2Offered
+    val v2Candidate =
+        runtimeFormV2 != null && !external && availableSelectedMachineId != null && runtime in RUNTIME_FORM_V2_RUNTIME_IDS
+    var v2Load by remember(runtimeFormV2, availableSelectedMachineId, runtime, external) {
+        mutableStateOf<RuntimeFormV2DialogLoad>(if (v2Candidate) RuntimeFormV2DialogLoad.Loading else RuntimeFormV2DialogLoad.Idle)
+    }
+    val v2Loaded = (v2Load as? RuntimeFormV2DialogLoad.Ready)?.loaded
+    // v2 owns the runtime section while it loads or is ready; a failure falls back to v1.
+    val v2Active = v2Candidate && (v2Load is RuntimeFormV2DialogLoad.Loading || v2Loaded != null)
+    var v2Values by remember(v2Loaded) {
+        mutableStateOf(v2Loaded?.let { initialRuntimeFormV2Values(it.form, it.sources) }.orEmpty())
+    }
+    var v2Touched by remember(v2Loaded) { mutableStateOf(emptySet<String>()) }
+    val v2Errors = v2Loaded?.let { validateRuntimeFormV2(it.form, it.sources, v2Values) }.orEmpty()
     val builtInFormLoading =
         dialogBuiltInFormRefreshState.loading ||
             createAgentMachineKey?.let { it in createAgentFormState.loadingRuntimeCatalogs } == true ||
@@ -1020,6 +1062,16 @@ internal fun SharedCreateAgentDialog(
         if (!machineRuntimeInitialized) {
             resetRuntimeForMachine(nextMachineId)
             machineRuntimeInitialized = true
+        }
+    }
+
+    LaunchedEffect(runtimeFormV2, availableSelectedMachineId, runtime, external) {
+        val source = runtimeFormV2 ?: return@LaunchedEffect
+        val machineId = availableSelectedMachineId ?: return@LaunchedEffect
+        if (!v2Candidate) return@LaunchedEffect
+        v2Load = when (val result = source.loader.loadCreate(source.serverId, machineId, runtime)) {
+            is DataResult.Content -> RuntimeFormV2DialogLoad.Ready(result.data)
+            else -> RuntimeFormV2DialogLoad.Failed
         }
     }
 
@@ -1196,12 +1248,16 @@ internal fun SharedCreateAgentDialog(
         !selectedMachineBlocked &&
         runtimeAvailabilityError == null &&
         (external ||
-            isCreateAgentRuntimeContractReady(
-                runtime = runtime,
-                builtInFormRefreshAdmitted = dialogBuiltInFormRefreshState.admitted,
-                builtInFormLoading = builtInFormLoading,
-                hasBuiltInRuntimeConfig = builtInRuntimeConfig != null
-            ))
+            if (v2Active) {
+                v2Loaded != null && v2Errors.isEmpty()
+            } else {
+                isCreateAgentRuntimeContractReady(
+                    runtime = runtime,
+                    builtInFormRefreshAdmitted = dialogBuiltInFormRefreshState.admitted,
+                    builtInFormLoading = builtInFormLoading,
+                    hasBuiltInRuntimeConfig = builtInRuntimeConfig != null
+                )
+            })
     val showMachinePicker = !external
 
     LaunchedEffect(selectedMachineId, selectedMachineRuntimeIds, runtime) {
@@ -1385,7 +1441,59 @@ internal fun SharedCreateAgentDialog(
                 }
                 if (!external) {
                     item(key = "runtime") {
-                        if (runtime == "builtin") {
+                        if (v2Active) {
+                            RuntimeFormV2RuntimeSection(
+                                runtime = runtime,
+                                onRuntimeChange = { newRuntime ->
+                                    val nextCatalog =
+                                        availableSelectedMachineId?.let { machineId ->
+                                            runtimeModelsByMachineAndRuntime[machineId to newRuntime]
+                                        }
+                                    val selection =
+                                        createAgentRuntimeModelReasoningSelection(
+                                            runtime = newRuntime,
+                                            model = createAgentPreferredModelId(
+                                                runtime = newRuntime,
+                                                runtimeModelsOverride = nextCatalog?.models.orEmpty(),
+                                                runtimeModelsDefault = nextCatalog?.defaultModel
+                                            ),
+                                            currentReasoningEffort = reasoningEffort,
+                                            runtimeModelsOverride = nextCatalog?.models.orEmpty()
+                                        )
+                                    runtime = selection.runtime
+                                    model = selection.model
+                                    reasoningEffort = selection.reasoningEffort
+                                    customModelMode = false
+                                },
+                                machineRuntimeIds = selectedMachineRuntimeIds,
+                                runtimeAvailabilityError = runtimeAvailabilityError,
+                                enabled = !submitting
+                            ) {
+                                if (v2Loaded == null) {
+                                    Text(
+                                        text = stringResource(MR.strings.agent_create_state_computers_loading),
+                                        style = SlockType.Caption,
+                                        color = SlockColor.TextMutedGray
+                                    )
+                                } else {
+                                    RuntimeFormV2Fields(
+                                        loaded = v2Loaded,
+                                        values = v2Values,
+                                        onChange = { key, value ->
+                                            v2Values = applyRuntimeFormV2Change(v2Loaded.form, v2Loaded.sources, v2Values, key, value)
+                                            v2Touched = v2Touched + key
+                                        },
+                                        errors = v2Errors.filterKeys { it in v2Touched || it in errorFieldKeys },
+                                        serverErrorKeys = errorFieldKeys,
+                                        serverMessage = null,
+                                        editing = false,
+                                        advancedOpen = advancedOpen,
+                                        onAdvancedOpenChange = { advancedOpen = it },
+                                        enabled = !submitting
+                                    )
+                                }
+                            }
+                        } else if (runtime == "builtin") {
                             BuiltInRuntimeSection(
                                 runtime = runtime,
                                 onRuntimeChange = { newRuntime ->
@@ -1567,6 +1675,21 @@ internal fun SharedCreateAgentDialog(
                     minWidth = 126.dp,
                     backgroundColor = SlockColor.AccentPink,
                     onClick = {
+                        val v2Submit = v2Loaded?.takeIf { v2Active }?.let { loaded ->
+                            SharedCreateAgentDialogSubmit(
+                                name = trimmedName.removePrefix("@"),
+                                description = description.text.trim().takeIf { it.isNotBlank() },
+                                machineId = requiredComputer?.takeIf { it.isNotBlank() } ?: selectedMachineId,
+                                runtimeFormV2 = RuntimeFormV2SubmitBody(
+                                    runtimeId = loaded.form.runtimeId.ifBlank { runtime },
+                                    formValues = runtimeFormV2Submission(loaded.form, v2Values)
+                                )
+                            )
+                        }
+                        if (v2Submit != null) {
+                            onSubmit(v2Submit)
+                            return@SlockBrutalActionButton
+                        }
                         onSubmit(
                             buildSharedCreateAgentDialogSubmit(
                                 name = trimmedName,
@@ -2343,7 +2466,7 @@ internal fun AdvancedRuntimeSection(
 }
 
 @Composable
-private fun AdvancedToggleButton(open: Boolean, onToggle: () -> Unit) {
+internal fun AdvancedToggleButton(open: Boolean, onToggle: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -2410,13 +2533,19 @@ private fun SlockCreateAgentSpinnerIcon() {
 }
 
 @Composable
-private fun EnvVarsEditor(
+internal fun EnvVarsEditor(
     entries: List<Pair<String, String>>,
     onChange: (List<Pair<String, String>>) -> Unit,
-    enabled: Boolean
+    enabled: Boolean,
+    label: String? = null,
+    required: Boolean = false
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_environment_variables), optional = true)
+        SlockBrutalSectionLabel(
+            label = label ?: stringResource(MR.strings.agent_create_label_environment_variables),
+            required = required,
+            optional = !required
+        )
         entries.forEachIndexed { idx, (key, value) ->
             Row(
                 modifier = Modifier.fillMaxWidth(),

@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.base.BridgeModule
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loader
 import build.raft.app.SharedThreadComposerDraftPersistSlice
 import build.raft.app.SharedThreadComposerDraftPersistence
 import build.raft.app.CoroutineThreadComposerDraftPersistenceScheduler
@@ -1124,7 +1125,14 @@ internal class SlockSharedStoreProvider private constructor(
                         )
                     }
                 },
-                logger = sharedInfoLogger("SlockCreateAgentForm", "shared_create_agent_form_store")
+                logger = sharedInfoLogger("SlockCreateAgentForm", "shared_create_agent_form_store"),
+                runtimeFormV2Loader = RuntimeFormV2Loader(
+                    computers = SlockComputersNetworkApi(networkClient(scope)),
+                    agents = SlockAgentsNetworkApi(networkClient(scope))
+                ),
+                runtimeFormV2Enabled = { serverId ->
+                    serverFeatureFlags.isEnabled(serverId, RUNTIME_FORM_V2_FEATURE_FLAG_KEY)
+                }
             ).also { store ->
                 (shellAuthStore as? SlockAuthSessionEventSource)?.let { events ->
                     shellCreateAgentFormOwnerJobs.getOrPut(scope) {
