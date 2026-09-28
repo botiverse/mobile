@@ -3773,7 +3773,7 @@ private fun ThreadPageScreen(
                 anchorStore = sharedStores.adaptiveScrollAnchorStore(storeScope),
                 eventBus = sharedStores.eventBus,
                 nowEpochMillis = { defaultNowMillis() },
-                nativeAdaptiveNavigation = { action, requestId, token ->
+                nativeAdaptiveNavigation = { action, requestId, token, expectedRefTag, expectedText ->
                     bridge.adaptiveNavigation(
                         action = action,
                         requestId = requestId,
@@ -3791,6 +3791,8 @@ private fun ThreadPageScreen(
                                 bridge.dispatchAdaptiveCancel(requestId, lateToken)
                             }
                         },
+                        expectedEditorRefTag = expectedRefTag,
+                        expectedEditorText = expectedText,
                     )
                 },
                 dispatchAdaptiveCommit = { requestId, token ->
@@ -5411,6 +5413,9 @@ internal data class SharedThreadComposerDraftSnapshot(
     val text: String,
     val draftKey: String?,
     val instanceId: String,
+    // Kuikly nativeRef of the resolved AutoHeightTextAreaView the read came from; -1 when
+    // the binding could not attribute one (then the capture is rejected at prepare).
+    val editorNativeRef: Int,
 )
 
 /** Present only inside a standalone thread page wired for A4 adoption. */
@@ -7139,18 +7144,16 @@ private fun SharedThreadRouteContentContent(
                 // Unavailable must abort the migration — proceeding with only the stale shared
                 // draft would silently lose whatever is in the live editor (bridge contract).
                 val identityBefore = composerDraftViewModel.state.value
-                val nativeText =
-                    suspendCancellableCoroutine<String?> { continuation ->
+                val nativeRead =
+                    suspendCancellableCoroutine<SlockTextFieldNativeEditingStateReadResult.Available?> {
+                            continuation ->
                         reader.readCurrentValue { readResult ->
-                            val text =
-                                when (readResult) {
-                                    is SlockTextFieldNativeEditingStateReadResult.Available ->
-                                        readResult.value.text
-                                    else -> null
-                                }
-                            continuation.resume(text)
+                            continuation.resume(
+                                readResult as? SlockTextFieldNativeEditingStateReadResult.Available
+                            )
                         }
                     } ?: return@captureLatestDraft null
+                val nativeText = nativeRead.value.text
                 // The draft the native value belongs to is pinned by the state read above;
                 // a composer draft switch/rebind mid-read would attribute the persisted text
                 // to the wrong conversation.
@@ -7196,6 +7199,7 @@ private fun SharedThreadRouteContentContent(
                     text = nativeText,
                     draftKey = identityBefore.draftKey,
                     instanceId = identityBefore.instanceId,
+                    editorNativeRef = nativeRead.editorNativeRef,
                 )
             }
         }
