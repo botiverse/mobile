@@ -82,6 +82,7 @@ import build.raft.app.data.LANGUAGE_REGION_ACTION_SERVER_TRANSLATION
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIME_FORMAT
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIMEZONE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY
+import build.raft.app.data.LargeScreenNavigationPreference
 import build.raft.app.data.MyMessageAlignmentPreference
 import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.CONNECTED_APPS_ACTION_DELETE
@@ -1973,6 +1974,9 @@ private fun SlockAppShellReadyContent(
     val adaptiveHomeWorkspaceEnabled = remember(pager.pageData.params.toString()) {
         pager.pageData.params.optBoolean(SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED, false)
     }
+    val adaptiveNavRailEnabled = remember(pager.pageData.params.toString()) {
+        pager.pageData.params.optBoolean(SLOCK_ADAPTIVE_NAV_RAIL_ENABLED, false)
+    }
     val authGateInstanceId = remember(pager.pageData.params.toString()) {
         pager.pageData.params.optString(APP_SHELL_AUTH_GATE_INSTANCE_ID)
     }
@@ -2713,6 +2717,9 @@ private fun SlockAppShellReadyContent(
             )
         }
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
+    var largeScreenNavigation by remember {
+        mutableStateOf(LargeScreenNavigationPreference.Default)
+    }
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
     var foregroundMessageBannersEnabled by remember { mutableStateOf(false) }
     var activityTaskStatusBadgesEnabled by remember { mutableStateOf(false) }
@@ -3827,6 +3834,7 @@ private fun SlockAppShellReadyContent(
         remember(foregroundBannerStore) {
             ChatLayoutPreferenceSnapshotRuntimeAuthority { chatLayout ->
                 myMessageAlignment = chatLayout.myMessageAlignment
+                largeScreenNavigation = chatLayout.largeScreenNavigation
                 compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
                 foregroundMessageBannersEnabled = chatLayout.foregroundMessageBannersEnabled
                 if (!chatLayout.foregroundMessageBannersEnabled) {
@@ -5113,11 +5121,17 @@ private fun SlockAppShellReadyContent(
         }
     }
 
+    val navRailActive =
+        slockAdaptiveNavRailActive(
+            flagEnabled = adaptiveNavRailEnabled,
+            navigationPreference = largeScreenNavigation,
+            paneState = shellScope.adaptivePane
+        )
     val showAppShellBottomTabs =
         appShellBottomTabsVisible(
             selectedTab = selectedTab,
             selectedHomeDestination = selectedHomeDestination,
-        )
+        ) && !navRailActive
     val homeTabLabel = stringResource(MR.strings.tab_home)
     val tasksTabLabel = stringResource(MR.strings.tab_tasks)
     val membersTabLabel = stringResource(MR.strings.tab_members)
@@ -5424,11 +5438,7 @@ private fun SlockAppShellReadyContent(
         return true
     }
 
-    val mainRouteSurface: @Composable () -> Unit = {
-        SlockAppShellSurface(
-            shellScope = shellScope,
-            bottomTabs = appShellBottomTabItems,
-            onBottomTabSelected = onBottomTabSelected@{
+    val onAppShellTabSelected: (String) -> Unit = onBottomTabSelected@{
                 prewarmAdmissionGate.invalidate("bottom_tab_tap:$it")
                 val nextTab = retainedAppShellSelectedTab(it)
                 if (slockSlackNavMoreTapOpensMenu(slackNavMode, nextTab)) {
@@ -5479,11 +5489,33 @@ private fun SlockAppShellReadyContent(
                 if (nextTab == "home") {
                     homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
                 }
-            },
+            }
+
+    val mainRouteSurface: @Composable () -> Unit = {
+        SlockAppShellSurface(
+            shellScope = shellScope,
+            bottomTabs = appShellBottomTabItems,
+            onBottomTabSelected = onAppShellTabSelected,
             networkStatus = hostNetworkStatus,
             showBottomTabs = showAppShellBottomTabs,
             interactionLocked = cachedHomePreview,
-            modalHostState = appShellModalHostState
+            modalHostState = appShellModalHostState,
+            leadingNavigation =
+                if (navRailActive) {
+                    {
+                        Column(modifier = Modifier.fillMaxHeight()) {
+                            Spacer(Modifier.height(shellScope.topSafeArea))
+                            SlockNavigationRailTabBar(
+                                items = appShellBottomTabItems,
+                                onSelect = onAppShellTabSelected,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(Modifier.height(shellScope.bottomSafeArea))
+                        }
+                    }
+                } else {
+                    null
+                }
         ) {
                     if (slackNavMode && slackNavMoreMenuVisible) {
                         SlockSlackNavMoreMenu(

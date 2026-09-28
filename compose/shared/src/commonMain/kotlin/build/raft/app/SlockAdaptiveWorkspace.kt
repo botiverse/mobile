@@ -8,6 +8,12 @@ internal const val SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY = "slockAdaptiveDetailIden
 internal const val SLOCK_ADAPTIVE_DETAIL_GENERATION = "slockAdaptiveDetailGeneration"
 internal const val SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED = "slockAdaptiveHomeWorkspaceEnabled"
 
+// task #23: host flag gating the wide-layout left navigation rail. Off by
+// default; when on and the pane is DualPane with the LeftRail preference, the
+// app shell swaps the bottom tab bar for a left rail and recovers the bottom
+// bar in compact layouts.
+internal const val SLOCK_ADAPTIVE_NAV_RAIL_ENABLED = "slockAdaptiveNavRailEnabled"
+
 /**
  * Identity and intent for one adaptive conversation detail.
  *
