@@ -5554,12 +5554,31 @@ private fun SlockAppShellReadyContent(
                                             .fillMaxHeight()
                                             .background(Color.Black),
                                 )
-                                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                ) {
                                     if (selection != null || dualPane) {
                                         // The detail host stays in this stable slot across wide/compact
                                         // transitions so the native child controller, draft and scroll
                                         // state are retained rather than remounted by branch movement.
-                                        detailPane(Modifier.fillMaxSize())
+                                        // task #22: a floating bottom tab dock draws above the
+                                        // embedded thread page and would swallow its composer taps;
+                                        // lift only the detail slot above the dock band — the list
+                                        // pane keeps its own bottom content padding so compact lists
+                                        // still scroll beneath the bar.
+                                        detailPane(
+                                            Modifier
+                                                .fillMaxSize()
+                                                .padding(
+                                                    bottom =
+                                                        shellScope.embeddedChildBottomInset(
+                                                            showAppShellBottomTabs
+                                                        )
+                                                )
+                                        )
                                     } else {
                                         homeListPane(active)
                                     }
