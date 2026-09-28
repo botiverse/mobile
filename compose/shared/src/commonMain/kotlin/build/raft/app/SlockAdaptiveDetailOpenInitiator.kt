@@ -147,18 +147,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
                 crossProcess = true,
                 source = "adaptive_detail_prepared",
             )
-            val ackDeferred = CompletableDeferred<SlockAdaptiveDetailOpenAck>()
-            val ackSubscription =
-                eventBus.observe(
-                    eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
-                    crossProcess = true,
-                ) { eventData ->
-                    val ack = eventData?.toSlockAdaptiveDetailOpenAckOrNull() ?: return@observe
-                    if (ack.shellInstanceId != shellInstanceId || ack.requestId != requestId) {
-                        return@observe
-                    }
-                    ackDeferred.complete(ack)
-                }
+            var ackedGeneration: Long = 0L
             val readyDeferred = CompletableDeferred<Unit>()
             val readySubscription =
                 if (!awaitReadyBeforeCommit) {
@@ -180,7 +169,18 @@ internal class SlockAdaptiveDetailOpenInitiator(
                         }
                     }
                 }
-            var ackedGeneration: Long = 0L
+            val ackDeferred = CompletableDeferred<SlockAdaptiveDetailOpenAck>()
+            val ackSubscription =
+                eventBus.observe(
+                    eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+                    crossProcess = true,
+                ) { eventData ->
+                    val ack = eventData?.toSlockAdaptiveDetailOpenAckOrNull() ?: return@observe
+                    if (ack.shellInstanceId != shellInstanceId || ack.requestId != requestId) {
+                        return@observe
+                    }
+                    ackDeferred.complete(ack)
+                }
             try {
                 eventBus.post(
                     eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_EVENT,
