@@ -2119,8 +2119,6 @@ class SharedThreadComposerDraftStoreTest {
             externalShareServerId = "server",
             uploadBytesTotal = 100L
         )
-}
-
     @Test
     fun changeWithAlreadySyncedTextReturnsNoopReceiptCarryingSameText() = runBlocking {
         // task #18 A4 regression: the adoption draft barrier reads the live native text,
