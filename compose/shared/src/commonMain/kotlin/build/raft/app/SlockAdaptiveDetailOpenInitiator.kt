@@ -47,7 +47,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
             action: String,
             requestId: String,
             token: String?,
-            expectedEditorRefTag: String?,
+            expectedEditorRefTag: Int?,
             expectedEditorText: String?,
         ) -> JSONObject?,
     /**
@@ -171,7 +171,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
                         ACTION_PREPARE,
                         requestId,
                         null,
-                        preparedDraft.editorNativeRef.toString(),
+                        preparedDraft.editorNativeRef,
                         preparedDraft.text,
                     )
                 } ?: run {

@@ -58,6 +58,10 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     private inner class Fixture(
         val nativeReplies: MutableMap<String, JSONObject?> = mutableMapOf(),
         val nativeCalls: MutableList<Triple<String, String, String?>> = mutableListOf(),
+        // task #18 editor-fence args passed to native prepare: (refTag, text) as typed —
+        // refTag must stay a numeric Int, never a serialized string (iOS
+        // slockAdaptiveEditorWithRefTag only accepts a non-negative NSNumber).
+        val nativePrepareEditorArgs: MutableList<Pair<Int?, String?>> = mutableListOf(),
         val commitDispatches: MutableList<Pair<String, String?>> = mutableListOf(),
         // Snapshots returned by successive captureLatestDraft calls; null = capture failure.
         val draftResults: MutableList<SharedThreadComposerDraftSnapshot?> =
@@ -86,8 +90,11 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                 anchorStore = anchorStore,
                 eventBus = eventBus,
                 nowEpochMillis = { 1234L },
-                nativeAdaptiveNavigation = { action, requestId, token, _, _ ->
+                nativeAdaptiveNavigation = { action, requestId, token, refTag, text ->
                     self.nativeCalls += Triple(action, requestId, token)
+                    if (action == "prepare") {
+                        self.nativePrepareEditorArgs += refTag to text
+                    }
                     self.nativeReplies[action]
                 },
                 dispatchAdaptiveCommit = { requestId, token ->
@@ -184,6 +191,40 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
         )
         // Anchor stays staged for the destination/shell to consume on the commit receipt.
         assertNotNull(fixture.anchorStore.peek(shellId, identity))
+    }
+
+    @Test
+    fun preparePassesEditorRefTagAsNumericTypeWithCapturedText(): Unit = runBlocking {
+        // task #18 regression (Jony iPad editor_drift): refTag must reach the bridge as a
+        // numeric Int — a stringified ref can never match a native editor instance, and
+        // iOS rejects it outright. Assert the typed contract at the initiator boundary.
+        val fixture = Fixture()
+        fixture.nativeReplies["prepare"] = preparedReply()
+        fixture.draftResults.clear()
+        fixture.draftResults +=
+            SharedThreadComposerDraftSnapshot(
+                text = "typed draft",
+                draftKey = "key-1",
+                instanceId = "inst-1",
+                editorNativeRef = 42,
+            )
+        val eventBus = fixture.eventBus
+        val outcome =
+            async { fixture.initiator().initiate(identity, launchPayload, windowFact, "r4b") }
+        yield()
+        eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+            eventData =
+                JSONObject()
+                    .put("shellInstanceId", shellId)
+                    .put("requestId", "r4b")
+                    .put("accepted", true)
+                    .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 7.0),
+            crossProcess = false,
+            source = "test",
+        )
+        outcome.await()
+        assertEquals(listOf(42 to "typed draft"), fixture.nativePrepareEditorArgs)
     }
 
     @Test

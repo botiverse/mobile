@@ -418,7 +418,7 @@ internal class BridgeModule : Module() {
          * Native prepare binds them to the nonce and re-verifies at commit; prepare calls
          * without a valid pair are rejected natively.
          */
-        expectedEditorRefTag: String? = null,
+        expectedEditorRefTag: Int? = null,
         expectedEditorText: String? = null,
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
@@ -431,7 +431,7 @@ internal class BridgeModule : Module() {
                 methodArgs.put(
                     "expectedEditor",
                     JSONObject()
-                        .put("refTag", expectedEditorRefTag ?: "")
+                        .put("refTag", expectedEditorRefTag ?: JSONObject.NULL)
                         .put("text", expectedEditorText ?: ""),
                 )
             }
