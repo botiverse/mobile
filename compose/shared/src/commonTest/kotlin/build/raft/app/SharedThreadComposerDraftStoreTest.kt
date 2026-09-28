@@ -8,6 +8,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -2118,6 +2119,44 @@ class SharedThreadComposerDraftStoreTest {
             externalShareServerId = "server",
             uploadBytesTotal = 100L
         )
+}
+
+    @Test
+    fun changeWithAlreadySyncedTextReturnsNoopReceiptCarryingSameText() = runBlocking {
+        // task #18 A4 regression: the adoption draft barrier reads the live native text,
+        // then pushes Change(seedText=native). When the shared draft already carries that
+        // text the serialized lane reports the transition as an equivalent no-op —
+        // accepted=false with state=previous. The barrier must still treat that receipt as
+        // satisfied (same identity, same text) and proceed to Flush, or a pre-synced draft
+        // would always fail capture.
+        val store = SharedThreadComposerDraftStore()
+        val draftKey = "send=channel-synced|parent=_|mention=channel-synced"
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-synced"),
+                draftKey = draftKey
+            )
+        )
+        val first = store.acceptQueued(
+            SharedThreadComposerDraftIntent.Change(seedText = "already here")
+        )
+        assertTrue(first.accepted)
+        assertEquals("already here", first.state.seedText)
+
+        val noop = store.acceptQueued(
+            SharedThreadComposerDraftIntent.Change(seedText = "already here")
+        )
+        assertFalse(noop.accepted)
+        assertEquals("already here", noop.state.seedText)
+        assertEquals(draftKey, noop.state.draftKey)
+        assertEquals(first.state.instanceId, noop.state.instanceId)
+
+        val drift = store.acceptQueued(
+            SharedThreadComposerDraftIntent.Change(seedText = "different text")
+        )
+        assertTrue(drift.accepted)
+        assertEquals("different text", drift.state.seedText)
+    }
 }
 
 private class CountingSharedPreferenceStore : build.raft.app.data.SharedPreferenceStore {
