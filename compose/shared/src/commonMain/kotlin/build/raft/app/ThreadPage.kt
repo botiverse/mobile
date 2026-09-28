@@ -3693,6 +3693,7 @@ private fun KuiklyThreadTab.toSlockTabSpec(): SlockTabSpec<KuiklyThreadTab> =
         iconName = icon
     )
 
+@OptIn(ExperimentalUuidApi::class)
 @Composable
 private fun ThreadPageScreen(
     pageVisibleTick: Int,
