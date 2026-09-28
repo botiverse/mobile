@@ -3021,7 +3021,13 @@ internal object SlockKuiklyAdapters {
         SlockAndroidSqlDatabaseContext.init(context)
         SlockAndroidAvatarCacheProcess.install(context.applicationContext)
         SharedBinaryDownloader.setDiagnosticsLogger { tag, message ->
-            SlockAppLog.record(tag, message)
+            // Transport failures must reach release-build feedback logs: avatar/image
+            // downloads otherwise fail silently in production (Hands 39eec0a3/d208b2f2).
+            if ("status=failed" in message || "status=canceled" in message) {
+                SlockAppLog.w(tag, message)
+            } else {
+                SlockAppLog.record(tag, message)
+            }
         }
         if (initialized) {
             return
@@ -3637,7 +3643,7 @@ internal class SlockKuiklyImageAdapter(
                         // Bundled asset paths carry no user data, so log the path itself:
                         // a missing/broken packaged asset is otherwise invisible (task #335
                         // reaction atlas debugging on artin's device hit exactly this).
-                        SlockAppLog.record(
+                        SlockAppLog.w(
                                 "SlockImageLoad",
                                 "source=assets status=failed type=${throwable::class.java.simpleName} " +
                                         "path=${imageLoadOption.src.removePrefix(HRImageLoadOption.SCHEME_ASSETS)} " +
@@ -3915,7 +3921,7 @@ internal class SlockKuiklyImageAdapter(
             byteCount: Int,
             contentType: String?
     ) {
-        SlockAppLog.record(
+        SlockAppLog.w(
                 "SlockImageLoad",
                 "source=network status=decode_failed bytes=$byteCount contentType=${contentType ?: "unknown"} " +
                         "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
@@ -3924,7 +3930,7 @@ internal class SlockKuiklyImageAdapter(
     }
 
     private fun recordImageLoadFailure(sourceKind: String, imageLoadOption: HRImageLoadOption, throwable: Throwable) {
-        SlockAppLog.record(
+        SlockAppLog.w(
                 "SlockImageLoad",
                 "source=$sourceKind status=failed type=${throwable::class.java.simpleName} " +
                         "message=${throwable.safeImageLoadMessage()} " +
