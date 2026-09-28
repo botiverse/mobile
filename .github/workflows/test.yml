@@ -1473,6 +1473,33 @@ jobs:
             entry/build/default/outputs/default/entry-default-unsigned.hap \
             raft-debug
 
+      - name: Record unsigned OHOS QA carrier
+        if: github.event_name == 'workflow_dispatch' && steps.ohos_native.outputs.required == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/ohos-qa
+          hap=compose/ohosApp/entry/build/default/outputs/default/entry-default-unsigned.hap
+          test -s "$hap"
+          cp "$hap" artifacts/ohos-qa/
+          git rev-parse HEAD > artifacts/ohos-qa/workflow-source-sha.txt
+          product_source=498d36194c62acec50d970e54d03ecd989bf7d01
+          git diff --exit-code "$product_source" HEAD -- . ':!.github/workflows/test.yml'
+          printf '%s\n' "$product_source" > artifacts/ohos-qa/product-source-sha.txt
+          printf '%s\n' f6c9e20a6c02e7f1e08f97db5040e2d290e9a150 > artifacts/ohos-qa/emitter-source-sha.txt
+          sha256sum "$hap" > artifacts/ohos-qa/hap-sha256.txt
+          cp compose/ohosApp/AppScope/app.json5 artifacts/ohos-qa/
+          cp compose/ohosApp/build-profile.json5 artifacts/ohos-qa/
+
+      - name: Upload unsigned OHOS QA carrier
+        if: github.event_name == 'workflow_dispatch' && steps.ohos_native.outputs.required == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: ohos-qa-unsigned-debug-hap
+          path: artifacts/ohos-qa/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Gradle failure diagnostics
         if: failure()
         uses: ./.github/actions/gradle-failure-diagnostics
