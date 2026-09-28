@@ -192,6 +192,51 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun agentDetailSeedReplacesStalePixelAvatarInSession() = runBlocking {
+        val serverId = ServerId("server-1")
+        val uploadedAvatar =
+            "https://cdn.raft.build/avatars/agents/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.webp"
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        // Roster first learned this agent as a pixel fallback (pre-avatar-upload cache).
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(
+                    member("agent-1", "Cindy").copy(
+                        kind = MemberKind.Agent,
+                        avatar = AvatarReference.fromWireValue("pixel:bell"),
+                        avatarUrl = "pixel:bell",
+                        serverId = serverId
+                    )
+                )
+            )
+        )
+        assertEquals(
+            "pixel:bell",
+            store.state.value.memberProfile(serverId, "agent-1")?.avatar?.wireValue
+        )
+
+        // Opening the member detail hydrates the canonical profile; seeding it back must
+        // replace the stale pixel avatar without a process restart.
+        store.seedProfiles(
+            serverId,
+            listOf(
+                member("agent-1", "Cindy").copy(
+                    kind = MemberKind.Agent,
+                    avatar = AvatarReference.fromWireValue(uploadedAvatar),
+                    avatarUrl = uploadedAvatar,
+                    serverId = serverId
+                )
+            )
+        )
+
+        assertEquals(
+            uploadedAvatar,
+            store.memberProfileFlow(serverId, "agent-1").first()?.avatar?.wireValue
+        )
+    }
+
+    @Test
     fun statusAndProfileReadsFailClosedWithoutServerScope() = runBlocking {
         val store = SharedServerMembersStore(FakeMemberRepository())
         store.seed(

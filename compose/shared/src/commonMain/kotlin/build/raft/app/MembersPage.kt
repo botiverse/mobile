@@ -2797,6 +2797,12 @@ private class MemberDetailRouteProvider(
                         profileGeneration = profileGeneration
                     )
                 )
+                // Agent detail hydration carries the canonical avatarUrl; seed it back so
+                // the scoped roster cache drops a stale pixel fallback in-session.
+                serverMembersStore.seedProfiles(
+                    profileServerId,
+                    listOf(detail.toStaticMembersProfile(profileServer.copy(id = profileServerId)))
+                )
                 MemberDetailRouteState.Agent(
                     server = profileServer.copy(id = profileServerId),
                     currentUserId = currentUserId,
@@ -2845,6 +2851,12 @@ private class MemberDetailRouteProvider(
                     )
                 )
                 serverMembersStore.applyAgentDetailSnapshot(presenceRequest, detailResult.data)
+                // Same reason as the remote-profile branch: publish the freshly loaded
+                // avatar/profile fields so in-session roster observers update.
+                serverMembersStore.seedProfiles(
+                    server.id,
+                    listOf(detailResult.data.toStaticMembersProfile(server))
+                )
                 MemberDetailRouteState.Agent(
                     server = server,
                     currentUserId = currentUserId
