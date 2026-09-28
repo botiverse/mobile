@@ -1,6 +1,6 @@
 object Version {
 
-    private const val KUIKLY_VERSION = "2.24.0-raft.6"
+    private const val KUIKLY_VERSION = "2.24.0-raft.6.1"
     private const val KOTLIN_VERSION = "2.1.21"
     private const val KOTLIN_OHOS_VERSION = "2.0.21-ohos"
 
