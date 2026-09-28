@@ -3748,16 +3748,14 @@ private fun ThreadPageScreen(
         params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
-    val hasExplicitShellScope = remember(params.toString()) {
-        params.slockShellStoreScopeOrNull() != null
-    }
 
-    // A4 adoption (task #18): only a standalone page initiates — an embedded detail child
-    // carries an explicit close request or an explicit shell scope. The capture callbacks live
-    // on this holder; the deep thread surface registers its editor reader + viewport anchor
-    // providers once its state objects exist, so the trigger here stays scope-free.
+    // A4 adoption (task #18): only a standalone (native-stack) page initiates. The embedded
+    // detail child is identified by SLOCK_EMBEDDED_CHILD_PAGE_PARAM, injected by
+    // slockEmbeddedChildPageData for every SlockKuiklyChildPage mount — not by shell scope
+    // presence, which every openSlockPage-pushed page also carries.
     val isStandaloneThreadPage =
-        adaptiveCloseRequest == null && !hasExplicitShellScope
+        adaptiveCloseRequest == null &&
+            !params.optBoolean(SLOCK_EMBEDDED_CHILD_PAGE_PARAM, false)
     val adaptiveInitiationEnabled =
         params.optBoolean(SLOCK_ADAPTIVE_INITIATION_ENABLED, false)
     val adaptiveInitiationCaptureHolder =
