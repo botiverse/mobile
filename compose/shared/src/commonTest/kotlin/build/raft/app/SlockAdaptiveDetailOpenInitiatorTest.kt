@@ -88,7 +88,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     }
 
     @Test
-    fun draftCaptureFailureAbortsBeforePrepare() = runBlocking {
+    fun draftCaptureFailureAbortsBeforePrepare(): Unit = runBlocking {
         val fixture = Fixture(draftResult = false)
         val outcome =
             fixture.initiator().initiate(identity, launchPayload, windowFact, requestId = "r1")
@@ -99,7 +99,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     }
 
     @Test
-    fun missingNativePrepareEndsAttemptAndDiscardsAnchor() = runBlocking {
+    fun missingNativePrepareEndsAttemptAndDiscardsAnchor(): Unit = runBlocking {
         val fixture = Fixture() // no prepare reply registered
         val outcome =
             fixture.initiator().initiate(identity, launchPayload, windowFact, requestId = "r2")
@@ -110,7 +110,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     }
 
     @Test
-    fun rejectedOpenCancelsPreparedTransaction() = runBlocking {
+    fun rejectedOpenCancelsPreparedTransaction(): Unit = runBlocking {
         val fixture = Fixture()
         fixture.nativeReplies["prepare"] = preparedReply()
         val eventBus = fixture.eventBus
@@ -137,7 +137,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     }
 
     @Test
-    fun acceptedOpenHandsCommitToNative() = runBlocking {
+    fun acceptedOpenHandsCommitToNative(): Unit = runBlocking {
         val fixture = Fixture()
         fixture.nativeReplies["prepare"] = preparedReply()
         val eventBus = fixture.eventBus
@@ -165,7 +165,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     }
 
     @Test
-    fun ackFromAnotherRequestIsIgnored() = runBlocking {
+    fun ackFromAnotherRequestIsIgnored(): Unit = runBlocking {
         val fixture = Fixture()
         fixture.nativeReplies["prepare"] = preparedReply()
         val eventBus = fixture.eventBus
@@ -199,7 +199,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     }
 
     @Test
-    fun slowDraftPersistStillCompletesBeforePrepare() = runBlocking {
+    fun slowDraftPersistStillCompletesBeforePrepare(): Unit = runBlocking {
         val gate = CompletableDeferred<Unit>()
         var draftReturnObservedNativeCalls = -1
         val fixture = Fixture()
@@ -250,7 +250,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     }
 
     @Test
-    fun commitDispatchFailureKeepsAnchorStagedForRecovery() = runBlocking {
+    fun commitDispatchFailureKeepsAnchorStagedForRecovery(): Unit = runBlocking {
         val fixture = Fixture()
         fixture.nativeReplies["prepare"] = preparedReply()
         val initiator = SlockAdaptiveDetailOpenInitiator(
@@ -293,7 +293,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     }
 
     @Test
-    fun failedCommitReceiptRetainsShellPendingAndAnchor() = runBlocking {
+    fun failedCommitReceiptRetainsShellPendingAndAnchor(): Unit = runBlocking {
         // Shell-side contract: a non-committed native receipt keeps the pending entry AND the
         // staged anchor so the destination (already mounted, source popped) can still recover.
         val session0 = build.raft.app.data.SharedAdaptiveWorkspaceSession(
@@ -357,7 +357,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     }
 
     @Test
-    fun coveredTopKeepsDockCommitWaitsForDestinationReady() = runBlocking {
+    fun coveredTopKeepsDockCommitWaitsForDestinationReady(): Unit = runBlocking {
         val fixture = Fixture()
         fixture.nativeReplies["prepare"] = preparedReply()
         val initiator = SlockAdaptiveDetailOpenInitiator(
@@ -394,7 +394,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
         yield()
         // Accepted but destination not yet mounted: a covered-top transaction must not commit
         // (pop) yet — the READY report is the only proof the handoff rendered.
-        assertEquals(
+        assertEquals<List<Triple<String, String, String?>>>(
             listOf(Triple("prepare", "r9", null)),
             fixture.nativeCalls,
             "covered-top commit must wait for destination READY",
@@ -418,7 +418,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     }
 
     @Test
-    fun readyForForeignGenerationDoesNotReleaseCoveredTopCommit() = runBlocking {
+    fun readyForForeignGenerationDoesNotReleaseCoveredTopCommit(): Unit = runBlocking {
         val fixture = Fixture()
         fixture.nativeReplies["prepare"] = preparedReply()
         val initiator = SlockAdaptiveDetailOpenInitiator(
@@ -480,7 +480,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     }
 
     @Test
-    fun readyTimeoutCancelsPreparedTransactionAndDiscardsAnchor() = runBlocking {
+    fun readyTimeoutCancelsPreparedTransactionAndDiscardsAnchor(): Unit = runBlocking {
         val fixture = Fixture()
         fixture.nativeReplies["prepare"] = preparedReply()
         val initiator = SlockAdaptiveDetailOpenInitiator(
@@ -527,7 +527,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     }
 
     @Test
-    fun lateReadyArrivingAfterTimeoutDoesNotCommit() = runBlocking {
+    fun lateReadyArrivingAfterTimeoutDoesNotCommit(): Unit = runBlocking {
         val fixture = Fixture()
         fixture.nativeReplies["prepare"] = preparedReply()
         val initiator = SlockAdaptiveDetailOpenInitiator(
