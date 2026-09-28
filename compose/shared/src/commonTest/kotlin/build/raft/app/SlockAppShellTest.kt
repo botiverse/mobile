@@ -793,6 +793,53 @@ class SlockAppShellTest {
     }
 
     @Test
+    @Test
+    @Test
+    fun navRailActivatesOnlyForFlatDualPaneLeftRailWithFlag() {
+        val dualPane =
+            SlockAdaptivePaneState(
+                widthPx = 1680,
+                heightPx = 1118,
+                density = 2f,
+                posture = SlockAdaptivePanePosture.Flat,
+                layout = SlockAdaptivePaneLayout.DualPane
+            )
+        val compact = dualPane.copy(layout = SlockAdaptivePaneLayout.Compact)
+
+        assertTrue(
+            slockAdaptiveNavRailActive(
+                flagEnabled = true,
+                navigationPreference = build.raft.app.data.LargeScreenNavigationPreference.LeftRail,
+                paneState = dualPane
+            )
+        )
+        // Flag off keeps the bottom bar even in a wide flat layout.
+        assertFalse(
+            slockAdaptiveNavRailActive(
+                flagEnabled = false,
+                navigationPreference = build.raft.app.data.LargeScreenNavigationPreference.LeftRail,
+                paneState = dualPane
+            )
+        )
+        // FloatingDock preference keeps the bottom dock in the same layout.
+        assertFalse(
+            slockAdaptiveNavRailActive(
+                flagEnabled = true,
+                navigationPreference = build.raft.app.data.LargeScreenNavigationPreference.FloatingDock,
+                paneState = dualPane
+            )
+        )
+        // Compact windows always keep the bottom bar.
+        assertFalse(
+            slockAdaptiveNavRailActive(
+                flagEnabled = true,
+                navigationPreference = build.raft.app.data.LargeScreenNavigationPreference.LeftRail,
+                paneState = compact
+            )
+        )
+    }
+
+    @Test
     fun androidBottomSafeAreaKeepsGestureNavigationInsetUnlessHostExcludesIt() {
         assertEquals(0f, resolveSlockBottomSafeAreaDp(hostExcludesNavigationBar = true, nativeDp = 48f, hostDp = 48f))
         assertEquals(24f, resolveSlockBottomSafeAreaDp(hostExcludesNavigationBar = false, nativeDp = 24f, hostDp = 0f))
