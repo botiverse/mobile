@@ -5687,6 +5687,113 @@ private fun SlockAppShellReadyContent(
                             }
                         )
                     }
+                    // task #13: shared list-detail host — the Activity tab renders the same
+                    // split (360dp list + workspace detail) the Home tab uses, driven by the
+                    // shell-wide adaptiveWorkspaceStore. The detail host lives in this stable
+                    // slot across wide/compact transitions so the native child controller,
+                    // draft and scroll state are retained rather than remounted by branch
+                    // movement; task #22 lifts only the detail slot above the floating dock.
+                    val adaptiveSplitListDetail:
+                        @Composable
+                        (
+                            enabled: Boolean,
+                            active: Boolean,
+                            listPane: @Composable (Boolean) -> Unit,
+                        ) -> Unit = { enabled, active, listPane ->
+                        val workspace = adaptiveWorkspaceState
+                        val selection = workspace?.selection
+                        val detailPayload = adaptiveDetailLaunchPayload
+                        val childActive =
+                            active && workspace?.presentation != SlockAdaptiveWorkspacePresentation.Inactive
+                        val adaptiveEmptyLabel = stringResource(MR.strings.home_adaptive_select_conversation)
+                        val detailPageData =
+                            remember(
+                                detailPayload,
+                                selection,
+                                navigationStoreScope.shellInstanceId,
+                                navigationStoreScope.initialServerId,
+                            ) {
+                                if (detailPayload == null || selection == null) {
+                                    null
+                                } else {
+                                    threadLaunchPageData(detailPayload)
+                                        .withSlockShellStoreScope(navigationStoreScope)
+                                        .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, workspace.shellInstanceId)
+                                        .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, selection.identity.key)
+                                        .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, selection.generation)
+                                }
+                            }
+                        val detailPane: @Composable (Modifier) -> Unit = { modifier ->
+                            if (detailPageData == null) {
+                                Box(
+                                    modifier = modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = adaptiveEmptyLabel,
+                                        color = SlockColor.TextMutedGray,
+                                        fontSize = 15.sp,
+                                    )
+                                }
+                            } else {
+                                SlockKuiklyChildPage(
+                                    pageName = THREAD_PAGE,
+                                    pageData = detailPageData,
+                                    modifier = modifier.fillMaxSize(),
+                                    active = childActive,
+                                    onLoadSuccess = {
+                                        selection?.generation?.let(::releaseAdaptiveHandoffLease)
+                                    },
+                                    onLoadFailure = {
+                                        selection?.generation?.let(::releaseAdaptiveHandoffLease)
+                                    },
+                                )
+                            }
+                        }
+                        if (enabled) {
+                            val dualPane = workspace?.pane?.layout == SlockAdaptivePaneLayout.DualPane
+                            Row(modifier = Modifier.fillMaxSize()) {
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .width(if (dualPane) 360.dp else 0.dp)
+                                            .fillMaxHeight(),
+                                ) {
+                                    if (dualPane) listPane(active)
+                                }
+                                Spacer(
+                                    modifier =
+                                        Modifier
+                                            .width(if (dualPane) 1.dp else 0.dp)
+                                            .fillMaxHeight()
+                                            .background(Color.Black),
+                                )
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                ) {
+                                    if (selection != null || dualPane) {
+                                        detailPane(
+                                            Modifier
+                                                .fillMaxSize()
+                                                .padding(
+                                                    bottom =
+                                                        shellScope.embeddedChildBottomInset(
+                                                            showAppShellBottomTabs
+                                                        )
+                                                )
+                                        )
+                                    } else {
+                                        listPane(active)
+                                    }
+                                }
+                            }
+                        } else {
+                            listPane(active)
+                        }
+                    }
                     val homeTabContentBase:
                         @Composable
                         (
@@ -5704,7 +5811,6 @@ private fun SlockAppShellReadyContent(
                         val homeListPositionServerId = readyServerId ?: homeListServerId
                         val prefersChineseCommunity =
                             localePreferenceStore.readLocaleSync() == AppLocale.SimplifiedChinese
-                        val adaptiveEmptyLabel = stringResource(MR.strings.home_adaptive_select_conversation)
                         PerformanceSceneEffect(bridge, "kuikly_home", active = active)
                         val workspace = adaptiveWorkspaceState
                         val selection = workspace?.selection
@@ -5838,104 +5944,11 @@ private fun SlockAppShellReadyContent(
                                 }
                             )
                         }
-                        val detailPayload = adaptiveDetailLaunchPayload
-                        val childActive =
-                            active && workspace?.presentation != SlockAdaptiveWorkspacePresentation.Inactive
-                        val detailPageData =
-                            remember(
-                                detailPayload,
-                                selection,
-                                navigationStoreScope.shellInstanceId,
-                                navigationStoreScope.initialServerId,
-                            ) {
-                                if (detailPayload == null || selection == null) {
-                                    null
-                                } else {
-                                    threadLaunchPageData(detailPayload)
-                                        .withSlockShellStoreScope(navigationStoreScope)
-                                        .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, workspace.shellInstanceId)
-                                        .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, selection.identity.key)
-                                        .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, selection.generation)
-                                }
-                            }
-                        val detailPane: @Composable (Modifier) -> Unit = { modifier ->
-                            if (detailPageData == null) {
-                                Box(
-                                    modifier = modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        text = adaptiveEmptyLabel,
-                                        color = SlockColor.TextMutedGray,
-                                        fontSize = 15.sp,
-                                    )
-                                }
-                            } else {
-                                SlockKuiklyChildPage(
-                                    pageName = THREAD_PAGE,
-                                    pageData = detailPageData,
-                                    modifier = modifier.fillMaxSize(),
-                                    active = childActive,
-                                    onLoadSuccess = {
-                                        selection?.generation?.let(::releaseAdaptiveHandoffLease)
-                                    },
-                                    onLoadFailure = {
-                                        selection?.generation?.let(::releaseAdaptiveHandoffLease)
-                                    },
-                                )
-                            }
-                        }
-                        if (adaptiveHomeWorkspaceEnabled) {
-                            val dualPane = workspace?.pane?.layout == SlockAdaptivePaneLayout.DualPane
-                            Row(modifier = Modifier.fillMaxSize()) {
-                                Box(
-                                    modifier =
-                                        Modifier
-                                            .width(if (dualPane) 360.dp else 0.dp)
-                                            .fillMaxHeight(),
-                                ) {
-                                    if (dualPane) homeListPane(active)
-                                }
-                                Spacer(
-                                    modifier =
-                                        Modifier
-                                            .width(if (dualPane) 1.dp else 0.dp)
-                                            .fillMaxHeight()
-                                            .background(Color.Black),
-                                )
-                                Box(
-                                    modifier =
-                                        Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                ) {
-                                    if (selection != null || dualPane) {
-                                        // The detail host stays in this stable slot across wide/compact
-                                        // transitions so the native child controller, draft and scroll
-                                        // state are retained rather than remounted by branch movement.
-                                        // task #22: a floating bottom tab dock draws above the
-                                        // embedded thread page and would swallow its composer taps;
-                                        // lift only the detail slot above the dock band — the list
-                                        // pane keeps its own bottom content padding so compact lists
-                                        // still scroll beneath the bar.
-                                        detailPane(
-                                            Modifier
-                                                .fillMaxSize()
-                                                .padding(
-                                                    bottom =
-                                                        shellScope.embeddedChildBottomInset(
-                                                            showAppShellBottomTabs
-                                                        )
-                                                )
-                                        )
-                                    } else {
-                                        homeListPane(active)
-                                    }
-                                }
-                            }
-                        } else {
-                            homeListPane(active)
-                        }
+                        adaptiveSplitListDetail(
+                            adaptiveHomeWorkspaceEnabled,
+                            active,
+                            homeListPane,
+                        )
                     }
                     val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         homeTabContentBase(
@@ -5987,13 +6000,16 @@ private fun SlockAppShellReadyContent(
                     }
                     // task #94: Activity tab hosts the shared activity inbox surface directly —
                     // the same screen the home secondary Activity destination renders.
-                    val activityTabContent: @Composable (active: Boolean) -> Unit = { active ->
-                        PerformanceSceneEffect(bridge, "kuikly_activity", active = active)
+                    // task #13: on DualPane the inbox stays as the 360dp left list and the
+                    // opened thread renders in the shared workspace detail slot at right —
+                    // same canonical-identity OpenDetail path the Home tab uses, so compact
+                    // keeps the standalone push behavior unchanged.
+                    val activityListPane: @Composable (Boolean) -> Unit = { listActive ->
                         SharedHomeActivityScreen(
                             bridge = bridge,
                             authStore = shellAuthStore,
                             routeVisibleTick = pageVisibleTick,
-                            active = active,
+                            active = listActive,
                             onOpenMessage = { request ->
                                 openHomeMessageRequest(
                                     request = request,
@@ -6008,6 +6024,14 @@ private fun SlockAppShellReadyContent(
                             storeScope = navigationStoreScope,
                             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                             activitySenderAvatarsEnabled = activitySenderAvatarsEnabled
+                        )
+                    }
+                    val activityTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        PerformanceSceneEffect(bridge, "kuikly_activity", active = active)
+                        adaptiveSplitListDetail(
+                            adaptiveHomeWorkspaceEnabled,
+                            active,
+                            activityListPane,
                         )
                     }
                     val membersTabContent: @Composable (active: Boolean) -> Unit = { active ->
