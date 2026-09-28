@@ -43,6 +43,50 @@ internal fun SlockEventBus.postAdaptiveTrace(
 }
 
 /** Mirrors a trace hop into the host diagnostics log line so device-side JSONL sees it. */
+/**
+ * READY gate for the destination side of an A4 adoption (task #18). A successfully loaded
+ * thread reports READY even when it has zero messages — an empty conversation is a valid
+ * terminal state and blocking on `messages.isNotEmpty()` leaves the shell in AckTimeout
+ * forever. loading and error (or any non-success status) never pass. Anchor restore applies
+ * only when the payload is non-empty; an empty payload has no scroll target.
+ */
+internal fun slockAdaptiveDetailReadyAllowed(status: String, messagesCount: Int): Boolean =
+    status == "success"
+
+/** Destination-side READY gate outcome (task #18). */
+internal enum class SlockAdaptiveReadyGate {
+    /** Effect already posted READY for this thread instance — no re-evaluation. */
+    AlreadyPosted,
+
+    /** Payload is not a successful load (loading/error) — keep waiting. */
+    StatusBlocked,
+
+    /** Successful payload with messages — continue to anchor restore then READY. */
+    RestoreThenReady,
+
+    /** Successful empty payload — no scroll target exists; post READY immediately. */
+    ReadyImmediately,
+}
+
+/**
+ * Pure evaluation of the destination READY gate so the loading→success-empty transition
+ * (and every other status/count combination) is unit-testable without Compose. The effects
+ * re-key on (status, messagesCount): a loading→success transition with an unchanged zero
+ * count still re-enters and reaches ReadyImmediately — exactly the path that used to strand
+ * the adoption in AckTimeout when READY lived behind the empty-state early return.
+ */
+internal fun evaluateSlockAdaptiveReadyGate(
+    readyPosted: Boolean,
+    status: String,
+    messagesCount: Int,
+): SlockAdaptiveReadyGate =
+    when {
+        readyPosted -> SlockAdaptiveReadyGate.AlreadyPosted
+        !slockAdaptiveDetailReadyAllowed(status, messagesCount) -> SlockAdaptiveReadyGate.StatusBlocked
+        messagesCount == 0 -> SlockAdaptiveReadyGate.ReadyImmediately
+        else -> SlockAdaptiveReadyGate.RestoreThenReady
+    }
+
 internal fun formatAdaptiveTraceLine(
     side: String,
     hop: String,

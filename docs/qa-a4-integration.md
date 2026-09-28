@@ -1,6 +1,6 @@
-# Test-only A4 integration revision 7 — DO NOT MERGE
+# Test-only A4 integration revision 8 — DO NOT MERGE
 
-Shared PR2730: bd68d300ce99f60d19b1fa830e0cb835ad92eec6 (rebased main includes layout 2727/2728).
+Shared PR2730: 14081233386aa5771ea624217e9df515e166a967 (rebased main includes layout 2727/2728).
 Native PR2731: 6c31dfbfec76b59cee54bc7b16aa6d9bc3791ebe.
 
 This QA branch alone sets the source initiation default and nativeGuardedCommitAvailable true.
@@ -19,3 +19,5 @@ Revision 5 carries numeric native editor refTag across the shared bridge. Revisi
 Revision 6 includes real JSON serialization tests and portable omission of absent refTag. Revision 5 did not build: the Kuikly JSONObject API has no NULL constant. Native strict validation is unchanged.
 
 Revision 7 adds persistent shell OPEN/READY/ACK and destination effect/payload/layout/READY stage diagnostics. Revision 6 progressed through native prepare, then timed out awaiting ACK; manual Back subsequently exposed the embedded detail and is not a successful migration. No native guard changes. Missing-stage absence is not proof of non-execution without a logging and lifecycle control.
+
+Revision 8 moves destination READY above the empty-state return and permits successful empty timelines, retaining loading/error rejection and identity/generation checks. Both effects now key on payload status. Revision 7 accepted OPEN but skipped every detail effect for an empty channel and timed out; re-run the same empty channel before the remaining commit matrix. Native lifecycle and commit guards are unchanged.
