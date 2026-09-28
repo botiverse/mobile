@@ -1949,7 +1949,12 @@ internal fun ThreadComposerContent(
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
-    initialMentionActionDetailsVisible: Boolean = false
+    initialMentionActionDetailsVisible: Boolean = false,
+    /**
+     * A4 adoption (task #18): lets the host page share the native-editing reader bound to this
+     * composer's editor so a migration can read the latest value without a second UIKit walk.
+     */
+    externalNativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
 ) {
     val editorOwner = remember(state.instanceId) {
         ThreadComposerControlledEditorOwner(state.seedText, state.seedAsTask)
@@ -1986,6 +1991,7 @@ internal fun ThreadComposerContent(
         onInsertMentionConsumed = onInsertMentionConsumed,
         onSuggestionDemandChanged = onSuggestionDemandChanged,
         initialMentionActionDetailsVisible = initialMentionActionDetailsVisible,
+        externalNativeEditingStateReader = externalNativeEditingStateReader,
     )
 }
 
@@ -2016,6 +2022,7 @@ internal fun ThreadComposerContentLeaf(
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
     initialMentionActionDetailsVisible: Boolean = false,
+    externalNativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
 ) {
     // #192 trace scope extension: wrap the full composer render. IME-lift / state
     // updates / suggestion list filtering are all under this; per-phase breakdown
@@ -2024,8 +2031,9 @@ internal fun ThreadComposerContentLeaf(
     val fieldValue = editorValue
     val text = fieldValue.text
     val asTask = editorAsTask
-    val nativeEditingStateReader =
+    val ownedNativeEditingStateReader =
         remember(state.instanceId, editorSessionId) { SlockTextFieldNativeEditingStateReader() }
+    val nativeEditingStateReader = externalNativeEditingStateReader ?: ownedNativeEditingStateReader
     val sendSnapshotGate =
         remember(state.instanceId, editorSessionId) { ThreadComposerSendSnapshotGate() }
     val submittedEchoFence = remember(state.instanceId) { ThreadComposerSubmittedEchoFence() }
