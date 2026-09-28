@@ -3775,10 +3775,13 @@ private fun ThreadPageScreen(
                 nativeAdaptiveNavigation = { action, requestId, token ->
                     bridge.adaptiveNavigation(action, requestId, token)
                 },
+                dispatchAdaptiveCommit = { requestId, token ->
+                    bridge.dispatchAdaptiveCommit(requestId, token)
+                },
                 captureLatestDraft = captureLatestDraftForAdoption@{ requestId ->
                     val capture =
                         adaptiveInitiationCaptureHolder.captureLatestDraft
-                            ?: return@captureLatestDraftForAdoption false
+                            ?: return@captureLatestDraftForAdoption null
                     capture(requestId)
                 },
                 captureAnchor = captureAnchorForAdoption@{ requestId ->
@@ -5370,7 +5373,9 @@ private fun ThreadMessageVisualCard(
  * the *current* providers rather than a stale closure.
  */
 internal class ThreadAdaptiveInitiationCaptureHolder {
-    var captureLatestDraft: (suspend (requestId: String) -> Boolean)? = null
+    // Returns the text actually persisted to the durable draft (the version snapshot the
+    // pre-commit fence compares against), or null when the read/persist barrier failed.
+    var captureLatestDraft: (suspend (requestId: String) -> String?)? = null
     var captureAnchor: ((requestId: String) -> SharedAdaptiveScrollAnchor?)? = null
 }
 
@@ -7110,21 +7115,23 @@ private fun SharedThreadRouteContentContent(
                                 }
                             continuation.resume(text)
                         }
-                    } ?: return@captureLatestDraft false
+                    } ?: return@captureLatestDraft null
                 val changeReceipt =
                     runCatchingPreservingCancellation {
                         composerDraftViewModel.acceptQueued(
                             SharedThreadComposerDraftIntent.Change(seedText = nativeText)
                         )
-                    }.getOrElse { return@captureLatestDraft false }
+                    }.getOrElse { return@captureLatestDraft null }
                 // A queued-but-rejected Change means the draft projection did not accept our
                 // text; persisting after that would durably store the wrong content.
-                if (!changeReceipt.accepted) return@captureLatestDraft false
+                if (!changeReceipt.accepted) return@captureLatestDraft null
                 val flushReceipt =
                     runCatchingPreservingCancellation {
                         composerDraftViewModel.acceptQueued(SharedThreadComposerDraftIntent.Flush)
-                    }.getOrElse { return@captureLatestDraft false }
-                flushReceipt.accepted
+                    }.getOrElse { return@captureLatestDraft null }
+                // The persisted text is the version snapshot; the pre-commit fence compares
+                // a later live read against it to detect mid-flight edits.
+                if (flushReceipt.accepted) nativeText else null
             }
         }
         onDispose {

@@ -58,8 +58,11 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     private inner class Fixture(
         val nativeReplies: MutableMap<String, JSONObject?> = mutableMapOf(),
         val nativeCalls: MutableList<Triple<String, String, String?>> = mutableListOf(),
-        val draftResult: Boolean = true,
+        val commitDispatches: MutableList<Pair<String, String?>> = mutableListOf(),
+        // Texts returned by successive captureLatestDraft calls; null = capture failure.
+        val draftResults: MutableList<String?> = mutableListOf("draft"),
     ) {
+        var draftCaptureCount = 0
         val anchorStore = SharedAdaptiveScrollAnchorStore()
         val eventBus = SlockEnhancedNotifyCenter
         val posted = mutableListOf<Pair<String, JSONObject>>()
@@ -85,7 +88,13 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                     self.nativeCalls += Triple(action, requestId, token)
                     self.nativeReplies[action]
                 },
-                captureLatestDraft = { self.draftResult },
+                dispatchAdaptiveCommit = { requestId, token ->
+                    self.nativeCalls += Triple("commit", requestId, token)
+                    self.commitDispatches += requestId to token
+                },
+                captureLatestDraft = {
+                    self.draftResults.getOrElse(self.draftCaptureCount++) { null }
+                },
                 captureAnchor = { requestId -> self.anchorCapture?.copy(requestId = requestId) },
             )
         }
@@ -93,7 +102,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
 
     @Test
     fun draftCaptureFailureAbortsBeforePrepare(): Unit = runBlocking {
-        val fixture = Fixture(draftResult = false)
+        val fixture = Fixture(draftResults = mutableListOf(null))
         val outcome =
             fixture.initiator().initiate(identity, launchPayload, windowFact, requestId = "r1")
 
@@ -159,7 +168,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             crossProcess = false,
             source = "test",
         )
-        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.Committed, outcome.await())
+        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.CommitDispatched, outcome.await())
         assertEquals(
             listOf(Triple("prepare", "r4", null), Triple("commit", "r4", "one-shot")),
             fixture.nativeCalls
@@ -199,7 +208,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             crossProcess = false,
             source = "test",
         )
-        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.Committed, outcome.await())
+        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.CommitDispatched, outcome.await())
     }
 
     @Test
@@ -218,12 +227,15 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                 fixture.nativeCalls += Triple(action, requestId, token)
                 fixture.nativeReplies[action]
             },
+            dispatchAdaptiveCommit = { requestId, token ->
+                fixture.nativeCalls += Triple("commit", requestId, token)
+            },
             captureLatestDraft = {
                 // Hold the receipt until well after initiate() would otherwise reach prepare;
                 // the receipt must be the durable-persist barrier, not enqueue admission.
                 gate.await()
                 draftReturnObservedNativeCalls = fixture.nativeCalls.size
-                true
+                "draft"
             },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
@@ -246,7 +258,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             crossProcess = false,
             source = "test",
         )
-        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.Committed, outcome.await())
+        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.CommitDispatched, outcome.await())
         assertEquals(
             listOf(Triple("prepare", "r6", null), Triple("commit", "r6", "one-shot")),
             fixture.nativeCalls
@@ -265,10 +277,13 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             nowEpochMillis = { 0L },
             nativeAdaptiveNavigation = { action, requestId, token ->
                 fixture.nativeCalls += Triple(action, requestId, token)
-                if (action == "commit") throw IllegalStateException("bridge gone")
                 fixture.nativeReplies[action]
             },
-            captureLatestDraft = { true },
+            dispatchAdaptiveCommit = { requestId, token ->
+                fixture.nativeCalls += Triple("commit", requestId, token)
+                throw IllegalStateException("bridge gone")
+            },
+            captureLatestDraft = { "draft" },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
         val outcome = async { initiator.initiate(identity, launchPayload, windowFact, "r7") }
@@ -284,7 +299,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             crossProcess = false,
             source = "test",
         )
-        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.Committed, outcome.await())
+        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.CommitDispatched, outcome.await())
         // Commit dispatch failed after the shell accepted and mounted the destination: the
         // staged anchor must NOT be discarded — it is the only recovery record for the
         // viewport if the destination is already up and the source is gone. Settlement
@@ -374,7 +389,10 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                 fixture.nativeCalls += Triple(action, requestId, token)
                 fixture.nativeReplies[action]
             },
-            captureLatestDraft = { true },
+            dispatchAdaptiveCommit = { requestId, token ->
+                fixture.nativeCalls += Triple("commit", requestId, token)
+            },
+            captureLatestDraft = { "draft" },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
         val outcome = async {
@@ -413,7 +431,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             crossProcess = false,
             source = "test",
         )
-        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.Committed, outcome.await())
+        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.CommitDispatched, outcome.await())
         assertEquals(
             listOf(Triple("prepare", "r9", null), Triple("commit", "r9", "one-shot")),
             fixture.nativeCalls
@@ -435,7 +453,10 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                 fixture.nativeCalls += Triple(action, requestId, token)
                 fixture.nativeReplies[action]
             },
-            captureLatestDraft = { true },
+            dispatchAdaptiveCommit = { requestId, token ->
+                fixture.nativeCalls += Triple("commit", requestId, token)
+            },
+            captureLatestDraft = { "draft" },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
         val outcome = async {
@@ -480,7 +501,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             crossProcess = false,
             source = "test",
         )
-        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.Committed, outcome.await())
+        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.CommitDispatched, outcome.await())
     }
 
     @Test
@@ -497,7 +518,10 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                 fixture.nativeCalls += Triple(action, requestId, token)
                 fixture.nativeReplies[action]
             },
-            captureLatestDraft = { true },
+            dispatchAdaptiveCommit = { requestId, token ->
+                fixture.nativeCalls += Triple("commit", requestId, token)
+            },
+            captureLatestDraft = { "draft" },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
         val outcome = async {
@@ -544,7 +568,10 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                 fixture.nativeCalls += Triple(action, requestId, token)
                 fixture.nativeReplies[action]
             },
-            captureLatestDraft = { true },
+            dispatchAdaptiveCommit = { requestId, token ->
+                fixture.nativeCalls += Triple("commit", requestId, token)
+            },
+            captureLatestDraft = { "draft" },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
         val outcome = async {
@@ -604,7 +631,10 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                 fixture.nativeCalls += Triple(action, requestId, token)
                 fixture.nativeReplies[action]
             },
-            captureLatestDraft = { true },
+            dispatchAdaptiveCommit = { requestId, token ->
+                fixture.nativeCalls += Triple("commit", requestId, token)
+            },
+            captureLatestDraft = { "draft" },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
         val outcome = async {
@@ -637,7 +667,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             crossProcess = false,
             source = "test",
         )
-        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.Committed, outcome.await())
+        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.CommitDispatched, outcome.await())
         assertEquals(
             listOf(Triple("prepare", "r13", null), Triple("commit", "r13", "one-shot")),
             fixture.nativeCalls
@@ -645,7 +675,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     }
 
     @Test
-    fun preCommitDraftRecaptureFailureCancelsPreparedTransaction(): Unit = runBlocking {
+    fun preCommitDraftReadFailureCancelsPreparedTransaction(): Unit = runBlocking {
         val fixture = Fixture()
         fixture.nativeReplies["prepare"] = preparedReply()
         var draftCalls = 0
@@ -659,10 +689,13 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                 fixture.nativeCalls += Triple(action, requestId, token)
                 fixture.nativeReplies[action]
             },
+            dispatchAdaptiveCommit = { requestId, token ->
+                fixture.nativeCalls += Triple("commit", requestId, token)
+            },
             captureLatestDraft = {
                 draftCalls += 1
                 // Second capture (the pre-commit fence) fails → must not dispatch commit.
-                draftCalls < 2
+                if (draftCalls < 2) "draft" else null
             },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
@@ -679,7 +712,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             crossProcess = false,
             source = "test",
         )
-        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.DraftCaptureFailed, outcome.await())
+        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.DraftDrifted, outcome.await())
         assertEquals(2, draftCalls)
         assertEquals(
             listOf(Triple("prepare", "r14", null), Triple("cancel", "r14", "one-shot")),
@@ -687,6 +720,62 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             "commit must not be dispatched when the pre-commit draft re-capture fails",
         )
         // Anchor retained for recovery — the destination may already be mounted.
+        assertNotNull(fixture.anchorStore.peek(shellId, identity))
+    }
+
+    @Test
+    fun editorTypedDuringAckWaitCancelsCommitAsDrift(): Unit = runBlocking {
+        // Jony regression: capture persists A → destination restores A and reports READY →
+        // user types B in the source editor → ACK arrives → the transaction must cancel,
+        // never commit with a destination still showing A while B is durably persisted.
+        val fixture = Fixture(
+            draftResults = mutableListOf("draft-A", "draft-A-with-B")
+        )
+        fixture.nativeReplies["prepare"] = preparedReply()
+        val initiator = fixture.initiator()
+        val outcome =
+            async {
+                initiator.initiate(
+                    identity,
+                    launchPayload,
+                    windowFact,
+                    "r15",
+                    awaitReadyBeforeCommit = true,
+                )
+            }
+        yield()
+        fixture.eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+            eventData =
+                JSONObject()
+                    .put("shellInstanceId", shellId)
+                    .put("requestId", "r15")
+                    .put("accepted", true)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 71.0),
+            crossProcess = false,
+            source = "test",
+        )
+        // Destination restored draft-A and reported READY for this generation.
+        fixture.eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+            eventData =
+                JSONObject()
+                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, identity.key)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 71.0),
+            crossProcess = false,
+            source = "test",
+        )
+        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.DraftDrifted, outcome.await())
+        assertEquals(
+            listOf(Triple("prepare", "r15", null), Triple("cancel", "r15", "one-shot")),
+            fixture.nativeCalls,
+            "mid-flight edit must cancel the prepared transaction — never commit a stale restore",
+        )
+        assertTrue(
+            fixture.commitDispatches.isEmpty(),
+            "commit must not be dispatched after the editor drifted",
+        )
+        // Source page + the newer draft survive; the staged anchor stays for recovery.
         assertNotNull(fixture.anchorStore.peek(shellId, identity))
     }
 }

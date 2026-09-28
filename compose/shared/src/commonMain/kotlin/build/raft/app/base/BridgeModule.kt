@@ -435,6 +435,21 @@ internal class BridgeModule : Module() {
             }
         }
 
+    /**
+     * Fire-and-forget commit dispatch for the adaptive detail migration (task #18). iOS
+     * deliberately never invokes a source callback for `commit` — the renderer may be torn
+     * down mid-pop — so this must NOT suspend on `adaptiveNavigation`. The authoritative
+     * result is the `slockAdaptiveNativeCommitResult` event on the target shell.
+     */
+    fun dispatchAdaptiveCommit(requestId: String, token: String?) {
+        val methodArgs =
+            JSONObject()
+                .put("action", "commit")
+                .put("requestId", requestId)
+        if (token != null) methodArgs.put("token", token)
+        callNativeMethod("adaptiveNavigation", methodArgs, null)
+    }
+
     suspend fun openAttachment(
         url: String,
         attachmentId: String,
