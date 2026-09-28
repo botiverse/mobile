@@ -11,6 +11,39 @@ The operating model is **fixed date and quality, variable scope**. A feature
 that misses the evidence cutoff leaves the train; the train does not lower its
 quality gate or silently move its date to keep that feature.
 
+## Release closeout and Notion ledger
+
+The first release operation, before branch creation, freeze or CI dispatch,
+is to create the version instance in
+[Mobile Release History](https://app.notion.com/p/36c5aa6ce9a74939b56c5913dbc94075)
+from its Mobile Release SOP template. Record owner, scope, branch and exact
+source; maintain platform build, QA, approval and distribution states during
+execution. A chat receipt does not replace this ledger. If a record is added
+late, label it retrospective; never mark missing pre-release steps complete.
+After an authorized release, update the ledger and publish the installation
+link, platform availability and unresolved limitations in `#raft-mobile`.
+Internal TestFlight, external review pending and public availability are
+separate states.
+
+When the owner closes a version, stop both merges and new builds for that
+version. Reconcile accepted release-only fixes into `main` through reviewed
+PRs, then close redundant backports. Protect the closed release branch with
+an active exact-ref update/deletion/non-fast-forward restriction and no bypass
+actors. Record the rule, accountable owner and explicit revocation condition;
+reopening requires a new owner directive. Preserve the branch and artifacts.
+For the next version, select a reviewed `main` commit and create a new release
+branch at that time; do not reuse the closed branch. Existing store-review
+follow-up remains separate from building a new carrier, and open defects stay
+open until the next candidate passes the required product verification.
+
+Current owner decision (artin, 2026-09-28 17:22–17:24 UTC):
+`release/1.12.0` is closed to merges and new builds. All subsequent fixes go to
+`main`; the next version is `1.12.1`, with `release/1.12.1` created when its
+candidate is selected. GitHub ruleset `24130656` locks the old branch until
+explicitly revoked by the release owner. Android `11200904` remains a test
+draft and is no longer awaiting publication. The existing slash-named
+branches above are the owner's explicit naming convention for these trains.
+
 ## Roles
 
 - **Release owner** sets the date, delivery intent, scope, and exceptions.
