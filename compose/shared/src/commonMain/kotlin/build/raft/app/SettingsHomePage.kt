@@ -5766,22 +5766,26 @@ private fun SlockAppShellReadyContent(
                                         Modifier
                                             .weight(1f)
                                             .fillMaxHeight()
-                                            // task #22: a floating bottom tab dock draws above the
-                                            // embedded thread page and would swallow its composer
-                                            // taps; lift the detail slot above the dock band while
-                                            // keeping the same stable slot across transitions.
-                                            .padding(
-                                                bottom =
-                                                    shellScope.embeddedChildBottomInset(
-                                                        showAppShellBottomTabs
-                                                    )
-                                            )
                                 ) {
                                     if (selection != null || dualPane) {
                                         // The detail host stays in this stable slot across wide/compact
                                         // transitions so the native child controller, draft and scroll
                                         // state are retained rather than remounted by branch movement.
-                                        detailPane(Modifier.fillMaxSize())
+                                        // task #22: a floating bottom tab dock draws above the
+                                        // embedded thread page and would swallow its composer taps;
+                                        // lift only the detail slot above the dock band — the list
+                                        // pane keeps its own bottom content padding so compact lists
+                                        // still scroll beneath the bar.
+                                        detailPane(
+                                            Modifier
+                                                .fillMaxSize()
+                                                .padding(
+                                                    bottom =
+                                                        shellScope.embeddedChildBottomInset(
+                                                            showAppShellBottomTabs
+                                                        )
+                                                )
+                                        )
                                     } else {
                                         homeListPane(active)
                                     }

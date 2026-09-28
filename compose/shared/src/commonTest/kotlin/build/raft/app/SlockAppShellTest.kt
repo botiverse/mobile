@@ -823,6 +823,19 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun embeddedChildInsetNeverGoesNegativeWhenDockBandShrinksBelowSafeArea() {
+        val scope =
+            SlockAppShellScope(
+                topSafeArea = 24.dp,
+                bottomSafeArea = 24.dp,
+                bottomTabBarContentInset = 10.dp,
+                bottomTabBarOverlaysContent = true
+            )
+
+        assertEquals(0.dp, scope.embeddedChildBottomInset(includeBottomTabBar = true))
+    }
+
+    @Test
     fun androidBottomSafeAreaKeepsGestureNavigationInsetUnlessHostExcludesIt() {
         assertEquals(0f, resolveSlockBottomSafeAreaDp(hostExcludesNavigationBar = true, nativeDp = 48f, hostDp = 48f))
         assertEquals(24f, resolveSlockBottomSafeAreaDp(hostExcludesNavigationBar = false, nativeDp = 24f, hostDp = 0f))

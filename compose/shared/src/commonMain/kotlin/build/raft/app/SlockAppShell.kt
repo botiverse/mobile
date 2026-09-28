@@ -75,7 +75,7 @@ internal data class SlockAppShellScope(
     fun embeddedChildBottomInset(includeBottomTabBar: Boolean): Dp =
         when {
             !includeBottomTabBar -> 0.dp
-            bottomTabBarOverlaysContent -> bottomTabBarContentInset - bottomSafeArea
+            bottomTabBarOverlaysContent -> (bottomTabBarContentInset - bottomSafeArea).coerceAtLeast(0.dp)
             else -> 0.dp
         }
 }
