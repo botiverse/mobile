@@ -54,6 +54,9 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
 @property (nonatomic, assign) BOOL childActive;
 @property (nonatomic, assign) BOOL childVisible;
 @property (nonatomic, assign) BOOL appWantsSnapshot;
+@property (nonatomic, assign) BOOL adaptivePreparationScheduled;
+
+- (void)scheduleAdaptivePreparation;
 
 @end
 
@@ -119,6 +122,44 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
     }
 }
 
+- (void)setFrame:(CGRect)frame {
+    [super setFrame:frame];
+    [self scheduleAdaptivePreparation];
+}
+
+// A covered navigation host is detached from UIWindow: it receives a frame but
+// UIKit need not run its pending layout. Prepare only the adaptive destination,
+// after the current prop batch, without manufacturing appearance or activation.
+- (void)scheduleAdaptivePreparation {
+    if (self.adaptivePreparationScheduled || ![self.pageName isEqualToString:@"compose_thread"]) return;
+    self.adaptivePreparationScheduled = YES;
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self) return;
+        self.adaptivePreparationScheduled = NO;
+        // Read live ownership/props after the asynchronous boundary. A removed
+        // host or one rebound to an ordinary page must not create a child.
+        if (!self.superview || ![self.pageName isEqualToString:@"compose_thread"] ||
+            CGRectGetWidth(self.bounds) <= 0 || CGRectGetHeight(self.bounds) <= 0) return;
+        NSData *json = [self.pageDataText dataUsingEncoding:NSUTF8StringEncoding];
+        id value = json ? [NSJSONSerialization JSONObjectWithData:json options:0 error:nil] : nil;
+        if (![value isKindOfClass:NSDictionary.class]) return;
+        NSDictionary *data = value;
+        id generation = data[@"slockAdaptiveDetailGeneration"];
+        id shell = data[@"slockAdaptiveDetailShellId"];
+        if (![generation isKindOfClass:NSNumber.class] || [generation longLongValue] <= 0 ||
+            ![shell isKindOfClass:NSString.class] || [shell length] == 0) return;
+        [self setNeedsLayout];
+        [self layoutIfNeeded];
+    });
+}
+
+- (void)didMoveToSuperview {
+    [super didMoveToSuperview];
+    if (self.superview) [self scheduleAdaptivePreparation];
+}
+
 - (void)layoutSubviews {
     [super layoutSubviews];
     self.contentContainerView.frame = self.bounds;
@@ -172,6 +213,7 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
     }
     self.pageName = pageName;
     [self resetChildIfAttached];
+    [self scheduleAdaptivePreparation];
 }
 
 - (void)updatePageDataText:(NSString *)pageDataText {
@@ -180,6 +222,7 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
     }
     self.pageDataText = pageDataText.length > 0 ? pageDataText : @"{}";
     [self resetChildIfAttached];
+    [self scheduleAdaptivePreparation];
 }
 
 - (void)updateGlassStyle:(NSString *)glassStyle {
