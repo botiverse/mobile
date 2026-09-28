@@ -34,17 +34,35 @@ internal class SlockAdaptiveDetailOpenInitiator(
     private val eventBus: SlockEventBus,
     private val nowEpochMillis: () -> Long,
     private val nativeAdaptiveNavigation: suspend (action: String, requestId: String, token: String?) -> JSONObject?,
-    private val captureLatestDraft: suspend (requestId: String) -> Boolean,
+    /**
+     * Fire-and-forget commit dispatch (iOS never calls a source callback for commit —
+     * the renderer may be torn down mid-pop). Separate from [nativeAdaptiveNavigation]
+     * precisely so nothing in this orchestration suspends waiting for a reply that can
+     * never arrive.
+     */
+    private val dispatchAdaptiveCommit: (requestId: String, token: String?) -> Unit,
+    private val captureLatestDraft: suspend (requestId: String) -> String?,
     private val captureAnchor: (requestId: String) -> SharedAdaptiveScrollAnchor?,
     private val log: (String) -> Unit = {},
     private val logWarn: (String) -> Unit = {},
 ) {
     enum class Outcome {
-        /** Commit was handed to the native layer; the result event settles the adoption. */
-        Committed,
+        /**
+         * Commit was *dispatched* to the native layer — never a success signal. The
+         * `slockAdaptiveNativeCommitResult` event on the target shell is the only authority;
+         * it settles the pending entry and consumes the staged anchor. Consumers must not
+         * clear anchor/pending state or trigger success follow-ups off this value.
+         */
+        CommitDispatched,
         RejectedByShell,
         PrepareFailed,
         DraftCaptureFailed,
+        /**
+         * Live editor text drifted from the prepared snapshot (or the pre-commit re-read
+         * failed) during ACK/READY wait — the transaction was cancelled, the source page
+         * and the newer draft survive for a fresh attempt.
+         */
+        DraftDrifted,
         AckTimeout,
         ReadyTimeout,
         Aborted,
@@ -94,7 +112,9 @@ internal class SlockAdaptiveDetailOpenInitiator(
             }
             // Latest editor value must reach the durable draft before prepare: after the
             // source pops, the destination restores from the persisted draft, not the editor.
-            if (!captureLatestDraft(requestId)) {
+            // The returned text is the version snapshot the pre-commit fence compares against.
+            val preparedDraftText = captureLatestDraft(requestId)
+            if (preparedDraftText == null) {
                 logWarn(
                     "adaptive_initiate_draft_capture_failed requestId=$requestId " +
                         "identity=${identity.key}"
@@ -255,38 +275,38 @@ internal class SlockAdaptiveDetailOpenInitiator(
                     return Outcome.ReadyTimeout
                 }
             }
-            // Pre-commit editor fence: a change between capture and commit would restore an
-            // older draft on the destination while the newer edit died with the popped source.
-            // The cheap honest fence is re-capture — same barrier semantics (native read +
-            // Change+Flush receipt); a failure here aborts the transaction honestly rather
-            // than gambling on stale state.
-            if (!captureLatestDraft(requestId)) {
+            // Pre-commit editor VERSION fence: re-read the live native editor and compare
+            // with the text persisted at prepare time. A blind re-persist would silently
+            // store keystrokes typed during ACK/READY while the destination already restored
+            // the older draft — cross-page drift. On any drift or read failure, cancel and
+            // keep the source page + the (newer) draft for a fresh attempt.
+            val preCommitDraftText = captureLatestDraft(requestId)
+            if (preCommitDraftText == null || preCommitDraftText != preparedDraftText) {
                 logWarn(
                     "adaptive_initiate_precommit_drift requestId=$requestId " +
+                        "readFailed=${preCommitDraftText == null} " +
+                        "drift=${preCommitDraftText != preparedDraftText} " +
                         "identity=${identity.key}"
                 )
                 runCatching {
                     nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token)
                 }
-                return Outcome.DraftCaptureFailed
+                return Outcome.DraftDrifted
             }
-            // Commit is DISPATCH-ONLY: iOS deliberately never invokes a source callback for
-            // commit — the renderer may be torn down mid-pop. Suspending for a reply would
-            // deadlock inFlightRequestId. The authoritative result is the
-            // slockAdaptiveNativeCommitResult event on the target shell; the shell settles
-            // the pending entry and consumes the staged anchor. Bound the dispatch so a
-            // wedged bridge can't hold the flight slot forever.
+            // Commit is DISPATCH-ONLY with no source callback: iOS deliberately never invokes
+            // one — the renderer may be torn down mid-pop — so there is no suspend point here
+            // at all. The authoritative result is the slockAdaptiveNativeCommitResult event
+            // on the target shell; the shell settles the pending entry and consumes the
+            // staged anchor.
             runCatching {
-                withTimeoutOrNull(COMMIT_DISPATCH_TIMEOUT_MILLIS) {
-                    nativeAdaptiveNavigation(ACTION_COMMIT, requestId, token)
-                }
+                dispatchAdaptiveCommit(requestId, token)
             }.onFailure { error ->
                 logWarn(
                     "adaptive_initiate_commit_dispatch_failed requestId=$requestId " +
                         "type=${error::class.simpleName} identity=${identity.key}"
                 )
             }
-            return Outcome.Committed
+            return Outcome.CommitDispatched
         } finally {
             readySubscription?.close()
             if (inFlightRequestId == requestId) inFlightRequestId = null
@@ -308,8 +328,5 @@ internal class SlockAdaptiveDetailOpenInitiator(
         const val PREPARED_STATUS = "prepared"
         const val DEFAULT_ACK_TIMEOUT_MILLIS = 10_000L
         const val DEFAULT_READY_TIMEOUT_MILLIS = 10_000L
-        // iOS never invokes a source callback for commit; bound the dispatch so the flight
-        // slot releases even if the bridge wedges. The event receipt is the authority.
-        const val COMMIT_DISPATCH_TIMEOUT_MILLIS = 3_000L
     }
 }
