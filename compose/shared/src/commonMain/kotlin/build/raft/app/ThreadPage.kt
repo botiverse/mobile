@@ -228,6 +228,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -16916,6 +16917,8 @@ private data class ThreadMessagesListData(
     val adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest?,
     val adaptiveStoreScope: SlockShellStoreScope,
     val adaptiveEventBus: SlockEventBus?,
+    /** Shared READY-posted flag owned by ThreadChatTabContent (A4 detail contract). */
+    val adaptiveReadyPosted: MutableState<Boolean>?,
 )
 
 /** task #346: callback payload of [ThreadMessagesList]. See ThreadMessagesListData. */
@@ -17014,7 +17017,8 @@ fun ThreadMessagesList(
     onVisibleReadTailChange: (Int?) -> Unit = {},
     adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest? = null,
     adaptiveStoreScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
-    adaptiveEventBus: SlockEventBus? = null
+    adaptiveEventBus: SlockEventBus? = null,
+    adaptiveReadyPosted: MutableState<Boolean>? = null
 )
  {
     ThreadMessagesListContent(
