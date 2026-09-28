@@ -93,7 +93,10 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                     self.commitDispatches += requestId to token
                 },
                 captureLatestDraft = {
-                    self.draftResults.getOrElse(self.draftCaptureCount++) { null }
+                    // Repeat the last supplied text for calls beyond the list — the pre-commit
+                    // version fence always re-reads once more than tests explicitly stage.
+                    val index = self.draftCaptureCount++
+                    self.draftResults.getOrNull(index) ?: self.draftResults.lastOrNull()
                 },
                 captureAnchor = { requestId -> self.anchorCapture?.copy(requestId = requestId) },
             )
