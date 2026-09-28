@@ -506,6 +506,15 @@ private fun HomeActivityRouterContent(
                 }
             }
         }
+    } else if (detailOnly && detailPageData != null) {
+        // Compact + live selection = DetailOnly (Home's presentation contract): the detail
+        // takes the whole surface; the list stays parked in the workspace, not remounted.
+        SlockKuiklyChildPage(
+            pageName = THREAD_PAGE,
+            pageData = detailPageData,
+            modifier = Modifier.fillMaxSize(),
+            active = true,
+        )
     } else {
         activityListPane(true)
     }
