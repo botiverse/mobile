@@ -131,6 +131,7 @@ import build.raft.app.data.SharedTaskReferenceResolutionSource
 import build.raft.app.data.TaskSnapshot
 import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.SharedAdaptiveScrollAnchor
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
@@ -332,6 +333,7 @@ import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -362,6 +364,7 @@ import kotlinx.serialization.Transient
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlin.coroutines.resume
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.random.Random
@@ -1655,6 +1658,14 @@ internal fun threadHeaderDisplayTitle(
 
 @Page(THREAD_PAGE, supportInLocal = true)
 internal class ComposeThreadPage : AuthenticatedProductPager(AuthenticatedProductRoute.Thread) {
+    /**
+     * Latest host window fact (A4 adoption, task #18). Standalone thread pages are the only
+     * initiation source: the fact is captured here at the pager boundary and reduced by the
+     * screen so a DualPane arrival can trigger one guarded prepare/commit transaction.
+     */
+    private var adaptivePaneState by mutableStateOf(SlockAdaptivePaneState())
+    private var adaptivePaneEvent by mutableStateOf<SlockAdaptivePaneEvent?>(null)
+
     override fun willInit() {
         super.willInit()
         setAuthenticatedContent {
@@ -1662,11 +1673,19 @@ internal class ComposeThreadPage : AuthenticatedProductPager(AuthenticatedProduc
                 Box(modifier = focusDismissModifier.fillMaxSize()) {
                     ThreadPageScreen(
                         pageVisibleTick = slockPageVisibleResumeTick,
-                        pageVisible = slockPageVisible
+                        pageVisible = slockPageVisible,
+                        adaptivePaneState = adaptivePaneState,
+                        adaptivePaneEvent = adaptivePaneEvent,
                     )
                 }
             }
         }
+    }
+
+    override fun onSlockAdaptivePaneChanged(eventData: JSONObject) {
+        val event = eventData.toSlockAdaptivePaneEventOrNull() ?: return
+        adaptivePaneState = reduceSlockAdaptivePane(adaptivePaneState, event)
+        adaptivePaneEvent = event
     }
 }
 
@@ -3677,7 +3696,9 @@ private fun KuiklyThreadTab.toSlockTabSpec(): SlockTabSpec<KuiklyThreadTab> =
 @Composable
 private fun ThreadPageScreen(
     pageVisibleTick: Int,
-    pageVisible: Boolean
+    pageVisible: Boolean,
+    adaptivePaneState: SlockAdaptivePaneState = SlockAdaptivePaneState(),
+    adaptivePaneEvent: SlockAdaptivePaneEvent? = null,
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
@@ -3726,6 +3747,76 @@ private fun ThreadPageScreen(
     }
     val hasExplicitShellScope = remember(params.toString()) {
         params.slockShellStoreScopeOrNull() != null
+    }
+
+    // A4 adoption (task #18): only a standalone page initiates — an embedded detail child
+    // carries an explicit close request or an explicit shell scope. The capture callbacks live
+    // on this holder; the deep thread surface registers its editor reader + viewport anchor
+    // providers once its state objects exist, so the trigger here stays scope-free.
+    val isStandaloneThreadPage =
+        adaptiveCloseRequest == null && !hasExplicitShellScope
+    val adaptiveInitiationEnabled =
+        params.optBoolean(SLOCK_ADAPTIVE_INITIATION_ENABLED, false)
+    val adaptiveInitiationCaptureHolder =
+        remember { ThreadAdaptiveInitiationCaptureHolder() }
+    val adaptiveNativeEditingStateReader =
+        remember { SlockTextFieldNativeEditingStateReader() }
+    val adaptiveDetailOpenInitiator =
+        remember(storeScope.shellInstanceId, pager.pagerId) {
+            if (!isStandaloneThreadPage) return@remember null
+            SlockAdaptiveDetailOpenInitiator(
+                shellInstanceId = storeScope.shellInstanceId,
+                hostId = "pager:${pager.pagerId}",
+                anchorStore = sharedStores.adaptiveScrollAnchorStore(storeScope),
+                eventBus = sharedStores.eventBus,
+                nowEpochMillis = { System.currentTimeMillis() },
+                nativeAdaptiveNavigation = { action, requestId, token ->
+                    bridge.adaptiveNavigation(action, requestId, token)
+                },
+                captureLatestDraft = captureLatestDraftForAdoption@{ requestId ->
+                    val capture =
+                        adaptiveInitiationCaptureHolder.captureLatestDraft
+                            ?: return@captureLatestDraftForAdoption false
+                    capture(requestId)
+                },
+                captureAnchor = captureAnchorForAdoption@{ requestId ->
+                    adaptiveInitiationCaptureHolder.captureAnchor?.invoke(requestId)
+                },
+                log = { message -> bridge.log("adaptive_initiate $message") },
+                logWarn = { message -> bridge.logWarn("adaptive_initiate $message") },
+            )
+        }
+    LaunchedEffect(adaptivePaneEvent, adaptiveInitiationEnabled, isStandaloneThreadPage) {
+        val event = adaptivePaneEvent ?: return@LaunchedEffect
+        if (!adaptiveInitiationEnabled || !isStandaloneThreadPage) return@LaunchedEffect
+        val initiator = adaptiveDetailOpenInitiator ?: return@LaunchedEffect
+        if (reduceSlockAdaptivePane(adaptivePaneState, event).layout !=
+            SlockAdaptivePaneLayout.DualPane
+        ) {
+            return@LaunchedEffect
+        }
+        val launchPayload =
+            parsedPayload.toWireThreadLaunchPayloadOrNull() ?: return@LaunchedEffect
+        val identity =
+            launchPayload.toSlockAdaptiveDetailIdentity(
+                serverId =
+                    threadParentNavigationServerId(null)
+                        ?: storeScope.initialServerId
+                        ?: run {
+                            bridge.logWarn(
+                                "adaptive_initiate_skip reason=no_server_id pager=${pager.pagerId}"
+                            )
+                            return@LaunchedEffect
+                        }
+            ) ?: return@LaunchedEffect
+        val outcome =
+            initiator.initiate(
+                identity = identity,
+                launchPayload = launchPayload,
+                windowFact = event.toSlockAdaptiveOpenWindowFact(System.currentTimeMillis()),
+                requestId = "adopt-${pager.pagerId}-${event.capturedAtMillisOrNow()}",
+            )
+        bridge.log("adaptive_initiate_outcome outcome=$outcome identity=${identity.key}")
     }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
@@ -3956,6 +4047,10 @@ private fun ThreadPageScreen(
         }
         openPage()
     }
+    CompositionLocalProvider(
+        LocalThreadAdaptiveInitiationCapture provides adaptiveInitiationCaptureHolder,
+        LocalThreadAdaptiveNativeEditingReader provides adaptiveNativeEditingStateReader,
+    ) {
     SharedThreadRouteContent(
         initialPayload = payload,
         timeContextProvider = liveTimeContextProvider,
@@ -4111,6 +4206,7 @@ private fun ThreadPageScreen(
             )
         }
     )
+    }
 }
 
 @Composable
@@ -5264,6 +5360,36 @@ private fun ThreadMessageVisualCard(
  * implementation frame small enough to verify. Same shape as task #346's
  * ThreadPageContentData/ThreadPageContentCallbacks and PR #2453.
  */
+/**
+ * Indirection between the A4 initiator (constructed at the standalone ThreadPageScreen level)
+ * and the thread surface internals that only exist deep inside composition: the native editor
+ * reader, the message list state and the composer draft store. The deep surface registers
+ * providers once those objects exist; the initiator invokes them per requestId. Keeping the
+ * holder reference-stable across recomposition means the in-flight initiator always reaches
+ * the *current* providers rather than a stale closure.
+ */
+internal class ThreadAdaptiveInitiationCaptureHolder {
+    var captureLatestDraft: (suspend (requestId: String) -> Boolean)? = null
+    var captureAnchor: ((requestId: String) -> SharedAdaptiveScrollAnchor?)? = null
+}
+
+/** Present only inside a standalone thread page wired for A4 adoption. */
+internal val LocalThreadAdaptiveInitiationCapture =
+    compositionLocalOf<ThreadAdaptiveInitiationCaptureHolder?> { null }
+
+/**
+ * Native-editing reader shared between the page-level adoption initiator and the composer
+ * leaf so "latest draft" reads go through the same binding the editor writes — no second
+ * UIKit walk, no stale value. Null outside an A4-wired standalone page.
+ */
+internal val LocalThreadAdaptiveNativeEditingReader =
+    compositionLocalOf<SlockTextFieldNativeEditingStateReader?> { null }
+
+private fun SlockAdaptivePaneEvent.capturedAtMillisOrNow(): Long =
+    // Facts carry no capture stamp of their own; the requestId only needs a stable unique
+    // component per delivered fact — the delivery order is the freshness sequence.
+    (widthPx.toLong() shl 32) xor heightPx.toLong() xor System.identityHashCode(this).toLong()
+
 private data class SharedThreadRouteContentData(
     val initialPayload: KuiklyThreadScreenPayload,
     val timeContextProvider: SlockTimeContextProvider,
@@ -6958,6 +7084,48 @@ private fun SharedThreadRouteContentContent(
     DisposableEffect(composerDraftViewModel, threadInstanceKey) {
         onDispose {
             composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
+        }
+    }
+    // A4 adoption (task #18): register the draft-persist barrier + viewport anchor providers
+    // with the holder the page-level initiator calls. Registration is keyed on the objects
+    // themselves so a rotated detail never serves a stale provider.
+    val adaptiveNativeEditingStateReader = LocalThreadAdaptiveNativeEditingReader.current
+    val adaptiveInitiationCaptureHolder = LocalThreadAdaptiveInitiationCapture.current
+    DisposableEffect(
+        adaptiveInitiationCaptureHolder,
+        adaptiveNativeEditingStateReader,
+        composerDraftViewModel,
+        threadInstanceKey,
+    ) {
+        val holder = adaptiveInitiationCaptureHolder
+        val reader = adaptiveNativeEditingStateReader
+        if (holder != null && reader != null) {
+            holder.captureLatestDraft = captureLatestDraft@{ _ ->
+                val nativeText =
+                    suspendCancellableCoroutine<String?> { continuation ->
+                        reader.readCurrentValue { readResult ->
+                            val text =
+                                (readResult as? SlockTextFieldNativeEditingStateReadResult.Available)
+                                    ?.value?.text
+                            continuation.resume(text)
+                        }
+                    }
+                if (nativeText != null) {
+                    runCatchingPreservingCancellation {
+                        composerDraftViewModel.acceptQueued(
+                            SharedThreadComposerDraftIntent.Change(seedText = nativeText)
+                        )
+                    }.getOrElse { return@captureLatestDraft false }
+                }
+                runCatchingPreservingCancellation {
+                    composerDraftViewModel.acceptQueued(SharedThreadComposerDraftIntent.Flush)
+                }.isSuccess
+            }
+        }
+        onDispose {
+            if (holder != null && holder.captureLatestDraft != null) {
+                holder.captureLatestDraft = null
+            }
         }
     }
     LaunchedEffect(composerDraftViewModel, threadInstanceKey) {
@@ -14696,7 +14864,9 @@ private fun ThreadPageContentContent(
                                     if (nextInset != composerKeyboardInsetDp) {
                                         composerKeyboardInsetDp = nextInset
                                     }
-                                }
+                                },
+                                adaptiveNativeEditingStateReader =
+                                    LocalThreadAdaptiveNativeEditingReader.current
                             )
                         }
                     }
@@ -17242,6 +17412,36 @@ private fun ThreadMessagesListContent(
     var latestLocalSendBottomAnchorActiveKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     val userScrollGeneration = remember(threadInstanceKey) { ThreadUserScrollGeneration() }
+    // A4 adoption (task #18): the viewport anchor provider is registered here — the only
+    // place listState/timelineSlice/userScrollGeneration coexist. The page-level initiator
+    // calls it under the request fence; a null holder (embedded detail child, or A4 gate
+    // off upstream) leaves this a no-op.
+    val adaptiveInitiationCaptureHolder = LocalThreadAdaptiveInitiationCapture.current
+    // timelineSlice recomposes per frame; the provider must always see the latest slice.
+    val latestTimelineSlice by rememberUpdatedState(timelineSlice)
+    DisposableEffect(adaptiveInitiationCaptureHolder, threadInstanceKey) {
+        val holder = adaptiveInitiationCaptureHolder
+        if (holder != null) {
+            holder.captureAnchor = anchor@{ requestId ->
+                val first =
+                    listState.threadFirstVisibleMessageAnchor(
+                        timelineSlice = latestTimelineSlice,
+                        userScrollGeneration = userScrollGeneration.value,
+                    ) ?: return@anchor null
+                SharedAdaptiveScrollAnchor(
+                    requestId = requestId,
+                    messageId = first.messageId,
+                    messageOffsetPx = first.offset,
+                    fallbackIndex = listState.firstVisibleItemIndex,
+                    atLatest = !listState.canScrollForward,
+                    capturedAtMillis = System.currentTimeMillis(),
+                )
+            }
+        }
+        onDispose {
+            if (holder != null) holder.captureAnchor = null
+        }
+    }
     var lastComposerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(composerKeyboardInsetDp) }
     // task #990 kill-switch: the kill-switch gates run inside long-lived
     // coroutines (the focused session's watch loop, the origin correction's
