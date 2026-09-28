@@ -35,6 +35,18 @@ internal data class PendingAdaptiveDetailOpen(
     val detailGeneration: Long,
     /** Wall-clock capture stamp of the fact that justified this request (freshness fence). */
     val windowFactCapturedAtMillis: Long,
+    /**
+     * True once the destination reported READY and the shell acked — the request then waits on
+     * the native commit receipt; the staged scroll anchor is consumed only on `committed`.
+     */
+    val acknowledged: Boolean = false,
+    /**
+     * Native controller identities reported by the source after a successful prepare (via
+     * `slockAdaptiveDetailPrepared`). The commit receipt is matched against these, so a stray
+     * or cross-instance result cannot settle this request.
+     */
+    val sourceControllerToken: String? = null,
+    val targetControllerToken: String? = null,
 )
 
 /**
