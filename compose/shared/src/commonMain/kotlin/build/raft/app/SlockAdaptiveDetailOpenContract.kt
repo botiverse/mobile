@@ -50,8 +50,16 @@ internal fun SlockEventBus.postAdaptiveTrace(
  * forever. loading and error (or any non-success status) never pass. Anchor restore applies
  * only when the payload is non-empty; an empty payload has no scroll target.
  */
+/**
+ * Resolved thread-load statuses that may drive READY. `content` and `empty` are the parser's
+ * terminal success states (ThreadMessagesParser emits `empty` for a successfully loaded
+ * zero-message thread — Jony's 8th QA proved the real wire status is `empty`, not `success`).
+ * `loading`, `error`, `no_permission` and anything else stay blocked.
+ */
+internal val SlockAdaptiveDetailReadyStatuses = setOf("content", "empty")
+
 internal fun slockAdaptiveDetailReadyAllowed(status: String, messagesCount: Int): Boolean =
-    status == "success"
+    status in SlockAdaptiveDetailReadyStatuses
 
 /** Destination-side READY gate outcome (task #18). */
 internal enum class SlockAdaptiveReadyGate {

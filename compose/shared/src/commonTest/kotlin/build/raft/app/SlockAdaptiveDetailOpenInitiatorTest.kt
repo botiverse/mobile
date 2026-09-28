@@ -971,12 +971,12 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
 
     @Test
     fun readyGateAdmitsSuccessfulEmptyPayload() {
-        assertTrue(slockAdaptiveDetailReadyAllowed(status = "success", messagesCount = 0))
+        assertTrue(slockAdaptiveDetailReadyAllowed(status = "empty", messagesCount = 0))
     }
 
     @Test
     fun readyGateAdmitsSuccessfulNonEmptyPayload() {
-        assertTrue(slockAdaptiveDetailReadyAllowed(status = "success", messagesCount = 42))
+        assertTrue(slockAdaptiveDetailReadyAllowed(status = "content", messagesCount = 42))
     }
 
     @Test
@@ -998,8 +998,8 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     // verify the gate evaluation across the exact sequences a pane child sees.
 
     @Test
-    fun readyGateLoadingToSuccessEmptySequence() {
-        // loading(0) -> success(0): must flip StatusBlocked -> ReadyImmediately so the
+    fun readyGateLoadingToEmptySequence() {
+        // loading(0) -> empty(0): must flip StatusBlocked -> ReadyImmediately so the
         // empty-thread destination posts READY instead of stranding in AckTimeout.
         assertEquals(
             SlockAdaptiveReadyGate.StatusBlocked,
@@ -1007,13 +1007,13 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
         )
         assertEquals(
             SlockAdaptiveReadyGate.ReadyImmediately,
-            evaluateSlockAdaptiveReadyGate(readyPosted = false, status = "success", messagesCount = 0),
+            evaluateSlockAdaptiveReadyGate(readyPosted = false, status = "empty", messagesCount = 0),
         )
     }
 
     @Test
-    fun readyGateLoadingToSuccessNonEmptySequence() {
-        // loading(0) -> success(5): same count bucket change drives re-entry to
+    fun readyGateLoadingToContentSequence() {
+        // loading(0) -> content(5): same count bucket change drives re-entry to
         // RestoreThenReady (anchor restore + READY).
         assertEquals(
             SlockAdaptiveReadyGate.StatusBlocked,
@@ -1021,7 +1021,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
         )
         assertEquals(
             SlockAdaptiveReadyGate.RestoreThenReady,
-            evaluateSlockAdaptiveReadyGate(readyPosted = false, status = "success", messagesCount = 5),
+            evaluateSlockAdaptiveReadyGate(readyPosted = false, status = "content", messagesCount = 5),
         )
     }
 
@@ -1029,7 +1029,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     fun readyGateStaysClosedAfterReadyPosted() {
         assertEquals(
             SlockAdaptiveReadyGate.AlreadyPosted,
-            evaluateSlockAdaptiveReadyGate(readyPosted = true, status = "success", messagesCount = 0),
+            evaluateSlockAdaptiveReadyGate(readyPosted = true, status = "empty", messagesCount = 0),
         )
         assertEquals(
             SlockAdaptiveReadyGate.AlreadyPosted,

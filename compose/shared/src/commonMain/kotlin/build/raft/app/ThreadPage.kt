@@ -16265,6 +16265,85 @@ private fun ThreadChatTabContent(
     val adaptiveStoreScope = data.adaptiveStoreScope
     val adaptiveEventBus = data.adaptiveEventBus
     val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
+    // A4 destination side (task #18, spec §9): READY must post for EVERY resolved branch —
+    // including empty_state, which renders ThreadStateMessage below and never mounts
+    // ThreadMessagesList (Jony's 8th QA: real empty status is "empty", not "success", and
+    // it bypasses the list entirely). The restore leg for non-empty payloads still lives
+    // inside the list where listState exists; both share this flag so READY can't double.
+    val closeReq = adaptiveCloseRequest
+    val adaptivePager = LocalActivity.current.getPager() as Pager
+    val adaptiveSharedStores = remember(adaptivePager) {
+        SlockSharedStoreRegistry.get(Utils.bridgeModule(adaptivePager.pagerId))
+    }
+    val adaptiveReadyPosted = remember(threadInstanceKey) { mutableStateOf(false) }
+    fun postDetailReadyTrace(hop: String, extra: JSONObject.() -> Unit = {}) {
+        val request = closeReq ?: return
+        diagnosticsLogger(
+            formatAdaptiveTraceLine(
+                side = "detail",
+                hop = hop,
+                identityKey = request.identityKey,
+                generation = request.generation,
+                extra =
+                    "routeActive=$routeActive status=${timelineSlice.status} " +
+                        "messagesCount=${timelineSlice.messages.size}",
+            ),
+        )
+        adaptiveEventBus?.postAdaptiveTrace(
+            side = "detail",
+            hop = hop,
+            identityKey = request.identityKey,
+            generation = request.generation,
+        ) {
+            put("routeActive", routeActive)
+            put("status", timelineSlice.status)
+            put("messagesCount", timelineSlice.messages.size)
+            extra()
+        }
+    }
+    LaunchedEffect(closeReq, timelineSlice.status, timelineSlice.messages.size) {
+        val request = closeReq ?: return@LaunchedEffect
+        if (adaptiveReadyPosted.value) return@LaunchedEffect
+        postDetailReadyTrace("effect_enter")
+        when (evaluateSlockAdaptiveReadyGate(
+            adaptiveReadyPosted.value,
+            timelineSlice.status,
+            timelineSlice.messages.size,
+        )) {
+            SlockAdaptiveReadyGate.AlreadyPosted -> return@LaunchedEffect
+            SlockAdaptiveReadyGate.StatusBlocked -> {
+                postDetailReadyTrace("status_gate")
+                return@LaunchedEffect
+            }
+            // Non-empty resolved payload: the list owns anchor restore + READY.
+            SlockAdaptiveReadyGate.RestoreThenReady -> return@LaunchedEffect
+            SlockAdaptiveReadyGate.ReadyImmediately -> Unit
+        }
+        adaptiveSharedStores
+            .adaptiveWorkspaceStore(adaptiveStoreScope)
+            .snapshot()
+            .workspace
+            ?.selection
+            ?.takeIf { sel -> sel.identity.key == request.identityKey }
+            ?: run {
+                postDetailReadyTrace("selection_miss")
+                adaptiveReadyPosted.value = true
+                return@LaunchedEffect
+            }
+        adaptiveReadyPosted.value = true
+        val eventBus = adaptiveEventBus ?: return@LaunchedEffect
+        postDetailReadyTrace("ready_post")
+        eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+            eventData =
+                JSONObject()
+                    .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, request.shellInstanceId)
+                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, request.generation.toDouble()),
+            crossProcess = true,
+            source = "adaptive_detail_ready",
+        )
+    }
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
     val activeReplyDraftParentMessageIds =
@@ -16361,7 +16440,8 @@ private fun ThreadChatTabContent(
                     onThreadContentReady = onThreadContentReady,
                     adaptiveCloseRequest = adaptiveCloseRequest,
                     adaptiveStoreScope = adaptiveStoreScope,
-                    adaptiveEventBus = adaptiveEventBus
+                    adaptiveEventBus = adaptiveEventBus,
+                    adaptiveReadyPosted = adaptiveReadyPosted,
                 )
             } else {
                 ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
@@ -16454,7 +16534,8 @@ private fun ThreadChatTabContent(
                     onThreadContentReady = onThreadContentReady,
                     adaptiveCloseRequest = adaptiveCloseRequest,
                     adaptiveStoreScope = adaptiveStoreScope,
-                    adaptiveEventBus = adaptiveEventBus
+                    adaptiveEventBus = adaptiveEventBus,
+                    adaptiveReadyPosted = adaptiveReadyPosted,
                 )
             } else {
                 LaunchedEffect(threadInstanceKey, timelineSlice.status) {
@@ -16531,7 +16612,8 @@ private fun ThreadChatTabContent(
                 visibleReadTailIndex = visibleReadTailIndex,
                 adaptiveCloseRequest = adaptiveCloseRequest,
                 adaptiveStoreScope = adaptiveStoreScope,
-                adaptiveEventBus = adaptiveEventBus
+                adaptiveEventBus = adaptiveEventBus,
+                adaptiveReadyPosted = adaptiveReadyPosted
             )
     }
 }
@@ -16982,6 +17064,7 @@ fun ThreadMessagesList(
                 adaptiveCloseRequest = adaptiveCloseRequest,
                 adaptiveStoreScope = adaptiveStoreScope,
                 adaptiveEventBus = adaptiveEventBus,
+                adaptiveReadyPosted = adaptiveReadyPosted,
             ),
         callbacks =
             ThreadMessagesListCallbacks(
@@ -17084,17 +17167,17 @@ private fun ThreadMessagesListContent(
     val adaptiveStoreScope = data.adaptiveStoreScope
     val adaptiveEventBus = data.adaptiveEventBus
     val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
-    // A4 destination side (task #18, spec §9): a pane child (adaptiveCloseRequest != null)
-    // posts READY once the thread content resolves so the shell can ack the pending
-    // adoption. This MUST sit above the empty-state early return below — a successfully
-    // loaded empty thread ("No messages yet") otherwise never reaches the READY post and
-    // the shell AckTimeouts (Jony's 7th QA run). loading/error still cannot pass.
+    // A4 destination side (task #18, spec §9): the ReadyImmediately leg lives in
+    // ThreadChatTabContent (empty-state branch never reaches this list); this level owns
+    // the RestoreThenReady leg — anchor restore against the real list state, then READY.
+    // Both share the same posted flag so READY cannot fire twice.
     val closeReq = adaptiveCloseRequest
     val adaptivePager = LocalActivity.current.getPager() as Pager
     val adaptiveSharedStores = remember(adaptivePager) {
         SlockSharedStoreRegistry.get(Utils.bridgeModule(adaptivePager.pagerId))
     }
-    var adaptiveReadyPosted by remember(threadInstanceKey) { mutableStateOf(false) }
+    var localAdaptiveReadyPosted by remember(threadInstanceKey) { mutableStateOf(false) }
+    val adaptiveReadyPosted = data.adaptiveReadyPosted
     fun postDetailReadyTrace(hop: String, extra: JSONObject.() -> Unit = {}) {
         val request = closeReq ?: return
         diagnosticsLogger(
@@ -17119,57 +17202,6 @@ private fun ThreadMessagesListContent(
             put("messagesCount", timelineSlice.messages.size)
             extra()
         }
-    }
-    LaunchedEffect(closeReq, timelineSlice.status, timelineSlice.messages.size, adaptiveReadyPosted) {
-        val request = closeReq ?: return@LaunchedEffect
-        if (adaptiveReadyPosted) return@LaunchedEffect
-        postDetailReadyTrace("effect_enter")
-        // Gate: success is READY even with zero messages (empty thread); loading and
-        // error states never pass.
-        when (evaluateSlockAdaptiveReadyGate(
-            adaptiveReadyPosted,
-            timelineSlice.status,
-            timelineSlice.messages.size,
-        )) {
-            SlockAdaptiveReadyGate.AlreadyPosted -> return@LaunchedEffect
-            SlockAdaptiveReadyGate.StatusBlocked -> {
-                postDetailReadyTrace("status_gate")
-                return@LaunchedEffect
-            }
-            SlockAdaptiveReadyGate.RestoreThenReady -> return@LaunchedEffect // continue below
-            SlockAdaptiveReadyGate.ReadyImmediately -> Unit
-        }
-        val identity =
-            adaptiveSharedStores
-                .adaptiveWorkspaceStore(adaptiveStoreScope)
-                .snapshot()
-                .workspace
-                ?.selection
-                ?.takeIf { sel -> sel.identity.key == request.identityKey }
-                ?.identity
-            ?: run {
-                postDetailReadyTrace("selection_miss")
-                adaptiveReadyPosted = true
-                return@LaunchedEffect
-            }
-        // Anchor restore happens below once listState exists; an empty payload has no
-        // scroll target, so READY can post immediately.
-        if (timelineSlice.messages.isEmpty()) {
-            adaptiveReadyPosted = true
-            val eventBus = adaptiveEventBus ?: return@LaunchedEffect
-            postDetailReadyTrace("ready_post")
-            eventBus.post(
-                eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
-                eventData =
-                    JSONObject()
-                        .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, request.shellInstanceId)
-                        .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
-                        .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, request.generation.toDouble()),
-                crossProcess = true,
-                source = "adaptive_detail_ready",
-            )
-        }
-        // Non-empty payload: the restore+READY path continues after listState is created.
     }
     if (timelineSlice.messages.isEmpty() && timelineSlice.originStatus == "none") {
         LaunchedEffect(threadInstanceKey, timelineSlice.status) {
@@ -17346,12 +17378,13 @@ private fun ThreadMessagesListContent(
     // staged record is deliberately NOT consumed here: the shell consumes it only when the
     // native commit receipt reports `committed`, so a rejected or failed transfer keeps the
     // anchor available for a retry.
-    LaunchedEffect(closeReq, renderPayload.status, renderPayload.messages.size, adaptiveReadyPosted) {
+    LaunchedEffect(closeReq, renderPayload.status, renderPayload.messages.size) {
         val request = closeReq ?: return@LaunchedEffect
-        if (adaptiveReadyPosted) return@LaunchedEffect
+        val posted = adaptiveReadyPosted?.value ?: localAdaptiveReadyPosted
+        if (posted) return@LaunchedEffect
         if (
             evaluateSlockAdaptiveReadyGate(
-                adaptiveReadyPosted,
+                posted,
                 renderPayload.status,
                 renderPayload.messages.size,
             ) != SlockAdaptiveReadyGate.RestoreThenReady
@@ -17369,7 +17402,11 @@ private fun ThreadMessagesListContent(
                 ?.identity
             ?: run {
                 postDetailReadyTrace("selection_miss")
-                adaptiveReadyPosted = true
+                if (adaptiveReadyPosted != null) {
+                    adaptiveReadyPosted.value = true
+                } else {
+                    localAdaptiveReadyPosted = true
+                }
                 return@LaunchedEffect
             }
         val anchorStore = adaptiveSharedStores.adaptiveScrollAnchorStore(adaptiveStoreScope)
@@ -17396,7 +17433,11 @@ private fun ThreadMessagesListContent(
                 listState.scrollToItem(anchor.fallbackIndex, anchor.messageOffsetPx)
             }
         }
-        adaptiveReadyPosted = true
+        if (adaptiveReadyPosted != null) {
+            adaptiveReadyPosted.value = true
+        } else {
+            localAdaptiveReadyPosted = true
+        }
         val eventBus = adaptiveEventBus ?: return@LaunchedEffect
         postDetailReadyTrace("ready_post")
         eventBus.post(
