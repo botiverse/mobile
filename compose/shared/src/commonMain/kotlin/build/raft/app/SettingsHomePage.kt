@@ -3244,62 +3244,86 @@ private fun SlockAppShellReadyContent(
                     }
                 }
             }
+        fun processAdaptiveReady(eventData: JSONObject?) {
+            val shellId = eventData?.optString(SLOCK_ADAPTIVE_DETAIL_SHELL_ID)?.trim()
+                ?: return
+            if (shellId != storeScope.shellInstanceId) return
+            val identityKey = eventData.optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY).trim()
+            val generation =
+                eventData.optDouble(SLOCK_ADAPTIVE_DETAIL_GENERATION, 0.0).toLong()
+            if (identityKey.isBlank() || generation <= 0L) return
+            postShellAdaptiveTrace(
+                hop = "ready_received",
+                identityKey = identityKey,
+                generation = generation,
+            )
+            val session = adaptiveWorkspaceStore.snapshot()
+            val (nextSession, pending) =
+                completeSlockAdaptiveDetailOpen(
+                    identityKey = identityKey,
+                    generation = generation,
+                    session = session,
+                )
+            if (pending == null) {
+                postShellAdaptiveTrace(
+                    hop = "ready_no_pending",
+                    identityKey = identityKey,
+                    generation = generation,
+                )
+                return
+            }
+            adaptiveWorkspaceStore.update { nextSession }
+            // READY means the destination restored and mounted; ack authorizes the source to
+            // attempt the native commit. The staged anchor is NOT consumed here — it is
+            // consumed only on the native commit receipt (see the commit-result subscription
+            // below), so a rejected or failed commit keeps the recovery record.
+            if (pending.acknowledged) return
+            postShellAdaptiveTrace(
+                hop = "ack_sent",
+                identityKey = pending.identity.key,
+                generation = generation,
+                requestId = pending.requestId,
+            )
+            sharedStores.eventBus.post(
+                eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+                eventData =
+                    SlockAdaptiveDetailOpenAck(
+                        shellInstanceId = storeScope.shellInstanceId,
+                        requestId = pending.requestId,
+                        accepted = true,
+                        generation = generation,
+                    ).toJson(),
+                crossProcess = true,
+                source = "adaptive_detail_open_ready",
+            )
+        }
+        // QA carrier only: delay exactly the first valid READY to exercise the real
+        // timeout/cancel/retry paths. Product code does not contain this injection.
+        var qaReadyDelayed = false
+        var qaDelayedReadyJob: kotlinx.coroutines.Job? = null
+        val qaReadyDelayMillis = pager.pageData.params
+            .optInt("slockQaDelayFirstAdaptiveReadyMs", 0).coerceIn(0, 30_000).toLong()
         val readySubscription =
             sharedStores.eventBus.observe(
                 eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
                 crossProcess = true,
             ) { eventData ->
-                val shellId = eventData?.optString(SLOCK_ADAPTIVE_DETAIL_SHELL_ID)?.trim()
-                    ?: return@observe
-                if (shellId != storeScope.shellInstanceId) return@observe
-                val identityKey = eventData.optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY).trim()
-                val generation =
-                    eventData.optDouble(SLOCK_ADAPTIVE_DETAIL_GENERATION, 0.0).toLong()
-                if (identityKey.isBlank() || generation <= 0L) return@observe
-                postShellAdaptiveTrace(
-                    hop = "ready_received",
-                    identityKey = identityKey,
-                    generation = generation,
-                )
-                val session = adaptiveWorkspaceStore.snapshot()
-                val (nextSession, pending) =
-                    completeSlockAdaptiveDetailOpen(
-                        identityKey = identityKey,
-                        generation = generation,
-                        session = session,
-                    )
-                if (pending == null) {
-                    postShellAdaptiveTrace(
-                        hop = "ready_no_pending",
-                        identityKey = identityKey,
-                        generation = generation,
-                    )
-                    return@observe
+                val validForThisShell = eventData != null &&
+                    eventData.optString(SLOCK_ADAPTIVE_DETAIL_SHELL_ID).trim() == storeScope.shellInstanceId &&
+                    eventData.optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY).isNotBlank() &&
+                    eventData.optDouble(SLOCK_ADAPTIVE_DETAIL_GENERATION, 0.0) > 0
+                if (qaReadyDelayMillis > 0 && !qaReadyDelayed && validForThisShell) {
+                    qaReadyDelayed = true
+                    val captured = eventData!!.toString()
+                    bridge.log("adaptive_qa ready_delayed generation=${eventData.optDouble(SLOCK_ADAPTIVE_DETAIL_GENERATION, 0.0)} delayMs=$qaReadyDelayMillis")
+                    qaDelayedReadyJob = appShellCoroutineScope.launch {
+                        delay(qaReadyDelayMillis)
+                        bridge.log("adaptive_qa ready_delivered_after_delay")
+                        processAdaptiveReady(JSONObject(captured))
+                    }
+                } else {
+                    processAdaptiveReady(eventData)
                 }
-                adaptiveWorkspaceStore.update { nextSession }
-                // READY means the destination restored and mounted; ack authorizes the source to
-                // attempt the native commit. The staged anchor is NOT consumed here — it is
-                // consumed only on the native commit receipt (see the commit-result subscription
-                // below), so a rejected or failed commit keeps the recovery record.
-                if (pending.acknowledged) return@observe
-                postShellAdaptiveTrace(
-                    hop = "ack_sent",
-                    identityKey = pending.identity.key,
-                    generation = generation,
-                    requestId = pending.requestId,
-                )
-                sharedStores.eventBus.post(
-                    eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
-                    eventData =
-                        SlockAdaptiveDetailOpenAck(
-                            shellInstanceId = storeScope.shellInstanceId,
-                            requestId = pending.requestId,
-                            accepted = true,
-                            generation = generation,
-                        ).toJson(),
-                    crossProcess = true,
-                    source = "adaptive_detail_open_ready",
-                )
             }
         // Source-side cancel notice (task #18 hardening): drops exactly the named pending request
         // and its staged anchor so a READY arriving after the source gave up resolves to
@@ -3372,15 +3396,17 @@ private fun SlockAppShellReadyContent(
                         result = result,
                         session = session,
                     )
+                bridge.log("adaptive_commit_receipt requestId=${result.requestId} status=${result.status} reason=${result.reason} matched=${pending != null} pendingBefore=${session.pendingDetailOpens.size}")
                 if (pending == null) return@observe
                 val anchorStore = sharedStores.adaptiveScrollAnchorStore(storeScope)
                 if (result.committed) {
                     adaptiveWorkspaceStore.update { nextSession }
-                    anchorStore.consume(
+                    val consumed = anchorStore.consume(
                         shellInstanceId = storeScope.shellInstanceId,
                         identity = pending.identity,
                         requestId = pending.requestId,
                     )
+                    bridge.log("adaptive_commit_settled requestId=${result.requestId} pendingAfter=${adaptiveWorkspaceStore.snapshot().pendingDetailOpens.size} anchorConsumed=${consumed != null}")
                 } else {
                     // Keep the pending entry and the staged anchor: a rejected/timed-out commit
                     // may mean the native pop already happened but the stack readback failed —
@@ -3425,6 +3451,7 @@ private fun SlockAppShellReadyContent(
             }
         onDispose {
             openSubscription.close()
+            qaDelayedReadyJob?.cancel()
             readySubscription.close()
             cancelSubscription.close()
             preparedSubscription.close()

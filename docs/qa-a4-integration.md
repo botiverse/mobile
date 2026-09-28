@@ -1,7 +1,7 @@
-# Test-only A4 integration revision 11 — DO NOT MERGE
+# Test-only A4 integration revision 12 — DO NOT MERGE
 
-Shared PR2730: d1421b4a7040e5c20b350d6337dc2bf0d35931cd (rebased main includes layout 2727/2728).
-Native PR2731: 6c31dfbfec76b59cee54bc7b16aa6d9bc3791ebe.
+Shared PR2730: 8bda31aab4885e847e69e941c4e72aeaf96ef85c (rebased main includes layout 2727/2728).
+Native PR2731: 4d1628e4779a9fd593dce0d84c98b822084b0b1c.
 
 This QA branch alone sets the source initiation default and nativeGuardedCommitAvailable true.
 Product branches retain disabled gates. Launch AppShell workspace/Rail flags on in the existing isolated iPad.
@@ -27,3 +27,21 @@ Revision 9 moves empty READY above the outer ThreadChatTabContent status dispatc
 Revision 10 adds Debug-only native stage diagnostics for adaptive detail child hosts (pageData, frame, layout, attach, load and visibility state). Revision 9 times out while covered and posts READY/ACK only after manual Back. No lifecycle, mounting or commit behavior is changed; probes distinguish missing layout/attachment from post-attachment lifecycle suspension. Shared source remains d1421b4a7.
 
 Revision 11 is a QA-only native preparation experiment: a valid adaptive detail host explicitly lays itself out after frame/props/parent arrival, even while its navigation controller is detached. Work is coalesced on the main queue and rechecks live parent, dimensions and adaptive envelope; it does not call appearance methods or change active. Revision 10 positively captured nonzero frame with child=0 until manual Back triggered first layout. Shared remains d1421b4a7 to isolate this change; newer cancellation cleanup is not yet integrated. Nonempty scroll/final geometry still require separate verification.
+
+Revision 12 integrates reviewed shared cancellation (8bda31aab) and binds native
+preparation to product PR2731 head 4d1628e47. Revision 11 reached hidden READY/ACK,
+CommitDispatched and automatic Home return with original draft, without manual
+Back. It did not independently observe native receipt settlement.
+
+QA-only diagnostics now log parsed commit receipt status/matching and successful
+pending removal/anchor consumption. Optional launch pageData
+`slockQaDelayFirstAdaptiveReadyMs=30000` delays processing exactly the first valid
+READY in the existing shell coroutine scope; the captured event is delivered to
+the same production processing function afterward. Default 0 leaves delivery
+synchronous. Disposing the shell subscription cancels the delayed job. This is
+fault injection for the real 10-second source timeout/cancel and later retry:
+wait for first AckTimeout/open_cancelled, narrow then widen to create the new
+request, then observe old generation READY hitting ready_no_pending. No fake
+receipt or ACK is created; subsequent READY delivery is normal. Reset the app
+with flag 0 for ordinary-path validation. Neither this QA hook nor diagnostic
+probes are proposed in the product PR. Physical coverage remains NOT RUN.
