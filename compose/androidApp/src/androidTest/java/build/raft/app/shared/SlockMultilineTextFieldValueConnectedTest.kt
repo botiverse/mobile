@@ -62,10 +62,12 @@ class SlockMultilineTextFieldValueConnectedTest {
                     assertTrue(editor.movementMethod === SlockArrowKeyMovementMethod)
                     val cursor = value.length / 2
                     editor.setSelection(cursor)
-                    val connection = BaseInputConnection(editor, true)
+                    val connection = editor.requireInputConnection()
                     if (value.isNotEmpty()) assertTrue(connection.setComposingRegion(0, 1))
                     val composingStart = BaseInputConnection.getComposingSpanStart(editor.text)
                     val composingEnd = BaseInputConnection.getComposingSpanEnd(editor.text)
+                    assertEquals(if (value.isEmpty()) -1 else 0, composingStart)
+                    assertEquals(if (value.isEmpty()) -1 else 1, composingEnd)
                     editor.dispatchSelectionTouch(MotionEvent.ACTION_DOWN)
                     // No selecting DOWN was sent. A modifier arriving mid-gesture makes
                     // Android read a missing anchor on UP, even though the cursor is valid.
