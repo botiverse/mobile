@@ -17084,7 +17084,85 @@ private fun ThreadMessagesListContent(
     val adaptiveStoreScope = data.adaptiveStoreScope
     val adaptiveEventBus = data.adaptiveEventBus
     val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
-    if (timelineSlice.messages.isEmpty() && timelineSlice.originStatus == "none") {
+    // A4 destination side (task #18, spec §9): a pane child (adaptiveCloseRequest != null)
+    // posts READY once the thread content resolves so the shell can ack the pending
+    // adoption. This MUST sit above the empty-state early return below — a successfully
+    // loaded empty thread ("No messages yet") otherwise never reaches the READY post and
+    // the shell AckTimeouts (Jony's 7th QA run). loading/error still cannot pass.
+    val closeReq = adaptiveCloseRequest
+    val adaptivePager = LocalActivity.current.getPager() as Pager
+    val adaptiveSharedStores = remember(adaptivePager) {
+        SlockSharedStoreRegistry.get(Utils.bridgeModule(adaptivePager.pagerId))
+    }
+    var adaptiveReadyPosted by remember(threadInstanceKey) { mutableStateOf(false) }
+    fun postDetailReadyTrace(hop: String, extra: JSONObject.() -> Unit = {}) {
+        val request = closeReq ?: return
+        diagnosticsLogger(
+            formatAdaptiveTraceLine(
+                side = "detail",
+                hop = hop,
+                identityKey = request.identityKey,
+                generation = request.generation,
+                extra =
+                    "routeActive=$routeActive status=${timelineSlice.status} " +
+                        "messagesCount=${timelineSlice.messages.size}",
+            ),
+        )
+        adaptiveEventBus?.postAdaptiveTrace(
+            side = "detail",
+            hop = hop,
+            identityKey = request.identityKey,
+            generation = request.generation,
+        ) {
+            put("routeActive", routeActive)
+            put("status", timelineSlice.status)
+            put("messagesCount", timelineSlice.messages.size)
+            extra()
+        }
+    }
+    LaunchedEffect(closeReq, timelineSlice.status, timelineSlice.messages.size, adaptiveReadyPosted) {
+        val request = closeReq ?: return@LaunchedEffect
+        if (adaptiveReadyPosted) return@LaunchedEffect
+        postDetailReadyTrace("effect_enter")
+        // Gate: success is READY even with zero messages (empty thread); loading and
+        // error states never pass.
+        if (!slockAdaptiveDetailReadyAllowed(timelineSlice.status, timelineSlice.messages.size)) {
+            postDetailReadyTrace("status_gate")
+            return@LaunchedEffect
+        }
+        val identity =
+            adaptiveSharedStores
+                .adaptiveWorkspaceStore(adaptiveStoreScope)
+                .snapshot()
+                .workspace
+                ?.selection
+                ?.takeIf { sel -> sel.identity.key == request.identityKey }
+                ?.identity
+            ?: run {
+                postDetailReadyTrace("selection_miss")
+                adaptiveReadyPosted = true
+                return@LaunchedEffect
+            }
+        // Anchor restore happens below once listState exists; an empty payload has no
+        // scroll target, so READY can post immediately.
+        if (timelineSlice.messages.isEmpty()) {
+            adaptiveReadyPosted = true
+            val eventBus = adaptiveEventBus ?: return@LaunchedEffect
+            postDetailReadyTrace("ready_post")
+            eventBus.post(
+                eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+                eventData =
+                    JSONObject()
+                        .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, request.shellInstanceId)
+                        .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
+                        .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, request.generation.toDouble()),
+                crossProcess = true,
+                source = "adaptive_detail_ready",
+            )
+        }
+        // Non-empty payload: the restore+READY path continues after listState is created.
+    }
+
         LaunchedEffect(threadInstanceKey, timelineSlice.status) {
             onThreadContentReady()
         }
@@ -17254,55 +17332,19 @@ private fun ThreadMessagesListContent(
     // The durable anchor remains lifecycle-persisted, while the route-local frontier advances on
     // every visible-window change. This makes the pill converge as the user reads and prevents a
     // locally-sent row that is already on screen from being counted as unread.
-    // A4 destination side (task #18, spec §9): a pane child (adaptiveCloseRequest != null)
-    // restores the staged viewport anchor against its own message ordering — canonical message
-    // id first, list index only as fallback — then posts READY so the shell can ack the pending
-    // adoption. The staged record is deliberately NOT consumed here: the shell consumes it only
-    // when the native commit receipt reports `committed`, so a rejected or failed transfer keeps
-    // the anchor available for a retry. Pages without a staged anchor (entry-redirect opens) still
-    // report READY; the shell ignores it when nothing is pending.
-    val closeReq = adaptiveCloseRequest
-    val adaptivePager = LocalActivity.current.getPager() as Pager
-    val adaptiveSharedStores = remember(adaptivePager) {
-        SlockSharedStoreRegistry.get(Utils.bridgeModule(adaptivePager.pagerId))
-    }
-    var adaptiveReadyPosted by remember(threadInstanceKey) { mutableStateOf(false) }
-    fun postDetailReadyTrace(hop: String, extra: JSONObject.() -> Unit = {}) {
-        val request = closeReq ?: return
-        diagnosticsLogger(
-            formatAdaptiveTraceLine(
-                side = "detail",
-                hop = hop,
-                identityKey = request.identityKey,
-                generation = request.generation,
-                extra =
-                    "routeActive=$routeActive status=${renderPayload.status} " +
-                        "messagesCount=${renderPayload.messages.size}",
-            ),
-        )
-        adaptiveEventBus?.postAdaptiveTrace(
-            side = "detail",
-            hop = hop,
-            identityKey = request.identityKey,
-            generation = request.generation,
-        ) {
-            put("routeActive", routeActive)
-            put("status", renderPayload.status)
-            put("messagesCount", renderPayload.messages.size)
-            extra()
-        }
-    }
+    // Non-empty destination path (continues the READY chain opened above): restore the
+    // staged viewport anchor against this page's message ordering, then post READY. The
+    // staged record is deliberately NOT consumed here: the shell consumes it only when the
+    // native commit receipt reports `committed`, so a rejected or failed transfer keeps the
+    // anchor available for a retry.
     LaunchedEffect(closeReq, renderPayload.messages.size, adaptiveReadyPosted) {
         val request = closeReq ?: return@LaunchedEffect
         if (adaptiveReadyPosted) return@LaunchedEffect
-        // task #28 observability (Jony's AckTimeout): every hop between the effect entry and
-        // the READY post emits its own breadcrumb under the same identity+generation, so a
-        // missing hop tells apart never-ran vs payload-gate vs selection-miss vs layout stall.
-        postDetailReadyTrace("effect_enter")
-        if (renderPayload.status != "success" && renderPayload.messages.isEmpty()) {
-            postDetailReadyTrace("payload_gate")
+        if (!slockAdaptiveDetailReadyAllowed(renderPayload.status, renderPayload.messages.size)) {
             return@LaunchedEffect
         }
+        if (renderPayload.messages.isEmpty()) return@LaunchedEffect
+        postDetailReadyTrace("effect_enter")
         val identity =
             adaptiveSharedStores
                 .adaptiveWorkspaceStore(adaptiveStoreScope)

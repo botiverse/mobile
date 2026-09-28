@@ -43,6 +43,16 @@ internal fun SlockEventBus.postAdaptiveTrace(
 }
 
 /** Mirrors a trace hop into the host diagnostics log line so device-side JSONL sees it. */
+/**
+ * READY gate for the destination side of an A4 adoption (task #18). A successfully loaded
+ * thread reports READY even when it has zero messages — an empty conversation is a valid
+ * terminal state and blocking on `messages.isNotEmpty()` leaves the shell in AckTimeout
+ * forever. loading and error (or any non-success status) never pass. Anchor restore applies
+ * only when the payload is non-empty; an empty payload has no scroll target.
+ */
+internal fun slockAdaptiveDetailReadyAllowed(status: String, messagesCount: Int): Boolean =
+    status == "success"
+
 internal fun formatAdaptiveTraceLine(
     side: String,
     hop: String,

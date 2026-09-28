@@ -965,4 +965,32 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             fixture.nativeCalls,
         )
     }
+
+    // task #18 READY gate (Jony's 7th QA AckTimeout): a successfully loaded empty thread
+    // must still post READY — the empty-state early return used to swallow the whole path.
+
+    @Test
+    fun readyGateAdmitsSuccessfulEmptyPayload() {
+        assertTrue(slockAdaptiveDetailReadyAllowed(status = "success", messagesCount = 0))
+    }
+
+    @Test
+    fun readyGateAdmitsSuccessfulNonEmptyPayload() {
+        assertTrue(slockAdaptiveDetailReadyAllowed(status = "success", messagesCount = 42))
+    }
+
+    @Test
+    fun readyGateRejectsLoadingEmptyPayload() {
+        assertFalse(slockAdaptiveDetailReadyAllowed(status = "loading", messagesCount = 0))
+    }
+
+    @Test
+    fun readyGateRejectsErrorEmptyPayload() {
+        assertFalse(slockAdaptiveDetailReadyAllowed(status = "error", messagesCount = 0))
+    }
+
+    @Test
+    fun readyGateRejectsNonSuccessEvenWithMessages() {
+        assertFalse(slockAdaptiveDetailReadyAllowed(status = "loading", messagesCount = 12))
+    }
 }
