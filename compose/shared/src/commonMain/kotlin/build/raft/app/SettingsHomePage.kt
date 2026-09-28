@@ -3150,6 +3150,31 @@ private fun SlockAppShellReadyContent(
             )
         adaptiveWorkspaceStore.update { current -> current.copy(workspace = next) }
     }
+    fun postShellAdaptiveTrace(
+        hop: String,
+        identityKey: String,
+        generation: Long,
+        requestId: String? = null,
+        extra: JSONObject.() -> Unit = {},
+    ) {
+        bridge.log(
+            formatAdaptiveTraceLine(
+                side = "shell",
+                hop = hop,
+                identityKey = identityKey,
+                generation = generation,
+                requestId = requestId,
+            ),
+        )
+        sharedStores.eventBus.postAdaptiveTrace(
+            side = "shell",
+            hop = hop,
+            identityKey = identityKey,
+            generation = generation,
+            requestId = requestId,
+            extra = extra,
+        )
+    }
     DisposableEffect(sharedStores, storeScope.shellInstanceId) {
         val openSubscription =
             sharedStores.eventBus.observe(
@@ -3159,6 +3184,12 @@ private fun SlockAppShellReadyContent(
                 val request = eventData?.toSlockAdaptiveDetailOpenRequestOrNull()
                     ?: return@observe
                 if (request.shellInstanceId != storeScope.shellInstanceId) return@observe
+                postShellAdaptiveTrace(
+                    hop = "open_received",
+                    identityKey = request.identity.key,
+                    generation = 0L,
+                    requestId = request.requestId,
+                )
                 val session = adaptiveWorkspaceStore.snapshot()
                 val (nextSession, decision) =
                     evaluateSlockAdaptiveDetailOpen(
@@ -3174,6 +3205,12 @@ private fun SlockAppShellReadyContent(
                 }
                 when (decision) {
                     is SlockAdaptiveDetailOpenDecision.Rejected -> {
+                        postShellAdaptiveTrace(
+                            hop = "open_rejected_ack",
+                            identityKey = request.identity.key,
+                            generation = 0L,
+                            requestId = request.requestId,
+                        ) { put("reason", decision.reason) }
                         sharedStores.eventBus.post(
                             eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
                             eventData =
@@ -3198,6 +3235,12 @@ private fun SlockAppShellReadyContent(
                         // Ack is held until the destination pane child reports READY (mount +
                         // draft/viewport restore), not merely received. See the
                         // SLOCK_ADAPTIVE_DETAIL_READY_EVENT subscription below.
+                        postShellAdaptiveTrace(
+                            hop = "open_accepted",
+                            identityKey = request.identity.key,
+                            generation = decision.generation,
+                            requestId = request.requestId,
+                        )
                     }
                 }
             }
@@ -3213,6 +3256,11 @@ private fun SlockAppShellReadyContent(
                 val generation =
                     eventData.optDouble(SLOCK_ADAPTIVE_DETAIL_GENERATION, 0.0).toLong()
                 if (identityKey.isBlank() || generation <= 0L) return@observe
+                postShellAdaptiveTrace(
+                    hop = "ready_received",
+                    identityKey = identityKey,
+                    generation = generation,
+                )
                 val session = adaptiveWorkspaceStore.snapshot()
                 val (nextSession, pending) =
                     completeSlockAdaptiveDetailOpen(
@@ -3220,13 +3268,26 @@ private fun SlockAppShellReadyContent(
                         generation = generation,
                         session = session,
                     )
-                if (pending == null) return@observe
+                if (pending == null) {
+                    postShellAdaptiveTrace(
+                        hop = "ready_no_pending",
+                        identityKey = identityKey,
+                        generation = generation,
+                    )
+                    return@observe
+                }
                 adaptiveWorkspaceStore.update { nextSession }
                 // READY means the destination restored and mounted; ack authorizes the source to
                 // attempt the native commit. The staged anchor is NOT consumed here — it is
                 // consumed only on the native commit receipt (see the commit-result subscription
                 // below), so a rejected or failed commit keeps the recovery record.
                 if (pending.acknowledged) return@observe
+                postShellAdaptiveTrace(
+                    hop = "ack_sent",
+                    identityKey = pending.identity.key,
+                    generation = generation,
+                    requestId = pending.requestId,
+                )
                 sharedStores.eventBus.post(
                     eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
                     eventData =
