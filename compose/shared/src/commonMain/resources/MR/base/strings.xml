@@ -2109,4 +2109,6 @@
     <string name="runtime_form_v2_option_default">Default</string>
     <string name="runtime_form_v2_secret_keep_hint">Leave blank to keep the current value.</string>
     <string name="runtime_form_v2_change_runtime">Change runtime</string>
+    <string name="runtime_form_v2_load_failed">Couldn't load the runtime form (%1$s).</string>
+    <string name="runtime_form_v2_marker">Form protocol v2</string>
 </resources>

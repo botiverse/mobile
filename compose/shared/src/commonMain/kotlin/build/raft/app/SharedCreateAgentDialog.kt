@@ -114,7 +114,7 @@ private sealed interface RuntimeFormV2DialogLoad {
     data object Idle : RuntimeFormV2DialogLoad
     data object Loading : RuntimeFormV2DialogLoad
     data class Ready(val loaded: RuntimeFormV2Loaded) : RuntimeFormV2DialogLoad
-    data object Failed : RuntimeFormV2DialogLoad
+    data class Failed(val code: String) : RuntimeFormV2DialogLoad
 }
 
 /** Runtimes whose create/edit form the server serves over runtime form v2. */
@@ -990,7 +990,8 @@ internal fun SharedCreateAgentDialog(
         ) || builtInV2Offered
     val v2Candidate =
         runtimeFormV2 != null && !external && availableSelectedMachineId != null && runtime in RUNTIME_FORM_V2_RUNTIME_IDS
-    var v2Load by remember(runtimeFormV2, availableSelectedMachineId, runtime, external) {
+    var v2LoadAttempt by remember(runtimeFormV2, availableSelectedMachineId, runtime, external) { mutableStateOf(0) }
+    var v2Load by remember(runtimeFormV2, availableSelectedMachineId, runtime, external, v2LoadAttempt) {
         mutableStateOf<RuntimeFormV2DialogLoad>(if (v2Candidate) RuntimeFormV2DialogLoad.Loading else RuntimeFormV2DialogLoad.Idle)
     }
     val v2Loaded = (v2Load as? RuntimeFormV2DialogLoad.Ready)?.loaded
@@ -1065,13 +1066,15 @@ internal fun SharedCreateAgentDialog(
         }
     }
 
-    LaunchedEffect(runtimeFormV2, availableSelectedMachineId, runtime, external) {
+    LaunchedEffect(runtimeFormV2, availableSelectedMachineId, runtime, external, v2LoadAttempt) {
         val source = runtimeFormV2 ?: return@LaunchedEffect
         val machineId = availableSelectedMachineId ?: return@LaunchedEffect
         if (!v2Candidate) return@LaunchedEffect
         v2Load = when (val result = source.loader.loadCreate(source.serverId, machineId, runtime)) {
             is DataResult.Content -> RuntimeFormV2DialogLoad.Ready(result.data)
-            else -> RuntimeFormV2DialogLoad.Failed
+            is DataResult.Error -> RuntimeFormV2DialogLoad.Failed(result.error.code)
+            is DataResult.NoPermission -> RuntimeFormV2DialogLoad.Failed(result.blocker.code)
+            is DataResult.Empty -> RuntimeFormV2DialogLoad.Failed(result.reason.name)
         }
     }
 
@@ -1437,6 +1440,32 @@ internal fun SharedCreateAgentDialog(
                                 )
                             }
                         }
+                    }
+                }
+                val v2FailureCode = (v2Load as? RuntimeFormV2DialogLoad.Failed)?.code
+                val v1FormMissing =
+                    (runtime == "builtin" && builtInForm == null) ||
+                        (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID && resolvedKimiSdkForm == null)
+                if (!external && v2Candidate && v2FailureCode != null && v1FormMissing) {
+                    // v2 failed and there is no v1 form to fall back to: say so instead of a blank section.
+                    item(key = "runtime-form-v2-failure") {
+                        SlockRaftUiBanner(
+                            status = SlockRaftUiBannerStatus.Warning,
+                            description =
+                                MR.strings.runtime_form_v2_load_failed.format(listOf(v2FailureCode)).localized(),
+                            size = SlockRaftUiBannerSize.Medium,
+                            action = {
+                                SlockBrutalActionButton(
+                                    label = stringResource(MR.strings.common_retry),
+                                    onClick = { v2LoadAttempt += 1 },
+                                    enabled = !submitting,
+                                    leadingIcon = SlockLucideIconName.RefreshCw,
+                                    minWidth = 72.dp,
+                                    minHeight = 32.dp,
+                                    shadowOffset = SlockShadow.BrutalSmall
+                                )
+                            }
+                        )
                     }
                 }
                 if (!external) {
