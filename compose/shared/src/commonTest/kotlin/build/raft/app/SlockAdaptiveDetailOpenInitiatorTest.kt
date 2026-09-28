@@ -520,6 +520,69 @@ class SlockAdaptiveDetailOpenInitiatorTest {
             listOf(Triple("prepare", "r11", null), Triple("cancel", "r11", "one-shot")),
             fixture.nativeCalls
         )
-        assertNull(fixture.anchorStore.peek(shellId, identity))
+        // Anchor is RETAINED on READY timeout: cancel is only dispatched, so if the prepared
+        // transaction already committed natively (late READY lost), the source may still pop —
+        // the staged anchor is then the only recovery record for the viewport.
+        assertNotNull(fixture.anchorStore.peek(shellId, identity))
+    }
+
+    @Test
+    fun lateReadyArrivingAfterTimeoutDoesNotCommit() = runBlocking {
+        val fixture = Fixture()
+        fixture.nativeReplies["prepare"] = preparedReply()
+        val initiator = SlockAdaptiveDetailOpenInitiator(
+            shellInstanceId = shellId,
+            hostId = hostId,
+            anchorStore = fixture.anchorStore,
+            eventBus = fixture.eventBus,
+            nowEpochMillis = { 0L },
+            nativeAdaptiveNavigation = { action, requestId, token ->
+                fixture.nativeCalls += Triple(action, requestId, token)
+                fixture.nativeReplies[action]
+            },
+            captureLatestDraft = { true },
+            captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
+        )
+        val outcome = async {
+            initiator.initiate(
+                identity, launchPayload, windowFact, "r12",
+                awaitReadyBeforeCommit = true,
+                readyTimeoutMillis = 50L,
+            )
+        }
+        yield()
+        fixture.eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+            eventData =
+                JSONObject()
+                    .put("shellInstanceId", shellId)
+                    .put("requestId", "r12")
+                    .put("accepted", true)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 41.0),
+            crossProcess = false,
+            source = "test",
+        )
+        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.ReadyTimeout, outcome.await())
+        // A READY arriving after the timeout must not resurrect the transaction: the initiator
+        // already returned and its subscription is closed; no commit may fire.
+        fixture.eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+            eventData =
+                JSONObject()
+                    .put("shellInstanceId", shellId)
+                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, identity.key)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 41.0),
+            crossProcess = false,
+            source = "test",
+        )
+        yield()
+        assertEquals(
+            listOf(Triple("prepare", "r12", null), Triple("cancel", "r12", "one-shot")),
+            fixture.nativeCalls,
+            "a late READY must not trigger commit after ReadyTimeout",
+        )
+        // Source page is still alive (commit never dispatched) and the anchor survives for a
+        // fresh retry — the original draft/scroll remain recoverable.
+        assertNotNull(fixture.anchorStore.peek(shellId, identity))
     }
 }

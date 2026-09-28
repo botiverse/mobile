@@ -229,16 +229,17 @@ internal class SlockAdaptiveDetailOpenInitiator(
                 val ready =
                     withTimeoutOrNull(readyTimeoutMillis) { readyDeferred.await() }
                 if (ready == null) {
-                    // The destination never reported mounted: surrendering the top slot now
-                    // would strand a blank pane. The shell drops the pending on its own
-                    // timeout; cancel the prepared native transaction and release the anchor
-                    // so nothing half-committed survives.
+                    // The destination never reported mounted. Keep the staged anchor: cancel
+                    // is only *dispatched* to native — if the prepared transaction already
+                    // committed natively (late READY lost), the source may still pop, and the
+                    // staged anchor is then the only recovery record for the viewport. The
+                    // shell's pending entry and this anchor both survive until an explicit
+                    // retry consumes or the shell's drop/reset path discards them.
                     logWarn(
                         "adaptive_initiate_ready_timeout requestId=$requestId " +
                             "generation=$generation timeoutMs=$readyTimeoutMillis " +
                             "identity=${identity.key}"
                     )
-                    discardAnchor(identity, requestId)
                     runCatching {
                         nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token)
                     }
