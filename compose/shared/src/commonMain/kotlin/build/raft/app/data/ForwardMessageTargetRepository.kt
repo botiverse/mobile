@@ -9,6 +9,7 @@ import build.raft.app.model.Message
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.model.messageStreamChannelId
+import build.raft.app.model.preferredAvatarWireValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
@@ -863,7 +864,7 @@ private fun MemberProfile.toForwardMemberCandidate(serverId: ServerId): ForwardM
         id = id.value,
         title = title,
         subtitle = handle.trim().takeIf { it.isNotBlank() }?.let { "@$it" }.orEmpty(),
-        avatarWireValue = avatar?.wireValue ?: avatarUrl,
+        avatarWireValue = preferredAvatarWireValue(avatar, avatarUrl),
         avatarLabel = avatarLabel.ifBlank { title.take(1).uppercase() },
         channelKind = ConversationKind.DirectMessage,
         channelType = "dm",
