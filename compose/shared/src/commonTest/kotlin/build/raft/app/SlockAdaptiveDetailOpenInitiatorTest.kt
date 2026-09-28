@@ -173,7 +173,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                     .put("shellInstanceId", shellId)
                     .put("requestId", "r4")
                     .put("accepted", true)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 7.0),
+                    .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 7.0),
             crossProcess = false,
             source = "test",
         )
@@ -213,7 +213,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                     .put("shellInstanceId", shellId)
                     .put("requestId", "r5")
                     .put("accepted", true)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 3.0),
+                    .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 3.0),
             crossProcess = false,
             source = "test",
         )
@@ -266,7 +266,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                     .put("shellInstanceId", shellId)
                     .put("requestId", "r6")
                     .put("accepted", true)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 5.0),
+                    .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 5.0),
             crossProcess = false,
             source = "test",
         )
@@ -310,7 +310,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                     .put("shellInstanceId", shellId)
                     .put("requestId", "r7")
                     .put("accepted", true)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 6.0),
+                    .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 6.0),
             crossProcess = false,
             source = "test",
         )
@@ -427,7 +427,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                     .put("shellInstanceId", shellId)
                     .put("requestId", "r9")
                     .put("accepted", true)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 11.0),
+                    .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 11.0),
             crossProcess = false,
             source = "test",
         )
@@ -445,7 +445,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                 JSONObject()
                     .put("shellInstanceId", shellId)
                     .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, identity.key)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 11.0),
+                    .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 11.0),
             crossProcess = false,
             source = "test",
         )
@@ -494,7 +494,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                     .put("shellInstanceId", shellId)
                     .put("requestId", "r10")
                     .put("accepted", true)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 21.0),
+                    .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 21.0),
             crossProcess = false,
             source = "test",
         )
@@ -506,7 +506,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                 JSONObject()
                     .put("shellInstanceId", shellId)
                     .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, identity.key)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 4.0),
+                    .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 4.0),
             crossProcess = false,
             source = "test",
         )
@@ -518,7 +518,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                 JSONObject()
                     .put("shellInstanceId", shellId)
                     .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, identity.key)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 21.0),
+                    .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 21.0),
             crossProcess = false,
             source = "test",
         )
@@ -563,7 +563,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                     .put("shellInstanceId", shellId)
                     .put("requestId", "r11")
                     .put("accepted", true)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 31.0),
+                    .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 31.0),
             crossProcess = false,
             source = "test",
         )
@@ -616,7 +616,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                     .put("shellInstanceId", shellId)
                     .put("requestId", "r12")
                     .put("accepted", true)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 41.0),
+                    .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 41.0),
             crossProcess = false,
             source = "test",
         )
@@ -629,7 +629,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                 JSONObject()
                     .put("shellInstanceId", shellId)
                     .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, identity.key)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 41.0),
+                    .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 41.0),
             crossProcess = false,
             source = "test",
         )
@@ -682,7 +682,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                 JSONObject()
                     .put("shellInstanceId", shellId)
                     .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, identity.key)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 51.0),
+                    .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 51.0),
             crossProcess = false,
             source = "test",
         )
@@ -693,7 +693,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                     .put("shellInstanceId", shellId)
                     .put("requestId", "r13")
                     .put("accepted", true)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 51.0),
+                    .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 51.0),
             crossProcess = false,
             source = "test",
         )
@@ -745,7 +745,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                     .put("shellInstanceId", shellId)
                     .put("requestId", "r14")
                     .put("accepted", true)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 61.0),
+                    .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 61.0),
             crossProcess = false,
             source = "test",
         )
@@ -792,7 +792,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                     .put("shellInstanceId", shellId)
                     .put("requestId", "r15")
                     .put("accepted", true)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 71.0),
+                    .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 71.0),
             crossProcess = false,
             source = "test",
         )
@@ -802,7 +802,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             eventData =
                 JSONObject()
                     .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, identity.key)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 71.0),
+                    .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 71.0),
             crossProcess = false,
             source = "test",
         )
@@ -841,7 +841,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                     .put("shellInstanceId", shellId)
                     .put("requestId", "r16")
                     .put("accepted", true)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 81.0),
+                    .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 81.0),
             crossProcess = false,
             source = "test",
         )

@@ -288,7 +288,9 @@ internal class SlockAdaptiveDetailOpenInitiator(
                             return Outcome.AckTimeout
                         }
                 ackedGeneration = ack.generation
-                if (readyGenerationSeen == ackedGeneration) {
+                // Guard the sentinel: ack.generation parses to 0 when the ACK carried no
+                // generation — 0==0 must not masquerade as a delivered READY.
+                if (ackedGeneration != 0L && readyGenerationSeen == ackedGeneration) {
                     readyDeferred.complete(Unit)
                 }
                 if (!ack.accepted) {
