@@ -468,6 +468,43 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       type: payload['mimeType']
     }).catch((error: BusinessError) => {
       console.error(`KuiklyRender openUrl failed ${error.code}: ${error.message}`);
+      SlockOhosDiagnostics.record(
+        "HRBridgeModule",
+        `openUrl startAbility failed code=${error.code} message=${error.message} url_len=${url.length} -> in-app browser fallback`,
+        Date.now(),
+        "warn"
+      );
+      // Fall back to the Kuikly in-app browser page so the user still sees the link
+      // instead of a silent no-op. Mirrors the Android #2700 fallback to
+      // compose_in_app_browser. RouterAdapter.openPage pushes
+      // params={ pageName, pageData } where pageData itself carries `pageName`
+      // plus the page args — here `url` (SLOCK_IN_APP_BROWSER_URL_KEY,
+      // SlockLinkNavigation.kt:136).
+      // Fallback only applies to http/https — mailto/tel/etc have no in-app
+      // browser representation and stay a silent failure.
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        return;
+      }
+      const inAppPageData: Record<string, Object> = {
+        'pageName': 'compose_in_app_browser',
+        'url': url
+      };
+      try {
+        router.pushUrl({
+          url: 'pages/Index',
+          params: {
+            pageName: 'compose_in_app_browser',
+            pageData: inAppPageData
+          }
+        });
+      } catch (routerError) {
+        SlockOhosDiagnostics.record(
+          "HRBridgeModule",
+          `openUrl in-app browser push failed: ${JSON.stringify(routerError)}`,
+          Date.now(),
+          "error"
+        );
+      }
     });
   }
 
