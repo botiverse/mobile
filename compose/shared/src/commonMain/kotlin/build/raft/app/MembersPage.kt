@@ -9667,6 +9667,9 @@ internal fun membersAgentRuntimeModelDisplayLabel(
             ?.firstOrNull { it.id == normalizedModelId }
             ?.label
             .verifiedDisplayLabel()
+        // The agent genuinely carries this model id; hiding it entirely reads as
+        // "model missing" (task #284). Fall back to the raw id rather than nothing.
+        ?: normalizedModelId
 }
 
 @Composable
