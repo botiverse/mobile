@@ -4879,12 +4879,19 @@ internal fun MembersListContent(
                                 .padding(horizontal = MembersListMachineLabelInset)
                                 .padding(top = SlockSpacing.Xs)
                                 .clickable {
+                                    // Slot stores *collapsed*; toggling writes !collapsed
+                                    // (writing !groupExpanded stored the old value and made the
+                                    // row a no-op — task #409 regression).
+                                    val collapseNow =
+                                        resolveAgentGroupCollapseToggle(
+                                            isAgentGroupCollapsed(group.key)
+                                        )
                                     agentGroupCollapseOverrides =
-                                        agentGroupCollapseOverrides + (group.key to !groupExpanded)
+                                        agentGroupCollapseOverrides + (group.key to collapseNow)
                                     agentGroupCollapseStore?.setCollapsed(
                                         membersCurrentUserId,
                                         group.key,
-                                        !groupExpanded
+                                        collapseNow
                                     )
                                 },
                             verticalAlignment = Alignment.CenterVertically,
@@ -5087,6 +5094,15 @@ internal fun MembersListContent(
  * arrive after the first read — the standalone members page fills its list
  * asynchronously — from silently rendering expanded.
  */
+/**
+ * The collapsed value a machine-group tap should write: the opposite of the
+ * currently resolved collapsed state. Kept as a named pure function because a
+ * previous implementation wrote the non-inverted state, which made taps a
+ * no-op (task #409 regression).
+ */
+internal fun resolveAgentGroupCollapseToggle(currentlyCollapsed: Boolean): Boolean =
+    !currentlyCollapsed
+
 internal fun resolveAgentGroupCollapsed(
     groupKey: String,
     overrides: Map<String, Boolean>,

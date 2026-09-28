@@ -170,6 +170,19 @@ class MembersAgentMachineGroupCollapseTest {
         assertFalse(resolveAgentGroupCollapsed("machine-1", emptyMap(), "user-1", null))
     }
 
+    @Test
+    fun `tap writes the inverted collapsed value so the row actually toggles`() {
+        // Regression for the #409 no-op row: the handler must write the
+        // inverted collapsed state (the current expanded value), not the
+        // current collapsed value back into the slot.
+        assertTrue(resolveAgentGroupCollapseToggle(false))  // expanded -> collapse
+        assertFalse(resolveAgentGroupCollapseToggle(true))  // collapsed -> expand
+        // The value written must differ from the resolved state for any input.
+        for (collapsed in listOf(true, false)) {
+            assertTrue(resolveAgentGroupCollapseToggle(collapsed) != collapsed)
+        }
+    }
+
     private fun member(
         id: String,
         vararg badges: String
