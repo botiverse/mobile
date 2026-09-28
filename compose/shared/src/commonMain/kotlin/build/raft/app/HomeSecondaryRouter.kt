@@ -423,10 +423,26 @@ private fun HomeActivityRouterContent(
             }
         onDispose { subscription.close() }
     }
+    // Explicit teardown: remember state being dropped is not a resource release — the
+    // lease (a shared-registry room subscription) must be returned here so a covered Home
+    // never sees Activity's rooms linger.
+    DisposableEffect(activityWorkspaceStore) {
+        onDispose {
+            releaseActivityAdaptiveLease(
+                environment,
+                activityWorkspaceStore,
+                activityRealtimeEvents,
+                activityRoomLeaseRegistry,
+            )
+        }
+    }
     // Back ordering (task #13): with a mounted detail the first Back dismisses the detail
     // only; the Activity list/page stays until a second Back. Release this surface's own
     // lease — never the covered Home's.
-    SlockBackHandler(enabled = dualPane && selection != null) {
+    // Consume Back whenever a detail is mounted on this surface — DualPane split OR
+    // compact DetailOnly (narrowed with a selection). Narrowing must not strand the
+    // selection behind the list.
+    SlockBackHandler(enabled = selection != null) {
         val current = activityWorkspaceStore.snapshot().workspace ?: return@SlockBackHandler
         val dismissed =
             reduceSlockAdaptiveWorkspace(current, SlockAdaptiveWorkspaceIntent.DismissDetail)
@@ -444,6 +460,11 @@ private fun HomeActivityRouterContent(
             )
         }
     }
+    // Compact + selection = DetailOnly (same contract as Home): the detail takes the whole
+    // surface; the list is retained in the workspace, not remounted. Compact without a
+    // selection stays the plain list.
+    val detailOnly =
+        !dualPane && selection != null && workspace?.presentation == SlockAdaptiveWorkspacePresentation.DetailOnly
     if (dualPane) {
         Row(modifier = Modifier.fillMaxSize()) {
             Box(
