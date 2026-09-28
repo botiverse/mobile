@@ -202,6 +202,57 @@ class SlockAvatarMountedBindingTest {
     }
 
     @Test
+    fun cancelledRefreshStillCommitsDownloadAndWritesNoFailure() = runBlocking {
+        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 50L) }
+        val provider = FakeNativeProvider()
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val downloader = RecordingDownloader.modified(byteArrayOf(7, 8, 9), gate)
+        val binding = binding(store, provider, downloader)
+        val handle = binding.mount(subject(), RemoteUrl)
+        val staleModel = handle.imageModel.value
+
+        val refresh = async { binding.refresh(handle) }
+        yield()
+        assertEquals(1, downloader.calls)
+
+        // Composable churn cancels the awaiting refresh; the detached transport must still commit.
+        // refresh.await() would rethrow JobCancellationException, so only join completion.
+        refresh.cancel()
+        gate.complete(Unit)
+        refresh.join()
+
+        val descriptor = assertNotNull(parseSlockAvatarMountedRenderModel(handle.imageModel.value.orEmpty()))
+        assertNotEquals(staleModel, handle.imageModel.value)
+        assertEquals(store.metadata?.commitIdentity, descriptor.commitIdentity)
+        assertNull(store.failure, "a caller-cancelled refresh must not write a durable failure row")
+        Unit
+    }
+
+    @Test
+    fun cancelledTransportAbandonsFlightWithoutDurableFailure() = runBlocking {
+        // A cancelled transport (downloader-level cancellation, not just a cancelled waiter) must
+        // retire its generation so the slot is clean: no durable failure row, and no permanent
+        // activeFlights entry for a generation nobody will resolve.
+        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 50L) }
+        val provider = FakeNativeProvider()
+        val cancelledDownloader = RecordingDownloader { throw kotlinx.coroutines.CancellationException("row disposed") }
+        val binding = binding(store, provider, cancelledDownloader)
+        val handle = binding.mount(subject(), RemoteUrl)
+
+        binding.refresh(handle)
+
+        assertNull(store.failure, "a cancelled download is not transport evidence")
+        // A follow-up refresh on a still-stale slot must be able to start a brand-new generation
+        // instead of joining the abandoned flight. Drive it with a healthy downloader.
+        val recovered = RecordingDownloader.modified(byteArrayOf(3, 4))
+        val binding2 = binding(store, provider, recovered)
+        val handle2 = binding2.mount(subject(), RemoteUrl)
+        binding2.refresh(handle2)
+        assertNotNull(handle2.imageModel.value)
+        Unit
+    }
+
+    @Test
     fun serverSubjectUsesRequestedOwnerAndFreshDurableModelWithoutNetwork() = runBlocking {
         val cacheOwner = owner()
         val cacheSubject = SlockAvatarCacheSubject.Server(cacheOwner.serverId)
@@ -577,7 +628,10 @@ class SlockAvatarMountedBindingTest {
             session =
                 SlockAvatarMountedSession {
                     (++nonce).toString(16).padStart(64, '0')
-                }
+                },
+            // Tests run refresh transports unconfined so runBlocking callers keep the same
+            // single-threaded interleaving the suite was written against.
+            flightScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined)
         )
     }
 
