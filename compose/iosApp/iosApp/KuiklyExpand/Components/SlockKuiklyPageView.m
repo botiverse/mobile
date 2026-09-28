@@ -1,4 +1,5 @@
 #import "SlockKuiklyPageView.h"
+#import "../Modules/HRBridgeModule.h"
 
 #import <OpenKuiklyIOSRender/KRComponentDefine.h>
 #import <OpenKuiklyIOSRender/KuiklyBaseView.h>
@@ -54,6 +55,8 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
 @property (nonatomic, assign) BOOL childActive;
 @property (nonatomic, assign) BOOL childVisible;
 @property (nonatomic, assign) BOOL appWantsSnapshot;
+
+- (void)slockTraceAdaptiveMount:(NSString *)hop;
 
 @end
 
@@ -119,8 +122,35 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
     }
 }
 
+// QA-only stage probes: observe covered-host preparation without changing lifecycle.
+- (void)slockTraceAdaptiveMount:(NSString *)hop {
+#if DEBUG
+    NSData *json = [self.pageDataText dataUsingEncoding:NSUTF8StringEncoding];
+    if (!json) return;
+    id decoded = [NSJSONSerialization JSONObjectWithData:json options:0 error:nil];
+    if (![decoded isKindOfClass:NSDictionary.class]) return;
+    NSDictionary *data = (NSDictionary *)decoded;
+    NSNumber *generation = data[@"slockAdaptiveDetailGeneration"];
+    if (![generation isKindOfClass:NSNumber.class]) return;
+    NSString *shell = [data[@"slockAdaptiveDetailShellId"] isKindOfClass:NSString.class]
+        ? data[@"slockAdaptiveDetailShellId"] : @"";
+    NSString *message = [NSString stringWithFormat:
+        @"adaptive_mount hop=%@ host=%p shell=%@ generation=%@ page=%@ width=%.1f height=%.1f window=%d parent=%d child=%d active=%d viewAppeared=%d pageAppeared=%d",
+        hop, self, shell, generation, self.pageName ?: @"", self.bounds.size.width,
+        self.bounds.size.height, self.window != nil, self.superview != nil,
+        self.childView != nil, self.childActive, self.viewDidAppear, self.pageDidAppear];
+    SlockIosDiagnosticsRecord(@"info", @"SlockAdaptiveMount", message);
+#endif
+}
+
+- (void)setFrame:(CGRect)frame {
+    [super setFrame:frame];
+    [self slockTraceAdaptiveMount:@"frame_set"];
+}
+
 - (void)layoutSubviews {
     [super layoutSubviews];
+    [self slockTraceAdaptiveMount:@"layout_begin"];
     self.contentContainerView.frame = self.bounds;
     [self applyGlassStyle];
     [self attachChildIfReady];
@@ -144,6 +174,7 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
 }
 
 - (void)onPageLoadComplete:(BOOL)isSucceed error:(NSError *)error mode:(KuiklyContextMode)mode {
+    [self slockTraceAdaptiveMount:isSucceed ? @"load_success" : @"load_failure"];
     if (isSucceed) {
         if (self.loadSuccessCallback) {
             self.loadSuccessCallback(@{});
@@ -179,6 +210,7 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
         return;
     }
     self.pageDataText = pageDataText.length > 0 ? pageDataText : @"{}";
+    [self slockTraceAdaptiveMount:@"page_data"];
     [self resetChildIfAttached];
 }
 
@@ -212,6 +244,7 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
 }
 
 - (void)attachChildIfReady {
+    [self slockTraceAdaptiveMount:@"attach_attempt"];
     if (self.childView || self.pageName.length == 0 || CGRectGetWidth(self.bounds) <= 0 || CGRectGetHeight(self.bounds) <= 0) {
         return;
     }
@@ -222,6 +255,7 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
                                                         frameworkName:SlockKuiklyPageViewFrameworkName];
     childView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.childView = childView;
+    [self slockTraceAdaptiveMount:@"child_created"];
     [self.contentContainerView addSubview:childView];
     [self bringGlassHighlightToFront];
     [self applyGlassStyle];
@@ -360,6 +394,7 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
 }
 
 - (void)syncChildVisibility {
+    [self slockTraceAdaptiveMount:@"visibility_sync"];
     BOOL shouldBeRendered = self.childActive && self.childView != nil;
     BOOL shouldBeLifecycleVisible = shouldBeRendered && self.viewDidAppear && self.pageDidAppear;
     // Keep only the active child's pixels for the system snapshot. Unhiding every

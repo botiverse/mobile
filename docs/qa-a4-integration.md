@@ -1,4 +1,4 @@
-# Test-only A4 integration revision 9 — DO NOT MERGE
+# Test-only A4 integration revision 10 — DO NOT MERGE
 
 Shared PR2730: d1421b4a7040e5c20b350d6337dc2bf0d35931cd (rebased main includes layout 2727/2728).
 Native PR2731: 6c31dfbfec76b59cee54bc7b16aa6d9bc3791ebe.
@@ -23,3 +23,5 @@ Revision 7 adds persistent shell OPEN/READY/ACK and destination effect/payload/l
 Revision 8 moves destination READY above the empty-state return and permits successful empty timelines, retaining loading/error rejection and identity/generation checks. Both effects now key on payload status. Revision 7 accepted OPEN but skipped every detail effect for an empty channel and timed out; re-run the same empty channel before the remaining commit matrix. Native lifecycle and commit guards are unchanged.
 
 Revision 9 moves empty READY above the outer ThreadChatTabContent status dispatch and uses actual parser terminal states empty/content. Revision 8 still bypassed the entire list in empty_state and accepted an unused success status. Shared posted state now connects outer empty readiness to inner nonempty restore readiness; state declarations/import are included. Repeat real compact Home → empty channel → wide before any broader acceptance.
+
+Revision 10 adds Debug-only native stage diagnostics for adaptive detail child hosts (pageData, frame, layout, attach, load and visibility state). Revision 9 times out while covered and posts READY/ACK only after manual Back. No lifecycle, mounting or commit behavior is changed; probes distinguish missing layout/attachment from post-attachment lifecycle suspension. Shared source remains d1421b4a7.
