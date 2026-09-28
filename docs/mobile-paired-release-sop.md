@@ -13,7 +13,8 @@ quality gate or silently move its date to keep that feature.
 
 ## Release closeout and Notion ledger
 
-Before dispatching the first carrier, create the version instance in
+The first release operation, before branch creation, freeze or CI dispatch,
+is to create the version instance in
 [Mobile Release History](https://app.notion.com/p/36c5aa6ce9a74939b56c5913dbc94075)
 from its Mobile Release SOP template. Record owner, scope, branch and exact
 source; maintain platform build, QA, approval and distribution states during
