@@ -394,6 +394,47 @@ internal class BridgeModule : Module() {
             }
         }
 
+    /**
+     * Adaptive detail migration (task #18): invokes the native `adaptiveNavigation` transaction
+     * API — `prepare` returns a one-shot token + controller identities for a later commit,
+     * `commit` performs the guarded top-pop (result arrives as the slockAdaptiveNativeCommitResult
+     * event on the target shell, not here), `cancel` releases a prepared transaction. Returns the
+     * native reply payload, or null when the bridge method is absent on this platform.
+     */
+    suspend fun adaptiveNavigation(
+        action: String,
+        requestId: String,
+        token: String? = null,
+    ): JSONObject? =
+        suspendCancellableCoroutine { continuation ->
+            val methodArgs =
+                JSONObject()
+                    .put("action", action)
+                    .put("requestId", requestId)
+            if (token != null) methodArgs.put("token", token)
+            var callbackRef: CallbackRef? = null
+            var completed = false
+            val result =
+                toNative(
+                    keepCallbackAlive = false,
+                    methodName = "adaptiveNavigation",
+                    param = methodArgs.toString(),
+                    callback = { payload ->
+                        if (!continuation.isActive || completed) {
+                            return@toNative
+                        }
+                        completed = true
+                        callbackRef?.let { removeCallback(it) }
+                        continuation.resume(payload)
+                    },
+                    syncCall = false,
+                )
+            callbackRef = result.callbackRef
+            continuation.invokeOnCancellation {
+                callbackRef?.let { removeCallback(it) }
+            }
+        }
+
     suspend fun openAttachment(
         url: String,
         attachmentId: String,
