@@ -703,30 +703,39 @@ private fun SlockNavigationRailTabItem(
     onSelect: (String) -> Unit
 ) {
     val selected = item.selected
-    Box(modifier = Modifier.size(SlockNavigationRailButtonSize)) {
-        if (selected) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .offset(x = SlockStroke.Default, y = SlockStroke.Default)
-                    .background(SlockColor.BorderBlack)
-            )
-        }
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .background(if (selected) SlockColor.SurfaceWhite else Color.Transparent)
-                .then(if (selected) Modifier.border(SlockStroke.Default, SlockColor.BorderBlack) else Modifier)
+    // 48dp outer cell owns the tap (min 44dp touch target); the 40dp visual tile
+    // inside keeps the web button size.
+    Box(
+        modifier =
+            Modifier
+                .size(SlockNavigationRailTouchSize)
                 .clickable(enabled = item.enabled) { onSelect(item.key) }
                 // task #31: icon-only buttons keep an accessible label.
                 .semantics { contentDescription = item.label },
-            contentAlignment = Alignment.Center
-        ) {
-            SlockLucideIcon(
-                name = item.iconName,
-                color = if (item.enabled) SlockColor.TextBlackArgb else SlockColor.TextMutedGrayArgb,
-                modifier = Modifier.size(SlockNavigationRailIconSize)
-            )
+        contentAlignment = Alignment.Center
+    ) {
+        Box(modifier = Modifier.size(SlockNavigationRailButtonSize)) {
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .offset(x = SlockStroke.Default, y = SlockStroke.Default)
+                        .background(SlockColor.BorderBlack)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(if (selected) SlockColor.SurfaceWhite else Color.Transparent)
+                    .then(if (selected) Modifier.border(SlockStroke.Default, SlockColor.BorderBlack) else Modifier),
+                contentAlignment = Alignment.Center
+            ) {
+                SlockLucideIcon(
+                    name = item.iconName,
+                    color = if (item.enabled) SlockColor.TextBlackArgb else SlockColor.TextMutedGrayArgb,
+                    modifier = Modifier.size(SlockNavigationRailIconSize)
+                )
+            }
         }
     }
 }
@@ -784,6 +793,7 @@ private fun SlockNavigationRailServerTile(
 private val SlockNavigationRailWidth = 64.dp
 private val SlockNavigationRailHeaderHeight = 62.dp
 private val SlockNavigationRailButtonSize = 40.dp
+private val SlockNavigationRailTouchSize = 48.dp
 private val SlockNavigationRailIconSize = 18.dp
 private val SlockNavigationRailItemSpacing = 6.dp
 
