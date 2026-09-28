@@ -9,6 +9,7 @@ internal const val SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT = "slockAdaptiveDetailOp
 internal const val SLOCK_ADAPTIVE_DETAIL_READY_EVENT = "slockAdaptiveDetailReady"
 internal const val SLOCK_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT = "slockAdaptiveNativeCommitResult"
 internal const val SLOCK_ADAPTIVE_DETAIL_PREPARED_EVENT = "slockAdaptiveDetailPrepared"
+internal const val SLOCK_ADAPTIVE_DETAIL_CANCEL_EVENT = "slockAdaptiveDetailCancel"
 internal const val SLOCK_ADAPTIVE_TRACE_EVENT = "slockAdaptiveTrace"
 
 /**
@@ -363,6 +364,46 @@ internal fun JSONObject.toSlockAdaptiveDetailOpenAckOrNull(): SlockAdaptiveDetai
         shellInstanceId = shellInstanceId,
         requestId = requestId,
         accepted = optBoolean(SlockAdaptiveDetailOpenAck.KEY_ACCEPTED, false),
+        generation = optDouble(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 0.0).toLong(),
+        reason = optString(SlockAdaptiveDetailOpenAck.KEY_REASON).trim(),
+    )
+}
+
+/**
+ * Source -> shell cancellation notice (task #18 follow-up): the initiator posts this whenever it
+ * abandons a prepared/requested adoption — ACK or READY timeout, shell reject, pre-commit draft
+ * drift, or the leaked-token cleanup path. The shell drops exactly that pending request (by
+ * requestId) and discards its staged anchor, so a READY that arrives after the source already
+ * gave up resolves to `ready_no_pending` and never emits a stray accepted ACK. A cancel that
+ * arrives after the shell already acked (acknowledged=true) is a no-op — commit authority already
+ * transferred to the source and the native receipt settles the entry.
+ */
+internal data class SlockAdaptiveDetailCancel(
+    val shellInstanceId: String,
+    val requestId: String,
+    val generation: Long = 0L,
+    val reason: String = "",
+) {
+    init {
+        require(shellInstanceId.isNotBlank()) { "Adaptive cancel requires a shell id" }
+        require(requestId.isNotBlank()) { "Adaptive cancel requires a request id" }
+    }
+
+    fun toJson(): JSONObject =
+        JSONObject()
+            .put(SlockAdaptiveDetailOpenRequest.KEY_SHELL_ID, shellInstanceId)
+            .put(SlockAdaptiveDetailOpenRequest.KEY_REQUEST_ID, requestId)
+            .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, generation.toDouble())
+            .put(SlockAdaptiveDetailOpenAck.KEY_REASON, reason)
+}
+
+internal fun JSONObject.toSlockAdaptiveDetailCancelOrNull(): SlockAdaptiveDetailCancel? {
+    val shellInstanceId = optString(SlockAdaptiveDetailOpenRequest.KEY_SHELL_ID).trim()
+    val requestId = optString(SlockAdaptiveDetailOpenRequest.KEY_REQUEST_ID).trim()
+    if (shellInstanceId.isBlank() || requestId.isBlank()) return null
+    return SlockAdaptiveDetailCancel(
+        shellInstanceId = shellInstanceId,
+        requestId = requestId,
         generation = optDouble(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 0.0).toLong(),
         reason = optString(SlockAdaptiveDetailOpenAck.KEY_REASON).trim(),
     )

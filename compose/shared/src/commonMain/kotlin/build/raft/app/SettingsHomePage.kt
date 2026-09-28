@@ -3301,6 +3301,38 @@ private fun SlockAppShellReadyContent(
                     source = "adaptive_detail_open_ready",
                 )
             }
+        // Source-side cancel notice (task #18 hardening): drops exactly the named pending request
+        // and its staged anchor so a READY arriving after the source gave up resolves to
+        // ready_no_pending instead of a stray accepted ACK. Already-acknowledged pendings are left
+        // alone — commit authority has already transferred and only the native receipt settles.
+        val cancelSubscription =
+            sharedStores.eventBus.observe(
+                eventName = SLOCK_ADAPTIVE_DETAIL_CANCEL_EVENT,
+                crossProcess = true,
+            ) { eventData ->
+                val cancel = eventData?.toSlockAdaptiveDetailCancelOrNull()
+                    ?: return@observe
+                if (cancel.shellInstanceId != storeScope.shellInstanceId) return@observe
+                val session = adaptiveWorkspaceStore.snapshot()
+                val pending = session.pendingDetailOpens[cancel.requestId] ?: return@observe
+                if (pending.acknowledged) return@observe
+                adaptiveWorkspaceStore.update { current ->
+                    dropSlockAdaptiveDetailOpen(cancel.requestId, current)
+                }
+                sharedStores
+                    .adaptiveScrollAnchorStore(storeScope)
+                    .discard(
+                        shellInstanceId = storeScope.shellInstanceId,
+                        identity = pending.identity,
+                        requestId = cancel.requestId,
+                    )
+                postShellAdaptiveTrace(
+                    hop = "open_cancelled",
+                    identityKey = pending.identity.key,
+                    generation = cancel.generation,
+                    requestId = cancel.requestId,
+                ) { put("reason", cancel.reason) }
+            }
         // The source reports its prepared controller identities after native prepare; bind them
         // to the pending request so a stray commit receipt cannot settle it.
         val preparedSubscription =
@@ -3392,6 +3424,7 @@ private fun SlockAppShellReadyContent(
         onDispose {
             openSubscription.close()
             readySubscription.close()
+            cancelSubscription.close()
             preparedSubscription.close()
             commitSubscription.close()
             closeSubscription.close()

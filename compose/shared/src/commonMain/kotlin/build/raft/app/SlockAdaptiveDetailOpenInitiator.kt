@@ -203,6 +203,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
                 )
                 discardAnchor(identity, requestId)
                 cancelDispatched = true
+                postCancelNotice(requestId, reason = "prepare_incomplete")
                 runCatching { nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token.ifBlank { null }, null, null) }
                 return Outcome.PrepareFailed
             }
@@ -282,6 +283,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
                             )
                             discardAnchor(identity, requestId)
                             cancelDispatched = true
+                            postCancelNotice(requestId, reason = "ack_timeout")
                             runCatching {
                                 nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token, null, null)
                             }
@@ -302,6 +304,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
                     )
                     discardAnchor(identity, requestId)
                     cancelDispatched = true
+                    postCancelNotice(requestId, reason = "rejected_by_shell")
                     runCatching { nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token, null, null) }
                     return Outcome.RejectedByShell
                 }
@@ -325,6 +328,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
                             "identity=${identity.key}"
                     )
                     cancelDispatched = true
+                    postCancelNotice(requestId, generation = generation, reason = "ready_timeout")
                     runCatching {
                         nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token, null, null)
                     }
@@ -346,6 +350,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
                         "identity=${identity.key}"
                 )
                 cancelDispatched = true
+                postCancelNotice(requestId, generation = ackedGeneration, reason = "draft_drifted")
                 runCatching {
                     dispatchAdaptiveCancel(requestId, token)
                 }
@@ -377,6 +382,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
             val leakedToken = preparedToken
             if (leakedToken != null && !commitDispatched && !cancelDispatched) {
                 withContext(NonCancellable) {
+                    postCancelNotice(requestId, generation = ackedGeneration, reason = "aborted")
                     runCatching {
                         dispatchAdaptiveCancel(requestId, leakedToken)
                     }
@@ -391,6 +397,29 @@ internal class SlockAdaptiveDetailOpenInitiator(
             identity = identity,
             requestId = requestId,
         )
+    }
+
+    /**
+     * Tells the shell to drop exactly this pending request (see SlockAdaptiveDetailCancel).
+     * Fire-and-forget like the native cancel: safe under NonCancellable and idempotent — a
+     * shell that never created a pending (rejected OPEN) ignores it, and a retry with a fresh
+     * requestId is untouched.
+     */
+    private fun postCancelNotice(requestId: String, generation: Long = 0L, reason: String = "") {
+        runCatching {
+            eventBus.post(
+                eventName = SLOCK_ADAPTIVE_DETAIL_CANCEL_EVENT,
+                eventData =
+                    SlockAdaptiveDetailCancel(
+                        shellInstanceId = shellInstanceId,
+                        requestId = requestId,
+                        generation = generation,
+                        reason = reason,
+                    ).toJson(),
+                crossProcess = true,
+                source = "adaptive_detail_cancel",
+            )
+        }
     }
 
     private companion object {

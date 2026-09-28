@@ -660,6 +660,74 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     }
 
     @Test
+    fun ackTimeoutPostsCancelNoticeForShellPendingDrop(): Unit = runBlocking {
+        val fixture = Fixture()
+        fixture.nativeReplies["prepare"] = preparedReply()
+        val observed = mutableListOf<JSONObject>()
+        val subscription =
+            fixture.eventBus.observe(
+                eventName = SLOCK_ADAPTIVE_DETAIL_CANCEL_EVENT,
+                crossProcess = true,
+            ) { eventData -> eventData?.let { observed += it } }
+        try {
+            val outcome =
+                fixture.initiator().initiate(
+                    identity, launchPayload, windowFact, "r-cancel-1",
+                    ackTimeoutMillis = 50L,
+                )
+            assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.AckTimeout, outcome)
+            val cancel = observed.singleOrNull()?.toSlockAdaptiveDetailCancelOrNull()
+            assertNotNull(cancel, "ack timeout must notify the shell to drop the pending")
+            assertEquals(shellId, cancel!!.shellInstanceId)
+            assertEquals("r-cancel-1", cancel.requestId)
+            assertEquals("ack_timeout", cancel.reason)
+        } finally {
+            subscription.close()
+        }
+    }
+
+    @Test
+    fun readyTimeoutPostsCancelNoticeWithAckedGeneration(): Unit = runBlocking {
+        val fixture = Fixture()
+        fixture.nativeReplies["prepare"] = preparedReply()
+        val observed = mutableListOf<JSONObject>()
+        val subscription =
+            fixture.eventBus.observe(
+                eventName = SLOCK_ADAPTIVE_DETAIL_CANCEL_EVENT,
+                crossProcess = true,
+            ) { eventData -> eventData?.let { observed += it } }
+        try {
+            val outcome = async {
+                fixture.initiator().initiate(
+                    identity, launchPayload, windowFact, "r-cancel-2",
+                    awaitReadyBeforeCommit = true,
+                    readyTimeoutMillis = 50L,
+                )
+            }
+            yield()
+            fixture.eventBus.post(
+                eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+                eventData =
+                    JSONObject()
+                        .put("shellInstanceId", shellId)
+                        .put("requestId", "r-cancel-2")
+                        .put("accepted", true)
+                        .put(SlockAdaptiveDetailOpenAck.KEY_GENERATION, 51.0),
+                crossProcess = false,
+                source = "test",
+            )
+            assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.ReadyTimeout, outcome.await())
+            val cancel = observed.singleOrNull()?.toSlockAdaptiveDetailCancelOrNull()
+            assertNotNull(cancel)
+            assertEquals("r-cancel-2", cancel!!.requestId)
+            assertEquals(51L, cancel.generation)
+            assertEquals("ready_timeout", cancel.reason)
+        } finally {
+            subscription.close()
+        }
+    }
+
+    @Test
     fun lateReadyArrivingAfterTimeoutDoesNotCommit(): Unit = runBlocking {
         val fixture = Fixture()
         fixture.nativeReplies["prepare"] = preparedReply()
