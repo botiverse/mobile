@@ -193,7 +193,6 @@ class AvatarPriorityTest {
 
         assertEquals("pixel:robot", member.avatarWireValueForRenderedAvatar())
     }
-}
 
     @Test
     fun preferredAvatarWireValueLetsConcreteUrlOutrankPixelReference() {
@@ -210,3 +209,4 @@ class AvatarPriorityTest {
         assertNull(preferredAvatarWireValue(null, null))
         assertEquals(url, preferredAvatarWireValue(null, url))
     }
+}
