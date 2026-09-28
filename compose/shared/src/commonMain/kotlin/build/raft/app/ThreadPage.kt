@@ -3761,7 +3761,7 @@ private fun ThreadPageScreen(
     val adaptiveNativeEditingStateReader =
         remember { SlockTextFieldNativeEditingStateReader() }
     val adaptiveDetailOpenInitiator =
-        remember(storeScope.shellInstanceId, pager.pagerId) {
+        remember(storeScope.shellInstanceId, pager.pagerId, isStandaloneThreadPage) {
             if (!isStandaloneThreadPage) return@remember null
             SlockAdaptiveDetailOpenInitiator(
                 shellInstanceId = storeScope.shellInstanceId,
