@@ -9,6 +9,13 @@ internal const val SLOCK_ADAPTIVE_DETAIL_GENERATION = "slockAdaptiveDetailGenera
 internal const val SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED = "slockAdaptiveHomeWorkspaceEnabled"
 
 /**
+ * A4 source-side initiation gate (task #18): the standalone thread page only runs a
+ * prepare→open→commit adoption when this flag is set on its pageData. Off by default —
+ * the native guarded commit lands behind it so an in-flight protocol can merge inert.
+ */
+internal const val SLOCK_ADAPTIVE_INITIATION_ENABLED = "slockAdaptiveInitiationEnabled"
+
+/**
  * Identity and intent for one adaptive conversation detail.
  *
  * Display data and product snapshots deliberately do not belong here. The child Thread Pager
