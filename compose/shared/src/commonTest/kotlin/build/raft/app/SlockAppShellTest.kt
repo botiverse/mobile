@@ -833,8 +833,8 @@ class SlockAppShellTest {
             )
 
         assertEquals(0.dp, scope.embeddedChildBottomInset(includeBottomTabBar = true))
+    }
 
-    @Test
     @Test
     fun navRailActivatesOnlyForFlatDualPaneLeftRailWithFlag() {
         val dualPane =
