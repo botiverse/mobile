@@ -3758,7 +3758,7 @@ private fun ThreadPageScreen(
     val isStandaloneThreadPage =
         adaptiveCloseRequest == null && !hasExplicitShellScope
     val adaptiveInitiationEnabled =
-        params.optBoolean(SLOCK_ADAPTIVE_INITIATION_ENABLED, false)
+        params.optBoolean(SLOCK_ADAPTIVE_INITIATION_ENABLED, true) // QA-only integration carrier; never merge
     val adaptiveInitiationCaptureHolder =
         remember { ThreadAdaptiveInitiationCaptureHolder() }
     val adaptiveNativeEditingStateReader =

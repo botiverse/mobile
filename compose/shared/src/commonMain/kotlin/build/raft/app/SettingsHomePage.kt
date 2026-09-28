@@ -3163,7 +3163,7 @@ private fun SlockAppShellReadyContent(
                         session = session,
                         // Hard off until the native route-token-verified commit action lands
                         // (task #18, Jony follow-up); keeps the merged protocol inert.
-                        nativeGuardedCommitAvailable = false,
+                        nativeGuardedCommitAvailable = true, // QA-only integration carrier; never merge
                     )
                 if (nextSession != session) {
                     adaptiveWorkspaceStore.update { nextSession }
