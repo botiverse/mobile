@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.SlockEventBus
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.serialization.json.Json
 
