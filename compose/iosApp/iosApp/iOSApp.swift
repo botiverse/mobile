@@ -480,6 +480,9 @@ struct iOSApp: App {
     @UIApplicationDelegateAdaptor(SlockIosAppDelegate.self) private var appDelegate
 
     init() {
+        // Capture failures in the startup work below, including the first
+        // Kotlin call, storage setup and network transport initialization.
+        SlockIosInstallHandsReporting()
         // task #423: point the kmmresource loader at the "shared" pod bundle so
         // MR.* (reaction atlas + all MR.strings) resolves on iOS. Must run before
         // any page renders / touches MR.
@@ -498,7 +501,6 @@ struct iOSApp: App {
         SlockIosDiagnosticsRecord("info", "SlockNetworkKmm", curlBootstrap)
         SlockIosPushHost.install()
         SlockIosSharedLogBridge.install()
-        SlockIosInstallHandsReporting()
         SlockIosDiagnosticsRecord("info", "SlockIosDiagnostics", "ios_diagnostics_initialized backend=jsonl")
     }
 
