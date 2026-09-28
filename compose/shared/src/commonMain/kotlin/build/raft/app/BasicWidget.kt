@@ -1809,14 +1809,14 @@ internal fun TextField(
                             callback(SlockTextFieldNativeEditorRead(state = null))
                         } else {
                             val editorRef = nativeEditor.nativeRef
-                            nativeEditor.getTextInputState { state ->
+                            nativeEditor.getTextInputState({ state ->
                                 callback(
                                     SlockTextFieldNativeEditorRead(
                                         state = state,
                                         editorNativeRef = editorRef,
                                     )
                                 )
-                            }
+                            })
                         }
                     }
                 }
