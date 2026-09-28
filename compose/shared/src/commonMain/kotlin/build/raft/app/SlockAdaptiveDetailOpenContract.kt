@@ -374,9 +374,10 @@ internal fun JSONObject.toSlockAdaptiveDetailOpenAckOrNull(): SlockAdaptiveDetai
  * abandons a prepared/requested adoption — ACK or READY timeout, shell reject, pre-commit draft
  * drift, or the leaked-token cleanup path. The shell drops exactly that pending request (by
  * requestId) and discards its staged anchor, so a READY that arrives after the source already
- * gave up resolves to `ready_no_pending` and never emits a stray accepted ACK. A cancel that
- * arrives after the shell already acked (acknowledged=true) is a no-op — commit authority already
- * transferred to the source and the native receipt settles the entry.
+ * gave up resolves to `ready_no_pending` and never emits a stray accepted ACK. The drop also
+ * applies to acknowledged pendings: this event only exists when the source never dispatched the
+ * native commit (commit dispatch is terminal — it suppresses every later cancel path), so no
+ * commit receipt can arrive for a cancelled request; keeping the entry would leak it.
  */
 internal data class SlockAdaptiveDetailCancel(
     val shellInstanceId: String,

@@ -3303,8 +3303,11 @@ private fun SlockAppShellReadyContent(
             }
         // Source-side cancel notice (task #18 hardening): drops exactly the named pending request
         // and its staged anchor so a READY arriving after the source gave up resolves to
-        // ready_no_pending instead of a stray accepted ACK. Already-acknowledged pendings are left
-        // alone — commit authority has already transferred and only the native receipt settles.
+        // ready_no_pending instead of a stray accepted ACK. The drop applies to acknowledged
+        // pendings too: a cancel event only exists when the source never dispatched commit
+        // (dispatchAdaptiveCommit sets commitDispatched before any later cancel can run), so no
+        // commit receipt can ever arrive to settle this entry — retaining it would leak the
+        // pending while the transaction is already dead on the source side.
         val cancelSubscription =
             sharedStores.eventBus.observe(
                 eventName = SLOCK_ADAPTIVE_DETAIL_CANCEL_EVENT,
@@ -3315,7 +3318,6 @@ private fun SlockAppShellReadyContent(
                 if (cancel.shellInstanceId != storeScope.shellInstanceId) return@observe
                 val session = adaptiveWorkspaceStore.snapshot()
                 val pending = session.pendingDetailOpens[cancel.requestId] ?: return@observe
-                if (pending.acknowledged) return@observe
                 adaptiveWorkspaceStore.update { current ->
                     dropSlockAdaptiveDetailOpen(cancel.requestId, current)
                 }

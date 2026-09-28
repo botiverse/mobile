@@ -450,6 +450,32 @@ class SlockAdaptiveDetailOpenContractTest {
     }
 
     @Test
+    fun cancelDropRemovesAcknowledgedPendingBeforeCommitReceipt() {
+        // SangLan review point: ACK sent does not mean commit dispatched — draft_drifted/aborted
+        // exits after the accepted ack leave no commit receipt to settle the entry, so the drop
+        // must apply to acknowledged pendings too. Conversely, a REAL commit dispatch suppresses
+        // the cancel path entirely, so no cancel event can target an in-flight commit.
+        val acknowledgedPending =
+            PendingAdaptiveDetailOpen(
+                requestId = "req-ack",
+                hostId = "pager-9",
+                identity = detailIdentity(),
+                detailGeneration = 7L,
+                windowFactCapturedAtMillis = 1000L,
+                acknowledged = true,
+                sourceControllerToken = "src-1",
+                targetControllerToken = "tgt-1",
+            )
+        val session =
+            SharedAdaptiveWorkspaceSession(
+                pendingDetailOpens = mapOf("req-ack" to acknowledgedPending),
+            )
+
+        val dropped = dropSlockAdaptiveDetailOpen("req-ack", session)
+        assertTrue(dropped.pendingDetailOpens.isEmpty())
+    }
+
+    @Test
     fun lateReadyAfterCancelDropCannotAckStaleGeneration() {
         // Regression for the 2026-09-28 device timeline: OPEN accepted at T0, source times out
         // at T1 and posts cancel, the destination's READY lands at T2 — after the drop the
