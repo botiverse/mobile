@@ -73,6 +73,8 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.layout.onSizeChanged
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.pager.Pager
@@ -306,7 +308,7 @@ private fun HomeActivityRouterContent(
     // was launched with the workspace flag (test/QA carriers set it; default stays OFF).
     val activityAdaptiveEnabled =
         environment.pager.pageData.params.optBoolean(SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED, false)
-    LaunchedEffect(activityWorkspaceStore, activityServerId, adaptivePane, activityAdaptiveEnabled) {
+    LaunchedEffect(activityWorkspaceStore, activityServerId, effectiveAdaptivePane, activityAdaptiveEnabled) {
         if (!activityAdaptiveEnabled) return@LaunchedEffect
         val serverId = activityServerId ?: return@LaunchedEffect
         activityWorkspaceStore.update { current ->
@@ -319,7 +321,7 @@ private fun HomeActivityRouterContent(
             if (next.serverId != serverId) {
                 next = reduceSlockAdaptiveWorkspace(next, SlockAdaptiveWorkspaceIntent.AuthorityChanged(serverId))
             }
-            next = reduceSlockAdaptiveWorkspace(next, SlockAdaptiveWorkspaceIntent.WindowChanged(adaptivePane))
+            next = reduceSlockAdaptiveWorkspace(next, SlockAdaptiveWorkspaceIntent.WindowChanged(effectiveAdaptivePane))
             current.copy(workspace = next)
         }
     }
@@ -366,6 +368,36 @@ private fun HomeActivityRouterContent(
             storeScope = environment.storeScope
         )
     }
+    // First-open guarantee (SangLan/LiBai review): the pager-event pane feed only carries
+    // facts when the window CHANGES — the pushed page would start on the compact default
+    // until the first rotation/resize. Measuring the surface itself gives the workspace a
+    // real width fact immediately; host posture stays authoritative once a pager event
+    // arrives (fold/half-fold can only come from there), and the measured path is dropped
+    // as soon as a real fact landed.
+    var measuredWidthPx by remember { mutableStateOf(0) }
+    var hostPaneLanded by remember { mutableStateOf(false) }
+    if (adaptivePane.widthPx > 0) {
+        hostPaneLanded = true
+    }
+    val density = LocalDensity.current.density
+    val effectiveAdaptivePane =
+        remember(adaptivePane, measuredWidthPx, hostPaneLanded, density) {
+            if (hostPaneLanded) {
+                adaptivePane
+            } else if (measuredWidthPx > 0) {
+                reduceSlockAdaptivePane(
+                    adaptivePane,
+                    SlockAdaptivePaneEvent(
+                        widthPx = measuredWidthPx,
+                        heightPx = 1,
+                        density = density,
+                        posture = SlockAdaptivePanePosture.Flat,
+                    ),
+                )
+            } else {
+                adaptivePane
+            }
+        }
     val workspace = activityWorkspace
     val selection = workspace?.selection
     val detailPayload = activityWorkspaceSession.launchPayload
@@ -473,6 +505,11 @@ private fun HomeActivityRouterContent(
     // selection stays the plain list.
     val detailOnly =
         !dualPane && selection != null && workspace?.presentation == SlockAdaptiveWorkspacePresentation.DetailOnly
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onSizeChanged { sz -> measuredWidthPx = sz.width },
+    ) {
     if (dualPane) {
         Row(modifier = Modifier.fillMaxSize()) {
             Box(
@@ -525,6 +562,7 @@ private fun HomeActivityRouterContent(
         )
     } else {
         activityListPane(true)
+    }
     }
 }
 
