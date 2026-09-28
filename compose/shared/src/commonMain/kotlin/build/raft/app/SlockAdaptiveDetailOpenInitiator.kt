@@ -46,6 +46,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
         PrepareFailed,
         DraftCaptureFailed,
         AckTimeout,
+        ReadyTimeout,
         Aborted,
     }
 
@@ -62,6 +63,17 @@ internal class SlockAdaptiveDetailOpenInitiator(
         windowFact: SlockAdaptiveOpenWindowFact,
         requestId: String,
         ackTimeoutMillis: Long = DEFAULT_ACK_TIMEOUT_MILLIS,
+        /**
+         * Transactions which keep the native dock visible do not pop: the source page stays
+         * mounted as a covered-top controller, so the commit dispatch is deferred until the
+         * destination reports READY — the evidence the covered source uses to prove the handoff
+         * actually rendered before surrendering its top slot. Covering transactions (the dock
+         * reclaims the band) commit immediately after the accepted ack; the destination mount
+         * is no longer observable from the covered source anyway. [awaitReadyBeforeCommit] is
+         * the only branch difference; every earlier step is identical.
+         */
+        awaitReadyBeforeCommit: Boolean = false,
+        readyTimeoutMillis: Long = DEFAULT_READY_TIMEOUT_MILLIS,
     ): Outcome {
         if (inFlightRequestId != null) {
             log("adaptive_initiate_skip reason=in_flight inFlight=$inFlightRequestId next=$requestId")
@@ -147,6 +159,28 @@ internal class SlockAdaptiveDetailOpenInitiator(
                     }
                     ackDeferred.complete(ack)
                 }
+            val readyDeferred = CompletableDeferred<Unit>()
+            val readySubscription =
+                if (!awaitReadyBeforeCommit) {
+                    null
+                } else {
+                    eventBus.observe(
+                        eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+                        crossProcess = true,
+                    ) { eventData ->
+                        // READY carries only the identity key + generation: match it against
+                        // the pending adoption this initiator opened. The requestId never
+                        // reaches the child page, so the generation the shell echoed back in
+                        // its ack is the join key.
+                        val generation = eventData
+                            ?.optDouble(SLOCK_ADAPTIVE_DETAIL_GENERATION, 0.0)?.toLong() ?: return@observe
+                        val key = eventData.optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY)
+                        if (key == identity.key && generation == ackedGeneration) {
+                            readyDeferred.complete(Unit)
+                        }
+                    }
+                }
+            var ackedGeneration: Long = 0L
             try {
                 eventBus.post(
                     eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_EVENT,
@@ -175,6 +209,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
                             }
                             return Outcome.AckTimeout
                         }
+                ackedGeneration = ack.generation
                 if (!ack.accepted) {
                     // No auto-retry: the caller re-arms only on a new DualPane fact. The shell
                     // drops/discards its pending record on reject; mirror that for the anchor.
@@ -189,6 +224,27 @@ internal class SlockAdaptiveDetailOpenInitiator(
             } finally {
                 ackSubscription.close()
             }
+            if (awaitReadyBeforeCommit) {
+                val generation = ackedGeneration
+                val ready =
+                    withTimeoutOrNull(readyTimeoutMillis) { readyDeferred.await() }
+                if (ready == null) {
+                    // The destination never reported mounted: surrendering the top slot now
+                    // would strand a blank pane. The shell drops the pending on its own
+                    // timeout; cancel the prepared native transaction and release the anchor
+                    // so nothing half-committed survives.
+                    logWarn(
+                        "adaptive_initiate_ready_timeout requestId=$requestId " +
+                            "generation=$generation timeoutMs=$readyTimeoutMillis " +
+                            "identity=${identity.key}"
+                    )
+                    discardAnchor(identity, requestId)
+                    runCatching {
+                        nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token)
+                    }
+                    return Outcome.ReadyTimeout
+                }
+            }
             // Hand the commit to the native layer. Its result arrives as the
             // slockAdaptiveNativeCommitResult event on the target shell; this page may already
             // be gone by then, so nothing after this point may require source state.
@@ -201,6 +257,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
                 }
             return Outcome.Committed
         } finally {
+            readySubscription?.close()
             if (inFlightRequestId == requestId) inFlightRequestId = null
         }
     }
@@ -219,5 +276,6 @@ internal class SlockAdaptiveDetailOpenInitiator(
         const val ACTION_CANCEL = "cancel"
         const val PREPARED_STATUS = "prepared"
         const val DEFAULT_ACK_TIMEOUT_MILLIS = 10_000L
+        const val DEFAULT_READY_TIMEOUT_MILLIS = 10_000L
     }
 }
