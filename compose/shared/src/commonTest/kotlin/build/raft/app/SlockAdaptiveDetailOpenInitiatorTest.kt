@@ -48,8 +48,12 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
         JSONObject()
             .put("status", "prepared")
             .put("token", token)
-            .put("sourceControllerToken", sourceToken)
-            .put("targetControllerToken", targetToken)
+            .put(
+                "context",
+                JSONObject()
+                    .put("sourceControllerToken", sourceToken)
+                    .put("targetControllerToken", targetToken),
+            )
 
     private inner class Fixture(
         val nativeReplies: MutableMap<String, JSONObject?> = mutableMapOf(),
@@ -583,6 +587,106 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
         )
         // Source page is still alive (commit never dispatched) and the anchor survives for a
         // fresh retry — the original draft/scroll remain recoverable.
+        assertNotNull(fixture.anchorStore.peek(shellId, identity))
+    }
+
+    @Test
+    fun readyArrivingBeforeAckStillReleasesCoveredTopCommit(): Unit = runBlocking {
+        val fixture = Fixture()
+        fixture.nativeReplies["prepare"] = preparedReply()
+        val initiator = SlockAdaptiveDetailOpenInitiator(
+            shellInstanceId = shellId,
+            hostId = hostId,
+            anchorStore = fixture.anchorStore,
+            eventBus = fixture.eventBus,
+            nowEpochMillis = { 0L },
+            nativeAdaptiveNavigation = { action, requestId, token ->
+                fixture.nativeCalls += Triple(action, requestId, token)
+                fixture.nativeReplies[action]
+            },
+            captureLatestDraft = { true },
+            captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
+        )
+        val outcome = async {
+            initiator.initiate(
+                identity, launchPayload, windowFact, "r13",
+                awaitReadyBeforeCommit = true,
+            )
+        }
+        yield()
+        // READY lands BEFORE the ack (the shell acks inside its READY handler — ordering is
+        // not guaranteed). The matching generation must still release the commit.
+        fixture.eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+            eventData =
+                JSONObject()
+                    .put("shellInstanceId", shellId)
+                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, identity.key)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 51.0),
+            crossProcess = false,
+            source = "test",
+        )
+        fixture.eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+            eventData =
+                JSONObject()
+                    .put("shellInstanceId", shellId)
+                    .put("requestId", "r13")
+                    .put("accepted", true)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 51.0),
+            crossProcess = false,
+            source = "test",
+        )
+        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.Committed, outcome.await())
+        assertEquals(
+            listOf(Triple("prepare", "r13", null), Triple("commit", "r13", "one-shot")),
+            fixture.nativeCalls
+        )
+    }
+
+    @Test
+    fun preCommitDraftRecaptureFailureCancelsPreparedTransaction(): Unit = runBlocking {
+        val fixture = Fixture()
+        fixture.nativeReplies["prepare"] = preparedReply()
+        var draftCalls = 0
+        val initiator = SlockAdaptiveDetailOpenInitiator(
+            shellInstanceId = shellId,
+            hostId = hostId,
+            anchorStore = fixture.anchorStore,
+            eventBus = fixture.eventBus,
+            nowEpochMillis = { 0L },
+            nativeAdaptiveNavigation = { action, requestId, token ->
+                fixture.nativeCalls += Triple(action, requestId, token)
+                fixture.nativeReplies[action]
+            },
+            captureLatestDraft = {
+                draftCalls += 1
+                // Second capture (the pre-commit fence) fails → must not dispatch commit.
+                draftCalls < 2
+            },
+            captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
+        )
+        val outcome = async { initiator.initiate(identity, launchPayload, windowFact, "r14") }
+        yield()
+        fixture.eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+            eventData =
+                JSONObject()
+                    .put("shellInstanceId", shellId)
+                    .put("requestId", "r14")
+                    .put("accepted", true)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 61.0),
+            crossProcess = false,
+            source = "test",
+        )
+        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.DraftCaptureFailed, outcome.await())
+        assertEquals(2, draftCalls)
+        assertEquals(
+            listOf(Triple("prepare", "r14", null), Triple("cancel", "r14", "one-shot")),
+            fixture.nativeCalls,
+            "commit must not be dispatched when the pre-commit draft re-capture fails",
+        )
+        // Anchor retained for recovery — the destination may already be mounted.
         assertNotNull(fixture.anchorStore.peek(shellId, identity))
     }
 }

@@ -7098,25 +7098,34 @@ private fun SharedThreadRouteContentContent(
         val reader = adaptiveNativeEditingStateReader
         if (holder != null && reader != null) {
             holder.captureLatestDraft = captureLatestDraft@{ _ ->
+                // Unavailable must abort the migration — proceeding with only the stale shared
+                // draft would silently lose whatever is in the live editor (bridge contract).
                 val nativeText =
                     suspendCancellableCoroutine<String?> { continuation ->
                         reader.readCurrentValue { readResult ->
                             val text =
-                                (readResult as? SlockTextFieldNativeEditingStateReadResult.Available)
-                                    ?.value?.text
+                                when (readResult) {
+                                    is SlockTextFieldNativeEditingStateReadResult.Available ->
+                                        readResult.value.text
+                                    else -> null
+                                }
                             continuation.resume(text)
                         }
-                    }
-                if (nativeText != null) {
+                    } ?: return@captureLatestDraft false
+                val changeReceipt =
                     runCatchingPreservingCancellation {
                         composerDraftViewModel.acceptQueued(
                             SharedThreadComposerDraftIntent.Change(seedText = nativeText)
                         )
                     }.getOrElse { return@captureLatestDraft false }
-                }
-                runCatchingPreservingCancellation {
-                    composerDraftViewModel.acceptQueued(SharedThreadComposerDraftIntent.Flush)
-                }.isSuccess
+                // A queued-but-rejected Change means the draft projection did not accept our
+                // text; persisting after that would durably store the wrong content.
+                if (!changeReceipt.accepted) return@captureLatestDraft false
+                val flushReceipt =
+                    runCatchingPreservingCancellation {
+                        composerDraftViewModel.acceptQueued(SharedThreadComposerDraftIntent.Flush)
+                    }.getOrElse { return@captureLatestDraft false }
+                flushReceipt.accepted
             }
         }
         onDispose {
