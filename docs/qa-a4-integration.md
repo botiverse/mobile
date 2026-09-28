@@ -1,6 +1,6 @@
-# Test-only A4 integration revision 5 — DO NOT MERGE
+# Test-only A4 integration revision 6 — DO NOT MERGE
 
-Shared PR2730: 2bd5ab9454a21ceb06651d817014c939d9dcf2ee (rebased main includes layout 2727/2728).
+Shared PR2730: 0e94f0160dfba472fe9a716a16b17c48777da336 (rebased main includes layout 2727/2728).
 Native PR2731: 6c31dfbfec76b59cee54bc7b16aa6d9bc3791ebe.
 
 This QA branch alone sets the source initiation default and nativeGuardedCommitAvailable true.
@@ -15,3 +15,5 @@ Revision 3 additionally accepts an unchanged Change receipt only for the same dr
 Revision 4 includes the test-class brace correction; product logic is identical to revision 3. Rebuilt against the final shared head.
 
 Revision 5 carries numeric native editor refTag across the shared bridge. Revision 4 reached prepare but native rejected the JSON string refTag as editor_drift. Re-run that same real entry before attempting commit timing cases.
+
+Revision 6 includes real JSON serialization tests and portable omission of absent refTag. Revision 5 did not build: the Kuikly JSONObject API has no NULL constant. Native strict validation is unchanged.

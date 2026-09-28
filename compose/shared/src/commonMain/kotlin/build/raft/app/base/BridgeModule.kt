@@ -423,18 +423,13 @@ internal class BridgeModule : Module() {
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
             val methodArgs =
-                JSONObject()
-                    .put("action", action)
-                    .put("requestId", requestId)
-            if (token != null) methodArgs.put("token", token)
-            if (expectedEditorRefTag != null || expectedEditorText != null) {
-                methodArgs.put(
-                    "expectedEditor",
-                    JSONObject()
-                        .put("refTag", expectedEditorRefTag ?: JSONObject.NULL)
-                        .put("text", expectedEditorText ?: ""),
+                buildSlockAdaptiveNavigationMethodArgs(
+                    action = action,
+                    requestId = requestId,
+                    token = token,
+                    expectedEditorRefTag = expectedEditorRefTag,
+                    expectedEditorText = expectedEditorText,
                 )
-            }
             var callbackRef: CallbackRef? = null
             var completed = false
             val result =
@@ -1509,3 +1504,37 @@ internal fun reduceAttachmentDownloadProgress(
         percent = incomingPercent ?: currentPercent?.takeIf { incoming.downloadedBytes > 0L }
     )
 }
+
+/**
+ * Serialized args for the `adaptiveNavigation` bridge call. Kept as a pure function so the
+ * JSON wire shape is unit-testable without a native runtime — in particular `refTag` must
+ * stay a JSON number: iOS `slockAdaptiveEditorWithRefTag:` binds only a finite non-negative
+ * NSNumber, so a stringly ref can never resolve an editor instance (task #18).
+ */
+internal fun buildSlockAdaptiveNavigationMethodArgs(
+    action: String,
+    requestId: String,
+    token: String? = null,
+    expectedEditorRefTag: Int? = null,
+    expectedEditorText: String? = null,
+): JSONObject {
+    val methodArgs =
+        JSONObject()
+            .put("action", action)
+            .put("requestId", requestId)
+    if (token != null) methodArgs.put("token", token)
+    if (expectedEditorRefTag != null || expectedEditorText != null) {
+        methodArgs.put(
+            "expectedEditor",
+            JSONObject().apply {
+                // Explicit branch: omit refTag entirely when absent — JSONObject.NULL is an
+                // org.json-ism not portable across the fork's JSON impls, and a null literal
+                // would break iOS's NSNumber check the same way a string did.
+                if (expectedEditorRefTag != null) put("refTag", expectedEditorRefTag)
+                put("text", expectedEditorText ?: "")
+            },
+        )
+    }
+    return methodArgs
+}
+
