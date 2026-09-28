@@ -59,7 +59,7 @@ const val THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY: String =
  * transport-off latch. Operators must provision it with `enabled=true` and `defaultEnabled=true`.
  */
 const val ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY: String = "android_reused_h2_recovery_v0"
-/** Process-wide mobile transport variant. Missing/disabled/invalid evaluates to the product default curl_h3. */
+/** Process-wide mobile transport variant. Missing/disabled/invalid evaluates to the product default curl_h2. */
 const val MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY: String = "mobile_curl_transport_v1"
 
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
