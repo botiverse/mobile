@@ -1,5 +1,7 @@
 package com.tencent.kuiklybase.markdown.model
 
+import com.tencent.kuiklybase.markdown.utils.CJK_URL_BOUNDARY_PUNCTUATION
+import com.tencent.kuiklybase.markdown.utils.isCjkTextOrWhitespace
 import org.intellij.markdown.IElementType
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.flavours.gfm.GFMConstraints
@@ -236,12 +238,15 @@ private fun List<SlockLexerSegment>.withResolvedAutolinkBoundaries(
             val realEnd = validRange.second
             add(SlockLexerSegment(segment.start, realEnd, GFMTokenTypes.GFM_AUTOLINK))
 
-            val tailLexer = _GFMLexer()
-            tailLexer.reset(content, realEnd, segment.endExclusive, 0)
-            while (true) {
-                val tailType = tailLexer.advance() ?: break
-                add(SlockLexerSegment(tailLexer.tokenStart, tailLexer.tokenEnd, tailType))
+            val tailSegments = buildList {
+                val tailLexer = _GFMLexer()
+                tailLexer.reset(content, realEnd, segment.endExclusive, 0)
+                while (true) {
+                    val tailType = tailLexer.advance() ?: break
+                    add(SlockLexerSegment(tailLexer.tokenStart, tailLexer.tokenEnd, tailType))
+                }
             }
+            addAll(tailSegments.withResolvedAutolinkBoundaries(content, realEnd, segment.endExclusive))
         }
     }
 }
@@ -386,7 +391,9 @@ private class SlockRecursiveDescentInlineScanner(
         var roundDepth = 0
         while (cursor < end) {
             val c = content[cursor]
-            if (c.isWhitespace() || c == '<' || c == '>') break
+            if (c.isWhitespace() || c == '<' || c == '>' || c in CJK_URL_BOUNDARY_PUNCTUATION) break
+
+            if (c == ',' && cursor + 1 < end && content[cursor + 1].isCjkTextOrWhitespace()) break
 
             if (c == '(') {
                 roundDepth++
@@ -412,7 +419,7 @@ private class SlockRecursiveDescentInlineScanner(
             cursor++
         }
 
-        while (cursor > startPath && content[cursor - 1] in ".,:;!?\"'*_~]") {
+        while (cursor > startPath && (content[cursor - 1] in ".,:;!?\"'*_~]" || content[cursor - 1] in CJK_URL_BOUNDARY_PUNCTUATION)) {
             cursor--
         }
         return cursor
@@ -472,7 +479,7 @@ private class SlockRecursiveDescentInlineScanner(
     }
 
     private fun isPunctuation(c: Char): Boolean =
-        c in "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~" || c in "，。、；：！？（）《》「」『』【】"
+        c in "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~" || c in CJK_URL_BOUNDARY_PUNCTUATION
 }
 
 private val AUTOLINK_PREFIXES = listOf("https://", "http://", "ftp://", "file://", "www.")
