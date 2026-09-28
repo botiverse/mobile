@@ -136,20 +136,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
                 return Outcome.PrepareFailed
             }
             preparedToken = token
-            // Bind the prepared controller identities before the open request lands: the shell
-            // rejects settle for any pending lacking this binding.
-            eventBus.post(
-                eventName = SLOCK_ADAPTIVE_DETAIL_PREPARED_EVENT,
-                eventData =
-                    SlockAdaptiveDetailPrepared(
-                        shellInstanceId = shellInstanceId,
-                        requestId = requestId,
-                        sourceControllerToken = sourceToken,
-                        targetControllerToken = targetToken,
-                    ).toJson(),
-                crossProcess = true,
-                source = "adaptive_detail_prepared",
-            )
+            var readyGenerationSeen: Long = 0L
             readySubscription =
                 if (!awaitReadyBeforeCommit) {
                     null
@@ -158,15 +145,19 @@ internal class SlockAdaptiveDetailOpenInitiator(
                         eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
                         crossProcess = true,
                     ) { eventData ->
-                        // READY carries only the identity key + generation: match it against
-                        // the pending adoption this initiator opened. The requestId never
-                        // reaches the child page, so the generation the shell echoed back in
-                        // its ack is the join key.
+                        // READY carries only the identity key + generation and may arrive
+                        // before our ack waiter resumes (the shell acks out of its own READY
+                        // handler). Record the latest generation matching our identity; the
+                        // ack path then compares and releases the deferred so an already-
+                        // delivered READY is never lost.
                         val generation = eventData
                             ?.optDouble(SLOCK_ADAPTIVE_DETAIL_GENERATION, 0.0)?.toLong() ?: return@observe
                         val key = eventData.optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY)
-                        if (key == identity.key && generation == ackedGeneration) {
-                            readyDeferred.complete(Unit)
+                        if (key == identity.key) {
+                            readyGenerationSeen = generation
+                            if (ackedGeneration != 0L && generation == ackedGeneration) {
+                                readyDeferred.complete(Unit)
+                            }
                         }
                     }
                 }
@@ -197,6 +188,20 @@ internal class SlockAdaptiveDetailOpenInitiator(
                     crossProcess = true,
                     source = "adaptive_detail_open_request",
                 )
+                // PREPARED binds controller tokens onto the pending entry OPEN just created;
+                // posting it earlier gets dropped by markSlockAdaptiveDetailOpenPrepared.
+                eventBus.post(
+                    eventName = SLOCK_ADAPTIVE_DETAIL_PREPARED_EVENT,
+                    eventData =
+                        SlockAdaptiveDetailPrepared(
+                            shellInstanceId = shellInstanceId,
+                            requestId = requestId,
+                            sourceControllerToken = sourceToken,
+                            targetControllerToken = targetToken,
+                        ).toJson(),
+                    crossProcess = true,
+                    source = "adaptive_detail_prepared",
+                )
                 val ack =
                     withTimeoutOrNull(ackTimeoutMillis) { ackDeferred.await() }
                         ?: run {
@@ -211,6 +216,9 @@ internal class SlockAdaptiveDetailOpenInitiator(
                             return Outcome.AckTimeout
                         }
                 ackedGeneration = ack.generation
+                if (readyGenerationSeen == ackedGeneration) {
+                    readyDeferred.complete(Unit)
+                }
                 if (!ack.accepted) {
                     // No auto-retry: the caller re-arms only on a new DualPane fact. The shell
                     // drops/discards its pending record on reject; mirror that for the anchor.
@@ -247,16 +255,37 @@ internal class SlockAdaptiveDetailOpenInitiator(
                     return Outcome.ReadyTimeout
                 }
             }
-            // Hand the commit to the native layer. Its result arrives as the
-            // slockAdaptiveNativeCommitResult event on the target shell; this page may already
-            // be gone by then, so nothing after this point may require source state.
-            runCatching { nativeAdaptiveNavigation(ACTION_COMMIT, requestId, token) }
-                .onFailure { error ->
-                    logWarn(
-                        "adaptive_initiate_commit_dispatch_failed requestId=$requestId " +
-                            "type=${error::class.simpleName} identity=${identity.key}"
-                    )
+            // Pre-commit editor fence: a change between capture and commit would restore an
+            // older draft on the destination while the newer edit died with the popped source.
+            // The cheap honest fence is re-capture — same barrier semantics (native read +
+            // Change+Flush receipt); a failure here aborts the transaction honestly rather
+            // than gambling on stale state.
+            if (!captureLatestDraft(requestId)) {
+                logWarn(
+                    "adaptive_initiate_precommit_drift requestId=$requestId " +
+                        "identity=${identity.key}"
+                )
+                runCatching {
+                    nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token)
                 }
+                return Outcome.DraftCaptureFailed
+            }
+            // Commit is DISPATCH-ONLY: iOS deliberately never invokes a source callback for
+            // commit — the renderer may be torn down mid-pop. Suspending for a reply would
+            // deadlock inFlightRequestId. The authoritative result is the
+            // slockAdaptiveNativeCommitResult event on the target shell; the shell settles
+            // the pending entry and consumes the staged anchor. Bound the dispatch so a
+            // wedged bridge can't hold the flight slot forever.
+            runCatching {
+                withTimeoutOrNull(COMMIT_DISPATCH_TIMEOUT_MILLIS) {
+                    nativeAdaptiveNavigation(ACTION_COMMIT, requestId, token)
+                }
+            }.onFailure { error ->
+                logWarn(
+                    "adaptive_initiate_commit_dispatch_failed requestId=$requestId " +
+                        "type=${error::class.simpleName} identity=${identity.key}"
+                )
+            }
             return Outcome.Committed
         } finally {
             readySubscription?.close()
@@ -279,5 +308,8 @@ internal class SlockAdaptiveDetailOpenInitiator(
         const val PREPARED_STATUS = "prepared"
         const val DEFAULT_ACK_TIMEOUT_MILLIS = 10_000L
         const val DEFAULT_READY_TIMEOUT_MILLIS = 10_000L
+        // iOS never invokes a source callback for commit; bound the dispatch so the flight
+        // slot releases even if the bridge wedges. The event receipt is the authority.
+        const val COMMIT_DISPATCH_TIMEOUT_MILLIS = 3_000L
     }
 }
