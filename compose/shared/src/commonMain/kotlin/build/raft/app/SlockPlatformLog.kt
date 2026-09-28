@@ -74,11 +74,18 @@ private sealed interface SlockPlatformLogQueueItem {
     ) : SlockPlatformLogQueueItem
 }
 
-private object SlockPlatformLogQueue {
-    private const val NormalCapacity = 496
-    private const val AuthCriticalCapacity = 16
-    private const val ControlCapacity = 1
-    private const val QueueTag = "SlockPlatformLog"
+internal class SlockPlatformLogQueue(
+    scope: CoroutineScope,
+    private val recordSink: ((SlockPlatformLogRecord) -> Unit)? = null,
+    // Lets tests admit records between individual channel reads without timing or threads.
+    private val afterLanePoll: ((SlockPlatformLogHint) -> Unit)? = null
+) {
+    private companion object {
+        const val NormalCapacity = 496
+        const val AuthCriticalCapacity = 16
+        const val ControlCapacity = 1
+        const val QueueTag = "SlockPlatformLog"
+    }
 
     private val normalQueue = Channel<SlockPlatformLogQueueItem.Entry>(capacity = NormalCapacity)
     private val authCriticalQueue = Channel<SlockPlatformLogQueueItem.Entry>(capacity = AuthCriticalCapacity)
@@ -90,7 +97,6 @@ private object SlockPlatformLogQueue {
     private val normalAdmissionDropped = atomic(0L)
     private val authCriticalOverflowDropped = atomic(0L)
     private val authCriticalAdmissionDropped = atomic(0L)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     init {
         scope.launch {
@@ -99,7 +105,9 @@ private object SlockPlatformLogQueue {
             var controlHead: SlockPlatformLogQueueItem.Flush? = null
             while (true) {
                 if (normalHead == null) normalHead = normalQueue.tryReceive().getOrNull()
+                afterLanePoll?.invoke(SlockPlatformLogHint.None)
                 if (authCriticalHead == null) authCriticalHead = authCriticalQueue.tryReceive().getOrNull()
+                afterLanePoll?.invoke(SlockPlatformLogHint.AuthCritical)
                 if (controlHead == null) controlHead = controlQueue.tryReceive().getOrNull()
                 val item = earliest(normalHead, authCriticalHead, controlHead)
                 if (item == null) {
@@ -281,7 +289,7 @@ private object SlockPlatformLogQueue {
     ) {
         val safeTag = tag.trim().ifBlank { "SlockShared" }.take(SlockLogTagMaxChars)
         val safeMessage = message.sanitizeSlockLogMessage().take(SlockLogMessageMaxChars)
-        val sink = SlockPlatformLogSinkRegistry.sink
+        val sink = recordSink ?: SlockPlatformLogSinkRegistry.sink
         if (sink != null) {
             val record =
                 SlockPlatformLogRecord(
@@ -295,6 +303,10 @@ private object SlockPlatformLogQueue {
         }
         runCatching { slockPlatformLog(level, safeTag, safeMessage, timestampMillis, hint) }
     }
+}
+
+private val slockPlatformLogQueue by lazy {
+    SlockPlatformLogQueue(CoroutineScope(SupervisorJob() + Dispatchers.Default))
 }
 
 /**
@@ -363,7 +375,7 @@ private fun slockLog(
     message: String,
     hint: SlockPlatformLogHint
 ) {
-    SlockPlatformLogQueue.enqueue(level, tag, message, hint)
+    slockPlatformLogQueue.enqueue(level, tag, message, hint)
 }
 
 /**
@@ -376,7 +388,7 @@ private fun slockLog(
  * shared queue contract.
  */
 internal suspend fun flushSlockPlatformLogs() {
-    SlockPlatformLogQueue.flush()
+    slockPlatformLogQueue.flush()
 }
 
 internal suspend fun flushSlockPlatformLogsForTest() = flushSlockPlatformLogs()
