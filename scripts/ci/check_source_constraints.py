@@ -476,7 +476,7 @@ def check_composer_retirement_uses_bounded_waits(connected_test: str) -> None:
     body = match.group("body")
     required = (
         'waitUntil(RenderTimeoutMs, "initial editor")',
-        'waitUntil(SendTimeoutMs, "first attached replacement editor")',
+        'waitUntil(SendTimeoutMs, "same editor cleared after send")',
         'waitUntil(ImeTransitionTimeoutMs, "sent row and same-text first composition")',
         "SLOCK_COMPOSER_SESSION_RETIREMENT_PASS",
     )
@@ -1530,7 +1530,7 @@ private fun ThreadMessageMenuChrome() = Unit
     good_retirement_test = '''
 fun sendRetiresEditorSessionWithoutLosingFocusImeOrFirstComposition() {
     waitUntil(RenderTimeoutMs, "initial editor") { true }
-    waitUntil(SendTimeoutMs, "first attached replacement editor") { true }
+    waitUntil(SendTimeoutMs, "same editor cleared after send") { true }
     waitUntil(ImeTransitionTimeoutMs, "sent row and same-text first composition") { true }
     println("SLOCK_COMPOSER_SESSION_RETIREMENT_PASS")
 }
@@ -1542,8 +1542,8 @@ fun anotherCase() = Unit
     try:
         check_composer_retirement_uses_bounded_waits(
             good_retirement_test.replace(
-                'waitUntil(SendTimeoutMs, "first attached replacement editor") { true }',
-                'waitForIdleSync()\n    waitUntil(SendTimeoutMs, "first attached replacement editor") { true }',
+                'waitUntil(SendTimeoutMs, "same editor cleared after send") { true }',
+                'waitForIdleSync()\n    waitUntil(SendTimeoutMs, "same editor cleared after send") { true }',
             )
         )
     except Violation:
