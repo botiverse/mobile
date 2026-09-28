@@ -11,6 +11,7 @@ import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.RuntimeModeConfig
 import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.ServerId
+import build.raft.app.model.preferredAvatarWireValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -660,7 +661,7 @@ private fun MemberProfile.toAgentDetailSeed(activity: List<AgentActivityEntry>):
             name = fallbackName,
             displayName = display,
             runtime = roleDescription,
-            avatarUrl = avatar?.wireValue ?: avatarUrl,
+            avatarUrl = preferredAvatarWireValue(avatar, avatarUrl),
             activityDetail = description,
             machineName = permissionBadges.firstNotNullOfOrNull { it.memberComputerLabelOrNull() },
             machineId = permissionBadges.firstNotNullOfOrNull { it.memberComputerIdOrNull() }

@@ -193,4 +193,20 @@ class AvatarPriorityTest {
 
         assertEquals("pixel:robot", member.avatarWireValueForRenderedAvatar())
     }
+
+    @Test
+    fun preferredAvatarWireValueLetsConcreteUrlOutrankPixelReference() {
+        // A seeded/projected profile can keep a pixel AvatarReference while the wire
+        // avatarUrl still carries the canonical CDN address; the URL must win so the
+        // detail page mounts a fetch instead of locking onto the fallback art.
+        val pixel = AvatarReference.Pixel("bell")
+        val url = "https://cdn.slock.ai/avatars/server/e0bb4273f6964230b5a1200d8c00f639.webp"
+
+        assertEquals(url, preferredAvatarWireValue(pixel, url))
+        assertEquals(url, preferredAvatarWireValue(AvatarReference.Url(url), "pixel:bell"))
+        assertEquals("pixel:bell", preferredAvatarWireValue(pixel, null))
+        assertEquals("pixel:bell", preferredAvatarWireValue(pixel, ""))
+        assertNull(preferredAvatarWireValue(null, null))
+        assertEquals(url, preferredAvatarWireValue(null, url))
+    }
 }
