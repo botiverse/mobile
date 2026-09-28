@@ -3746,6 +3746,7 @@ private fun ThreadPageScreen(
     val storeScope = remember(params.toString(), pager.pagerId) {
         params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val hasExplicitShellScope = remember(params.toString()) {
         params.slockShellStoreScopeOrNull() != null
     }
@@ -3819,7 +3820,6 @@ private fun ThreadPageScreen(
             )
         bridge.log("adaptive_initiate_outcome outcome=$outcome identity=${identity.key}")
     }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val sharedHomeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
