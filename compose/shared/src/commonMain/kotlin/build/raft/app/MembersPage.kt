@@ -132,6 +132,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.buildRuntimeConfig
+import build.raft.app.model.preferredAvatarWireValue
 import build.raft.app.model.supportsRuntimeFastMode
 import build.raft.app.model.supportsRuntimeReasoningEffort
 import build.raft.app.model.ServerId
@@ -13412,7 +13413,7 @@ internal fun AgentDetailSnapshot.withMemberProfileProjection(member: MemberProfi
             displayName = member.displayName.ifBlank { fallbackName },
             description = member.description?.takeIf { it.isNotBlank() },
             runtime = member.roleDescription ?: summary?.runtime,
-            avatarUrl = member.avatar?.wireValue ?: member.avatarUrl ?: summary?.avatarUrl
+            avatarUrl = preferredAvatarWireValue(member.avatar, member.avatarUrl) ?: summary?.avatarUrl
         )
     return copy(summary = nextSummary)
 }

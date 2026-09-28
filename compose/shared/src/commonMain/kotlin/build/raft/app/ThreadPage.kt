@@ -168,6 +168,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
+import build.raft.app.model.preferredAvatarWireValue
 import build.raft.app.model.providerLabel
 import build.raft.app.markdown.LocalSlockMessagePermalinkLabelResolver
 import build.raft.app.markdown.LocalSlockMarkdownRenderConfig
@@ -2497,7 +2498,7 @@ private fun MemberProfile.toThreadCandidateAgentDetailSnapshot(): AgentDetailSna
     if (kind != MemberKind.Agent) return null
     val name = handle.ifBlank { displayName.ifBlank { id.value } }
     val label = displayName.ifBlank { name }
-    val avatarWireValue = avatar?.wireValue ?: avatarUrl
+    val avatarWireValue = preferredAvatarWireValue(avatar, avatarUrl)
     return AgentDetailSnapshot(
         agentId = id,
         summary =
