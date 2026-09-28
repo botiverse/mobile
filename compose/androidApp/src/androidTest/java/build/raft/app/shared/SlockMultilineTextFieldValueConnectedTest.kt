@@ -2,6 +2,10 @@ package build.raft.app.shared
 
 import android.content.Intent
 import android.text.InputType
+import android.text.Selection
+import android.text.Spannable
+import android.text.Spanned
+import android.text.SpanWatcher
 import android.text.method.ArrowKeyMovementMethod
 import android.text.method.MetaKeyKeyListener
 import android.view.KeyEvent
@@ -21,6 +25,7 @@ import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -57,6 +62,10 @@ class SlockMultilineTextFieldValueConnectedTest {
                     assertTrue(editor.movementMethod === SlockArrowKeyMovementMethod)
                     val cursor = value.length / 2
                     editor.setSelection(cursor)
+                    val connection = BaseInputConnection(editor, true)
+                    if (value.isNotEmpty()) assertTrue(connection.setComposingRegion(0, 1))
+                    val composingStart = BaseInputConnection.getComposingSpanStart(editor.text)
+                    val composingEnd = BaseInputConnection.getComposingSpanEnd(editor.text)
                     editor.dispatchSelectionTouch(MotionEvent.ACTION_DOWN)
                     // No selecting DOWN was sent. A modifier arriving mid-gesture makes
                     // Android read a missing anchor on UP, even though the cursor is valid.
@@ -67,13 +76,51 @@ class SlockMultilineTextFieldValueConnectedTest {
                     assertEquals(cursor, editor.selectionEnd)
                     assertTrue(editor.isFocused)
                     assertEquals(0, MetaKeyKeyListener.getMetaState(editor.text, KeyEvent.META_SHIFT_ON))
-                    val connection = BaseInputConnection(editor, true)
+                    assertEquals(composingStart, BaseInputConnection.getComposingSpanStart(editor.text))
+                    assertEquals(composingEnd, BaseInputConnection.getComposingSpanEnd(editor.text))
+                    assertTrue(connection.finishComposingText())
                     assertTrue(connection.setComposingText("中", 1))
                     assertEquals(value.take(cursor) + "中" + value.drop(cursor), editor.text.toString())
                     assertEquals(cursor, BaseInputConnection.getComposingSpanStart(editor.text))
                     assertEquals(cursor + 1, BaseInputConnection.getComposingSpanEnd(editor.text))
                 }
             }
+        }
+    }
+
+    @Test
+    fun negativeSpanFailureInsideSelectionCallbackStillPropagates() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val editor = selectionTestEditor(multiline = false, value = "hello world")
+            editor.setSelection(editor.length())
+            pressSelectionShift(editor)
+            editor.dispatchSelectionTouch(MotionEvent.ACTION_DOWN, 2f)
+            var callbackFailure: IndexOutOfBoundsException? = null
+            val watcher = object : SpanWatcher {
+                override fun onSpanAdded(text: Spannable, what: Any, start: Int, end: Int) = Unit
+                override fun onSpanRemoved(text: Spannable, what: Any, start: Int, end: Int) = Unit
+                override fun onSpanChanged(
+                    text: Spannable, what: Any, oldStart: Int, oldEnd: Int, newStart: Int, newEnd: Int
+                ) {
+                    if (what !== Selection.SELECTION_START || callbackFailure != null) return
+                    try {
+                        text.setSpan(Any(), -1, -1, Spanned.SPAN_POINT_POINT)
+                    } catch (error: IndexOutOfBoundsException) {
+                        callbackFailure = error
+                        throw error
+                    }
+                }
+            }
+            editor.text.setSpan(watcher, 0, editor.length(), Spanned.SPAN_INCLUSIVE_INCLUSIVE)
+            val failure = try {
+                runCatching { editor.dispatchSelectionTouch(MotionEvent.ACTION_UP, 90f) }.exceptionOrNull()
+            } finally {
+                editor.text.removeSpan(watcher)
+            }
+            assertNotNull("the valid native selection must invoke the application watcher", callbackFailure)
+            assertEquals("setSpan (-1 ... -1) starts before 0", callbackFailure?.message)
+            assertSame("an application callback failure must not be treated as the missing anchor", callbackFailure, failure)
         }
     }
 

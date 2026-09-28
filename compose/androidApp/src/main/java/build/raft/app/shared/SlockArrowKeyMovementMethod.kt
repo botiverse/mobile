@@ -25,12 +25,7 @@ internal object SlockArrowKeyMovementMethod : ArrowKeyMovementMethod() {
             if ((event.actionMasked != MotionEvent.ACTION_UP &&
                     event.actionMasked != MotionEvent.ACTION_MOVE) ||
                 error.message != "setSpan (-1 ... -1) starts before 0" ||
-                error.stackTrace.firstOrNull()?.let {
-                    it.className == "android.text.SpannableStringBuilder" && it.methodName == "checkRange"
-                } != true ||
-                error.stackTrace.none {
-                    it.className == "android.text.Selection" && it.methodName == "setSelection"
-                }
+                !error.hasDirectFrameworkSelectionFailure()
             ) {
                 throw error
             }
@@ -50,4 +45,22 @@ internal object SlockArrowKeyMovementMethod : ArrowKeyMovementMethod() {
             return true
         }
     }
+}
+
+/** Reject callback re-entry: a SpanWatcher can throw the same negative-span error. */
+private fun IndexOutOfBoundsException.hasDirectFrameworkSelectionFailure(): Boolean {
+    val frames = stackTrace
+    var index = 0
+    fun at(className: String, methodName: String): Boolean =
+        frames.getOrNull(index)?.let { it.className == className && it.methodName == methodName } == true
+
+    if (!at("android.text.SpannableStringBuilder", "checkRange")) return false
+    index++
+    val spanStart = index
+    while (at("android.text.SpannableStringBuilder", "setSpan")) index++
+    if (index == spanStart) return false
+    val selectionStart = index
+    while (at("android.text.Selection", "setSelection")) index++
+    if (index == selectionStart) return false
+    return at("android.text.method.ArrowKeyMovementMethod", "onTouchEvent")
 }
