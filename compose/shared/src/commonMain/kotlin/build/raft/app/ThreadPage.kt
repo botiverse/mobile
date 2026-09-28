@@ -7168,14 +7168,22 @@ private fun SharedThreadRouteContentContent(
                             SharedThreadComposerDraftIntent.Change(seedText = nativeText)
                         )
                     }.getOrElse { return@captureLatestDraft null }
-                // A queued-but-rejected Change means the draft projection did not accept our
-                // text; persisting after that would durably store the wrong content. The
-                // receipt state must still carry the same draft identity we started from.
+                // The receipt state must still carry the same draft identity we started from.
+                // A rejected (accepted=false) receipt is a satisfied no-op only when the
+                // serialized lane proves the store already carries the exact native text —
+                // MviFoundation reports an equivalent-state transition as not-accepted with
+                // state=previous. Any other rejection means the draft projection did not
+                // accept our text, and persisting would durably store the wrong content.
                 if (
-                    !changeReceipt.accepted ||
                     changeReceipt.state.draftKey != identityBefore.draftKey ||
                     changeReceipt.state.instanceId != identityBefore.instanceId
                 ) {
+                    return@captureLatestDraft null
+                }
+                val changeSatisfied =
+                    changeReceipt.accepted ||
+                        changeReceipt.state.seedText == nativeText
+                if (!changeSatisfied) {
                     return@captureLatestDraft null
                 }
                 val flushReceipt =
