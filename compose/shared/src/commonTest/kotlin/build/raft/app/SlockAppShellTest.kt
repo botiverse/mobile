@@ -793,6 +793,95 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun embeddedChildClearsFloatingDockWithoutDoubleCountingSafeArea() {
+        // Embedded thread pages already pad the bottom safe area internally; the
+        // slot only lifts the remaining dock band above it.
+        val scope =
+            SlockAppShellScope(
+                topSafeArea = 24.dp,
+                bottomSafeArea = 18.dp,
+                bottomTabBarContentInset = 110.dp,
+                bottomTabBarOverlaysContent = true
+            )
+
+        assertEquals(92.dp, scope.embeddedChildBottomInset(includeBottomTabBar = true))
+        assertEquals(0.dp, scope.embeddedChildBottomInset(includeBottomTabBar = false))
+    }
+
+    @Test
+    fun embeddedChildNeedsNoInsetWhenHostAlreadyReservesTheBand() {
+        val scope =
+            SlockAppShellScope(
+                topSafeArea = 24.dp,
+                bottomSafeArea = 18.dp,
+                bottomTabBarContentInset = 88.dp,
+                bottomTabBarOverlaysContent = false
+            )
+
+        assertEquals(0.dp, scope.embeddedChildBottomInset(includeBottomTabBar = true))
+        assertEquals(0.dp, scope.embeddedChildBottomInset(includeBottomTabBar = false))
+    }
+
+    @Test
+    fun embeddedChildInsetNeverGoesNegativeWhenDockBandShrinksBelowSafeArea() {
+        val scope =
+            SlockAppShellScope(
+                topSafeArea = 24.dp,
+                bottomSafeArea = 24.dp,
+                bottomTabBarContentInset = 10.dp,
+                bottomTabBarOverlaysContent = true
+            )
+
+        assertEquals(0.dp, scope.embeddedChildBottomInset(includeBottomTabBar = true))
+    }
+
+    @Test
+    fun navRailActivatesOnlyForFlatDualPaneLeftRailWithFlag() {
+        val dualPane =
+            SlockAdaptivePaneState(
+                widthPx = 1680,
+                heightPx = 1118,
+                density = 2f,
+                posture = SlockAdaptivePanePosture.Flat,
+                layout = SlockAdaptivePaneLayout.DualPane
+            )
+        val compact = dualPane.copy(layout = SlockAdaptivePaneLayout.Compact)
+
+        assertTrue(
+            slockAdaptiveNavRailActive(
+                flagEnabled = true,
+                navigationPreference = build.raft.app.data.LargeScreenNavigationPreference.LeftRail,
+                paneState = dualPane
+            )
+        )
+        // Flag off keeps the bottom bar even in a wide flat layout.
+        assertFalse(
+            slockAdaptiveNavRailActive(
+                flagEnabled = false,
+                navigationPreference = build.raft.app.data.LargeScreenNavigationPreference.LeftRail,
+                paneState = dualPane
+            )
+        )
+        // FloatingDock preference keeps the bottom dock in the same layout.
+        assertFalse(
+            slockAdaptiveNavRailActive(
+                flagEnabled = true,
+                navigationPreference = build.raft.app.data.LargeScreenNavigationPreference.FloatingDock,
+                paneState = dualPane
+            )
+        )
+        // Compact windows always keep the bottom bar.
+        assertFalse(
+            slockAdaptiveNavRailActive(
+                flagEnabled = true,
+                navigationPreference = build.raft.app.data.LargeScreenNavigationPreference.LeftRail,
+                paneState = compact
+            )
+        )
+
+    }
+
+    @Test
     fun androidBottomSafeAreaKeepsGestureNavigationInsetUnlessHostExcludesIt() {
         assertEquals(0f, resolveSlockBottomSafeAreaDp(hostExcludesNavigationBar = true, nativeDp = 48f, hostDp = 48f))
         assertEquals(24f, resolveSlockBottomSafeAreaDp(hostExcludesNavigationBar = false, nativeDp = 24f, hostDp = 0f))
