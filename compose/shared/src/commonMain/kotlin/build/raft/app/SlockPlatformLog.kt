@@ -109,6 +109,17 @@ internal class SlockPlatformLogQueue(
                 if (authCriticalHead == null) authCriticalHead = authCriticalQueue.tryReceive().getOrNull()
                 afterLanePoll?.invoke(SlockPlatformLogHint.AuthCritical)
                 if (controlHead == null) controlHead = controlQueue.tryReceive().getOrNull()
+                if (normalHead != null || authCriticalHead != null || controlHead != null) {
+                    // The first pass is not an atomic snapshot: a previously empty lane
+                    // may receive an entry before a later lane exposes a Flush or Entry.
+                    // Admission serializes sequence assignment and publication, so every
+                    // item preceding an observed candidate is already enqueued. Refill
+                    // missing heads after observing that candidate before choosing the
+                    // minimum. Keep observed heads: later admissions cannot precede them.
+                    if (normalHead == null) normalHead = normalQueue.tryReceive().getOrNull()
+                    if (authCriticalHead == null) authCriticalHead = authCriticalQueue.tryReceive().getOrNull()
+                    if (controlHead == null) controlHead = controlQueue.tryReceive().getOrNull()
+                }
                 val item = earliest(normalHead, authCriticalHead, controlHead)
                 if (item == null) {
                     wakeups.receive()
