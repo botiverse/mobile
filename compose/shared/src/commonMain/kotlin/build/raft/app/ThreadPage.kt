@@ -132,6 +132,7 @@ import build.raft.app.data.TaskSnapshot
 import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SharedAdaptiveScrollAnchor
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
@@ -3771,7 +3772,7 @@ private fun ThreadPageScreen(
                 hostId = "pager:${pager.pagerId}",
                 anchorStore = sharedStores.adaptiveScrollAnchorStore(storeScope),
                 eventBus = sharedStores.eventBus,
-                nowEpochMillis = { System.currentTimeMillis() },
+                nowEpochMillis = { defaultNowMillis() },
                 nativeAdaptiveNavigation = { action, requestId, token ->
                     bridge.adaptiveNavigation(action, requestId, token)
                 },
@@ -3815,7 +3816,7 @@ private fun ThreadPageScreen(
             initiator.initiate(
                 identity = identity,
                 launchPayload = launchPayload,
-                windowFact = event.toSlockAdaptiveOpenWindowFact(System.currentTimeMillis()),
+                windowFact = event.toSlockAdaptiveOpenWindowFact(defaultNowMillis()),
                 requestId = "adopt-${pager.pagerId}-${Uuid.random()}",
             )
         bridge.log("adaptive_initiate_outcome outcome=$outcome identity=${identity.key}")
@@ -17430,7 +17431,7 @@ private fun ThreadMessagesListContent(
                     messageOffsetPx = first.offset,
                     fallbackIndex = listState.firstVisibleItemIndex,
                     atLatest = !listState.canScrollForward,
-                    capturedAtMillis = System.currentTimeMillis(),
+                    capturedAtMillis = defaultNowMillis(),
                 )
             }
         }
