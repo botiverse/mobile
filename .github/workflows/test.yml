@@ -1123,6 +1123,12 @@ jobs:
       - name: Test adaptive navigation transaction fences
         run: bash compose/iosApp/scripts/test_adaptive_navigation_session.sh
 
+      - name: Test iOS interactive pop gesture admission
+        run: bash compose/iosApp/scripts/test_interactive_pop_gesture_admission.sh
+
+      - name: Test iOS conversation forward gesture admission
+        run: bash compose/iosApp/scripts/test_conversation_forward_gesture_admission.sh
+
       - name: Validate iOS avatar-cache durable provider
         run: node compose/iosApp/scripts/test_avatar_cache_provider_source_contract.mjs
 

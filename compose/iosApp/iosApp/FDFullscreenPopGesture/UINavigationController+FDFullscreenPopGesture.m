@@ -23,6 +23,7 @@
 #import "UINavigationController+FDFullscreenPopGesture.h"
 #import "KuiklyRenderViewController.h"
 #import "SlockConversationForwardGestureAdmission.h"
+#import "SlockInteractivePopGestureAdmission.h"
 #import <objc/runtime.h>
 
 @interface _FDFullscreenPopGestureRecognizerDelegate : NSObject <UIGestureRecognizerDelegate>
@@ -117,42 +118,102 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
 
 @end
 
+static BOOL SlockInteractivePopHasChildScrollView(UIView *view, UIView *rootView)
+{
+    UIView *candidate = view;
+    while (candidate && candidate != rootView) {
+        if ([candidate isKindOfClass:UIScrollView.class]) {
+            return YES;
+        }
+        candidate = candidate.superview;
+    }
+    return NO;
+}
+
+static BOOL SlockInteractivePopHasScrolledHorizontalScrollView(UIView *view, UIView *rootView, BOOL isLeftToRight)
+{
+    UIView *candidate = view;
+    while (candidate && candidate != rootView) {
+        if ([candidate isKindOfClass:UIScrollView.class]) {
+            UIScrollView *scrollView = (UIScrollView *)candidate;
+            BOOL isHorizontal =
+                scrollView.alwaysBounceHorizontal ||
+                scrollView.contentSize.width > CGRectGetWidth(scrollView.bounds) + 1.0;
+            if (isHorizontal) {
+                if (isLeftToRight) {
+                    CGFloat leadingOffset = -scrollView.contentInset.left;
+                    if (scrollView.contentOffset.x > leadingOffset + 0.5) {
+                        return YES;
+                    }
+                } else {
+                    CGFloat trailingOffset = scrollView.contentSize.width - CGRectGetWidth(scrollView.bounds) + scrollView.contentInset.right;
+                    if (scrollView.contentOffset.x < trailingOffset - 0.5) {
+                        return YES;
+                    }
+                }
+            }
+        }
+        candidate = candidate.superview;
+    }
+    return NO;
+}
+
+static SlockInteractivePopGestureAdmission SlockBuildInteractivePopGestureAdmission(
+    UINavigationController *navigationController,
+    UIPanGestureRecognizer *gestureRecognizer
+) {
+    UIViewController *topViewController = navigationController.viewControllers.lastObject;
+    CGPoint beginningLocation = [gestureRecognizer locationInView:gestureRecognizer.view];
+    CGPoint translation = [gestureRecognizer translationInView:gestureRecognizer.view];
+    CGPoint velocity = [gestureRecognizer velocityInView:gestureRecognizer.view];
+    BOOL isLeftToRight = [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight;
+    BOOL transitioning = [[navigationController valueForKey:@"_isTransitioning"] boolValue];
+
+    return (SlockInteractivePopGestureAdmission) {
+        .navigationStackCount = navigationController.viewControllers.count,
+        .interactivePopDisabled = topViewController.fd_interactivePopDisabled,
+        .transitioning = transitioning,
+        .maxAllowedInitialDistance = topViewController.fd_interactivePopMaxAllowedInitialDistanceToLeftEdge,
+        .beginningLocationX = beginningLocation.x,
+        .translationX = translation.x,
+        .translationY = translation.y,
+        .velocityX = velocity.x,
+        .velocityY = velocity.y,
+        .isLeftToRight = isLeftToRight,
+    };
+}
+
 @implementation _FDFullscreenPopGestureRecognizerDelegate
 
 - (BOOL)gestureRecognizerShouldBegin:(UIPanGestureRecognizer *)gestureRecognizer
 {
-    // Ignore when no view controller is pushed into the navigation stack.
-    if (self.navigationController.viewControllers.count <= 1) {
+    SlockInteractivePopGestureAdmission admission =
+        SlockBuildInteractivePopGestureAdmission(self.navigationController, gestureRecognizer);
+    return SlockInteractivePopGestureShouldBegin(admission);
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer
+{
+    if (![otherGestureRecognizer isKindOfClass:UIPanGestureRecognizer.class]) {
         return NO;
     }
-
-    // Ignore when the active view controller doesn't allow interactive pop.
-    UIViewController *topViewController = self.navigationController.viewControllers.lastObject;
-    if (topViewController.fd_interactivePopDisabled) {
+    if (![gestureRecognizer isKindOfClass:UIPanGestureRecognizer.class]) {
         return NO;
     }
+    UIPanGestureRecognizer *pan = (UIPanGestureRecognizer *)gestureRecognizer;
+    SlockInteractivePopGestureAdmission admission =
+        SlockBuildInteractivePopGestureAdmission(self.navigationController, pan);
+    UIView *rootView = self.navigationController.view;
+    BOOL hasChildScrollView = SlockInteractivePopHasChildScrollView(otherGestureRecognizer.view, rootView);
+    BOOL hasScrolledHorizontal = SlockInteractivePopHasScrolledHorizontalScrollView(otherGestureRecognizer.view, rootView, admission.isLeftToRight);
 
-    // Ignore when the beginning location is beyond max allowed initial distance to left edge.
-    CGPoint beginningLocation = [gestureRecognizer locationInView:gestureRecognizer.view];
-    CGFloat maxAllowedInitialDistance = topViewController.fd_interactivePopMaxAllowedInitialDistanceToLeftEdge;
-    if (maxAllowedInitialDistance > 0 && beginningLocation.x > maxAllowedInitialDistance) {
-        return NO;
-    }
-
-    // Ignore pan gesture when the navigation controller is currently in transition.
-    if ([[self.navigationController valueForKey:@"_isTransitioning"] boolValue]) {
-        return NO;
-    }
-
-    // Prevent calling the handler when the gesture begins in an opposite direction.
-    CGPoint translation = [gestureRecognizer translationInView:gestureRecognizer.view];
-    BOOL isLeftToRight = [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight;
-    CGFloat multiplier = isLeftToRight ? 1 : - 1;
-    if ((translation.x * multiplier) <= 0) {
-        return NO;
-    }
-
-    return YES;
+    SlockInteractivePopSimultaneousAdmission simAdmission = {
+        .isPanGesture = true,
+        .hasChildScrollView = hasChildScrollView,
+        .hasScrolledHorizontalScrollView = hasScrolledHorizontal,
+        .popAdmission = admission,
+    };
+    return SlockInteractivePopShouldRecognizeSimultaneously(simAdmission);
 }
 
 @end

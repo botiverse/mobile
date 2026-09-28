@@ -108,6 +108,7 @@
 		A42400020000000000000001 /* SlockIosAvatarCacheProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAvatarCacheProvider.swift; sourceTree = "<group>"; };
 		A42400020000000000000002 /* SlockIosAvatarCacheProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAvatarCacheProviderTests.swift; sourceTree = "<group>"; };
 		A82F000129F6A41000F43E31 /* SlockConversationForwardGestureAdmission.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SlockConversationForwardGestureAdmission.h; sourceTree = "<group>"; };
+		A82F000229F6A41000F43E31 /* SlockInteractivePopGestureAdmission.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SlockInteractivePopGestureAdmission.h; sourceTree = "<group>"; };
 		B8FDA997E9DD2D474C82E853 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		C465599FD991429AC545C211 /* IosUseInteractionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IosUseInteractionTests.swift; sourceTree = "<group>"; };
 		T25800010000000000000002 /* T258ConsumerUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = T258ConsumerUITests.swift; sourceTree = "<group>"; };
@@ -194,6 +195,7 @@
 			isa = PBXGroup;
 			children = (
 				A82F000129F6A41000F43E31 /* SlockConversationForwardGestureAdmission.h */,
+				A82F000229F6A41000F43E31 /* SlockInteractivePopGestureAdmission.h */,
 				0474A3F129F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.h */,
 				0474A3F229F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m */,
 			);
