@@ -134,6 +134,42 @@ class MembersAgentMachineGroupCollapseTest {
         )
     }
 
+    @Test
+    fun collapsedStateResolvesPerGroupSoLateArrivingMembersStillCollapse() {
+        // Standalone members page: the session user id and the members list
+        // both arrive asynchronously. If the user id resolves while the list
+        // is still empty, no group exists to snapshot — the collapse state
+        // must resolve per group when that group's row renders.
+        val backing = InMemorySlockKeyValueStore()
+        val store = KeyValueMembersAgentMachineGroupCollapseStore(backing)
+        store.setCollapsed("user-1", "machine-1", true)
+
+        // The stored collapse applies when a group's row renders, whenever it
+        // arrives — no snapshot of "which groups existed" is taken.
+        assertTrue(resolveAgentGroupCollapsed("machine-1", emptyMap(), "user-1", store))
+        assertFalse(resolveAgentGroupCollapsed("machine-2", emptyMap(), "user-1", store))
+        // A tap this session overrides the stored default either way.
+        assertFalse(
+            resolveAgentGroupCollapsed(
+                "machine-1",
+                mapOf("machine-1" to false), // expand tap on a stored-collapsed group
+                "user-1",
+                store
+            )
+        )
+        assertTrue(
+            resolveAgentGroupCollapsed(
+                "machine-2",
+                mapOf("machine-2" to true), // collapse tap on a group with no stored state
+                "user-1",
+                store
+            )
+        )
+        // Without a user id or store, groups render expanded.
+        assertFalse(resolveAgentGroupCollapsed("machine-1", emptyMap(), "", store))
+        assertFalse(resolveAgentGroupCollapsed("machine-1", emptyMap(), "user-1", null))
+    }
+
     private fun member(
         id: String,
         vararg badges: String

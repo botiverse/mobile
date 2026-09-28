@@ -4714,21 +4714,18 @@ internal fun MembersListContent(
     var agentsExpanded by remember(payload.instanceId) { mutableStateOf(initialListState.agentsExpanded) }
     var humansExpanded by remember(payload.instanceId) { mutableStateOf(initialListState.humansExpanded) }
     val membersCurrentUserId = currentUserId?.trim().orEmpty()
-    var collapsedAgentGroupKeys by remember(payload.instanceId, membersCurrentUserId) {
-        mutableStateOf(
-            if (membersCurrentUserId.isBlank() || agentGroupCollapseStore == null) {
-                emptySet()
-            } else {
-                groupedAgentMembers(payload.members.filter { it.kind == MemberKind.Agent })
-                    .mapNotNull { group ->
-                        group.key.takeIf {
-                            agentGroupCollapseStore.isCollapsed(membersCurrentUserId, group.key)
-                        }
-                    }
-                    .toSet()
-            }
-        )
+    // Task #409: collapse state = persisted default + this page's user taps.
+    // The members payload and the session user id both arrive asynchronously,
+    // so the stored state cannot be read once eagerly: a group that does not
+    // exist yet when the store is read would render expanded forever. Resolve
+    // per group at render instead: user taps this session override the stored
+    // value, untouched groups read the store. This survives members arriving
+    // after the user id (and vice versa) on the standalone members page.
+    var agentGroupCollapseOverrides by remember(payload.instanceId, membersCurrentUserId) {
+        mutableStateOf<Map<String, Boolean>>(emptyMap())
     }
+    fun isAgentGroupCollapsed(groupKey: String): Boolean =
+        resolveAgentGroupCollapsed(groupKey, agentGroupCollapseOverrides, membersCurrentUserId, agentGroupCollapseStore)
     var activeCreateAgent by remember(payload.instanceId) { mutableStateOf(false) }
     var createAgentSubmitting by remember { mutableStateOf(false) }
     var createAgentError by remember { mutableStateOf<String?>(null) }
@@ -4757,7 +4754,10 @@ internal fun MembersListContent(
             humansCount = humans.size,
             agentsExpanded = agentsExpanded,
             humansExpanded = humansExpanded,
-            collapsedAgentGroupKeys = collapsedAgentGroupKeys,
+            collapsedAgentGroupKeys =
+                groupedAgentMembers(agents)
+                    .mapNotNull { group -> group.key.takeIf { isAgentGroupCollapsed(it) } }
+                    .toSet(),
             showHumanDirectory = payload.showHumanDirectory,
             hasPullToRefreshItem = showPullToRefreshItem
         )
@@ -4860,19 +4860,15 @@ internal fun MembersListContent(
             if (agentsExpanded) {
                 groupedAgentMembers(agents).forEach { group ->
                     item("group_${group.key}") {
-                        val groupExpanded = !collapsedAgentGroupKeys.contains(group.key)
+                        val groupExpanded = !isAgentGroupCollapsed(group.key)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = MembersListMachineLabelInset)
                                 .padding(top = SlockSpacing.Xs)
                                 .clickable {
-                                    collapsedAgentGroupKeys =
-                                        if (groupExpanded) {
-                                            collapsedAgentGroupKeys + group.key
-                                        } else {
-                                            collapsedAgentGroupKeys - group.key
-                                        }
+                                    agentGroupCollapseOverrides =
+                                        agentGroupCollapseOverrides + (group.key to !groupExpanded)
                                     agentGroupCollapseStore?.setCollapsed(
                                         membersCurrentUserId,
                                         group.key,
@@ -4910,7 +4906,7 @@ internal fun MembersListContent(
                             )
                         }
                     }
-                    if (!collapsedAgentGroupKeys.contains(group.key)) {
+                    if (!isAgentGroupCollapsed(group.key)) {
                         items(group.members.size, key = { "agent_${group.members[it].id.value}" }) { index ->
                             val member = group.members[index]
                             MembersListRow(
@@ -5070,6 +5066,24 @@ internal fun MembersListContent(
             }
         )
     }
+}
+
+/**
+ * Task #409: a group's collapsed state is the user's tap this page session if
+ * they made one, otherwise the persisted value under `userId`. Resolving per
+ * group (rather than snapshotting the stored set once) keeps groups that
+ * arrive after the first read — the standalone members page fills its list
+ * asynchronously — from silently rendering expanded.
+ */
+internal fun resolveAgentGroupCollapsed(
+    groupKey: String,
+    overrides: Map<String, Boolean>,
+    userId: String,
+    store: build.raft.app.data.MembersAgentMachineGroupCollapseStore?
+): Boolean {
+    overrides[groupKey]?.let { return it }
+    if (userId.isBlank() || store == null) return false
+    return store.isCollapsed(userId, groupKey)
 }
 
 internal fun membersLazyItemCount(
