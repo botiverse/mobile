@@ -1,4 +1,4 @@
-// Generated from packages/runtime-form/contract/runtime-form-v2.contract.json (sha256 71997dd94bae51ca). Do not edit.
+// Generated from packages/runtime-form/contract/runtime-form-v2.contract.json (sha256 de3eccf071095ad5). Do not edit.
 // Decode with Json { ignoreUnknownKeys = true }: every type is open.
 // Enumerated strings stay String so an unknown value never fails decoding.
 package build.raft.app.data.runtimeform.v2
@@ -36,12 +36,7 @@ data class RuntimeFormV2FieldSchema(
     val writeOnly: Boolean? = null,
     @SerialName("x-optionSource") val optionSource: String? = null,
     @SerialName("x-optionsFrom") val optionsFrom: RuntimeFormV2OptionsFrom? = null,
-    val additionalProperties: RuntimeFormV2ValueSchema? = null,
-)
-
-@Serializable
-data class RuntimeFormV2ValueSchema(
-    val type: String,
+    val additionalProperties: JsonElement? = null,
 )
 
 /** Choices derived from the option currently selected in another field: that option's `attribute` (a string list) are the choices, and its `defaultAttribute` (if any) is the default. Example: Kimi reasoning effort follows the selected model. */

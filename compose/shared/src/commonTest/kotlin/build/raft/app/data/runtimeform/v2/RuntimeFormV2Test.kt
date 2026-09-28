@@ -26,10 +26,11 @@ import kotlin.test.assertTrue
 /**
  * Port of slock `packages/runtime-form/src/v2.test.ts` and `v2State.test.ts`: the
  * mobile parser and state rules must agree with the reference client case by case.
+ * Bodies are slock's shared `packages/runtime-form/fixtures/` (RuntimeFormV2Fixtures.kt).
  */
 class RuntimeFormV2Test {
     private fun formJson(body: String): JsonObject = Json.parseToJsonElement(body).jsonObject
-    private val pi = parseRuntimeFormV2(BUILTIN_PI_V2_FORM_JSON)!!
+    private val pi = parseRuntimeFormV2(BUILTIN_V2_FORM_JSON)!!
     private val kimi = parseRuntimeFormV2(KIMI_SDK_V2_FORM_JSON)!!
     private fun ParsedRuntimeFormV2.field(key: String) = fields.first { it.key == key }
 
@@ -129,7 +130,7 @@ class RuntimeFormV2Test {
 
     @Test
     fun toleratesEverythingAServerIsAllowedToAdd() {
-        val form = formJson(BUILTIN_PI_V2_FORM_JSON)
+        val form = formJson(BUILTIN_V2_FORM_JSON)
             .set(listOf("somethingNew"), buildJsonObject { put("nested", true) })
             .set(listOf("uiSchema", "somethingNew"), buildJsonArray { add(JsonPrimitive(1)); add(JsonPrimitive(2)) })
             .set(listOf("dataSchema", "properties", "apiKey", "somethingNew"), JsonPrimitive("x"))
@@ -185,7 +186,7 @@ class RuntimeFormV2Test {
 
     @Test
     fun onlyABodyThatIsNotAV2FormIsRejected() {
-        val v1 = formJson(BUILTIN_PI_V2_FORM_JSON).set(listOf("protocolVersion"), JsonPrimitive(1))
+        val v1 = formJson(BUILTIN_V2_FORM_JSON).set(listOf("protocolVersion"), JsonPrimitive(1))
         assertNull(parseRuntimeFormV2(v1), "v1 body")
         assertNull(parseRuntimeFormV2(buildJsonObject { put("protocolVersion", 2) }), "no dataSchema")
         assertNull(parseRuntimeFormV2("\"nope\""))
@@ -195,7 +196,7 @@ class RuntimeFormV2Test {
     @Test
     fun theGeneratedContractClassesDecodeTheReleasedForms() {
         val json = Json { ignoreUnknownKeys = true }
-        val decoded = json.decodeFromString(RuntimeFormV2Definition.serializer(), BUILTIN_PI_V2_FORM_JSON)
+        val decoded = json.decodeFromString(RuntimeFormV2Definition.serializer(), BUILTIN_V2_FORM_JSON)
         assertEquals(RUNTIME_FORM_V2_PROTOCOL_VERSION, decoded.protocolVersion)
         assertEquals("provider", decoded.dataSchema.properties["providerId"]?.optionSource)
         assertNotNull(json.decodeFromString(RuntimeFormV2Definition.serializer(), KIMI_SDK_V2_FORM_JSON).dataSchema)
@@ -282,6 +283,22 @@ class RuntimeFormV2Test {
         val values = initialRuntimeFormV2Values(pi, piSources)
         assertEquals(mapOf("apiKey" to RuntimeFormV2ErrorCode.Required), validateRuntimeFormV2(pi, piSources, values))
         assertEquals(emptyMap(), validateRuntimeFormV2(pi, piSources, values, editing = true))
+    }
+
+    @Test
+    fun theServersEditResponsesCarryStoredValuesButNeverASecret() {
+        val builtinEdit = assertNotNull(parseRuntimeFormV2(BUILTIN_V2_EDIT_JSON))
+        val stored = assertNotNull(builtinEdit.values)
+        assertFalse("apiKey" in stored, "writeOnly fields are never sent back")
+        val values = initialRuntimeFormV2Values(builtinEdit, piSources)
+        assertEquals(stored["baseUrl"], values["baseUrl"])
+        assertEquals(stored["envVars"], values["envVars"])
+        assertEquals("", values.text("apiKey"))
+        assertEquals(emptyMap(), validateRuntimeFormV2(builtinEdit, piSources, values, editing = true).filterKeys { it == "apiKey" })
+
+        val kimiEdit = assertNotNull(parseRuntimeFormV2(KIMI_SDK_V2_EDIT_JSON))
+        assertEquals(kimi.fields.map { it.key to it.kind }, kimiEdit.fields.map { it.key to it.kind }, "edit is the same form as create")
+        assertEquals(kimiEdit.values?.get("reasoningEffort"), initialRuntimeFormV2Values(kimiEdit, kimiSources)["reasoningEffort"])
     }
 
     // ── mobile wire ──
