@@ -97,6 +97,8 @@ class RuntimeFormV2Test {
         )
         assertEquals("providerId", pi.field("model").dependsOn)
         assertEquals("Load local Pi extensions", pi.field("loadLocalPlugins").label)
+        // v2-only copy (slock #8556): the v1 frozen form has no model hint, so this is how a screen shows v2.
+        assertEquals("Use a model ID the selected provider supports.", pi.field("model").hint)
         assertEquals(listOf("loadLocalPlugins", "envVars"), pi.fields.filter { it.advanced }.map { it.key })
         assertEquals(listOf("providerId", "apiKey", "model"), pi.fields.filter { it.required }.map { it.key })
         assertEquals("providerId", pi.field("baseUrl").visibleWhen.first().key)

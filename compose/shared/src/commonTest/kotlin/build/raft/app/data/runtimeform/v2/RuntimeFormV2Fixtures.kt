@@ -4,7 +4,7 @@ package build.raft.app.data.runtimeform.v2
 // packages/runtime-form/fixtures/ (the server's exact v2 bodies). Do not edit;
 // re-run the script when slock regenerates its fixtures.
 
-/** fixtures/builtin.form.json, sha256 6868603796e58d0535a5de07ca28822f6533cc1abd1bc8a8f64a36211b5b1289 */
+/** fixtures/builtin.form.json, sha256 7f927998cbb7a7ef6db0f6c4fb9a5f21fcb80df4aa9d225aaca977c8cf36b575 */
 internal const val BUILTIN_V2_FORM_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "builtin",
@@ -116,7 +116,8 @@ internal const val BUILTIN_V2_FORM_JSON: String = """{
       },
       "model": {
         "label": "Model",
-        "placeholder": "Model ID"
+        "placeholder": "Model ID",
+        "hint": "Use a model ID the selected provider supports."
       },
       "loadLocalPlugins": {
         "label": "Load local Pi extensions",
@@ -162,7 +163,7 @@ internal const val BUILTIN_V2_FORM_JSON: String = """{
 }
 """
 
-/** fixtures/builtin.edit.json, sha256 97ec2fae75c0e356459690b3535c8294a5be0645714b79f138cb5a86559d8fe4 */
+/** fixtures/builtin.edit.json, sha256 486af4d089b8cd48fb77dafc609143ba57da508c8b5cd93dbe6d5c2e15041183 */
 internal const val BUILTIN_V2_EDIT_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "builtin",
@@ -274,7 +275,8 @@ internal const val BUILTIN_V2_EDIT_JSON: String = """{
       },
       "model": {
         "label": "Model",
-        "placeholder": "Model ID"
+        "placeholder": "Model ID",
+        "hint": "Use a model ID the selected provider supports."
       },
       "loadLocalPlugins": {
         "label": "Load local Pi extensions",
