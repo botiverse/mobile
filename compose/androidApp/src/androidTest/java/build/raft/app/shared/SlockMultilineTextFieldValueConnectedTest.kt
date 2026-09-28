@@ -182,7 +182,20 @@ class SlockMultilineTextFieldValueConnectedTest {
 
     private fun EditText.dispatchSelectionTouch(action: Int, x: Float = 10f): Boolean {
         val event = MotionEvent.obtain(0L, 1L, action, x, 10f, 0)
-        return try { movementMethod.onTouchEvent(this, text, event) } finally { event.recycle() }
+        return try {
+            if (action == MotionEvent.ACTION_DOWN) {
+                // requestFocus sets TextView's didTouchFocusSelect sentinel. Its real
+                // DOWN path clears that sentinel before invoking the movement method;
+                // bypassing TextView makes ArrowKeyMovementMethod skip the whole gesture.
+                dispatchTouchEvent(event).also {
+                    assertTrue("pre-focused editor must enter the movement gesture", !didTouchFocusSelect())
+                }
+            } else {
+                movementMethod.onTouchEvent(this, text, event)
+            }
+        } finally {
+            event.recycle()
+        }
     }
 
     @Test
