@@ -1533,14 +1533,15 @@ private fun DeclarativeBaseView<*, *>.findSlockNativeTextEditor(): AutoHeightTex
 internal class SlockTextFieldNativeEditingStateReader {
     private class Binding(
         val owner: Any,
-        var read: (SlockTextFieldNativeEditorRead) -> Unit,
+        // An async read OPERATION: callers hand it the callback that receives the result.
+        var read: ((SlockTextFieldNativeEditorRead) -> Unit) -> Unit,
     )
 
     private var binding: Binding? = null
 
     internal fun bind(
         owner: Any,
-        read: (SlockTextFieldNativeEditorRead) -> Unit,
+        read: ((SlockTextFieldNativeEditorRead) -> Unit) -> Unit,
     ) {
         val activeBinding = binding
         if (activeBinding?.owner === owner) {
@@ -1564,15 +1565,15 @@ internal class SlockTextFieldNativeEditingStateReader {
             onResult(SlockTextFieldNativeEditingStateReadResult.Unavailable)
             return
         }
-        activeBinding.read { read ->
+        activeBinding.read { editorRead ->
             onResult(
-                if (binding === activeBinding && read.state != null) {
+                if (binding === activeBinding && editorRead.state != null) {
                     SlockTextFieldNativeEditingStateReadResult.Available(
-                        value = read.state.toSlockTextFieldValue(),
+                        value = editorRead.state.toSlockTextFieldValue(),
                         // Kuikly nativeRef of the resolved AutoHeightTextAreaView — the
                         // instance identity the native layer matches against
                         // viewWithNativeRef for the adoption commit-time editor fence.
-                        editorNativeRef = read.editorNativeRef ?: -1,
+                        editorNativeRef = editorRead.editorNativeRef ?: -1,
                     )
                 } else {
                     SlockTextFieldNativeEditingStateReadResult.Unavailable
