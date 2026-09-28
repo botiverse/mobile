@@ -9857,6 +9857,11 @@ internal fun membersAgentRuntimeModelDisplayLabel(
             ?.firstOrNull { it.id == normalizedModelId }
             ?.label
             .verifiedDisplayLabel()
+        // Web parity (task #284): never leave the row blank for a configured
+        // model — fall back to the raw id when neither catalog nor the static
+        // table has a friendlier label (e.g. a model newer than the shipped
+        // catalog like claude-opus-5-5).
+        ?: normalizedModelId
 }
 
 @Composable

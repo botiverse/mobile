@@ -969,7 +969,7 @@ class SharedMembersParserTest {
     }
 
     @Test
-    fun runtimeModelPresentationUsesCatalogThenKnownStaticLabelsAndNeverRawIds() {
+    fun runtimeModelPresentationUsesCatalogThenKnownStaticLabelsThenRawId() {
         val catalog =
             SharedCreateAgentRuntimeModelCatalog(
                 models =
@@ -989,8 +989,11 @@ class SharedMembersParserTest {
             "Claude Sonnet",
             membersAgentRuntimeModelDisplayLabel("claude", "sonnet", null)
         )
-        assertNull(membersAgentRuntimeModelDisplayLabel("claude", "unknown-model", null))
-        assertNull(
+        assertEquals("unknown-model", membersAgentRuntimeModelDisplayLabel("claude", "unknown-model", null))
+        // Catalog labels that merely echo the id are treated as absent; the
+        // raw id itself still becomes the chip label (web parity, task #284).
+        assertEquals(
+            "raw-only",
             membersAgentRuntimeModelDisplayLabel(
                 runtimeId = "claude",
                 modelId = "raw-only",
@@ -1000,6 +1003,8 @@ class SharedMembersParserTest {
                     )
             )
         )
+        // Blank configured model still hides the row entirely.
+        assertNull(membersAgentRuntimeModelDisplayLabel("claude", " ", null))
     }
 
     @Test
