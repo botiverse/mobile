@@ -3,7 +3,7 @@ package build.raft.app.network
 internal actual fun slockNetworkTransportPlatformPolicy(): SlockNetworkTransportPlatformPolicy =
     SlockNetworkTransportPlatformPolicy(
         platformLabel = "Android",
-        defaultHttp3Enabled = true,
+        defaultHttp3Enabled = false,
         curlRequired = false,
         appOwnedTrustRequired = true,
         readyDetail =

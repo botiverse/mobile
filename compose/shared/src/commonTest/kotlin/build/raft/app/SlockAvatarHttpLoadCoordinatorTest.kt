@@ -395,4 +395,58 @@ class SlockAvatarHttpLoadCoordinatorTest {
             primaryEndpoint = SlockAvatarHttpEndpoint.Cdn,
             apiFallbackSource = "https://api.raft.build/api/avatars/agents/deadbeefdeadbeefdeadbeefdeadbeef.webp"
         )
+    @Test
+    fun retainAfterAllObserversLeftRearmsCooldown() {
+        var nowMillis = 1_000L
+        val coordinator =
+            SlockAvatarHttpLoadCoordinator(
+                failureCooldownMillis = 60_000L,
+                nowMillis = { nowMillis }
+            )
+        val key = uploadedAvatarKey()
+
+        coordinator.retain(key)
+        val first = assertNotNull(coordinator.tryAcquire(key))
+        coordinator.reportPainterPhase(key, first, SlockAvatarHttpPainterPhase.Error)
+        coordinator.reportPainterPhase(key, first, SlockAvatarHttpPainterPhase.Error)
+        assertEquals(
+            SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS,
+            coordinator.retryDelayMillis(coordinator.stateFlow(key).value)
+        )
+        coordinator.release(key)
+        coordinator.releaseOwner(key, first)
+
+        // Every observer left (page closed). A new observer arriving during cooldown
+        // re-arms the entry for immediate retry instead of waiting out the backoff.
+        nowMillis += 1_000L
+        coordinator.retain(key)
+        assertEquals(0L, coordinator.retryDelayMillis(coordinator.stateFlow(key).value))
+        assertNotNull(coordinator.tryAcquire(key))
+    }
+
+    @Test
+    fun retainWhileObservedKeepsCooldownIntact() {
+        var nowMillis = 1_000L
+        val coordinator =
+            SlockAvatarHttpLoadCoordinator(
+                failureCooldownMillis = 60_000L,
+                nowMillis = { nowMillis }
+            )
+        val key = uploadedAvatarKey()
+
+        coordinator.retain(key)
+        val first = assertNotNull(coordinator.tryAcquire(key))
+        coordinator.reportPainterPhase(key, first, SlockAvatarHttpPainterPhase.Error)
+        coordinator.reportPainterPhase(key, first, SlockAvatarHttpPainterPhase.Error)
+        coordinator.releaseOwner(key, first)
+
+        // Another observer joins while at least one row is still watching — not a
+        // fresh page entry, so the backoff must hold.
+        coordinator.retain(key)
+        assertEquals(
+            SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS,
+            coordinator.retryDelayMillis(coordinator.stateFlow(key).value)
+        )
+    }
+
 }
