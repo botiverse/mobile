@@ -1,5 +1,8 @@
 #import "KuiklyRenderViewController.h"
 #import "SlockAdaptiveNavigationSession.h"
+#import "SlockAdaptiveEditorSnapshot.h"
+#import <OpenKuiklyIOSRender/KuiklyRenderView.h>
+#import <OpenKuiklyIOSRender/KRTextAreaView.h>
 #import "Modules/HRBridgeModule.h"
 #import "UINavigationController+FDFullscreenPopGesture.h"
 #import "iosApp-Swift.h"
@@ -86,6 +89,7 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
     SlockAdaptiveNavigationSession *_slockNavigationSession;
     __weak KuiklyRenderViewController *_slockNavigationTarget;
     __weak UIWindow *_slockNavigationWindow;
+    NSNumber *_slockNavigationEditorRefTag;
     NSString *_pageName;
     NSDictionary *_pageData;
     BOOL _slockConversationForwardGestureEnabled;
@@ -262,6 +266,21 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
                        @"geometry": _slockNavigationGeometry ?: @"" } : @{};
 }
 
+// The ref belongs to this exact renderer. Never search the view tree, first responder,
+// key window or a different page for an editor when the bound ref is unavailable.
+- (UITextView *)slockAdaptiveEditorWithRefTag:(NSNumber *)refTag root:(UIView *)root {
+    if (![refTag isKindOfClass:NSNumber.class] ||
+        CFGetTypeID((__bridge CFTypeRef)refTag) == CFBooleanGetTypeID() ||
+        !isfinite(refTag.doubleValue) || refTag.doubleValue < 0 ||
+        floor(refTag.doubleValue) != refTag.doubleValue ||
+        ![root isKindOfClass:KuiklyRenderView.class]) return nil;
+    id editor = [(KuiklyRenderView *)root viewWithRefTag:refTag];
+    if (![editor isKindOfClass:KRTextAreaView.class]) return nil;
+    UITextView *textView = editor;
+    if (![textView isDescendantOfView:root] || !textView.window || textView.window != root.window) return nil;
+    return textView;
+}
+
 - (NSDictionary *)slockAdaptiveNavigation:(NSDictionary *)params root:(UIView *)root {
     NSAssert(NSThread.isMainThread, @"Adaptive navigation must execute on the main thread");
     NSString *(^string)(NSString *) = ^NSString *(NSString *key) {
@@ -278,10 +297,21 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
     NSDictionary *context = [self slockAdaptiveNavigationContext:target];
     NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
     if ([action isEqual:@"prepare"]) {
-        NSDictionary *result = [_slockNavigationSession prepare:requestId context:context now:now];
+        NSDictionary *expectedEditor = [params[@"expectedEditor"] isKindOfClass:NSDictionary.class]
+            ? params[@"expectedEditor"] : nil;
+        NSNumber *refTag = expectedEditor[@"refTag"];
+        UITextView *editor = [self slockAdaptiveEditorWithRefTag:refTag root:root];
+        NSDictionary *editorState = SlockAdaptiveEditorSnapshot(editor);
+        NSString *expectedText = expectedEditor[@"text"];
+        if (![expectedText isKindOfClass:NSString.class] || ![editorState[@"text"] isEqual:expectedText]) {
+            editorState = nil;
+        }
+        NSDictionary *result = [_slockNavigationSession prepare:requestId context:context
+                                                         editor:editor editorState:editorState now:now];
         if ([result[@"status"] isEqual:@"prepared"]) {
             _slockNavigationTarget = target;
             _slockNavigationWindow = self.viewIfLoaded.window;
+            _slockNavigationEditorRefTag = [refTag copy];
         }
         return result;
     }
@@ -291,7 +321,10 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
     // Keep the destination alive through pop. Never use a source callback as the success receipt.
     KuiklyRenderViewController *preparedTarget = _slockNavigationTarget;
     if (target != preparedTarget || self.viewIfLoaded.window != _slockNavigationWindow) context = @{};
-    NSDictionary *result = [_slockNavigationSession commit:requestId token:token context:context now:now perform:^BOOL {
+    UITextView *editor = [self slockAdaptiveEditorWithRefTag:_slockNavigationEditorRefTag root:root];
+    NSDictionary *editorState = SlockAdaptiveEditorSnapshot(editor);
+    NSDictionary *result = [_slockNavigationSession commit:requestId token:token context:context
+                                                   editor:editor editorState:editorState now:now perform:^BOOL {
         UINavigationController *nav = self.navigationController;
         // Synchronous removal: UIKit stack mutation and its readback occur in this main-thread turn.
         // No asynchronous animation completion can race a subsequent user navigation.

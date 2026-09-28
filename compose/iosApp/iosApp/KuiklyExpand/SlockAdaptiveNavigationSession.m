@@ -4,6 +4,8 @@
     NSString *_requestId;
     NSString *_token;
     NSDictionary *_context;
+    __weak id _editor;
+    NSDictionary *_editorState;
     NSDictionary *_terminal;
     NSTimeInterval _expiresAt;
     BOOL _committing;
@@ -13,7 +15,8 @@
     return @{ @"requestId": requestId ?: @"", @"status": status, @"reason": reason };
 }
 
-- (NSDictionary *)prepare:(NSString *)requestId context:(NSDictionary *)context now:(NSTimeInterval)now {
+- (NSDictionary *)prepare:(NSString *)requestId context:(NSDictionary *)context
+                  editor:(id)editor editorState:(NSDictionary *)editorState now:(NSTimeInterval)now {
     if (requestId.length == 0 || context.count == 0) {
         return [self result:@"rejected" request:requestId reason:@"invalid_request"];
     }
@@ -22,6 +25,10 @@
     }
     if ([_requestId isEqual:requestId]) {
         if (_terminal) return _terminal;
+        if (!editor || editor != _editor || !editorState || ![_editorState isEqual:editorState]) {
+            _terminal = [self result:@"rejected" request:requestId reason:@"editor_drift"];
+            return _terminal;
+        }
         if (now >= _expiresAt || ![_context isEqual:context]) {
             _terminal = [self result:@"rejected" request:requestId reason:@"source_changed"];
             return _terminal;
@@ -30,6 +37,11 @@
         if (_requestId && !_terminal) {
             return [self result:@"rejected" request:requestId reason:@"request_in_progress"];
         }
+        if (!editor || editorState.count == 0) {
+            return [self result:@"rejected" request:requestId reason:@"editor_drift"];
+        }
+        _editor = editor;
+        _editorState = [editorState copy];
         _requestId = [requestId copy];
         _token = NSUUID.UUID.UUIDString;
         _context = [context copy];
@@ -41,7 +53,8 @@
 }
 
 - (NSDictionary *)commit:(NSString *)requestId token:(NSString *)token
-                 context:(NSDictionary *)context now:(NSTimeInterval)now
+                 context:(NSDictionary *)context
+                  editor:(id)editor editorState:(NSDictionary *)editorState now:(NSTimeInterval)now
                  perform:(BOOL (^)(void))perform {
     if (!_requestId || ![_requestId isEqual:requestId] || ![_token isEqual:token]) {
         return [self result:@"rejected" request:requestId reason:@"request_mismatch"];
@@ -50,6 +63,12 @@
     if (_committing) return [self result:@"rejected" request:requestId reason:@"commit_in_progress"];
     if (now >= _expiresAt || ![_context isEqual:context]) {
         _terminal = [self result:@"rejected" request:requestId reason:@"source_changed"];
+        return _terminal;
+    }
+    // Checked immediately before the synchronous UI mutation. Never accept a replacement
+    // editor with identical text, nor an unavailable/composing editor snapshot.
+    if (!editor || editor != _editor || !editorState || ![_editorState isEqual:editorState]) {
+        _terminal = [self result:@"rejected" request:requestId reason:@"editor_drift"];
         return _terminal;
     }
     _committing = YES;
