@@ -14,7 +14,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class SlockAdaptiveDetailOpenInitiatorTest {
+internal class SlockAdaptiveDetailOpenInitiatorTest {
     private val shellId = "shell-1"
     private val hostId = "pager-thread-1"
     private val identity =
@@ -51,7 +51,7 @@ class SlockAdaptiveDetailOpenInitiatorTest {
             .put("sourceControllerToken", sourceToken)
             .put("targetControllerToken", targetToken)
 
-    private class Fixture(
+    private inner class Fixture(
         val nativeReplies: MutableMap<String, JSONObject?> = mutableMapOf(),
         val nativeCalls: MutableList<Triple<String, String, String?>> = mutableListOf(),
         val draftResult: Boolean = true,
