@@ -1,4 +1,4 @@
-# Test-only A4 integration revision 10 — DO NOT MERGE
+# Test-only A4 integration revision 11 — DO NOT MERGE
 
 Shared PR2730: d1421b4a7040e5c20b350d6337dc2bf0d35931cd (rebased main includes layout 2727/2728).
 Native PR2731: 6c31dfbfec76b59cee54bc7b16aa6d9bc3791ebe.
@@ -25,3 +25,5 @@ Revision 8 moves destination READY above the empty-state return and permits succ
 Revision 9 moves empty READY above the outer ThreadChatTabContent status dispatch and uses actual parser terminal states empty/content. Revision 8 still bypassed the entire list in empty_state and accepted an unused success status. Shared posted state now connects outer empty readiness to inner nonempty restore readiness; state declarations/import are included. Repeat real compact Home → empty channel → wide before any broader acceptance.
 
 Revision 10 adds Debug-only native stage diagnostics for adaptive detail child hosts (pageData, frame, layout, attach, load and visibility state). Revision 9 times out while covered and posts READY/ACK only after manual Back. No lifecycle, mounting or commit behavior is changed; probes distinguish missing layout/attachment from post-attachment lifecycle suspension. Shared source remains d1421b4a7.
+
+Revision 11 is a QA-only native preparation experiment: a valid adaptive detail host explicitly lays itself out after frame/props/parent arrival, even while its navigation controller is detached. Work is coalesced on the main queue and rechecks live parent, dimensions and adaptive envelope; it does not call appearance methods or change active. Revision 10 positively captured nonzero frame with child=0 until manual Back triggered first layout. Shared remains d1421b4a7 to isolate this change; newer cancellation cleanup is not yet integrated. Nonempty scroll/final geometry still require separate verification.
