@@ -642,7 +642,12 @@ internal fun SlockNavigationRailTabBar(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(SlockNavigationRailHeaderHeight)
+                        // Header height grows with the top safe area instead of shrinking the
+                        // centered content: the 62dp visual band keeps its full height so the
+                        // 40dp server tile never clips against the divider, and the divider
+                        // lands on the same baseline as the channel list header rule (which is
+                        // itself topSafeArea + 12dp padding above its content).
+                        .height(SlockNavigationRailHeaderHeight + topSafeArea)
                         .padding(top = topSafeArea),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
