@@ -275,6 +275,7 @@ class SlockAvatarMountedBindingTest {
         assertNotEquals(staleModel, handle.imageModel.value)
         assertEquals(store.metadata?.commitIdentity, descriptor.commitIdentity)
         assertNull(store.failure, "a caller-cancelled refresh must not write a durable failure row")
+        Unit
     }
 
     @Test
@@ -298,6 +299,7 @@ class SlockAvatarMountedBindingTest {
         val handle2 = binding2.mount(subject(), RemoteUrl)
         binding2.refresh(handle2)
         assertNotNull(handle2.imageModel.value)
+        Unit
     }
 
     @Test
