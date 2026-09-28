@@ -376,6 +376,22 @@ internal class SlockAvatarMountedSession(
                 }
         }
 
+    /**
+     * Removes a dead flight from the slot when it is still the registered one, so a later attempt
+     * starts a fresh request generation instead of joining a generation nobody will resolve. A
+     * flight whose transport was cancelled by its caller would otherwise stay parked in
+     * activeFlights forever (cancellation never reaches resolve), poisoning every later refresh:
+     * the next attempt would join the dead flight, complete, and be rejected as stale.
+     */
+    fun abandonFlight(flight: SlockAvatarMountedFlight): Boolean =
+        synchronized(lock) {
+            val slot = flight.key.mountedSlot()
+            val active = activeFlights[slot] ?: return@synchronized false
+            if (active.flight !== flight) return@synchronized false
+            activeFlights.remove(slot)
+            true
+        }
+
     fun resolve(
         flight: SlockAvatarMountedFlight,
         outcome: SlockAvatarMountedOutcome

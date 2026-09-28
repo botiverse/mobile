@@ -9,6 +9,10 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -250,7 +254,8 @@ internal class SlockAvatarMountedBinding(
     private val nativeProvider: () -> SlockAvatarMountedNativeProvider =
         SlockAvatarMountedNativeProviderRegistry::current,
     private val downloader: SlockAvatarConditionalDownloader = DefaultSlockAvatarConditionalDownloader,
-    private val session: SlockAvatarMountedSession = SlockAvatarMountedSession()
+    private val session: SlockAvatarMountedSession = SlockAvatarMountedSession(),
+    private val flightScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 ) {
     private val log: (String) -> Unit = { message -> slockLogWarn(LogTag, message) }
     private val handlesLock = SynchronizedObject()
@@ -378,15 +383,34 @@ internal class SlockAvatarMountedBinding(
                     continue
                 }
             }
+            // The transport runs in flightScope, not this coroutine: composable churn cancels the
+            // awaiting effect while the download and its session/native commit keep running, so a
+            // cancelled refresh can no longer strand a live flight or leave durable failure rows
+            // for a request that actually succeeded.
+            val transport =
+                flightScope.async {
+                    try {
+                        refreshOnce(handle.remoteUrl, flight)
+                    } catch (cancellation: CancellationException) {
+                        // A cancelled transport never resolved its generation: retire the flight
+                        // so a later refresh starts a new one instead of joining a dead generation.
+                        // No durable failure is written; a cancelled download is not evidence of a
+                        // transport problem.
+                        session.abandonFlight(flight)
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        resolveTemporary(flight)
+                    }
+                }
             try {
-                refreshOnce(handle.remoteUrl, flight)
+                transport.await()
                 deferred.complete(Unit)
                 return
             } catch (cancellation: CancellationException) {
-                deferred.completeExceptionally(cancellation)
-                throw cancellation
-            } catch (_: Throwable) {
-                resolveTemporary(flight)
+                // The awaiting effect was cancelled, or the transport cancelled itself. Wait for
+                // the detached transport to settle (non-cancellable: this coroutine may already be
+                // cancelled) before handing the flight slot back.
+                withContext(NonCancellable) { runCatching { transport.await() } }
                 deferred.complete(Unit)
                 return
             } finally {
