@@ -20,6 +20,8 @@ import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.Spacer
+import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.material3.Text
@@ -27,6 +29,8 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.semantics.contentDescription
+import com.tencent.kuikly.compose.ui.semantics.semantics
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
@@ -598,46 +602,190 @@ internal fun SlockFloatingDockTabBar(
     }
 }
 
+/**
+ * task #31: Web-aligned left navigation rail (LeftRail.tsx contract, task #30 diff list).
+ * Full-height brand-yellow column: 64dp wide with a right black separator; a 62dp server
+ * header on top (40dp avatar tile or first-letter fallback, bottom divider aligned with the
+ * channel list header rule); icon-only 40dp visual buttons with 18dp icons at 6dp rhythm and
+ * 8dp top/bottom breathing room; selection is a white 2dp-bordered tile with the classic 2dp
+ * hard shadow — never a yellow cell or capsule. Main tabs occupy the top group; utility
+ * entries pin to the bottom through a flexible spacer so the settings cluster never gets
+ * pushed off by short heights. All entries map to real destinations — no filler buttons.
+ */
+internal data class SlockNavigationRailHeader(
+    val key: String,
+    val label: String,
+    val unread: Boolean = false,
+    val enabled: Boolean = true
+)
+
 @Composable
 internal fun SlockNavigationRailTabBar(
     items: List<SlockBottomTabItemPayload>,
     onSelect: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    header: SlockNavigationRailHeader? = null,
+    headerContent: (@Composable () -> Unit)? = null,
+    bottomItems: List<SlockBottomTabItemPayload> = emptyList(),
+    onBottomItemSelect: ((String) -> Unit)? = null,
+    topSafeArea: Dp = 0.dp,
+    bottomSafeArea: Dp = 0.dp
 ) {
-    Column(
-        modifier = modifier
-            .width(72.dp)
-            .fillMaxHeight()
-            .background(SlockColor.SurfaceWhite)
-    ) {
-        items.forEach { item ->
-            val selected = item.selected
+    Row(modifier = modifier.fillMaxHeight()) {
+        Column(
+            modifier = Modifier
+                .width(SlockNavigationRailWidth)
+                .fillMaxHeight()
+                .background(SlockColor.BrandYellow)
+        ) {
+            if (header != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(SlockNavigationRailHeaderHeight)
+                        .padding(top = topSafeArea),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    if (headerContent != null) {
+                        headerContent()
+                    } else {
+                        SlockNavigationRailServerTile(header = header, onSelect = onSelect)
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(SlockStroke.Default)
+                        .background(SlockColor.BorderBlack)
+                )
+            } else {
+                Spacer(Modifier.height(SlockSpacing.Sm + topSafeArea))
+            }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(58.dp)
-                    .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-                    .clickable(enabled = item.enabled) { onSelect(item.key) }
-                    .padding(horizontal = SlockSpacing.Xs),
+                    .weight(1f)
+                    .padding(vertical = SlockSpacing.Sm),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
+                verticalArrangement = Arrangement.spacedBy(SlockNavigationRailItemSpacing)
             ) {
-                SlockLucideIcon(
-                    name = item.iconName,
-                    color = if (item.enabled) "#FF000000" else "#FF737373",
-                    modifier = Modifier.size(20.dp)
-                )
-                Text(
-                    text = item.label.uppercase(),
-                    style = SlockType.TabLabel.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                items.forEach { item ->
+                    SlockNavigationRailTabItem(item = item, onSelect = onSelect)
+                }
             }
+            if (bottomItems.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = SlockSpacing.Sm, bottom = SlockSpacing.Sm + bottomSafeArea),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(SlockNavigationRailItemSpacing)
+                ) {
+                    bottomItems.forEach { item ->
+                        SlockNavigationRailTabItem(item = item, onSelect = onBottomItemSelect ?: onSelect)
+                    }
+                }
+            }
+        }
+        Box(
+            modifier = Modifier
+                .width(SlockStroke.Default)
+                .fillMaxHeight()
+                .background(SlockColor.BorderBlack)
+        )
+    }
+}
+
+@Composable
+private fun SlockNavigationRailTabItem(
+    item: SlockBottomTabItemPayload,
+    onSelect: (String) -> Unit
+) {
+    val selected = item.selected
+    Box(modifier = Modifier.size(SlockNavigationRailButtonSize)) {
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .offset(x = SlockStroke.Default, y = SlockStroke.Default)
+                    .background(SlockColor.BorderBlack)
+            )
+        }
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(if (selected) SlockColor.SurfaceWhite else Color.Transparent)
+                .then(if (selected) Modifier.border(SlockStroke.Default, SlockColor.BorderBlack) else Modifier)
+                .clickable(enabled = item.enabled) { onSelect(item.key) }
+                // task #31: icon-only buttons keep an accessible label.
+                .semantics { contentDescription = item.label },
+            contentAlignment = Alignment.Center
+        ) {
+            SlockLucideIcon(
+                name = item.iconName,
+                color = if (item.enabled) SlockColor.TextBlackArgb else SlockColor.TextMutedGrayArgb,
+                modifier = Modifier.size(SlockNavigationRailIconSize)
+            )
         }
     }
 }
+
+@Composable
+private fun SlockNavigationRailServerTile(
+    header: SlockNavigationRailHeader,
+    onSelect: (String) -> Unit
+) {
+    val tileSize = 40.dp
+    Box(modifier = Modifier.size(tileSize + SlockStroke.Default * 2)) {
+        Box(
+            modifier = Modifier
+                .size(tileSize)
+                .align(Alignment.TopStart)
+                .offset(x = SlockStroke.Default, y = SlockStroke.Default)
+                .background(SlockColor.BorderBlack)
+        )
+        Box(
+            modifier = Modifier
+                .size(tileSize)
+                .align(Alignment.TopStart)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .clickable(enabled = header.enabled) { onSelect(header.key) },
+            contentAlignment = Alignment.Center
+        ) {
+            // Default tile shows the server's first letter; the real avatar surface is supplied
+            // through headerContent (it needs the mounted avatar cache in the shell context).
+            Text(
+                text = header.label.take(1).uppercase(),
+                style =
+                    SlockType.Button.copy(
+                        fontFamily = slockMonoFamilyForWeight(FontWeight.Bold),
+                        fontSize = 17.sp,
+                        lineHeight = 20.sp,
+                        fontWeight = FontWeight.Normal
+                    ),
+                color = SlockColor.TextBlack,
+                maxLines = 1
+            )
+        }
+        if (header.unread) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .align(Alignment.TopEnd)
+                    .background(SlockColor.AccentPink)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+            )
+        }
+    }
+}
+
+private val SlockNavigationRailWidth = 64.dp
+private val SlockNavigationRailHeaderHeight = 62.dp
+private val SlockNavigationRailButtonSize = 40.dp
+private val SlockNavigationRailIconSize = 18.dp
+private val SlockNavigationRailItemSpacing = 6.dp
 
 @Composable
 private fun SlockVerticalTabItem(
