@@ -4492,6 +4492,19 @@ private fun SlockAppShellReadyContent(
                             )
                         }
                     }
+                    // Server-membership/profile mutations must invalidate the in-session
+                    // roster cache; otherwise updated fields (e.g. avatarUrl) stay stale
+                    // until process restart. Agents/Machines scopes already refresh through
+                    // their own projections, so only ServerMembers pays for a roster refetch.
+                    if (event.scope == build.raft.app.model.RealtimeRefreshScope.ServerMembers) {
+                        appShellCoroutineScope.launch {
+                            appShellServerMembersStore.refreshMembers(
+                                serverId = build.raft.app.model.ServerId(serverId),
+                                priority = DataRequestPriority.Background,
+                                reason = "realtime_${event.reason}"
+                            )
+                        }
+                    }
                 },
                 applyAgentActivity = { event ->
                     // task #136: members-store applyPresence moved to the
