@@ -3211,15 +3211,11 @@ private fun SlockAppShellReadyContent(
                     )
                 if (pending == null) return@observe
                 adaptiveWorkspaceStore.update { nextSession }
-                // Commit: the destination restored and reported READY; consume the staged
-                // viewport record exactly once, under this request's fence.
-                sharedStores
-                    .adaptiveScrollAnchorStore(storeScope)
-                    .consume(
-                        shellInstanceId = storeScope.shellInstanceId,
-                        identity = pending.identity,
-                        requestId = pending.requestId,
-                    )
+                // READY means the destination restored and mounted; ack authorizes the source to
+                // attempt the native commit. The staged anchor is NOT consumed here — it is
+                // consumed only on the native commit receipt (see the commit-result subscription
+                // below), so a rejected or failed commit keeps the recovery record.
+                if (pending.acknowledged) return@observe
                 sharedStores.eventBus.post(
                     eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
                     eventData =
@@ -3232,6 +3228,61 @@ private fun SlockAppShellReadyContent(
                     crossProcess = true,
                     source = "adaptive_detail_open_ready",
                 )
+            }
+        // The source reports its prepared controller identities after native prepare; bind them
+        // to the pending request so a stray commit receipt cannot settle it.
+        val preparedSubscription =
+            sharedStores.eventBus.observe(
+                eventName = SLOCK_ADAPTIVE_DETAIL_PREPARED_EVENT,
+                crossProcess = true,
+            ) { eventData ->
+                val prepared = eventData?.toSlockAdaptiveDetailPreparedOrNull()
+                    ?: return@observe
+                if (prepared.shellInstanceId != storeScope.shellInstanceId) return@observe
+                adaptiveWorkspaceStore.update { current ->
+                    markSlockAdaptiveDetailOpenPrepared(
+                        requestId = prepared.requestId,
+                        sourceControllerToken = prepared.sourceControllerToken,
+                        targetControllerToken = prepared.targetControllerToken,
+                        session = current,
+                    )
+                }
+            }
+        // The authoritative end of an adoption is the native commit receipt, not the ack.
+        // commit=true → consume the staged anchor exactly once under the request fence and
+        // settle the pending entry; failure → discard the anchor, drop pending, and clear the
+        // staged detail selection so the destination does not stay mounted while the source
+        // page is still alive.
+        val commitSubscription =
+            sharedStores.eventBus.observe(
+                eventName = SLOCK_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT,
+                crossProcess = true,
+            ) { eventData ->
+                val result = eventData?.toSlockAdaptiveNativeCommitResultOrNull()
+                    ?: return@observe
+                val session = adaptiveWorkspaceStore.snapshot()
+                val (nextSession, pending) =
+                    settleSlockAdaptiveDetailOpen(
+                        result = result,
+                        session = session,
+                    )
+                if (pending == null) return@observe
+                val anchorStore = sharedStores.adaptiveScrollAnchorStore(storeScope)
+                if (result.committed) {
+                    adaptiveWorkspaceStore.update { nextSession }
+                    anchorStore.consume(
+                        shellInstanceId = storeScope.shellInstanceId,
+                        identity = pending.identity,
+                        requestId = pending.requestId,
+                    )
+                } else {
+                    // Keep the pending entry and the staged anchor: a rejected/timed-out commit
+                    // may mean the native pop already happened but the stack readback failed —
+                    // discarding the recovery record here would lose the viewport anchor while
+                    // both pages are gone (source popped, destination still mounted). Retention
+                    // is what keeps an explicit retry or user navigation able to recover; the
+                    // TerminalReset/AuthorityChanged paths still drop+nack as before.
+                }
             }
         val closeSubscription =
             sharedStores.eventBus.observe(
@@ -3269,6 +3320,8 @@ private fun SlockAppShellReadyContent(
         onDispose {
             openSubscription.close()
             readySubscription.close()
+            preparedSubscription.close()
+            commitSubscription.close()
             closeSubscription.close()
         }
     }

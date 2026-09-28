@@ -217,7 +217,7 @@ class SlockAdaptiveDetailOpenContractTest {
     }
 
     @Test
-    fun completeFindsPendingByGenerationAndClearsIt() {
+    fun completeMarksPendingAcknowledgedAndKeepsIt() {
         val workspace =
             SlockAdaptiveWorkspaceState(shellInstanceId = "shell-a", serverId = "server-a").let {
                 reduceSlockAdaptiveWorkspace(
@@ -255,7 +255,9 @@ class SlockAdaptiveDetailOpenContractTest {
             )
 
         assertEquals("req-1", pending?.requestId)
-        assertTrue(next.pendingDetailOpens.isEmpty())
+        // READY keeps the pending entry (marked acknowledged) — it settles on the native
+        // commit receipt, not on READY.
+        assertEquals(true, next.pendingDetailOpens["req-1"]?.acknowledged)
     }
 
     @Test
@@ -297,6 +299,128 @@ class SlockAdaptiveDetailOpenContractTest {
 
         assertNull(pending)
         assertTrue(next === session)
+    }
+
+    @Test
+    fun nativeCommitResultParsesCommittedAndRejected() {
+        val committed =
+            JSONObject()
+                .put("requestId", "req-1")
+                .put("status", "committed")
+                .put("reason", "")
+                .put("sourceControllerToken", "src-1")
+                .put("targetControllerToken", "tgt-1")
+                .toSlockAdaptiveNativeCommitResultOrNull()
+        assertNotNull(committed)
+        assertTrue(committed.committed)
+        assertEquals("src-1", committed.sourceControllerToken)
+        val rejected =
+            JSONObject()
+                .put("requestId", "req-1")
+                .put("status", "rejected")
+                .put("reason", "stack_changed")
+                .toSlockAdaptiveNativeCommitResultOrNull()
+        assertNotNull(rejected)
+        assertTrue(!rejected.committed)
+        assertNull(JSONObject().put("status", "committed").toSlockAdaptiveNativeCommitResultOrNull())
+    }
+
+    private fun commitResult(
+        requestId: String,
+        status: String = "committed",
+        sourceToken: String = "src-1",
+        targetToken: String = "tgt-1",
+    ) = SlockAdaptiveNativeCommitResult(
+        requestId = requestId,
+        status = status,
+        reason = "",
+        sourceControllerToken = sourceToken,
+        targetControllerToken = targetToken,
+    )
+
+    @Test
+    fun settleResolvesOnlyAcknowledgedPendingWithMatchingTokens() {
+        val pending =
+            PendingAdaptiveDetailOpen(
+                requestId = "req-1",
+                hostId = "pager-9",
+                identity = detailIdentity(),
+                detailGeneration = 7L,
+                windowFactCapturedAtMillis = 1000L,
+                sourceControllerToken = "src-1",
+                targetControllerToken = "tgt-1",
+            )
+        val workspaceSession =
+            sessionWithWorkspace(dualPane = true).copy(
+                pendingDetailOpens = mapOf("req-1" to pending),
+            )
+        // Pre-READY receipt must not settle.
+        val (unsettled, ignored) =
+            settleSlockAdaptiveDetailOpen(commitResult("req-1"), workspaceSession)
+        assertNull(ignored)
+        assertTrue(unsettled === workspaceSession)
+        // Acknowledged pending with matching tokens settles.
+        val acked =
+            workspaceSession.copy(
+                pendingDetailOpens = mapOf("req-1" to pending.copy(acknowledged = true)),
+            )
+        val (settled, resolved) =
+            settleSlockAdaptiveDetailOpen(commitResult("req-1"), acked)
+        assertEquals("req-1", resolved?.requestId)
+        assertTrue(settled.pendingDetailOpens.isEmpty())
+        // Foreign requestId never matches.
+        val (other, none) = settleSlockAdaptiveDetailOpen(commitResult("req-9"), acked)
+        assertNull(none)
+        assertTrue(other === acked)
+        // Token mismatch (stray receipt for a different commit) does not settle.
+        val (mismatch, stray) =
+            settleSlockAdaptiveDetailOpen(
+                commitResult("req-1", sourceToken = "src-9"),
+                acked,
+            )
+        assertNull(stray)
+        assertTrue(mismatch === acked)
+        // Without a prepared binding the pending cannot settle on a receipt.
+        val unbound =
+            acked.copy(
+                pendingDetailOpens =
+                    mapOf("req-1" to pending.copy(acknowledged = true, sourceControllerToken = null)),
+            )
+        val (noBind, noSettle) = settleSlockAdaptiveDetailOpen(commitResult("req-1"), unbound)
+        assertNull(noSettle)
+        assertTrue(noBind === unbound)
+    }
+
+    @Test
+    fun preparedEventBindsControllerTokensToPending() {
+        val pending =
+            PendingAdaptiveDetailOpen(
+                requestId = "req-1",
+                hostId = "pager-9",
+                identity = detailIdentity(),
+                detailGeneration = 7L,
+                windowFactCapturedAtMillis = 1000L,
+            )
+        val session =
+            SharedAdaptiveWorkspaceSession(
+                pendingDetailOpens = mapOf("req-1" to pending),
+            )
+        val bound =
+            markSlockAdaptiveDetailOpenPrepared(
+                requestId = "req-1",
+                sourceControllerToken = "src-1",
+                targetControllerToken = "tgt-1",
+                session = session,
+            )
+        assertEquals("src-1", bound.pendingDetailOpens["req-1"]?.sourceControllerToken)
+        assertEquals("tgt-1", bound.pendingDetailOpens["req-1"]?.targetControllerToken)
+        // Unknown requestId and blank tokens are no-ops.
+        assertTrue(
+            markSlockAdaptiveDetailOpenPrepared("req-9", "a", "b", session) === session,
+        )
+        assertTrue(
+            markSlockAdaptiveDetailOpenPrepared("req-1", "", "b", session) === session,
+        )
     }
 
     private fun request(

@@ -16996,8 +16996,8 @@ private fun ThreadMessagesListContent(
     // restores the staged viewport anchor against its own message ordering — canonical message
     // id first, list index only as fallback — then posts READY so the shell can ack the pending
     // adoption. The staged record is deliberately NOT consumed here: the shell consumes it only
-    // when the transfer is committed (ack sent), so a rejected or failed transfer keeps the
-    // anchor available for a retry. Pages without a staged anchor (entry-redirect opens) still
+    // when the native commit receipt reports `committed`, so a rejected or failed transfer keeps
+    // the anchor available for a retry. Pages without a staged anchor (entry-redirect opens) still
     // report READY; the shell ignores it when nothing is pending.
     val closeReq = adaptiveCloseRequest
     val adaptivePager = LocalActivity.current.getPager() as Pager

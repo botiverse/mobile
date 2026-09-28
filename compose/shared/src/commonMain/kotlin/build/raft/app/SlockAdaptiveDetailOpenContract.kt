@@ -6,6 +6,8 @@ import kotlinx.serialization.json.Json
 internal const val SLOCK_ADAPTIVE_DETAIL_OPEN_EVENT = "slockAdaptiveDetailOpen"
 internal const val SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT = "slockAdaptiveDetailOpenAck"
 internal const val SLOCK_ADAPTIVE_DETAIL_READY_EVENT = "slockAdaptiveDetailReady"
+internal const val SLOCK_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT = "slockAdaptiveNativeCommitResult"
+internal const val SLOCK_ADAPTIVE_DETAIL_PREPARED_EVENT = "slockAdaptiveDetailPrepared"
 
 /**
  * Window fact carried inside an adoption request. Mirrors the host emitter fields so the shell can
@@ -263,6 +265,86 @@ internal fun JSONObject.toSlockAdaptiveDetailOpenAckOrNull(): SlockAdaptiveDetai
     )
 }
 
+/**
+ * Posted by the source page after the native prepare succeeds (task #18). Binds the pending
+ * adoption to the exact controller identities the native layer will later report on the commit
+ * result — without this, the shell cannot distinguish the real receipt from a stray one.
+ */
+internal data class SlockAdaptiveDetailPrepared(
+    val shellInstanceId: String,
+    val requestId: String,
+    val sourceControllerToken: String,
+    val targetControllerToken: String,
+) {
+    init {
+        require(shellInstanceId.isNotBlank()) { "Adaptive prepared requires a shell id" }
+        require(requestId.isNotBlank()) { "Adaptive prepared requires a request id" }
+    }
+
+    fun toJson(): JSONObject =
+        JSONObject()
+            .put(SlockAdaptiveDetailOpenRequest.KEY_SHELL_ID, shellInstanceId)
+            .put(SlockAdaptiveDetailOpenRequest.KEY_REQUEST_ID, requestId)
+            .put(KEY_SOURCE_TOKEN, sourceControllerToken)
+            .put(KEY_TARGET_TOKEN, targetControllerToken)
+
+    companion object {
+        internal const val KEY_SOURCE_TOKEN = "sourceControllerToken"
+        internal const val KEY_TARGET_TOKEN = "targetControllerToken"
+    }
+}
+
+internal fun JSONObject.toSlockAdaptiveDetailPreparedOrNull(): SlockAdaptiveDetailPrepared? {
+    val shellInstanceId = optString(SlockAdaptiveDetailOpenRequest.KEY_SHELL_ID).trim()
+    val requestId = optString(SlockAdaptiveDetailOpenRequest.KEY_REQUEST_ID).trim()
+    if (shellInstanceId.isBlank() || requestId.isBlank()) return null
+    return SlockAdaptiveDetailPrepared(
+        shellInstanceId = shellInstanceId,
+        requestId = requestId,
+        sourceControllerToken =
+            optString(SlockAdaptiveDetailPrepared.KEY_SOURCE_TOKEN).trim(),
+        targetControllerToken =
+            optString(SlockAdaptiveDetailPrepared.KEY_TARGET_TOKEN).trim(),
+    )
+}
+
+/**
+ * Authoritative result of the native guarded commit (task #18). Emitted by the native layer as a
+ * pager event on the prepared target AppShell — never as a source callback, since the source page
+ * may already be destroyed. The shell settles the pending adoption only on this receipt: the ack
+ * merely permits the source to attempt commit, it is not proof the stack change happened.
+ */
+internal data class SlockAdaptiveNativeCommitResult(
+    val requestId: String,
+    val status: String,
+    val reason: String,
+    val sourceControllerToken: String,
+    val targetControllerToken: String,
+) {
+    val committed: Boolean get() = status == STATUS_COMMITTED
+
+    companion object {
+        internal const val STATUS_COMMITTED = "committed"
+        internal const val KEY_REQUEST_ID = "requestId"
+        internal const val KEY_STATUS = "status"
+        internal const val KEY_REASON = "reason"
+        internal const val KEY_SOURCE_TOKEN = "sourceControllerToken"
+        internal const val KEY_TARGET_TOKEN = "targetControllerToken"
+    }
+}
+
+internal fun JSONObject.toSlockAdaptiveNativeCommitResultOrNull(): SlockAdaptiveNativeCommitResult? {
+    val requestId = optString(SlockAdaptiveNativeCommitResult.KEY_REQUEST_ID).trim()
+    if (requestId.isBlank()) return null
+    return SlockAdaptiveNativeCommitResult(
+        requestId = requestId,
+        status = optString(SlockAdaptiveNativeCommitResult.KEY_STATUS).trim(),
+        reason = optString(SlockAdaptiveNativeCommitResult.KEY_REASON).trim(),
+        sourceControllerToken = optString(SlockAdaptiveNativeCommitResult.KEY_SOURCE_TOKEN).trim(),
+        targetControllerToken = optString(SlockAdaptiveNativeCommitResult.KEY_TARGET_TOKEN).trim(),
+    )
+}
+
 private val adaptiveDetailOpenJson = Json { ignoreUnknownKeys = true }
 
 /** Decodes the carried launch payload; returns null when it is not a routable thread payload. */
@@ -412,10 +494,67 @@ internal fun completeSlockAdaptiveDetailOpen(
         session.workspace?.selection?.identity?.key == identityKey &&
             session.workspace.selection?.generation == generation
     return if (matches) {
-        session.copy(pendingDetailOpens = session.pendingDetailOpens - match.requestId) to match
+        // Keep the pending entry — it settles only on the native commit receipt. READY marks it
+        // acknowledged so a duplicate READY does not re-ack.
+        session.copy(
+            pendingDetailOpens =
+                session.pendingDetailOpens +
+                    (match.requestId to match.copy(acknowledged = true)),
+        ) to match
     } else {
         session to null
     }
+}
+
+/**
+ * Settles a pending adoption on the native commit result receipt. Only an already-acknowledged
+ * pending with a matching requestId resolves; anything else (late, foreign, or pre-READY) is
+ * ignored so a stray receipt cannot authorize a different migration.
+ */
+internal fun settleSlockAdaptiveDetailOpen(
+    result: SlockAdaptiveNativeCommitResult,
+    session: build.raft.app.data.SharedAdaptiveWorkspaceSession,
+): Pair<build.raft.app.data.SharedAdaptiveWorkspaceSession, build.raft.app.data.PendingAdaptiveDetailOpen?> {
+    val match = session.pendingDetailOpens[result.requestId] ?: return session to null
+    if (!match.acknowledged) return session to null
+    // Authority: the receipt must still target the workspace's current server — a commit result
+    // arriving after an authority switch must not settle a stale request.
+    val workspace = session.workspace
+    if (workspace == null || workspace.serverId != match.identity.serverId) return session to null
+    // Controller tokens: once the source reported its prepared identities, the commit receipt
+    // must carry the same pair; a receipt without a prepared binding is ignored. Requests staged
+    // before a prepare report exist cannot be settled by tokenless receipts.
+    val preparedSource = match.sourceControllerToken
+    val preparedTarget = match.targetControllerToken
+    if (preparedSource.isNullOrBlank() || preparedTarget.isNullOrBlank()) return session to null
+    if (
+        result.sourceControllerToken != preparedSource ||
+        result.targetControllerToken != preparedTarget
+    ) {
+        return session to null
+    }
+    return session.copy(pendingDetailOpens = session.pendingDetailOpens - result.requestId) to match
+}
+
+/** Binds prepared controller tokens to a pending request (posted by the source after prepare). */
+internal fun markSlockAdaptiveDetailOpenPrepared(
+    requestId: String,
+    sourceControllerToken: String,
+    targetControllerToken: String,
+    session: build.raft.app.data.SharedAdaptiveWorkspaceSession,
+): build.raft.app.data.SharedAdaptiveWorkspaceSession {
+    val match = session.pendingDetailOpens[requestId] ?: return session
+    if (match.acknowledged) return session
+    if (sourceControllerToken.isBlank() || targetControllerToken.isBlank()) return session
+    return session.copy(
+        pendingDetailOpens =
+            session.pendingDetailOpens +
+                (requestId to
+                    match.copy(
+                        sourceControllerToken = sourceControllerToken,
+                        targetControllerToken = targetControllerToken,
+                    )),
+    )
 }
 
 /** Drops a pending request without an ack path (cancel/timeout/authority change). */
