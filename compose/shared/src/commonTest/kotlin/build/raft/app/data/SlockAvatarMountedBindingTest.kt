@@ -627,7 +627,10 @@ class SlockAvatarMountedBindingTest {
             session =
                 SlockAvatarMountedSession {
                     (++nonce).toString(16).padStart(64, '0')
-                }
+                },
+            // Tests run refresh transports unconfined so runBlocking callers keep the same
+            // single-threaded interleaving the suite was written against.
+            flightScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Unconfined)
         )
     }
 
