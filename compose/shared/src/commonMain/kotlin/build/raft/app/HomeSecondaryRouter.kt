@@ -106,6 +106,7 @@ private data class HomeSecondaryRouteEnvironment(
     val activitySenderAvatarsEnabled: Boolean,
     val storeScope: SlockShellStoreScope,
     val hasExplicitShellScope: Boolean,
+    val adaptivePane: SlockAdaptivePaneState,
     val shellScope: SlockAppShellScope,
     val conversationIdentityProvider: SharedConversationIdentityProvider?,
     val sharedHomeStore: SharedHomeStore?,
@@ -115,7 +116,8 @@ private data class HomeSecondaryRouteEnvironment(
 
 @Composable
 private fun rememberHomeSecondaryRouteEnvironment(
-    routeVisibleTick: Int = 0
+    routeVisibleTick: Int = 0,
+    adaptivePane: SlockAdaptivePaneState = SlockAdaptivePaneState(),
 ): HomeSecondaryRouteEnvironment {
     RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager() as Pager
@@ -179,7 +181,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
                 )
             }
         }
-    val shellScope = rememberSlockAppShellScope()
+    val shellScope = rememberSlockAppShellScope(adaptivePane)
     return remember(
         pager,
         bridge,
@@ -199,6 +201,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
         activitySenderAvatarsEnabled,
         storeScope,
         hasExplicitShellScope,
+        adaptivePane,
         shellScope
     ) {
         HomeSecondaryRouteEnvironment(
@@ -220,6 +223,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
             activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
             storeScope = storeScope,
             hasExplicitShellScope = hasExplicitShellScope,
+            adaptivePane = adaptivePane,
             shellScope = shellScope,
             conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope),
             sharedHomeStore = sharedStores.sharedHomeStore(storeScope),
@@ -235,9 +239,10 @@ internal fun HomeSecondaryRouterContent(
     routeVisibleTick: Int = 0,
     initialSearchChannelId: String? = null,
     initialSearchOpenFilterId: String? = null,
-    initialSearchFocusInput: Boolean = false
+    initialSearchFocusInput: Boolean = false,
+    adaptivePane: SlockAdaptivePaneState = SlockAdaptivePaneState(),
 ) {
-    val environment = rememberHomeSecondaryRouteEnvironment(routeVisibleTick)
+    val environment = rememberHomeSecondaryRouteEnvironment(routeVisibleTick, adaptivePane)
     val retainedDestination = retainedHomeSecondaryDestination(destination)
     PerformanceSceneEffect(
         bridge = environment.bridge,
@@ -284,7 +289,10 @@ private fun HomeActivityRouterContent(
         }
     val activityWorkspaceSession by activityWorkspaceStore.state.collectAsState()
     val activityWorkspace = activityWorkspaceSession.workspace
-    val adaptivePane = environment.shellScope.adaptivePane
+    // The page-level pane state (fed by SlockAdaptivePanePagerEvent on the pushed page's own
+    // BasePager) — this is what lets DualPane resolve on a secondary surface; the default
+    // shellScope construction never receives those events and would stay compact forever.
+    val adaptivePane = environment.adaptivePane
     var activityServerId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(environment.authStore) {
         activityServerId =
