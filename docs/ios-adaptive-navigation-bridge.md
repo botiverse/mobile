@@ -98,3 +98,27 @@ Renderer API verified against immutable Kuikly `2.24.0-raft.7`, source
 No fork modification or renderer version change is involved.
 
 UIKit snapshot checks run in the standalone `AdaptiveEditorTests` simulator target. It links only system frameworks and the production snapshot header, with no app host or shared framework dependency; the host app compilation and Foundation transaction suite remain separate CI steps. This avoids loading a second copy of the static shared runtime through the existing `iosAppTests` carrier.
+
+### Covered destination preparation
+
+A Thread controller covering AppShell detaches its view from UIWindow. Kuikly still
+sends adaptive detail pageData and a nonzero frame, but UIKit may defer layout.
+The adaptive child host therefore coalesces an explicit layout on the main queue
+after frame, page props, or parent arrival. Before running it rechecks its live
+parent, dimensions, page name, shell ID and positive detail generation. Removed
+or rebound ordinary hosts do not create a child. It uses normal layout/attachment
+and existing visibility guards; it never manufactures appearance or activation.
+
+QA revision 10 (5f8bca2b2, run 36494504839) positively captured this deferral: frame
+arrived before AckTimeout, while the first child creation occurred only after
+manual Back. Revision 11 (5dda43b57, run 36497233364) with the above preparation
+change produced READY/ACK at window=0 and active/appearance=false, then dispatched
+commit and automatically showed the same empty channel in Home with its original
+unsent draft. This is an isolated iPad simulator result with QA-only shared gates.
+The newer shared cancellation patch was not in that comparison carrier.
+
+Remaining acceptance includes authoritative commit receipt settlement, nonempty
+scroll restoration at final geometry, edit/replacement during handoff, and
+new-carrier timeout/cancel/retry/late-READY behavior. Initial detached-host bounds
+can precede the final wide layout, so empty READY is not nonempty viewport proof.
+Product capability remains disabled. No physical-device acceptance is claimed.
