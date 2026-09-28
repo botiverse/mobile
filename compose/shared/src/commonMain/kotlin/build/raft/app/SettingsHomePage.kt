@@ -1971,7 +1971,13 @@ private fun SlockAppShellReadyContent(
         pager.pageData.params.optBoolean(APP_SHELL_SUPPRESS_RESTORE_LANDING, false)
     }
     val adaptiveHomeWorkspaceEnabled = remember(pager.pageData.params.toString()) {
-        pager.pageData.params.optBoolean(SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED, false)
+        // QA-ONLY test fixture for the OHOS adaptive-pane matrix (SangLan ruling,
+        // dm 2026-09-28 09:29Z): force the workspace flag ON so the O1–O10
+        // emulator matrix exercises the adaptive pane path end-to-end. This
+        // commit must NEVER ship in a product PR — production default stays
+        // optBoolean(..., false). Build artifacts carrying this flag are for
+        // emulator evidence only.
+        pager.pageData.params.optBoolean(SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED, true)
     }
     val authGateInstanceId = remember(pager.pageData.params.toString()) {
         pager.pageData.params.optString(APP_SHELL_AUTH_GATE_INSTANCE_ID)
