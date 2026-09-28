@@ -3773,10 +3773,30 @@ private fun ThreadPageScreen(
                 eventBus = sharedStores.eventBus,
                 nowEpochMillis = { defaultNowMillis() },
                 nativeAdaptiveNavigation = { action, requestId, token ->
-                    bridge.adaptiveNavigation(action, requestId, token)
+                    bridge.adaptiveNavigation(
+                        action = action,
+                        requestId = requestId,
+                        token = token,
+                        // Caller-cancelled prepare still owns its nonce: a late prepared
+                        // reply must retire the accepted transaction, not orphan it into
+                        // request_in_progress.
+                        onLateReply = { reply ->
+                            val lateToken = reply.optString("token").trim()
+                            if (
+                                action == "prepare" &&
+                                reply.optString("status") == "prepared" &&
+                                lateToken.isNotBlank()
+                            ) {
+                                bridge.dispatchAdaptiveCancel(requestId, lateToken)
+                            }
+                        },
+                    )
                 },
                 dispatchAdaptiveCommit = { requestId, token ->
                     bridge.dispatchAdaptiveCommit(requestId, token)
+                },
+                dispatchAdaptiveCancel = { requestId, token ->
+                    bridge.dispatchAdaptiveCancel(requestId, token)
                 },
                 captureLatestDraft = captureLatestDraftForAdoption@{ requestId ->
                     val capture =
@@ -5373,11 +5393,24 @@ private fun ThreadMessageVisualCard(
  * the *current* providers rather than a stale closure.
  */
 internal class ThreadAdaptiveInitiationCaptureHolder {
-    // Returns the text actually persisted to the durable draft (the version snapshot the
-    // pre-commit fence compares against), or null when the read/persist barrier failed.
-    var captureLatestDraft: (suspend (requestId: String) -> String?)? = null
+    // Returns the persisted draft identity snapshot (text + draft key + instance) the
+    // pre-commit fence compares against — equal text across different draft/session
+    // identities is NOT a match. Null = the read/persist barrier failed.
+    var captureLatestDraft: (suspend (requestId: String) -> SharedThreadComposerDraftSnapshot?)? = null
     var captureAnchor: ((requestId: String) -> SharedAdaptiveScrollAnchor?)? = null
 }
+
+/**
+ * Identity-bearing capture of what the adoption actually persisted: the live editor text
+ * bound to a specific draft key on a specific composer instance. A later capture equal in
+ * every field proves no edit/draft-switch landed in the ACK/READY window; any difference
+ * (including same text under a different draftKey or instanceId) is drift.
+ */
+internal data class SharedThreadComposerDraftSnapshot(
+    val text: String,
+    val draftKey: String?,
+    val instanceId: String,
+)
 
 /** Present only inside a standalone thread page wired for A4 adoption. */
 internal val LocalThreadAdaptiveInitiationCapture =
@@ -7104,6 +7137,7 @@ private fun SharedThreadRouteContentContent(
             holder.captureLatestDraft = captureLatestDraft@{ _ ->
                 // Unavailable must abort the migration — proceeding with only the stale shared
                 // draft would silently lose whatever is in the live editor (bridge contract).
+                val identityBefore = composerDraftViewModel.state.value
                 val nativeText =
                     suspendCancellableCoroutine<String?> { continuation ->
                         reader.readCurrentValue { readResult ->
@@ -7116,6 +7150,16 @@ private fun SharedThreadRouteContentContent(
                             continuation.resume(text)
                         }
                     } ?: return@captureLatestDraft null
+                // The draft the native value belongs to is pinned by the state read above;
+                // a composer draft switch/rebind mid-read would attribute the persisted text
+                // to the wrong conversation.
+                val identityAfterRead = composerDraftViewModel.state.value
+                if (
+                    identityAfterRead.draftKey != identityBefore.draftKey ||
+                    identityAfterRead.instanceId != identityBefore.instanceId
+                ) {
+                    return@captureLatestDraft null
+                }
                 val changeReceipt =
                     runCatchingPreservingCancellation {
                         composerDraftViewModel.acceptQueued(
@@ -7123,15 +7167,35 @@ private fun SharedThreadRouteContentContent(
                         )
                     }.getOrElse { return@captureLatestDraft null }
                 // A queued-but-rejected Change means the draft projection did not accept our
-                // text; persisting after that would durably store the wrong content.
-                if (!changeReceipt.accepted) return@captureLatestDraft null
+                // text; persisting after that would durably store the wrong content. The
+                // receipt state must still carry the same draft identity we started from.
+                if (
+                    !changeReceipt.accepted ||
+                    changeReceipt.state.draftKey != identityBefore.draftKey ||
+                    changeReceipt.state.instanceId != identityBefore.instanceId
+                ) {
+                    return@captureLatestDraft null
+                }
                 val flushReceipt =
                     runCatchingPreservingCancellation {
-                        composerDraftViewModel.acceptQueued(SharedThreadComposerDraftIntent.Flush)
+                        composerDraftViewModel.acceptQueued(
+                            SharedThreadComposerDraftIntent.Flush
+                        )
                     }.getOrElse { return@captureLatestDraft null }
-                // The persisted text is the version snapshot; the pre-commit fence compares
-                // a later live read against it to detect mid-flight edits.
-                if (flushReceipt.accepted) nativeText else null
+                if (
+                    !flushReceipt.accepted ||
+                    flushReceipt.state.draftKey != identityBefore.draftKey ||
+                    flushReceipt.state.instanceId != identityBefore.instanceId
+                ) {
+                    return@captureLatestDraft null
+                }
+                // Identity-bearing snapshot: the pre-commit fence compares a later capture
+                // field-for-field — same text under a different draft/instance is drift.
+                SharedThreadComposerDraftSnapshot(
+                    text = nativeText,
+                    draftKey = identityBefore.draftKey,
+                    instanceId = identityBefore.instanceId,
+                )
             }
         }
         onDispose {

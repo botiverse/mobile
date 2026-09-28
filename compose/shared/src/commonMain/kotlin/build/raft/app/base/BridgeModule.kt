@@ -405,6 +405,13 @@ internal class BridgeModule : Module() {
         action: String,
         requestId: String,
         token: String? = null,
+        /**
+         * Reply sink used when the CALLER is cancelled while a native reply is in flight.
+         * Dropping the callback would orphan a nonce the native side already accepted —
+         * iOS tracks it as request_in_progress until a matching cancel/commit retires it,
+         * so a late reply must still reach an owner that can clean it up.
+         */
+        onLateReply: ((JSONObject) -> Unit)? = null,
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
             val methodArgs =
@@ -420,20 +427,41 @@ internal class BridgeModule : Module() {
                     methodName = "adaptiveNavigation",
                     param = methodArgs.toString(),
                     callback = { payload ->
-                        if (!continuation.isActive || completed) {
+                        if (completed) {
                             return@toNative
                         }
                         completed = true
                         callbackRef?.let { removeCallback(it) }
-                        continuation.resume(payload)
+                        if (continuation.isActive) {
+                            continuation.resume(payload)
+                        } else {
+                            // Caller was cancelled mid-flight: hand the reply to the
+                            // registered owner so an accepted nonce is retired (cancel),
+                            // never silently lost.
+                            payload?.let { onLateReply?.invoke(it) }
+                        }
                     },
                     syncCall = false,
                 )
             callbackRef = result.callbackRef
             continuation.invokeOnCancellation {
-                callbackRef?.let { removeCallback(it) }
+                // Keep the callback registered: a late reply must reach onLateReply so the
+                // accepted transaction can be cancelled instead of leaking its nonce.
             }
         }
+
+    /**
+     * Fire-and-forget adaptive navigation dispatch (cancel). Shares the no-callback contract
+     * with [dispatchAdaptiveCommit]: safe to invoke under NonCancellable during cleanup.
+     */
+    fun dispatchAdaptiveCancel(requestId: String, token: String?) {
+        val methodArgs =
+            JSONObject()
+                .put("action", "cancel")
+                .put("requestId", requestId)
+        if (token != null) methodArgs.put("token", token)
+        callNativeMethod("adaptiveNavigation", methodArgs, null)
+    }
 
     /**
      * Fire-and-forget commit dispatch for the adaptive detail migration (task #18). iOS

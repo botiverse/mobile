@@ -59,8 +59,10 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
         val nativeReplies: MutableMap<String, JSONObject?> = mutableMapOf(),
         val nativeCalls: MutableList<Triple<String, String, String?>> = mutableListOf(),
         val commitDispatches: MutableList<Pair<String, String?>> = mutableListOf(),
-        // Texts returned by successive captureLatestDraft calls; null = capture failure.
-        val draftResults: MutableList<String?> = mutableListOf("draft"),
+        // Snapshots returned by successive captureLatestDraft calls; null = capture failure.
+        val draftResults: MutableList<SharedThreadComposerDraftSnapshot?> =
+            mutableListOf(SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1")),
+        val cancelDispatches: MutableList<Pair<String, String?>> = mutableListOf(),
     ) {
         var draftCaptureCount = 0
         val anchorStore = SharedAdaptiveScrollAnchorStore()
@@ -91,6 +93,10 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                 dispatchAdaptiveCommit = { requestId, token ->
                     self.nativeCalls += Triple("commit", requestId, token)
                     self.commitDispatches += requestId to token
+                },
+                dispatchAdaptiveCancel = { requestId, token ->
+                    self.nativeCalls += Triple("cancel", requestId, token)
+                    self.cancelDispatches += requestId to token
                 },
                 captureLatestDraft = {
                     // Repeat the last supplied text for calls beyond the list — the pre-commit
@@ -233,12 +239,15 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             dispatchAdaptiveCommit = { requestId, token ->
                 fixture.nativeCalls += Triple("commit", requestId, token)
             },
+            dispatchAdaptiveCancel = { requestId, token ->
+                fixture.nativeCalls += Triple("cancel", requestId, token)
+            },
             captureLatestDraft = {
                 // Hold the receipt until well after initiate() would otherwise reach prepare;
                 // the receipt must be the durable-persist barrier, not enqueue admission.
                 gate.await()
                 draftReturnObservedNativeCalls = fixture.nativeCalls.size
-                "draft"
+                SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1")
             },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
@@ -286,7 +295,10 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                 fixture.nativeCalls += Triple("commit", requestId, token)
                 throw IllegalStateException("bridge gone")
             },
-            captureLatestDraft = { "draft" },
+            dispatchAdaptiveCancel = { requestId, token ->
+                fixture.nativeCalls += Triple("cancel", requestId, token)
+            },
+            captureLatestDraft = { SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1") },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
         val outcome = async { initiator.initiate(identity, launchPayload, windowFact, "r7") }
@@ -395,7 +407,10 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             dispatchAdaptiveCommit = { requestId, token ->
                 fixture.nativeCalls += Triple("commit", requestId, token)
             },
-            captureLatestDraft = { "draft" },
+            dispatchAdaptiveCancel = { requestId, token ->
+                fixture.nativeCalls += Triple("cancel", requestId, token)
+            },
+            captureLatestDraft = { SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1") },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
         val outcome = async {
@@ -459,7 +474,10 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             dispatchAdaptiveCommit = { requestId, token ->
                 fixture.nativeCalls += Triple("commit", requestId, token)
             },
-            captureLatestDraft = { "draft" },
+            dispatchAdaptiveCancel = { requestId, token ->
+                fixture.nativeCalls += Triple("cancel", requestId, token)
+            },
+            captureLatestDraft = { SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1") },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
         val outcome = async {
@@ -524,7 +542,10 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             dispatchAdaptiveCommit = { requestId, token ->
                 fixture.nativeCalls += Triple("commit", requestId, token)
             },
-            captureLatestDraft = { "draft" },
+            dispatchAdaptiveCancel = { requestId, token ->
+                fixture.nativeCalls += Triple("cancel", requestId, token)
+            },
+            captureLatestDraft = { SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1") },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
         val outcome = async {
@@ -574,7 +595,10 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             dispatchAdaptiveCommit = { requestId, token ->
                 fixture.nativeCalls += Triple("commit", requestId, token)
             },
-            captureLatestDraft = { "draft" },
+            dispatchAdaptiveCancel = { requestId, token ->
+                fixture.nativeCalls += Triple("cancel", requestId, token)
+            },
+            captureLatestDraft = { SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1") },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
         val outcome = async {
@@ -637,7 +661,10 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             dispatchAdaptiveCommit = { requestId, token ->
                 fixture.nativeCalls += Triple("commit", requestId, token)
             },
-            captureLatestDraft = { "draft" },
+            dispatchAdaptiveCancel = { requestId, token ->
+                fixture.nativeCalls += Triple("cancel", requestId, token)
+            },
+            captureLatestDraft = { SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1") },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
         val outcome = async {
@@ -695,10 +722,17 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             dispatchAdaptiveCommit = { requestId, token ->
                 fixture.nativeCalls += Triple("commit", requestId, token)
             },
+            dispatchAdaptiveCancel = { requestId, token ->
+                fixture.nativeCalls += Triple("cancel", requestId, token)
+            },
             captureLatestDraft = {
                 draftCalls += 1
                 // Second capture (the pre-commit fence) fails → must not dispatch commit.
-                if (draftCalls < 2) "draft" else null
+                if (draftCalls < 2) {
+                    SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1")
+                } else {
+                    null
+                }
             },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
@@ -732,7 +766,11 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
         // user types B in the source editor → ACK arrives → the transaction must cancel,
         // never commit with a destination still showing A while B is durably persisted.
         val fixture = Fixture(
-            draftResults = mutableListOf("draft-A", "draft-A-with-B")
+            draftResults =
+                mutableListOf(
+                    SharedThreadComposerDraftSnapshot("draft-A", "key-1", "inst-1"),
+                    SharedThreadComposerDraftSnapshot("draft-A-with-B", "key-1", "inst-1"),
+                )
         )
         fixture.nativeReplies["prepare"] = preparedReply()
         val initiator = fixture.initiator()

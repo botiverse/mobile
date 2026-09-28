@@ -6,6 +6,8 @@ import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.SlockEventBus
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -41,7 +43,19 @@ internal class SlockAdaptiveDetailOpenInitiator(
      * never arrive.
      */
     private val dispatchAdaptiveCommit: (requestId: String, token: String?) -> Unit,
-    private val captureLatestDraft: suspend (requestId: String) -> String?,
+    /**
+     * Fire-and-forget cancel dispatch for cleanup in the finally path — must be callable
+     * under NonCancellable when the caller coroutine is already cancelled, so it shares the
+     * no-callback contract with [dispatchAdaptiveCommit].
+     */
+    private val dispatchAdaptiveCancel: (requestId: String, token: String?) -> Unit,
+    /**
+     * Identity-bearing draft capture: returns the persisted text bound to the draft key +
+     * composer instance it was persisted under (see SharedThreadComposerDraftSnapshot in
+     * ThreadPage.kt). The pre-commit fence requires an EXACT snapshot match — same text
+     * under a different draft/session identity is drift, not a pass.
+     */
+    private val captureLatestDraft: suspend (requestId: String) -> SharedThreadComposerDraftSnapshot?,
     private val captureAnchor: (requestId: String) -> SharedAdaptiveScrollAnchor?,
     private val log: (String) -> Unit = {},
     private val logWarn: (String) -> Unit = {},
@@ -99,6 +113,8 @@ internal class SlockAdaptiveDetailOpenInitiator(
         }
         inFlightRequestId = requestId
         var preparedToken: String? = null
+        var commitDispatched = false
+        var cancelDispatched = false
         var ackedGeneration: Long = 0L
         val readyDeferred = CompletableDeferred<Unit>()
         var readySubscription: RealtimeSubscription? = null
@@ -112,9 +128,9 @@ internal class SlockAdaptiveDetailOpenInitiator(
             }
             // Latest editor value must reach the durable draft before prepare: after the
             // source pops, the destination restores from the persisted draft, not the editor.
-            // The returned text is the version snapshot the pre-commit fence compares against.
-            val preparedDraftText = captureLatestDraft(requestId)
-            if (preparedDraftText == null) {
+            // The returned snapshot is the version the pre-commit fence compares against.
+            val preparedDraft = captureLatestDraft(requestId)
+            if (preparedDraft == null) {
                 logWarn(
                     "adaptive_initiate_draft_capture_failed requestId=$requestId " +
                         "identity=${identity.key}"
@@ -122,9 +138,12 @@ internal class SlockAdaptiveDetailOpenInitiator(
                 discardAnchor(identity, requestId)
                 return Outcome.DraftCaptureFailed
             }
+            // Bound the prepare wait: the bridge may wedge and native contract gives no
+            // guarantee a reply is emitted for every request.
             val prepare =
-                nativeAdaptiveNavigation(ACTION_PREPARE, requestId, null)
-                    ?: run {
+                withTimeoutOrNull(NATIVE_ACTION_TIMEOUT_MILLIS) {
+                    nativeAdaptiveNavigation(ACTION_PREPARE, requestId, null)
+                } ?: run {
                         logWarn(
                             "adaptive_initiate_prepare_unavailable requestId=$requestId " +
                                 "identity=${identity.key}"
@@ -152,6 +171,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
                         "tgtBlank=${targetToken.isBlank()}"
                 )
                 discardAnchor(identity, requestId)
+                cancelDispatched = true
                 runCatching { nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token.ifBlank { null }) }
                 return Outcome.PrepareFailed
             }
@@ -230,6 +250,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
                                     "timeoutMs=$ackTimeoutMillis identity=${identity.key}"
                             )
                             discardAnchor(identity, requestId)
+                            cancelDispatched = true
                             runCatching {
                                 nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token)
                             }
@@ -247,6 +268,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
                             "reason=${ack.reason} identity=${identity.key}"
                     )
                     discardAnchor(identity, requestId)
+                    cancelDispatched = true
                     runCatching { nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token) }
                     return Outcome.RejectedByShell
                 }
@@ -269,27 +291,30 @@ internal class SlockAdaptiveDetailOpenInitiator(
                             "generation=$generation timeoutMs=$readyTimeoutMillis " +
                             "identity=${identity.key}"
                     )
+                    cancelDispatched = true
                     runCatching {
                         nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token)
                     }
                     return Outcome.ReadyTimeout
                 }
             }
-            // Pre-commit editor VERSION fence: re-read the live native editor and compare
-            // with the text persisted at prepare time. A blind re-persist would silently
+            // Pre-commit editor VERSION fence: re-capture the live editor + draft identity
+            // and require an EXACT snapshot match — same text under a different draft key or
+            // composer instance is drift, not a pass. A blind re-persist would silently
             // store keystrokes typed during ACK/READY while the destination already restored
-            // the older draft — cross-page drift. On any drift or read failure, cancel and
-            // keep the source page + the (newer) draft for a fresh attempt.
-            val preCommitDraftText = captureLatestDraft(requestId)
-            if (preCommitDraftText == null || preCommitDraftText != preparedDraftText) {
+            // the older draft — cross-page drift. On any mismatch or read failure, cancel
+            // and keep the source page + the (newer) draft for a fresh attempt.
+            val preCommitDraft = captureLatestDraft(requestId)
+            if (preCommitDraft == null || preCommitDraft != preparedDraft) {
                 logWarn(
                     "adaptive_initiate_precommit_drift requestId=$requestId " +
-                        "readFailed=${preCommitDraftText == null} " +
-                        "drift=${preCommitDraftText != preparedDraftText} " +
+                        "readFailed=${preCommitDraft == null} " +
+                        "drift=${preCommitDraft != preparedDraft} " +
                         "identity=${identity.key}"
                 )
+                cancelDispatched = true
                 runCatching {
-                    nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token)
+                    dispatchAdaptiveCancel(requestId, token)
                 }
                 return Outcome.DraftDrifted
             }
@@ -298,6 +323,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
             // at all. The authoritative result is the slockAdaptiveNativeCommitResult event
             // on the target shell; the shell settles the pending entry and consumes the
             // staged anchor.
+            commitDispatched = true
             runCatching {
                 dispatchAdaptiveCommit(requestId, token)
             }.onFailure { error ->
@@ -310,6 +336,19 @@ internal class SlockAdaptiveDetailOpenInitiator(
         } finally {
             readySubscription?.close()
             if (inFlightRequestId == requestId) inFlightRequestId = null
+            // Coroutine-cancel mid-flight (pane event re-key, page dispose) must not leak a
+            // prepared transaction: native commit expiry does not free the request slot, and
+            // an unprepared caller's token would otherwise block a fresh prepare with
+            // request_in_progress. Never cancel after commit dispatch — the authoritative
+            // result then belongs to the target shell.
+            val leakedToken = preparedToken
+            if (leakedToken != null && !commitDispatched && !cancelDispatched) {
+                withContext(NonCancellable) {
+                    runCatching {
+                        dispatchAdaptiveCancel(requestId, leakedToken)
+                    }
+                }
+            }
         }
     }
 
@@ -328,5 +367,8 @@ internal class SlockAdaptiveDetailOpenInitiator(
         const val PREPARED_STATUS = "prepared"
         const val DEFAULT_ACK_TIMEOUT_MILLIS = 10_000L
         const val DEFAULT_READY_TIMEOUT_MILLIS = 10_000L
+        // Prepare/cancel replies are bridged suspends with no contract that a reply is
+        // emitted for every request — bound them like ACK.
+        const val NATIVE_ACTION_TIMEOUT_MILLIS = 10_000L
     }
 }
