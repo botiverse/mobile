@@ -7,7 +7,6 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.join
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
