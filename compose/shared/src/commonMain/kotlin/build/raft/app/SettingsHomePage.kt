@@ -5761,7 +5761,22 @@ private fun SlockAppShellReadyContent(
                                             .fillMaxHeight()
                                             .background(Color.Black),
                                 )
-                                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            // task #22: a floating bottom tab dock draws above the
+                                            // embedded thread page and would swallow its composer
+                                            // taps; lift the detail slot above the dock band while
+                                            // keeping the same stable slot across transitions.
+                                            .padding(
+                                                bottom =
+                                                    shellScope.embeddedChildBottomInset(
+                                                        showAppShellBottomTabs
+                                                    )
+                                            )
+                                ) {
                                     if (selection != null || dualPane) {
                                         // The detail host stays in this stable slot across wide/compact
                                         // transitions so the native child controller, draft and scroll

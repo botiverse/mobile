@@ -65,6 +65,19 @@ internal data class SlockAppShellScope(
             bottomTabBarOverlaysContent -> bottomTabBarContentInset
             else -> SlockSpacing.Lg
         }
+
+    // Full-height embedded child pages (adaptive detail thread) host their own
+    // safe-area padding internally, so the slot only needs to lift their
+    // bottom edge above a floating tab dock. When the bar overlays content the
+    // child must clear the whole native band minus the safe area it already
+    // pads; otherwise the host reserves the band itself and the child needs
+    // nothing extra.
+    fun embeddedChildBottomInset(includeBottomTabBar: Boolean): Dp =
+        when {
+            !includeBottomTabBar -> 0.dp
+            bottomTabBarOverlaysContent -> bottomTabBarContentInset - bottomSafeArea
+            else -> 0.dp
+        }
 }
 
 @Composable

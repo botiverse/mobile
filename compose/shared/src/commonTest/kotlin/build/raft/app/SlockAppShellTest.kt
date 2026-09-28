@@ -793,6 +793,36 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun embeddedChildClearsFloatingDockWithoutDoubleCountingSafeArea() {
+        // Embedded thread pages already pad the bottom safe area internally; the
+        // slot only lifts the remaining dock band above it.
+        val scope =
+            SlockAppShellScope(
+                topSafeArea = 24.dp,
+                bottomSafeArea = 18.dp,
+                bottomTabBarContentInset = 110.dp,
+                bottomTabBarOverlaysContent = true
+            )
+
+        assertEquals(92.dp, scope.embeddedChildBottomInset(includeBottomTabBar = true))
+        assertEquals(0.dp, scope.embeddedChildBottomInset(includeBottomTabBar = false))
+    }
+
+    @Test
+    fun embeddedChildNeedsNoInsetWhenHostAlreadyReservesTheBand() {
+        val scope =
+            SlockAppShellScope(
+                topSafeArea = 24.dp,
+                bottomSafeArea = 18.dp,
+                bottomTabBarContentInset = 88.dp,
+                bottomTabBarOverlaysContent = false
+            )
+
+        assertEquals(0.dp, scope.embeddedChildBottomInset(includeBottomTabBar = true))
+        assertEquals(0.dp, scope.embeddedChildBottomInset(includeBottomTabBar = false))
+    }
+
+    @Test
     fun androidBottomSafeAreaKeepsGestureNavigationInsetUnlessHostExcludesIt() {
         assertEquals(0f, resolveSlockBottomSafeAreaDp(hostExcludesNavigationBar = true, nativeDp = 48f, hostDp = 48f))
         assertEquals(24f, resolveSlockBottomSafeAreaDp(hostExcludesNavigationBar = false, nativeDp = 24f, hostDp = 0f))
