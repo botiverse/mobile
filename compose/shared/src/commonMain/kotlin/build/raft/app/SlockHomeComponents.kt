@@ -5203,7 +5203,7 @@ private fun ServerSwitcherUnreadIndicator(server: SlockServerSwitcherItem) {
 }
 
 @Composable
-private fun ServerSwitcherAvatarTile(server: SlockServerSwitcherItem) {
+internal fun ServerSwitcherAvatarTile(server: SlockServerSwitcherItem) {
     val presentation = server.toServerSwitcherAvatarPresentation()
     Box(
         modifier =
@@ -6451,7 +6451,7 @@ internal fun SlockAvatar(
 }
 
 @Composable
-private fun SlockAvatarHttpImage(
+internal fun SlockAvatarHttpImage(
     source: String,
     modifier: Modifier = Modifier,
     diagnostics: SlockAvatarRowDiagnostics? = null,

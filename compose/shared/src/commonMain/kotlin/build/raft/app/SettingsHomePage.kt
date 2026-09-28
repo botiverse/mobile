@@ -5506,16 +5506,122 @@ private fun SlockAppShellReadyContent(
             modalHostState = appShellModalHostState,
             leadingNavigation =
                 if (navRailActive) {
-                    {
-                        Column(modifier = Modifier.fillMaxHeight()) {
-                            Spacer(Modifier.height(shellScope.topSafeArea))
-                            SlockNavigationRailTabBar(
-                                items = appShellBottomTabItems,
-                                onSelect = onAppShellTabSelected,
-                                modifier = Modifier.weight(1f)
+                    // task #31: Web LeftRail parity — yellow 64dp column, server header wired to
+                    // the real switcher, icon-only tabs, settings pinned to the bottom. The
+                    // settings entry must map to a real destination in both nav modes: legacy
+                    // keeps a first-class "settings" tab; Slack-nav routes through More.
+                    val railBottomItems =
+                        remember(slackNavMode, settingsTabLabel, selectedTab) {
+                            val settingsTab =
+                                if (slackNavMode) SlockSlackNavTabs.More else "settings"
+                            listOf(
+                                SlockBottomTabItemPayload(
+                                    key = settingsTab,
+                                    label = settingsTabLabel,
+                                    iconName = SlockLucideIconName.Settings,
+                                    selected =
+                                        retainedAppShellSelectedTab(selectedTab) == "settings" ||
+                                            (
+                                                slackNavMode &&
+                                                    retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.More &&
+                                                    slackNavMoreDestination == SlockSlackNavMoreDestination.Settings
+                                            ),
+                                )
                             )
-                            Spacer(Modifier.height(shellScope.bottomSafeArea))
                         }
+                    val railServers =
+                        (homeState.content as? SharedHomeContentState.Content)?.let { content ->
+                            val servers =
+                                sharedHomeSwitcherItems(
+                                    session = content.session,
+                                    selectedServer = content.snapshot.server,
+                                    serverUnreadCounts = homeState.serverUnreadCounts,
+                                    activityExpectedOwner = serverActivityExpectedOwner,
+                                    activityProjection = homeState.serverActivityUnread,
+                                )
+                            servers to
+                                homeHeaderServerIdentity(
+                                    currentServerId = content.snapshot.server.id.value,
+                                    currentServerName = content.snapshot.server.name,
+                                    servers = servers
+                                )
+                        }
+                    val railServerItem = railServers?.second
+                    val railServerUnread =
+                        railServers?.let { (servers, current) ->
+                            homeServerSwitcherHasOtherUnread(
+                                currentServerId = current.id,
+                                servers = servers
+                            )
+                        } ?: false
+                    {
+                        SlockNavigationRailTabBar(
+                            items = appShellBottomTabItems.filter { it.key != "settings" },
+                            onSelect = onAppShellTabSelected,
+                            modifier = Modifier.fillMaxHeight(),
+                            header =
+                                railServerItem?.let { server ->
+                                    SlockNavigationRailHeader(
+                                        key = "server:${server.id}",
+                                        label = server.name,
+                                        unread = railServerUnread
+                                    )
+                                },
+                            headerContent =
+                                railServerItem?.let { server ->
+                                    {
+                                        Box(
+                                            modifier =
+                                                Modifier
+                                                    .size(40.dp)
+                                                    .clickable {
+                                                        if (retainedAppShellSelectedTab(selectedTab) != "home") {
+                                                            onAppShellTabSelected("home")
+                                                        }
+                                                        homeShellStore.dispatch(
+                                                            SharedHomeShellIntent.Home(
+                                                                SharedHomeIntent.ToggleServerSwitcher
+                                                            )
+                                                        )
+                                                    },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            ServerSwitcherAvatarTile(server)
+                                        }
+                                    }
+                                },
+                            bottomItems = railBottomItems,
+                            onBottomItemSelect = { key ->
+                                if (slackNavMode && key == SlockSlackNavTabs.More) {
+                                    // The rail's settings gear must land on the real Settings
+                                    // destination — bypass the More tap→menu interception the
+                                    // bottom bar path performs.
+                                    slackNavMoreDestination = SlockSlackNavMoreDestination.Settings
+                                    if (shouldHandleAppShellTabSelection(selectedTab, key)) {
+                                        if (
+                                            shouldDismissHomeNotificationCenterForAppShellTabSelection(
+                                                selectedTab,
+                                                key
+                                            )
+                                        ) {
+                                            homeFocusLossDismissEpoch += 1
+                                            serverDrawerProgrammaticCloseFence?.invoke("bottom_tab")
+                                            homeShellStore.dispatch(
+                                                SharedHomeShellIntent.Home(
+                                                    SharedHomeIntent.DismissServerSwitcher
+                                                )
+                                            )
+                                        }
+                                        selectAppShellTab(key, directChildSwitch = true)
+                                        retainedAppShellTabs = retainedAppShellTabs + key
+                                    }
+                                } else {
+                                    onAppShellTabSelected(key)
+                                }
+                            },
+                            topSafeArea = shellScope.topSafeArea,
+                            bottomSafeArea = shellScope.bottomSafeArea
+                        )
                     }
                 } else {
                     null
