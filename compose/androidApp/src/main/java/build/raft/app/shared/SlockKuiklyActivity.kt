@@ -7123,15 +7123,13 @@ internal class SlockKuiklyBridgeModule(
         val mimeType = request.optString("mimeType").takeIf { it.isNotBlank() }
         val uri = Uri.parse(url)
         val viewIntent = externalUrlIntent(uri, mimeType)
-        if (viewIntent == null) {
-            Toast.makeText(appContext, appContext.getString(R.string.open_link_no_app_toast), Toast.LENGTH_SHORT)
-                    .show()
-            return null
-        }
         runCatching {
             appContext.startActivity(viewIntent)
         }.onFailure { throwable ->
             if (throwable is ActivityNotFoundException) {
+                if (openInAppBrowserFallback(url, mimeType)) {
+                    return@onFailure
+                }
                 Toast.makeText(appContext, appContext.getString(R.string.open_link_no_app_toast), Toast.LENGTH_SHORT)
                         .show()
             } else {
@@ -7142,10 +7140,31 @@ internal class SlockKuiklyBridgeModule(
     }
 
     /**
+     * When no external activity accepts a web URL, keep the link usable by opening the shared
+     * in-app browser page instead of dropping the tap on the floor.
+     */
+    private fun openInAppBrowserFallback(url: String, mimeType: String?): Boolean {
+        val isWebUrl = mimeType == null && Uri.parse(url).scheme?.lowercase() in setOf("http", "https")
+        if (!isWebUrl) return false
+        val pageData =
+                JSONObject()
+                        .put("pageName", SlockKuiklyPages.IN_APP_BROWSER)
+                        .put("url", url)
+        return runCatching {
+            SlockKuiklyActivity.start(activity ?: appContext, SlockKuiklyPages.IN_APP_BROWSER, pageData)
+        }.onFailure { throwable ->
+            SlockAppLog.record(
+                    "SlockOpenUrl",
+                    "inAppBrowserFallback=failed type=${throwable::class.java.simpleName}"
+            )
+        }.isSuccess
+    }
+
+    /**
      * HTTP(S) links must leave Raft even when Android App Links resolve the same URL back to this
      * application. Other schemes retain the platform's ordinary implicit-handler behavior.
      */
-    private fun externalUrlIntent(uri: Uri, mimeType: String?): Intent? {
+    private fun externalUrlIntent(uri: Uri, mimeType: String?): Intent {
         val isWebUrl = mimeType == null && uri.scheme?.lowercase() in setOf("http", "https")
         val implicit =
                 Intent(Intent.ACTION_VIEW).apply {
@@ -7162,11 +7181,21 @@ internal class SlockKuiklyBridgeModule(
         if (!isWebUrl) {
             return implicit
         }
-        val candidates =
+        // MATCH_DEFAULT_ONLY only lists apps the user picked as defaults; devices without a
+        // default browser (or that never show the disambiguation sheet) report an empty list.
+        // Retry without the flag before giving up on a target package.
+        var candidates =
                 appContext.packageManager.queryIntentActivities(
                         implicit,
                         PackageManager.MATCH_DEFAULT_ONLY
                 )
+        if (candidates.isEmpty()) {
+            candidates =
+                    appContext.packageManager.queryIntentActivities(
+                            implicit,
+                            PackageManager.MATCH_ALL
+                    )
+        }
         val defaultPackage =
                 appContext.packageManager
                         .resolveActivity(implicit, PackageManager.MATCH_DEFAULT_ONLY)
@@ -7177,7 +7206,7 @@ internal class SlockKuiklyBridgeModule(
                         ownPackage = appContext.packageName,
                         defaultPackage = defaultPackage,
                         candidatePackages = candidates.map { it.activityInfo.packageName }
-                ) ?: return null
+                ) ?: return implicit
         return implicit.setPackage(selectedPackage)
     }
 
