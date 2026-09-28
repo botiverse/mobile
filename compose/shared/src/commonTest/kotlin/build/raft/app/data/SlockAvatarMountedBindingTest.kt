@@ -216,9 +216,10 @@ class SlockAvatarMountedBindingTest {
         assertEquals(1, downloader.calls)
 
         // Composable churn cancels the awaiting refresh; the detached transport must still commit.
+        // refresh.await() would rethrow JobCancellationException, so only join completion.
         refresh.cancel()
         gate.complete(Unit)
-        refresh.await()
+        refresh.join()
 
         val descriptor = assertNotNull(parseSlockAvatarMountedRenderModel(handle.imageModel.value.orEmpty()))
         assertNotEquals(staleModel, handle.imageModel.value)
