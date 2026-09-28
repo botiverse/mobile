@@ -8,6 +8,37 @@ internal const val SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT = "slockAdaptiveDetailOp
 internal const val SLOCK_ADAPTIVE_DETAIL_READY_EVENT = "slockAdaptiveDetailReady"
 internal const val SLOCK_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT = "slockAdaptiveNativeCommitResult"
 internal const val SLOCK_ADAPTIVE_DETAIL_PREPARED_EVENT = "slockAdaptiveDetailPrepared"
+internal const val SLOCK_ADAPTIVE_TRACE_EVENT = "slockAdaptiveTrace"
+
+/**
+ * Per-hop breadcrumb for the A4 mount->READY->ACK chain (task #18). Every gate that can stall or
+ * drop the adoption posts one of these with the same identity fields so a missing hop in device
+ * logs is unambiguous. `hop` names the exact stage; `side` is "shell" or "detail"; requestId is
+ * present on the hops that know it (shell-side; the destination child only carries
+ * identity+generation, which pairs 1:1 with the pending request inside one generation).
+ */
+internal fun SlockEventBus.postAdaptiveTrace(
+    side: String,
+    hop: String,
+    identityKey: String,
+    generation: Long,
+    requestId: String? = null,
+    extra: JSONObject.() -> Unit = {},
+) {
+    post(
+        eventName = SLOCK_ADAPTIVE_TRACE_EVENT,
+        eventData =
+            JSONObject()
+                .put("side", side)
+                .put("hop", hop)
+                .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, identityKey)
+                .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, generation.toDouble())
+                .apply { if (requestId != null) put(SlockAdaptiveDetailOpenRequest.KEY_REQUEST_ID, requestId) }
+                .apply(extra),
+        crossProcess = true,
+        source = "adaptive_trace",
+    )
+}
 
 /**
  * Window fact carried inside an adoption request. Mirrors the host emitter fields so the shell can

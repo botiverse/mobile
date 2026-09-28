@@ -17267,15 +17267,31 @@ private fun ThreadMessagesListContent(
         SlockSharedStoreRegistry.get(Utils.bridgeModule(adaptivePager.pagerId))
     }
     var adaptiveReadyPosted by remember(threadInstanceKey) { mutableStateOf(false) }
+    fun postDetailReadyTrace(hop: String, extra: JSONObject.() -> Unit = {}) {
+        val request = closeReq ?: return
+        adaptiveEventBus?.postAdaptiveTrace(
+            side = "detail",
+            hop = hop,
+            identityKey = request.identityKey,
+            generation = request.generation,
+        ) {
+            put("routeActive", routeActive)
+            put("status", renderPayload.status)
+            put("messagesCount", renderPayload.messages.size)
+            extra()
+        }
+    }
     LaunchedEffect(closeReq, renderPayload.messages.size, adaptiveReadyPosted) {
         val request = closeReq ?: return@LaunchedEffect
         if (adaptiveReadyPosted) return@LaunchedEffect
+        // task #28 observability (Jony's AckTimeout): every hop between the effect entry and
+        // the READY post emits its own breadcrumb under the same identity+generation, so a
+        // missing hop tells apart never-ran vs payload-gate vs selection-miss vs layout stall.
+        postDetailReadyTrace("effect_enter")
         if (renderPayload.status != "success" && renderPayload.messages.isEmpty()) {
+            postDetailReadyTrace("payload_gate")
             return@LaunchedEffect
         }
-        // task #28 observability (Jony's AckTimeout): each gate between mount and READY
-        // posts its own breadcrumb so a covered/inactive destination can be told apart —
-        // mount-without-ready vs selection-miss vs anchor-restore stall.
         val identity =
             adaptiveSharedStores
                 .adaptiveWorkspaceStore(adaptiveStoreScope)
@@ -17285,16 +17301,7 @@ private fun ThreadMessagesListContent(
                 ?.takeIf { sel -> sel.identity.key == request.identityKey }
                 ?.identity
             ?: run {
-                adaptiveEventBus.post(
-                    eventName = "adaptiveDetailReadyGate",
-                    eventData =
-                        JSONObject()
-                            .put("gate", "selection_miss")
-                            .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
-                            .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, request.generation.toDouble()),
-                    crossProcess = true,
-                    source = "adaptive_detail_ready_gate",
-                )
+                postDetailReadyTrace("selection_miss")
                 adaptiveReadyPosted = true
                 return@LaunchedEffect
             }
@@ -17308,28 +17315,23 @@ private fun ThreadMessagesListContent(
                     ?.takeIf { it >= 0 }
                     ?.let { it + firstMessageIndex }
             if (locatedIndex != null) {
+                postDetailReadyTrace("layout_wait_begin")
                 listState.awaitThreadMessagesLayoutFrame()
+                postDetailReadyTrace("layout_wait_end")
                 listState.scrollToItem(locatedIndex, anchor.messageOffsetPx)
             } else if (
                 anchor.fallbackIndex >= 0 &&
                 anchor.fallbackIndex < (listState.layoutInfo.totalItemsCount.takeIf { it > 0 } ?: Int.MAX_VALUE)
             ) {
+                postDetailReadyTrace("layout_wait_begin")
                 listState.awaitThreadMessagesLayoutFrame()
+                postDetailReadyTrace("layout_wait_end")
                 listState.scrollToItem(anchor.fallbackIndex, anchor.messageOffsetPx)
             }
         }
         adaptiveReadyPosted = true
         val eventBus = adaptiveEventBus ?: return@LaunchedEffect
-        eventBus.post(
-            eventName = "adaptiveDetailReadyGate",
-            eventData =
-                JSONObject()
-                    .put("gate", "ready_post")
-                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, request.generation.toDouble()),
-            crossProcess = true,
-            source = "adaptive_detail_ready_gate",
-        )
+        postDetailReadyTrace("ready_post")
         eventBus.post(
             eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
             eventData =
