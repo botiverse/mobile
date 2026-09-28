@@ -793,8 +793,6 @@ class SlockAppShellTest {
     }
 
     @Test
-    @Test
-    @Test
     fun navRailActivatesOnlyForFlatDualPaneLeftRailWithFlag() {
         val dualPane =
             SlockAdaptivePaneState(
