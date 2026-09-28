@@ -225,7 +225,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             source = "test",
         )
         outcome.await()
-        assertEquals(listOf(42 to "typed draft"), fixture.nativePrepareEditorArgs)
+        assertEquals(listOf<Pair<Int?, String?>>(42 to "typed draft"), fixture.nativePrepareEditorArgs)
     }
 
     @Test
