@@ -349,6 +349,33 @@ class ComputersApiTest {
         )
     }
 
+    @Test
+    fun runtimeFormDefinitionAcceptsFieldTitleCopyChanges() = runPortableCoroutineTest {
+        val serverId = ServerId("server-1")
+        val expectedRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
+        // slock #8273 renamed this display copy without bumping the schema version;
+        // titles are presentation, not contract, and must not knock the form out.
+        val renamedCopyBody =
+            canonicalRuntimeFormDefinitionBody
+                .replace(
+                    "\"loadLocalPlugins\":{\"type\":\"boolean\",\"title\":\"Load local Pi plugins\"}",
+                    "\"loadLocalPlugins\":{\"type\":\"boolean\",\"title\":\"Load local Pi extensions\"}"
+                )
+                .replace(
+                    "\"loadLocalPlugins\":{\"label\":\"Load local Pi plugins\"",
+                    "\"loadLocalPlugins\":{\"label\":\"Load local Pi extensions\""
+                )
+        val definition =
+            assertIs<DataResult.Content<SharedAgentCreateFormDefinition>>(
+                SlockComputersApiClient(RecordingComputersApi(runtimeFormDefinitionBody = renamedCopyBody))
+                    .runtimeFormDefinition(serverId, "machine-1", expectedRef)
+            ).data
+        assertEquals(
+            "Load local Pi extensions",
+            definition.uiSchema.localization["loadLocalPlugins"]?.label
+        )
+    }
+
     private class RecordingComputersApi(
         private val machinesBody: String =
             """{"machines":[{"id":"machine-1","name":"Maria Laptop","status":"online","statusVersion":7,"apiKeyPrefix":"sk_machine_abc","runtimes":["claude","codex"],"daemonVersion":"0.53.0","computerVersion":"0.0.61","isComputer":true,"hostname":"maria.local","os":"darwin","description":"Runs production agents","lastHeartbeat":"2026-06-14T02:00:00.000Z","createdAt":"2026-05-01T00:00:00.000Z"}],"latestDaemonVersion":"0.53.0","latestComputerVersion":"0.0.62"}""",
