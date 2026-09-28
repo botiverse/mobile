@@ -15,6 +15,7 @@ import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
+import build.raft.app.data.KuiklyRealtimeEvents
 import build.raft.app.data.MyMessageAlignmentPreference
 import build.raft.app.data.NetworkSlockAnnouncementsRemindersApi
 import build.raft.app.data.NetworkSlockHomeApi
@@ -25,6 +26,7 @@ import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.RealSavedRepository
 import build.raft.app.data.RealSearchRepository
 import build.raft.app.data.SearchTimeRange
+import build.raft.app.data.SharedAdaptiveWorkspaceStore
 import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.SharedConversationDirectoryState
@@ -57,8 +59,21 @@ import build.raft.app.data.typedPinnedOrLegacy
 import build.raft.app.model.ServerId
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.resources.MR
+import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.Spacer
+import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
+import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
+import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
+import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.ui.Alignment
+import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import com.tencent.tmm.kmmresource.compose.stringResource
@@ -250,30 +265,216 @@ private fun HomeActivityRouterContent(
     environment: HomeSecondaryRouteEnvironment,
     routeVisibleTick: Int = 0
 ) {
-    SharedHomeActivityScreen(
-        bridge = environment.bridge,
-        authStore = environment.authStore,
-        routeVisibleTick = routeVisibleTick,
-        onOpenMessage = { request ->
-            environment.pager.openStandaloneHomeMessageRequest(
-                bridge = environment.bridge,
-                request = request,
-                source = "home_activity",
-                timeContext = environment.timeContext,
-                alignOwnMessagesRight = environment.alignOwnMessagesRight,
-                compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                    storeScope = environment.storeScope
+    // task #13: surface-owned adaptive workspace. The pushed Activity page gets its own
+    // SharedAdaptiveWorkspaceStore instance — never the shell-scoped singleton — so its
+    // selection/detail/lease lifecycle is fully independent of the Home surface it covers.
+    // Canonical product state (messages, drafts, permissions) still flows through the
+    // existing shared stores; only the surface's selection ownership is private.
+    val sharedStores = remember(environment.bridge) { SlockSharedStoreRegistry.get(environment.bridge) }
+    val activityWorkspaceStore = remember { SharedAdaptiveWorkspaceStore() }
+    // Lease keeps the detail's realtime rooms subscribed while this surface owns the
+    // selection; released when the workspace resets or the page disposes. Registry +
+    // events are the same shell-scoped shared instances Home uses — the OWNER record is
+    // what is surface-private (consumerId names this surface).
+    val activityRealtimeEvents = remember(sharedStores) { KuiklyRealtimeEvents(sharedStores.eventBus) }
+    val activityRoomLeaseRegistry =
+        remember(sharedStores, environment.storeScope) {
+            sharedStores.realtimeRoomLeaseRegistry(environment.storeScope)
+        }
+    val activityWorkspaceSession by activityWorkspaceStore.state.collectAsState()
+    val activityWorkspace = activityWorkspaceSession.workspace
+    val adaptivePane = environment.shellScope.adaptivePane
+    var activityServerId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(environment.authStore) {
+        activityServerId =
+            environment.authStore
+                .readSession()
+                ?.currentServerId
+                ?.trim()
+                ?.takeIf(String::isNotBlank)
+    }
+    // Same gate the Home shell uses — workspace adoption stays off unless the pushed page
+    // was launched with the workspace flag (test/QA carriers set it; default stays OFF).
+    val activityAdaptiveEnabled =
+        environment.pager.pageData.params.optBoolean(SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED, false)
+    LaunchedEffect(activityWorkspaceStore, activityServerId, adaptivePane, activityAdaptiveEnabled) {
+        if (!activityAdaptiveEnabled) return@LaunchedEffect
+        val serverId = activityServerId ?: return@LaunchedEffect
+        activityWorkspaceStore.update { current ->
+            var next =
+                current.workspace
+                    ?: SlockAdaptiveWorkspaceState(
+                        shellInstanceId = environment.storeScope.shellInstanceId + ":activity",
+                        serverId = serverId,
+                    )
+            if (next.serverId != serverId) {
+                next = reduceSlockAdaptiveWorkspace(next, SlockAdaptiveWorkspaceIntent.AuthorityChanged(serverId))
+            }
+            next = reduceSlockAdaptiveWorkspace(next, SlockAdaptiveWorkspaceIntent.WindowChanged(adaptivePane))
+            current.copy(workspace = next)
+        }
+    }
+    val activityListPane: @Composable (Boolean) -> Unit = { listActive ->
+        SharedHomeActivityScreen(
+            bridge = environment.bridge,
+            authStore = environment.authStore,
+            routeVisibleTick = routeVisibleTick,
+            active = listActive,
+            onOpenMessage = { request ->
+                val handled =
+                    if (activityAdaptiveEnabled) {
+                        openActivityAdaptiveMessageRequest(
+                            environment = environment,
+                            workspaceStore = activityWorkspaceStore,
+                            workspace = activityWorkspace,
+                            request = request,
+                            serverId = activityServerId,
+                            realtimeEvents = activityRealtimeEvents,
+                            roomLeaseRegistry = activityRoomLeaseRegistry,
+                        )
+                    } else {
+                        false
+                    }
+                if (!handled) {
+                    environment.pager.openStandaloneHomeMessageRequest(
+                        bridge = environment.bridge,
+                        request = request,
+                        source = "home_activity",
+                        timeContext = environment.timeContext,
+                        alignOwnMessagesRight = environment.alignOwnMessagesRight,
+                        compactConsecutiveMessages = environment.compactConsecutiveMessages,
+                            storeScope = environment.storeScope
+                    )
+                }
+            },
+            onClose = { environment.pager.closeHomeSecondaryPage() },
+            bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
+            timeContext = environment.timeContext,
+            shellScope = environment.shellScope,
+            activityTaskStatusBadgesEnabled = environment.activityTaskStatusBadgesEnabled,
+            activitySenderAvatarsEnabled = environment.activitySenderAvatarsEnabled,
+            refreshOnAppLifecycleResume = true,
+            storeScope = environment.storeScope
+        )
+    }
+    val workspace = activityWorkspace
+    val selection = workspace?.selection
+    val detailPayload = activityWorkspaceSession.launchPayload
+    val dualPane = activityAdaptiveEnabled && workspace?.pane?.layout == SlockAdaptivePaneLayout.DualPane
+    val detailPageData =
+        remember(
+            detailPayload,
+            selection,
+            environment.storeScope.shellInstanceId,
+        ) {
+            if (detailPayload == null || selection == null || workspace == null) {
+                null
+            } else {
+                threadLaunchPageData(detailPayload)
+                    .withSlockShellStoreScope(environment.storeScope)
+                    .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, workspace.shellInstanceId)
+                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, selection.identity.key)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, selection.generation)
+            }
+        }
+    if (dualPane) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .width(360.dp)
+                    .fillMaxHeight(),
+            ) {
+                activityListPane(true)
+            }
+            Spacer(
+                modifier = Modifier
+                    .width(1.dp)
+                    .fillMaxHeight()
+                    .background(Color.Black),
             )
-        },
-        onClose = { environment.pager.closeHomeSecondaryPage() },
-        bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
-        timeContext = environment.timeContext,
-        shellScope = environment.shellScope,
-        activityTaskStatusBadgesEnabled = environment.activityTaskStatusBadgesEnabled,
-        activitySenderAvatarsEnabled = environment.activitySenderAvatarsEnabled,
-        refreshOnAppLifecycleResume = true,
-        storeScope = environment.storeScope
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            ) {
+                if (detailPageData != null && selection != null) {
+                    SlockKuiklyChildPage(
+                        pageName = THREAD_PAGE,
+                        pageData = detailPageData,
+                        modifier = Modifier.fillMaxSize(),
+                        active = true,
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = stringResource(MR.strings.home_adaptive_select_conversation),
+                            color = SlockColor.TextMutedGray,
+                            fontSize = 15.sp,
+                        )
+                    }
+                }
+            }
+        }
+    } else {
+        activityListPane(true)
+    }
+}
+
+private fun openActivityAdaptiveMessageRequest(
+    environment: HomeSecondaryRouteEnvironment,
+    workspaceStore: SharedAdaptiveWorkspaceStore,
+    workspace: SlockAdaptiveWorkspaceState?,
+    request: HomeMessageOpenRequest,
+    serverId: String?,
+    realtimeEvents: KuiklyRealtimeEvents,
+    roomLeaseRegistry: build.raft.app.data.SharedRealtimeRoomLeaseRegistry,
+): Boolean {
+    val current = workspace ?: return false
+    if (current.pane.layout != SlockAdaptivePaneLayout.DualPane) return false
+    val readyServerId = serverId ?: return false
+    val launchPayload =
+        buildStandaloneConversationThreadLaunchPayload(
+            conversation = request.conversationIdentity,
+            timeContext = environment.timeContext,
+            alignOwnMessagesRight = environment.alignOwnMessagesRight,
+            compactConsecutiveMessages = environment.compactConsecutiveMessages,
+            anchorMessageId = request.anchorMessageId,
+            originFallback = request.originFallback,
+            onWarn = { environment.bridge.logWarn(it) },
+        ) ?: return false
+    val identity = launchPayload.toSlockAdaptiveDetailIdentity(readyServerId) ?: return false
+    val next = reduceSlockAdaptiveWorkspace(current, SlockAdaptiveWorkspaceIntent.OpenDetail(identity))
+    if (next.selection?.identity != identity) return false
+    val nextSelection = next.selection ?: return false
+    // Lease the detail's realtime rooms under an owner tagged to this surface so the
+    // covered Home never acquires/releases on Activity's behalf (and vice versa).
+    val owner =
+        build.raft.app.data.RealtimeRoomLeaseOwner(
+            shellInstanceId = environment.storeScope.shellInstanceId,
+            serverId = nextSelection.identity.serverId,
+            consumerId = "activity-surface-detail",
+            generation = nextSelection.generation,
+        )
+    val roomIds =
+        launchPayload
+            .toInitialPayloadOrNull(launchPayload.instanceId)
+            ?.activeRealtimeRoomIds()
+            .orEmpty()
+    realtimeEvents.applyRoomTransitions(roomLeaseRegistry.acquire(owner, roomIds))
+    val previousOwner = workspaceStore.snapshot().handoffRoomLeaseOwner
+    workspaceStore.update { state ->
+        state.copy(workspace = next, launchPayload = launchPayload, handoffRoomLeaseOwner = owner)
+    }
+    if (previousOwner != null && previousOwner != owner) {
+        realtimeEvents.applyRoomTransitions(roomLeaseRegistry.release(previousOwner))
+    }
+    environment.bridge.log(
+        "activity_adaptive_open threadId=${identity.threadId} key=${identity.key}"
     )
+    return true
 }
 
 @Composable
