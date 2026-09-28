@@ -7,6 +7,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.join
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -61,7 +62,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
         val commitDispatches: MutableList<Pair<String, String?>> = mutableListOf(),
         // Snapshots returned by successive captureLatestDraft calls; null = capture failure.
         val draftResults: MutableList<SharedThreadComposerDraftSnapshot?> =
-            mutableListOf(SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1")),
+            mutableListOf(SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1", 42)),
         val cancelDispatches: MutableList<Pair<String, String?>> = mutableListOf(),
     ) {
         var draftCaptureCount = 0
@@ -86,7 +87,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                 anchorStore = anchorStore,
                 eventBus = eventBus,
                 nowEpochMillis = { 1234L },
-                nativeAdaptiveNavigation = { action, requestId, token ->
+                nativeAdaptiveNavigation = { action, requestId, token, _, _ ->
                     self.nativeCalls += Triple(action, requestId, token)
                     self.nativeReplies[action]
                 },
@@ -232,7 +233,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             anchorStore = fixture.anchorStore,
             eventBus = fixture.eventBus,
             nowEpochMillis = { 0L },
-            nativeAdaptiveNavigation = { action, requestId, token ->
+            nativeAdaptiveNavigation = { action, requestId, token, _, _ ->
                 fixture.nativeCalls += Triple(action, requestId, token)
                 fixture.nativeReplies[action]
             },
@@ -247,7 +248,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                 // the receipt must be the durable-persist barrier, not enqueue admission.
                 gate.await()
                 draftReturnObservedNativeCalls = fixture.nativeCalls.size
-                SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1")
+                SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1", 42)
             },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
@@ -287,7 +288,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             anchorStore = fixture.anchorStore,
             eventBus = fixture.eventBus,
             nowEpochMillis = { 0L },
-            nativeAdaptiveNavigation = { action, requestId, token ->
+            nativeAdaptiveNavigation = { action, requestId, token, _, _ ->
                 fixture.nativeCalls += Triple(action, requestId, token)
                 fixture.nativeReplies[action]
             },
@@ -298,7 +299,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             dispatchAdaptiveCancel = { requestId, token ->
                 fixture.nativeCalls += Triple("cancel", requestId, token)
             },
-            captureLatestDraft = { SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1") },
+            captureLatestDraft = { SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1", 42) },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
         val outcome = async { initiator.initiate(identity, launchPayload, windowFact, "r7") }
@@ -400,7 +401,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             anchorStore = fixture.anchorStore,
             eventBus = fixture.eventBus,
             nowEpochMillis = { 0L },
-            nativeAdaptiveNavigation = { action, requestId, token ->
+            nativeAdaptiveNavigation = { action, requestId, token, _, _ ->
                 fixture.nativeCalls += Triple(action, requestId, token)
                 fixture.nativeReplies[action]
             },
@@ -410,7 +411,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             dispatchAdaptiveCancel = { requestId, token ->
                 fixture.nativeCalls += Triple("cancel", requestId, token)
             },
-            captureLatestDraft = { SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1") },
+            captureLatestDraft = { SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1", 42) },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
         val outcome = async {
@@ -467,7 +468,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             anchorStore = fixture.anchorStore,
             eventBus = fixture.eventBus,
             nowEpochMillis = { 0L },
-            nativeAdaptiveNavigation = { action, requestId, token ->
+            nativeAdaptiveNavigation = { action, requestId, token, _, _ ->
                 fixture.nativeCalls += Triple(action, requestId, token)
                 fixture.nativeReplies[action]
             },
@@ -477,7 +478,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             dispatchAdaptiveCancel = { requestId, token ->
                 fixture.nativeCalls += Triple("cancel", requestId, token)
             },
-            captureLatestDraft = { SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1") },
+            captureLatestDraft = { SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1", 42) },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
         val outcome = async {
@@ -535,7 +536,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             anchorStore = fixture.anchorStore,
             eventBus = fixture.eventBus,
             nowEpochMillis = { 0L },
-            nativeAdaptiveNavigation = { action, requestId, token ->
+            nativeAdaptiveNavigation = { action, requestId, token, _, _ ->
                 fixture.nativeCalls += Triple(action, requestId, token)
                 fixture.nativeReplies[action]
             },
@@ -545,7 +546,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             dispatchAdaptiveCancel = { requestId, token ->
                 fixture.nativeCalls += Triple("cancel", requestId, token)
             },
-            captureLatestDraft = { SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1") },
+            captureLatestDraft = { SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1", 42) },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
         val outcome = async {
@@ -588,7 +589,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             anchorStore = fixture.anchorStore,
             eventBus = fixture.eventBus,
             nowEpochMillis = { 0L },
-            nativeAdaptiveNavigation = { action, requestId, token ->
+            nativeAdaptiveNavigation = { action, requestId, token, _, _ ->
                 fixture.nativeCalls += Triple(action, requestId, token)
                 fixture.nativeReplies[action]
             },
@@ -598,7 +599,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             dispatchAdaptiveCancel = { requestId, token ->
                 fixture.nativeCalls += Triple("cancel", requestId, token)
             },
-            captureLatestDraft = { SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1") },
+            captureLatestDraft = { SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1", 42) },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
         val outcome = async {
@@ -654,7 +655,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             anchorStore = fixture.anchorStore,
             eventBus = fixture.eventBus,
             nowEpochMillis = { 0L },
-            nativeAdaptiveNavigation = { action, requestId, token ->
+            nativeAdaptiveNavigation = { action, requestId, token, _, _ ->
                 fixture.nativeCalls += Triple(action, requestId, token)
                 fixture.nativeReplies[action]
             },
@@ -664,7 +665,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             dispatchAdaptiveCancel = { requestId, token ->
                 fixture.nativeCalls += Triple("cancel", requestId, token)
             },
-            captureLatestDraft = { SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1") },
+            captureLatestDraft = { SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1", 42) },
             captureAnchor = { requestId -> fixture.anchorCapture?.copy(requestId = requestId) },
         )
         val outcome = async {
@@ -715,7 +716,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
             anchorStore = fixture.anchorStore,
             eventBus = fixture.eventBus,
             nowEpochMillis = { 0L },
-            nativeAdaptiveNavigation = { action, requestId, token ->
+            nativeAdaptiveNavigation = { action, requestId, token, _, _ ->
                 fixture.nativeCalls += Triple(action, requestId, token)
                 fixture.nativeReplies[action]
             },
@@ -729,7 +730,7 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
                 draftCalls += 1
                 // Second capture (the pre-commit fence) fails → must not dispatch commit.
                 if (draftCalls < 2) {
-                    SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1")
+                    SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1", 42)
                 } else {
                     null
                 }
@@ -768,8 +769,8 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
         val fixture = Fixture(
             draftResults =
                 mutableListOf(
-                    SharedThreadComposerDraftSnapshot("draft-A", "key-1", "inst-1"),
-                    SharedThreadComposerDraftSnapshot("draft-A-with-B", "key-1", "inst-1"),
+                    SharedThreadComposerDraftSnapshot("draft-A", "key-1", "inst-1", 42),
+                    SharedThreadComposerDraftSnapshot("draft-A-with-B", "key-1", "inst-1", 42),
                 )
         )
         fixture.nativeReplies["prepare"] = preparedReply()
@@ -818,5 +819,70 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
         )
         // Source page + the newer draft survive; the staged anchor stays for recovery.
         assertNotNull(fixture.anchorStore.peek(shellId, identity))
+    }
+
+    @Test
+    fun sameTextDifferentDraftIdentityCancelsAsDrift(): Unit = runBlocking {
+        // Equal text under a different draftKey/instance is NOT a version match.
+        val fixture = Fixture(
+            draftResults =
+                mutableListOf(
+                    SharedThreadComposerDraftSnapshot("same", "key-1", "inst-1", 42),
+                    SharedThreadComposerDraftSnapshot("same", "key-2", "inst-1", 42),
+                )
+        )
+        fixture.nativeReplies["prepare"] = preparedReply()
+        val outcome =
+            async { fixture.initiator().initiate(identity, launchPayload, windowFact, "r16") }
+        yield()
+        fixture.eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+            eventData =
+                JSONObject()
+                    .put("shellInstanceId", shellId)
+                    .put("requestId", "r16")
+                    .put("accepted", true)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, 81.0),
+            crossProcess = false,
+            source = "test",
+        )
+        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.DraftDrifted, outcome.await())
+        assertEquals(
+            listOf(Triple("prepare", "r16", null), Triple("cancel", "r16", "one-shot")),
+            fixture.nativeCalls,
+            "same text under a different draft identity must still cancel",
+        )
+    }
+
+    @Test
+    fun captureWithoutEditorRefFailsBeforePrepare(): Unit = runBlocking {
+        // editorNativeRef < 0: the native commit-time fence cannot bind the capture to a
+        // concrete editor — prepare must not arm a guard it cannot honor.
+        val fixture = Fixture(
+            draftResults =
+                mutableListOf(SharedThreadComposerDraftSnapshot("draft", "key-1", "inst-1", -1))
+        )
+        val outcome =
+            fixture.initiator().initiate(identity, launchPayload, windowFact, requestId = "r17")
+
+        assertEquals(SlockAdaptiveDetailOpenInitiator.Outcome.DraftCaptureFailed, outcome)
+        assertTrue(fixture.nativeCalls.isEmpty(), "prepare must not run without a bound editor ref")
+    }
+
+    @Test
+    fun coroutineCancelDuringAckWaitDispatchesCancel(): Unit = runBlocking {
+        val fixture = Fixture()
+        fixture.nativeReplies["prepare"] = preparedReply()
+        val outcome =
+            async { fixture.initiator().initiate(identity, launchPayload, windowFact, "r18") }
+        yield()
+        outcome.cancel()
+        outcome.join()
+        // The finally cleanup retires the accepted preparation — native must never be left
+        // holding a live nonce whose owner is gone.
+        assertEquals(
+            listOf(Triple("prepare", "r18", null), Triple("cancel", "r18", "one-shot")),
+            fixture.nativeCalls,
+        )
     }
 }

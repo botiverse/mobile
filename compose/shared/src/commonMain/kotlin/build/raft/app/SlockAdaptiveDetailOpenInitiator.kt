@@ -35,7 +35,21 @@ internal class SlockAdaptiveDetailOpenInitiator(
     private val anchorStore: SharedAdaptiveScrollAnchorStore,
     private val eventBus: SlockEventBus,
     private val nowEpochMillis: () -> Long,
-    private val nativeAdaptiveNavigation: suspend (action: String, requestId: String, token: String?) -> JSONObject?,
+    /**
+     * Suspended request/reply call for prepare/cancel. [expectedEditorRefTag] +
+     * [expectedEditorText] are included in the native args when non-null — the native
+     * prepare contract (task #25/#27) binds the exact editor instance + its confirmed
+     * persisted text to the nonce and re-verifies them at commit time; calls without a
+     * valid pair are rejected natively.
+     */
+    private val nativeAdaptiveNavigation:
+        suspend (
+            action: String,
+            requestId: String,
+            token: String?,
+            expectedEditorRefTag: String?,
+            expectedEditorText: String?,
+        ) -> JSONObject?,
     /**
      * Fire-and-forget commit dispatch (iOS never calls a source callback for commit —
      * the renderer may be torn down mid-pop). Separate from [nativeAdaptiveNavigation]
@@ -140,9 +154,26 @@ internal class SlockAdaptiveDetailOpenInitiator(
             }
             // Bound the prepare wait: the bridge may wedge and native contract gives no
             // guarantee a reply is emitted for every request.
+            if (preparedDraft.editorNativeRef < 0) {
+                // No attributable editor instance — the native commit-time fence cannot
+                // bind this capture to a concrete AutoHeightTextAreaView; treat as a
+                // capture failure rather than arming a guard we cannot honor.
+                logWarn(
+                    "adaptive_initiate_editor_ref_missing requestId=$requestId " +
+                        "identity=${identity.key}"
+                )
+                discardAnchor(identity, requestId)
+                return Outcome.DraftCaptureFailed
+            }
             val prepare =
                 withTimeoutOrNull(NATIVE_ACTION_TIMEOUT_MILLIS) {
-                    nativeAdaptiveNavigation(ACTION_PREPARE, requestId, null)
+                    nativeAdaptiveNavigation(
+                        ACTION_PREPARE,
+                        requestId,
+                        null,
+                        preparedDraft.editorNativeRef.toString(),
+                        preparedDraft.text,
+                    )
                 } ?: run {
                         logWarn(
                             "adaptive_initiate_prepare_unavailable requestId=$requestId " +
@@ -172,7 +203,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
                 )
                 discardAnchor(identity, requestId)
                 cancelDispatched = true
-                runCatching { nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token.ifBlank { null }) }
+                runCatching { nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token.ifBlank { null }, null, null) }
                 return Outcome.PrepareFailed
             }
             preparedToken = token
@@ -252,7 +283,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
                             discardAnchor(identity, requestId)
                             cancelDispatched = true
                             runCatching {
-                                nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token)
+                                nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token, null, null)
                             }
                             return Outcome.AckTimeout
                         }
@@ -269,7 +300,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
                     )
                     discardAnchor(identity, requestId)
                     cancelDispatched = true
-                    runCatching { nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token) }
+                    runCatching { nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token, null, null) }
                     return Outcome.RejectedByShell
                 }
             } finally {
@@ -293,7 +324,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
                     )
                     cancelDispatched = true
                     runCatching {
-                        nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token)
+                        nativeAdaptiveNavigation(ACTION_CANCEL, requestId, token, null, null)
                     }
                     return Outcome.ReadyTimeout
                 }

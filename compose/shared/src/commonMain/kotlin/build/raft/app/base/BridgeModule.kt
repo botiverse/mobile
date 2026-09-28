@@ -412,6 +412,14 @@ internal class BridgeModule : Module() {
          * so a late reply must still reach an owner that can clean it up.
          */
         onLateReply: ((JSONObject) -> Unit)? = null,
+        /**
+         * Commit-time editor fence inputs (task #27 contract): the Kuikly nativeRef of the
+         * resolved AutoHeightTextAreaView and the text confirmed persisted at capture time.
+         * Native prepare binds them to the nonce and re-verifies at commit; prepare calls
+         * without a valid pair are rejected natively.
+         */
+        expectedEditorRefTag: String? = null,
+        expectedEditorText: String? = null,
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
             val methodArgs =
@@ -419,6 +427,14 @@ internal class BridgeModule : Module() {
                     .put("action", action)
                     .put("requestId", requestId)
             if (token != null) methodArgs.put("token", token)
+            if (expectedEditorRefTag != null || expectedEditorText != null) {
+                methodArgs.put(
+                    "expectedEditor",
+                    JSONObject()
+                        .put("refTag", expectedEditorRefTag ?: "")
+                        .put("text", expectedEditorText ?: ""),
+                )
+            }
             var callbackRef: CallbackRef? = null
             var completed = false
             val result =
