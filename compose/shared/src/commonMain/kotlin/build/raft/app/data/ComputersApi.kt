@@ -859,19 +859,38 @@ private fun AgentCreateFormDefinitionDto.toDomain(
     }
 }
 
+private fun SharedAgentCreateFieldSchema?.matchesIgnoringTitle(
+    expected: SharedAgentCreateFieldSchema
+): Boolean =
+    when (expected) {
+        is SharedAgentCreateFieldSchema.StringField ->
+            this is SharedAgentCreateFieldSchema.StringField &&
+                minLength == expected.minLength &&
+                format == expected.format &&
+                writeOnly == expected.writeOnly
+        is SharedAgentCreateFieldSchema.StringMapField ->
+            this is SharedAgentCreateFieldSchema.StringMapField
+        is SharedAgentCreateFieldSchema.BooleanField ->
+            this is SharedAgentCreateFieldSchema.BooleanField
+    }
+
 private fun AgentCreateFormDefinitionDto.toBuiltInPiDomain(
     expectedRef: SharedRuntimeFormDefinitionRef
 ): SharedAgentCreateFormDefinition? {
     if (dataSchema.type != "object" || dataSchema.additionalProperties) return null
     val properties = dataSchema.properties.mapValues { (_, field) -> field.toDomain() ?: return null }
     if (properties.keys != setOf("providerId", "apiKey", "baseUrl", "supportsImageInput", "model", "loadLocalPlugins", "envVars")) return null
-    if (properties["providerId"] != SharedAgentCreateFieldSchema.StringField("Provider", 1, null, false)) return null
-    if (properties["apiKey"] != SharedAgentCreateFieldSchema.StringField("API Key", 1, null, true)) return null
-    if (properties["baseUrl"] != SharedAgentCreateFieldSchema.StringField("Base URL", 1, "uri", false)) return null
-    if (properties["supportsImageInput"] != SharedAgentCreateFieldSchema.BooleanField("Image input")) return null
-    if (properties["loadLocalPlugins"] != SharedAgentCreateFieldSchema.BooleanField("Load local Pi plugins")) return null
-    if (properties["model"] != SharedAgentCreateFieldSchema.StringField("Model", 1, null, false)) return null
-    if (properties["envVars"] != SharedAgentCreateFieldSchema.StringMapField("Environment Variables")) return null
+    // Field titles are display copy owned by the server (e.g. the 09-24 "Load
+    // local Pi plugins" -> "extensions" rename) and are already covered by
+    // uiSchema.localization below; compare structure only so copy changes do
+    // not knock the whole form out.
+    if (!properties["providerId"].matchesIgnoringTitle(SharedAgentCreateFieldSchema.StringField("", 1, null, false))) return null
+    if (!properties["apiKey"].matchesIgnoringTitle(SharedAgentCreateFieldSchema.StringField("", 1, null, true))) return null
+    if (!properties["baseUrl"].matchesIgnoringTitle(SharedAgentCreateFieldSchema.StringField("", 1, "uri", false))) return null
+    if (!properties["supportsImageInput"].matchesIgnoringTitle(SharedAgentCreateFieldSchema.BooleanField(""))) return null
+    if (!properties["loadLocalPlugins"].matchesIgnoringTitle(SharedAgentCreateFieldSchema.BooleanField(""))) return null
+    if (!properties["model"].matchesIgnoringTitle(SharedAgentCreateFieldSchema.StringField("", 1, null, false))) return null
+    if (!properties["envVars"].matchesIgnoringTitle(SharedAgentCreateFieldSchema.StringMapField(""))) return null
     val required = dataSchema.required.map { it.trim() }
     if (required.any { it.isBlank() || it !in properties } || required.distinct().size != required.size) return null
     if (required.toSet() != setOf("providerId", "apiKey", "model")) return null
