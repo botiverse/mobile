@@ -10,6 +10,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -248,6 +249,22 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
         )
         assertEquals(42, editor.optInt("refTag"))
         assertEquals("typed draft", editor.optString("text"))
+    }
+
+    @Test
+    fun prepareOmitsRefTagFieldWhenNoEditorRef(): Unit {
+        // Missing ref must not serialize a null literal — JSONObject.NULL is an org.json-ism
+        // not portable across the fork's JSON impls. Native keeps rejecting a prepare that
+        // arrives without the field; the wire just must not carry a bogus value.
+        val args =
+            build.raft.app.base.buildSlockAdaptiveNavigationMethodArgs(
+                action = "prepare",
+                requestId = "r-miss",
+                expectedEditorText = "typed draft",
+            )
+        val editor = args.optJSONObject("expectedEditor")
+        assertNotNull(editor)
+        assertFalse(editor.has("refTag"), "refTag must be omitted when absent")
     }
 
     @Test

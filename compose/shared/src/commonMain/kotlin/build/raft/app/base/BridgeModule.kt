@@ -1526,9 +1526,13 @@ internal fun buildSlockAdaptiveNavigationMethodArgs(
     if (expectedEditorRefTag != null || expectedEditorText != null) {
         methodArgs.put(
             "expectedEditor",
-            JSONObject()
-                .put("refTag", expectedEditorRefTag ?: JSONObject.NULL)
-                .put("text", expectedEditorText ?: ""),
+            JSONObject().apply {
+                // Explicit branch: omit refTag entirely when absent — JSONObject.NULL is an
+                // org.json-ism not portable across the fork's JSON impls, and a null literal
+                // would break iOS's NSNumber check the same way a string did.
+                if (expectedEditorRefTag != null) put("refTag", expectedEditorRefTag)
+                put("text", expectedEditorText ?: "")
+            },
         )
     }
     return methodArgs
