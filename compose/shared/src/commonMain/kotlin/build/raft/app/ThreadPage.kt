@@ -3814,7 +3814,7 @@ private fun ThreadPageScreen(
                 identity = identity,
                 launchPayload = launchPayload,
                 windowFact = event.toSlockAdaptiveOpenWindowFact(System.currentTimeMillis()),
-                requestId = "adopt-${pager.pagerId}-${event.capturedAtMillisOrNow()}",
+                requestId = "adopt-${pager.pagerId}-${Uuid.random()}",
             )
         bridge.log("adaptive_initiate_outcome outcome=$outcome identity=${identity.key}")
     }
@@ -5384,11 +5384,6 @@ internal val LocalThreadAdaptiveInitiationCapture =
  */
 internal val LocalThreadAdaptiveNativeEditingReader =
     compositionLocalOf<SlockTextFieldNativeEditingStateReader?> { null }
-
-private fun SlockAdaptivePaneEvent.capturedAtMillisOrNow(): Long =
-    // Facts carry no capture stamp of their own; the requestId only needs a stable unique
-    // component per delivered fact — the delivery order is the freshness sequence.
-    (widthPx.toLong() shl 32) xor heightPx.toLong() xor System.identityHashCode(this).toLong()
 
 private data class SharedThreadRouteContentData(
     val initialPayload: KuiklyThreadScreenPayload,
