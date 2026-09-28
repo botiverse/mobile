@@ -96,3 +96,5 @@ Neither these tests nor host compilation is A4 end-to-end or physical-device acc
 Renderer API verified against immutable Kuikly `2.24.0-raft.7`, source
 `10dbe9168d5ca743978c371f36118400bb461ac8`: `viewWithRefTag:` and `KRTextAreaView : UITextView`.
 No fork modification or renderer version change is involved.
+
+UIKit snapshot checks run in the standalone `AdaptiveEditorTests` simulator target. It links only system frameworks and the production snapshot header, with no app host or shared framework dependency; the host app compilation and Foundation transaction suite remain separate CI steps. This avoids loading a second copy of the static shared runtime through the existing `iosAppTests` carrier.

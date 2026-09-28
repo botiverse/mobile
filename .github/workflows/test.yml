@@ -1184,11 +1184,11 @@ jobs:
           log="$GITHUB_WORKSPACE/xcodebuild-adaptive-editor-tests.log"
           xcodebuild \
             -workspace iosApp.xcworkspace \
-            -scheme iosAppTests \
+            -scheme AdaptiveEditorTests \
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$device_id" \
             -derivedDataPath "$RUNNER_TEMP/ios-build" \
-            -only-testing:iosAppTests/SlockAdaptiveEditorSnapshotTests \
+            -only-testing:AdaptiveEditorTests/SlockAdaptiveEditorSnapshotTests \
             -parallel-testing-enabled NO \
             ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
             OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
