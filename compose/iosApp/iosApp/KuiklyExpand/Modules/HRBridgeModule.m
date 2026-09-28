@@ -2224,11 +2224,13 @@ void SlockIosInstallHandsReporting(void) {
     dispatch_once(&onceToken, ^{
         // App-owned Hands reporting config (client key is DSN-class: it
         // identifies the app; rotate from the Hands console if leaked).
-        SlockIosRegisterHandsDiagnosticsProvider();
         [Hands installWithConfig:[HandsConfig configWithBaseUrl:@"https://hands.build"
                                                           appSlug:@"raft-ios"
                                                           channel:@"main"
                                                         clientKey:@"qk_2d6ac57a6532bc7ff1d3183b43bda99e2e732a99"]];
+        // Install fatal handlers before our diagnostic registration/logging.
+        // The provider is evaluated on a later upload, not during registration.
+        SlockIosRegisterHandsDiagnosticsProvider();
     });
 }
 
