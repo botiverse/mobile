@@ -1378,20 +1378,15 @@ private fun List<MemberProfile>.resolveComputerLabels(machineNames: Map<String, 
     map { it.resolveComputerLabel(machineNames) }
 
 private fun MemberProfile.resolveComputerLabel(machineNames: Map<String, String>): MemberProfile {
-    val badgesWithoutIds = permissionBadges.filterNot { it.startsWith(MemberComputerIdBadgePrefix) }
     val currentComputerLabel = permissionBadges.firstNotNullOfOrNull { it.memberComputerLabelOrNull() }
-    if (!currentComputerLabel.isNullOrBlank()) {
-        return if (badgesWithoutIds == permissionBadges) this else copy(permissionBadges = badgesWithoutIds)
-    }
+    if (!currentComputerLabel.isNullOrBlank()) return this
     val machineId = permissionBadges.firstNotNullOfOrNull { it.memberComputerIdOrNull() } ?: return this
-    val resolvedName = machineNames[machineId]?.takeIf { it.isNotBlank() }
-    return if (resolvedName != null) {
-        copy(permissionBadges = badgesWithoutIds + resolvedName.toMemberComputerBadge())
-    } else if (badgesWithoutIds == permissionBadges) {
-        this
-    } else {
-        copy(permissionBadges = badgesWithoutIds)
-    }
+    val resolvedName = machineNames[machineId]?.takeIf { it.isNotBlank() } ?: return this
+    // Task #409: keep the `computer-id:` badge — the members page uses it as
+    // the collapse-persistence key, stable across machine renames (same reason
+    // web keys agent-machine groups by machineId). Before this fix the badge
+    // was stripped on merge and the id never reached the list.
+    return copy(permissionBadges = permissionBadges + resolvedName.toMemberComputerBadge())
 }
 
 private val MemberProfile.memberKey: String

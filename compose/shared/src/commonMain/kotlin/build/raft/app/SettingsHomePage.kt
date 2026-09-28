@@ -17140,6 +17140,13 @@ private fun SharedMembersScreen(
                     is DataResult.NoPermission -> result
                 }
             }
+            // Task #409: persist per-machine agent-group collapse for the
+            // shared members page under the session user id.
+            val membersAgentGroupCollapseStore = remember {
+                build.raft.app.data.KeyValueMembersAgentMachineGroupCollapseStore(
+                    build.raft.app.data.slockSharedPreferenceStore()
+                )
+            }
             MembersRouteContent(
                 payload = renderMembersPayload,
                 refreshing = refreshing,
@@ -17235,6 +17242,9 @@ private fun SharedMembersScreen(
                 scrollToTopRequest = scrollToTopRequest,
                 initialListState = initialListState,
                 onListStateSnapshot = onListStateSnapshot,
+                // Task #409: persist per-machine collapse under the session user id.
+                currentUserId = current.currentUserId,
+                agentGroupCollapseStore = membersAgentGroupCollapseStore,
                 onRefresh = {
                     onForegroundActivity("refresh")
                     onRetry()
