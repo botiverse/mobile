@@ -81,6 +81,9 @@ internal class SlockAdaptiveDetailOpenInitiator(
         }
         inFlightRequestId = requestId
         var preparedToken: String? = null
+        var ackedGeneration: Long = 0L
+        val readyDeferred = CompletableDeferred<Unit>()
+        var readySubscription: RealtimeSubscription? = null
         try {
             captureAnchor(requestId)?.let { anchor ->
                 anchorStore.stage(
@@ -147,9 +150,7 @@ internal class SlockAdaptiveDetailOpenInitiator(
                 crossProcess = true,
                 source = "adaptive_detail_prepared",
             )
-            var ackedGeneration: Long = 0L
-            val readyDeferred = CompletableDeferred<Unit>()
-            val readySubscription =
+            readySubscription =
                 if (!awaitReadyBeforeCommit) {
                     null
                 } else {
