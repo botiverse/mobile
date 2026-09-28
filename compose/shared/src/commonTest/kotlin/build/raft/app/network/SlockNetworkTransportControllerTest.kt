@@ -150,7 +150,7 @@ class SlockNetworkTransportControllerTest {
 
         assertTrue(diagnostics.orEmpty().contains("applied=false"))
         assertEquals(0L, controller.getPreferenceSync().generation)
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = true)
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
     }
 
     @Test
