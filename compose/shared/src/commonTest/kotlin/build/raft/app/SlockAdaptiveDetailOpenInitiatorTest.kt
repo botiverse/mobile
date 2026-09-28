@@ -228,6 +228,29 @@ internal class SlockAdaptiveDetailOpenInitiatorTest {
     }
 
     @Test
+    fun prepareSerializesEditorRefTagAsJsonNumber(): Unit {
+        // task #18 regression (Jony): the wire shape, not just the callback type — refTag
+        // must serialize as a JSON number. Read back through JSONObject so a future
+        // stringly-typed regression fails here instead of reaching iOS.
+        val args =
+            build.raft.app.base.buildSlockAdaptiveNavigationMethodArgs(
+                action = "prepare",
+                requestId = "r-ser",
+                expectedEditorRefTag = 42,
+                expectedEditorText = "typed draft",
+            )
+        val editor = args.optJSONObject("expectedEditor")
+        assertNotNull(editor)
+        val refTag = editor.opt("refTag")
+        assertTrue(
+            refTag is Int || refTag is Long || refTag is Double,
+            "refTag must serialize as a JSON number, was <$refTag>"
+        )
+        assertEquals(42, editor.optInt("refTag"))
+        assertEquals("typed draft", editor.optString("text"))
+    }
+
+    @Test
     fun ackFromAnotherRequestIsIgnored(): Unit = runBlocking {
         val fixture = Fixture()
         fixture.nativeReplies["prepare"] = preparedReply()
