@@ -18,6 +18,10 @@ The versioning formula and user-facing changelog rules are defined in
 [Android Hands Release Practices](android-hands-release-practices-2026-07-02.md).
 This document defines the order of operations and the scripts that enforce it.
 
+For version closeout, branch locking, next-version selection and the required
+Notion release ledger, follow [Release closeout and Notion ledger](mobile-paired-release-sop.md#release-closeout-and-notion-ledger).
+A closed release branch must not receive further fixes or new builds.
+
 ## Roles
 
 - **Release owner** selects the candidate PRs, approves the user-facing
