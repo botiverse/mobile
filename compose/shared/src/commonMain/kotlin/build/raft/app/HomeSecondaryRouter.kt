@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -377,6 +378,72 @@ private fun HomeActivityRouterContent(
                     .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, selection.generation)
             }
         }
+    // CloseDetail: the embedded thread's own Back posts SLOCK_ADAPTIVE_DETAIL_CLOSE_EVENT
+    // carrying this surface's namespaced shell id; only this page reduces it (Home's
+    // observer filters on the un-suffixed shell id, so events can't cross).
+    DisposableEffect(activityWorkspaceStore, environment.storeScope.shellInstanceId) {
+        val activityShellId = environment.storeScope.shellInstanceId + ":activity"
+        val subscription =
+            sharedStores.eventBus.observe(
+                eventName = SLOCK_ADAPTIVE_DETAIL_CLOSE_EVENT,
+                crossProcess = true,
+            ) { eventData ->
+                val request = eventData?.toSlockAdaptiveDetailCloseRequestOrNull()
+                    ?: return@observe
+                if (request.shellInstanceId != activityShellId) return@observe
+                val current = activityWorkspaceStore.snapshot().workspace ?: return@observe
+                val next =
+                    reduceSlockAdaptiveWorkspace(
+                        current,
+                        SlockAdaptiveWorkspaceIntent.CloseDetail(
+                            identityKey = request.identityKey,
+                            generation = request.generation,
+                        ),
+                    )
+                if (current.selection != null && next.selection == null) {
+                    releaseActivityAdaptiveLease(
+                        environment,
+                        activityWorkspaceStore,
+                        activityRealtimeEvents,
+                        activityRoomLeaseRegistry,
+                        request.generation,
+                    )
+                }
+                activityWorkspaceStore.update { session ->
+                    session.copy(
+                        workspace = next,
+                        launchPayload =
+                            if (current.selection != null && next.selection == null) {
+                                null
+                            } else {
+                                session.launchPayload
+                            },
+                    )
+                }
+            }
+        onDispose { subscription.close() }
+    }
+    // Back ordering (task #13): with a mounted detail the first Back dismisses the detail
+    // only; the Activity list/page stays until a second Back. Release this surface's own
+    // lease — never the covered Home's.
+    SlockBackHandler(enabled = dualPane && selection != null) {
+        val current = activityWorkspaceStore.snapshot().workspace ?: return@SlockBackHandler
+        val dismissed =
+            reduceSlockAdaptiveWorkspace(current, SlockAdaptiveWorkspaceIntent.DismissDetail)
+        val releasedGeneration = current.selection?.generation
+        activityWorkspaceStore.update { session ->
+            session.copy(workspace = dismissed, launchPayload = null)
+        }
+        releasedGeneration?.let { generation ->
+            releaseActivityAdaptiveLease(
+                environment,
+                activityWorkspaceStore,
+                activityRealtimeEvents,
+                activityRoomLeaseRegistry,
+                generation,
+            )
+        }
+    }
     if (dualPane) {
         Row(modifier = Modifier.fillMaxSize()) {
             Box(
@@ -420,6 +487,26 @@ private fun HomeActivityRouterContent(
         }
     } else {
         activityListPane(true)
+    }
+}
+
+
+private fun releaseActivityAdaptiveLease(
+    environment: HomeSecondaryRouteEnvironment,
+    workspaceStore: SharedAdaptiveWorkspaceStore,
+    realtimeEvents: KuiklyRealtimeEvents,
+    roomLeaseRegistry: build.raft.app.data.SharedRealtimeRoomLeaseRegistry,
+    expectedGeneration: Long? = null,
+) {
+    val owner = workspaceStore.snapshot().handoffRoomLeaseOwner ?: return
+    if (expectedGeneration != null && owner.generation != expectedGeneration) return
+    realtimeEvents.applyRoomTransitions(roomLeaseRegistry.release(owner))
+    workspaceStore.update { current ->
+        if (current.handoffRoomLeaseOwner == owner) {
+            current.copy(handoffRoomLeaseOwner = null)
+        } else {
+            current
+        }
     }
 }
 
