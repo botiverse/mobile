@@ -5945,9 +5945,9 @@ private fun SlockAppShellReadyContent(
                             )
                         }
                         adaptiveSplitListDetail(
-                            enabled = adaptiveHomeWorkspaceEnabled,
-                            active = active,
-                            listPane = homeListPane,
+                            adaptiveHomeWorkspaceEnabled,
+                            active,
+                            homeListPane,
                         )
                     }
                     val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
@@ -6029,9 +6029,9 @@ private fun SlockAppShellReadyContent(
                     val activityTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         PerformanceSceneEffect(bridge, "kuikly_activity", active = active)
                         adaptiveSplitListDetail(
-                            enabled = adaptiveHomeWorkspaceEnabled,
-                            active = active,
-                            listPane = activityListPane,
+                            adaptiveHomeWorkspaceEnabled,
+                            active,
+                            activityListPane,
                         )
                     }
                     val membersTabContent: @Composable (active: Boolean) -> Unit = { active ->
