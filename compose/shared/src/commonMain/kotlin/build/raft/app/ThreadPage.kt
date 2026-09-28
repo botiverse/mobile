@@ -17269,6 +17269,17 @@ private fun ThreadMessagesListContent(
     var adaptiveReadyPosted by remember(threadInstanceKey) { mutableStateOf(false) }
     fun postDetailReadyTrace(hop: String, extra: JSONObject.() -> Unit = {}) {
         val request = closeReq ?: return
+        diagnosticsLogger(
+            formatAdaptiveTraceLine(
+                side = "detail",
+                hop = hop,
+                identityKey = request.identityKey,
+                generation = request.generation,
+                extra =
+                    "routeActive=$routeActive status=${renderPayload.status} " +
+                        "messagesCount=${renderPayload.messages.size}",
+            ),
+        )
         adaptiveEventBus?.postAdaptiveTrace(
             side = "detail",
             hop = hop,

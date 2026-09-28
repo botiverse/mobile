@@ -25,20 +25,39 @@ internal fun SlockEventBus.postAdaptiveTrace(
     requestId: String? = null,
     extra: JSONObject.() -> Unit = {},
 ) {
+    val data =
+        JSONObject()
+            .put("side", side)
+            .put("hop", hop)
+            .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, identityKey)
+            .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, generation.toDouble())
+            .apply { if (requestId != null) put(SlockAdaptiveDetailOpenRequest.KEY_REQUEST_ID, requestId) }
+            .apply(extra)
     post(
         eventName = SLOCK_ADAPTIVE_TRACE_EVENT,
-        eventData =
-            JSONObject()
-                .put("side", side)
-                .put("hop", hop)
-                .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, identityKey)
-                .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, generation.toDouble())
-                .apply { if (requestId != null) put(SlockAdaptiveDetailOpenRequest.KEY_REQUEST_ID, requestId) }
-                .apply(extra),
+        eventData = data,
         crossProcess = true,
         source = "adaptive_trace",
     )
 }
+
+/** Mirrors a trace hop into the host diagnostics log line so device-side JSONL sees it. */
+internal fun formatAdaptiveTraceLine(
+    side: String,
+    hop: String,
+    identityKey: String,
+    generation: Long,
+    requestId: String? = null,
+    extra: String = "",
+): String =
+    buildString {
+        append("adaptive_trace side=").append(side)
+        append(" hop=").append(hop)
+        append(" identity=").append(identityKey)
+        append(" generation=").append(generation)
+        if (requestId != null) append(" requestId=").append(requestId)
+        if (extra.isNotEmpty()) append(' ').append(extra)
+    }
 
 /**
  * Window fact carried inside an adoption request. Mirrors the host emitter fields so the shell can
