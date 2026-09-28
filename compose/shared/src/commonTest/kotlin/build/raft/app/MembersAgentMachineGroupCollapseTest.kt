@@ -118,6 +118,22 @@ class MembersAgentMachineGroupCollapseTest {
         )
     }
 
+    @Test
+    fun collapseSurvivesAFreshStoreInstanceOnTheSameBacking() {
+        // Re-entering the members page constructs a new collapse store over
+        // the same preference store. The remembered state must still read.
+        val backing = InMemorySlockKeyValueStore()
+        KeyValueMembersAgentMachineGroupCollapseStore(backing)
+            .setCollapsed("user-1", "machine-1", true)
+        val reenteredStore = KeyValueMembersAgentMachineGroupCollapseStore(backing)
+        assertTrue(reenteredStore.isCollapsed("user-1", "machine-1"))
+        reenteredStore.setCollapsed("user-1", "machine-1", false)
+        assertFalse(
+            KeyValueMembersAgentMachineGroupCollapseStore(backing)
+                .isCollapsed("user-1", "machine-1")
+        )
+    }
+
     private fun member(
         id: String,
         vararg badges: String

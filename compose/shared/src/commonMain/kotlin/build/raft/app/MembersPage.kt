@@ -2016,8 +2016,11 @@ internal fun MembersPageContent(
     // `readCurrentServerId()` stub (fixed QA-3): machines load + plan limit
     // checks now use the real selected server.
     var activeServerId by remember { mutableStateOf<String?>(null) }
+    var membersCurrentUserId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(authStore) {
-        activeServerId = authStore.readSession()?.currentServerId
+        val session = authStore.readSession()
+        activeServerId = session?.currentServerId
+        membersCurrentUserId = session?.user?.id
     }
     val serverId = activeServerId ?: ""
     val agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore
@@ -2393,6 +2396,9 @@ internal fun MembersPageContent(
             },
             inviteHumanLoadJoinLink = { loadInviteJoinLink() }
         ),
+        // Task #409: persist per-machine collapse under the session user id.
+        currentUserId = membersCurrentUserId,
+        agentGroupCollapseStore = membersAgentGroupCollapseStore,
         // #89: pass agentsApiClient so Permissions tab can call
         // `agentScopes` / `updateAgentScopes` / `resetAgentScopes` directly.
         agentsApiClient = agentsApiClient
