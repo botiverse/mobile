@@ -136,6 +136,18 @@ internal class SlockAvatarHttpLoadCoordinator(
     fun retain(key: SlockAvatarHttpLoadKey) {
         synchronized(lock) {
             val entry = entryLocked(key)
+            val current = entry.state.value
+            // A brand-new observer after every row left is a fresh user intent (e.g. page
+            // re-entry). Re-arm a cooling-down entry so a single transport failure cannot pin
+            // the avatar to its placeholder for the rest of the process lifetime; the backoff
+            // counter still grows on each subsequent failure, so tight retry loops stay bounded.
+            if (
+                entry.observerCount == 0 &&
+                current.cache == SlockAvatarHttpCacheState.Cooldown &&
+                current.ownerToken == null
+            ) {
+                entry.state.value = current.copy(retryAtMillis = nowMillis())
+            }
             entry.observerCount += 1
         }
     }

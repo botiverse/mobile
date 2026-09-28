@@ -1804,12 +1804,16 @@ private fun AppShellTabs(
     val activeChildTab = appShellActiveChildPagerTab(activeTab, childPageTabKeys)
     // Keepalive stack (V2): render every retained child tab, not just the active one,
     // so Home/Tasks/Members/Settings stay alive and switching back is instant with
-    // full state. Only the active child is visible; the rest are hard-hidden via the
+    // full state. Only the selected child is visible; the rest are hard-hidden via the
     // native `active` guard (visibility=INVISIBLE), so an inactive child's late render
-    // can never reach the visible layer. Visibility is driven purely by selectedTab —
-    // there is no HorizontalPager/scrollToPage, so none of the pager scroll races
-    // (overlay / blank / stale native page) can occur. The active tab is always in the
-    // list even if mountedTabs is momentarily stale.
+    // can never reach the visible layer. Pixel visibility follows the selected tab
+    // even while this shell page is covered (`pageVisible` false). Hiding the
+    // selected tab on disappear leaves a frame with no active child when a channel
+    // page is removed before the shell's appear event, and the clear container
+    // flashes white. Lifecycle still follows the pager appear events. There is no
+    // HorizontalPager/scrollToPage, so none of the pager scroll races (overlay /
+    // blank / stale native page) can occur. The active tab is always in the list
+    // even if mountedTabs is momentarily stale.
     val retainedChildTabs =
         appShellRetainedChildTabs(activeChildTab, mountedTabs, childPageTabKeys)
     LaunchedEffect(activeChildTab, childTabSwitchEpoch, retainedChildTabs) {
@@ -1825,7 +1829,7 @@ private fun AppShellTabs(
                     SlockAppShellChildTabHost(
                         shellId = childHostShellId,
                         tab = tab,
-                        active = pageVisible && tab == activeChildTab
+                        active = tab == activeChildTab
                     )
                 }
             }

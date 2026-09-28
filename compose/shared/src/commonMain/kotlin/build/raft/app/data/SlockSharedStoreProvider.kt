@@ -1706,7 +1706,13 @@ internal class SlockSharedStoreProvider private constructor(
                     coordinator = avatarCacheCoordinator,
                     currentOwner = avatarOwnerResolver,
                     diagnostics =
-                        sharedInfoLogger("SlockAvatar", "avatar_mounted_binding")
+                        { message ->
+                            if ("result=ok" in message) {
+                                slockLogInfo("SlockAvatar", "avatar_mounted_binding $message")
+                            } else {
+                                slockLogWarn("SlockAvatar", "avatar_mounted_binding $message")
+                            }
+                        }
                 )
             val avatarCacheRuntime =
                 SlockAvatarCacheRuntime(

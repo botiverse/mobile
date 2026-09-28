@@ -224,6 +224,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly THREAD_ATTACHMENT_UPLOAD = "threadAttachmentUpload";
   static readonly COMPRESS_THREAD_IMAGE = "compressThreadImage";
   static readonly CANCEL_COMPRESS_THREAD_IMAGE = "cancelCompressThreadImage";
+  static readonly APP_BADGE = "appBadge";
   static readonly ATTACHMENT_CACHE_MAX_FILES = 80;
   static readonly ATTACHMENT_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
   static readonly HANDS_FEEDBACK_MAX_ATTACHMENTS = 3;
@@ -381,11 +382,23 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         this.cancelCompressThreadImage(params);
         break;
       }
+      case KRBridgeModule.APP_BADGE: {
+        this.appBadge(params);
+        break;
+      }
       default: {
-        callback({
-          "code": -1,
-          "message": "Method not implemented"
-        });
+        SlockOhosDiagnostics.record(
+          "HRBridgeModule",
+          `unsupported bridge method dropped: ${method}`,
+          Date.now(),
+          "warn"
+        );
+        if (callback !== undefined && callback !== null) {
+          callback({
+            "code": -1,
+            "message": "Method not implemented"
+          });
+        }
         break;
       }
     }
@@ -451,10 +464,48 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const context = getContext(this) as common.UIAbilityContext;
     context.startAbility({
       action: 'ohos.want.action.viewData',
+      entities: ['entity.system.browsable'],
       uri: url,
       type: payload['mimeType']
     }).catch((error: BusinessError) => {
       console.error(`KuiklyRender openUrl failed ${error.code}: ${error.message}`);
+      SlockOhosDiagnostics.record(
+        "HRBridgeModule",
+        `openUrl startAbility failed code=${error.code} message=${error.message} url_len=${url.length} -> in-app browser fallback`,
+        Date.now(),
+        "warn"
+      );
+      // Fall back to the Kuikly in-app browser page so the user still sees the link
+      // instead of a silent no-op. Mirrors the Android #2700 fallback to
+      // compose_in_app_browser. RouterAdapter.openPage pushes
+      // params={ pageName, pageData } where pageData itself carries `pageName`
+      // plus the page args — here `url` (SLOCK_IN_APP_BROWSER_URL_KEY,
+      // SlockLinkNavigation.kt:136).
+      // Fallback only applies to http/https — mailto/tel/etc have no in-app
+      // browser representation and stay a silent failure.
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        return;
+      }
+      const inAppPageData: Record<string, Object> = {
+        'pageName': 'compose_in_app_browser',
+        'url': url
+      };
+      try {
+        router.pushUrl({
+          url: 'pages/Index',
+          params: {
+            pageName: 'compose_in_app_browser',
+            pageData: inAppPageData
+          }
+        });
+      } catch (routerError) {
+        SlockOhosDiagnostics.record(
+          "HRBridgeModule",
+          `openUrl in-app browser push failed: ${JSON.stringify(routerError)}`,
+          Date.now(),
+          "error"
+        );
+      }
     });
   }
 
@@ -1170,6 +1221,31 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   }
 
   private reportDT(params: KRAny) {
+  }
+
+  private appBadge(params: KRAny) {
+    const records = this.parseRecord(params);
+    const countValue = records["count"];
+    const count = typeof countValue === 'number' ? Math.max(0, Math.floor(countValue)) : 0;
+    const source = typeof records["source"] === 'string' ? records["source"] as string : "unknown";
+    const isStale = records["isStale"] === true;
+    // notificationManager.setBadgeNumber never prompts the user; notification authorization
+    // only gates notification posting, not the launcher badge surface itself.
+    notificationManager.setBadgeNumber(count).then((): void => {
+      SlockOhosDiagnostics.record(
+        "HRBridgeModule",
+        `appBadge count=${count} source=${source} stale=${isStale}`,
+        Date.now(),
+        "info"
+      );
+    }).catch((err: BusinessError): void => {
+      SlockOhosDiagnostics.record(
+        "HRBridgeModule",
+        `appBadge setBadgeNumber failed code=${err.code} message=${err.message}`,
+        Date.now(),
+        "warn"
+      );
+    });
   }
 
   private performanceScene(params: KRAny) {

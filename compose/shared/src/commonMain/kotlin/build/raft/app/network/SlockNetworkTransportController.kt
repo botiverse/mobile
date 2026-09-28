@@ -129,7 +129,7 @@ internal class SlockNetworkTransportController(
         // not mutate this call, including auth/retry attempts owned by it.
         // Presigned direct-upload PUTs are pinned to HTTP/1.1: their R2 S3
         // endpoints must not attempt an HTTP/3 upgrade even when the remote
-        // transport policy defaults to curl_h3.
+        // transport policy pins a request to curl_h3.
         request.setCurlHttp3Enabled(if (http1Only) false else snapshot.effectiveHttp3Enabled)
         return NetworkEngineSelection(
             requestedEngine =
@@ -201,9 +201,9 @@ internal class SlockNetworkTransportController(
         }
         val variants = evaluations.map { evaluation ->
             if (!evaluation.enabled) {
-                SlockRemoteTransportVariant.CurlH3
+                SlockRemoteTransportVariant.CurlH2
             } else {
-                SlockRemoteTransportVariant.fromWire(evaluation.variant) ?: SlockRemoteTransportVariant.CurlH3
+                SlockRemoteTransportVariant.fromWire(evaluation.variant) ?: SlockRemoteTransportVariant.CurlH2
             }
         }.toSet()
         return if (variants.size == 1) {
@@ -322,7 +322,7 @@ private data class RemoteTransportPolicy(
     companion object {
         val Default = RemoteTransportPolicy(
             resolved = false,
-            variant = SlockRemoteTransportVariant.CurlH3,
+            variant = SlockRemoteTransportVariant.CurlH2,
             conflicting = false
         )
     }
