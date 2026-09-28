@@ -15324,7 +15324,8 @@ private fun ThreadComposerRoute(
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
     composerSendKeyEnabled: Boolean = false,
-    onKeyboardHeightChange: (Float) -> Unit
+    onKeyboardHeightChange: (Float) -> Unit,
+    adaptiveNativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
 ) {
     val composerDraftState by composerDraftViewModel.state.collectAsState()
     val expectedDraftKey = remember(surface) { surface.threadComposerDraftKey() }
@@ -15362,7 +15363,8 @@ private fun ThreadComposerRoute(
         composerSendKeyEnabled = composerSendKeyEnabled,
         onKeyboardHeightChange = onKeyboardHeightChange,
         contentPaddingTop = 0.dp,
-        contentPaddingBottom = 0.dp
+        contentPaddingBottom = 0.dp,
+        adaptiveNativeEditingStateReader = adaptiveNativeEditingStateReader,
     )
 }
 
@@ -15401,7 +15403,8 @@ private fun ThreadComposerContentWithSuggestions(
     composerSendKeyEnabled: Boolean = false,
     onKeyboardHeightChange: (Float) -> Unit,
     contentPaddingTop: Dp,
-    contentPaddingBottom: Dp
+    contentPaddingBottom: Dp,
+    adaptiveNativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
 ) {
     val memberSuggestionSlice by memberSuggestionsFlow.collectAsState(SharedMembersMemberSuggestionSlice())
     val channelSuggestionSlice by channelSuggestionsFlow.collectAsState(SharedMembersChannelSuggestionSlice())
@@ -15492,6 +15495,7 @@ private fun ThreadComposerContentWithSuggestions(
         onInsertMentionConsumed = onInsertMentionConsumed,
         onSuggestionDemandChanged = onSuggestionDemandChanged,
         composerSendKeyEnabled = composerSendKeyEnabled,
+        externalNativeEditingStateReader = adaptiveNativeEditingStateReader,
     )
 }
 
