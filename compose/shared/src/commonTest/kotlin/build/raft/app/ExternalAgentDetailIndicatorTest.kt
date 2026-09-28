@@ -145,10 +145,6 @@ class ExternalAgentDetailIndicatorTest {
         )
     }
 
-        setup: ExternalAgentSetupState,
-        lastActivityAt: String? = null
-    ) = ExternalAgentStatusSnapshot(setupState = setup, lastActivityAt = lastActivityAt)
-
     @Test
     fun notProvidedStatusIsPlainExternalCyanNeverGray() {
         val result = externalAgentDetailIndicator(status = null, nowEpochMillis = now)
