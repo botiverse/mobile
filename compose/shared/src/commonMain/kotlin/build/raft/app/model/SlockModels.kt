@@ -335,6 +335,13 @@ data class MemberProfile(
     val joinedAt: String? = null,
     val membershipStatus: String? = null,
     val agentDeletedAt: String? = null,
+    /**
+     * External agents only: `lastSeenAt` from `GET /agents` — when the agent's
+     * credential was last used (ISO-8601). Presence is derived from it:
+     * online while `now - lastSeenAt < 120s` (web `EXTERNAL_AGENT_ONLINE_WINDOW_MS`),
+     * otherwise "Last active {time}". Realtime `agent:seen` updates it.
+     */
+    val lastSeenAt: String? = null,
     val createdAgents: List<AgentProfile> = emptyList(),
     val permissionBadges: List<String> = emptyList(),
     val serverId: ServerId? = null,
@@ -646,7 +653,15 @@ data class MemberPresenceUpdated(
     val agentStatus: AgentStatus? = null,
     val statusLabel: String? = null,
     val serverSeq: Long? = null,
-    val activityEntries: List<RealtimeAgentActivityEntry> = emptyList()
+    val activityEntries: List<RealtimeAgentActivityEntry> = emptyList(),
+    /**
+     * `agent:seen` carries the server's `lastSeenAt` (ISO-8601) for an external
+     * agent — the credential-use timestamp that drives the online window.
+     * Seq-less and merged onto the registered presence fact (see
+     * [ProcessMemberPresenceRegistry]): it updates presence to Active and
+     * this field, never displacing a seq-carrying fact.
+     */
+    val lastSeenAt: String? = null
 ) : RealtimeEvent
 
 @Serializable
