@@ -22594,6 +22594,17 @@ private fun Pager.openHomeSecondaryPage(
             timeContext?.todayEpochDay?.let { put("todayEpochDay", it) }
             timeContext?.nowEpochMillis?.let { put("nowEpochMillis", it) }
             put("timeFormat", timeContext?.timeFormat ?: SlockTimeFormat24Hour)
+            // task #13: the secondary page decides its adaptive workspace gate from its own
+            // pageData (HuaTuo's alpha-50 evidence: the shell's flag never reached the pushed
+            // page, so activityAdaptiveEnabled stayed false and details mounted full-screen).
+            // Forward the shell's flag value verbatim — OFF stays OFF.
+            put(
+                SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED,
+                this@openHomeSecondaryPage.pageData.params.optBoolean(
+                    SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED,
+                    false,
+                ),
+            )
         }
     openSlockPage(
         pageName = pageName,
