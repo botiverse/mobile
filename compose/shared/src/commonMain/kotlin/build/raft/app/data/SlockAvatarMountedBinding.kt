@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import build.raft.app.slockLogWarn
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
@@ -251,6 +252,7 @@ internal class SlockAvatarMountedBinding(
     private val downloader: SlockAvatarConditionalDownloader = DefaultSlockAvatarConditionalDownloader,
     private val session: SlockAvatarMountedSession = SlockAvatarMountedSession()
 ) {
+    private val log: (String) -> Unit = { message -> slockLogWarn(LogTag, message) }
     private val handlesLock = SynchronizedObject()
     private val handles = mutableMapOf<Long, SlockAvatarMountedHandle>()
     private val lastKnownOwners = mutableMapOf<String?, SlockAvatarCacheOwner>()
@@ -271,11 +273,20 @@ internal class SlockAvatarMountedBinding(
         }
         val key = owner?.let { runCatching { SlockAvatarCacheKey(it, subject, slockAvatarContentIdentity(normalizedUrl)) }.getOrNull() }
         val provider = nativeProvider()
-        if (key == null) return legacyHandle(normalizedUrl)
+        if (key == null) {
+            log("avatar_mount result=legacy reason=${if (owner == null) "owner_null" else "key_null"}")
+            return legacyHandle(normalizedUrl)
+        }
         val slot = key.nativeSlot()
         val inspection = runCatchingPreservingCancellation { provider.inspect(slot) }.getOrNull()
-            ?: return legacyHandle(normalizedUrl)
-        if (!inspection.supported) return legacyHandle(normalizedUrl)
+            ?: run {
+                log("avatar_mount result=legacy reason=inspect_fail")
+                return legacyHandle(normalizedUrl)
+            }
+        if (!inspection.supported) {
+            log("avatar_mount result=legacy reason=unsupported")
+            return legacyHandle(normalizedUrl)
+        }
         session.snapshotFor(key.owner, key.subject)?.key?.takeIf { it != key }?.let { displaced ->
             publish(session.retireSubject(key.owner, key.subject))
             runCatchingPreservingCancellation { provider.retireSubject(displaced.nativeSlot()) }
@@ -287,6 +298,7 @@ internal class SlockAvatarMountedBinding(
                 coordinator.prepareRead(key, inspection.bytesAvailable, inspection.bytesDecodable)
             }.getOrElse {
                 session.dispose(token)
+                log("avatar_mount result=legacy reason=prepare_read_fail")
                 return legacyHandle(normalizedUrl)
             }
         session.seedPrepared(
@@ -449,11 +461,17 @@ internal class SlockAvatarMountedBinding(
                 when {
                     failure === SlockAvatarStaleFlightException -> Unit
                     writeFailed || failure === SlockAvatarStageWriteException -> {
+                        log("avatar_flight result=fail reason=stage_write")
                         if (session.isFlightCurrent(flight)) resolveTemporary(flight)
                     }
-                    failure is SharedBinaryConditionalHttpException && failure.statusCode in setOf(404, 410) ->
+                    failure is SharedBinaryConditionalHttpException && failure.statusCode in setOf(404, 410) -> {
+                        log("avatar_flight result=fail reason=http_${failure.statusCode}")
                         retireAndClear(flight, provider, SlockAvatarMountedClearReason.ResourceAbsent)
-                    else -> resolveTemporary(flight)
+                    }
+                    else -> {
+                        log("avatar_flight result=fail reason=${failure::class.simpleName ?: "unknown"}")
+                        resolveTemporary(flight)
+                    }
                 }
                 return
             }
@@ -468,11 +486,13 @@ internal class SlockAvatarMountedBinding(
                     is SlockAvatarNativeStageFinish.Ready ->
                         commitModified(flight, provider, finished.candidate, response)
                     SlockAvatarNativeStageFinish.InvalidContent -> {
+                        log("avatar_flight result=fail reason=invalid_content")
                         runCatching { sink.abort() }
                         retireAndClear(flight, provider, SlockAvatarMountedClearReason.InvalidContent)
                     }
                     SlockAvatarNativeStageFinish.StorageFailure,
                     null -> {
+                        log("avatar_flight result=fail reason=storage_failure")
                         runCatching { sink.abort() }
                         resolveTemporary(flight)
                     }
@@ -695,6 +715,8 @@ internal class SlockAvatarMountedBinding(
             handles[token.mountId] === handle && handle.refreshNeeded
         }
 }
+
+private const val LogTag = "SlockAvatarBinding"
 
 private object SlockAvatarStaleFlightException : IllegalStateException("stale avatar flight")
 private object SlockAvatarStageWriteException : IllegalStateException("avatar stage write failed")
