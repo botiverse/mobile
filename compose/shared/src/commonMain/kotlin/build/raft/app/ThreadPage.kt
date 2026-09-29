@@ -17498,11 +17498,19 @@ private fun ThreadMessagesListContent(
                     put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
                 }
             } else {
+                // Jony's v15 boundary: a staged anchor whose message is absent AND whose
+                // fallback is out of range means the destination cannot honor the transfer —
+                // READY would lie ("restored") and authorize the native commit that pops the
+                // source. Hold READY; the caller's readyTimeout cancels the adoption and keeps
+                // the source page + staged anchor for an explicit retry. Leave
+                // adaptiveAnchorRestoreInFlight set so the bottom-anchor loop cannot claim the
+                // viewport while the handoff is still pending.
                 postDetailReadyTrace("restore_skipped") {
                     put("anchorMessageId", anchor.messageId ?: "null")
                     put("fallbackIndex", anchor.fallbackIndex.toDouble())
                     put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
                 }
+                return@LaunchedEffect
             }
             // The restore owns the viewport now: mark the initial bottom anchor settled and
             // disable auto-bottom so no in-loop FollowLatest or later auto-correction re-pins
