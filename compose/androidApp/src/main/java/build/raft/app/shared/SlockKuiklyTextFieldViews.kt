@@ -28,7 +28,7 @@ private const val PROP_IME_ACTION_REQUESTED = "slockImeActionRequested"
 
 // KRTextFieldView dispatches this through call(method, params, callback) but keeps its own
 // constant private, so the literal is duplicated here. Verified against the pinned artifact
-// core-render-android-2.28.0-raft.1-2.1.21: KRTextFieldView.METHOD_GET_TEXT_INPUT_STATE
+// core-render-android-2.28.0-raft.2-2.1.21: KRTextFieldView.METHOD_GET_TEXT_INPUT_STATE
 // = "getTextInputState", handled in the call(String, String, Function1) overload this class
 // overrides. If a Kuikly bump renames it, this interception silently stops running — the
 // connected test asserts the composition is finished, which is what would catch that.
