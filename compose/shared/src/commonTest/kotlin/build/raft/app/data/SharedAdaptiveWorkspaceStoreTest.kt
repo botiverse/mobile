@@ -7,6 +7,8 @@ import build.raft.app.SlockAdaptivePanePosture
 import build.raft.app.SlockAdaptivePaneState
 import build.raft.app.SlockAdaptiveWorkspaceState
 import build.raft.app.WireThreadLaunchPayload
+import build.raft.app.SlockAdaptiveWorkspaceIntent
+import build.raft.app.reduceSlockAdaptiveWorkspace
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -69,6 +71,76 @@ class SharedAdaptiveWorkspaceStoreTest {
         assertEquals(7L, recreatedConsumer.snapshot().workspace?.generationCursor)
         assertEquals(payload, recreatedConsumer.snapshot().launchPayload)
         assertEquals(leaseOwner, recreatedConsumer.snapshot().handoffRoomLeaseOwner)
+    }
+
+    @Test
+    fun parkSelectionOnShellStoreLeavesSiblingActivityStoreUntouched() {
+        // task #45: pushed Search/Saved share the shell scope and park into the shell
+        // store only; the Activity surface keeps its own page-local store, so an
+        // OFF-period park can never overwrite the Activity-side parked selection.
+        val shellStore = SharedAdaptiveWorkspaceStore()
+        val activityStore = SharedAdaptiveWorkspaceStore()
+        val wide =
+            SlockAdaptivePaneState(
+                layout = SlockAdaptivePaneLayout.DualPane,
+                posture = SlockAdaptivePanePosture.Flat,
+            )
+        shellStore.update {
+            it.copy(
+                workspace =
+                    SlockAdaptiveWorkspaceState(
+                        shellInstanceId = "shell-a",
+                        serverId = "server-a",
+                        pane = wide,
+                    )
+            )
+        }
+        activityStore.update {
+            it.copy(
+                workspace =
+                    SlockAdaptiveWorkspaceState(
+                        shellInstanceId = "shell-a:activity",
+                        serverId = "server-a",
+                        pane = wide,
+                        selection =
+                            SlockAdaptiveDetailSelection(
+                                identity =
+                                    SlockAdaptiveDetailIdentity(
+                                        serverId = "server-a",
+                                        threadId = "activity-thread",
+                                        surfaceKind = "channel",
+                                    ),
+                                generation = 1L,
+                            ),
+                    )
+            )
+        }
+
+        shellStore.update { session ->
+            val workspace = session.workspace ?: return@update session
+            val identity =
+                SlockAdaptiveDetailIdentity(
+                    serverId = "server-a",
+                    threadId = "search-opened-b",
+                    surfaceKind = "channel",
+                )
+            session.copy(
+                workspace =
+                    reduceSlockAdaptiveWorkspace(
+                        workspace,
+                        SlockAdaptiveWorkspaceIntent.ParkSelection(identity),
+                    ),
+            )
+        }
+
+        assertEquals(
+            "search-opened-b",
+            shellStore.snapshot().workspace?.selection?.identity?.threadId,
+        )
+        assertEquals(
+            "activity-thread",
+            activityStore.snapshot().workspace?.selection?.identity?.threadId,
+        )
     }
 
     @Test
