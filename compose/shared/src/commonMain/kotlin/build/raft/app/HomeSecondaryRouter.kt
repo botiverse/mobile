@@ -495,7 +495,10 @@ private fun HomeActivityRouterContent(
     // Consume Back whenever a detail is mounted on this surface — DualPane split OR
     // compact DetailOnly (narrowed with a selection). Narrowing must not strand the
     // selection behind the list.
-    SlockBackHandler(enabled = selection != null) {
+    // task #45: while the desktop-mode setting is OFF the surface must behave as a
+    // plain mobile page — a retained workspace selection (kept for the OFF->ON round
+    // trip) must neither steal Back nor render the detail slot.
+    SlockBackHandler(enabled = activityAdaptiveEnabled && selection != null) {
         val current = activityWorkspaceStore.snapshot().workspace ?: return@SlockBackHandler
         val dismissed =
             reduceSlockAdaptiveWorkspace(current, SlockAdaptiveWorkspaceIntent.DismissDetail)
@@ -516,8 +519,13 @@ private fun HomeActivityRouterContent(
     // Compact + selection = DetailOnly (same contract as Home): the detail takes the whole
     // surface; the list is retained in the workspace, not remounted. Compact without a
     // selection stays the plain list.
+    // Compact + selection = DetailOnly only while desktop mode is ON. With the setting
+    // OFF the workspace state is parked, not rendered — the list stays the only surface.
     val detailOnly =
-        !dualPane && selection != null && workspace?.presentation == SlockAdaptiveWorkspacePresentation.DetailOnly
+        activityAdaptiveEnabled &&
+            !dualPane &&
+            selection != null &&
+            workspace?.presentation == SlockAdaptiveWorkspacePresentation.DetailOnly
     if (dualPane) {
         Row(modifier = Modifier.fillMaxSize()) {
             Box(
