@@ -25,6 +25,7 @@ FIXTURES = [
     ("BUILTIN_V2_EDIT_JSON", "builtin.edit.json"),
     ("KIMI_SDK_V2_FORM_JSON", "kimi-sdk.form.json"),
     ("KIMI_SDK_V2_EDIT_JSON", "kimi-sdk.edit.json"),
+    ("CAPABILITIES_V2_FORM_JSON", "capabilities.form.json"),
 ]
 
 

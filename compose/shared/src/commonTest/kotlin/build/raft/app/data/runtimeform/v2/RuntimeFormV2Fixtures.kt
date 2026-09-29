@@ -504,3 +504,50 @@ internal const val KIMI_SDK_V2_EDIT_JSON: String = """{
   }
 }
 """
+
+/** fixtures/capabilities.form.json, sha256 923a810ee6c57cf9670e231629473624b92a1827794bbf7fa0432d0d761dccb5 */
+internal const val CAPABILITIES_V2_FORM_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "example-runtime",
+  "schemaVersion": "example-runtime.capabilities-sample",
+  "requiredClientCapabilities": [
+    "select.custom_value"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model"
+    ],
+    "layout": {
+      "advanced": []
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model"
+      }
+    }
+  },
+  "optionSources": {
+    "model": {
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  }
+}
+"""

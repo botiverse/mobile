@@ -1,4 +1,4 @@
-// Generated from packages/runtime-form/contract/runtime-form-v2.contract.json (sha256 de3eccf071095ad5). Do not edit.
+// Generated from packages/runtime-form/contract/runtime-form-v2.contract.json (sha256 fd27a5ae7f378172). Do not edit.
 // Decode with Json { ignoreUnknownKeys = true }: every type is open.
 // Enumerated strings stay String so an unknown value never fails decoding.
 package build.raft.app.data.runtimeform.v2
@@ -16,6 +16,7 @@ data class RuntimeFormV2Definition(
     val dataSchema: RuntimeFormV2DataSchema,
     val uiSchema: RuntimeFormV2UiSchema? = null,
     val optionSources: Map<String, RuntimeFormV2OptionSourceRef>? = null,
+    val requiredClientCapabilities: List<String>? = null,
     val values: Map<String, JsonElement>? = null,
 )
 
