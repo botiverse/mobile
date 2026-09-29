@@ -3200,6 +3200,26 @@ private fun SlockAppShellReadyContent(
                         // (task #18, Jony follow-up); keeps the merged protocol inert.
                         nativeGuardedCommitAvailable = true, // QA-only carrier; never merge
                     )
+                // QA carrier only: invalidate this request's already captured anchor before
+                // publishing the destination. No READY, ACK, cancellation or receipt is forged.
+                if (decision is SlockAdaptiveDetailOpenDecision.Accepted &&
+                    pager.pageData.params.optBoolean("slockQaInvalidAdaptiveAnchor", false)
+                ) {
+                    val qaAnchorStore = sharedStores.adaptiveScrollAnchorStore(storeScope)
+                    val qaAnchor = qaAnchorStore.peek(storeScope.shellInstanceId, request.identity)
+                    if (qaAnchor != null && qaAnchor.requestId == request.requestId) {
+                        qaAnchorStore.stage(
+                            storeScope.shellInstanceId,
+                            request.identity,
+                            qaAnchor.copy(
+                                messageId = "qa-missing-anchor:${request.requestId}",
+                                fallbackIndex = -1,
+                                atLatest = false,
+                            ),
+                        )
+                        bridge.log("adaptive_qa invalid_anchor requestId=${request.requestId} generation=${decision.generation}")
+                    }
+                }
                 if (nextSession != session) {
                     adaptiveWorkspaceStore.update { nextSession }
                 }
@@ -3367,6 +3387,11 @@ private fun SlockAppShellReadyContent(
                     generation = cancel.generation,
                     requestId = cancel.requestId,
                 ) { put("reason", cancel.reason) }
+                bridge.log(
+                    "adaptive_qa cancellation_settled requestId=${cancel.requestId} " +
+                        "pendingAfter=${adaptiveWorkspaceStore.snapshot().pendingDetailOpens.size} " +
+                        "anchorPresent=${sharedStores.adaptiveScrollAnchorStore(storeScope).peek(storeScope.shellInstanceId, pending.identity) != null}"
+                )
             }
         // The source reports its prepared controller identities after native prepare; bind them
         // to the pending request so a stray commit receipt cannot settle it.

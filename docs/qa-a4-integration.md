@@ -1,6 +1,6 @@
-# Test-only A4 integration revision 15 — DO NOT MERGE
+# Test-only A4 integration revision 16 — DO NOT MERGE
 
-Shared PR2730: b7fb7f346aa3b187c4c87a4da13efc2f3dd879ed (rebased main includes layout 2727/2728).
+Shared PR2730: e3aaf6faee4e5d20585ac974143eda8bcad9ee1a (rebased main includes layout 2727/2728).
 Native PR2731: 4d1628e4779a9fd593dce0d84c98b822084b0b1c.
 
 This QA branch alone sets the source initiation default and nativeGuardedCommitAvailable true.
@@ -77,3 +77,20 @@ this ordinary nonempty test. Compare staged, immediate and final 777x834 viewpor
 do not treat ordered hops or anchorConsumed alone as acceptance. atLatest and
 restore-skipped paths require separate coverage. Product defaults remain OFF;
 this is an unreviewed QA integration carrier, not a product merge verdict.
+
+Revision 16 carries the invalid-anchor READY hold (e3aaf6fae). The normal nonlatest
+path in r15 still loses its restored index after following_latest inset replay;
+that separate owner repair is not included or claimed here.
+
+QA-only `slockQaInvalidAdaptiveAnchor=true` (default false) replaces only the
+accepted request's staged anchor with a request-specific missing message id,
+fallbackIndex=-1 and atLatest=false before publishing the next session. The
+request fence must match the captured record. Source capture, native prepare,
+destination restore decision, timeout, cancel and receipt code remain unmodified.
+No fixture messages are deleted and no READY/ACK/result is synthesized. A diagnostic
+records the injection and another records pending count and anchor presence after
+actual cancellation. On the authorized nonempty fixture, preserve an unsent QA
+draft and require restore_skipped, no READY or CommitDispatched, actual timeout
+cleanup and visible source/draft retention. This proves a deliberately invalid
+record only, not a natural deletion race or unknown bounds fallback. Keep both
+READY delay flags zero. Product branches/gates remain unchanged.
