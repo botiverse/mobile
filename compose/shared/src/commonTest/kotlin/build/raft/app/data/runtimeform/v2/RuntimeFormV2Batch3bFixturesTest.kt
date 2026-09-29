@@ -69,6 +69,7 @@ class RuntimeFormV2Batch3bFixturesTest {
         assertEquals(emptyMap(), validateRuntimeFormV2(edit, claudeSources, values, editing = true))
         val submitted = runtimeFormV2Submission(edit, values, claudeSources)
         assertEquals(JsonPrimitive("https://gateway.example.test"), submitted["apiUrl"], "same URL + blank key keeps the stored key")
+        assertEquals(JsonPrimitive(""), submitted["apiKey"], "a blank key is sent as \"\", which the server reads as keep")
     }
 
     @Test
