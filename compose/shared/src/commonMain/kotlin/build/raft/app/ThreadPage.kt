@@ -5978,6 +5978,7 @@ private fun SharedThreadRouteContentContent(
             billingDirectoryProjections,
             payload.surfaceKind,
             payload.parentChannelId,
+            conversationDirectoryLookupIds,
             jointBillingDeadlineTick
         ) {
             jointBillingNoticeState(
@@ -5991,7 +5992,7 @@ private fun SharedThreadRouteContentContent(
             )
         }
     val jointGraceDeadlineLabel =
-        remember(billingDirectoryProjections) {
+        remember(billingDirectoryProjections, conversationDirectoryLookupIds) {
             (listOfNotNull(payload.parentChannelId) + conversationDirectoryLookupIds)
                 .firstNotNullOfOrNull { id ->
                     billingDirectoryProjections[id]
@@ -10279,6 +10280,8 @@ private fun SharedThreadRouteContentContent(
             lastRefreshResultReason = renderSlice.lastRefreshResultReason,
             replyParentAuthority = renderSlice.replyParentAuthority,
             writeActionsEnabled = renderSlice.writeActionsEnabled,
+            jointBillingNotice = jointBillingNotice,
+            jointGraceDeadlineLabel = jointGraceDeadlineLabel,
             channelProfileUpdateStatus = renderSlice.channelProfileUpdateStatus,
             channelProfileUpdateErrorCode = renderSlice.channelProfileUpdateErrorCode,
             replyMetadataByParentId = replyMetadataByParentId,
@@ -13688,6 +13691,8 @@ fun ThreadPageContent(
     lastRefreshResultReason: String? = null,
     replyParentAuthority: ReplyParentAuthorityStatus = ReplyParentAuthorityStatus.Resolving,
     writeActionsEnabled: Boolean,
+    jointBillingNotice: JointBillingNotice = JointBillingNotice.None,
+    jointGraceDeadlineLabel: String? = null,
     channelProfileUpdateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     channelProfileUpdateErrorCode: String? = null,
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
