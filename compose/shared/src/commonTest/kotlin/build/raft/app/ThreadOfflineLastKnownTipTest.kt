@@ -27,6 +27,15 @@ class ThreadOfflineLastKnownTipTest {
     }
 
     @Test
+    fun anEmptyLastKnownChannelIsAStandInToo() {
+        // Task #1137: the empty channel carries the tip once the refresh has failed.
+        assertFalse(threadOfflineLastKnownChrome(durableLastKnown = true, status = "empty", backgroundRefreshing = true).tipVisible)
+        assertTrue(threadOfflineLastKnownChrome(durableLastKnown = true, status = "empty", backgroundRefreshing = false).tipVisible)
+        // A canonical empty answer (flag cleared) is an ordinary empty channel with no tip.
+        assertFalse(threadOfflineLastKnownChrome(durableLastKnown = false, status = "empty", backgroundRefreshing = false).tipVisible)
+    }
+
+    @Test
     fun nothingIsShownWithoutAStandInFrame() {
         // A canonical answer cleared the flag: both go away with the content replacement.
         assertEquals(

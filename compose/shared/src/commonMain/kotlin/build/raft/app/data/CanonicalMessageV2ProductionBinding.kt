@@ -128,9 +128,25 @@ internal class CanonicalMessageV2RestSnapshotFetcher(
         val rawMessages = page["messages"] as? JsonArray
             ?: return unavailable("canonical_v2_snapshot_shape")
         if (rawMessages.isEmpty()) {
-            // An empty page is a full answer too, but persisting an empty baseline frame is a
-            // separate design question (task #1137) — until then it gets its own diagnostic.
-            return unavailable("canonical_v2_snapshot_empty_page")
+            // An empty page is a full answer (task #1137): the channel has no top-level messages. It is
+            // persisted as an empty baseline — no facts, no seqs, both ends loaded — so the offline
+            // reader can render "empty channel" instead of "cannot load". An incremental message later
+            // advances the null seqs like any other (`advancedBy`).
+            logger("canonical_v2_snapshot_empty_page scope=$scopeId")
+            return CanonicalMessageV2SnapshotLoadResult.Loaded(
+                CanonicalMessageV2SnapshotFrame(
+                    scope = scope,
+                    envelopes = emptyList(),
+                    cursor = PersistedCursor(
+                        latestSeq = null,
+                        oldestLoadedSeq = null,
+                        newestLoadedSeq = null,
+                        hasLoadedOldest = true,
+                        hasLoadedNewest = true,
+                        epoch = null,
+                    ),
+                ),
+            )
         }
         // The messages page never carries replyCount/threadSummary (server emits those only via
         // `channels/{id}/threads` and the internal agent API). Messages without `threadId` have

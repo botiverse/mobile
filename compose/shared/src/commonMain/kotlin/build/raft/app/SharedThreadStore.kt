@@ -2129,6 +2129,14 @@ internal class SharedThreadDataSource(
             )
             return null
         }
+        if (frame.envelopes.isEmpty()) {
+            // Task #1137: the channel was empty when last seen. Stand in with the ordinary empty
+            // state (flagged as last-known) rather than falling through to "cannot load".
+            diagnosticsLogger(
+                "thread_durable_last_known threadId=$channelId outcome=empty_frame scopeKind=${frame.scope.scopeKind}"
+            )
+            return routePayload.asRefreshEmpty(routePayload).copy(durableLastKnown = true)
+        }
         val messages =
             frame.envelopes
                 .mapNotNull { envelope ->
@@ -6561,7 +6569,7 @@ internal class SharedThreadStore(
                 "hasRenderableContent=$hasRenderableContent"
         )
         val loadingBase =
-            if (hasRenderableContent) {
+            if (hasRenderableContent || existing.isDurableEmptyStandIn()) {
                 existing.withRouteContext(basePayload).copy(backgroundRefreshing = true)
             } else {
                 basePayload.copy(status = "loading", backgroundRefreshing = false, errorCode = null)
@@ -9797,6 +9805,9 @@ internal class SharedThreadViewModel(
 private fun KuiklyThreadScreenPayload.asRefreshFailed(code: String): KuiklyThreadScreenPayload =
     if (hasRenderableThreadContent()) {
         copy(status = "content", backgroundRefreshing = false, errorCode = code, errorServerMessage = null)
+    } else if (isDurableEmptyStandIn()) {
+        // Task #1137: an empty last-known channel survives a transient failure like a non-empty one does.
+        copy(backgroundRefreshing = false, errorCode = code, errorServerMessage = null)
     } else {
         copy(status = "error", backgroundRefreshing = false, errorCode = code, errorServerMessage = null)
     }
@@ -11263,6 +11274,10 @@ private fun build.raft.app.data.ChannelFileItem.filesSourceLabel(): String =
 
 private fun KuiklyThreadScreenPayload.hasRenderableThreadContent(): Boolean =
     messages.isNotEmpty() || originMessage != null || tasks.isNotEmpty()
+
+/** Task #1137: the offline stand-in for a channel that was empty when last seen. */
+private fun KuiklyThreadScreenPayload.isDurableEmptyStandIn(): Boolean =
+    durableLastKnown && status == "empty"
 
 private fun KuiklyThreadScreenPayload.cacheThreadId(): String? =
     resolveThreadRouteIdentity().timelineChannelId

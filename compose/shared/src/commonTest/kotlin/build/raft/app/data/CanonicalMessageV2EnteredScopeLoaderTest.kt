@@ -101,11 +101,20 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
     }
 
     @Test
-    fun emptyPageGetsItsOwnDiagnostic() = runBlocking {
+    fun emptyPageIsCommittedAsAnEmptyBaseline() = runBlocking {
+        // Task #1137: an empty channel is an answer, persisted as a baseline with no facts and no seqs.
         val h = harness(flagOn = true, pageBody = """{"messages":[],"historyLimited":false}""")
         h.loader.loadOnEnter(partition, "channel-1") { true }
-        assertEquals(0, h.store.snapshots.size)
-        assertTrue(h.logs.any { "outcome=canonical_v2_snapshot_empty_page" in it }, h.logs.toString())
+        val frame = h.store.snapshots.single()
+        assertEquals(SyncScopeKey(partition, "channel-1", "channel"), frame.scope)
+        assertTrue(frame.envelopes.isEmpty())
+        assertEquals(null, frame.cursor.latestSeq)
+        assertEquals(null, frame.cursor.oldestLoadedSeq)
+        assertEquals(null, frame.cursor.newestLoadedSeq)
+        assertTrue(frame.cursor.hasLoadedOldest, "an empty channel has nothing older")
+        assertTrue(frame.cursor.hasLoadedNewest)
+        assertTrue(h.logs.any { "canonical_v2_snapshot_empty_page scope=channel-1" in it }, h.logs.toString())
+        assertTrue(h.logs.any { "outcome=committed facts=0" in it }, h.logs.toString())
     }
 
     @Test
