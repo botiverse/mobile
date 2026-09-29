@@ -32,6 +32,9 @@ internal data class RuntimeFormV2Choice(
 /**
  * Label priority (`choice.labels`): FieldCopy.choices[value].label, else the option's own label,
  * else the raw value. The description comes only from FieldCopy.choices.
+ * Also applied to dependent_select on purpose: the frozen contract names select and derived_select,
+ * but the web reference (slock v2State `labelled`) labels dependent_select options too, and a form
+ * without choices for it renders exactly as before. Keep both clients aligned.
  */
 private fun RuntimeFormV2Choice.labelledFor(field: RuntimeFormV2Field): RuntimeFormV2Choice {
     val text = field.choices[value]
