@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.base.putIfAbsent
 import build.raft.app.parseExternalAgentTimestampOrNull
 import build.raft.app.model.AvatarReference
+import build.raft.app.model.ChannelExternalMemberProfile
 import build.raft.app.model.ChannelId
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberProfile
@@ -105,6 +106,7 @@ data class SharedServerChannelMembersSlice(
     val channelId: String,
     val ownerWriteGeneration: Long = 0L,
     val members: List<MemberProfile> = emptyList(),
+    val externalMembers: List<ChannelExternalMemberProfile> = emptyList(),
     val canAddMembers: Boolean = false,
     val canAddMembersKnown: Boolean = false,
     val status: SharedServerMembersLoadStatus = SharedServerMembersLoadStatus.Idle,
@@ -115,6 +117,7 @@ data class SharedServerChannelMembersSlice(
             ChannelMemberSnapshot(
                 channelId = ChannelId(it),
                 members = members,
+                externalMembers = externalMembers,
                 canAddMembers = canAddMembers
             )
         }
@@ -2034,6 +2037,7 @@ class SharedServerMembersStore internal constructor(
                             channelId = normalizedChannelId,
                             ownerWriteGeneration = admittedBinding.writeGeneration,
                             members = members,
+                            externalMembers = result.data.externalMembers,
                             canAddMembers = result.data.canAddMembers,
                             canAddMembersKnown = true,
                             status = SharedServerMembersLoadStatus.Loaded,
@@ -2049,6 +2053,7 @@ class SharedServerMembersStore internal constructor(
                         ChannelMemberSnapshot(
                             channelId = ChannelId(normalizedChannelId),
                             members = members,
+                            externalMembers = result.data.externalMembers,
                             canAddMembers = result.data.canAddMembers
                         )
                     )

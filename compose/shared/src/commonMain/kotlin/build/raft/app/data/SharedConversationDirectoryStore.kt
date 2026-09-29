@@ -7,6 +7,7 @@ import build.raft.app.resolveThreadRouteIdentity
 import build.raft.app.toKuiklySurfaceKind
 import build.raft.app.toWireChannelKindOrNull
 import build.raft.app.model.ChannelActivityNotificationPreference
+import build.raft.app.model.ChannelCapabilities
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
@@ -57,6 +58,12 @@ internal data class SharedConversationDirectoryProjection(
     val activityNotificationPreference: ChannelActivityNotificationPreference =
         ChannelActivityNotificationPreference.Unsupported,
     val permissions: ConversationPermissions = ConversationPermissions(),
+    /**
+     * Server-resolved channel capabilities carried alongside the projection so
+     * member-roster surfaces (web parity: `currentChannel.channelCapabilities`)
+     * can gate add/remove affordances. Inbox projections never carry it.
+     */
+    val channelCapabilities: ChannelCapabilities? = null,
     val jointBillingLocked: Boolean? = null,
     val jointOverLimitGraceEndsAt: String? = null,
     // task #396: external bridge provider ("slack") carried from `channel.bridge.provider`.
@@ -448,6 +455,7 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
         archived = archived,
         activityNotificationPreference = activityNotificationPreference,
         permissions = permissions,
+        channelCapabilities = channelCapabilities,
         jointBillingLocked = jointBillingLocked,
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
         bridgeProvider = if (kind == ConversationKind.Thread) null else bridgeProvider

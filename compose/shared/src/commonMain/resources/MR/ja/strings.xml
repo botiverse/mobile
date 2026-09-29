@@ -487,6 +487,9 @@
     <string name="thread_members_remove_confirm_question">%1$s を #%2$s から削除しますか？</string>
     <string name="thread_members_remove_confirm_detail">このメンバーへの通常のチャンネル配信は停止します。フォロー中のスレッドは自動的には解除されず、フォロー中の公開スレッドからは本人が解除または整理するまで通知が届く場合があります。非公開コンテンツは引き続き現在のアクセス権で保護されます。</string>
     <string name="thread_members_refresh_detail">この会話を更新して、もう一度お試しください。</string>
+    <string name="thread_members_search_placeholder">メンバーを検索</string>
+    <string name="thread_members_external">Slack 参加者</string>
+    <string name="thread_members_provider_slack">Slack</string>
     <string name="thread_add_member_search">検索</string>
     <string name="thread_add_member_name_placeholder">名前</string>
     <string name="thread_add_member_no_people_loaded">ユーザーが読み込まれていません</string>
