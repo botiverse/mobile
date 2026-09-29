@@ -9047,7 +9047,8 @@ private fun SettingsMobileContent(
                 SettingsServerDrawerCard(
                     snapshot = snapshot,
                     actionState = actionState,
-                    onServerDrawerChange = onServerDrawerChange
+                    onServerDrawerChange = onServerDrawerChange,
+                    diagnosticsLogger = diagnosticsLogger
                 )
             }
             item {
@@ -9170,10 +9171,17 @@ private fun SettingsDesktopModeCard(
 private fun SettingsServerDrawerCard(
     snapshot: SettingsMobileSnapshot,
     actionState: SharedSettingsActionState?,
-    onServerDrawerChange: (Boolean) -> Unit
+    onServerDrawerChange: (Boolean) -> Unit,
+    diagnosticsLogger: (String) -> Unit = {},
 ) {
     val busy = actionState?.action == MOBILE_ACTION_SERVER_DRAWER && actionState.inProgress
     val preference = snapshot.serverDrawer
+    LaunchedEffect(preference.available, preference.enabled, busy) {
+        diagnosticsLogger(
+            "server_drawer_card_state enabled=${preference.enabled} " +
+                "available=${preference.available} busy=$busy"
+        )
+    }
     SettingsFormSectionCard(
         iconName = SlockLucideIconName.Menu,
         title = stringResource(MR.strings.settings_mobile_server_drawer)
@@ -9183,6 +9191,10 @@ private fun SettingsServerDrawerCard(
                 Modifier
                     .fillMaxWidth()
                     .clickable(enabled = preference.available && !busy) {
+                        diagnosticsLogger(
+                            "server_drawer_toggle_click target=${!preference.enabled} " +
+                                "available=${preference.available} busy=$busy"
+                        )
                         onServerDrawerChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
