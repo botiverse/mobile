@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockBrutalSectionLabel
 import build.raft.app.components.SlockBrutalSelectField
 import build.raft.app.components.SlockBrutalSelectOption
@@ -302,12 +303,11 @@ private fun RuntimeFormV2FieldRow(
                             }
                         )
                         if (customMode) {
-                            SlockBrutalTextField(
-                                label = "",
+                            // Label-less input: the select above already carries the field label.
+                            SlockBrutalInputField(
                                 value = current,
                                 onValueChange = { onChange(field.key, JsonPrimitive(it)) },
                                 placeholder = field.placeholder.orEmpty(),
-                                required = false,
                                 enabled = enabled
                             )
                         }
