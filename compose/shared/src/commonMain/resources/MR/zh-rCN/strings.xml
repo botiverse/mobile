@@ -2112,6 +2112,15 @@
     <string name="runtime_form_v2_secret_keep_hint">留空则保留当前值。</string>
     <string name="runtime_form_v2_change_runtime">更换运行时</string>
     <string name="runtime_form_v2_load_failed">运行时表单加载失败（%1$s）。</string>
+    <string name="runtime_form_v2_source_refresh_failed">列表刷新失败，仍显示之前的选项。</string>
+    <string name="runtime_form_v2_source_status_fallback">已改为显示标准列表。</string>
+    <string name="runtime_form_v2_source_status_probe_timeout">此 Computer 列出可选项超时。</string>
+    <string name="runtime_form_v2_source_status_probe_failed">此 Computer 无法列出可选项。</string>
+    <string name="runtime_form_v2_source_status_missing_config">此运行时需要先在此 Computer 上完成配置，才能列出可选项。</string>
+    <string name="runtime_form_v2_source_status_no_models">此 Computer 未报告任何可用选项。</string>
+    <string name="runtime_form_v2_source_status_unsupported">此 Computer 无法列出此运行时的可选项。</string>
+    <string name="runtime_form_v2_source_status_machine_offline">此 Computer 已离线。</string>
+    <string name="runtime_form_v2_source_status_unknown">无法加载可选项。</string>
     <string name="runtime_form_v2_saved_refresh">已保存，刷新后可看到最新配置。</string>
     <string name="thread_followers_title">正在关注的 Agent</string>
     <string name="thread_followers_count">%1$d 个 Agent 正在关注</string>
@@ -2125,4 +2134,8 @@
     <string name="thread_followers_removed">已将 %1$s 移出此消息列的关注者。</string>
     <string name="thread_followers_restored">已恢复 %1$s 的关注。</string>
     <string name="thread_followers_peer_remove_unavailable">请切换到 %1$s 移除此关注者。</string>
+    <string name="joint_over_limit_grace_title">联合频道已超出成员上限</string>
+    <string name="joint_over_limit_grace_detail">该联合频道在 %1$s 之前处于宽限期且超出成员上限。需要其中一个服务器的管理员升级，或让一个免费服务器退出。</string>
+    <string name="joint_billing_locked_title">联合频道只读</string>
+    <string name="joint_billing_locked_detail">宽限期已结束。在管理员升级或一个免费服务器退出之前，此频道为只读。</string>
 </resources>

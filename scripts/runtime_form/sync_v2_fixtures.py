@@ -26,6 +26,43 @@ FIXTURES = [
     ("KIMI_SDK_V2_FORM_JSON", "kimi-sdk.form.json"),
     ("KIMI_SDK_V2_EDIT_JSON", "kimi-sdk.edit.json"),
     ("CAPABILITIES_V2_FORM_JSON", "capabilities.form.json"),
+    # Batch 2 (slock #8612): OpenCode create/edit; retired Kimi CLI / Gemini / Antigravity edit only;
+    # option sources incl. the built-in list the server returns when probing did not succeed.
+    ("OPENCODE_V2_FORM_JSON", "opencode.form.json"),
+    ("OPENCODE_V2_EDIT_JSON", "opencode.edit.json"),
+    ("OPENCODE_V2_FALLBACK_SOURCE_JSON", "opencode.option-source.fallback.json"),
+    ("KIMI_CLI_V2_EDIT_JSON", "kimi.edit.json"),
+    ("KIMI_CLI_V2_FALLBACK_SOURCE_JSON", "kimi.option-source.fallback.json"),
+    ("GEMINI_V2_EDIT_JSON", "gemini.edit.json"),
+    ("GEMINI_V2_SOURCE_JSON", "gemini.option-source.json"),
+    ("ANTIGRAVITY_V2_EDIT_JSON", "antigravity.edit.json"),
+    # Capability `choice.labels` (slock #8625): label priority, description, ignored keys.
+    ("CHOICES_V2_FORM_JSON", "choices.form.json"),
+    ("CHOICES_V2_SOURCE_JSON", "choices.option-source.json"),
+    # Batch 3a (slock #8625): Codex (custom value + choice labels + source status) and Grok.
+    ("CODEX_V2_FORM_JSON", "codex.form.json"),
+    ("CODEX_V2_EDIT_JSON", "codex.edit.json"),
+    ("CODEX_V2_LIVE_SOURCE_JSON", "codex.option-source.live.json"),
+    ("CODEX_V2_FALLBACK_SOURCE_JSON", "codex.option-source.fallback.json"),
+    ("CODEX_V2_UNAVAILABLE_SOURCE_JSON", "codex.option-source.unavailable.json"),
+    ("GROK_V2_FORM_JSON", "grok.form.json"),
+    # Batch 3b (slock #8637): Claude (provider, custom API url/key, write-only key), Cursor, Copilot.
+    ("CLAUDE_V2_FORM_JSON", "claude.form.json"),
+    ("CLAUDE_V2_EDIT_JSON", "claude.edit.json"),
+    ("CLAUDE_V2_PROVIDER_SOURCE_JSON", "claude.option-source.provider.json"),
+    ("CLAUDE_V2_FALLBACK_SOURCE_JSON", "claude.option-source.fallback.json"),
+    ("CURSOR_V2_FORM_JSON", "cursor.form.json"),
+    ("CURSOR_V2_EDIT_JSON", "cursor.edit.json"),
+    ("CURSOR_V2_FALLBACK_SOURCE_JSON", "cursor.option-source.fallback.json"),
+    ("COPILOT_V2_FORM_JSON", "copilot.form.json"),
+    ("COPILOT_V2_LIVE_SOURCE_JSON", "copilot.option-source.live.json"),
+    # Batch 4 (slock #8647): Pi, "configured" (Computer's own models, typed allowed) or DeepSeek (per-provider list).
+    ("PI_V2_FORM_JSON", "pi.form.json"),
+    ("PI_V2_EDIT_JSON", "pi.edit.json"),
+    ("PI_V2_EDIT_CONFIGURED_JSON", "pi.edit.configured.json"),
+    ("PI_V2_PROVIDER_SOURCE_JSON", "pi.option-source.provider.json"),
+    ("PI_V2_PROVIDER_MODEL_SOURCE_JSON", "pi.option-source.provider-model.json"),
+    ("PI_V2_FALLBACK_SOURCE_JSON", "pi.option-source.fallback.json"),
 ]
 
 

@@ -56,7 +56,9 @@ internal data class SharedConversationDirectoryProjection(
     val archived: Boolean = false,
     val activityNotificationPreference: ChannelActivityNotificationPreference =
         ChannelActivityNotificationPreference.Unsupported,
-    val permissions: ConversationPermissions = ConversationPermissions()
+    val permissions: ConversationPermissions = ConversationPermissions(),
+    val jointBillingLocked: Boolean? = null,
+    val jointOverLimitGraceEndsAt: String? = null
 ) {
     val activityMuted: Boolean
         get() = activityNotificationPreference.activityMuted
@@ -443,7 +445,9 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
         joined = joined && permissions.canRead,
         archived = archived,
         activityNotificationPreference = activityNotificationPreference,
-        permissions = permissions
+        permissions = permissions,
+        jointBillingLocked = jointBillingLocked,
+        jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt
     )
 }
 

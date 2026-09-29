@@ -14,6 +14,7 @@ import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
 import build.raft.app.data.runtimeform.v2.applyRuntimeFormV2Change
 import build.raft.app.data.runtimeform.v2.initialRuntimeFormV2Values
 import build.raft.app.data.runtimeform.v2.runtimeFormV2Submission
+import build.raft.app.data.runtimeform.v2.runtimeFormV2ValuesAfterSourceReload
 import build.raft.app.data.runtimeform.v2.validateRuntimeFormV2
 import build.raft.app.model.MemberId
 import build.raft.app.resources.MR
@@ -66,7 +67,12 @@ internal fun MembersAgentRuntimeFormV2Dialog(
     var values by remember(form) { mutableStateOf(initialValues) }
     var touched by remember(form) { mutableStateOf(emptySet<String>()) }
     var advancedOpen by remember(form) { mutableStateOf(false) }
-    val errors = form?.let { validateRuntimeFormV2(it.form, it.sources, values, editing = true) }.orEmpty()
+    // Re-probed option sources sit on top of the loaded form; render, validate and submit against them.
+    val (current, sourceRefresh) =
+        rememberRuntimeFormV2SourceRefresh(access, machineId, form) { updated, sourceId ->
+            values = runtimeFormV2ValuesAfterSourceReload(updated.form, updated.sources, values, sourceId)
+        }
+    val errors = current?.let { validateRuntimeFormV2(it.form, it.sources, values, editing = true) }.orEmpty()
     val changed = form != null && values != initialValues
 
     SlockUnifiedDialog(
@@ -91,11 +97,12 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                             color = SlockColor.TextMutedGray
                         )
                     } else {
+                        val shown = current ?: form
                         RuntimeFormV2Fields(
-                            loaded = form,
+                            loaded = shown,
                             values = values,
                             onChange = { key, value ->
-                                values = applyRuntimeFormV2Change(form.form, form.sources, values, key, value)
+                                values = applyRuntimeFormV2Change(shown.form, shown.sources, values, key, value)
                                 touched = touched + key
                             },
                             errors = errors.filterKeys { it in touched || it in errorFieldKeys },
@@ -104,7 +111,8 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                             editing = true,
                             advancedOpen = advancedOpen,
                             onAdvancedOpenChange = { advancedOpen = it },
-                            enabled = !saving
+                            enabled = !saving,
+                            sourceRefresh = sourceRefresh
                         )
                     }
                 }
@@ -153,11 +161,11 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                     backgroundColor = SlockColor.AccentPink,
                     minWidth = 166.dp,
                     onClick = {
-                        val current = form ?: return@SlockBrutalActionButton
+                        val submitting = current ?: form ?: return@SlockBrutalActionButton
                         onSave(
                             RuntimeFormV2SubmitBody(
-                                runtimeId = current.form.runtimeId,
-                                formValues = runtimeFormV2Submission(current.form, values)
+                                runtimeId = submitting.form.runtimeId,
+                                formValues = runtimeFormV2Submission(submitting.form, values, submitting.sources)
                             )
                         )
                     }

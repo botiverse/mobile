@@ -34,7 +34,18 @@ internal const val RUNTIME_FORM_V2_OPTIONS_FROM_KEY = "x-optionsFrom"
  * `requiredClientCapabilities` needs behaviour this client lacks (for example
  * typing a custom model), so it is treated as having no v2 form and v1 is used.
  */
-internal val RUNTIME_FORM_V2_CLIENT_CAPABILITIES: Set<String> = emptySet()
+internal val RUNTIME_FORM_V2_CLIENT_CAPABILITIES: Set<String> = setOf(
+    // FieldCopy.choices: display label/description per option value.
+    RUNTIME_FORM_V2_CAPABILITY_CHOICE_LABELS,
+    // OptionSource.customValueAllowed: a select that also accepts a typed value.
+    RUNTIME_FORM_V2_CAPABILITY_CUSTOM_VALUE,
+    // OptionSource.status/reason/retryable: a source that is not live says why, with a retry.
+    RUNTIME_FORM_V2_CAPABILITY_SOURCE_STATUS,
+)
+
+internal const val RUNTIME_FORM_V2_CAPABILITY_CHOICE_LABELS: String = "choice.labels"
+internal const val RUNTIME_FORM_V2_CAPABILITY_CUSTOM_VALUE: String = "select.custom_value"
+internal const val RUNTIME_FORM_V2_CAPABILITY_SOURCE_STATUS: String = "option_source.status"
 
 internal enum class RuntimeFormV2FieldKind {
     Text,
@@ -84,7 +95,9 @@ internal data class RuntimeFormV2Field(
     val dependsOn: String? = null,
     val derivedFrom: RuntimeFormV2DerivedFrom? = null,
     /** Shown only when every rule matches; empty means always shown. */
-    val visibleWhen: List<RuntimeFormV2VisibleWhen> = emptyList()
+    val visibleWhen: List<RuntimeFormV2VisibleWhen> = emptyList(),
+    /** `choice.labels`: display copy for this field's choices, keyed by option value. */
+    val choices: Map<String, RuntimeFormV2ChoiceCopy> = emptyMap()
 )
 
 internal data class RuntimeFormV2OptionSourceKey(
@@ -170,7 +183,8 @@ internal fun parseRuntimeFormV2(value: JsonElement): ParsedRuntimeFormV2? {
             optionSourceId = source?.sourceId,
             dependsOn = source?.dependsOn,
             derivedFrom = derived,
-            visibleWhen = visibility[key].orEmpty()
+            visibleWhen = visibility[key].orEmpty(),
+            choices = choiceCopy(copy["choices"])
         )
     }
 
@@ -243,3 +257,14 @@ private fun JsonElement?.jsonNumberOrNull(): Int? =
 
 private fun JsonElement?.booleanOrNullStrict(): Boolean? =
     (this as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull
+
+/** FieldCopy.choices, keeping only entries with a string label; unknown keys inside an entry are ignored. */
+private fun choiceCopy(value: JsonElement?): Map<String, RuntimeFormV2ChoiceCopy> {
+    val entries = value as? JsonObject ?: return emptyMap()
+    return entries.mapNotNull { (optionValue, entry) ->
+        val copy = entry as? JsonObject ?: return@mapNotNull null
+        val label = (copy["label"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@mapNotNull null
+        val description = (copy["description"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        optionValue to RuntimeFormV2ChoiceCopy(label, description)
+    }.toMap()
+}

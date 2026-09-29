@@ -5,21 +5,29 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockBrutalSectionLabel
 import build.raft.app.components.SlockBrutalSelectField
 import build.raft.app.components.SlockBrutalSelectOption
 import build.raft.app.components.SlockBrutalTextField
 import build.raft.app.components.SlockCheckbox
+import build.raft.app.components.SlockLinkButton
+import build.raft.app.data.DataResult
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Choices
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2ErrorCode
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Field
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2FieldKind
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loaded
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2Source
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2SourceStatus
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Values
 import build.raft.app.data.runtimeform.v2.booleanValue
 import build.raft.app.data.runtimeform.v2.isRuntimeFormV2FieldVisible
 import build.raft.app.data.runtimeform.v2.runtimeFormV2Choices
+import build.raft.app.data.runtimeform.v2.runtimeFormV2SourceStatus
 import build.raft.app.data.runtimeform.v2.stringMapValue
 import build.raft.app.data.runtimeform.v2.text
 import build.raft.app.resources.MR
@@ -33,13 +41,18 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /** Sentinel select id for "no value", which a derived select offers as the runtime default. */
 private const val RUNTIME_FORM_V2_DEFAULT_OPTION_ID = "__runtime_form_v2_default__"
+
+/** Sentinel select id for "type your own value" (`select.custom_value`). */
+private const val RUNTIME_FORM_V2_CUSTOM_OPTION_ID = "__runtime_form_v2_custom__"
 
 /**
  * Runtime form v2 renderer shared by create and edit. Every field is drawn by
@@ -60,12 +73,13 @@ internal fun RuntimeFormV2Fields(
     editing: Boolean,
     advancedOpen: Boolean,
     onAdvancedOpenChange: (Boolean) -> Unit,
-    enabled: Boolean
+    enabled: Boolean,
+    sourceRefresh: RuntimeFormV2SourceRefresh? = null
 ) {
     val focusManager = LocalFocusManager.current
     val visible = loaded.form.fields.filter {
         it.kind != RuntimeFormV2FieldKind.Unsupported || it.required
-    }.filter { isRuntimeFormV2FieldVisible(it, values) }
+    }.filter { isRuntimeFormV2FieldVisible(it, values, loaded.sources) }
     // Hidden choices (a derived select with nothing to pick) are not drawn.
     val drawn = visible.filterNot { field ->
         field.kind == RuntimeFormV2FieldKind.DerivedSelect &&
@@ -84,7 +98,7 @@ internal fun RuntimeFormV2Fields(
         }
         primary.forEach { field ->
             key(field.key) {
-                RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, errors, serverErrorKeys, serverMessage), editing, enabled) {
+                RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, errors, serverErrorKeys, serverMessage), editing, enabled, sourceRefresh) {
                     focusManager.clearFocus(force = true)
                 }
             }
@@ -99,7 +113,7 @@ internal fun RuntimeFormV2Fields(
             if (advancedOpen || forcedOpen) {
                 advanced.forEach { field ->
                     key(field.key) {
-                        RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, errors, serverErrorKeys, serverMessage), editing, enabled) {
+                        RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, errors, serverErrorKeys, serverMessage), editing, enabled, sourceRefresh) {
                             focusManager.clearFocus(force = true)
                         }
                     }
@@ -124,6 +138,8 @@ private fun runtimeFormV2ErrorText(
             RuntimeFormV2ErrorCode.InvalidUrl -> stringResource(MR.strings.runtime_form_v2_error_invalid_url)
             RuntimeFormV2ErrorCode.NotAChoice -> stringResource(MR.strings.runtime_form_v2_error_not_a_choice)
             RuntimeFormV2ErrorCode.UnsupportedRequired -> stringResource(MR.strings.runtime_form_v2_update_required)
+            // The field's source status line already says why, with its retry.
+            RuntimeFormV2ErrorCode.SourceUnavailable -> null
             null -> null
         }
     }
@@ -137,6 +153,7 @@ private fun RuntimeFormV2FieldRow(
     error: String?,
     editing: Boolean,
     enabled: Boolean,
+    sourceRefresh: RuntimeFormV2SourceRefresh?,
     clearFocus: () -> Unit
 ) {
     val current = values.text(field.key)
@@ -229,17 +246,52 @@ private fun RuntimeFormV2FieldRow(
                     )
                 is RuntimeFormV2Choices.Select -> {
                     val defaultLabel = stringResource(MR.strings.runtime_form_v2_option_default)
+                    val customLabel = stringResource(MR.strings.agent_create_label_custom)
+                    val unlisted = current.isNotEmpty() && choices.options.none { it.value == current }
+                    // `select.custom_value`: a combobox. "Custom" switches to a text field; a stored value
+                    // the list does not offer (typed earlier) opens in that mode, never as not-a-choice.
+                    var customMode by remember(field.key) { mutableStateOf(choices.allowCustom && unlisted) }
+                    if (!choices.allowCustom && customMode) customMode = false
+                    if (choices.allowCustom && unlisted && !customMode) customMode = true
                     val options = buildList {
                         if (choices.allowEmpty) add(SlockBrutalSelectOption(RUNTIME_FORM_V2_DEFAULT_OPTION_ID, defaultLabel))
                         choices.options.forEach { add(SlockBrutalSelectOption(it.value, it.label)) }
-                        // A stored value the server no longer offers stays visible, but cannot be re-picked.
-                        if (current.isNotEmpty() && choices.options.none { it.value == current }) {
+                        if (choices.allowCustom) {
+                            add(SlockBrutalSelectOption(RUNTIME_FORM_V2_CUSTOM_OPTION_ID, customLabel))
+                        } else if (unlisted) {
+                            // A stored value the server no longer offers stays visible, but cannot be re-picked.
                             add(SlockBrutalSelectOption(current, current, enabled = false))
                         }
                     }
-                    val selectedId = if (current.isEmpty() && choices.allowEmpty) RUNTIME_FORM_V2_DEFAULT_OPTION_ID else current
+                    val selectedId = when {
+                        customMode -> RUNTIME_FORM_V2_CUSTOM_OPTION_ID
+                        current.isEmpty() && choices.allowEmpty -> RUNTIME_FORM_V2_DEFAULT_OPTION_ID
+                        else -> current
+                    }
+                    // `option_source.status`: a source that is not live says why.
+                    val sourceStatus = runtimeFormV2SourceStatus(field, loaded.sources)
+                    // Re-probe: selects that read a machine option source can ask for it again, like v1's
+                    // refresh next to the model picker. Derived selects follow their parent's source. A source
+                    // whose status says retrying cannot help (missing_config, unsupported) offers no re-probe.
+                    val refreshableSource = field.optionSourceId
+                        ?.takeIf { field.kind != RuntimeFormV2FieldKind.DerivedSelect && sourceRefresh != null }
+                        ?.takeIf { sourceStatus == null || sourceStatus.retryable }
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        SlockBrutalSectionLabel(label = field.label, required = field.required)
+                        if (refreshableSource != null && sourceRefresh != null) {
+                            CreateAgentSectionLabelWithAction(
+                                label = field.label,
+                                required = field.required,
+                                actionIcon = SlockLucideIconName.RefreshCw,
+                                actionEnabled = enabled && refreshableSource !in sourceRefresh.refreshing,
+                                loading = refreshableSource in sourceRefresh.refreshing,
+                                onAction = {
+                                    clearFocus()
+                                    sourceRefresh.onRefresh(refreshableSource)
+                                }
+                            )
+                        } else {
+                            SlockBrutalSectionLabel(label = field.label, required = field.required)
+                        }
                         SlockBrutalSelectField(
                             options = options,
                             selectedId = selectedId,
@@ -249,11 +301,52 @@ private fun RuntimeFormV2FieldRow(
                             rowHeight = 36.dp,
                             onSelect = { option ->
                                 clearFocus()
-                                val next = if (option.id == RUNTIME_FORM_V2_DEFAULT_OPTION_ID) "" else option.id
-                                onChange(field.key, JsonPrimitive(next))
+                                if (option.id == RUNTIME_FORM_V2_CUSTOM_OPTION_ID) {
+                                    // Start the typed value empty; a required field then asks for one.
+                                    if (!customMode) onChange(field.key, JsonPrimitive(""))
+                                    customMode = true
+                                } else {
+                                    customMode = false
+                                    val next = if (option.id == RUNTIME_FORM_V2_DEFAULT_OPTION_ID) "" else option.id
+                                    onChange(field.key, JsonPrimitive(next))
+                                }
                             }
                         )
+                        if (customMode) {
+                            // Label-less input: the select above already carries the field label.
+                            SlockBrutalInputField(
+                                value = current,
+                                onValueChange = { onChange(field.key, JsonPrimitive(it)) },
+                                placeholder = field.placeholder.orEmpty(),
+                                enabled = enabled
+                            )
+                        }
+                        // `choice.labels`: the selected choice's description (e.g. what a reasoning level does).
+                        choices.options.firstOrNull { it.value == current }?.description?.let {
+                            Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+                        }
                         field.hint?.let { Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray) }
+                        sourceStatus?.let { status ->
+                            RuntimeFormV2SourceStatusLine(
+                                status = status,
+                                retrying = refreshableSource != null && sourceRefresh != null && refreshableSource in sourceRefresh.refreshing,
+                                onRetry = if (refreshableSource != null && sourceRefresh != null && enabled) {
+                                    {
+                                        clearFocus()
+                                        sourceRefresh.onRefresh(refreshableSource)
+                                    }
+                                } else {
+                                    null
+                                }
+                            )
+                        }
+                        if (refreshableSource != null && sourceRefresh != null && refreshableSource in sourceRefresh.failed) {
+                            Text(
+                                stringResource(MR.strings.runtime_form_v2_source_refresh_failed),
+                                style = SlockType.Caption,
+                                color = SlockColor.AccentRed
+                            )
+                        }
                         error?.let { Text(it, style = SlockType.Caption, color = SlockColor.AccentRed) }
                     }
                 }
@@ -269,6 +362,83 @@ private fun RuntimeFormV2FieldRow(
                 )
             }
     }
+}
+
+/** Why a source is not live (`option_source.status`); an unknown reason gets the generic line. */
+@Composable
+private fun RuntimeFormV2SourceStatusLine(status: RuntimeFormV2SourceStatus, retrying: Boolean, onRetry: (() -> Unit)?) {
+    val reason = when (status.reason) {
+        "probe_timeout" -> stringResource(MR.strings.runtime_form_v2_source_status_probe_timeout)
+        "probe_failed" -> stringResource(MR.strings.runtime_form_v2_source_status_probe_failed)
+        "missing_config" -> stringResource(MR.strings.runtime_form_v2_source_status_missing_config)
+        "no_models" -> stringResource(MR.strings.runtime_form_v2_source_status_no_models)
+        "unsupported" -> stringResource(MR.strings.runtime_form_v2_source_status_unsupported)
+        "machine_offline" -> stringResource(MR.strings.runtime_form_v2_source_status_machine_offline)
+        else -> stringResource(MR.strings.runtime_form_v2_source_status_unknown)
+    }
+    val text = if (status.unavailable) reason else "$reason ${stringResource(MR.strings.runtime_form_v2_source_status_fallback)}"
+    Text(text, style = SlockType.Caption, color = if (status.unavailable) SlockColor.AccentRed else SlockColor.TextMutedGray)
+    // Retry only when the server says it may help.
+    if (status.retryable && onRetry != null) {
+        SlockLinkButton(
+            text = stringResource(MR.strings.common_retry),
+            onClick = onRetry,
+            enabled = !retrying,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            color = SlockColor.TextBlack
+        )
+    }
+}
+
+/**
+ * Re-probe wiring for option sources: which sources are being re-requested, which last
+ * attempt failed (the previous options stay on screen), and how to ask again.
+ */
+internal data class RuntimeFormV2SourceRefresh(
+    val refreshing: Set<String>,
+    val failed: Set<String>,
+    val onRefresh: (sourceId: String) -> Unit
+)
+
+/**
+ * Holds re-probed sources as overrides on top of [loaded], so a refresh never replaces the
+ * loaded form (dialogs key their values on it). Returns the form to render/validate/submit with
+ * and the refresh wiring; the wiring is null when there is nothing to refresh against.
+ */
+@Composable
+internal fun rememberRuntimeFormV2SourceRefresh(
+    access: RuntimeFormV2Access?,
+    machineId: String?,
+    loaded: RuntimeFormV2Loaded?,
+    onSourceReloaded: (updated: RuntimeFormV2Loaded, sourceId: String) -> Unit
+): Pair<RuntimeFormV2Loaded?, RuntimeFormV2SourceRefresh?> {
+    var overrides by remember(loaded) { mutableStateOf(emptyMap<String, RuntimeFormV2Source>()) }
+    var refreshing by remember(loaded) { mutableStateOf(emptySet<String>()) }
+    var failed by remember(loaded) { mutableStateOf(emptySet<String>()) }
+    val scope = rememberCoroutineScope()
+    if (loaded == null || access == null || machineId.isNullOrBlank()) return loaded to null
+    val effective = if (overrides.isEmpty()) loaded else loaded.copy(sources = loaded.sources + overrides)
+    val refresh =
+        RuntimeFormV2SourceRefresh(refreshing = refreshing, failed = failed) { sourceId ->
+            if (sourceId !in refreshing) {
+                refreshing = refreshing + sourceId
+                failed = failed - sourceId
+                scope.launch {
+                    when (val result = access.loader.reloadSource(access.serverId, machineId, loaded.form.runtimeId, sourceId)) {
+                        is DataResult.Content -> {
+                            overrides = overrides + (sourceId to result.data)
+                            onSourceReloaded(loaded.copy(sources = loaded.sources + overrides), sourceId)
+                        }
+                        is DataResult.Empty,
+                        is DataResult.Error,
+                        is DataResult.NoPermission -> failed = failed + sourceId
+                    }
+                    refreshing = refreshing - sourceId
+                }
+            }
+        }
+    return effective to refresh
 }
 
 /** Runtime picker plus the v2 form body, in the create dialog's runtime slot. */

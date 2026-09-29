@@ -551,3 +551,2944 @@ internal const val CAPABILITIES_V2_FORM_JSON: String = """{
   }
 }
 """
+
+/** fixtures/opencode.form.json, sha256 59d6ebb15c0b4932f83692a83016a1ede0a85adf41db54e829ab3736d18d3416 */
+internal const val OPENCODE_V2_FORM_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "opencode",
+  "schemaVersion": "opencode.create.v1",
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model",
+        "hint": "Models available from this computer's OpenCode configuration."
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "opencode",
+      "schemaVersion": "opencode.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  }
+}
+"""
+
+/** fixtures/opencode.edit.json, sha256 49028ef003d1c699e68a216897bb67f29e907f881b020f87709379e35022762c */
+internal const val OPENCODE_V2_EDIT_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "opencode",
+  "schemaVersion": "opencode.create.v1",
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model",
+        "hint": "Models available from this computer's OpenCode configuration."
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "opencode",
+      "schemaVersion": "opencode.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  },
+  "values": {
+    "model": "deepseek/deepseek-v4-pro",
+    "envVars": {
+      "EXAMPLE_FLAG": "1"
+    }
+  }
+}
+"""
+
+/** fixtures/opencode.option-source.fallback.json, sha256 a98aca7539a5073682bf1877a7eb0efcc9ca5106189d8a2904d506732b2e87e6 */
+internal const val OPENCODE_V2_FALLBACK_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "opencode",
+  "schemaVersion": "opencode.create.v1",
+  "sourceId": "model",
+  "kind": "select",
+  "pointer": "/model",
+  "options": [
+    {
+      "value": "default",
+      "label": "Configured Default / Auto"
+    },
+    {
+      "value": "deepseek/deepseek-v4-pro",
+      "label": "DeepSeek V4 Pro · DeepSeek"
+    },
+    {
+      "value": "openrouter/anthropic/claude-opus-4.5",
+      "label": "Claude Opus 4.5 · Anthropic via OpenRouter"
+    },
+    {
+      "value": "fusecode/opus[1m]",
+      "label": "Opus 1M · FuseCode"
+    }
+  ],
+  "defaultValue": "default"
+}
+"""
+
+/** fixtures/kimi.edit.json, sha256 b9de5f5677c67fa43d90f82b3bf059742f56408522730ac46a0bd8edd4c7dea3 */
+internal const val KIMI_CLI_V2_EDIT_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "kimi",
+  "schemaVersion": "kimi.edit.v1",
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model",
+        "hint": "Models available from this computer's Kimi CLI configuration."
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "kimi",
+      "schemaVersion": "kimi.edit.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  },
+  "values": {
+    "model": "default",
+    "envVars": {}
+  }
+}
+"""
+
+/** fixtures/kimi.option-source.fallback.json, sha256 c4d56dab0e5023be2b187b2163f5c8fff84f330a8211977d806aa547a76f2775 */
+internal const val KIMI_CLI_V2_FALLBACK_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "kimi",
+  "schemaVersion": "kimi.edit.v1",
+  "sourceId": "model",
+  "kind": "select",
+  "pointer": "/model",
+  "options": [
+    {
+      "value": "default",
+      "label": "Configured Default"
+    }
+  ],
+  "defaultValue": "default"
+}
+"""
+
+/** fixtures/gemini.edit.json, sha256 caaa3e9d1a2acb8ad7c4b20a7302558bee638e14db6d78cf059da5c5cf6e7a0f */
+internal const val GEMINI_V2_EDIT_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "gemini",
+  "schemaVersion": "gemini.edit.v1",
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model"
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "gemini",
+      "schemaVersion": "gemini.edit.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  },
+  "values": {
+    "model": "gemini-2.5-pro",
+    "envVars": {
+      "EXAMPLE_FLAG": "1"
+    }
+  }
+}
+"""
+
+/** fixtures/gemini.option-source.json, sha256 63e866000a4b950ef3e2958fa3c25ed7127bbd3bfc9474b6cb6f12879afa24c3 */
+internal const val GEMINI_V2_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "gemini",
+  "schemaVersion": "gemini.edit.v1",
+  "sourceId": "model",
+  "kind": "select",
+  "pointer": "/model",
+  "options": [
+    {
+      "value": "default",
+      "label": "Configured Default / Auto"
+    },
+    {
+      "value": "gemini-3.1-pro-preview",
+      "label": "Gemini 3.1 Pro (Preview)"
+    },
+    {
+      "value": "gemini-3-flash-preview",
+      "label": "Gemini 3 Flash (Preview)"
+    },
+    {
+      "value": "gemini-2.5-pro",
+      "label": "Gemini 2.5 Pro"
+    },
+    {
+      "value": "gemini-2.5-flash",
+      "label": "Gemini 2.5 Flash"
+    }
+  ],
+  "defaultValue": "default"
+}
+"""
+
+/** fixtures/antigravity.edit.json, sha256 23a95b2d3af36c1de1bbbf7bdeb165d98546d889e94d14ffc18e2c48037b09ba */
+internal const val ANTIGRAVITY_V2_EDIT_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "antigravity",
+  "schemaVersion": "antigravity.edit.v1",
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [],
+    "properties": {
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {},
+  "values": {
+    "envVars": {
+      "EXAMPLE_FLAG": "1"
+    }
+  }
+}
+"""
+
+/** fixtures/choices.form.json, sha256 75fd1a7a157898bb4b5bbaa2b7f097cd7891b76a694e8d71e8f38a5637808417 */
+internal const val CHOICES_V2_FORM_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "example-runtime",
+  "schemaVersion": "example-runtime.choices-sample",
+  "requiredClientCapabilities": [
+    "choice.labels"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "tier"
+    ],
+    "properties": {
+      "tier": {
+        "type": "string",
+        "title": "Tier",
+        "minLength": 1,
+        "x-optionSource": "tier"
+      },
+      "effort": {
+        "type": "string",
+        "title": "Effort",
+        "x-optionsFrom": {
+          "field": "tier",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "tier",
+      "effort"
+    ],
+    "layout": {
+      "advanced": []
+    },
+    "visibility": [],
+    "localization": {
+      "tier": {
+        "label": "Tier",
+        "choices": {
+          "fast": {
+            "label": "Fast tier",
+            "description": "Lower latency"
+          },
+          "retired": {
+            "label": "A key that matches no option is ignored"
+          }
+        }
+      },
+      "effort": {
+        "label": "Effort",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "high": {
+            "label": "High"
+          }
+        }
+      }
+    }
+  },
+  "optionSources": {
+    "tier": {
+      "sourceId": "tier",
+      "kind": "select",
+      "pointer": "/tier"
+    }
+  }
+}
+"""
+
+/** fixtures/choices.option-source.json, sha256 26f822b3c7d10d6d678c9e83a7833bd2639222d9b1c66621273690cea270bc4e */
+internal const val CHOICES_V2_SOURCE_JSON: String = """{
+  "sourceId": "tier",
+  "kind": "select",
+  "pointer": "/tier",
+  "options": [
+    {
+      "value": "fast",
+      "label": "fast (option label, overridden by choices)",
+      "supportedReasoningEfforts": [
+        "low",
+        "high",
+        "max"
+      ],
+      "defaultReasoningEffort": "low"
+    },
+    {
+      "value": "steady",
+      "label": "Steady (no choices key: the option's own label)"
+    }
+  ],
+  "defaultValue": "fast"
+}
+"""
+
+/** fixtures/codex.form.json, sha256 cc5499d1f15e9970a4edf0e56385d647ed5e766df3c7e556374ba0ac74e8e5ee */
+internal const val CODEX_V2_FORM_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "codex",
+  "schemaVersion": "codex.create.v1",
+  "requiredClientCapabilities": [
+    "select.custom_value",
+    "choice.labels",
+    "option_source.status"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "reasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionsFrom": {
+          "field": "model",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      },
+      "fastMode": {
+        "type": "boolean",
+        "title": "Fast mode"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "reasoningEffort",
+      "fastMode",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model",
+        "hint": "Models available from this computer's Codex CLI. You can also type a model ID."
+      },
+      "reasoningEffort": {
+        "label": "Reasoning",
+        "hint": "Available values depend on the selected model.",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "medium": {
+            "label": "Medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          "high": {
+            "label": "High",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          "xhigh": {
+            "label": "Extra High",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          "max": {
+            "label": "Max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          "ultra": {
+            "label": "Ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        }
+      },
+      "fastMode": {
+        "label": "Fast mode",
+        "hint": "Launch this runtime with higher speed at a higher cost per token."
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "codex",
+      "schemaVersion": "codex.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  }
+}
+"""
+
+/** fixtures/codex.edit.json, sha256 ce8a01ff57c2a652a7edfc2d748fb94f0287a7af03dc1647b31449d4dcba4c27 */
+internal const val CODEX_V2_EDIT_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "codex",
+  "schemaVersion": "codex.create.v1",
+  "requiredClientCapabilities": [
+    "select.custom_value",
+    "choice.labels",
+    "option_source.status"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "reasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionsFrom": {
+          "field": "model",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      },
+      "fastMode": {
+        "type": "boolean",
+        "title": "Fast mode"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "reasoningEffort",
+      "fastMode",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model",
+        "hint": "Models available from this computer's Codex CLI. You can also type a model ID."
+      },
+      "reasoningEffort": {
+        "label": "Reasoning",
+        "hint": "Available values depend on the selected model.",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "medium": {
+            "label": "Medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          "high": {
+            "label": "High",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          "xhigh": {
+            "label": "Extra High",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          "max": {
+            "label": "Max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          "ultra": {
+            "label": "Ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        }
+      },
+      "fastMode": {
+        "label": "Fast mode",
+        "hint": "Launch this runtime with higher speed at a higher cost per token."
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "codex",
+      "schemaVersion": "codex.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  },
+  "values": {
+    "model": "my-org/codex-custom",
+    "reasoningEffort": "high",
+    "fastMode": true,
+    "envVars": {
+      "EXAMPLE_FLAG": "1"
+    }
+  }
+}
+"""
+
+/** fixtures/codex.option-source.live.json, sha256 90638f13c22cafa6f9359d8b514f613f5225ebf4aefbb894f276c4fc623203a6 */
+internal const val CODEX_V2_LIVE_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "codex",
+  "schemaVersion": "codex.create.v1",
+  "sourceId": "model",
+  "kind": "select",
+  "pointer": "/model",
+  "options": [
+    {
+      "value": "gpt-5.6-sol",
+      "label": "GPT-5.6 Sol",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "defaultReasoningEffort": "medium"
+    },
+    {
+      "value": "gpt-7-preview",
+      "label": "GPT-7 Preview",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ],
+      "defaultReasoningEffort": "high"
+    },
+    {
+      "value": "gpt-5.5",
+      "label": "GPT-5.5",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    }
+  ],
+  "defaultValue": "gpt-5.6-sol",
+  "customValueAllowed": true,
+  "status": "live"
+}
+"""
+
+/** fixtures/codex.option-source.fallback.json, sha256 0d77d6a3e7b0b1709a190e33177a1563d5f5f5b94ac622a0f61f08e78b50ef43 */
+internal const val CODEX_V2_FALLBACK_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "codex",
+  "schemaVersion": "codex.create.v1",
+  "sourceId": "model",
+  "kind": "select",
+  "pointer": "/model",
+  "options": [
+    {
+      "value": "gpt-6-astra",
+      "label": "GPT-6-Astra",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "defaultReasoningEffort": "low"
+    },
+    {
+      "value": "gpt-5.6-sol",
+      "label": "GPT-5.6 Sol",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "defaultReasoningEffort": "medium"
+    },
+    {
+      "value": "gpt-5.6-terra",
+      "label": "GPT-5.6 Terra",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "defaultReasoningEffort": "medium"
+    },
+    {
+      "value": "gpt-5.6-luna",
+      "label": "GPT-5.6 Luna",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "defaultReasoningEffort": "medium"
+    },
+    {
+      "value": "gpt-5.5",
+      "label": "GPT-5.5",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5.4",
+      "label": "GPT-5.4",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5.3-codex",
+      "label": "GPT-5.3 Codex",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5.3-codex-spark",
+      "label": "GPT-5.3 Codex Spark",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5.2-codex",
+      "label": "GPT-5.2 Codex",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5.2",
+      "label": "GPT-5.2",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5.1-codex-max",
+      "label": "GPT-5.1 Codex Max",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5.1-codex",
+      "label": "GPT-5.1 Codex",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5-codex",
+      "label": "GPT-5 Codex",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5",
+      "label": "GPT-5",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    }
+  ],
+  "defaultValue": "gpt-6-astra",
+  "customValueAllowed": true,
+  "status": "fallback",
+  "reason": "missing_config",
+  "retryable": false
+}
+"""
+
+/** fixtures/codex.option-source.unavailable.json, sha256 d4cd3a8f09c6ce0498b003eca911d8498139d3f0146bb8080d5b36b3d2ad0d23 */
+internal const val CODEX_V2_UNAVAILABLE_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "codex",
+  "schemaVersion": "codex.create.v1",
+  "sourceId": "model",
+  "kind": "select",
+  "pointer": "/model",
+  "options": [],
+  "defaultValue": "",
+  "customValueAllowed": true,
+  "status": "unavailable",
+  "reason": "machine_offline",
+  "retryable": true
+}
+"""
+
+/** fixtures/grok.form.json, sha256 59c8fddc2b82b4652c835792c0c6a45e89f244b2538b8cf092490056591fca2f */
+internal const val GROK_V2_FORM_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "grok",
+  "schemaVersion": "grok.create.v1",
+  "requiredClientCapabilities": [
+    "choice.labels",
+    "option_source.status"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "reasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionsFrom": {
+          "field": "model",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "reasoningEffort",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model",
+        "hint": "Models available from this computer's Grok CLI."
+      },
+      "reasoningEffort": {
+        "label": "Reasoning",
+        "hint": "Available values depend on the selected model.",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "medium": {
+            "label": "Medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          "high": {
+            "label": "High",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          "xhigh": {
+            "label": "Extra High",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          "max": {
+            "label": "Max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          "ultra": {
+            "label": "Ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        }
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "grok",
+      "schemaVersion": "grok.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  }
+}
+"""
+
+/** fixtures/claude.form.json, sha256 4914b834e8447d3a0ed3f09e76ed567c125995d03aee574a40fcf6a25a1b590b */
+internal const val CLAUDE_V2_FORM_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "claude",
+  "schemaVersion": "claude.create.v1",
+  "requiredClientCapabilities": [
+    "select.custom_value",
+    "choice.labels",
+    "option_source.status"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "provider",
+      "model"
+    ],
+    "properties": {
+      "provider": {
+        "type": "string",
+        "title": "Provider",
+        "minLength": 1,
+        "x-optionSource": "provider"
+      },
+      "apiUrl": {
+        "type": "string",
+        "title": "API URL",
+        "format": "uri"
+      },
+      "apiKey": {
+        "type": "string",
+        "title": "API Key",
+        "writeOnly": true
+      },
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "reasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionsFrom": {
+          "field": "model",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      },
+      "fastMode": {
+        "type": "boolean",
+        "title": "Fast mode"
+      },
+      "command": {
+        "type": "string",
+        "title": "Claude Command"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "provider",
+      "apiUrl",
+      "apiKey",
+      "model",
+      "reasoningEffort",
+      "fastMode",
+      "command",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/command",
+        "/envVars"
+      ]
+    },
+    "visibility": [
+      {
+        "pointer": "/apiUrl",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "custom"
+          ]
+        }
+      },
+      {
+        "pointer": "/apiKey",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "custom"
+          ]
+        }
+      }
+    ],
+    "localization": {
+      "provider": {
+        "label": "Provider",
+        "hint": "Default leaves Claude Code provider settings untouched. Custom sets ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY for this agent."
+      },
+      "apiUrl": {
+        "label": "API URL",
+        "placeholder": "https://gateway.example.com"
+      },
+      "apiKey": {
+        "label": "API Key",
+        "placeholder": "sk-ant-..."
+      },
+      "model": {
+        "label": "Model",
+        "hint": "Models Claude Code accepts. You can also type a model ID."
+      },
+      "reasoningEffort": {
+        "label": "Reasoning",
+        "hint": "Available values depend on the selected model.",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "medium": {
+            "label": "Medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          "high": {
+            "label": "High",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          "xhigh": {
+            "label": "Extra High",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          "max": {
+            "label": "Max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          "ultra": {
+            "label": "Ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        }
+      },
+      "fastMode": {
+        "label": "Fast mode",
+        "hint": "Launch this runtime with higher speed at a higher cost per token."
+      },
+      "command": {
+        "label": "Claude Command",
+        "hint": "Executable path or command name; Slock adds the Claude stream-json runtime arguments.",
+        "placeholder": "claude"
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [
+      "/apiKey"
+    ],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "provider": {
+      "protocolVersion": 1,
+      "runtimeId": "claude",
+      "schemaVersion": "claude.create.v1",
+      "sourceId": "provider",
+      "kind": "select",
+      "pointer": "/provider"
+    },
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "claude",
+      "schemaVersion": "claude.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  }
+}
+"""
+
+/** fixtures/claude.edit.json, sha256 7667e567d12db4480c8d0dd459448eee4dca90f675345650de4423e7f5beb4d3 */
+internal const val CLAUDE_V2_EDIT_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "claude",
+  "schemaVersion": "claude.create.v1",
+  "requiredClientCapabilities": [
+    "select.custom_value",
+    "choice.labels",
+    "option_source.status"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "provider",
+      "model"
+    ],
+    "properties": {
+      "provider": {
+        "type": "string",
+        "title": "Provider",
+        "minLength": 1,
+        "x-optionSource": "provider"
+      },
+      "apiUrl": {
+        "type": "string",
+        "title": "API URL",
+        "format": "uri"
+      },
+      "apiKey": {
+        "type": "string",
+        "title": "API Key",
+        "writeOnly": true
+      },
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "reasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionsFrom": {
+          "field": "model",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      },
+      "fastMode": {
+        "type": "boolean",
+        "title": "Fast mode"
+      },
+      "command": {
+        "type": "string",
+        "title": "Claude Command"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "provider",
+      "apiUrl",
+      "apiKey",
+      "model",
+      "reasoningEffort",
+      "fastMode",
+      "command",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/command",
+        "/envVars"
+      ]
+    },
+    "visibility": [
+      {
+        "pointer": "/apiUrl",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "custom"
+          ]
+        }
+      },
+      {
+        "pointer": "/apiKey",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "custom"
+          ]
+        }
+      }
+    ],
+    "localization": {
+      "provider": {
+        "label": "Provider",
+        "hint": "Default leaves Claude Code provider settings untouched. Custom sets ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY for this agent."
+      },
+      "apiUrl": {
+        "label": "API URL",
+        "placeholder": "https://gateway.example.com"
+      },
+      "apiKey": {
+        "label": "API Key",
+        "placeholder": "sk-ant-..."
+      },
+      "model": {
+        "label": "Model",
+        "hint": "Models Claude Code accepts. You can also type a model ID."
+      },
+      "reasoningEffort": {
+        "label": "Reasoning",
+        "hint": "Available values depend on the selected model.",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "medium": {
+            "label": "Medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          "high": {
+            "label": "High",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          "xhigh": {
+            "label": "Extra High",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          "max": {
+            "label": "Max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          "ultra": {
+            "label": "Ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        }
+      },
+      "fastMode": {
+        "label": "Fast mode",
+        "hint": "Launch this runtime with higher speed at a higher cost per token."
+      },
+      "command": {
+        "label": "Claude Command",
+        "hint": "Executable path or command name; Slock adds the Claude stream-json runtime arguments.",
+        "placeholder": "claude"
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [
+      "/apiKey"
+    ],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "provider": {
+      "protocolVersion": 1,
+      "runtimeId": "claude",
+      "schemaVersion": "claude.create.v1",
+      "sourceId": "provider",
+      "kind": "select",
+      "pointer": "/provider"
+    },
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "claude",
+      "schemaVersion": "claude.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  },
+  "values": {
+    "provider": "custom",
+    "apiUrl": "https://gateway.example.test",
+    "model": "sonnet",
+    "reasoningEffort": "high",
+    "fastMode": true,
+    "command": "/usr/local/bin/claude",
+    "envVars": {
+      "EXAMPLE_FLAG": "1"
+    }
+  }
+}
+"""
+
+/** fixtures/claude.option-source.provider.json, sha256 6094377f22360553bc81aeea377271c41d4bee990b73cdf0b330ffe405ae3963 */
+internal const val CLAUDE_V2_PROVIDER_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "claude",
+  "schemaVersion": "claude.create.v1",
+  "sourceId": "provider",
+  "kind": "select",
+  "pointer": "/provider",
+  "options": [
+    {
+      "value": "default",
+      "label": "Default"
+    },
+    {
+      "value": "custom",
+      "label": "Custom"
+    }
+  ],
+  "defaultValue": "default",
+  "customValueAllowed": false
+}
+"""
+
+/** fixtures/claude.option-source.fallback.json, sha256 e3f17dfd0209fe41e82a7bdcf06cdbd867901397b293da96a61d11004f0c8f07 */
+internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "claude",
+  "schemaVersion": "claude.create.v1",
+  "sourceId": "model",
+  "kind": "select",
+  "pointer": "/model",
+  "options": [
+    {
+      "value": "opus",
+      "label": "Claude Opus",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "fable",
+      "label": "Claude Fable",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "sonnet",
+      "label": "Claude Sonnet",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "haiku",
+      "label": "Claude Haiku",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-opus-5-5",
+      "label": "Claude Opus 5.5",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-opus-5",
+      "label": "Claude Opus 5",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-opus-4-8",
+      "label": "Claude Opus 4.8",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-opus-4-7",
+      "label": "Claude Opus 4.7",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-opus-4-6",
+      "label": "Claude Opus 4.6",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-fable-5-1",
+      "label": "Claude Fable 5.1",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-fable-5",
+      "label": "Claude Fable 5",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-sonnet-5-5",
+      "label": "Claude Sonnet 5.5",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-sonnet-5",
+      "label": "Claude Sonnet 5",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-sonnet-4-6",
+      "label": "Claude Sonnet 4.6",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-haiku-4-5",
+      "label": "Claude Haiku 4.5",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    }
+  ],
+  "defaultValue": "opus",
+  "customValueAllowed": true,
+  "status": "fallback",
+  "reason": "machine_offline",
+  "retryable": true
+}
+"""
+
+/** fixtures/cursor.form.json, sha256 d9ee01cb0e1cd9677e74a7a0bb87fb15c13863522d3f2f164296dc0fbf99aefa */
+internal const val CURSOR_V2_FORM_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "cursor",
+  "schemaVersion": "cursor.create.v1",
+  "requiredClientCapabilities": [
+    "select.custom_value",
+    "option_source.status"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model",
+        "hint": "Models available from this computer's Cursor CLI. You can also type a model ID."
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "cursor",
+      "schemaVersion": "cursor.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  }
+}
+"""
+
+/** fixtures/cursor.edit.json, sha256 2bdc95baf932a192c4b928dd2570ace439b94a40539666740ac6ed9861247e87 */
+internal const val CURSOR_V2_EDIT_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "cursor",
+  "schemaVersion": "cursor.create.v1",
+  "requiredClientCapabilities": [
+    "select.custom_value",
+    "option_source.status"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model",
+        "hint": "Models available from this computer's Cursor CLI. You can also type a model ID."
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "cursor",
+      "schemaVersion": "cursor.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  },
+  "values": {
+    "model": "my-org/cursor-custom",
+    "envVars": {
+      "EXAMPLE_FLAG": "1"
+    }
+  }
+}
+"""
+
+/** fixtures/cursor.option-source.fallback.json, sha256 11878b1c1d668846299231392799cb94ba1326bb1c74aa3a4bc303dc58aad286 */
+internal const val CURSOR_V2_FALLBACK_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "cursor",
+  "schemaVersion": "cursor.create.v1",
+  "sourceId": "model",
+  "kind": "select",
+  "pointer": "/model",
+  "options": [
+    {
+      "value": "composer-2-fast",
+      "label": "Composer 2 Fast"
+    },
+    {
+      "value": "composer-2",
+      "label": "Composer 2"
+    },
+    {
+      "value": "auto",
+      "label": "Auto"
+    }
+  ],
+  "defaultValue": "composer-2-fast",
+  "customValueAllowed": true,
+  "status": "fallback",
+  "reason": "missing_config",
+  "retryable": false
+}
+"""
+
+/** fixtures/copilot.form.json, sha256 8fa777294e76b4871a5195b4382572bd6938cb251caf2593d987476fbc76a70f */
+internal const val COPILOT_V2_FORM_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "copilot",
+  "schemaVersion": "copilot.create.v1",
+  "requiredClientCapabilities": [
+    "select.custom_value",
+    "choice.labels",
+    "option_source.status"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "reasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionsFrom": {
+          "field": "model",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "reasoningEffort",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model",
+        "hint": "Models GitHub Copilot CLI accepts. You can also type a model ID."
+      },
+      "reasoningEffort": {
+        "label": "Reasoning",
+        "hint": "Available values depend on the selected model.",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "medium": {
+            "label": "Medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          "high": {
+            "label": "High",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          "xhigh": {
+            "label": "Extra High",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          "max": {
+            "label": "Max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          "ultra": {
+            "label": "Ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        }
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "copilot",
+      "schemaVersion": "copilot.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  }
+}
+"""
+
+/** fixtures/copilot.option-source.live.json, sha256 1f14406e2134b70d80d6066f645d24c98ddfb16729b30ab9588ea6b87b6fdec5 */
+internal const val COPILOT_V2_LIVE_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "copilot",
+  "schemaVersion": "copilot.create.v1",
+  "sourceId": "model",
+  "kind": "select",
+  "pointer": "/model",
+  "options": [
+    {
+      "value": "gpt-5.4",
+      "label": "GPT-5.4",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5.2",
+      "label": "GPT-5.2",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-4-sonnet",
+      "label": "Claude 4 Sonnet",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-4.5-sonnet",
+      "label": "Claude 4.5 Sonnet",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    }
+  ],
+  "defaultValue": "gpt-5.4",
+  "customValueAllowed": true,
+  "status": "live"
+}
+"""
+
+/** fixtures/pi.form.json, sha256 5dea8e688c2d617efa05c74d81200dcf4f7a5d2fe0e122e09cc3de9fe948818a */
+internal const val PI_V2_FORM_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "pi",
+  "schemaVersion": "pi.create.v1",
+  "requiredClientCapabilities": [
+    "select.custom_value",
+    "choice.labels",
+    "option_source.status"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "provider",
+      "model",
+      "providerModel"
+    ],
+    "properties": {
+      "provider": {
+        "type": "string",
+        "title": "Provider",
+        "minLength": 1,
+        "x-optionSource": "provider"
+      },
+      "apiKey": {
+        "type": "string",
+        "title": "API Key",
+        "writeOnly": true
+      },
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "reasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionsFrom": {
+          "field": "model",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      },
+      "providerModel": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "providerModel"
+      },
+      "providerReasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionsFrom": {
+          "field": "providerModel",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "provider",
+      "apiKey",
+      "model",
+      "reasoningEffort",
+      "providerModel",
+      "providerReasoningEffort",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [
+      {
+        "pointer": "/apiKey",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "deepseek"
+          ]
+        }
+      },
+      {
+        "pointer": "/model",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "configured"
+          ]
+        }
+      },
+      {
+        "pointer": "/reasoningEffort",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "configured"
+          ]
+        }
+      },
+      {
+        "pointer": "/providerModel",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "deepseek"
+          ]
+        }
+      },
+      {
+        "pointer": "/providerReasoningEffort",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "deepseek"
+          ]
+        }
+      }
+    ],
+    "localization": {
+      "provider": {
+        "label": "Provider",
+        "hint": "Configured uses your machine's Pi auth.json. Other options inject the matching API key as an env var so the Pi SDK picks it up — no auth.json edit on your machine."
+      },
+      "apiKey": {
+        "label": "API Key",
+        "placeholder": "sk-..."
+      },
+      "model": {
+        "label": "Model",
+        "hint": "Models available from this computer's Pi configuration. You can also type a model ID."
+      },
+      "reasoningEffort": {
+        "label": "Reasoning",
+        "hint": "Available values depend on the selected model.",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "medium": {
+            "label": "Medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          "high": {
+            "label": "High",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          "xhigh": {
+            "label": "Extra High",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          "max": {
+            "label": "Max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          "ultra": {
+            "label": "Ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        }
+      },
+      "providerModel": {
+        "label": "Model",
+        "hint": "Models the selected provider offers."
+      },
+      "providerReasoningEffort": {
+        "label": "Reasoning",
+        "hint": "Available values depend on the selected model.",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "medium": {
+            "label": "Medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          "high": {
+            "label": "High",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          "xhigh": {
+            "label": "Extra High",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          "max": {
+            "label": "Max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          "ultra": {
+            "label": "Ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        }
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [
+      "/apiKey"
+    ],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "provider": {
+      "protocolVersion": 1,
+      "runtimeId": "pi",
+      "schemaVersion": "pi.create.v1",
+      "sourceId": "provider",
+      "kind": "select",
+      "pointer": "/provider"
+    },
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "pi",
+      "schemaVersion": "pi.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    },
+    "providerModel": {
+      "protocolVersion": 1,
+      "runtimeId": "pi",
+      "schemaVersion": "pi.create.v1",
+      "sourceId": "providerModel",
+      "kind": "dependent_select",
+      "pointer": "/providerModel",
+      "dependsOn": "/provider"
+    }
+  }
+}
+"""
+
+/** fixtures/pi.edit.json, sha256 8513a039edfe082db9d70f5a97226d6fbf65ea8f7830a9f6630697ff5205f2c9 */
+internal const val PI_V2_EDIT_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "pi",
+  "schemaVersion": "pi.create.v1",
+  "requiredClientCapabilities": [
+    "select.custom_value",
+    "choice.labels",
+    "option_source.status"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "provider",
+      "model",
+      "providerModel"
+    ],
+    "properties": {
+      "provider": {
+        "type": "string",
+        "title": "Provider",
+        "minLength": 1,
+        "x-optionSource": "provider"
+      },
+      "apiKey": {
+        "type": "string",
+        "title": "API Key",
+        "writeOnly": true
+      },
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "reasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionsFrom": {
+          "field": "model",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      },
+      "providerModel": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "providerModel"
+      },
+      "providerReasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionsFrom": {
+          "field": "providerModel",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "provider",
+      "apiKey",
+      "model",
+      "reasoningEffort",
+      "providerModel",
+      "providerReasoningEffort",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [
+      {
+        "pointer": "/apiKey",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "deepseek"
+          ]
+        }
+      },
+      {
+        "pointer": "/model",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "configured"
+          ]
+        }
+      },
+      {
+        "pointer": "/reasoningEffort",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "configured"
+          ]
+        }
+      },
+      {
+        "pointer": "/providerModel",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "deepseek"
+          ]
+        }
+      },
+      {
+        "pointer": "/providerReasoningEffort",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "deepseek"
+          ]
+        }
+      }
+    ],
+    "localization": {
+      "provider": {
+        "label": "Provider",
+        "hint": "Configured uses your machine's Pi auth.json. Other options inject the matching API key as an env var so the Pi SDK picks it up — no auth.json edit on your machine."
+      },
+      "apiKey": {
+        "label": "API Key",
+        "placeholder": "sk-..."
+      },
+      "model": {
+        "label": "Model",
+        "hint": "Models available from this computer's Pi configuration. You can also type a model ID."
+      },
+      "reasoningEffort": {
+        "label": "Reasoning",
+        "hint": "Available values depend on the selected model.",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "medium": {
+            "label": "Medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          "high": {
+            "label": "High",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          "xhigh": {
+            "label": "Extra High",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          "max": {
+            "label": "Max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          "ultra": {
+            "label": "Ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        }
+      },
+      "providerModel": {
+        "label": "Model",
+        "hint": "Models the selected provider offers."
+      },
+      "providerReasoningEffort": {
+        "label": "Reasoning",
+        "hint": "Available values depend on the selected model.",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "medium": {
+            "label": "Medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          "high": {
+            "label": "High",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          "xhigh": {
+            "label": "Extra High",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          "max": {
+            "label": "Max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          "ultra": {
+            "label": "Ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        }
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [
+      "/apiKey"
+    ],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "provider": {
+      "protocolVersion": 1,
+      "runtimeId": "pi",
+      "schemaVersion": "pi.create.v1",
+      "sourceId": "provider",
+      "kind": "select",
+      "pointer": "/provider"
+    },
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "pi",
+      "schemaVersion": "pi.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    },
+    "providerModel": {
+      "protocolVersion": 1,
+      "runtimeId": "pi",
+      "schemaVersion": "pi.create.v1",
+      "sourceId": "providerModel",
+      "kind": "dependent_select",
+      "pointer": "/providerModel",
+      "dependsOn": "/provider"
+    }
+  },
+  "values": {
+    "provider": "deepseek",
+    "providerModel": "deepseek/deepseek-v4-pro",
+    "providerReasoningEffort": "high",
+    "envVars": {
+      "EXAMPLE_FLAG": "1"
+    }
+  }
+}
+"""
+
+/** fixtures/pi.edit.configured.json, sha256 87749ffb8cbef2eb45a9fd0400ffd88aae2d3a2ee51993fe330b12d0f938ebfb */
+internal const val PI_V2_EDIT_CONFIGURED_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "pi",
+  "schemaVersion": "pi.create.v1",
+  "requiredClientCapabilities": [
+    "select.custom_value",
+    "choice.labels",
+    "option_source.status"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "provider",
+      "model",
+      "providerModel"
+    ],
+    "properties": {
+      "provider": {
+        "type": "string",
+        "title": "Provider",
+        "minLength": 1,
+        "x-optionSource": "provider"
+      },
+      "apiKey": {
+        "type": "string",
+        "title": "API Key",
+        "writeOnly": true
+      },
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "reasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionsFrom": {
+          "field": "model",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      },
+      "providerModel": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "providerModel"
+      },
+      "providerReasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionsFrom": {
+          "field": "providerModel",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "provider",
+      "apiKey",
+      "model",
+      "reasoningEffort",
+      "providerModel",
+      "providerReasoningEffort",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [
+      {
+        "pointer": "/apiKey",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "deepseek"
+          ]
+        }
+      },
+      {
+        "pointer": "/model",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "configured"
+          ]
+        }
+      },
+      {
+        "pointer": "/reasoningEffort",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "configured"
+          ]
+        }
+      },
+      {
+        "pointer": "/providerModel",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "deepseek"
+          ]
+        }
+      },
+      {
+        "pointer": "/providerReasoningEffort",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "deepseek"
+          ]
+        }
+      }
+    ],
+    "localization": {
+      "provider": {
+        "label": "Provider",
+        "hint": "Configured uses your machine's Pi auth.json. Other options inject the matching API key as an env var so the Pi SDK picks it up — no auth.json edit on your machine."
+      },
+      "apiKey": {
+        "label": "API Key",
+        "placeholder": "sk-..."
+      },
+      "model": {
+        "label": "Model",
+        "hint": "Models available from this computer's Pi configuration. You can also type a model ID."
+      },
+      "reasoningEffort": {
+        "label": "Reasoning",
+        "hint": "Available values depend on the selected model.",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "medium": {
+            "label": "Medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          "high": {
+            "label": "High",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          "xhigh": {
+            "label": "Extra High",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          "max": {
+            "label": "Max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          "ultra": {
+            "label": "Ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        }
+      },
+      "providerModel": {
+        "label": "Model",
+        "hint": "Models the selected provider offers."
+      },
+      "providerReasoningEffort": {
+        "label": "Reasoning",
+        "hint": "Available values depend on the selected model.",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "medium": {
+            "label": "Medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          "high": {
+            "label": "High",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          "xhigh": {
+            "label": "Extra High",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          "max": {
+            "label": "Max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          "ultra": {
+            "label": "Ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        }
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [
+      "/apiKey"
+    ],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "provider": {
+      "protocolVersion": 1,
+      "runtimeId": "pi",
+      "schemaVersion": "pi.create.v1",
+      "sourceId": "provider",
+      "kind": "select",
+      "pointer": "/provider"
+    },
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "pi",
+      "schemaVersion": "pi.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    },
+    "providerModel": {
+      "protocolVersion": 1,
+      "runtimeId": "pi",
+      "schemaVersion": "pi.create.v1",
+      "sourceId": "providerModel",
+      "kind": "dependent_select",
+      "pointer": "/providerModel",
+      "dependsOn": "/provider"
+    }
+  },
+  "values": {
+    "provider": "configured",
+    "model": "my-org/pi-custom",
+    "reasoningEffort": "",
+    "envVars": {}
+  }
+}
+"""
+
+/** fixtures/pi.option-source.provider.json, sha256 45fb284b7a3e3c2b880d6ce2aca409ba67ff07681bf00030a0ba536170a336ab */
+internal const val PI_V2_PROVIDER_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "pi",
+  "schemaVersion": "pi.create.v1",
+  "sourceId": "provider",
+  "kind": "select",
+  "pointer": "/provider",
+  "options": [
+    {
+      "value": "configured",
+      "label": "Configured"
+    },
+    {
+      "value": "deepseek",
+      "label": "DeepSeek"
+    }
+  ],
+  "defaultValue": "configured",
+  "customValueAllowed": false
+}
+"""
+
+/** fixtures/pi.option-source.provider-model.json, sha256 1770fef437c723ec98c0a647c7811958e059867567ea6db5270d9dd87d3280d6 */
+internal const val PI_V2_PROVIDER_MODEL_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "pi",
+  "schemaVersion": "pi.create.v1",
+  "sourceId": "providerModel",
+  "kind": "dependent_select",
+  "pointer": "/providerModel",
+  "dependsOn": "/provider",
+  "optionsByValue": {
+    "deepseek": [
+      {
+        "value": "deepseek/deepseek-v4-pro",
+        "label": "DeepSeek V4 Pro",
+        "supportedReasoningEfforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      },
+      {
+        "value": "deepseek/deepseek-flash",
+        "label": "DeepSeek V4.1 Flash",
+        "supportedReasoningEfforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      }
+    ]
+  },
+  "defaultValueByValue": {
+    "deepseek": "deepseek/deepseek-v4-pro"
+  },
+  "customValueAllowedByValue": {
+    "deepseek": false
+  }
+}
+"""
+
+/** fixtures/pi.option-source.fallback.json, sha256 be0aa9f87a1a6283e88f28d86f9e86a19b2701899edc9d7766a6d2dbd4b4a984 */
+internal const val PI_V2_FALLBACK_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "pi",
+  "schemaVersion": "pi.create.v1",
+  "sourceId": "model",
+  "kind": "select",
+  "pointer": "/model",
+  "options": [
+    {
+      "value": "default",
+      "label": "Configured Default / Auto",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    }
+  ],
+  "defaultValue": "default",
+  "customValueAllowed": true,
+  "status": "fallback",
+  "reason": "missing_config",
+  "retryable": false
+}
+"""

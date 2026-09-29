@@ -2105,6 +2105,15 @@
     <string name="runtime_form_v2_secret_keep_hint">空欄のままにすると現在の値を保持します。</string>
     <string name="runtime_form_v2_change_runtime">ランタイムを変更</string>
     <string name="runtime_form_v2_load_failed">ランタイムフォームを読み込めませんでした（%1$s）。</string>
+    <string name="runtime_form_v2_source_refresh_failed">一覧を更新できませんでした。前回の選択肢を表示しています。</string>
+    <string name="runtime_form_v2_source_status_fallback">代わりに標準の一覧を表示しています。</string>
+    <string name="runtime_form_v2_source_status_probe_timeout">この Computer が選択肢を一覧表示するのに時間がかかりすぎました。</string>
+    <string name="runtime_form_v2_source_status_probe_failed">この Computer は選択肢を一覧表示できませんでした。</string>
+    <string name="runtime_form_v2_source_status_missing_config">選択肢を一覧表示するには、この Computer でこのランタイムを設定する必要があります。</string>
+    <string name="runtime_form_v2_source_status_no_models">この Computer には利用できる選択肢がありません。</string>
+    <string name="runtime_form_v2_source_status_unsupported">この Computer はこのランタイムの選択肢を一覧表示できません。</string>
+    <string name="runtime_form_v2_source_status_machine_offline">この Computer はオフラインです。</string>
+    <string name="runtime_form_v2_source_status_unknown">選択肢を読み込めませんでした。</string>
     <string name="runtime_form_v2_saved_refresh">保存しました。最新の設定は再読み込みで確認できます。</string>
     <string name="thread_followers_title">フォロー中のエージェント</string>
     <string name="thread_followers_count">%1$d エージェントがフォロー中</string>
@@ -2118,4 +2127,8 @@
     <string name="thread_followers_removed">%1$s をこのスレッドのフォロワーから削除しました。</string>
     <string name="thread_followers_restored">%1$s のフォローを復元しました。</string>
     <string name="thread_followers_peer_remove_unavailable">このフォロワーを削除するには %1$s に切り替えてください。</string>
+    <string name="joint_over_limit_grace_title">ジョイントチャンネルが上限超過です</string>
+    <string name="joint_over_limit_grace_detail">このジョイントチャンネルは %1$s までメンバー数上限を超過しています。いずれかのサーバーの管理者がアップグレードするか、無料サーバーが脱退する必要があります。</string>
+    <string name="joint_billing_locked_title">ジョイントチャンネルは読み取り専用です</string>
+    <string name="joint_billing_locked_detail">猶予期間が終了しました。管理者がアップグレードするか無料サーバーが脱退するまで、このチャンネルは読み取り専用です。</string>
 </resources>

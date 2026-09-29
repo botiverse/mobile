@@ -24,8 +24,25 @@ internal typealias RuntimeFormV2Values = Map<String, JsonElement>
 internal data class RuntimeFormV2Choice(
     val value: String,
     val label: String,
-    val attributes: JsonObject = JsonObject(emptyMap())
+    val attributes: JsonObject = JsonObject(emptyMap()),
+    /** `choice.labels`: only ever from FieldCopy.choices, never from the option itself. */
+    val description: String? = null
 )
+
+/**
+ * Label priority (`choice.labels`): FieldCopy.choices[value].label, else the option's own label,
+ * else the raw value. The description comes only from FieldCopy.choices.
+ * Also applied to dependent_select on purpose: the frozen contract names select and derived_select,
+ * but the web reference (slock v2State `labelled`) labels dependent_select options too, and a form
+ * without choices for it renders exactly as before. Keep both clients aligned.
+ */
+private fun RuntimeFormV2Choice.labelledFor(field: RuntimeFormV2Field): RuntimeFormV2Choice {
+    val text = field.choices[value]
+    return copy(
+        label = text?.label?.takeIf { it.isNotEmpty() } ?: label.takeIf { it.isNotEmpty() } ?: value,
+        description = text?.description?.takeIf { it.isNotEmpty() }
+    )
+}
 
 /** Response of the option-sources endpoint, kept tolerant like the form itself. */
 internal data class RuntimeFormV2Source(
@@ -37,13 +54,32 @@ internal data class RuntimeFormV2Source(
     val defaultValue: String? = null,
     val optionsByValue: Map<String, List<RuntimeFormV2Choice>>? = null,
     val defaultValueByValue: Map<String, String>? = null,
-    val customValueAllowedByValue: Map<String, Boolean>? = null
+    val customValueAllowedByValue: Map<String, Boolean>? = null,
+    /** `select.custom_value` (kind select only): a combobox; any typed value is valid besides the listed ones. */
+    val customValueAllowed: Boolean? = null,
+    /** `option_source.status`: live, fallback or unavailable, as sent (see [runtimeFormV2SourceStatus]). */
+    val status: String? = null,
+    /** Why the source is not live; may be a reason this client does not know. */
+    val reason: String? = null,
+    val retryable: Boolean? = null
+)
+
+/** A source that is not live (`option_source.status`). */
+internal data class RuntimeFormV2SourceStatus(
+    val unavailable: Boolean,
+    val reason: String?,
+    val retryable: Boolean
 )
 
 internal typealias RuntimeFormV2Sources = Map<String, RuntimeFormV2Source>
 
 internal sealed interface RuntimeFormV2Choices {
-    data class Select(val options: List<RuntimeFormV2Choice>, val allowEmpty: Boolean) : RuntimeFormV2Choices
+    /** [allowCustom] (`select.custom_value`): pick a listed option or type any value; a stored unlisted value is shown as typed. */
+    data class Select(
+        val options: List<RuntimeFormV2Choice>,
+        val allowEmpty: Boolean,
+        val allowCustom: Boolean = false
+    ) : RuntimeFormV2Choices
     data object FreeText : RuntimeFormV2Choices
 }
 
@@ -51,7 +87,9 @@ internal enum class RuntimeFormV2ErrorCode {
     Required,
     InvalidUrl,
     NotAChoice,
-    UnsupportedRequired
+    UnsupportedRequired,
+    /** A required field whose option source is unavailable (`option_source.status`): retry, or wait. */
+    SourceUnavailable
 }
 
 /** Parses an option-sources response; null when it is not a usable source. */
@@ -80,7 +118,11 @@ internal fun parseRuntimeFormV2Source(value: JsonElement): RuntimeFormV2Source? 
         }?.toMap(),
         customValueAllowedByValue = (root["customValueAllowedByValue"] as? JsonObject)?.mapNotNull { (parent, allowed) ->
             (allowed as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull?.let { parent to it }
-        }?.toMap()
+        }?.toMap(),
+        customValueAllowed = (root["customValueAllowed"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull,
+        status = root["status"].stringOrNull(),
+        reason = root["reason"].stringOrNull()?.takeIf { it.isNotEmpty() },
+        retryable = (root["retryable"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull
     )
 }
 
@@ -94,13 +136,21 @@ internal fun runtimeFormV2Choices(
 ): RuntimeFormV2Choices? {
     val source = field.optionSourceId?.let { sources[it] }
     return when (field.kind) {
-        RuntimeFormV2FieldKind.Select -> RuntimeFormV2Choices.Select(source?.options.orEmpty(), allowEmpty = false)
+        RuntimeFormV2FieldKind.Select ->
+            RuntimeFormV2Choices.Select(
+                source?.options.orEmpty().map { it.labelledFor(field) },
+                allowEmpty = false,
+                allowCustom = source?.customValueAllowed == true
+            )
         RuntimeFormV2FieldKind.DependentSelect -> {
             val parent = values.text(field.dependsOn)
             if (source?.customValueAllowedByValue?.get(parent) == true) {
                 RuntimeFormV2Choices.FreeText
             } else {
-                RuntimeFormV2Choices.Select(source?.optionsByValue?.get(parent).orEmpty(), allowEmpty = false)
+                RuntimeFormV2Choices.Select(
+                    source?.optionsByValue?.get(parent).orEmpty().map { it.labelledFor(field) },
+                    allowEmpty = false
+                )
             }
         }
         RuntimeFormV2FieldKind.DerivedSelect -> {
@@ -108,7 +158,7 @@ internal fun runtimeFormV2Choices(
             val selected = selectedOption(from.key, sources, values)
             val options = (selected?.attributes?.get(from.attribute) as? JsonArray)
                 ?.mapNotNull { it.stringOrNull() }
-                ?.map { RuntimeFormV2Choice(it, it) }
+                ?.map { RuntimeFormV2Choice(it, it).labelledFor(field) }
                 .orEmpty()
             // An empty value means "the runtime's default"; it is always a valid choice.
             RuntimeFormV2Choices.Select(options, allowEmpty = true)
@@ -187,6 +237,30 @@ private fun storedFits(field: RuntimeFormV2Field, stored: JsonElement?): Boolean
 }
 
 /**
+ * After [sourceId] was re-probed: a select that now holds a value the source no longer offers is
+ * reset to its default, and fields depending on it follow — as v1 does after re-probing models.
+ * Free-text (custom-value) choices and empty values are left alone.
+ */
+internal fun runtimeFormV2ValuesAfterSourceReload(
+    form: ParsedRuntimeFormV2,
+    sources: RuntimeFormV2Sources,
+    values: RuntimeFormV2Values,
+    sourceId: String
+): RuntimeFormV2Values {
+    var next = values
+    for (field in dependencyOrder(form.fields)) {
+        if (field.optionSourceId != sourceId) continue
+        val current = next.text(field.key)
+        if (current.isEmpty()) continue
+        val choices = runtimeFormV2Choices(field, sources, next) as? RuntimeFormV2Choices.Select ?: continue
+        // A typed value (`select.custom_value`) is the user's own; a re-probe never replaces it.
+        if (choices.allowCustom || choices.options.any { it.value == current }) continue
+        next = applyRuntimeFormV2Change(form, sources, next, field.key, defaultFor(field, sources, next))
+    }
+    return next
+}
+
+/**
  * Set one field and cascade: fields whose choices depend on it are reset to
  * their defaults, recursively, so a stale model can never survive a provider
  * change.
@@ -210,8 +284,32 @@ internal fun applyRuntimeFormV2Change(
     return next
 }
 
-internal fun isRuntimeFormV2FieldVisible(field: RuntimeFormV2Field, values: RuntimeFormV2Values): Boolean =
-    field.visibleWhen.all { rule -> values.text(rule.key) in rule.values }
+/**
+ * The field's option source status when it is not live (`option_source.status`); null when live, when
+ * the source says nothing, or when the status is one this client does not know. Only fields that load
+ * a source themselves report one; a derived field follows its parent. Mirrors slock v2State.
+ */
+internal fun runtimeFormV2SourceStatus(field: RuntimeFormV2Field, sources: RuntimeFormV2Sources): RuntimeFormV2SourceStatus? {
+    val source = field.optionSourceId?.let { sources[it] } ?: return null
+    val unavailable = when (source.status) {
+        "unavailable" -> true
+        "fallback" -> false
+        else -> return null
+    }
+    return RuntimeFormV2SourceStatus(unavailable, source.reason, source.retryable == true)
+}
+
+/** An optional field whose source is unavailable is hidden; a required one stays to show why it blocks. */
+private fun hiddenAsUnavailable(field: RuntimeFormV2Field, sources: RuntimeFormV2Sources?): Boolean =
+    !field.required && sources != null && runtimeFormV2SourceStatus(field, sources)?.unavailable == true
+
+/** Visibility rules, plus (when [sources] is given) `option_source.status`: an optional field whose source is unavailable is hidden. */
+internal fun isRuntimeFormV2FieldVisible(
+    field: RuntimeFormV2Field,
+    values: RuntimeFormV2Values,
+    sources: RuntimeFormV2Sources? = null
+): Boolean =
+    !hiddenAsUnavailable(field, sources) && field.visibleWhen.all { rule -> values.text(rule.key) in rule.values }
 
 private val textLikeKinds = setOf(
     RuntimeFormV2FieldKind.Text,
@@ -231,9 +329,13 @@ internal fun validateRuntimeFormV2(
 ): Map<String, RuntimeFormV2ErrorCode> {
     val errors = linkedMapOf<String, RuntimeFormV2ErrorCode>()
     for (field in form.fields) {
-        if (!isRuntimeFormV2FieldVisible(field, values)) continue
+        if (!isRuntimeFormV2FieldVisible(field, values, sources)) continue
         if (field.kind == RuntimeFormV2FieldKind.Unsupported) {
             if (field.required) errors[field.key] = RuntimeFormV2ErrorCode.UnsupportedRequired
+            continue
+        }
+        if (field.required && runtimeFormV2SourceStatus(field, sources)?.unavailable == true) {
+            errors[field.key] = RuntimeFormV2ErrorCode.SourceUnavailable
             continue
         }
         val text = values.text(field.key).trim()
@@ -247,7 +349,15 @@ internal fun validateRuntimeFormV2(
             errors[field.key] = RuntimeFormV2ErrorCode.InvalidUrl
         }
         val choices = runtimeFormV2Choices(field, sources, values)
-        if (choices is RuntimeFormV2Choices.Select && text.isNotEmpty() && choices.options.none { it.value == text }) {
+        // A derived list with nothing to offer (a model without an effort menu, or a typed custom model no
+        // option describes) is not shown, so it cannot be corrected here: its value goes to the server
+        // unchanged, which validates it. Mirrors slock v2State.
+        val unconstrained = field.kind == RuntimeFormV2FieldKind.DerivedSelect &&
+            choices is RuntimeFormV2Choices.Select && choices.options.isEmpty()
+        if (
+            choices is RuntimeFormV2Choices.Select && !choices.allowCustom && !unconstrained &&
+            text.isNotEmpty() && choices.options.none { it.value == text }
+        ) {
             errors[field.key] = RuntimeFormV2ErrorCode.NotAChoice
         }
     }
@@ -256,11 +366,21 @@ internal fun validateRuntimeFormV2(
 
 /**
  * The `formValues` body: every visible field, plus the stored value of any
- * field this client could not render so it survives unchanged.
+ * field this client could not render so it survives unchanged. An optional
+ * field hidden because its source is unavailable keeps its stored value too
+ * (edit); on create it has none and is omitted.
  */
-internal fun runtimeFormV2Submission(form: ParsedRuntimeFormV2, values: RuntimeFormV2Values): JsonObject {
+internal fun runtimeFormV2Submission(
+    form: ParsedRuntimeFormV2,
+    values: RuntimeFormV2Values,
+    sources: RuntimeFormV2Sources? = null
+): JsonObject {
     val out = linkedMapOf<String, JsonElement>()
     for (field in form.fields) {
+        if (hiddenAsUnavailable(field, sources)) {
+            form.values?.get(field.key)?.let { out[field.key] = it }
+            continue
+        }
         if (field.kind != RuntimeFormV2FieldKind.Unsupported && !isRuntimeFormV2FieldVisible(field, values)) continue
         val value = values[field.key] ?: continue
         val text = value.stringOrNull()

@@ -79,6 +79,33 @@ class RuntimeFormV2Test {
         )
     )
 
+    // ── re-probe (#2749) ──
+
+    @Test
+    fun reprobeResetsASelectWhoseValueDisappearedAndItsDependentsFollow() {
+        val before = initialRuntimeFormV2Values(kimi.copy(values = null), kimiSources)
+            .let { applyRuntimeFormV2Change(kimi, kimiSources, it, "model", JsonPrimitive("k1")) }
+        assertEquals("k1", before.text("model"))
+        // The machine no longer reports k1.
+        val reprobed = kimiSources + ("model" to kimiSources.getValue("model").copy(options = kimiSources.getValue("model").options!!.take(1)))
+
+        val after = runtimeFormV2ValuesAfterSourceReload(kimi, reprobed, before, "model")
+
+        assertEquals("k2", after.text("model"), "falls back to the source default, like v1 after re-probing")
+        assertEquals("high", after.text("reasoningEffort"), "the derived reasoning effort follows the new model")
+    }
+
+    @Test
+    fun reprobeKeepsValuesTheSourceStillOffersAndIgnoresOtherSources() {
+        val values = initialRuntimeFormV2Values(kimi.copy(values = null), kimiSources)
+        assertEquals(values, runtimeFormV2ValuesAfterSourceReload(kimi, kimiSources, values, "model"), "k2 is still offered")
+        val reprobed = kimiSources + ("model" to kimiSources.getValue("model").copy(options = emptyList(), defaultValue = null))
+        val changed = applyRuntimeFormV2Change(kimi, kimiSources, values, "model", JsonPrimitive("k1"))
+        assertEquals(changed, runtimeFormV2ValuesAfterSourceReload(kimi, reprobed, changed, "other-source"))
+        val blank = applyRuntimeFormV2Change(kimi, kimiSources, values, "model", JsonPrimitive(""))
+        assertEquals(blank, runtimeFormV2ValuesAfterSourceReload(kimi, reprobed, blank, "model"), "an empty value is left alone")
+    }
+
     // ── v2.test.ts ──
 
     @Test
@@ -199,10 +226,14 @@ class RuntimeFormV2Test {
     fun aFormRequiringAClientCapabilityThisClientLacksIsTreatedAsNoV2Form() {
         val none = formJson(BUILTIN_V2_FORM_JSON).set(listOf("requiredClientCapabilities"), JsonArray(emptyList()))
         assertNotNull(parseRuntimeFormV2(none), "an empty requirement list is a normal v2 form")
-        val needsCustom = formJson(BUILTIN_V2_FORM_JSON)
-            .set(listOf("requiredClientCapabilities"), buildJsonArray { add(JsonPrimitive("select.custom_value")) })
-        assertNull(parseRuntimeFormV2(needsCustom), "unknown required capability: fall back to v1")
-        assertNull(parseRuntimeFormV2(CAPABILITIES_V2_FORM_JSON), "slock's capabilities sample falls back on this client")
+        // A name no client implements (the implemented ones are enabled one by one and would flip this).
+        val needsUnknown = formJson(BUILTIN_V2_FORM_JSON)
+            .set(listOf("requiredClientCapabilities"), buildJsonArray { add(JsonPrimitive("x.not_a_real_capability")) })
+        assertNull(parseRuntimeFormV2(needsUnknown), "unknown required capability: fall back to v1")
+        assertNotNull(
+            parseRuntimeFormV2(CAPABILITIES_V2_FORM_JSON),
+            "slock's capabilities sample needs only select.custom_value, which this client implements"
+        )
         val malformed = formJson(BUILTIN_V2_FORM_JSON).set(listOf("requiredClientCapabilities"), JsonPrimitive("select.custom_value"))
         assertNull(parseRuntimeFormV2(malformed), "a malformed requirement fails closed")
         val nonString = formJson(BUILTIN_V2_FORM_JSON)

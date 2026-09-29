@@ -1272,6 +1272,47 @@ internal fun threadComposerEventRequiresWriteAccess(action: String): Boolean =
             "retryAttachments"
         )
 
+/** Joint channel billing notice (contract #contracts:97dbd451 v0.3 §18.8). */
+internal enum class JointBillingNotice { None, Grace, Locked }
+
+/**
+ * Resolve the joint over-limit state for the rendered surface. Reply threads
+ * inherit the notice from their parent joint channel (thread projections carry
+ * no billing metadata). `parentChannelId` takes precedence for reply threads;
+ * a channel surface falls back to any joint projection among its lookup ids.
+ */
+internal fun jointBillingNoticeState(
+    surfaceKind: String?,
+    parentChannelId: String?,
+    lookupIds: List<String>,
+    projections: Map<String, SharedConversationDirectoryProjection>,
+    nowEpochMillis: Long? = null
+): JointBillingNotice {
+    fun noticeFor(id: String?): JointBillingNotice {
+        val projection = id?.let { projections[it] } ?: return JointBillingNotice.None
+        if (projection.conversationKind != ConversationKind.Joint) return JointBillingNotice.None
+        if (projection.jointBillingLocked == true) return JointBillingNotice.Locked
+        val graceEndsAt = projection.jointOverLimitGraceEndsAt?.takeIf { it.isNotBlank() }
+            ?: return JointBillingNotice.None
+        // §18.8: "now >= graceEndsAt" means the grace period has ended and the
+        // channel is read-only — fall back to Locked even if the server has not
+        // flipped jointBillingLocked yet. When no clock is available, keep the
+        // deadline-agnostic Grace (fail-open for an unknown now is safer than
+        // wrongly locking a still-writable channel).
+        val deadlineMillis = parseSlockTimestampEpochMillisOrNull(graceEndsAt, 0)
+        if (nowEpochMillis != null && deadlineMillis != null && nowEpochMillis >= deadlineMillis) {
+            return JointBillingNotice.Locked
+        }
+        return JointBillingNotice.Grace
+    }
+    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+        val parent = noticeFor(parentChannelId)
+        if (parent != JointBillingNotice.None) return parent
+    }
+    return lookupIds.firstNotNullOfOrNull { noticeFor(it).takeIf { n -> n != JointBillingNotice.None } }
+        ?: JointBillingNotice.None
+}
+
 internal fun threadEventAllowed(writeActionsEnabled: Boolean, action: String): Boolean =
     writeActionsEnabled || !threadEventRequiresWriteAccess(action)
 
@@ -5926,6 +5967,55 @@ private fun SharedThreadRouteContentContent(
                     }
                 }
         }
+    // Unfiltered directory projections (header owner drops non-display rows, but a
+    // reply thread's joint billing state lives on its parent channel projection).
+    val billingDirectoryProjections by directoryConversationProjectionFlow.collectAsState(
+        initialDirectoryConversationProjections
+    )
+    var jointBillingDeadlineTick by remember(payload.instanceId) { mutableStateOf(0) }
+    val jointBillingNotice =
+        remember(
+            billingDirectoryProjections,
+            payload.surfaceKind,
+            payload.parentChannelId,
+            conversationDirectoryLookupIds,
+            jointBillingDeadlineTick
+        ) {
+            jointBillingNoticeState(
+                surfaceKind = payload.surfaceKind,
+                parentChannelId = payload.parentChannelId,
+                lookupIds = conversationDirectoryLookupIds,
+                projections = billingDirectoryProjections,
+                nowEpochMillis =
+                    payload.nowEpochMillis
+                        ?: build.raft.kuiklybase.datetime.Clock.System.now().toEpochMilliseconds()
+            )
+        }
+    val jointGraceDeadlineLabel =
+        remember(billingDirectoryProjections, conversationDirectoryLookupIds) {
+            (listOfNotNull(payload.parentChannelId) + conversationDirectoryLookupIds)
+                .firstNotNullOfOrNull { id ->
+                    billingDirectoryProjections[id]
+                        ?.takeIf { it.conversationKind == ConversationKind.Joint }
+                        ?.jointOverLimitGraceEndsAt
+                }
+        }
+    // §18.8: flip Grace -> Locked locally at the deadline without waiting for a
+    // new server snapshot. Recompute `jointBillingNotice` via a state bump.
+    LaunchedEffect(jointGraceDeadlineLabel, payload.instanceId) {
+        val deadline =
+            jointGraceDeadlineLabel?.let { parseSlockTimestampEpochMillisOrNull(it, 0) }
+        if (deadline != null) {
+            val remaining =
+                deadline -
+                    (payload.nowEpochMillis
+                        ?: build.raft.kuiklybase.datetime.Clock.System.now().toEpochMilliseconds())
+            if (remaining > 0) {
+                delay(remaining)
+                jointBillingDeadlineTick++
+            }
+        }
+    }
     var lastAcceptedHeaderProjection by remember(headerProjectionInput) {
         mutableStateOf<SharedConversationDirectoryProjection?>(null)
     }
@@ -7063,8 +7153,8 @@ private fun SharedThreadRouteContentContent(
         remember(baseRenderedPayload, threadMembersProjection) {
             baseRenderedPayload.withThreadMembersProjection(threadMembersProjection)
         }
-    val renderedThread = renderedPayload.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled)
-    val renderedTimelineSlice = timelineSlice.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled)
+    val renderedThread = renderedPayload.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && jointBillingNotice != JointBillingNotice.Locked)
+    val renderedTimelineSlice = timelineSlice.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && jointBillingNotice != JointBillingNotice.Locked)
     val emptyMemberSuggestionSliceFlow = remember { MutableStateFlow(SharedMembersMemberSuggestionSlice()) }
     val memberSuggestionsFlow =
         remember(
@@ -10201,6 +10291,8 @@ private fun SharedThreadRouteContentContent(
             lastRefreshResultReason = renderSlice.lastRefreshResultReason,
             replyParentAuthority = renderSlice.replyParentAuthority,
             writeActionsEnabled = renderSlice.writeActionsEnabled,
+            jointBillingNotice = jointBillingNotice,
+            jointGraceDeadlineLabel = jointGraceDeadlineLabel,
             channelProfileUpdateStatus = renderSlice.channelProfileUpdateStatus,
             channelProfileUpdateErrorCode = renderSlice.channelProfileUpdateErrorCode,
             replyMetadataByParentId = replyMetadataByParentId,
@@ -13509,6 +13601,8 @@ private data class ThreadPageContentData(
     val lastRefreshResultReason: String?,
     val replyParentAuthority: ReplyParentAuthorityStatus,
     val writeActionsEnabled: Boolean,
+    val jointBillingNotice: JointBillingNotice = JointBillingNotice.None,
+    val jointGraceDeadlineLabel: String? = null,
     val channelProfileUpdateStatus: ChannelProfileUpdateStatus,
     val channelProfileUpdateErrorCode: String?,
     val replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
@@ -13610,6 +13704,8 @@ fun ThreadPageContent(
     lastRefreshResultReason: String? = null,
     replyParentAuthority: ReplyParentAuthorityStatus = ReplyParentAuthorityStatus.Resolving,
     writeActionsEnabled: Boolean,
+    jointBillingNotice: JointBillingNotice = JointBillingNotice.None,
+    jointGraceDeadlineLabel: String? = null,
     channelProfileUpdateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     channelProfileUpdateErrorCode: String? = null,
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
@@ -13707,6 +13803,8 @@ fun ThreadPageContent(
                 lastRefreshResultReason = lastRefreshResultReason,
                 replyParentAuthority = replyParentAuthority,
                 writeActionsEnabled = writeActionsEnabled,
+                jointBillingNotice = jointBillingNotice,
+                jointGraceDeadlineLabel = jointGraceDeadlineLabel,
                 channelProfileUpdateStatus = channelProfileUpdateStatus,
                 channelProfileUpdateErrorCode = channelProfileUpdateErrorCode,
                 replyMetadataByParentId = replyMetadataByParentId,
@@ -13810,6 +13908,8 @@ private fun ThreadPageContentContent(
     val canonicalAccessResolved = data.canonicalAccessResolved
     val replyParentAuthority = data.replyParentAuthority
     val writeActionsEnabled = data.writeActionsEnabled
+    val jointBillingNotice = data.jointBillingNotice
+    val jointGraceDeadlineLabel = data.jointGraceDeadlineLabel
     val channelProfileUpdateStatus = data.channelProfileUpdateStatus
     val channelProfileUpdateErrorCode = data.channelProfileUpdateErrorCode
     val replyMetadataByParentId = data.replyMetadataByParentId
@@ -14372,6 +14472,7 @@ private fun ThreadPageContentContent(
         )
     val showComposerForSelectedTab =
         primaryFooterReady &&
+        jointBillingNotice != JointBillingNotice.Locked &&
         shouldShowThreadComposerForReadyContent(
             joined = payload.joined,
             showComposer = payload.showComposer,
@@ -14770,6 +14871,28 @@ private fun ThreadPageContentContent(
                 )
             },
             body = {
+            if (jointBillingNotice != JointBillingNotice.None) {
+                val deadlineLabel = jointGraceDeadlineLabel?.takeIf { it.isNotBlank() }
+                SlockRaftUiBanner(
+                    status =
+                        if (jointBillingNotice == JointBillingNotice.Locked) SlockRaftUiBannerStatus.Destructive
+                        else SlockRaftUiBannerStatus.Warning,
+                    title =
+                        stringResource(
+                            if (jointBillingNotice == JointBillingNotice.Locked) MR.strings.joint_billing_locked_title
+                            else MR.strings.joint_over_limit_grace_title
+                        ),
+                    description =
+                        if (jointBillingNotice == JointBillingNotice.Locked) {
+                            stringResource(MR.strings.joint_billing_locked_detail)
+                        } else {
+                            stringResource(MR.strings.joint_over_limit_grace_detail, deadlineLabel ?: "")
+                        },
+                    size = SlockRaftUiBannerSize.Medium,
+                    iconName = SlockLucideIconName.TriangleAlert,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
             if (payload.showModeTabs) {
                 SlockTabbedScaffold(
                     tabs = availableTabs.map { it.toSlockTabSpec() },
@@ -18385,6 +18508,7 @@ private fun ThreadMessagesListContent(
                 "visible=${listState.layoutInfo.visibleItemsInfo.joinToString(",") { it.index.toString() }}"
         )
     }
+    var pendingOlderPageAnchor by remember(threadInstanceKey) { mutableStateOf<ThreadVisibleMessageAnchor?>(null) }
     var previousOlderMessagesStatus by remember(threadInstanceKey) { mutableStateOf(renderPayload.olderMessagesStatus) }
     var olderPageCycleActive by remember(threadInstanceKey) { mutableStateOf(false) }
     var olderPageSettledUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
@@ -18752,14 +18876,54 @@ private fun ThreadMessagesListContent(
         val previousStatus = previousOlderMessagesStatus
         if (renderPayload.olderMessagesStatus == "loading" && previousStatus != "loading") {
             olderPageCycleActive = true
+            pendingOlderPageAnchor =
+                listState.threadFirstVisibleMessageAnchor(
+                    timelineSlice = renderPayload,
+                    userScrollGeneration = userScrollGeneration.value
+                )
             allowBottomAutoAnchor = false
+            pendingOlderPageAnchor?.let { anchor ->
+                diagnosticsLogger(
+                    "thread_older_anchor_capture messageId=${anchor.messageId} offset=${anchor.offset} " +
+                        "userScrollGeneration=${anchor.userScrollGeneration} " +
+                        "isScrollInProgress=${listState.isScrollInProgress}"
+                )
+            }
             diagnosticsLogger(
                 "thread_older_page_cycle result=loading " +
                     "viewportIntent=${viewportControllerState.intent} " +
                     "isScrollInProgress=${listState.isScrollInProgress}"
             )
         } else if (previousStatus == "loading" && renderPayload.olderMessagesStatus != "loading") {
+            val anchor = pendingOlderPageAnchor
+            pendingOlderPageAnchor = null
             allowBottomAutoAnchor = false
+            if (anchor != null) {
+                listState.awaitThreadMessagesLayoutFrame()
+            }
+            if (
+                anchor != null &&
+                shouldRestoreThreadOlderPageAnchor(
+                    capturedUserScrollGeneration = anchor.userScrollGeneration,
+                    currentUserScrollGeneration = userScrollGeneration.value
+                )
+            ) {
+                val targetIndex = renderPayload.threadMessageListItemIndex(anchor.messageId)
+                if (targetIndex >= 0) {
+                    listState.scrollToItem(targetIndex, -anchor.offset)
+                    diagnosticsLogger(
+                        "thread_older_anchor_restore result=restored messageId=${anchor.messageId} " +
+                            "targetIndex=$targetIndex offset=${anchor.offset} " +
+                            "userScrollGeneration=${userScrollGeneration.value}"
+                    )
+                }
+            } else if (anchor != null) {
+                diagnosticsLogger(
+                    "thread_older_anchor_restore result=skipped_user_moved messageId=${anchor.messageId} " +
+                        "capturedUserScrollGeneration=${anchor.userScrollGeneration} " +
+                        "currentUserScrollGeneration=${userScrollGeneration.value}"
+                )
+            }
             diagnosticsLogger(
                 "thread_older_page_cycle result=settled " +
                     "viewportIntent=${viewportControllerState.intent} " +
@@ -18808,14 +18972,18 @@ private fun ThreadMessagesListContent(
     LaunchedEffect(
         threadInstanceKey,
         latestLocalSendBottomAnchorKey,
-        latestItemIndex,
         newerPageCycleActive
     ) {
         if (newerPageCycleActive) {
             allowBottomAutoAnchor = false
             return@LaunchedEffect
         }
-        if (!shouldAnchorLatestLocalSendToBottom(latestLocalSendBottomAnchorKey, latestItemIndex)) {
+        if (
+            !shouldAnchorLatestLocalSendToBottom(
+                latestLocalSendBottomAnchorKey,
+                currentLatestItemIndexState.value
+            )
+        ) {
             return@LaunchedEffect
         }
         latestLocalSendBottomAnchorStartUserScrollGeneration = userScrollGeneration.value
@@ -22129,6 +22297,11 @@ private fun LazyListState.threadFirstVisibleMessageAnchor(
         userScrollGeneration = userScrollGeneration
     )
 }
+
+internal fun shouldRestoreThreadOlderPageAnchor(
+    capturedUserScrollGeneration: Int,
+    currentUserScrollGeneration: Int
+): Boolean = capturedUserScrollGeneration == currentUserScrollGeneration
 
 internal fun ThreadTimelineSlice.visibleThreadReadAnchor(
     visibleListItemIndexes: List<Int>,

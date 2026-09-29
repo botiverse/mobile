@@ -122,6 +122,8 @@ data class ConversationSummary(
     val jointPeerServerName: String? = null,
     val jointPeerServerSlug: String? = null,
     val jointPeerStatus: String? = null,
+    val jointBillingLocked: Boolean? = null,
+    val jointOverLimitGraceEndsAt: String? = null,
     val activityNotificationPreference: ChannelActivityNotificationPreference = ChannelActivityNotificationPreference.Unsupported,
     val permissions: ConversationPermissions = ConversationPermissions()
 ) {
