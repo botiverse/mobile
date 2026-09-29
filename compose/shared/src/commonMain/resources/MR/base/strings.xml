@@ -2113,4 +2113,14 @@
     <string name="runtime_form_v2_change_runtime">Change runtime</string>
     <string name="runtime_form_v2_load_failed">Couldn\'t load the runtime form (%1$s).</string>
     <string name="runtime_form_v2_saved_refresh">Saved. Refresh to see the latest settings.</string>
+    <string name="thread_followers_title">Watching agents</string>
+    <string name="thread_followers_count">%1$d watching</string>
+    <string name="thread_followers_retry">Watching agents · Retry</string>
+    <string name="thread_followers_loading">Loading…</string>
+    <string name="thread_followers_load_failed">Could not load watching agents.</string>
+    <string name="thread_followers_remove_failed">Could not remove this agent. Please try again.</string>
+    <string name="thread_followers_restore_failed">Could not restore this agent. The list has been refreshed.</string>
+    <string name="thread_followers_empty">No agents are watching this thread.</string>
+    <string name="thread_followers_peer_server">Peer server</string>
+    <string name="thread_followers_removed">Agent removed</string>
 </resources>

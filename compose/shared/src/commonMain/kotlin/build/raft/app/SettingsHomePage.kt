@@ -425,6 +425,7 @@ import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadConversation
+import build.raft.app.model.ThreadFollowersUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.threadIdentity
 import build.raft.app.model.TaskStatus
@@ -23118,6 +23119,7 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is MessageNew -> "message_new"
         is MessageUpdated -> "message_updated"
         is DirectMessageCreated -> "dm_new"
+        is ThreadFollowersUpdated -> "thread_followers_updated"
         is ThreadUpdated -> "thread_updated"
         is TaskCreated -> "task_created"
         is TaskUpdated -> "task_updated"
@@ -23142,6 +23144,7 @@ private fun RealtimeEvent.performanceMarkerPhase(): String =
         is MemberPresenceUpdated -> "realtime_presence_apply"
         is MessageNew,
         is MessageUpdated,
+        is ThreadFollowersUpdated,
         is ThreadUpdated,
         is TaskCreated,
         is TaskUpdated,

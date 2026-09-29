@@ -10174,6 +10174,17 @@ private fun SharedThreadRouteContentContent(
         )
         CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
+            agentFollowersHeader = {
+                if (renderedThread.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+                    ThreadAgentFollowersRoute(
+                        threadId = renderedThread.streamChannelId,
+                        serverId = currentServerId,
+                        accountId = currentSession?.user?.id,
+                        storeScope = storeScope,
+                        active = active && threadHostForeground,
+                    )
+                }
+            },
             scaffold = movableThreadRouteScaffold,
             threadInstanceKey = threadInstanceKey,
             threadReadAnchorOwner = threadReadAnchorOwner,
@@ -13482,6 +13493,7 @@ private class ThreadEventHandler(
  * un-minified giant composable frame on API 34/36 builds).
  */
 private data class ThreadPageContentData(
+    val agentFollowersHeader: @Composable () -> Unit,
     val threadInstanceKey: String,
     val threadReadAnchorOwner: ThreadReadAnchorOwner?,
     val threadReadAnchorStore: ThreadReadAnchorStore,
@@ -13581,6 +13593,7 @@ private class ThreadPageContentCallbacks(
 
 private @Composable
 fun ThreadPageContent(
+    agentFollowersHeader: @Composable () -> Unit = {},
     scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
     threadInstanceKey: String,
     threadReadAnchorOwner: ThreadReadAnchorOwner?,
@@ -13677,6 +13690,7 @@ fun ThreadPageContent(
         modifier = Modifier,
         data =
             ThreadPageContentData(
+                agentFollowersHeader = agentFollowersHeader,
                 threadInstanceKey = threadInstanceKey,
                 threadReadAnchorOwner = threadReadAnchorOwner,
                 threadReadAnchorStore = threadReadAnchorStore,
@@ -14710,6 +14724,7 @@ private fun ThreadPageContentContent(
                 },
             header = {
                 ThreadPageHeader(
+                    agentFollowersHeader = data.agentFollowersHeader,
                     payload = payload,
                     headerDisplay = headerDisplay,
                     activityMutedIndicatorVisible = activityMutedIndicatorVisible,
@@ -15292,6 +15307,7 @@ private fun ThreadPageContentContent(
 
 @Composable
 private fun ThreadPageHeader(
+    agentFollowersHeader: @Composable () -> Unit = {},
     payload: KuiklyThreadScreenPayload,
     headerDisplay: ThreadHeaderDisplayModel = payload.threadHeaderFallbackDisplayModel(),
     activityMutedIndicatorVisible: Boolean = payload.threadActivityMutedIndicatorVisible(null),
@@ -15389,6 +15405,7 @@ private fun ThreadPageHeader(
                     }
                     dmAgentActivity?.let { ThreadDmAgentActivity(state = it) }
                 }
+                agentFollowersHeader()
                 headerDisplay.subtitle?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         text = it,

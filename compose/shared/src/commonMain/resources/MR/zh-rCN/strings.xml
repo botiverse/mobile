@@ -2113,4 +2113,14 @@
     <string name="runtime_form_v2_change_runtime">更换运行时</string>
     <string name="runtime_form_v2_load_failed">运行时表单加载失败（%1$s）。</string>
     <string name="runtime_form_v2_saved_refresh">已保存，刷新后可看到最新配置。</string>
+    <string name="thread_followers_title">正在关注的 Agent</string>
+    <string name="thread_followers_count">%1$d 个 Agent 正在关注</string>
+    <string name="thread_followers_retry">关注名单 · 重试</string>
+    <string name="thread_followers_loading">加载中…</string>
+    <string name="thread_followers_load_failed">无法加载关注名单。</string>
+    <string name="thread_followers_remove_failed">无法移除该 Agent，请重试。</string>
+    <string name="thread_followers_restore_failed">无法恢复该 Agent，名单已刷新。</string>
+    <string name="thread_followers_empty">没有 Agent 正在关注这个线程。</string>
+    <string name="thread_followers_peer_server">对方服务器</string>
+    <string name="thread_followers_removed">已移除 Agent</string>
 </resources>

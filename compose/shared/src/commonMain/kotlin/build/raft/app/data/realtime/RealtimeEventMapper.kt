@@ -64,6 +64,7 @@ import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadId
+import build.raft.app.model.ThreadFollowersUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.canonical.message.CanonicalMessageCarry
@@ -195,6 +196,9 @@ class RealtimeEventMapper(
                     ?.withRealtimeReactionsClearedIfExplicitNull(element)
                     ?.let { mapped -> MessageUpdated(mapped, observeShadow(eventName, element, mapped)) }
             RealtimeSocketEvents.DirectMessageNew -> decodeDirectMessageNew(element)
+            RealtimeSocketEvents.ThreadFollowersUpdated ->
+                decodeOrNull(ThreadFollowersUpdatedDto.serializer(), element)
+                    ?.threadChannelId?.takeIf { it.isNotBlank() }?.let { ThreadFollowersUpdated(ChannelId(it)) }
             RealtimeSocketEvents.ThreadUpdated ->
                 decodeOrNull(ThreadUpdatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.ChannelUpdated ->
@@ -449,6 +453,9 @@ private data class CommentRefWireDto(
     val hostSource: CommentHostSourceWireDto? = null,
     val anchorLabel: String? = null,
 )
+
+@Serializable
+private data class ThreadFollowersUpdatedDto(val threadChannelId: String)
 
 @Serializable
 private data class ThreadUpdatedDto(
