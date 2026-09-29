@@ -17521,6 +17521,29 @@ private fun ThreadMessagesListContent(
             }
         val anchorStore = adaptiveSharedStores.adaptiveScrollAnchorStore(adaptiveStoreScope)
         val anchor = anchorStore.peek(adaptiveStoreScope.shellInstanceId, identity)
+        fun verifyAnchorRestore(targetMessageId: String, targetIndex: Int): Boolean {
+            val settledIntent = viewportControllerState.intent as? LazyViewportIntent.Anchored
+            if (settledIntent == null ||
+                settledIntent.target != LazyViewportAnchorTarget.Message(targetMessageId)
+            ) {
+                postDetailReadyTrace("restore_rejected") {
+                    put("anchorMessageId", targetMessageId)
+                    put("reason", "intent_not_anchored")
+                    put("intent", viewportControllerState.intent.logTag())
+                }
+                return false
+            }
+            if (listState.firstVisibleItemIndex != targetIndex) {
+                postDetailReadyTrace("restore_rejected") {
+                    put("anchorMessageId", targetMessageId)
+                    put("reason", "position_mismatch")
+                    put("firstVisible", listState.firstVisibleItemIndex.toDouble())
+                    put("targetIndex", targetIndex.toDouble())
+                }
+                return false
+            }
+            return true
+        }
         if (anchor != null && !anchor.atLatest) {
             adaptiveAnchorRestoreInFlight = true
             val firstMessageIndex = renderPayload.firstMessageListItemIndex()
@@ -17551,6 +17574,12 @@ private fun ThreadMessagesListContent(
                     )
                 )
                 viewportControllerState.pendingCommand?.id?.let { awaitViewportCommandSettlement(it) }
+                // Settlement returning is not proof of success: AnchorUnavailable settles too
+                // (epoch bump + pending cleared, intent degrades to UserDragging). Gate READY on
+                // intent still Anchored on the target and the readback actually showing it.
+                if (!verifyAnchorRestore(requireNotNull(anchor.messageId), locatedIndex)) {
+                    return@LaunchedEffect
+                }
                 postDetailReadyTrace("restore_applied") {
                     put("firstVisible", listState.firstVisibleItemIndex.toDouble())
                     put("firstVisibleOffset", listState.firstVisibleItemScrollOffset.toDouble())
@@ -17587,6 +17616,9 @@ private fun ThreadMessagesListContent(
                         )
                     )
                     viewportControllerState.pendingCommand?.id?.let { awaitViewportCommandSettlement(it) }
+                    if (!verifyAnchorRestore(fallbackMessageId, anchor.fallbackIndex)) {
+                        return@LaunchedEffect
+                    }
                 } else {
                     // No durable message identity at the fallback index — a bare scroll would
                     // leave intent at FollowingLatest and the next inset relayout would yank
