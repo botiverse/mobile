@@ -17471,7 +17471,21 @@ private fun ThreadMessagesListContent(
                 }
                 listState.awaitThreadMessagesLayoutFrame()
                 postDetailReadyTrace("layout_wait_end")
-                listState.scrollToItem(locatedIndex, anchor.messageOffsetPx)
+                // Take viewport ownership through the controller, not a bare scroll: with intent
+                // left at FollowingLatest, the next composer_inset_relayout replays
+                // Mutation.InsetChange and yanks the restored viewport back to bottom. Anchored
+                // (ExactOffset) makes later relayouts re-assert this message+offset instead.
+                viewportLayoutGeneration += 1L
+                dispatchViewportEvent(
+                    LazyViewportEvent.Anchor(
+                        target = LazyViewportAnchorTarget.Message(requireNotNull(anchor.messageId)),
+                        offset = -anchor.messageOffsetPx,
+                        layoutGeneration = viewportLayoutGeneration,
+                        placement = LazyViewportAnchorPlacement.ExactOffset,
+                        fallback = LazyViewportAnchorFallback.Free
+                    )
+                )
+                viewportControllerState.pendingCommand?.id?.let { awaitViewportCommandSettlement(it) }
                 postDetailReadyTrace("restore_applied") {
                     put("firstVisible", listState.firstVisibleItemIndex.toDouble())
                     put("firstVisibleOffset", listState.firstVisibleItemScrollOffset.toDouble())
@@ -17489,8 +17503,32 @@ private fun ThreadMessagesListContent(
                 }
                 listState.awaitThreadMessagesLayoutFrame()
                 postDetailReadyTrace("layout_wait_end")
-                listState.scrollToItem(anchor.fallbackIndex, anchor.messageOffsetPx)
+                val fallbackMessageId =
+                    renderPayload.messages
+                        .getOrNull(anchor.fallbackIndex - firstMessageIndex)
+                        ?.id
+                if (fallbackMessageId != null) {
+                    // Same ownership transfer as the located branch: intent must leave
+                    // FollowingLatest or a later inset relayout replays Latest and yanks the
+                    // restored viewport to bottom.
+                    viewportLayoutGeneration += 1L
+                    dispatchViewportEvent(
+                        LazyViewportEvent.Anchor(
+                            target = LazyViewportAnchorTarget.Message(fallbackMessageId),
+                            offset = -anchor.messageOffsetPx,
+                            layoutGeneration = viewportLayoutGeneration,
+                            placement = LazyViewportAnchorPlacement.ExactOffset,
+                            fallback = LazyViewportAnchorFallback.Free
+                        )
+                    )
+                    viewportControllerState.pendingCommand?.id?.let { awaitViewportCommandSettlement(it) }
+                } else {
+                    listState.scrollToItem(anchor.fallbackIndex, anchor.messageOffsetPx)
+                }
                 postDetailReadyTrace("restore_applied") {
+                    put("restoreBasis", "fallback_index")
+                    put("intentTransferred", if (fallbackMessageId != null) 1.0 else 0.0)
+
                     put("firstVisible", listState.firstVisibleItemIndex.toDouble())
                     put("firstVisibleOffset", listState.firstVisibleItemScrollOffset.toDouble())
                     put("anchorOffsetPx", anchor.messageOffsetPx.toDouble())
