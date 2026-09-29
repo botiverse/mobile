@@ -9119,6 +9119,12 @@ private fun SettingsDesktopModeCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_DESKTOP_MODE && actionState.inProgress
     val preference = snapshot.desktopModeOnLargeScreen
+    LaunchedEffect(preference.available, preference.enabled, busy) {
+        diagnosticsLogger(
+            "desktop_mode_card_state enabled=${preference.enabled} " +
+                "available=${preference.available} busy=$busy"
+        )
+    }
     SettingsFormSectionCard(
         iconName = SlockLucideIconName.Monitor,
         title = stringResource(MR.strings.settings_mobile_desktop_mode)
