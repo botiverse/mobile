@@ -4663,6 +4663,7 @@ private fun SlockAppShellReadyContent(
             return true
         }
         if (
+            desktopModeOnLargeScreen &&
             appShellRailSurfaceBackDismissesDetailFirst(
                 selectedTab = selectedTab,
                 railInlineSecondaryDestination = railInlineSecondaryDestination,
@@ -4685,7 +4686,10 @@ private fun SlockAppShellReadyContent(
             homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
             return true
         }
-        if (adaptiveWorkspaceState?.presentation == SlockAdaptiveWorkspacePresentation.DetailOnly) {
+        if (
+            desktopModeOnLargeScreen &&
+            adaptiveWorkspaceState?.presentation == SlockAdaptiveWorkspacePresentation.DetailOnly
+        ) {
             dismissAdaptiveDetailSelection()
             return true
         }
