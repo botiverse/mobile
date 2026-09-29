@@ -45,6 +45,7 @@ import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
 import build.raft.app.data.runtimeform.v2.applyRuntimeFormV2Change
 import build.raft.app.data.runtimeform.v2.initialRuntimeFormV2Values
 import build.raft.app.data.runtimeform.v2.runtimeFormV2Submission
+import build.raft.app.data.runtimeform.v2.runtimeFormV2ValuesAfterSourceReload
 import build.raft.app.data.runtimeform.v2.validateRuntimeFormV2
 import build.raft.app.data.shouldClearBuiltInWriteOnlySecret
 import build.raft.app.resources.MR
@@ -1001,7 +1002,12 @@ internal fun SharedCreateAgentDialog(
         mutableStateOf(v2Loaded?.let { initialRuntimeFormV2Values(it.form, it.sources) }.orEmpty())
     }
     var v2Touched by remember(v2Loaded) { mutableStateOf(emptySet<String>()) }
-    val v2Errors = v2Loaded?.let { validateRuntimeFormV2(it.form, it.sources, v2Values) }.orEmpty()
+    // Re-probed option sources sit on top of the loaded form; render, validate and submit against them.
+    val (v2Form, v2SourceRefresh) =
+        rememberRuntimeFormV2SourceRefresh(runtimeFormV2, availableSelectedMachineId, v2Loaded) { updated, sourceId ->
+            v2Values = runtimeFormV2ValuesAfterSourceReload(updated.form, updated.sources, v2Values, sourceId)
+        }
+    val v2Errors = v2Form?.let { validateRuntimeFormV2(it.form, it.sources, v2Values) }.orEmpty()
     val builtInFormLoading =
         dialogBuiltInFormRefreshState.loading ||
             createAgentMachineKey?.let { it in createAgentFormState.loadingRuntimeCatalogs } == true ||
@@ -1506,10 +1512,11 @@ internal fun SharedCreateAgentDialog(
                                     )
                                 } else {
                                     RuntimeFormV2Fields(
-                                        loaded = v2Loaded,
+                                        loaded = v2Form ?: v2Loaded,
                                         values = v2Values,
                                         onChange = { key, value ->
-                                            v2Values = applyRuntimeFormV2Change(v2Loaded.form, v2Loaded.sources, v2Values, key, value)
+                                            val current = v2Form ?: v2Loaded
+                                            v2Values = applyRuntimeFormV2Change(current.form, current.sources, v2Values, key, value)
                                             v2Touched = v2Touched + key
                                         },
                                         errors = v2Errors.filterKeys { it in v2Touched || it in errorFieldKeys },
@@ -1518,7 +1525,8 @@ internal fun SharedCreateAgentDialog(
                                         editing = false,
                                         advancedOpen = advancedOpen,
                                         onAdvancedOpenChange = { advancedOpen = it },
-                                        enabled = !submitting
+                                        enabled = !submitting,
+                                        sourceRefresh = v2SourceRefresh
                                     )
                                 }
                             }
@@ -1704,7 +1712,7 @@ internal fun SharedCreateAgentDialog(
                     minWidth = 126.dp,
                     backgroundColor = SlockColor.AccentPink,
                     onClick = {
-                        val v2Submit = v2Loaded?.takeIf { v2Active }?.let { loaded ->
+                        val v2Submit = (v2Form ?: v2Loaded)?.takeIf { v2Active }?.let { loaded ->
                             SharedCreateAgentDialogSubmit(
                                 name = trimmedName.removePrefix("@"),
                                 description = description.text.trim().takeIf { it.isNotBlank() },
@@ -2518,7 +2526,7 @@ internal fun AdvancedToggleButton(open: Boolean, onToggle: () -> Unit) {
 }
 
 @Composable
-private fun CreateAgentSectionLabelWithAction(
+internal fun CreateAgentSectionLabelWithAction(
     label: String,
     required: Boolean = false,
     actionIcon: SlockLucideIconName,

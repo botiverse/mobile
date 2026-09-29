@@ -75,6 +75,20 @@ internal class RuntimeFormV2Loader(
         return loadFrom(response, serverId, machineId)
     }
 
+    /**
+     * Re-requests one option source (the "re-probe" action next to a select). The form and every
+     * other source stay as they are; a failure leaves the caller's current options in place.
+     */
+    suspend fun reloadSource(
+        serverId: ServerId,
+        machineId: String,
+        runtimeId: String,
+        sourceId: String
+    ): DataResult<RuntimeFormV2Source> {
+        if (machineId.isBlank() || runtimeId.isBlank()) return failure("runtime_form_v2_ref_missing")
+        return fetchSource(serverId, machineId, runtimeId, sourceId)
+    }
+
     /** The agent as the server now stores it, read back after a v2 save (the client never maps values to a config). */
     suspend fun agent(agentId: MemberId): DataResult<AgentSummary> {
         val transport = agents ?: return failure("runtime_form_v2_edit_unavailable")
@@ -91,17 +105,31 @@ internal class RuntimeFormV2Loader(
             ?: return failure("runtime_form_v2_contract_mismatch")
         val sources = linkedMapOf<String, RuntimeFormV2Source>()
         for (sourceId in form.optionSources.keys) {
-            val sourceResponse =
-                guarded { computers.runtimeFormV2OptionSource(serverId, machineId, form.runtimeId, sourceId) }
-                    ?: return failure("runtime_form_v2_request_failed")
-            if (!sourceResponse.isSuccessful) return sourceResponse.httpFailure()
-            val source = sourceResponse.bodyText
-                ?.let { runCatching { runtimeFormV2ErrorJson.parseToJsonElement(it) }.getOrNull() }
-                ?.let(::parseRuntimeFormV2Source)
-                ?: return failure("runtime_form_v2_option_source_contract_mismatch")
-            sources[sourceId] = source
+            when (val source = fetchSource(serverId, machineId, form.runtimeId, sourceId)) {
+                is DataResult.Content -> sources[sourceId] = source.data
+                is DataResult.Error -> return source
+                is DataResult.NoPermission -> return source
+                is DataResult.Empty -> return source
+            }
         }
         return DataResult.Content(RuntimeFormV2Loaded(form, sources))
+    }
+
+    private suspend fun fetchSource(
+        serverId: ServerId,
+        machineId: String,
+        runtimeId: String,
+        sourceId: String
+    ): DataResult<RuntimeFormV2Source> {
+        val sourceResponse =
+            guarded { computers.runtimeFormV2OptionSource(serverId, machineId, runtimeId, sourceId) }
+                ?: return failure("runtime_form_v2_request_failed")
+        if (!sourceResponse.isSuccessful) return sourceResponse.httpFailure()
+        val source = sourceResponse.bodyText
+            ?.let { runCatching { runtimeFormV2ErrorJson.parseToJsonElement(it) }.getOrNull() }
+            ?.let(::parseRuntimeFormV2Source)
+            ?: return failure("runtime_form_v2_option_source_contract_mismatch")
+        return DataResult.Content(source)
     }
 
     private suspend fun guarded(block: suspend () -> HomeNetworkResponse): HomeNetworkResponse? =

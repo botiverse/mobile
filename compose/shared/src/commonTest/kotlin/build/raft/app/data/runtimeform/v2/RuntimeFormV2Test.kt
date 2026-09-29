@@ -79,6 +79,33 @@ class RuntimeFormV2Test {
         )
     )
 
+    // ── re-probe (#2749) ──
+
+    @Test
+    fun reprobeResetsASelectWhoseValueDisappearedAndItsDependentsFollow() {
+        val before = initialRuntimeFormV2Values(kimi.copy(values = null), kimiSources)
+            .let { applyRuntimeFormV2Change(kimi, kimiSources, it, "model", JsonPrimitive("k1")) }
+        assertEquals("k1", before.text("model"))
+        // The machine no longer reports k1.
+        val reprobed = kimiSources + ("model" to kimiSources.getValue("model").copy(options = kimiSources.getValue("model").options!!.take(1)))
+
+        val after = runtimeFormV2ValuesAfterSourceReload(kimi, reprobed, before, "model")
+
+        assertEquals("k2", after.text("model"), "falls back to the source default, like v1 after re-probing")
+        assertEquals("high", after.text("reasoningEffort"), "the derived reasoning effort follows the new model")
+    }
+
+    @Test
+    fun reprobeKeepsValuesTheSourceStillOffersAndIgnoresOtherSources() {
+        val values = initialRuntimeFormV2Values(kimi.copy(values = null), kimiSources)
+        assertEquals(values, runtimeFormV2ValuesAfterSourceReload(kimi, kimiSources, values, "model"), "k2 is still offered")
+        val reprobed = kimiSources + ("model" to kimiSources.getValue("model").copy(options = emptyList(), defaultValue = null))
+        val changed = applyRuntimeFormV2Change(kimi, kimiSources, values, "model", JsonPrimitive("k1"))
+        assertEquals(changed, runtimeFormV2ValuesAfterSourceReload(kimi, reprobed, changed, "other-source"))
+        val blank = applyRuntimeFormV2Change(kimi, kimiSources, values, "model", JsonPrimitive(""))
+        assertEquals(blank, runtimeFormV2ValuesAfterSourceReload(kimi, reprobed, blank, "model"), "an empty value is left alone")
+    }
+
     // ── v2.test.ts ──
 
     @Test

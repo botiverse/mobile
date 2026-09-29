@@ -5,17 +5,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.components.SlockBrutalSectionLabel
 import build.raft.app.components.SlockBrutalSelectField
 import build.raft.app.components.SlockBrutalSelectOption
 import build.raft.app.components.SlockBrutalTextField
 import build.raft.app.components.SlockCheckbox
+import build.raft.app.data.DataResult
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Choices
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2ErrorCode
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Field
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2FieldKind
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loaded
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2Source
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Values
 import build.raft.app.data.runtimeform.v2.booleanValue
 import build.raft.app.data.runtimeform.v2.isRuntimeFormV2FieldVisible
@@ -34,6 +38,7 @@ import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.tmm.kmmresource.compose.stringResource
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -60,7 +65,8 @@ internal fun RuntimeFormV2Fields(
     editing: Boolean,
     advancedOpen: Boolean,
     onAdvancedOpenChange: (Boolean) -> Unit,
-    enabled: Boolean
+    enabled: Boolean,
+    sourceRefresh: RuntimeFormV2SourceRefresh? = null
 ) {
     val focusManager = LocalFocusManager.current
     val visible = loaded.form.fields.filter {
@@ -84,7 +90,7 @@ internal fun RuntimeFormV2Fields(
         }
         primary.forEach { field ->
             key(field.key) {
-                RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, errors, serverErrorKeys, serverMessage), editing, enabled) {
+                RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, errors, serverErrorKeys, serverMessage), editing, enabled, sourceRefresh) {
                     focusManager.clearFocus(force = true)
                 }
             }
@@ -99,7 +105,7 @@ internal fun RuntimeFormV2Fields(
             if (advancedOpen || forcedOpen) {
                 advanced.forEach { field ->
                     key(field.key) {
-                        RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, errors, serverErrorKeys, serverMessage), editing, enabled) {
+                        RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, errors, serverErrorKeys, serverMessage), editing, enabled, sourceRefresh) {
                             focusManager.clearFocus(force = true)
                         }
                     }
@@ -137,6 +143,7 @@ private fun RuntimeFormV2FieldRow(
     error: String?,
     editing: Boolean,
     enabled: Boolean,
+    sourceRefresh: RuntimeFormV2SourceRefresh?,
     clearFocus: () -> Unit
 ) {
     val current = values.text(field.key)
@@ -238,8 +245,26 @@ private fun RuntimeFormV2FieldRow(
                         }
                     }
                     val selectedId = if (current.isEmpty() && choices.allowEmpty) RUNTIME_FORM_V2_DEFAULT_OPTION_ID else current
+                    // Re-probe: selects that read a machine option source can ask for it again, like v1's
+                    // refresh next to the model picker. Derived selects follow their parent's source.
+                    val refreshableSource = field.optionSourceId
+                        ?.takeIf { field.kind != RuntimeFormV2FieldKind.DerivedSelect && sourceRefresh != null }
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        SlockBrutalSectionLabel(label = field.label, required = field.required)
+                        if (refreshableSource != null && sourceRefresh != null) {
+                            CreateAgentSectionLabelWithAction(
+                                label = field.label,
+                                required = field.required,
+                                actionIcon = SlockLucideIconName.RefreshCw,
+                                actionEnabled = enabled && refreshableSource !in sourceRefresh.refreshing,
+                                loading = refreshableSource in sourceRefresh.refreshing,
+                                onAction = {
+                                    clearFocus()
+                                    sourceRefresh.onRefresh(refreshableSource)
+                                }
+                            )
+                        } else {
+                            SlockBrutalSectionLabel(label = field.label, required = field.required)
+                        }
                         SlockBrutalSelectField(
                             options = options,
                             selectedId = selectedId,
@@ -254,6 +279,13 @@ private fun RuntimeFormV2FieldRow(
                             }
                         )
                         field.hint?.let { Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray) }
+                        if (refreshableSource != null && sourceRefresh != null && refreshableSource in sourceRefresh.failed) {
+                            Text(
+                                stringResource(MR.strings.runtime_form_v2_source_refresh_failed),
+                                style = SlockType.Caption,
+                                color = SlockColor.AccentRed
+                            )
+                        }
                         error?.let { Text(it, style = SlockType.Caption, color = SlockColor.AccentRed) }
                     }
                 }
@@ -269,6 +301,56 @@ private fun RuntimeFormV2FieldRow(
                 )
             }
     }
+}
+
+/**
+ * Re-probe wiring for option sources: which sources are being re-requested, which last
+ * attempt failed (the previous options stay on screen), and how to ask again.
+ */
+internal data class RuntimeFormV2SourceRefresh(
+    val refreshing: Set<String>,
+    val failed: Set<String>,
+    val onRefresh: (sourceId: String) -> Unit
+)
+
+/**
+ * Holds re-probed sources as overrides on top of [loaded], so a refresh never replaces the
+ * loaded form (dialogs key their values on it). Returns the form to render/validate/submit with
+ * and the refresh wiring; the wiring is null when there is nothing to refresh against.
+ */
+@Composable
+internal fun rememberRuntimeFormV2SourceRefresh(
+    access: RuntimeFormV2Access?,
+    machineId: String?,
+    loaded: RuntimeFormV2Loaded?,
+    onSourceReloaded: (updated: RuntimeFormV2Loaded, sourceId: String) -> Unit
+): Pair<RuntimeFormV2Loaded?, RuntimeFormV2SourceRefresh?> {
+    var overrides by remember(loaded) { mutableStateOf(emptyMap<String, RuntimeFormV2Source>()) }
+    var refreshing by remember(loaded) { mutableStateOf(emptySet<String>()) }
+    var failed by remember(loaded) { mutableStateOf(emptySet<String>()) }
+    val scope = rememberCoroutineScope()
+    if (loaded == null || access == null || machineId.isNullOrBlank()) return loaded to null
+    val effective = if (overrides.isEmpty()) loaded else loaded.copy(sources = loaded.sources + overrides)
+    val refresh =
+        RuntimeFormV2SourceRefresh(refreshing = refreshing, failed = failed) { sourceId ->
+            if (sourceId !in refreshing) {
+                refreshing = refreshing + sourceId
+                failed = failed - sourceId
+                scope.launch {
+                    when (val result = access.loader.reloadSource(access.serverId, machineId, loaded.form.runtimeId, sourceId)) {
+                        is DataResult.Content -> {
+                            overrides = overrides + (sourceId to result.data)
+                            onSourceReloaded(loaded.copy(sources = loaded.sources + overrides), sourceId)
+                        }
+                        is DataResult.Empty,
+                        is DataResult.Error,
+                        is DataResult.NoPermission -> failed = failed + sourceId
+                    }
+                    refreshing = refreshing - sourceId
+                }
+            }
+        }
+    return effective to refresh
 }
 
 /** Runtime picker plus the v2 form body, in the create dialog's runtime slot. */

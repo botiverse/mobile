@@ -187,6 +187,29 @@ private fun storedFits(field: RuntimeFormV2Field, stored: JsonElement?): Boolean
 }
 
 /**
+ * After [sourceId] was re-probed: a select that now holds a value the source no longer offers is
+ * reset to its default, and fields depending on it follow — as v1 does after re-probing models.
+ * Free-text (custom-value) choices and empty values are left alone.
+ */
+internal fun runtimeFormV2ValuesAfterSourceReload(
+    form: ParsedRuntimeFormV2,
+    sources: RuntimeFormV2Sources,
+    values: RuntimeFormV2Values,
+    sourceId: String
+): RuntimeFormV2Values {
+    var next = values
+    for (field in dependencyOrder(form.fields)) {
+        if (field.optionSourceId != sourceId) continue
+        val current = next.text(field.key)
+        if (current.isEmpty()) continue
+        val choices = runtimeFormV2Choices(field, sources, next) as? RuntimeFormV2Choices.Select ?: continue
+        if (choices.options.any { it.value == current }) continue
+        next = applyRuntimeFormV2Change(form, sources, next, field.key, defaultFor(field, sources, next))
+    }
+    return next
+}
+
+/**
  * Set one field and cascade: fields whose choices depend on it are reset to
  * their defaults, recursively, so a stale model can never survive a provider
  * change.
