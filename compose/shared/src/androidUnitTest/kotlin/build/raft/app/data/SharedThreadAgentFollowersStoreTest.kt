@@ -25,6 +25,8 @@ class SharedThreadAgentFollowersStoreTest {
         assertEquals(1, repository.removals)
         assertTrue(store.state.value.roster!!.agents.isEmpty())
         assertNotNull(store.state.value.undo)
+        assertEquals(ThreadFollowersNoticeKind.Removed, store.state.value.notice?.kind)
+        assertEquals("Agent", store.state.value.notice?.agentLabel)
         store.dispatch(ThreadAgentFollowersIntent.Close)
         assertNotNull(store.state.value.undo)
         advanceTimeBy(4_999)
@@ -34,6 +36,14 @@ class SharedThreadAgentFollowersStoreTest {
         assertEquals(listOf("agent" to "removal-token"), repository.restores)
         assertEquals(listOf("agent"), store.state.value.roster!!.agents.map { it.id })
         assertNull(store.state.value.undo)
+        assertEquals(ThreadFollowersNoticeKind.Restored, store.state.value.notice?.kind)
+        advanceTimeBy(1)
+        runCurrent()
+        // The old removal expiry must not dismiss the newer restore notification.
+        assertEquals(ThreadFollowersNoticeKind.Restored, store.state.value.notice?.kind)
+        advanceTimeBy(4_999)
+        runCurrent()
+        assertNull(store.state.value.notice)
     }
 
     @Test fun undoExpiresAtFiveSecondsEvenBeforeTheTimerRuns() = runTest {
@@ -46,6 +56,7 @@ class SharedThreadAgentFollowersStoreTest {
         advanceTimeBy(5_000)
         store.dispatch(ThreadAgentFollowersIntent.Undo)
         runCurrent()
+        assertNull(store.state.value.notice)
         assertTrue(repository.restores.isEmpty())
         assertNull(store.state.value.undo)
     }
@@ -116,6 +127,7 @@ class SharedThreadAgentFollowersStoreTest {
         runCurrent()
         assertEquals(listOf("agent"), store.state.value.roster!!.agents.map { it.id })
         assertEquals(ThreadFollowersError.Remove, store.state.value.error)
+        assertEquals(ThreadFollowersNoticeKind.RemoveFailed, store.state.value.notice?.kind)
         assertNull(store.state.value.undo)
         repository.removeResult = null
         store.dispatch(ThreadAgentFollowersIntent.Remove("agent"))
@@ -124,6 +136,7 @@ class SharedThreadAgentFollowersStoreTest {
         store.dispatch(ThreadAgentFollowersIntent.Undo)
         runCurrent()
         assertEquals(ThreadFollowersError.Restore, store.state.value.error)
+        assertEquals(ThreadFollowersNoticeKind.RestoreFailed, store.state.value.notice?.kind)
         assertTrue(store.state.value.roster!!.agents.isEmpty())
     }
 

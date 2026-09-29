@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlin.time.TimeSource
 
 internal data class ThreadFollowerUndo(val agent: ThreadAgentFollower, val token: String, val deadline: Long)
+internal enum class ThreadFollowersNoticeKind { Removed, Restored, RemoveFailed, RestoreFailed }
+internal data class ThreadFollowersNotice(val id: Long, val kind: ThreadFollowersNoticeKind, val agentLabel: String)
 internal enum class ThreadFollowersError { Load, Remove, Restore }
 internal data class ThreadAgentFollowersState(
     val roster: ThreadAgentFollowerRoster? = null,
@@ -18,6 +20,7 @@ internal data class ThreadAgentFollowersState(
     val mutating: Boolean = false,
     val undo: ThreadFollowerUndo? = null,
     val error: ThreadFollowersError? = null,
+    val notice: ThreadFollowersNotice? = null,
 )
 internal sealed interface ThreadAgentFollowersIntent {
     data object Refresh : ThreadAgentFollowersIntent
@@ -38,6 +41,8 @@ internal class SharedThreadAgentFollowersStore(
     private var loadJob: Job? = null
     private var mutationJob: Job? = null
     private var expiryJob: Job? = null
+    private var noticeJob: Job? = null
+    private var noticeId = 0L
     private var refreshPending = false
     private var revision = 0L
     private var closed = false
@@ -99,13 +104,17 @@ internal class SharedThreadAgentFollowersStore(
                         roster = state.value.roster?.let { it.copy(agents = it.agents.filterNot { row -> row.id == id }) },
                         mutating = false, undo = pendingUndo,
                     )
+                    showNotice(ThreadFollowersNoticeKind.Removed, agent.label)
                     expiryJob?.cancel()
                     if (pendingUndo != null) expiryJob = scope.launch {
                         delay(5_000L)
                         if (state.value.undo == pendingUndo) mutableState.value = state.value.copy(undo = null)
                     }
                 }
-                else -> if (!closed) mutableState.value = state.value.copy(mutating = false, error = ThreadFollowersError.Remove)
+                else -> if (!closed) {
+                    mutableState.value = state.value.copy(mutating = false, error = ThreadFollowersError.Remove)
+                    showNotice(ThreadFollowersNoticeKind.RemoveFailed, agent.label)
+                }
             }
             if (!closed) { refreshPending = true; drainRefresh() }
         }
@@ -133,9 +142,20 @@ internal class SharedThreadAgentFollowersStore(
                     it.copy(agents = (it.agents + pending.agent).distinctBy { agent -> agent.id })
                 } else state.value.roster,
             )
+            showNotice(if (restored) ThreadFollowersNoticeKind.Restored else ThreadFollowersNoticeKind.RestoreFailed, pending.agent.label)
             // Refresh canonical permissions and any concurrent follow/unfollow.
             refreshPending = true
             drainRefresh()
+        }
+    }
+
+    private fun showNotice(kind: ThreadFollowersNoticeKind, label: String) {
+        val notice = ThreadFollowersNotice(++noticeId, kind, label)
+        mutableState.value = state.value.copy(notice = notice)
+        noticeJob?.cancel()
+        noticeJob = scope.launch {
+            delay(5_000L)
+            if (state.value.notice == notice) mutableState.value = state.value.copy(notice = null)
         }
     }
 
@@ -151,6 +171,7 @@ internal class SharedThreadAgentFollowersStore(
         loadJob?.cancel()
         mutationJob?.cancel()
         expiryJob?.cancel()
+        noticeJob?.cancel()
     }
 }
 

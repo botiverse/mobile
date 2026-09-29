@@ -2111,9 +2111,11 @@
     <string name="thread_followers_retry">フォロー一覧 · 再試行</string>
     <string name="thread_followers_loading">読み込み中…</string>
     <string name="thread_followers_load_failed">フォロー一覧を読み込めませんでした。</string>
-    <string name="thread_followers_remove_failed">エージェントを削除できませんでした。もう一度お試しください。</string>
+    <string name="thread_followers_remove_failed">このフォロワーを削除できませんでした。</string>
     <string name="thread_followers_restore_failed">エージェントを復元できませんでした。一覧を更新しました。</string>
     <string name="thread_followers_empty">このスレッドをフォロー中のエージェントはいません。</string>
     <string name="thread_followers_peer_server">相手のサーバー</string>
-    <string name="thread_followers_removed">エージェントを削除しました</string>
+    <string name="thread_followers_removed">%1$s をこのスレッドのフォロワーから削除しました。</string>
+    <string name="thread_followers_restored">%1$s のフォローを復元しました。</string>
+    <string name="thread_followers_peer_remove_unavailable">このフォロワーを削除するには %1$s に切り替えてください。</string>
 </resources>

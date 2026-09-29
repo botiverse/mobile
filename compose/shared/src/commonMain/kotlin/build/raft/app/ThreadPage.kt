@@ -13686,6 +13686,7 @@ fun ThreadPageContent(
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
 )
  {
+    ThreadFollowersOverlayHost {
     ThreadPageContentContent(
         modifier = Modifier,
         data =
@@ -13786,6 +13787,7 @@ fun ThreadPageContent(
                 onComposerEvent = onComposerEvent,
             ),
     )
+}
 }
 
 @Composable
@@ -15306,7 +15308,7 @@ private fun ThreadPageContentContent(
 }
 
 @Composable
-private fun ThreadPageHeader(
+internal fun ThreadPageHeader(
     agentFollowersHeader: @Composable () -> Unit = {},
     payload: KuiklyThreadScreenPayload,
     headerDisplay: ThreadHeaderDisplayModel = payload.threadHeaderFallbackDisplayModel(),
@@ -15345,12 +15347,12 @@ private fun ThreadPageHeader(
     val showHeaderActions =
         showActions &&
             (
-                payload.threadHeaderSearchAction() != null ||
+                headerDisplay.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
+                    payload.threadHeaderSearchAction() != null ||
                     threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind) ||
                     payload.showMembersAction ||
                     payload.threadHeaderOpenInParentActionVisible()
             )
-    Column(modifier = Modifier.fillMaxWidth()) {
     SlockTopPageHeader(
         title = localizedHeaderTitle,
         backgroundColor = SlockColor.SurfaceWhite,
@@ -15424,6 +15426,7 @@ private fun ThreadPageHeader(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(ThreadHeaderActionGroupSpacing)
                 ) {
+                    agentFollowersHeader()
                     if (payload.threadHeaderSearchAction() != null) {
                         ThreadHeaderIconButton(icon = SlockLucideIconName.Search, onClick = onOpenSearch)
                     }
@@ -15443,8 +15446,6 @@ private fun ThreadPageHeader(
             },
         showBodyTopBanner = false,
     )
-    agentFollowersHeader()
-    }
 }
 
 @Composable
