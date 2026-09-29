@@ -799,6 +799,7 @@ private fun SharedActivityPanelContent(
                     stableOrderDecisionRevision = stableOrderDecisionRevision,
                     presentationStore = presentationStore,
                     foregroundEpoch = foregroundEpoch,
+                    externalSelectedThreadId = externalSelectedThreadId,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -844,6 +845,7 @@ private fun SharedActivityBodyContent(
     stableOrderDecisionRevision: Long,
     presentationStore: SharedActivityPresentationStore,
     foregroundEpoch: Long,
+    externalSelectedThreadId: String? = null,
     modifier: Modifier = Modifier
 ) {
     val snapshot = state.snapshot
