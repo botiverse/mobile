@@ -3297,12 +3297,14 @@ private fun SlockAppShellReadyContent(
                 source = "adaptive_detail_open_ready",
             )
         }
-        // QA carrier only: delay exactly the first valid READY to exercise the real
-        // timeout/cancel/retry paths. Product code does not contain this injection.
-        var qaReadyDelayed = false
-        var qaDelayedReadyJob: kotlinx.coroutines.Job? = null
-        val qaReadyDelayMillis = pager.pageData.params
+        // QA carrier only: delay the first two valid READY deliveries independently.
+        // Product code does not contain this injection; no payloads/ACKs are fabricated.
+        var qaReadyOrdinal = 0
+        val qaDelayedReadyJobs = mutableListOf<kotlinx.coroutines.Job>()
+        val qaFirstReadyDelayMillis = pager.pageData.params
             .optInt("slockQaDelayFirstAdaptiveReadyMs", 0).coerceIn(0, 30_000).toLong()
+        val qaSecondReadyDelayMillis = pager.pageData.params
+            .optInt("slockQaDelaySecondAdaptiveReadyMs", 0).coerceIn(0, 9_000).toLong()
         val readySubscription =
             sharedStores.eventBus.observe(
                 eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
@@ -3312,13 +3314,20 @@ private fun SlockAppShellReadyContent(
                     eventData.optString(SLOCK_ADAPTIVE_DETAIL_SHELL_ID).trim() == storeScope.shellInstanceId &&
                     eventData.optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY).isNotBlank() &&
                     eventData.optDouble(SLOCK_ADAPTIVE_DETAIL_GENERATION, 0.0) > 0
-                if (qaReadyDelayMillis > 0 && !qaReadyDelayed && validForThisShell) {
-                    qaReadyDelayed = true
+                val ordinal = if (validForThisShell) ++qaReadyOrdinal else 0
+                val qaReadyDelayMillis = when (ordinal) {
+                    1 -> qaFirstReadyDelayMillis
+                    2 -> qaSecondReadyDelayMillis
+                    else -> 0L
+                }
+                if (qaReadyDelayMillis > 0 && validForThisShell) {
                     val captured = eventData!!.toString()
-                    bridge.log("adaptive_qa ready_delayed generation=${eventData.optDouble(SLOCK_ADAPTIVE_DETAIL_GENERATION, 0.0)} delayMs=$qaReadyDelayMillis")
-                    qaDelayedReadyJob = appShellCoroutineScope.launch {
+                    bridge.log("adaptive_qa ready_delayed ordinal=$ordinal generation=${eventData.optDouble(SLOCK_ADAPTIVE_DETAIL_GENERATION, 0.0)} delayMs=$qaReadyDelayMillis")
+                    qaDelayedReadyJobs += appShellCoroutineScope.launch {
                         delay(qaReadyDelayMillis)
-                        bridge.log("adaptive_qa ready_delivered_after_delay")
+                        val pendingState = adaptiveWorkspaceStore.snapshot().pendingDetailOpens.values
+                            .joinToString { "${it.requestId}:${it.detailGeneration}:${it.acknowledged}" }
+                        bridge.log("adaptive_qa ready_delivered_after_delay ordinal=$ordinal pending=$pendingState")
                         processAdaptiveReady(JSONObject(captured))
                     }
                 } else {
@@ -3451,7 +3460,7 @@ private fun SlockAppShellReadyContent(
             }
         onDispose {
             openSubscription.close()
-            qaDelayedReadyJob?.cancel()
+            qaDelayedReadyJobs.forEach { it.cancel() }
             readySubscription.close()
             cancelSubscription.close()
             preparedSubscription.close()

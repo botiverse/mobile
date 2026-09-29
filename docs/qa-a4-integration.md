@@ -1,4 +1,4 @@
-# Test-only A4 integration revision 13 — DO NOT MERGE
+# Test-only A4 integration revision 14 — DO NOT MERGE
 
 Shared PR2730: 8e5dff7fcd6ea767caf613d488432ad67af17d51 (rebased main includes layout 2727/2728).
 Native PR2731: 4d1628e4779a9fd593dce0d84c98b822084b0b1c.
@@ -55,3 +55,12 @@ retry, and old READY arrival while the new attempt is active or settled. Require
 new generation > old, fresh destination READY, and no stale ACK/commit. Revision
 12 reused generation 1 and ACKed the retry from the old READY at 08:19:15+08.
 This source revision is for QA construction, not an independent-review verdict.
+
+Revision 14 changes QA fault injection only: slockQaDelaySecondAdaptiveReadyMs
+(default0, max9000) independently delays the second valid READY. First=22000 and
+second=8000, with the existing narrow/wide retry timing, should deliver old READY
+while the new generation remains pending. Delivery logs record pending request,
+generation and acknowledged state. Both delay jobs are canceled on disposal and
+run in the existing shell coroutine scope. Product shared/native heads unchanged.
+Revision13 proved settlement and old READY rejection after the new request settled;
+this additional interleaving must be independently captured, not inferred.
