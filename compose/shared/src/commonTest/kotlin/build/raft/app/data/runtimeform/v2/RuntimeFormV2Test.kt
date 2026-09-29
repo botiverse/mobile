@@ -226,10 +226,14 @@ class RuntimeFormV2Test {
     fun aFormRequiringAClientCapabilityThisClientLacksIsTreatedAsNoV2Form() {
         val none = formJson(BUILTIN_V2_FORM_JSON).set(listOf("requiredClientCapabilities"), JsonArray(emptyList()))
         assertNotNull(parseRuntimeFormV2(none), "an empty requirement list is a normal v2 form")
-        val needsCustom = formJson(BUILTIN_V2_FORM_JSON)
-            .set(listOf("requiredClientCapabilities"), buildJsonArray { add(JsonPrimitive("select.custom_value")) })
-        assertNull(parseRuntimeFormV2(needsCustom), "unknown required capability: fall back to v1")
-        assertNull(parseRuntimeFormV2(CAPABILITIES_V2_FORM_JSON), "slock's capabilities sample falls back on this client")
+        // A name no client implements (the implemented ones are enabled one by one and would flip this).
+        val needsUnknown = formJson(BUILTIN_V2_FORM_JSON)
+            .set(listOf("requiredClientCapabilities"), buildJsonArray { add(JsonPrimitive("x.not_a_real_capability")) })
+        assertNull(parseRuntimeFormV2(needsUnknown), "unknown required capability: fall back to v1")
+        assertNotNull(
+            parseRuntimeFormV2(CAPABILITIES_V2_FORM_JSON),
+            "slock's capabilities sample needs only select.custom_value, which this client implements"
+        )
         val malformed = formJson(BUILTIN_V2_FORM_JSON).set(listOf("requiredClientCapabilities"), JsonPrimitive("select.custom_value"))
         assertNull(parseRuntimeFormV2(malformed), "a malformed requirement fails closed")
         val nonString = formJson(BUILTIN_V2_FORM_JSON)

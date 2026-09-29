@@ -46,6 +46,9 @@ import kotlinx.serialization.json.JsonPrimitive
 /** Sentinel select id for "no value", which a derived select offers as the runtime default. */
 private const val RUNTIME_FORM_V2_DEFAULT_OPTION_ID = "__runtime_form_v2_default__"
 
+/** Sentinel select id for "type your own value" (`select.custom_value`). */
+private const val RUNTIME_FORM_V2_CUSTOM_OPTION_ID = "__runtime_form_v2_custom__"
+
 /**
  * Runtime form v2 renderer shared by create and edit. Every field is drawn by
  * its kind (see [RuntimeFormV2FieldKind]); nothing here knows a field or runtime
@@ -236,15 +239,28 @@ private fun RuntimeFormV2FieldRow(
                     )
                 is RuntimeFormV2Choices.Select -> {
                     val defaultLabel = stringResource(MR.strings.runtime_form_v2_option_default)
+                    val customLabel = stringResource(MR.strings.agent_create_label_custom)
+                    val unlisted = current.isNotEmpty() && choices.options.none { it.value == current }
+                    // `select.custom_value`: a combobox. "Custom" switches to a text field; a stored value
+                    // the list does not offer (typed earlier) opens in that mode, never as not-a-choice.
+                    var customMode by remember(field.key) { mutableStateOf(choices.allowCustom && unlisted) }
+                    if (!choices.allowCustom && customMode) customMode = false
+                    if (choices.allowCustom && unlisted && !customMode) customMode = true
                     val options = buildList {
                         if (choices.allowEmpty) add(SlockBrutalSelectOption(RUNTIME_FORM_V2_DEFAULT_OPTION_ID, defaultLabel))
                         choices.options.forEach { add(SlockBrutalSelectOption(it.value, it.label)) }
-                        // A stored value the server no longer offers stays visible, but cannot be re-picked.
-                        if (current.isNotEmpty() && choices.options.none { it.value == current }) {
+                        if (choices.allowCustom) {
+                            add(SlockBrutalSelectOption(RUNTIME_FORM_V2_CUSTOM_OPTION_ID, customLabel))
+                        } else if (unlisted) {
+                            // A stored value the server no longer offers stays visible, but cannot be re-picked.
                             add(SlockBrutalSelectOption(current, current, enabled = false))
                         }
                     }
-                    val selectedId = if (current.isEmpty() && choices.allowEmpty) RUNTIME_FORM_V2_DEFAULT_OPTION_ID else current
+                    val selectedId = when {
+                        customMode -> RUNTIME_FORM_V2_CUSTOM_OPTION_ID
+                        current.isEmpty() && choices.allowEmpty -> RUNTIME_FORM_V2_DEFAULT_OPTION_ID
+                        else -> current
+                    }
                     // Re-probe: selects that read a machine option source can ask for it again, like v1's
                     // refresh next to the model picker. Derived selects follow their parent's source.
                     val refreshableSource = field.optionSourceId
@@ -274,10 +290,27 @@ private fun RuntimeFormV2FieldRow(
                             rowHeight = 36.dp,
                             onSelect = { option ->
                                 clearFocus()
-                                val next = if (option.id == RUNTIME_FORM_V2_DEFAULT_OPTION_ID) "" else option.id
-                                onChange(field.key, JsonPrimitive(next))
+                                if (option.id == RUNTIME_FORM_V2_CUSTOM_OPTION_ID) {
+                                    // Start the typed value empty; a required field then asks for one.
+                                    if (!customMode) onChange(field.key, JsonPrimitive(""))
+                                    customMode = true
+                                } else {
+                                    customMode = false
+                                    val next = if (option.id == RUNTIME_FORM_V2_DEFAULT_OPTION_ID) "" else option.id
+                                    onChange(field.key, JsonPrimitive(next))
+                                }
                             }
                         )
+                        if (customMode) {
+                            SlockBrutalTextField(
+                                label = "",
+                                value = current,
+                                onValueChange = { onChange(field.key, JsonPrimitive(it)) },
+                                placeholder = field.placeholder.orEmpty(),
+                                required = false,
+                                enabled = enabled
+                            )
+                        }
                         // `choice.labels`: the selected choice's description (e.g. what a reasoning level does).
                         choices.options.firstOrNull { it.value == current }?.description?.let {
                             Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray)
