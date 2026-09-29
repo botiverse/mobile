@@ -1160,6 +1160,10 @@ private val bottomTabBarSmokeItems = listOf(
     SlockBottomTabItemPayload("settings", "SETTINGS", SlockLucideIconName.Settings)
 )
 
+/** Rail-only inline destination key (task #13 three-pane): Search renders in the AppShell
+ *  middle pane under the wide LeftRail; it is not a persisted tab key. */
+internal const val AppShellRailSearchKey = "rail_search"
+
 internal fun appShellBottomTabs(
     selectedKey: String,
     homeLabel: String,
@@ -2007,6 +2011,10 @@ private fun SlockAppShellReadyContent(
     // hoisted so every More tap reopens the menu instead of re-landing on a sticky sub-page.
     var slackNavMoreDestination by remember { mutableStateOf(SlockSlackNavMoreDestination.Settings) }
     var slackNavMoreMenuVisible by remember { mutableStateOf(false) }
+    // task #13 (three-pane contract): while the wide LeftRail is active, Search is a rail
+    // destination rendered INLINE in the AppShell middle pane — never a pushed secondary page
+    // (the rail must stay). Narrow or flag-off keeps the legacy push path unchanged.
+    var railInlineSecondaryDestination by remember { mutableStateOf<String?>(null) }
     val bottomTabTapClock = remember { TimeSource.Monotonic.markNow() }
     var hostNetworkStatus by remember { mutableStateOf(SlockAppShellNetworkStatus.Online) }
     val childTabShellId = remember(pager.pagerId) { "app-shell-child-tabs-${pager.pagerId}" }
@@ -2933,8 +2941,20 @@ private fun SlockAppShellReadyContent(
     // the Slack keys are not child pages, and with the gate on the legacy hidden keys (tasks/
     // members) are not first-class tabs anymore. Home is the safe anchor in both cases.
     // Mirrors selectAppShellTab but avoids the local-function ordering constraint.
-    LaunchedEffect(slackNavTabKeys, selectedTab) {
-        if (retainedAppShellSelectedTab(selectedTab) !in slackNavTabKeys) {
+    LaunchedEffect(slackNavTabKeys, selectedTab, largeScreenNavigation, shellScope.adaptivePane) {
+        // task #13: while the wide rail is active, Activity is a first-class rail
+        // destination even under the legacy tab order — the clamp must not evict it.
+        // navRailActive is declared later in this composable, so inline the same
+        // predicate here (rail = flag && LeftRail pref && DualPane).
+        val railActive =
+            slockAdaptiveNavRailActive(
+                flagEnabled = adaptiveNavRailEnabled,
+                navigationPreference = largeScreenNavigation,
+                paneState = shellScope.adaptivePane
+            )
+        val allowedKeys =
+            if (railActive) slackNavTabKeys + SlockSlackNavTabs.Activity else slackNavTabKeys
+        if (retainedAppShellSelectedTab(selectedTab) !in allowedKeys) {
             bridge.log(
                 "app_shell_slack_nav_tab_clamp selectedTab=$selectedTab keys=${slackNavTabKeys.joinToString(",")}"
             )
@@ -3092,6 +3112,7 @@ private fun SlockAppShellReadyContent(
         selectedTab,
         selectedHomeDestination,
         authoritativeHomeStartAllowed,
+        railInlineSecondaryDestination,
     ) {
         if (!authoritativeHomeStartAllowed) {
             releaseAdaptiveHandoffLease()
@@ -3145,7 +3166,12 @@ private fun SlockAppShellReadyContent(
             reduceSlockAdaptiveWorkspace(
                 next,
                 SlockAdaptiveWorkspaceIntent.ParentVisibilityChanged(
-                    pageVisible && retainedAppShellSelectedTab(selectedTab) == "home" && selectedHomeDestination == null
+                    pageVisible &&
+                        (
+                            (retainedAppShellSelectedTab(selectedTab) == "home" &&
+                                selectedHomeDestination == null) ||
+                                railInlineSecondaryDestination != null
+                        )
                 ),
             )
         adaptiveWorkspaceStore.update { current -> current.copy(workspace = next) }
@@ -4523,6 +4549,16 @@ private fun SlockAppShellReadyContent(
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
             return true
         }
+        if (railInlineSecondaryDestination != null) {
+            // Back ordering (task #13): an open detail pane on the rail surface must
+            // dismiss before the secondary destination itself exits.
+            if (adaptiveWorkspaceState?.selection != null) {
+                dismissAdaptiveDetailSelection()
+                return true
+            }
+            railInlineSecondaryDestination = null
+            return true
+        }
         if (selectedTab == "home" && selectedHomeDestination != null) {
             homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
             return true
@@ -5238,6 +5274,7 @@ private fun SlockAppShellReadyContent(
     val settingsTabLabel = stringResource(MR.strings.tab_settings)
     val dmsTabLabel = stringResource(MR.strings.tab_dms)
     val activityTabLabel = stringResource(MR.strings.tab_activity)
+    val searchTabLabel = stringResource(MR.strings.home_nav_search)
     val moreTabLabel = stringResource(MR.strings.tab_more)
     val appShellBottomTabItems = remember(
         selectedTab,
@@ -5562,6 +5599,9 @@ private fun SlockAppShellReadyContent(
                     AppShellBottomTabTapAction.Select -> Unit
                 }
                 if (!shouldHandleAppShellTabSelection(selectedTab, nextTab)) return@onBottomTabSelected
+                // Selecting a real rail tab dismisses an inline secondary destination
+                // (Search) — its middle-pane slot goes back to the tab's own content.
+                railInlineSecondaryDestination = null
                 val visitedBefore = nextTab in retainedAppShellTabs
                 bridge.performanceMarker(
                     phase = appShellBottomTabPerformancePhase(nextTab),
@@ -5651,9 +5691,58 @@ private fun SlockAppShellReadyContent(
                             )
                         } ?: false
                     {
+                        // task #13 (three-pane): Search and (in legacy nav mode) Activity
+                        // rail entries sit alongside the resolved tabs only while the wide
+                        // rail is active. Search is an inline middle-pane destination (no
+                        // page push), so it lives outside slackNavTabKeys and never
+                        // participates in retained-tab state.
+                        val railSearchItem =
+                            remember(searchTabLabel, railInlineSecondaryDestination) {
+                                SlockBottomTabItemPayload(
+                                    key = AppShellRailSearchKey,
+                                    label = searchTabLabel,
+                                    iconName = SlockLucideIconName.Search,
+                                    selected = railInlineSecondaryDestination == AppShellRailSearchKey,
+                                )
+                            }
+                        val railItems =
+                            appShellBottomTabItems
+                                .filter { it.key != "settings" }
+                                .toMutableList()
+                                .apply {
+                                    // Legacy nav has no Activity tab; the rail must still
+                                    // expose it so wide screens can reach the three-pane
+                                    // surface directly.
+                                    if (none { it.key == SlockSlackNavTabs.Activity }) {
+                                        add(
+                                            SlockBottomTabItemPayload(
+                                                key = SlockSlackNavTabs.Activity,
+                                                label = activityTabLabel,
+                                                iconName = SlockLucideIconName.Bell,
+                                                selected =
+                                                    railInlineSecondaryDestination == null &&
+                                                        retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity,
+                                            )
+                                        )
+                                    }
+                                    val activityIndex = indexOfFirst { it.key == SlockSlackNavTabs.Activity }
+                                    if (activityIndex >= 0) {
+                                        add(activityIndex + 1, railSearchItem)
+                                    } else {
+                                        add(railSearchItem)
+                                    }
+                                }
+                                .toList()
                         SlockNavigationRailTabBar(
-                            items = appShellBottomTabItems.filter { it.key != "settings" },
-                            onSelect = onAppShellTabSelected,
+                            items = railItems,
+                            onSelect = { key ->
+                                if (key == AppShellRailSearchKey) {
+                                    railInlineSecondaryDestination = AppShellRailSearchKey
+                                    bridge.log("app_shell_rail_secondary_open destination=search")
+                                } else {
+                                    onAppShellTabSelected(key)
+                                }
+                            },
                             modifier = Modifier.fillMaxHeight(),
                             header =
                                 railServerItem?.let { server ->
@@ -6277,6 +6366,46 @@ private fun SlockAppShellReadyContent(
                             )
                         }
                     }
+                    // task #13 three-pane: a rail secondary destination (Search) replaces the
+                    // tab host's middle area with its own list pane; the shared workspace
+                    // detail slot to its right keeps working via adaptiveSplitListDetail.
+                    // Narrow or flag-off never reaches here — the push path handles those.
+                    if (railInlineSecondaryDestination == AppShellRailSearchKey) {
+                        val searchListPane: @Composable (Boolean) -> Unit = { listActive ->
+                            HomeSecondaryRouterContent(
+                                destination = HomeDestinationSearch,
+                                routeVisibleTick = pageVisibleTick,
+                                initialSearchFocusInput = false,
+                                adaptivePane = shellScope.adaptivePane,
+                                inlineOpenRequest = { request, source ->
+                                    openHomeMessageRequest(request, source)
+                                },
+                                inlineOnClose = { railInlineSecondaryDestination = null },
+                                inlineOpenEntity = { entity ->
+                                    when (entity.destinationOrNull()) {
+                                        is HomeSearchEntityDestination.Conversation -> {
+                                            // Conversation entities open in the shared detail
+                                            // pane; everything else still needs a full page.
+                                            val destination =
+                                                entity.destinationOrNull()
+                                                    as HomeSearchEntityDestination.Conversation
+                                            openHomeConversation(
+                                                conversation = destination.identity,
+                                                source = "home_search_entity",
+                                            )
+                                            true
+                                        }
+                                        else -> false
+                                    }
+                                },
+                            )
+                        }
+                        adaptiveSplitListDetail(
+                            adaptiveHomeWorkspaceEnabled,
+                            pageVisible,
+                            searchListPane,
+                        )
+                    } else {
                     AppShellTabs(
                         selectedTab = selectedTab,
                         pageVisible = pageVisible,
@@ -6292,6 +6421,7 @@ private fun SlockAppShellReadyContent(
                                 else -> childTabRenderer(tab, active)
                             }
                         }
+                    }
                     }
             Box(modifier = Modifier.fillMaxSize()) {
                 if (createChannelDialogOpen) {

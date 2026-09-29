@@ -111,13 +111,24 @@ private data class HomeSecondaryRouteEnvironment(
     val conversationIdentityProvider: SharedConversationIdentityProvider?,
     val sharedHomeStore: SharedHomeStore?,
     val readReceiptCoordinator: ReadReceiptCoordinator,
-    val readReceiptOwnerFactory: (String, String) -> ReadReceiptOwner
+    val readReceiptOwnerFactory: (String, String) -> ReadReceiptOwner,
+    // task #13 three-pane: when the destination is embedded inside the AppShell middle pane
+    // (wide LeftRail), conversation/entity opens must route to the shell's adaptive workspace
+    // OpenDetail instead of pushing a standalone page (which would cover the rail).
+    // Null = legacy standalone behavior (push).
+    val inlineOpenRequest: ((HomeMessageOpenRequest, String) -> Unit)? = null,
+    val inlineOpenEntity: ((SearchEntityResult) -> Boolean)? = null,
+    // When embedded inline there is no pushed page to pop — "close" returns to the host tab.
+    val inlineOnClose: (() -> Unit)? = null,
 )
 
 @Composable
 private fun rememberHomeSecondaryRouteEnvironment(
     routeVisibleTick: Int = 0,
     adaptivePane: SlockAdaptivePaneState = SlockAdaptivePaneState(),
+    inlineOpenRequest: ((HomeMessageOpenRequest, String) -> Unit)? = null,
+    inlineOpenEntity: ((SearchEntityResult) -> Boolean)? = null,
+    inlineOnClose: (() -> Unit)? = null,
 ): HomeSecondaryRouteEnvironment {
     RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager() as Pager
@@ -228,7 +239,10 @@ private fun rememberHomeSecondaryRouteEnvironment(
             conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope),
             sharedHomeStore = sharedStores.sharedHomeStore(storeScope),
             readReceiptCoordinator = sharedStores.processReadReceiptCoordinator(),
-            readReceiptOwnerFactory = sharedStores::readReceiptOwner
+            readReceiptOwnerFactory = sharedStores::readReceiptOwner,
+            inlineOpenRequest = inlineOpenRequest,
+            inlineOpenEntity = inlineOpenEntity,
+            inlineOnClose = inlineOnClose,
         )
     }
 }
@@ -241,8 +255,17 @@ internal fun HomeSecondaryRouterContent(
     initialSearchOpenFilterId: String? = null,
     initialSearchFocusInput: Boolean = false,
     adaptivePane: SlockAdaptivePaneState = SlockAdaptivePaneState(),
+    inlineOpenRequest: ((HomeMessageOpenRequest, String) -> Unit)? = null,
+    inlineOpenEntity: ((SearchEntityResult) -> Boolean)? = null,
+    inlineOnClose: (() -> Unit)? = null,
 ) {
-    val environment = rememberHomeSecondaryRouteEnvironment(routeVisibleTick, adaptivePane)
+    val environment = rememberHomeSecondaryRouteEnvironment(
+        routeVisibleTick,
+        adaptivePane,
+        inlineOpenRequest,
+        inlineOpenEntity,
+        inlineOnClose,
+    )
     val retainedDestination = retainedHomeSecondaryDestination(destination)
     PerformanceSceneEffect(
         bridge = environment.bridge,
@@ -356,7 +379,7 @@ private fun HomeActivityRouterContent(
                     )
                 }
             },
-            onClose = { environment.pager.closeHomeSecondaryPage() },
+            onClose = { environment.inlineOnClose?.invoke() ?: environment.pager.closeHomeSecondaryPage() },
             bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
             timeContext = environment.timeContext,
             shellScope = environment.shellScope,
@@ -754,7 +777,7 @@ private fun HomeSearchRouterContent(
         computerDirectory = computerDirectory,
         draftProjection = draftProjection,
         onIntent = searchSavedViewModel::dispatch,
-        onClose = { environment.pager.closeHomeSecondaryPage() },
+        onClose = { environment.inlineOnClose?.invoke() ?: environment.pager.closeHomeSecondaryPage() },
         onOpenItem = { item ->
             when (
                 val resolution =
@@ -764,15 +787,19 @@ private fun HomeSearchRouterContent(
                     )
             ) {
                 is ConversationOpenResolution.Resolved -> {
-                    val opened = environment.pager.openStandaloneHomeMessageRequest(
-                        bridge = environment.bridge,
-                        request = resolution.request,
-                        source = "home_search",
-                        timeContext = environment.timeContext,
-                        alignOwnMessagesRight = environment.alignOwnMessagesRight,
-                        compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                        storeScope = environment.storeScope
-                    )
+                    val opened =
+                        environment.inlineOpenRequest?.let { open ->
+                            open(resolution.request, "home_search")
+                            true
+                        } ?: environment.pager.openStandaloneHomeMessageRequest(
+                            bridge = environment.bridge,
+                            request = resolution.request,
+                            source = "home_search",
+                            timeContext = environment.timeContext,
+                            alignOwnMessagesRight = environment.alignOwnMessagesRight,
+                            compactConsecutiveMessages = environment.compactConsecutiveMessages,
+                            storeScope = environment.storeScope
+                        )
                     if (opened) {
                         val entityKey =
                             resolution.request.conversationIdentity.searchPersonalizationEntityKeyOrNull()
@@ -794,14 +821,16 @@ private fun HomeSearchRouterContent(
             }
         },
         onOpenEntity = { entity ->
-            val opened = environment.pager.openHomeSearchEntity(
-                bridge = environment.bridge,
-                entity = entity,
-                timeContext = environment.timeContext,
-                alignOwnMessagesRight = environment.alignOwnMessagesRight,
-                compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                storeScope = environment.storeScope
-            )
+            val opened =
+                environment.inlineOpenEntity?.invoke(entity)
+                    ?: environment.pager.openHomeSearchEntity(
+                        bridge = environment.bridge,
+                        entity = entity,
+                        timeContext = environment.timeContext,
+                        alignOwnMessagesRight = environment.alignOwnMessagesRight,
+                        compactConsecutiveMessages = environment.compactConsecutiveMessages,
+                        storeScope = environment.storeScope
+                    )
             if (opened) {
                 val entityKey = entity.searchPersonalizationEntityKeyOrNull()
                 searchSavedViewModel.dispatch(
@@ -921,7 +950,7 @@ private fun HomeSavedRouterContent(
         memberAvatarResolver = memberAvatarResolver,
         draftProjection = draftProjection,
         onIntent = searchSavedViewModel::dispatch,
-        onClose = { environment.pager.closeHomeSecondaryPage() },
+        onClose = { environment.inlineOnClose?.invoke() ?: environment.pager.closeHomeSecondaryPage() },
         onOpenItem = { item ->
             when (
                 val resolution =
