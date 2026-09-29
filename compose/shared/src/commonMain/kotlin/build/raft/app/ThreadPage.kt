@@ -16279,6 +16279,7 @@ private fun ThreadChatTabContent(
     val adaptiveReadyPosted = remember(threadInstanceKey) { mutableStateOf(false) }
     fun postDetailReadyTrace(hop: String, extra: JSONObject.() -> Unit = {}) {
         val request = closeReq ?: return
+        val extraJson = JSONObject().apply(extra).toString()
         diagnosticsLogger(
             formatAdaptiveTraceLine(
                 side = "detail",
@@ -16287,7 +16288,8 @@ private fun ThreadChatTabContent(
                 generation = request.generation,
                 extra =
                     "routeActive=$routeActive status=${timelineSlice.status} " +
-                        "messagesCount=${timelineSlice.messages.size}",
+                        "messagesCount=${timelineSlice.messages.size}" +
+                        if (extraJson == "{}") "" else " extra=$extraJson",
             ),
         )
         adaptiveEventBus?.postAdaptiveTrace(
@@ -17212,6 +17214,10 @@ private fun ThreadMessagesListContent(
     }
     fun postDetailReadyTrace(hop: String, extra: JSONObject.() -> Unit = {}) {
         val request = closeReq ?: return
+        // Hop extras must reach the device diagnostics line too — the event-bus trace has no
+        // on-disk subscription, so a hop that carries its fields only via `extra` shows its
+        // name in the JSONL but not the values (Jony's v14 review point).
+        val extraJson = JSONObject().apply(extra).toString()
         diagnosticsLogger(
             formatAdaptiveTraceLine(
                 side = "detail",
@@ -17220,7 +17226,8 @@ private fun ThreadMessagesListContent(
                 generation = request.generation,
                 extra =
                     "routeActive=$routeActive status=${timelineSlice.status} " +
-                        "messagesCount=${timelineSlice.messages.size}",
+                        "messagesCount=${timelineSlice.messages.size}" +
+                        if (extraJson == "{}") "" else " extra=$extraJson",
             ),
         )
         adaptiveEventBus?.postAdaptiveTrace(
@@ -17405,6 +17412,12 @@ private fun ThreadMessagesListContent(
     // The durable anchor remains lifecycle-persisted, while the route-local frontier advances on
     // every visible-window change. This makes the pill converge as the user reads and prevents a
     // locally-sent row that is already on screen from being counted as unread.
+    var allowBottomAutoAnchor by remember(threadInstanceKey) {
+        mutableStateOf(true)
+    }
+    var initialBottomAnchorReady by remember(threadInstanceKey) {
+        mutableStateOf(false)
+    }
     // Non-empty destination path (continues the READY chain opened above): restore the
     // staged viewport anchor against this page's message ordering, then post READY. The
     // staged record is deliberately NOT consumed here: the shell consumes it only when the
@@ -17461,6 +17474,8 @@ private fun ThreadMessagesListContent(
                 listState.scrollToItem(locatedIndex, anchor.messageOffsetPx)
                 postDetailReadyTrace("restore_applied") {
                     put("firstVisible", listState.firstVisibleItemIndex.toDouble())
+                    put("firstVisibleOffset", listState.firstVisibleItemScrollOffset.toDouble())
+                    put("anchorOffsetPx", anchor.messageOffsetPx.toDouble())
                     put("visibleItems", listState.layoutInfo.visibleItemsInfo.size.toDouble())
                     put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
                 }
@@ -17477,6 +17492,8 @@ private fun ThreadMessagesListContent(
                 listState.scrollToItem(anchor.fallbackIndex, anchor.messageOffsetPx)
                 postDetailReadyTrace("restore_applied") {
                     put("firstVisible", listState.firstVisibleItemIndex.toDouble())
+                    put("firstVisibleOffset", listState.firstVisibleItemScrollOffset.toDouble())
+                    put("anchorOffsetPx", anchor.messageOffsetPx.toDouble())
                     put("visibleItems", listState.layoutInfo.visibleItemsInfo.size.toDouble())
                     put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
                 }
@@ -17487,6 +17504,11 @@ private fun ThreadMessagesListContent(
                     put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
                 }
             }
+            // The restore owns the viewport now: mark the initial bottom anchor settled and
+            // disable auto-bottom so no in-loop FollowLatest or later auto-correction re-pins
+            // the viewport to latest (in-flight coroutine exits on the next iteration).
+            initialBottomAnchorReady = true
+            allowBottomAutoAnchor = false
             adaptiveAnchorRestoreInFlight = false
         } else if (anchor != null) {
             // atLatest=true means the staged anchor sits at the bottom already — the default
@@ -17630,9 +17652,7 @@ private fun ThreadMessagesListContent(
     }
     var taskStatusMenuMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var taskStatusMenuAnchor by remember(threadInstanceKey) { mutableStateOf<SlockPopoverAnchor?>(null) }
-    var allowBottomAutoAnchor by remember(threadInstanceKey) {
-        mutableStateOf(true)
-    }
+
     var expandedLongMessageIds by remember(threadInstanceKey) {
         mutableStateOf<Set<String>>(emptySet())
     }
@@ -17680,9 +17700,7 @@ private fun ThreadMessagesListContent(
             }
         }
     }
-    var initialBottomAnchorReady by remember(threadInstanceKey) {
-        mutableStateOf(false)
-    }
+
     var backToBottomInteractionGuardActive by remember(threadInstanceKey) {
         mutableStateOf(false)
     }
