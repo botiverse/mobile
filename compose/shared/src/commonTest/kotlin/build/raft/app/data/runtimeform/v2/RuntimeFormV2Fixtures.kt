@@ -976,3 +976,106 @@ internal const val ANTIGRAVITY_V2_EDIT_JSON: String = """{
   }
 }
 """
+
+/** fixtures/choices.form.json, sha256 75fd1a7a157898bb4b5bbaa2b7f097cd7891b76a694e8d71e8f38a5637808417 */
+internal const val CHOICES_V2_FORM_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "example-runtime",
+  "schemaVersion": "example-runtime.choices-sample",
+  "requiredClientCapabilities": [
+    "choice.labels"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "tier"
+    ],
+    "properties": {
+      "tier": {
+        "type": "string",
+        "title": "Tier",
+        "minLength": 1,
+        "x-optionSource": "tier"
+      },
+      "effort": {
+        "type": "string",
+        "title": "Effort",
+        "x-optionsFrom": {
+          "field": "tier",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "tier",
+      "effort"
+    ],
+    "layout": {
+      "advanced": []
+    },
+    "visibility": [],
+    "localization": {
+      "tier": {
+        "label": "Tier",
+        "choices": {
+          "fast": {
+            "label": "Fast tier",
+            "description": "Lower latency"
+          },
+          "retired": {
+            "label": "A key that matches no option is ignored"
+          }
+        }
+      },
+      "effort": {
+        "label": "Effort",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "high": {
+            "label": "High"
+          }
+        }
+      }
+    }
+  },
+  "optionSources": {
+    "tier": {
+      "sourceId": "tier",
+      "kind": "select",
+      "pointer": "/tier"
+    }
+  }
+}
+"""
+
+/** fixtures/choices.option-source.json, sha256 26f822b3c7d10d6d678c9e83a7833bd2639222d9b1c66621273690cea270bc4e */
+internal const val CHOICES_V2_SOURCE_JSON: String = """{
+  "sourceId": "tier",
+  "kind": "select",
+  "pointer": "/tier",
+  "options": [
+    {
+      "value": "fast",
+      "label": "fast (option label, overridden by choices)",
+      "supportedReasoningEfforts": [
+        "low",
+        "high",
+        "max"
+      ],
+      "defaultReasoningEffort": "low"
+    },
+    {
+      "value": "steady",
+      "label": "Steady (no choices key: the option's own label)"
+    }
+  ],
+  "defaultValue": "fast"
+}
+"""

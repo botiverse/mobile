@@ -278,6 +278,10 @@ private fun RuntimeFormV2FieldRow(
                                 onChange(field.key, JsonPrimitive(next))
                             }
                         )
+                        // `choice.labels`: the selected choice's description (e.g. what a reasoning level does).
+                        choices.options.firstOrNull { it.value == current }?.description?.let {
+                            Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+                        }
                         field.hint?.let { Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray) }
                         if (refreshableSource != null && sourceRefresh != null && refreshableSource in sourceRefresh.failed) {
                             Text(
