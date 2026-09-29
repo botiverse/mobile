@@ -1273,6 +1273,30 @@ internal fun appShellAllowedTabKeys(
 internal fun shouldHandleAppShellTabSelection(currentTab: String, nextTab: String): Boolean =
     retainedAppShellSelectedTab(currentTab) != retainedAppShellSelectedTab(nextTab)
 
+/**
+ * task #45: whether the ON→OFF transition should clear the rail-only transient
+ * surfaces (inline secondary destination, slack-nav More menu) exactly once.
+ *
+ * Pure decision for the LaunchedEffect in the shell composition: the cleanup is
+ * edge-triggered — it runs only when `desktopModeOnLargeScreen` flips true→false
+ * while armed. While OFF the user may reopen those surfaces, so a persistent
+ * predicate would wipe them; a cold start that begins OFF must not clear state
+ * it never created. Returns true when the caller should reset
+ * `railInlineSecondaryDestination`/`slackNavMoreMenuVisible` now, and the next
+ * armed latch value.
+ */
+internal fun desktopModeOffCleanupDecision(
+    desktopModeOnLargeScreen: Boolean,
+    cleanupArmed: Boolean,
+): Pair<Boolean, Boolean> =
+    if (desktopModeOnLargeScreen) {
+        false to true
+    } else if (cleanupArmed) {
+        true to false
+    } else {
+        false to false
+    }
+
 internal fun shouldDismissHomeNotificationCenterForAppShellTabSelection(currentTab: String, targetTab: String): Boolean =
     retainedAppShellSelectedTab(currentTab) == "home" &&
         retainedAppShellSelectedTab(targetTab) != "home"
@@ -3059,10 +3083,10 @@ private fun SlockAppShellReadyContent(
     // parked for the OFF->ON round trip).
     var desktopModeCleanupArmed by remember { mutableStateOf(desktopModeOnLargeScreen) }
     LaunchedEffect(desktopModeOnLargeScreen) {
-        if (desktopModeOnLargeScreen) {
-            desktopModeCleanupArmed = true
-        } else if (desktopModeCleanupArmed) {
-            desktopModeCleanupArmed = false
+        val (shouldCleanup, nextArmed) =
+            desktopModeOffCleanupDecision(desktopModeOnLargeScreen, desktopModeCleanupArmed)
+        desktopModeCleanupArmed = nextArmed
+        if (shouldCleanup) {
             if (railInlineSecondaryDestination != null || slackNavMoreMenuVisible) {
                 bridge.log(
                     "desktop_mode_off_cleanup inline=${railInlineSecondaryDestination.orEmpty()} " +
