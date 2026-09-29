@@ -196,6 +196,15 @@ class RuntimeFormV2Test {
     }
 
     @Test
+    fun aFormRequiringAClientCapabilityThisClientLacksIsTreatedAsNoV2Form() {
+        val none = formJson(BUILTIN_V2_FORM_JSON).set(listOf("requiredClientCapabilities"), JsonArray(emptyList()))
+        assertNotNull(parseRuntimeFormV2(none), "an empty requirement list is a normal v2 form")
+        val needsCustom = formJson(BUILTIN_V2_FORM_JSON)
+            .set(listOf("requiredClientCapabilities"), buildJsonArray { add(JsonPrimitive("select.custom_value")) })
+        assertNull(parseRuntimeFormV2(needsCustom), "unknown required capability: fall back to v1")
+    }
+
+    @Test
     fun theGeneratedContractClassesDecodeTheReleasedForms() {
         val json = Json { ignoreUnknownKeys = true }
         val decoded = json.decodeFromString(RuntimeFormV2Definition.serializer(), BUILTIN_V2_FORM_JSON)

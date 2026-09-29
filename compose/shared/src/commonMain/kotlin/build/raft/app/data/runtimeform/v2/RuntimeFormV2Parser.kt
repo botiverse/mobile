@@ -29,6 +29,13 @@ internal const val RUNTIME_FORM_V2_OPTION_SOURCE_KEY = "x-optionSource"
 /** Field schema key: choices come from the option selected in another field. */
 internal const val RUNTIME_FORM_V2_OPTIONS_FROM_KEY = "x-optionsFrom"
 
+/**
+ * Form capabilities this client implements. A form that lists anything else in
+ * `requiredClientCapabilities` needs behaviour this client lacks (for example
+ * typing a custom model), so it is treated as having no v2 form and v1 is used.
+ */
+internal val RUNTIME_FORM_V2_CLIENT_CAPABILITIES: Set<String> = emptySet()
+
 internal enum class RuntimeFormV2FieldKind {
     Text,
     Secret,
@@ -111,6 +118,7 @@ internal fun parseRuntimeFormV2(body: String): ParsedRuntimeFormV2? =
 internal fun parseRuntimeFormV2(value: JsonElement): ParsedRuntimeFormV2? {
     val root = value as? JsonObject ?: return null
     if (root["protocolVersion"].jsonNumberOrNull() != RUNTIME_FORM_V2_PROTOCOL_VERSION) return null
+    if (!RUNTIME_FORM_V2_CLIENT_CAPABILITIES.containsAll(root["requiredClientCapabilities"].stringList())) return null
     val dataSchema = root["dataSchema"] as? JsonObject ?: return null
     val properties = dataSchema["properties"] as? JsonObject ?: return null
 
