@@ -57,7 +57,6 @@ internal class SharedThreadAgentFollowersStore(
     }
 
     private fun refresh() {
-        if (state.value.roster?.disabled == true) return
         if (state.value.loading || state.value.mutating) {
             refreshPending = true
             return
@@ -71,9 +70,7 @@ internal class SharedThreadAgentFollowersStore(
                 mutableState.value = when (result) {
                     is DataResult.Content -> state.value.copy(
                         roster = result.data, loading = false,
-                        open = state.value.open && !result.data.disabled,
-                        undo = state.value.undo.takeUnless { result.data.disabled },
-                        error = state.value.error.takeUnless { it == ThreadFollowersError.Load || result.data.disabled },
+                        error = state.value.error.takeUnless { it == ThreadFollowersError.Load },
                     )
                     else -> state.value.copy(loading = false, error = ThreadFollowersError.Load)
                 }

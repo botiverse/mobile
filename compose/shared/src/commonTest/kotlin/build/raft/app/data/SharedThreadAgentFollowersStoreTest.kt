@@ -50,15 +50,19 @@ class SharedThreadAgentFollowersStoreTest {
         assertNull(store.state.value.undo)
     }
 
-    @Test fun disabledFeatureHidesRosterAndNeverRetriesWithinTheRoute() = runTest {
-        val repository = FollowerRepositoryFake().apply { roster = roster.copy(agents = emptyList(), disabled = true) }
+    @Test fun loadFailureKeepsThePreviousRosterAndAllowsExplicitRetry() = runTest {
+        val repository = FollowerRepositoryFake()
         val store = SharedThreadAgentFollowersStore(repository, backgroundScope)
         store.dispatch(ThreadAgentFollowersIntent.Open)
         runCurrent()
-        repeat(3) { store.dispatch(ThreadAgentFollowersIntent.Refresh) }
+        repository.nextLoad = CompletableDeferred(DataResult.Error(ScreenError("http_404")))
+        store.dispatch(ThreadAgentFollowersIntent.Refresh)
         runCurrent()
-        assertEquals(1, repository.loads)
-        assertFalse(store.state.value.open)
+        assertEquals(ThreadFollowersError.Load, store.state.value.error)
+        assertEquals(1, store.state.value.roster!!.agents.size)
+        store.dispatch(ThreadAgentFollowersIntent.Refresh)
+        runCurrent()
+        assertEquals(3, repository.loads)
         assertNull(store.state.value.error)
     }
 

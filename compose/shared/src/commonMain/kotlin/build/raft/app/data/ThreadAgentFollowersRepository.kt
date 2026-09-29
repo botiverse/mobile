@@ -31,8 +31,6 @@ internal data class ThreadAgentFollowerRoster(
     val threadChannelId: String,
     val canManage: Boolean,
     val agents: List<ThreadAgentFollower>,
-    // Local state, never inferred from an arbitrary 404.
-    val disabled: Boolean = false,
 )
 
 @Serializable
@@ -52,7 +50,7 @@ internal fun parseSharedThreadAgentFollowers(body: String, threadId: String): Th
         require(roster.threadChannelId == threadId)
         require(roster.agents.all { it.id.isNotBlank() && it.name.isNotBlank() && it.serverId.isNotBlank() })
         require(roster.agents.map { it.id }.distinct().size == roster.agents.size)
-        roster.copy(disabled = false)
+        roster
     }.getOrNull()
 
 internal fun parseSharedThreadAgentFollowerRemoval(body: String): ThreadAgentFollowerRemoval? =
@@ -78,7 +76,6 @@ internal class RealThreadAgentFollowersRepository(
     override suspend fun load(): DataResult<ThreadAgentFollowerRoster> = request(
         path = "channels/threads/followers", priority = DataRequestPriority.Visible,
         query = listOf("threadChannelIds" to threadId),
-        disabledValue = ThreadAgentFollowerRoster(threadId, false, emptyList(), disabled = true),
     ) { parseSharedThreadAgentFollowers(it, threadId) }
 
     override suspend fun remove(agentId: String): DataResult<ThreadAgentFollowerRemoval> = request(
@@ -98,7 +95,7 @@ internal class RealThreadAgentFollowersRepository(
     private suspend fun <T> request(
         path: String, priority: DataRequestPriority, method: String = "GET",
         query: List<Pair<String, String>> = emptyList(), body: String? = null,
-        disabledValue: T? = null, parse: (String) -> T?,
+        parse: (String) -> T?,
     ): DataResult<T> {
         val session = auth.readSession() ?: return authSessionRequiredResult()
         if (session.user.id != accountId || session.currentServerId != serverId || currentEnvironment() != environmentId) {
@@ -117,8 +114,6 @@ internal class RealThreadAgentFollowersRepository(
                 followerJson.decodeFromString<ThreadAgentFollowerError>(response.errorBodyText ?: response.bodyText.orEmpty()).code
             }.getOrNull()
             when {
-                response.code == 404 && code == "thread_follower_management_disabled" && disabledValue != null ->
-                    DataResult.Content(disabledValue)
                 response.code == 401 -> authSessionRequiredResult()
                 !response.isSuccessful -> DataResult.Error(ScreenError(code ?: "http_${response.code}"))
                 else -> parse(response.bodyText.orEmpty())?.let { DataResult.Content(it) }

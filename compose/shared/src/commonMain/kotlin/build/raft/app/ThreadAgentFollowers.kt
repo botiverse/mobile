@@ -102,7 +102,7 @@ internal fun ThreadAgentFollowersHeader(
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
-    } else if (state.error == ThreadFollowersError.Load && state.roster?.disabled != true) {
+    } else if (state.error == ThreadFollowersError.Load) {
         Text(
             stringResource(MR.strings.thread_followers_retry), style = SlockType.Caption,
             color = SlockColor.TextMutedGray,
