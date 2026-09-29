@@ -1,6 +1,6 @@
-# Test-only A4 integration revision 18 — DO NOT MERGE
+# Test-only A4 integration revision 19 — DO NOT MERGE
 
-Shared PR2730: 2be50c397f95ae7b6e7e32903191a40333ab30d2 (rebased main includes layout 2727/2728).
+Shared PR2730: e10cc1c657e341cf773189021fa99dd455495397 (rebased main includes layout 2727/2728).
 Native PR2731: 4d1628e4779a9fd593dce0d84c98b822084b0b1c.
 
 This QA branch alone sets the source initiation default and nativeGuardedCommitAvailable true.
@@ -112,3 +112,14 @@ located and fallback paths. It supersedes the queued r17 build before that build
 starts; r16 invalid-anchor carrier remains independently running. Nonzero-offset
 normal restoration must still be measured through final wide layout. This source
 bound and QA carrier do not establish physical or complete A4 acceptance.
+
+Revision 19 fixes the signed item-offset contract observed in r18. Capture stores
+viewport-relative item.offset; Anchor now carries that value unchanged, and the
+executor alone negates it for scrollToItem. Success checks the target visible
+item's actual offset against the staged value, retaining the 4px tolerance and
+Anchored identity guard. r18 rejected target18/readback17 and timed out without
+READY/commit, preserving the source and unsent draft. That was a failed normal
+migration, not a pass. Re-run the same real nonzero-offset fixture with invalid
+injection and both READY delays off; require final wide geometry and later inset
+changes to preserve message+offset. Native source, QA diagnostics and product
+flags are unchanged. This branch remains test-only and must not merge to product.

@@ -353,6 +353,32 @@ class LazyViewportControllerTest {
     }
 
     @Test
+    fun anchorCommand_exactOffsetNegatesOffsetForScrollToItem() {
+        // Coordinate contract (task #18): LazyViewportEvent.Anchor.offset carries the captured
+        // LazyList item.offset (viewport-relative, negative when the row is scrolled above the
+        // top edge). The executor runs scrollToItem(index, -target.offset), so a captured -37
+        // must become scrollOffset=+37 — the row sits 37px above the viewport top. Dispatching
+        // the negated value would invert it twice and land the row below the top edge, surfacing
+        // the previous item as firstVisible (Jony r18).
+        val anchored =
+            reduceLazyViewport(
+                LazyViewportControllerState(),
+                LazyViewportEvent.Anchor(
+                    target = LazyViewportAnchorTarget.Message("A4FX-019"),
+                    offset = -37,
+                    layoutGeneration = 3L,
+                    placement = LazyViewportAnchorPlacement.ExactOffset,
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
+        val command = assertIs<LazyViewportCommandTarget.Anchor>(anchored.pendingCommand?.target)
+        assertEquals(-37, command.offset)
+        assertEquals(LazyViewportAnchorPlacement.ExactOffset, command.placement)
+        // scrollToItem receives -command.offset = +37 — documented here as the pairing contract.
+        assertEquals(37, -command.offset)
+    }
+
+    @Test
     fun renderedTailInvalidation_ignoresNonMatchingCommandId() {
         val anchored =
             reduceLazyViewport(
