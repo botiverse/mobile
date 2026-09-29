@@ -6344,7 +6344,9 @@ private fun SlockAppShellReadyContent(
                             shellScope = shellScope,
                             storeScope = navigationStoreScope,
                             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
-                            activitySenderAvatarsEnabled = activitySenderAvatarsEnabled
+                            activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
+                            externalSelectedThreadId =
+                                adaptiveWorkspaceState?.selection?.identity?.threadId
                         )
                     }
                     val activityTabContent: @Composable (active: Boolean) -> Unit = { active ->

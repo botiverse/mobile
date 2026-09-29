@@ -142,6 +142,10 @@ internal fun SharedHomeActivityScreen(
     // the app-scope appLifecycle resume/show broadcast. Shell surfaces leave
     // this off: the app shell owns foreground reconciliation there.
     refreshOnAppLifecycleResume: Boolean = false,
+    // task #45: when the adaptive workspace drives the detail pane, its
+    // selection identity (threadId) is the source of truth for the row
+    // highlight; a stale checkpoint key must not resurface.
+    externalSelectedThreadId: String? = null,
     modifier: Modifier = Modifier
 ) {
     val pager = LocalActivity.current.getPager() as Pager
@@ -425,6 +429,7 @@ internal fun SharedHomeActivityScreen(
         stableOrderDecisionRevision = diagnosticOverrideRevision,
         presentationStore = activityStore.presentationStore,
         foregroundEpoch = activitySummary.lastForegroundEpoch,
+        externalSelectedThreadId = externalSelectedThreadId,
         modifier = modifier
     )
 }
@@ -604,7 +609,8 @@ internal fun SharedHomeActivityScreen(
     stableOrderDecisionRevision: Long = 0L,
     presentationStore: SharedActivityPresentationStore = remember { SharedActivityPresentationStore() },
     foregroundEpoch: Long,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    externalSelectedThreadId: String? = null
 ) {
     SharedActivityPanelContent(
         state = state,
@@ -621,6 +627,7 @@ internal fun SharedHomeActivityScreen(
         stableOrderDecisionRevision = stableOrderDecisionRevision,
         presentationStore = presentationStore,
         foregroundEpoch = 0L,
+        externalSelectedThreadId = externalSelectedThreadId,
         modifier = modifier
     )
 }
@@ -643,7 +650,8 @@ internal fun SharedHomeActivityPanel(
     stableOrderDecisionRevision: Long = 0L,
     presentationStore: SharedActivityPresentationStore = remember { SharedActivityPresentationStore() },
     foregroundEpoch: Long,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    externalSelectedThreadId: String? = null
 ) {
     // #192 trace scope extension: wrap the Inbox panel render. The Inbox is
     // recomposed on every state snapshot change; this marker tells us how much
@@ -671,6 +679,7 @@ internal fun SharedHomeActivityPanel(
             stableOrderDecisionRevision = stableOrderDecisionRevision,
             presentationStore = presentationStore,
             foregroundEpoch = foregroundEpoch,
+            externalSelectedThreadId = externalSelectedThreadId,
             modifier = modifier
         )
     }
@@ -706,7 +715,8 @@ private fun SharedActivityPanelContent(
     stableOrderDecisionRevision: Long,
     presentationStore: SharedActivityPresentationStore,
     foregroundEpoch: Long,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    externalSelectedThreadId: String? = null
 ) {
     val refreshPresentation = activityRefreshPresentation(state.refreshing, state.pullRefreshing)
     // task #232 (#2224 review blocker 1): the panel owns per-page scroll
@@ -1105,6 +1115,20 @@ private fun SharedActivityList(
         val selected = selectedItemKey
         if (selected != null && presentedItems.none { it.key == selected }) {
             selectedItemKey = null
+        }
+    }
+    // task #45: when the adaptive workspace owns a selection, the row highlight
+    // must track THAT conversation (e.g. Search opened a different session while
+    // this panel was covered) instead of reviving a stale checkpoint key.
+    LaunchedEffect(presentedItems, externalSelectedThreadId, active) {
+        if (!active || externalSelectedThreadId == null) return@LaunchedEffect
+        val match =
+            presentedItems.firstOrNull { item ->
+                item.toConversationSummary().threadId.value == externalSelectedThreadId
+            }
+        val nextKey = match?.key
+        if (selectedItemKey != nextKey) {
+            selectedItemKey = nextKey
         }
     }
     // task #45: persist the selected row key with the presentation checkpoint so
@@ -1582,7 +1606,7 @@ private fun SharedActivitySelectedRowSurface(
                 .background(SlockColor.SurfaceWhite)
                 .border(
                     SlockStroke.Default,
-                    if (selected) SlockColor.BorderBlack else SlockColor.TextBlack.copy(alpha = 0.3f)
+                    if (selected) SlockColor.BorderBlack else Color.Transparent
                 )
         )
     }

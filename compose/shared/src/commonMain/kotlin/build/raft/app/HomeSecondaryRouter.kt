@@ -344,9 +344,11 @@ private fun HomeActivityRouterContent(
             }
         onDispose { subscription.close() }
     }
-    LaunchedEffect(chatLayoutPreferenceRepository) {
+    val activityChatLayoutPreferenceStore =
+        remember { KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore()) }
+    LaunchedEffect(activityChatLayoutPreferenceStore) {
         activityAdaptiveEnabled =
-            chatLayoutPreferenceRepository.getChatLayoutPreference().desktopModeOnLargeScreen
+            activityChatLayoutPreferenceStore.readDesktopModeOnLargeScreen()
     }
     LaunchedEffect(activityWorkspaceStore, activityServerId, adaptivePane, activityAdaptiveEnabled) {
         if (!activityAdaptiveEnabled) return@LaunchedEffect
@@ -405,6 +407,7 @@ private fun HomeActivityRouterContent(
             activityTaskStatusBadgesEnabled = environment.activityTaskStatusBadgesEnabled,
             activitySenderAvatarsEnabled = environment.activitySenderAvatarsEnabled,
             refreshOnAppLifecycleResume = true,
+            externalSelectedThreadId = activityWorkspace?.selection?.identity?.threadId,
             storeScope = environment.storeScope
         )
     }
