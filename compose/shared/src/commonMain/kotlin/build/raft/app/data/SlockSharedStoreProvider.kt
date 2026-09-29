@@ -1524,7 +1524,17 @@ internal class SlockSharedStoreProvider private constructor(
         shellAdaptiveWorkspaceStores.remove(scope)?.clear()
         realtimeAuthorityRegistrations.remove(scope)?.let { registrationId ->
             threadSendScope.launch {
-                realtimeAuthorityProvider.releaseScope(scope.shellInstanceId, registrationId)
+                val released =
+                    realtimeAuthorityProvider.releaseScope(scope.shellInstanceId, registrationId)
+                // Evidence line for the subscription-holding audit: emitted at the point the
+                // authority registry actually cleared the lease, not at call time. A missing
+                // registration (already dead or never registered) reports result=missed.
+                runCatching {
+                    sharedInfoLogger("RealtimeAuthority", "realtime_authority")(
+                        "realtime_authority_release result=${if (released) "ok" else "missed"} " +
+                            "scope=${scope.shellInstanceId}"
+                    )
+                }
             }
         }
         selectedServerStores.get(scope)?.dispose()
@@ -2960,6 +2970,26 @@ internal class SharedRealtimeDomainEventOwner(
                 return@forEach
             }
             deliverGuardedAppShellDomainFinal(resolvedServerId, acceptedEvent, source, activeSinks, admission)
+            // Product-side apply receipt for the subscription audit (task #13): logged once per
+            // event AFTER the guarded domain-sink dispatch returned — i.e. after applyHomeShell /
+            // applyHomeUnreadProjection and the member/presence writes completed without throwing.
+            // A duplicate redelivery is dropped upstream at rememberAcceptedKey
+            // (realtime_domain_accept_skip) and never reaches this line, and a sink failure
+            // propagates before it, so one line per (id, seq) is the applied-once witness on the
+            // product store edge — not merely a pre-dispatch gate pass.
+            when (acceptedEvent) {
+                is MessageNew ->
+                    activeSinks?.log?.invoke(
+                        "realtime_domain_apply source=$source serverId=$resolvedServerId " +
+                            "kind=message_new id=${acceptedEvent.message.id.value} seq=${acceptedEvent.message.seq ?: -1L}"
+                    )
+                is MessageUpdated ->
+                    activeSinks?.log?.invoke(
+                        "realtime_domain_apply source=$source serverId=$resolvedServerId " +
+                            "kind=message_updated id=${acceptedEvent.message.id.value} seq=${acceptedEvent.message.seq ?: -1L}"
+                    )
+                else -> Unit
+            }
         }
     }
 
