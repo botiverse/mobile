@@ -7218,8 +7218,9 @@ class SharedHomeStoreTest {
     // end #211 --------------------------------------------------------------
 
     @Test
-    fun hydrateDirectMessagePreviewUpdatesEmptyPreviewWithoutModifyingUnreadOrExistingPreview() = runTest {
-        val server = sampleServer()
+    fun hydrateDirectMessagePreviewUpdatesEmptyPreviewWithoutModifyingUnreadOrExistingPreview() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val serverId = ServerId("server-1")
         val dm1 = HomeDirectMessageRow(
             threadId = ThreadId("dm-1"),
             channelId = ChannelId("dm-1"),
@@ -7238,20 +7239,27 @@ class SharedHomeStoreTest {
             lastMessageSenderName = "Alice",
             lastMessageAt = "2026-03-29T09:00:00Z",
         )
-        val snapshot = sampleHome(server.id).copy(
+        val snapshot = sampleHome(serverId).copy(
             directMessages = listOf(dm1, dm2)
         )
-        val store = createStore(snapshot)
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(snapshot),
+            scope = scope,
+            readReceiptOwnerFactory = { sId, accountId -> ReadReceiptOwner("production", accountId, sId) },
+        )
+        store.accept(SharedHomeIntent.Start)
 
         // 1. Hydrate dm1 with empty preview -> should update preview and senderName, keeping unread unchanged
         store.hydrateDirectMessagePreview(
             SharedHomeIntent.HydrateDirectMessagePreview(
-                serverId = server.id,
+                serverId = serverId,
                 channelId = ChannelId("dm-1"),
                 preview = "New preview text",
                 senderName = "Bob",
                 lastMessageAt = "2026-03-29T10:00:00Z",
                 lastMessageId = MessageId("msg-1"),
+                accountId = "user-1",
             )
         )
 
@@ -7265,12 +7273,13 @@ class SharedHomeStoreTest {
         // 2. Hydrate dm2 which already has a preview -> must NOT clobber
         store.hydrateDirectMessagePreview(
             SharedHomeIntent.HydrateDirectMessagePreview(
-                serverId = server.id,
+                serverId = serverId,
                 channelId = ChannelId("dm-2"),
                 preview = "Attempted clobber preview",
                 senderName = "Mallory",
                 lastMessageAt = "2026-03-29T11:00:00Z",
                 lastMessageId = MessageId("msg-2"),
+                accountId = "user-1",
             )
         )
 
@@ -7291,10 +7300,16 @@ class SharedHomeStoreTest {
             unreadCount = 1,
         )
         val snapshotWithDm3 = stateAfter2.copy(directMessages = stateAfter2.directMessages + dm3)
-        val storeWithDm3 = createStore(snapshotWithDm3)
+        val storeWithDm3 = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(snapshotWithDm3),
+            scope = scope,
+            readReceiptOwnerFactory = { sId, accountId -> ReadReceiptOwner("production", accountId, sId) },
+        )
+        storeWithDm3.accept(SharedHomeIntent.Start)
         storeWithDm3.hydrateDirectMessagePreview(
             SharedHomeIntent.HydrateDirectMessagePreview(
-                serverId = server.id,
+                serverId = serverId,
                 channelId = ChannelId("dm-3"),
                 preview = "Foreign account preview",
                 senderName = "Eve",
@@ -7304,6 +7319,7 @@ class SharedHomeStoreTest {
         val stateAfter3 = (storeWithDm3.state.value.content as SharedHomeContentState.Content).snapshot
         val dm3After = stateAfter3.directMessages.first { it.channelId == ChannelId("dm-3") }
         assertNull(dm3After.lastMessagePreview)
+        scope.cancel()
     }
 }
 

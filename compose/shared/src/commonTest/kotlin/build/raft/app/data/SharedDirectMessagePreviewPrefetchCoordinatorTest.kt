@@ -1,9 +1,9 @@
 package build.raft.app.data
 
-import build.raft.app.model.Author
 import build.raft.app.model.ChannelId
-import build.raft.app.model.EmptyReason
+import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
@@ -23,21 +23,22 @@ class SharedDirectMessagePreviewPrefetchCoordinatorTest {
 
     private fun testMessage(
         id: String = "msg-1",
+        threadId: String = "dm-1",
         body: String = "hello there",
         authorName: String = "Alice",
         timestamp: String = "2026-03-29T10:00:00Z"
     ): Message =
         Message(
             id = MessageId(id),
+            threadId = ThreadId(threadId),
             body = body,
-            timestamp = 1774780800000L,
             timestampLabel = timestamp,
-            author = Author(
-                id = "author-1",
-                handle = "alice",
+            author = MemberProfile(
+                id = MemberId("author-1"),
                 displayName = authorName,
-                avatarUrl = null,
+                handle = "alice",
                 kind = MemberKind.Human,
+                avatarUrl = null,
             )
         )
 
