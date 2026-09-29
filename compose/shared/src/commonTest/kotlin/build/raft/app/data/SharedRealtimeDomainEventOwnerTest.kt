@@ -942,4 +942,50 @@ class SharedRealtimeDomainEventOwnerTest {
             timestampLabel = "now",
             body = body
         )
+    @Test
+    fun productApplyReceiptLogsOncePerMessageAndRedeliveryOnlySkips() = runBlocking {
+        // task #13 subscription audit: the product-side "applied once" witness.
+        // realtime_domain_apply is emitted at the point the event survives the
+        // dedup ledger + seq gate and reaches the domain sink; a duplicate
+        // redelivery is dropped at rememberAcceptedKey and only produces
+        // realtime_domain_accept_skip.
+        val logs = mutableListOf<String>()
+        val owner = SharedRealtimeDomainEventOwner(
+            runIfCurrentGrant = { _, block -> block(); true }
+        )
+        owner.registerGuardedSinks(RealtimeGuardedDomainEventSinks(log = { logs += it }))
+        val grant = RealtimeGrantRecord(
+            slotKey = RealtimeSlotKey("shell-1", "server-1"),
+            principalId = "user-1",
+            environmentId = "env-test",
+            authGeneration = 1L,
+            connectionFamilyId = "family-1",
+            connectionEpochId = "epoch-1",
+        )
+        val event =
+            MessageNew(
+                Message(
+                    id = MessageId("msg-apply-1"),
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    seq = 42L,
+                    author = MemberProfile(MemberId("u1"), "Artin", "artin", MemberKind.Human),
+                    timestampLabel = "now",
+                    body = "hello",
+                )
+            )
+
+        owner.accept(grant, event, source = "app_shell")
+        owner.accept(grant, event, source = "app_shell")
+
+        val applyLines = logs.filter { it.startsWith("realtime_domain_apply ") }
+        assertEquals(1, applyLines.size, "expected one product apply line, got $logs")
+        assertEquals(true, applyLines[0].contains("kind=message_new"), applyLines[0])
+        assertEquals(true, applyLines[0].contains("id=msg-apply-1"), applyLines[0])
+        assertEquals(true, applyLines[0].contains("seq=42"), applyLines[0])
+        assertEquals(true, applyLines[0].contains("serverId=server-1"), applyLines[0])
+        assertEquals(true, !applyLines[0].contains("hello"), "log must not carry content: ${applyLines[0]}")
+        assertEquals(true, logs.any { it.contains("realtime_domain_accept_skip") && it.contains("reason=duplicate") })
+    }
+
 }

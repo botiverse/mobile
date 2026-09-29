@@ -2969,6 +2969,24 @@ internal class SharedRealtimeDomainEventOwner(
                 )
                 return@forEach
             }
+            // Product-side apply receipt for the subscription audit (task #13): logged once per
+            // event that survives the dedup ledger and seq gate and reaches the domain sink.
+            // Ids/seqs only. A duplicate redelivery is dropped upstream at rememberAcceptedKey
+            // (logged as realtime_domain_accept_skip) and never reaches this line, so one line
+            // per (id, seq) is the "applied once" witness on the product store edge.
+            when (acceptedEvent) {
+                is MessageNew ->
+                    activeSinks?.log?.invoke(
+                        "realtime_domain_apply source=$source serverId=$resolvedServerId " +
+                            "kind=message_new id=${acceptedEvent.message.id.value} seq=${acceptedEvent.message.seq ?: -1L}"
+                    )
+                is MessageUpdated ->
+                    activeSinks?.log?.invoke(
+                        "realtime_domain_apply source=$source serverId=$resolvedServerId " +
+                            "kind=message_updated id=${acceptedEvent.message.id.value} seq=${acceptedEvent.message.seq ?: -1L}"
+                    )
+                else -> Unit
+            }
             deliverGuardedAppShellDomainFinal(resolvedServerId, acceptedEvent, source, activeSinks, admission)
         }
     }
