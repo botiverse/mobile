@@ -15,7 +15,9 @@ import build.raft.app.base.Utils
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
+import build.raft.app.data.DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
+import build.raft.app.data.KuiklyChatLayoutPreferenceEvents
 import build.raft.app.data.KuiklyRealtimeEvents
 import build.raft.app.data.MyMessageAlignmentPreference
 import build.raft.app.data.NetworkSlockAnnouncementsRemindersApi
@@ -328,10 +330,24 @@ private fun HomeActivityRouterContent(
                 ?.trim()
                 ?.takeIf(String::isNotBlank)
     }
-    // Same gate the Home shell uses — workspace adoption stays off unless the pushed page
-    // was launched with the workspace flag (test/QA carriers set it; default stays OFF).
-    val activityAdaptiveEnabled =
-        environment.pager.pageData.params.optBoolean(SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED, false)
+    // task #45: same user gate the Home shell uses — the persisted "desktop mode on
+    // large screens" setting (default ON), no pageData param anymore.
+    var activityAdaptiveEnabled by remember {
+        mutableStateOf(DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN)
+    }
+    val chatLayoutPreferenceEvents =
+        remember(sharedStores.eventBus) { KuiklyChatLayoutPreferenceEvents(sharedStores.eventBus) }
+    DisposableEffect(chatLayoutPreferenceEvents) {
+        val subscription =
+            chatLayoutPreferenceEvents.addPreferenceListener { chatLayout ->
+                activityAdaptiveEnabled = chatLayout.desktopModeOnLargeScreen
+            }
+        onDispose { subscription.close() }
+    }
+    LaunchedEffect(chatLayoutPreferenceRepository) {
+        activityAdaptiveEnabled =
+            chatLayoutPreferenceRepository.getChatLayoutPreference().desktopModeOnLargeScreen
+    }
     LaunchedEffect(activityWorkspaceStore, activityServerId, adaptivePane, activityAdaptiveEnabled) {
         if (!activityAdaptiveEnabled) return@LaunchedEffect
         val serverId = activityServerId ?: return@LaunchedEffect

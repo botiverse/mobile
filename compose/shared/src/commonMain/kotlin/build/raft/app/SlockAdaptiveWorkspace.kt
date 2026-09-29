@@ -6,14 +6,6 @@ internal const val SLOCK_ADAPTIVE_DETAIL_CLOSE_EVENT = "slockAdaptiveDetailClose
 internal const val SLOCK_ADAPTIVE_DETAIL_SHELL_ID = "slockAdaptiveDetailShellId"
 internal const val SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY = "slockAdaptiveDetailIdentityKey"
 internal const val SLOCK_ADAPTIVE_DETAIL_GENERATION = "slockAdaptiveDetailGeneration"
-internal const val SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED = "slockAdaptiveHomeWorkspaceEnabled"
-
-// task #23: host flag gating the wide-layout left navigation rail. Off by
-// default; when on and the pane is DualPane with the LeftRail preference, the
-// app shell swaps the bottom tab bar for a left rail and recovers the bottom
-// bar in compact layouts.
-internal const val SLOCK_ADAPTIVE_NAV_RAIL_ENABLED = "slockAdaptiveNavRailEnabled"
-
 /**
  * A4 source-side initiation gate (task #18): the standalone thread page only runs a
  * prepare→open→commit adoption when this flag is set on its pageData. Off by default —

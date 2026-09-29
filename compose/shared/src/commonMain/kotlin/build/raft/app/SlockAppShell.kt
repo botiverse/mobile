@@ -29,7 +29,6 @@ import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.ExperimentalComposeUiApi
 import com.tencent.kuikly.compose.ui.semantics.clearAndSetSemantics
 import com.tencent.kuikly.compose.ui.semantics.invisibleToUser
-import build.raft.app.data.LargeScreenNavigationPreference
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.zIndex
@@ -216,18 +215,14 @@ internal fun SlockAppShellSurface(
     }
 }
 
-// task #23: the left navigation rail owns tab selection whenever the host flag
-// is on, the window is already in the dual-pane (flat, >=840dp) layout, and the
-// user's large-screen preference asks for a rail. Compact or floating-dock
-// preference keeps the bottom tab bar untouched.
+// task #23/#45: the left navigation rail owns tab selection whenever the user's
+// desktop-mode setting is on and the window is in the dual-pane (flat, >=840dp)
+// layout. The setting default is ON; compact layouts always keep the bottom bar.
 internal fun slockAdaptiveNavRailActive(
-    flagEnabled: Boolean,
-    navigationPreference: LargeScreenNavigationPreference,
+    desktopModeEnabled: Boolean,
     paneState: SlockAdaptivePaneState
 ): Boolean =
-    flagEnabled &&
-        navigationPreference == LargeScreenNavigationPreference.LeftRail &&
-        paneState.layout == SlockAdaptivePaneLayout.DualPane
+    desktopModeEnabled && paneState.layout == SlockAdaptivePaneLayout.DualPane
 
 private const val SlockAppShellInteractionBlockerZIndex = SlockGlobalModalHostZIndex - 0.25f
 

@@ -1541,6 +1541,13 @@ data class SettingsMobileSnapshot(
             statusLabel = "Off",
             detail = "Use the new multi-server left drawer on Home. When off, keep the current server switcher popover."
         ),
+    val desktopModeOnLargeScreen: SettingsMobileToggleSnapshot =
+        SettingsMobileToggleSnapshot(
+            enabled = true,
+            available = true,
+            statusLabel = "Enabled",
+            detail = "On large screens, show the left rail with the list and detail side by side. Turn off to keep the single-pane mobile layout with the bottom tab bar."
+        ),
     val newDesignSettings: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
             enabled = false,

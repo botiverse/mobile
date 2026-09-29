@@ -836,7 +836,7 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun navRailActivatesOnlyForFlatDualPaneLeftRailWithFlag() {
+    fun navRailActivatesOnlyForFlatDualPaneWithDesktopMode() {
         val dualPane =
             SlockAdaptivePaneState(
                 widthPx = 1680,
@@ -849,32 +849,21 @@ class SlockAppShellTest {
 
         assertTrue(
             slockAdaptiveNavRailActive(
-                flagEnabled = true,
-                navigationPreference = build.raft.app.data.LargeScreenNavigationPreference.LeftRail,
+                desktopModeEnabled = true,
                 paneState = dualPane
             )
         )
-        // Flag off keeps the bottom bar even in a wide flat layout.
+        // Desktop mode off keeps the bottom bar even in a wide flat layout.
         assertFalse(
             slockAdaptiveNavRailActive(
-                flagEnabled = false,
-                navigationPreference = build.raft.app.data.LargeScreenNavigationPreference.LeftRail,
-                paneState = dualPane
-            )
-        )
-        // FloatingDock preference keeps the bottom dock in the same layout.
-        assertFalse(
-            slockAdaptiveNavRailActive(
-                flagEnabled = true,
-                navigationPreference = build.raft.app.data.LargeScreenNavigationPreference.FloatingDock,
+                desktopModeEnabled = false,
                 paneState = dualPane
             )
         )
         // Compact windows always keep the bottom bar.
         assertFalse(
             slockAdaptiveNavRailActive(
-                flagEnabled = true,
-                navigationPreference = build.raft.app.data.LargeScreenNavigationPreference.LeftRail,
+                desktopModeEnabled = true,
                 paneState = compact
             )
         )

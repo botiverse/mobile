@@ -1616,6 +1616,8 @@
     <string name="in_app_browser_unable_to_open_link">リンクを開けませんでした</string>
     <string name="settings_mobile_compact_messages">連続するメッセージをコンパクト表示</string>
     <string name="settings_mobile_multi_shell_host">複数のアプリウィンドウ</string>
+    <string name="settings_mobile_desktop_mode">大画面でデスクトップモード</string>
+    <string name="settings_mobile_desktop_mode_detail">大画面では左のナビゲーションレールと並んだリスト・詳細を表示します。オフにすると下部タブバーの単一ペインのモバイルレイアウトを維持します。</string>
     <string name="settings_mobile_multi_shell_host_detail">異なるワークスペースを別々の Android アプリウィンドウで開きます。既存のウィンドウは閉じるまで開いたままになります。</string>
     <string name="settings_mobile_server_drawer">マルチサーバーのホームドロワー</string>
     <string name="settings_mobile_server_drawer_detail">ホームで新しいマルチサーバー左ドロワーを使用します。オフにすると、現在のサーバー切り替えポップオーバーを維持します。</string>
