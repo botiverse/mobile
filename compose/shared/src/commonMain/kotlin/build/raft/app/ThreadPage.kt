@@ -10265,6 +10265,17 @@ private fun SharedThreadRouteContentContent(
         )
         CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
+            agentFollowersHeader = {
+                if (renderedThread.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+                    ThreadAgentFollowersRoute(
+                        threadId = renderedThread.streamChannelId,
+                        serverId = currentServerId,
+                        accountId = currentSession?.user?.id,
+                        storeScope = storeScope,
+                        active = active && threadHostForeground,
+                    )
+                }
+            },
             scaffold = movableThreadRouteScaffold,
             threadInstanceKey = threadInstanceKey,
             threadReadAnchorOwner = threadReadAnchorOwner,
@@ -13575,6 +13586,7 @@ private class ThreadEventHandler(
  * un-minified giant composable frame on API 34/36 builds).
  */
 private data class ThreadPageContentData(
+    val agentFollowersHeader: @Composable () -> Unit,
     val threadInstanceKey: String,
     val threadReadAnchorOwner: ThreadReadAnchorOwner?,
     val threadReadAnchorStore: ThreadReadAnchorStore,
@@ -13676,6 +13688,7 @@ private class ThreadPageContentCallbacks(
 
 private @Composable
 fun ThreadPageContent(
+    agentFollowersHeader: @Composable () -> Unit = {},
     scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
     threadInstanceKey: String,
     threadReadAnchorOwner: ThreadReadAnchorOwner?,
@@ -13770,10 +13783,12 @@ fun ThreadPageContent(
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
 )
  {
+    ThreadFollowersOverlayHost {
     ThreadPageContentContent(
         modifier = Modifier,
         data =
             ThreadPageContentData(
+                agentFollowersHeader = agentFollowersHeader,
                 threadInstanceKey = threadInstanceKey,
                 threadReadAnchorOwner = threadReadAnchorOwner,
                 threadReadAnchorStore = threadReadAnchorStore,
@@ -13871,6 +13886,7 @@ fun ThreadPageContent(
                 onComposerEvent = onComposerEvent,
             ),
     )
+}
 }
 
 @Composable
@@ -14812,6 +14828,7 @@ private fun ThreadPageContentContent(
                 },
             header = {
                 ThreadPageHeader(
+                    agentFollowersHeader = data.agentFollowersHeader,
                     payload = payload,
                     headerDisplay = headerDisplay,
                     activityMutedIndicatorVisible = activityMutedIndicatorVisible,
@@ -15415,7 +15432,8 @@ private fun ThreadPageContentContent(
 }
 
 @Composable
-private fun ThreadPageHeader(
+internal fun ThreadPageHeader(
+    agentFollowersHeader: @Composable () -> Unit = {},
     payload: KuiklyThreadScreenPayload,
     headerDisplay: ThreadHeaderDisplayModel = payload.threadHeaderFallbackDisplayModel(),
     activityMutedIndicatorVisible: Boolean = payload.threadActivityMutedIndicatorVisible(null),
@@ -15453,7 +15471,8 @@ private fun ThreadPageHeader(
     val showHeaderActions =
         showActions &&
             (
-                payload.threadHeaderSearchAction() != null ||
+                headerDisplay.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
+                    payload.threadHeaderSearchAction() != null ||
                     threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind) ||
                     payload.showMembersAction ||
                     payload.threadHeaderOpenInParentActionVisible()
@@ -15534,6 +15553,7 @@ private fun ThreadPageHeader(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(ThreadHeaderActionGroupSpacing)
                 ) {
+                    agentFollowersHeader()
                     if (payload.threadHeaderSearchAction() != null) {
                         ThreadHeaderIconButton(icon = SlockLucideIconName.Search, onClick = onOpenSearch)
                     }
@@ -15997,45 +16017,47 @@ private fun ThreadMembersHeaderButton(count: Int, onClick: () -> Unit) {
 }
 
 @Composable
+internal fun ThreadHeaderActionButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    minWidth: Dp = ThreadHeaderActionSize,
+    horizontalPadding: Dp = 0.dp,
+    content: @Composable () -> Unit,
+) {
+    Box(modifier = modifier.padding(end = ThreadHeaderActionShadowOffset, bottom = ThreadHeaderActionShadowOffset)) {
+        Box(Modifier.matchParentSize()
+            .offset(x = ThreadHeaderActionShadowOffset, y = ThreadHeaderActionShadowOffset)
+            .background(SlockColor.ShadowBlack))
+        Button(
+            onClick = onClick,
+            modifier = Modifier.heightIn(min = ThreadHeaderActionSize).widthIn(min = minWidth)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(horizontal = horizontalPadding),
+            content = content,
+        )
+    }
+}
+
+@Composable
 private fun ThreadHeaderCompactAction(
     icon: SlockLucideIconName,
     onClick: () -> Unit,
     label: String? = null
 ) {
-    Box(modifier = Modifier.padding(end = ThreadHeaderActionShadowOffset, bottom = ThreadHeaderActionShadowOffset)) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .offset(x = ThreadHeaderActionShadowOffset, y = ThreadHeaderActionShadowOffset)
-                .background(SlockColor.ShadowBlack)
-        )
-        Button(
-            onClick = onClick,
-            modifier = Modifier
-                .heightIn(min = ThreadHeaderActionSize)
-                .widthIn(min = if (label == null) ThreadHeaderActionSize else ThreadHeaderActionLabelMinWidth)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = if (label == null) 0.dp else SlockSpacing.Xs)
+    ThreadHeaderActionButton(
+        onClick = onClick,
+        minWidth = if (label == null) ThreadHeaderActionSize else ThreadHeaderActionLabelMinWidth,
+        horizontalPadding = if (label == null) 0.dp else SlockSpacing.Xs,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs, Alignment.CenterHorizontally)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs, Alignment.CenterHorizontally)
-            ) {
-                SlockLucideIcon(
-                    name = icon,
-                    modifier = Modifier.size(ThreadHeaderActionIconSize),
-                    color = "#FF000000"
-                )
-                label?.takeIf { it.isNotBlank() }?.let {
-                    Text(
-                        text = it,
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+            SlockLucideIcon(icon, Modifier.size(ThreadHeaderActionIconSize), color = "#FF000000")
+            label?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }

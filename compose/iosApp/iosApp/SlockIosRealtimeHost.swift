@@ -757,6 +757,7 @@ final class SlockIosRealtimeHost: NSObject {
         GeneratedRealtimeContract.SocketEvent.reminderFired,
         GeneratedRealtimeContract.SocketEvent.reminderScheduled,
         GeneratedRealtimeContract.SocketEvent.reminderCanceled,
+        "thread:followers-updated",
         "read_state:updated",
         "read_state:updated_bulk",
         "notification_prefs:updated",

@@ -601,6 +601,9 @@ data class MessageUpdated(
 data class DirectMessageCreated(val channelId: ChannelId) : RealtimeEvent
 
 @Serializable
+data class ThreadFollowersUpdated(val threadChannelId: ChannelId) : RealtimeEvent
+
+@Serializable
 data class ThreadUpdated(
     val parentMessageId: MessageId,
     val threadChannelId: ChannelId,
