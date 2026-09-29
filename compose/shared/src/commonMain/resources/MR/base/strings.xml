@@ -2113,6 +2113,14 @@
     <string name="runtime_form_v2_change_runtime">Change runtime</string>
     <string name="runtime_form_v2_load_failed">Couldn\'t load the runtime form (%1$s).</string>
     <string name="runtime_form_v2_source_refresh_failed">Couldn\'t refresh this list. Showing the previous options.</string>
+    <string name="runtime_form_v2_source_status_fallback">Showing the standard list instead.</string>
+    <string name="runtime_form_v2_source_status_probe_timeout">This Computer took too long to list the options.</string>
+    <string name="runtime_form_v2_source_status_probe_failed">This Computer could not list the options.</string>
+    <string name="runtime_form_v2_source_status_missing_config">This runtime needs configuration on this Computer before it can list the options.</string>
+    <string name="runtime_form_v2_source_status_no_models">This Computer reported no available options.</string>
+    <string name="runtime_form_v2_source_status_unsupported">This Computer cannot list the options for this runtime.</string>
+    <string name="runtime_form_v2_source_status_machine_offline">This Computer is offline.</string>
+    <string name="runtime_form_v2_source_status_unknown">The options could not be loaded.</string>
     <string name="runtime_form_v2_saved_refresh">Saved. Refresh to see the latest settings.</string>
     <string name="joint_over_limit_grace_title">Joint channel over limit</string>
     <string name="joint_over_limit_grace_detail">This joint channel is over its member limit until %1$s. An admin of one server must upgrade, or one free server must leave.</string>

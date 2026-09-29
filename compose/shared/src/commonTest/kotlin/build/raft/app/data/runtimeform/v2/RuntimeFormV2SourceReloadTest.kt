@@ -9,7 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
-/** The "re-probe" action next to a v2 select re-requests exactly one option source. */
+/** The "re-probe" action next to a v2 select (also the `option_source.status` retry) re-requests exactly one option source. */
 class RuntimeFormV2SourceReloadTest {
     private class ScriptedSourceApi(private val responses: MutableList<HomeNetworkResponse>) : SlockComputersApi {
         val requests = mutableListOf<List<String>>()
@@ -18,9 +18,10 @@ class RuntimeFormV2SourceReloadTest {
             serverId: ServerId,
             machineId: String,
             runtimeId: String,
-            sourceId: String
+            sourceId: String,
+            refresh: Boolean
         ): HomeNetworkResponse {
-            requests += listOf(serverId.value, machineId, runtimeId, sourceId)
+            requests += listOf(serverId.value, machineId, runtimeId, sourceId, "refresh=$refresh")
             return responses.removeAt(0)
         }
 
@@ -50,7 +51,7 @@ class RuntimeFormV2SourceReloadTest {
 
         val reloaded = assertIs<DataResult.Content<RuntimeFormV2Source>>(result).data
         assertEquals(listOf("k2", "k2-turbo"), reloaded.options?.map { it.value })
-        assertEquals(listOf(listOf("s1", "m1", "kimi-sdk", "model")), api.requests)
+        assertEquals(listOf(listOf("s1", "m1", "kimi-sdk", "model", "refresh=true")), api.requests, "a re-probe bypasses the server cache")
     }
 
     @Test

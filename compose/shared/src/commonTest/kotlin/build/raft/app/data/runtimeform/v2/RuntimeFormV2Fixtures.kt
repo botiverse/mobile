@@ -1079,3 +1079,606 @@ internal const val CHOICES_V2_SOURCE_JSON: String = """{
   "defaultValue": "fast"
 }
 """
+
+/** fixtures/codex.form.json, sha256 cc5499d1f15e9970a4edf0e56385d647ed5e766df3c7e556374ba0ac74e8e5ee */
+internal const val CODEX_V2_FORM_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "codex",
+  "schemaVersion": "codex.create.v1",
+  "requiredClientCapabilities": [
+    "select.custom_value",
+    "choice.labels",
+    "option_source.status"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "reasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionsFrom": {
+          "field": "model",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      },
+      "fastMode": {
+        "type": "boolean",
+        "title": "Fast mode"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "reasoningEffort",
+      "fastMode",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model",
+        "hint": "Models available from this computer's Codex CLI. You can also type a model ID."
+      },
+      "reasoningEffort": {
+        "label": "Reasoning",
+        "hint": "Available values depend on the selected model.",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "medium": {
+            "label": "Medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          "high": {
+            "label": "High",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          "xhigh": {
+            "label": "Extra High",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          "max": {
+            "label": "Max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          "ultra": {
+            "label": "Ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        }
+      },
+      "fastMode": {
+        "label": "Fast mode",
+        "hint": "Launch this runtime with higher speed at a higher cost per token."
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "codex",
+      "schemaVersion": "codex.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  }
+}
+"""
+
+/** fixtures/codex.edit.json, sha256 ce8a01ff57c2a652a7edfc2d748fb94f0287a7af03dc1647b31449d4dcba4c27 */
+internal const val CODEX_V2_EDIT_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "codex",
+  "schemaVersion": "codex.create.v1",
+  "requiredClientCapabilities": [
+    "select.custom_value",
+    "choice.labels",
+    "option_source.status"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "reasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionsFrom": {
+          "field": "model",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      },
+      "fastMode": {
+        "type": "boolean",
+        "title": "Fast mode"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "reasoningEffort",
+      "fastMode",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model",
+        "hint": "Models available from this computer's Codex CLI. You can also type a model ID."
+      },
+      "reasoningEffort": {
+        "label": "Reasoning",
+        "hint": "Available values depend on the selected model.",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "medium": {
+            "label": "Medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          "high": {
+            "label": "High",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          "xhigh": {
+            "label": "Extra High",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          "max": {
+            "label": "Max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          "ultra": {
+            "label": "Ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        }
+      },
+      "fastMode": {
+        "label": "Fast mode",
+        "hint": "Launch this runtime with higher speed at a higher cost per token."
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "codex",
+      "schemaVersion": "codex.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  },
+  "values": {
+    "model": "my-org/codex-custom",
+    "reasoningEffort": "high",
+    "fastMode": true,
+    "envVars": {
+      "EXAMPLE_FLAG": "1"
+    }
+  }
+}
+"""
+
+/** fixtures/codex.option-source.live.json, sha256 90638f13c22cafa6f9359d8b514f613f5225ebf4aefbb894f276c4fc623203a6 */
+internal const val CODEX_V2_LIVE_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "codex",
+  "schemaVersion": "codex.create.v1",
+  "sourceId": "model",
+  "kind": "select",
+  "pointer": "/model",
+  "options": [
+    {
+      "value": "gpt-5.6-sol",
+      "label": "GPT-5.6 Sol",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "defaultReasoningEffort": "medium"
+    },
+    {
+      "value": "gpt-7-preview",
+      "label": "GPT-7 Preview",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ],
+      "defaultReasoningEffort": "high"
+    },
+    {
+      "value": "gpt-5.5",
+      "label": "GPT-5.5",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    }
+  ],
+  "defaultValue": "gpt-5.6-sol",
+  "customValueAllowed": true,
+  "status": "live"
+}
+"""
+
+/** fixtures/codex.option-source.fallback.json, sha256 0d77d6a3e7b0b1709a190e33177a1563d5f5f5b94ac622a0f61f08e78b50ef43 */
+internal const val CODEX_V2_FALLBACK_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "codex",
+  "schemaVersion": "codex.create.v1",
+  "sourceId": "model",
+  "kind": "select",
+  "pointer": "/model",
+  "options": [
+    {
+      "value": "gpt-6-astra",
+      "label": "GPT-6-Astra",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "defaultReasoningEffort": "low"
+    },
+    {
+      "value": "gpt-5.6-sol",
+      "label": "GPT-5.6 Sol",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "defaultReasoningEffort": "medium"
+    },
+    {
+      "value": "gpt-5.6-terra",
+      "label": "GPT-5.6 Terra",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "defaultReasoningEffort": "medium"
+    },
+    {
+      "value": "gpt-5.6-luna",
+      "label": "GPT-5.6 Luna",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "defaultReasoningEffort": "medium"
+    },
+    {
+      "value": "gpt-5.5",
+      "label": "GPT-5.5",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5.4",
+      "label": "GPT-5.4",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5.3-codex",
+      "label": "GPT-5.3 Codex",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5.3-codex-spark",
+      "label": "GPT-5.3 Codex Spark",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5.2-codex",
+      "label": "GPT-5.2 Codex",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5.2",
+      "label": "GPT-5.2",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5.1-codex-max",
+      "label": "GPT-5.1 Codex Max",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5.1-codex",
+      "label": "GPT-5.1 Codex",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5-codex",
+      "label": "GPT-5 Codex",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5",
+      "label": "GPT-5",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    }
+  ],
+  "defaultValue": "gpt-6-astra",
+  "customValueAllowed": true,
+  "status": "fallback",
+  "reason": "missing_config",
+  "retryable": false
+}
+"""
+
+/** fixtures/codex.option-source.unavailable.json, sha256 d4cd3a8f09c6ce0498b003eca911d8498139d3f0146bb8080d5b36b3d2ad0d23 */
+internal const val CODEX_V2_UNAVAILABLE_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "codex",
+  "schemaVersion": "codex.create.v1",
+  "sourceId": "model",
+  "kind": "select",
+  "pointer": "/model",
+  "options": [],
+  "defaultValue": "",
+  "customValueAllowed": true,
+  "status": "unavailable",
+  "reason": "machine_offline",
+  "retryable": true
+}
+"""
+
+/** fixtures/grok.form.json, sha256 59c8fddc2b82b4652c835792c0c6a45e89f244b2538b8cf092490056591fca2f */
+internal const val GROK_V2_FORM_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "grok",
+  "schemaVersion": "grok.create.v1",
+  "requiredClientCapabilities": [
+    "choice.labels",
+    "option_source.status"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "reasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionsFrom": {
+          "field": "model",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "reasoningEffort",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model",
+        "hint": "Models available from this computer's Grok CLI."
+      },
+      "reasoningEffort": {
+        "label": "Reasoning",
+        "hint": "Available values depend on the selected model.",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "medium": {
+            "label": "Medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          "high": {
+            "label": "High",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          "xhigh": {
+            "label": "Extra High",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          "max": {
+            "label": "Max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          "ultra": {
+            "label": "Ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        }
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "grok",
+      "schemaVersion": "grok.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  }
+}
+"""

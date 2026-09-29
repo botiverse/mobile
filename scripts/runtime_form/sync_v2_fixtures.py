@@ -39,6 +39,13 @@ FIXTURES = [
     # Capability `choice.labels` (slock #8625): label priority, description, ignored keys.
     ("CHOICES_V2_FORM_JSON", "choices.form.json"),
     ("CHOICES_V2_SOURCE_JSON", "choices.option-source.json"),
+    # Batch 3a (slock #8625): Codex (custom value + choice labels + source status) and Grok.
+    ("CODEX_V2_FORM_JSON", "codex.form.json"),
+    ("CODEX_V2_EDIT_JSON", "codex.edit.json"),
+    ("CODEX_V2_LIVE_SOURCE_JSON", "codex.option-source.live.json"),
+    ("CODEX_V2_FALLBACK_SOURCE_JSON", "codex.option-source.fallback.json"),
+    ("CODEX_V2_UNAVAILABLE_SOURCE_JSON", "codex.option-source.unavailable.json"),
+    ("GROK_V2_FORM_JSON", "grok.form.json"),
 ]
 
 
