@@ -15,6 +15,7 @@ import build.raft.app.components.SlockCheckMarker
 import build.raft.app.components.SlockCheckMarkerTone
 import build.raft.app.resources.MR
 import build.raft.app.slockFontFamilyForWeight
+import build.raft.app.slockSpanStyleForWeight
 import build.raft.app.slockMonoFamilyForWeight
 import build.raft.app.withResolvedSlockFontFamily
 import build.raft.app.withSlockFontWeight
@@ -1519,11 +1520,9 @@ private fun AnnotatedString.withSlockMessagePermalinkChipContent(
             appendInlineContent(iconId, "\uFFFC")
             appendInlineContent(iconGapId, "\uFFFC")
             withStyle(
-                SpanStyle(
+                slockSpanStyleForWeight(FontWeight.Bold).copy(
                     color = SlockColor.TextBlack,
                     fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = slockFontFamilyForWeight(FontWeight.Bold),
                 )
             ) {
                 append(targetLabel)

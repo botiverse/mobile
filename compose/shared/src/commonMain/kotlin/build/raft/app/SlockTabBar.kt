@@ -393,9 +393,8 @@ private fun SlockSharedAndroidFloatingBottomTabBarHost(
                                 else -> Color.Black.copy(alpha = 0.45f)
                             },
                             fontSize = 9.sp,
-                            lineHeight = 11.sp,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-                        ),
+                            lineHeight = 11.sp
+                        ).withSlockFontWeight(if (selected) FontWeight.Bold else FontWeight.Medium),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )

@@ -9969,7 +9969,7 @@ internal fun SlockFilePreviewXlsxPanel(
                             ) {
                                 Text(
                                     text = selectedSheet.headers.getOrNull(column).orEmpty(),
-                                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold),
+                                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp).withSlockFontWeight(FontWeight.Bold),
                                     color = SlockColor.TextBlack,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
