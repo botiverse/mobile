@@ -17182,6 +17182,34 @@ private fun ThreadMessagesListContent(
     }
     var localAdaptiveReadyPosted by remember(threadInstanceKey) { mutableStateOf(false) }
     val adaptiveReadyPosted = data.adaptiveReadyPosted
+    // A4 restore (task #18): while a staged viewport anchor is pending for this destination,
+    // the initial bottom-anchor loop must not dispatch FollowLatest — it races the restore and
+    // re-pins the viewport to the latest item after scrollToItem already ran (v14 non-empty
+    // counterexample: restored mid-list then snapped to A4FX-probe/001). The flag is seeded
+    // synchronously at composition — the anchor is staged before the open request posts, so it
+    // is already visible to the destination's first frame and the bottom-anchor effect's first
+    // iteration sees the restore as in-flight rather than racing it.
+    var adaptiveAnchorRestoreInFlight by remember(threadInstanceKey) {
+        mutableStateOf(
+            run {
+                val request = adaptiveCloseRequest ?: return@run false
+                val identity =
+                    adaptiveSharedStores
+                        .adaptiveWorkspaceStore(adaptiveStoreScope)
+                        .snapshot()
+                        .workspace
+                        ?.selection
+                        ?.takeIf { sel -> sel.identity.key == request.identityKey }
+                        ?.identity
+                        ?: return@run false
+                adaptiveSharedStores
+                    .adaptiveScrollAnchorStore(adaptiveStoreScope)
+                    .peek(adaptiveStoreScope.shellInstanceId, identity)
+                    ?.let { !it.atLatest }
+                    ?: false
+            }
+        )
+    }
     fun postDetailReadyTrace(hop: String, extra: JSONObject.() -> Unit = {}) {
         val request = closeReq ?: return
         diagnosticsLogger(
@@ -17416,6 +17444,7 @@ private fun ThreadMessagesListContent(
         val anchorStore = adaptiveSharedStores.adaptiveScrollAnchorStore(adaptiveStoreScope)
         val anchor = anchorStore.peek(adaptiveStoreScope.shellInstanceId, identity)
         if (anchor != null && !anchor.atLatest) {
+            adaptiveAnchorRestoreInFlight = true
             val firstMessageIndex = renderPayload.firstMessageListItemIndex()
             val locatedIndex =
                 anchor.messageId
@@ -17423,19 +17452,46 @@ private fun ThreadMessagesListContent(
                     ?.takeIf { it >= 0 }
                     ?.let { it + firstMessageIndex }
             if (locatedIndex != null) {
-                postDetailReadyTrace("layout_wait_begin")
+                postDetailReadyTrace("layout_wait_begin") {
+                    put("anchorMessageId", anchor.messageId)
+                    put("locatedIndex", locatedIndex.toDouble())
+                }
                 listState.awaitThreadMessagesLayoutFrame()
                 postDetailReadyTrace("layout_wait_end")
                 listState.scrollToItem(locatedIndex, anchor.messageOffsetPx)
+                postDetailReadyTrace("restore_applied") {
+                    put("firstVisible", listState.firstVisibleItemIndex.toDouble())
+                    put("visibleItems", listState.layoutInfo.visibleItemsInfo.size.toDouble())
+                    put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
+                }
             } else if (
                 anchor.fallbackIndex >= 0 &&
                 anchor.fallbackIndex < (listState.layoutInfo.totalItemsCount.takeIf { it > 0 } ?: Int.MAX_VALUE)
             ) {
-                postDetailReadyTrace("layout_wait_begin")
+                postDetailReadyTrace("layout_wait_begin") {
+                    put("anchorMessageId", "miss")
+                    put("fallbackIndex", anchor.fallbackIndex.toDouble())
+                }
                 listState.awaitThreadMessagesLayoutFrame()
                 postDetailReadyTrace("layout_wait_end")
                 listState.scrollToItem(anchor.fallbackIndex, anchor.messageOffsetPx)
+                postDetailReadyTrace("restore_applied") {
+                    put("firstVisible", listState.firstVisibleItemIndex.toDouble())
+                    put("visibleItems", listState.layoutInfo.visibleItemsInfo.size.toDouble())
+                    put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
+                }
+            } else {
+                postDetailReadyTrace("restore_skipped") {
+                    put("anchorMessageId", anchor.messageId ?: "null")
+                    put("fallbackIndex", anchor.fallbackIndex.toDouble())
+                    put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
+                }
             }
+            adaptiveAnchorRestoreInFlight = false
+        } else if (anchor != null) {
+            // atLatest=true means the staged anchor sits at the bottom already — the default
+            // bottom-anchor path can own the viewport without fighting the restore.
+            adaptiveAnchorRestoreInFlight = false
         }
         if (adaptiveReadyPosted != null) {
             adaptiveReadyPosted.value = true
@@ -17884,7 +17940,9 @@ private fun ThreadMessagesListContent(
             }
     }
     val initialBottomAnchorPending =
-        !initialBottomAnchorReady && latestItemIndex >= 0 && !revealLatestLocalSendBeforeInitialAnchor
+        !initialBottomAnchorReady && latestItemIndex >= 0 &&
+            !revealLatestLocalSendBeforeInitialAnchor &&
+            !adaptiveAnchorRestoreInFlight
     LaunchedEffect(
         threadInstanceKey,
         renderPayload.status,
@@ -19059,6 +19117,12 @@ private fun ThreadMessagesListContent(
         }
         if (!initialBottomAnchorReady) {
             while (!initialBottomAnchorReady) {
+                if (adaptiveAnchorRestoreInFlight) {
+                    // A4 restore owns the viewport (task #18): yield this frame rather than
+                    // dispatching FollowLatest on top of an in-flight staged-anchor scroll.
+                    delay(ThreadInitialBottomAnchorRetryDelayMs)
+                    continue
+                }
                 if (listState.isScrollInProgress) {
                     initialBottomAnchorReady = true
                     return@LaunchedEffect
