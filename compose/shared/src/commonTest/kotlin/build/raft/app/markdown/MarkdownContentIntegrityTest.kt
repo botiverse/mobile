@@ -402,6 +402,44 @@ class MarkdownContentIntegrityTest {
         assertEquals(listOf(url), rendered.urls)
     }
 
+    @Test
+    fun cjkPunctuationAdjacentBareUrlDoesNotAbsorbPunctuation() {
+        val cases =
+            listOf(
+                "task #286 收尾：PR https://github.com/botiverse/slock/pull/8499（base staging）已开，@archer 审。" to
+                    listOf("https://github.com/botiverse/slock/pull/8499"),
+                "slock 深度用户 https://x.com/Trader_Pheneck，给了些反馈，在" to
+                    listOf("https://x.com/Trader_Pheneck"),
+                "来源：（https://www.facebook.com/business/help/407323696966570）、教程" to
+                    listOf("https://www.facebook.com/business/help/407323696966570"),
+                "read https://example.com/foo_(bar)、then" to
+                    listOf("https://example.com/foo_(bar)"),
+                "https://cua.ai, 稍后输出机会评分卡。" to
+                    listOf("https://cua.ai"),
+                "https://cua.ai,稍后输出机会评分卡。" to
+                    listOf("https://cua.ai"),
+                "see https://example.com/a,b?x=1&y=2，后续" to
+                    listOf("https://example.com/a,b?x=1&y=2"),
+                "【链接】https://example.com/foo【重要】" to
+                    listOf("https://example.com/foo"),
+            )
+
+        for ((source, expectedUrls) in cases) {
+            val rendered = renderTopParagraphsWithLinks(source).single()
+            assertEquals(
+                source,
+                rendered.text,
+                "Rendered text must preserve all source characters verbatim; source=$source",
+            )
+            assertEquals(
+                expectedUrls,
+                rendered.urls,
+                "URL boundary detection failed; source=$source",
+            )
+        }
+    }
+
+
     private fun renderTopParagraphs(content: String): List<String> {
         // Uses the PRODUCTION annotator (slockMarkdownAnnotator) so app-side
         // annotate hooks are part of the integrity contract too.
