@@ -17523,12 +17523,20 @@ private fun ThreadMessagesListContent(
                     )
                     viewportControllerState.pendingCommand?.id?.let { awaitViewportCommandSettlement(it) }
                 } else {
-                    listState.scrollToItem(anchor.fallbackIndex, anchor.messageOffsetPx)
+                    // No durable message identity at the fallback index — a bare scroll would
+                    // leave intent at FollowingLatest and the next inset relayout would yank
+                    // the viewport to bottom. Hold READY (same contract as restore_skipped):
+                    // readyTimeout cancels the adoption and keeps source + anchor for retry.
+                    postDetailReadyTrace("restore_skipped") {
+                        put("anchorMessageId", anchor.messageId ?: "null")
+                        put("fallbackIndex", anchor.fallbackIndex.toDouble())
+                        put("reason", "no_message_at_fallback_index")
+                        put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
+                    }
+                    return@LaunchedEffect
                 }
                 postDetailReadyTrace("restore_applied") {
                     put("restoreBasis", "fallback_index")
-                    put("intentTransferred", if (fallbackMessageId != null) 1.0 else 0.0)
-
                     put("firstVisible", listState.firstVisibleItemIndex.toDouble())
                     put("firstVisibleOffset", listState.firstVisibleItemScrollOffset.toDouble())
                     put("anchorOffsetPx", anchor.messageOffsetPx.toDouble())
