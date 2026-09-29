@@ -111,6 +111,16 @@ internal class SyncCoreMessageShadowFoldLane(
                 if (persistQueue.trySend(QueuedPersistFrame(scopeKey.serverId, frame)).isFailure) {
                     logShadowFailure(scopeKey.serverId, IllegalStateException("shadow persist queue unavailable"))
                 }
+                // Per-frame evidence line for the dual-surface subscription audit: ids/seqs
+                // only — no content, sender identity, or credentials. `applied` is the host
+                // watermark the frame landed under; a replayed delivery folds to the same
+                // watermark and row count does not grow.
+                runCatching {
+                    logger(
+                        "sync_core_t0_frame id=${row.id} seq=${row.seq} applied=$appliedSeq " +
+                            "updated=$updated scope=${scopeKey.scopeId} partition=${partition.serverId}:${partition.consumerId}"
+                    )
+                }
             }
         } catch (throwable: Throwable) {
             logShadowFailure(scopeKey.serverId, throwable)

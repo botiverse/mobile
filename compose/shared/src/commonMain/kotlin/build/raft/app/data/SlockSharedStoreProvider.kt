@@ -1524,7 +1524,17 @@ internal class SlockSharedStoreProvider private constructor(
         shellAdaptiveWorkspaceStores.remove(scope)?.clear()
         realtimeAuthorityRegistrations.remove(scope)?.let { registrationId ->
             threadSendScope.launch {
-                realtimeAuthorityProvider.releaseScope(scope.shellInstanceId, registrationId)
+                val released =
+                    realtimeAuthorityProvider.releaseScope(scope.shellInstanceId, registrationId)
+                // Evidence line for the subscription-holding audit: emitted at the point the
+                // authority registry actually cleared the lease, not at call time. A missing
+                // registration (already dead or never registered) reports result=missed.
+                runCatching {
+                    sharedInfoLogger("RealtimeAuthority", "realtime_authority")(
+                        "realtime_authority_release result=${if (released) "ok" else "missed"} " +
+                            "scope=${scope.shellInstanceId}"
+                    )
+                }
             }
         }
         selectedServerStores.get(scope)?.dispose()
