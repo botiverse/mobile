@@ -1719,7 +1719,7 @@ internal fun SharedCreateAgentDialog(
                                 machineId = requiredComputer?.takeIf { it.isNotBlank() } ?: selectedMachineId,
                                 runtimeFormV2 = RuntimeFormV2SubmitBody(
                                     runtimeId = loaded.form.runtimeId.ifBlank { runtime },
-                                    formValues = runtimeFormV2Submission(loaded.form, v2Values)
+                                    formValues = runtimeFormV2Submission(loaded.form, v2Values, loaded.sources)
                                 )
                             )
                         }

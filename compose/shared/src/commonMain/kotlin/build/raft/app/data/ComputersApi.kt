@@ -64,11 +64,13 @@ interface SlockComputersApi {
         machineId: String,
         runtimeId: String
     ): HomeNetworkResponse = error("runtimeFormV2 is not implemented")
+    /** [refresh] (`option_source.status` retry): `?refresh=1`, the server bypasses any cached probe. */
     suspend fun runtimeFormV2OptionSource(
         serverId: ServerId,
         machineId: String,
         runtimeId: String,
-        sourceId: String
+        sourceId: String,
+        refresh: Boolean = false
     ): HomeNetworkResponse = error("runtimeFormV2OptionSource is not implemented")
     suspend fun runtimeModels(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse
     suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse
@@ -180,13 +182,14 @@ internal class SlockComputersNetworkApi(
         serverId: ServerId,
         machineId: String,
         runtimeId: String,
-        sourceId: String
+        sourceId: String,
+        refresh: Boolean
     ): HomeNetworkResponse =
         networkClient.request(
             priority = DataRequestPriority.Foreground,
             path =
                 "servers/${serverId.value}/machines/${machineId.trim()}/runtime-forms/v2/" +
-                    "${runtimeId.trim()}/option-sources/${sourceId.trim()}",
+                    "${runtimeId.trim()}/option-sources/${sourceId.trim()}" + if (refresh) "?refresh=1" else "",
             serverIdOverride = serverId
         )
 

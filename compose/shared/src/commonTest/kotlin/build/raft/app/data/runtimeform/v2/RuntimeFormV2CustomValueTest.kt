@@ -37,13 +37,13 @@ class RuntimeFormV2CustomValueTest {
         applyRuntimeFormV2Change(form, sources, initialRuntimeFormV2Values(form, sources), "tier", JsonPrimitive(tier))
 
     @Test
-    fun customValueIsAcceptedButStatusIsStillGated() {
+    fun customValueIsAcceptedButAnUnknownCapabilityIsStillGated() {
         assertTrue(RUNTIME_FORM_V2_CAPABILITY_CUSTOM_VALUE in RUNTIME_FORM_V2_CLIENT_CAPABILITIES)
-        val needsStatus = formJson(CHOICES_V2_FORM_JSON).set(
+        val needsUnknown = formJson(CHOICES_V2_FORM_JSON).set(
             listOf("requiredClientCapabilities"),
-            buildJsonArray { add(JsonPrimitive("select.custom_value")); add(JsonPrimitive("option_source.status")) }
+            buildJsonArray { add(JsonPrimitive("select.custom_value")); add(JsonPrimitive("x.not_a_real_capability")) }
         )
-        assertNull(parseRuntimeFormV2(needsStatus), "option_source.status is not implemented yet: fall back to v1")
+        assertNull(parseRuntimeFormV2(needsUnknown), "a capability this client lacks: fall back to v1")
     }
 
     @Test

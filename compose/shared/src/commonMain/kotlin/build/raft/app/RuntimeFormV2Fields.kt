@@ -13,6 +13,7 @@ import build.raft.app.components.SlockBrutalSelectField
 import build.raft.app.components.SlockBrutalSelectOption
 import build.raft.app.components.SlockBrutalTextField
 import build.raft.app.components.SlockCheckbox
+import build.raft.app.components.SlockLinkButton
 import build.raft.app.data.DataResult
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Choices
@@ -21,10 +22,12 @@ import build.raft.app.data.runtimeform.v2.RuntimeFormV2Field
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2FieldKind
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loaded
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Source
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2SourceStatus
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Values
 import build.raft.app.data.runtimeform.v2.booleanValue
 import build.raft.app.data.runtimeform.v2.isRuntimeFormV2FieldVisible
 import build.raft.app.data.runtimeform.v2.runtimeFormV2Choices
+import build.raft.app.data.runtimeform.v2.runtimeFormV2SourceStatus
 import build.raft.app.data.runtimeform.v2.stringMapValue
 import build.raft.app.data.runtimeform.v2.text
 import build.raft.app.resources.MR
@@ -38,6 +41,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
@@ -75,7 +79,7 @@ internal fun RuntimeFormV2Fields(
     val focusManager = LocalFocusManager.current
     val visible = loaded.form.fields.filter {
         it.kind != RuntimeFormV2FieldKind.Unsupported || it.required
-    }.filter { isRuntimeFormV2FieldVisible(it, values) }
+    }.filter { isRuntimeFormV2FieldVisible(it, values, loaded.sources) }
     // Hidden choices (a derived select with nothing to pick) are not drawn.
     val drawn = visible.filterNot { field ->
         field.kind == RuntimeFormV2FieldKind.DerivedSelect &&
@@ -134,6 +138,8 @@ private fun runtimeFormV2ErrorText(
             RuntimeFormV2ErrorCode.InvalidUrl -> stringResource(MR.strings.runtime_form_v2_error_invalid_url)
             RuntimeFormV2ErrorCode.NotAChoice -> stringResource(MR.strings.runtime_form_v2_error_not_a_choice)
             RuntimeFormV2ErrorCode.UnsupportedRequired -> stringResource(MR.strings.runtime_form_v2_update_required)
+            // The field's source status line already says why, with its retry.
+            RuntimeFormV2ErrorCode.SourceUnavailable -> null
             null -> null
         }
     }
@@ -262,10 +268,14 @@ private fun RuntimeFormV2FieldRow(
                         current.isEmpty() && choices.allowEmpty -> RUNTIME_FORM_V2_DEFAULT_OPTION_ID
                         else -> current
                     }
+                    // `option_source.status`: a source that is not live says why.
+                    val sourceStatus = runtimeFormV2SourceStatus(field, loaded.sources)
                     // Re-probe: selects that read a machine option source can ask for it again, like v1's
-                    // refresh next to the model picker. Derived selects follow their parent's source.
+                    // refresh next to the model picker. Derived selects follow their parent's source. A source
+                    // whose status says retrying cannot help (missing_config, unsupported) offers no re-probe.
                     val refreshableSource = field.optionSourceId
                         ?.takeIf { field.kind != RuntimeFormV2FieldKind.DerivedSelect && sourceRefresh != null }
+                        ?.takeIf { sourceStatus == null || sourceStatus.retryable }
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         if (refreshableSource != null && sourceRefresh != null) {
                             CreateAgentSectionLabelWithAction(
@@ -316,6 +326,20 @@ private fun RuntimeFormV2FieldRow(
                             Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray)
                         }
                         field.hint?.let { Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray) }
+                        sourceStatus?.let { status ->
+                            RuntimeFormV2SourceStatusLine(
+                                status = status,
+                                retrying = refreshableSource != null && sourceRefresh != null && refreshableSource in sourceRefresh.refreshing,
+                                onRetry = if (refreshableSource != null && sourceRefresh != null && enabled) {
+                                    {
+                                        clearFocus()
+                                        sourceRefresh.onRefresh(refreshableSource)
+                                    }
+                                } else {
+                                    null
+                                }
+                            )
+                        }
                         if (refreshableSource != null && sourceRefresh != null && refreshableSource in sourceRefresh.failed) {
                             Text(
                                 stringResource(MR.strings.runtime_form_v2_source_refresh_failed),
@@ -337,6 +361,33 @@ private fun RuntimeFormV2FieldRow(
                     color = SlockColor.AccentRed
                 )
             }
+    }
+}
+
+/** Why a source is not live (`option_source.status`); an unknown reason gets the generic line. */
+@Composable
+private fun RuntimeFormV2SourceStatusLine(status: RuntimeFormV2SourceStatus, retrying: Boolean, onRetry: (() -> Unit)?) {
+    val reason = when (status.reason) {
+        "probe_timeout" -> stringResource(MR.strings.runtime_form_v2_source_status_probe_timeout)
+        "probe_failed" -> stringResource(MR.strings.runtime_form_v2_source_status_probe_failed)
+        "missing_config" -> stringResource(MR.strings.runtime_form_v2_source_status_missing_config)
+        "no_models" -> stringResource(MR.strings.runtime_form_v2_source_status_no_models)
+        "unsupported" -> stringResource(MR.strings.runtime_form_v2_source_status_unsupported)
+        "machine_offline" -> stringResource(MR.strings.runtime_form_v2_source_status_machine_offline)
+        else -> stringResource(MR.strings.runtime_form_v2_source_status_unknown)
+    }
+    val text = if (status.unavailable) reason else "$reason ${stringResource(MR.strings.runtime_form_v2_source_status_fallback)}"
+    Text(text, style = SlockType.Caption, color = if (status.unavailable) SlockColor.AccentRed else SlockColor.TextMutedGray)
+    // Retry only when the server says it may help.
+    if (status.retryable && onRetry != null) {
+        SlockLinkButton(
+            text = stringResource(MR.strings.common_retry),
+            onClick = onRetry,
+            enabled = !retrying,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            color = SlockColor.TextBlack
+        )
     }
 }
 

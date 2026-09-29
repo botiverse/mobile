@@ -2113,5 +2113,13 @@
     <string name="runtime_form_v2_change_runtime">更换运行时</string>
     <string name="runtime_form_v2_load_failed">运行时表单加载失败（%1$s）。</string>
     <string name="runtime_form_v2_source_refresh_failed">列表刷新失败，仍显示之前的选项。</string>
+    <string name="runtime_form_v2_source_status_fallback">已改为显示标准列表。</string>
+    <string name="runtime_form_v2_source_status_probe_timeout">此 Computer 列出可选项超时。</string>
+    <string name="runtime_form_v2_source_status_probe_failed">此 Computer 无法列出可选项。</string>
+    <string name="runtime_form_v2_source_status_missing_config">此运行时需要先在此 Computer 上完成配置，才能列出可选项。</string>
+    <string name="runtime_form_v2_source_status_no_models">此 Computer 未报告任何可用选项。</string>
+    <string name="runtime_form_v2_source_status_unsupported">此 Computer 无法列出此运行时的可选项。</string>
+    <string name="runtime_form_v2_source_status_machine_offline">此 Computer 已离线。</string>
+    <string name="runtime_form_v2_source_status_unknown">无法加载可选项。</string>
     <string name="runtime_form_v2_saved_refresh">已保存，刷新后可看到最新配置。</string>
 </resources>

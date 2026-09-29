@@ -39,10 +39,13 @@ internal val RUNTIME_FORM_V2_CLIENT_CAPABILITIES: Set<String> = setOf(
     RUNTIME_FORM_V2_CAPABILITY_CHOICE_LABELS,
     // OptionSource.customValueAllowed: a select that also accepts a typed value.
     RUNTIME_FORM_V2_CAPABILITY_CUSTOM_VALUE,
+    // OptionSource.status/reason/retryable: a source that is not live says why, with a retry.
+    RUNTIME_FORM_V2_CAPABILITY_SOURCE_STATUS,
 )
 
 internal const val RUNTIME_FORM_V2_CAPABILITY_CHOICE_LABELS: String = "choice.labels"
 internal const val RUNTIME_FORM_V2_CAPABILITY_CUSTOM_VALUE: String = "select.custom_value"
+internal const val RUNTIME_FORM_V2_CAPABILITY_SOURCE_STATUS: String = "option_source.status"
 
 internal enum class RuntimeFormV2FieldKind {
     Text,

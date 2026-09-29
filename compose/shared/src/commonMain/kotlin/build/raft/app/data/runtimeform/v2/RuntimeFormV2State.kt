@@ -56,7 +56,19 @@ internal data class RuntimeFormV2Source(
     val defaultValueByValue: Map<String, String>? = null,
     val customValueAllowedByValue: Map<String, Boolean>? = null,
     /** `select.custom_value` (kind select only): a combobox; any typed value is valid besides the listed ones. */
-    val customValueAllowed: Boolean? = null
+    val customValueAllowed: Boolean? = null,
+    /** `option_source.status`: live, fallback or unavailable, as sent (see [runtimeFormV2SourceStatus]). */
+    val status: String? = null,
+    /** Why the source is not live; may be a reason this client does not know. */
+    val reason: String? = null,
+    val retryable: Boolean? = null
+)
+
+/** A source that is not live (`option_source.status`). */
+internal data class RuntimeFormV2SourceStatus(
+    val unavailable: Boolean,
+    val reason: String?,
+    val retryable: Boolean
 )
 
 internal typealias RuntimeFormV2Sources = Map<String, RuntimeFormV2Source>
@@ -75,7 +87,9 @@ internal enum class RuntimeFormV2ErrorCode {
     Required,
     InvalidUrl,
     NotAChoice,
-    UnsupportedRequired
+    UnsupportedRequired,
+    /** A required field whose option source is unavailable (`option_source.status`): retry, or wait. */
+    SourceUnavailable
 }
 
 /** Parses an option-sources response; null when it is not a usable source. */
@@ -105,7 +119,10 @@ internal fun parseRuntimeFormV2Source(value: JsonElement): RuntimeFormV2Source? 
         customValueAllowedByValue = (root["customValueAllowedByValue"] as? JsonObject)?.mapNotNull { (parent, allowed) ->
             (allowed as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull?.let { parent to it }
         }?.toMap(),
-        customValueAllowed = (root["customValueAllowed"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull
+        customValueAllowed = (root["customValueAllowed"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull,
+        status = root["status"].stringOrNull(),
+        reason = root["reason"].stringOrNull()?.takeIf { it.isNotEmpty() },
+        retryable = (root["retryable"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull
     )
 }
 
@@ -267,8 +284,32 @@ internal fun applyRuntimeFormV2Change(
     return next
 }
 
-internal fun isRuntimeFormV2FieldVisible(field: RuntimeFormV2Field, values: RuntimeFormV2Values): Boolean =
-    field.visibleWhen.all { rule -> values.text(rule.key) in rule.values }
+/**
+ * The field's option source status when it is not live (`option_source.status`); null when live, when
+ * the source says nothing, or when the status is one this client does not know. Only fields that load
+ * a source themselves report one; a derived field follows its parent. Mirrors slock v2State.
+ */
+internal fun runtimeFormV2SourceStatus(field: RuntimeFormV2Field, sources: RuntimeFormV2Sources): RuntimeFormV2SourceStatus? {
+    val source = field.optionSourceId?.let { sources[it] } ?: return null
+    val unavailable = when (source.status) {
+        "unavailable" -> true
+        "fallback" -> false
+        else -> return null
+    }
+    return RuntimeFormV2SourceStatus(unavailable, source.reason, source.retryable == true)
+}
+
+/** An optional field whose source is unavailable is hidden; a required one stays to show why it blocks. */
+private fun hiddenAsUnavailable(field: RuntimeFormV2Field, sources: RuntimeFormV2Sources?): Boolean =
+    !field.required && sources != null && runtimeFormV2SourceStatus(field, sources)?.unavailable == true
+
+/** Visibility rules, plus (when [sources] is given) `option_source.status`: an optional field whose source is unavailable is hidden. */
+internal fun isRuntimeFormV2FieldVisible(
+    field: RuntimeFormV2Field,
+    values: RuntimeFormV2Values,
+    sources: RuntimeFormV2Sources? = null
+): Boolean =
+    !hiddenAsUnavailable(field, sources) && field.visibleWhen.all { rule -> values.text(rule.key) in rule.values }
 
 private val textLikeKinds = setOf(
     RuntimeFormV2FieldKind.Text,
@@ -288,9 +329,13 @@ internal fun validateRuntimeFormV2(
 ): Map<String, RuntimeFormV2ErrorCode> {
     val errors = linkedMapOf<String, RuntimeFormV2ErrorCode>()
     for (field in form.fields) {
-        if (!isRuntimeFormV2FieldVisible(field, values)) continue
+        if (!isRuntimeFormV2FieldVisible(field, values, sources)) continue
         if (field.kind == RuntimeFormV2FieldKind.Unsupported) {
             if (field.required) errors[field.key] = RuntimeFormV2ErrorCode.UnsupportedRequired
+            continue
+        }
+        if (field.required && runtimeFormV2SourceStatus(field, sources)?.unavailable == true) {
+            errors[field.key] = RuntimeFormV2ErrorCode.SourceUnavailable
             continue
         }
         val text = values.text(field.key).trim()
@@ -321,11 +366,21 @@ internal fun validateRuntimeFormV2(
 
 /**
  * The `formValues` body: every visible field, plus the stored value of any
- * field this client could not render so it survives unchanged.
+ * field this client could not render so it survives unchanged. An optional
+ * field hidden because its source is unavailable keeps its stored value too
+ * (edit); on create it has none and is omitted.
  */
-internal fun runtimeFormV2Submission(form: ParsedRuntimeFormV2, values: RuntimeFormV2Values): JsonObject {
+internal fun runtimeFormV2Submission(
+    form: ParsedRuntimeFormV2,
+    values: RuntimeFormV2Values,
+    sources: RuntimeFormV2Sources? = null
+): JsonObject {
     val out = linkedMapOf<String, JsonElement>()
     for (field in form.fields) {
+        if (hiddenAsUnavailable(field, sources)) {
+            form.values?.get(field.key)?.let { out[field.key] = it }
+            continue
+        }
         if (field.kind != RuntimeFormV2FieldKind.Unsupported && !isRuntimeFormV2FieldVisible(field, values)) continue
         val value = values[field.key] ?: continue
         val text = value.stringOrNull()

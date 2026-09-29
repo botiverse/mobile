@@ -165,7 +165,7 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                         onSave(
                             RuntimeFormV2SubmitBody(
                                 runtimeId = submitting.form.runtimeId,
-                                formValues = runtimeFormV2Submission(submitting.form, values)
+                                formValues = runtimeFormV2Submission(submitting.form, values, submitting.sources)
                             )
                         )
                     }

@@ -76,7 +76,9 @@ internal class RuntimeFormV2Loader(
     }
 
     /**
-     * Re-requests one option source (the "re-probe" action next to a select). The form and every
+     * Re-requests one option source (the "re-probe" action next to a select, which is also the
+     * `option_source.status` retry): sent with `?refresh=1` so the server probes again instead of
+     * answering from its cache; a source without the capability ignores it. The form and every
      * other source stay as they are; a failure leaves the caller's current options in place.
      */
     suspend fun reloadSource(
@@ -86,7 +88,7 @@ internal class RuntimeFormV2Loader(
         sourceId: String
     ): DataResult<RuntimeFormV2Source> {
         if (machineId.isBlank() || runtimeId.isBlank()) return failure("runtime_form_v2_ref_missing")
-        return fetchSource(serverId, machineId, runtimeId, sourceId)
+        return fetchSource(serverId, machineId, runtimeId, sourceId, refresh = true)
     }
 
     /** The agent as the server now stores it, read back after a v2 save (the client never maps values to a config). */
@@ -119,10 +121,11 @@ internal class RuntimeFormV2Loader(
         serverId: ServerId,
         machineId: String,
         runtimeId: String,
-        sourceId: String
+        sourceId: String,
+        refresh: Boolean = false
     ): DataResult<RuntimeFormV2Source> {
         val sourceResponse =
-            guarded { computers.runtimeFormV2OptionSource(serverId, machineId, runtimeId, sourceId) }
+            guarded { computers.runtimeFormV2OptionSource(serverId, machineId, runtimeId, sourceId, refresh) }
                 ?: return failure("runtime_form_v2_request_failed")
         if (!sourceResponse.isSuccessful) return sourceResponse.httpFailure()
         val source = sourceResponse.bodyText
