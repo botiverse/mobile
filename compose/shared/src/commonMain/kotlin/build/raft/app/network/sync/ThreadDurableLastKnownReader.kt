@@ -13,9 +13,11 @@ internal data class ThreadDurableLastKnownFrame(
  *
  * The reader is deliberately read-only and identity-strict. It never widens what the writer selected,
  * never touches the baseline coordinator, and answers `null` (no frame) for every non-positive case:
- * server flag off, no committed baseline for the channel, an empty baseline, an ambiguous scope kind,
- * or a poisoned scope. Callers must treat `null` as "render the ordinary loading shell", never as an
- * error.
+ * server flag off, no committed baseline for the channel, an ambiguous scope kind, or a poisoned
+ * scope. Callers must treat `null` as "render the ordinary loading shell", never as an error.
+ *
+ * A committed baseline with no facts is a frame with empty [ThreadDurableLastKnownFrame.envelopes]
+ * (task #1137): the channel was empty when last seen, which is an answer, not a miss.
  */
 internal interface ThreadDurableLastKnownReader {
     suspend fun read(partition: DurablePartitionKey, channelId: SyncScopeId): ThreadDurableLastKnownFrame?
@@ -57,7 +59,6 @@ internal class CanonicalMessageV2DurableLastKnownReader(
             return null
         }
         val cursor = restored.cursor ?: return null
-        if (restored.envelopes.isEmpty()) return null
         return ThreadDurableLastKnownFrame(scope = scope, envelopes = restored.envelopes, cursor = cursor)
     }
 }

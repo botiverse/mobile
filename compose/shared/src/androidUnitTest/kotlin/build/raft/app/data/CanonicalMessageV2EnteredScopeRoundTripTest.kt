@@ -82,6 +82,45 @@ class CanonicalMessageV2EnteredScopeRoundTripTest {
         }
     }
 
+    @Test
+    fun emptyChannelIsReadableOfflineAsEmptyAndALaterPageReplacesIt() = withFreshDatabase { database ->
+        // Task #1137 on the real schema: an empty page is committed, read back as an empty frame, and a
+        // later entry with messages rebaselines it.
+        val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
+        val engine = CanonicalMessageV2GenerationEngine(
+            coordinator = CanonicalMessageV2BaselineCoordinator(),
+            store = store,
+            snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
+        )
+        fun loaderFor(pageBody: String) = CanonicalMessageV2EnteredScopeLoader(
+            canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine),
+            generationEngine = engine,
+            fetcher = CanonicalMessageV2RestSnapshotFetcher(RecordingNetworkClient(pageBody)),
+            isEnabledForServer = { true },
+        )
+        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true })
+
+        runBlocking {
+            loaderFor("""{"messages":[],"historyLimited":false}""").loadOnEnter(partition, "channel-1") { true }
+            val empty = assertNotNull(reader.read(partition, "channel-1"), "an empty channel is a frame, not a miss")
+            assertEquals("channel", empty.scope.scopeKind)
+            assertEquals(emptyList(), empty.envelopes)
+            assertNull(empty.cursor.latestSeq)
+            assertEquals(true, empty.cursor.hasLoadedOldest)
+            assertEquals(true, empty.cursor.hasLoadedNewest)
+            assertNull(reader.read(partition.copy(principalId = "user-2"), "channel-1"), "still partition-strict")
+
+            loaderFor(canonicalV2TestPage()).loadOnEnter(partition, "channel-1") { true }
+            val filled = assertNotNull(reader.read(partition, "channel-1"))
+            assertEquals(listOf("message-1"), filled.envelopes.map { it.fact.id })
+            assertEquals(7L, filled.cursor.latestSeq)
+
+            // And the reverse: a channel whose messages are all gone reads empty again, not the old facts.
+            loaderFor("""{"messages":[],"historyLimited":false}""").loadOnEnter(partition, "channel-1") { true }
+            assertEquals(emptyList(), assertNotNull(reader.read(partition, "channel-1")).envelopes)
+        }
+    }
+
     private val partition = canonicalV2TestGrant().durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
 
     private fun withFreshDatabase(block: (SlockSqlDatabase) -> Unit) {

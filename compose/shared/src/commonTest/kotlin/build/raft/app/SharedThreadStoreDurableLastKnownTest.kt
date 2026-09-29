@@ -299,6 +299,65 @@ class SharedThreadStoreDurableLastKnownTest {
     }
 
     @Test
+    fun emptyFrameStandsInAsAnEmptyChannelThroughAFailureAndYieldsToContent() = runBlocking {
+        // Task #1137. Negative control: with no durable frame, an offline start ends in the error state.
+        val noFrameScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val noFrameStore =
+            SharedThreadStore(
+                dataSource = dataSource(
+                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
+                    reader = FakeReader(frames = emptyMap()),
+                    identity = { ownerA },
+                ),
+                scope = noFrameScope,
+            )
+        noFrameStore.accept(SharedThreadIntent.Start(basePayload()))
+        assertEquals("error", noFrameStore.state.value.payload.status)
+        noFrameScope.cancel()
+
+        // An empty baseline: offline, the channel shows as empty (flagged last-known), never as an error.
+        val logs = mutableListOf<String>()
+        val offlineScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val offlineStore =
+            SharedThreadStore(
+                dataSource = dataSource(
+                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
+                    reader = FakeReader(frames = mapOf(partition(ownerA) to emptyFrame())),
+                    identity = { ownerA },
+                    diagnosticsLogger = logs::add,
+                ),
+                scope = offlineScope,
+            )
+        offlineStore.accept(SharedThreadIntent.Start(basePayload()))
+        val offline = offlineStore.state.value.payload
+        assertEquals("empty", offline.status)
+        assertTrue(offline.durableLastKnown)
+        assertFalse(offline.backgroundRefreshing)
+        assertTrue(offline.messages.isEmpty())
+        assertNotNull(offline.errorCode, "the failure is recorded, the empty stand-in is kept")
+        assertTrue(threadOfflineLastKnownChrome(offline).tipVisible, "the offline tip shows on the empty channel too")
+        assertTrue(logs.any { "thread_durable_last_known" in it && "outcome=empty_frame" in it }, logs.toString())
+        offlineScope.cancel()
+
+        // Online, the network answer replaces the stand-in and clears the flag.
+        val onlineScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val onlineStore =
+            SharedThreadStore(
+                dataSource = dataSource(
+                    reader = FakeReader(frames = mapOf(partition(ownerA) to emptyFrame())),
+                    identity = { ownerA },
+                ),
+                scope = onlineScope,
+            )
+        onlineStore.accept(SharedThreadIntent.Start(basePayload()))
+        val online = onlineStore.state.value.payload
+        assertEquals("content", online.status)
+        assertFalse(online.durableLastKnown)
+        assertEquals(listOf("network body"), online.messages.map { it.body })
+        onlineScope.cancel()
+    }
+
+    @Test
     fun frameOfAnotherSurfaceKindIsRefusedAndLogged() = runBlocking {
         // Positive control: a "channel" frame renders on the channel route (same logger wiring).
         val controlLogs = mutableListOf<String>()
@@ -396,6 +455,13 @@ class SharedThreadStoreDurableLastKnownTest {
             principalId = identity.principalId,
             consumerId = SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID,
             environmentId = identity.environmentId,
+        )
+
+    private fun emptyFrame(): ThreadDurableLastKnownFrame =
+        ThreadDurableLastKnownFrame(
+            scope = SyncScopeKey(partition(ownerA), "channel-1", "channel"),
+            envelopes = emptyList(),
+            cursor = PersistedCursor(null, null, null, hasLoadedOldest = true),
         )
 
     private fun frame(body: String, scopeKind: String = "channel"): ThreadDurableLastKnownFrame {

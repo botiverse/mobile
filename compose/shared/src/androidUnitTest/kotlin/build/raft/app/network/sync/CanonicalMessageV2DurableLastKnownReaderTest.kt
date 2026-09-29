@@ -58,13 +58,18 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
     }
 
     @Test
-    fun emptyBaselineAndReplyThreadBaselineReadNothing() = withFreshDatabase { database ->
+    fun emptyBaselineReadsAnEmptyFrameAndReplyThreadBaselineReadsNothing() = withFreshDatabase { database ->
         val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
         val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true })
         runBlocking {
-            // Committed baseline with zero facts: a real "no messages yet" answer, but no frame to render.
-            store.applySnapshot(CanonicalMessageV2SnapshotFrame(SyncScopeKey(partitionA, "channel-a", "channel"), emptyList(), cursor(latest = null)))
+            // Negative control: no baseline at all is still no frame.
             assertNull(reader.read(partitionA, "channel-a"))
+            // Task #1137: a committed baseline with zero facts is the answer "empty channel", not a miss.
+            store.applySnapshot(CanonicalMessageV2SnapshotFrame(SyncScopeKey(partitionA, "channel-a", "channel"), emptyList(), cursor(latest = null)))
+            val empty = assertNotNull(reader.read(partitionA, "channel-a"))
+            assertEquals("channel", empty.scope.scopeKind)
+            assertTrue(empty.envelopes.isEmpty())
+            assertNull(empty.cursor.latestSeq)
 
             // Reply-thread scopes are keyed by the thread id and are not this reader's surface.
             val threadScope = SyncScopeKey(partitionA, "thread-a", "thread")

@@ -16667,10 +16667,24 @@ private fun ThreadChatTabContent(
                 LaunchedEffect(threadInstanceKey, timelineSlice.status) {
                     onThreadContentReady()
                 }
-                ThreadStateMessage(
-                    localizedThreadStateTitle(timelineSlice.emptyTitle),
-                    localizedThreadStateDetail(timelineSlice.emptyDetail)
-                )
+                val emptyOfflineChrome =
+                    threadOfflineLastKnownChrome(
+                        durableLastKnown = timelineSlice.durableLastKnown,
+                        status = timelineSlice.status,
+                        backgroundRefreshing = renderConfig.backgroundRefreshing
+                    )
+                Box(modifier = Modifier.fillMaxSize()) {
+                    ThreadStateMessage(
+                        localizedThreadStateTitle(timelineSlice.emptyTitle),
+                        localizedThreadStateDetail(timelineSlice.emptyDetail)
+                    )
+                    // Task #1137: the empty last-known channel carries the same offline tip as a non-empty one.
+                    if (emptyOfflineChrome.tipVisible) {
+                        ThreadOfflineLastKnownTip(
+                            modifier = Modifier.align(Alignment.TopCenter).zIndex(ThreadOfflineLastKnownTipZIndex)
+                        )
+                    }
+                }
             }
         else ->
             ThreadMessagesList(
@@ -21202,7 +21216,8 @@ internal fun threadOfflineLastKnownChrome(
     status: String,
     backgroundRefreshing: Boolean
 ): ThreadOfflineLastKnownChrome {
-    val standIn = durableLastKnown && status == "content"
+    // Task #1137: a channel that was empty when last seen is a stand-in too.
+    val standIn = durableLastKnown && (status == "content" || status == "empty")
     return ThreadOfflineLastKnownChrome(insetActive = standIn, tipVisible = standIn && !backgroundRefreshing)
 }
 
