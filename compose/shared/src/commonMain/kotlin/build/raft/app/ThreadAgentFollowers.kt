@@ -91,7 +91,7 @@ internal fun ThreadAgentFollowersHeader(
     val agents = state.roster?.agents.orEmpty()
     if (agents.isNotEmpty()) {
         Row(
-            modifier = Modifier.clickable { dispatch(ThreadAgentFollowersIntent.Open) }.padding(vertical = 4.dp),
+            modifier = Modifier.clickable { dispatch(ThreadAgentFollowersIntent.Open) }.padding(horizontal = 16.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
@@ -106,11 +106,20 @@ internal fun ThreadAgentFollowersHeader(
         Text(
             stringResource(MR.strings.thread_followers_retry), style = SlockType.Caption,
             color = SlockColor.TextMutedGray,
-            modifier = Modifier.clickable { dispatch(ThreadAgentFollowersIntent.Open) }.padding(vertical = 4.dp),
+            modifier = Modifier.clickable { dispatch(ThreadAgentFollowersIntent.Open) }.padding(horizontal = 16.dp, vertical = 4.dp),
         )
     }
     // Independent of the trigger: removing the final follower must not remove Undo.
-    if (state.undo != null && !state.open) FollowerUndoRow(state, dispatch)
+    if (!state.open) {
+        if (state.undo != null) FollowerUndoRow(state, dispatch)
+        if (state.error == ThreadFollowersError.Remove || state.error == ThreadFollowersError.Restore) {
+            Text(
+                stringResource(if (state.error == ThreadFollowersError.Remove) MR.strings.thread_followers_remove_failed else MR.strings.thread_followers_restore_failed),
+                style = SlockType.Caption,
+                modifier = Modifier.clickable { dispatch(ThreadAgentFollowersIntent.Open) }.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
+    }
     if (state.open) {
         SlockUnifiedDialog(
             title = stringResource(MR.strings.thread_followers_title),
@@ -183,7 +192,7 @@ private fun FollowerAvatar(agent: ThreadAgentFollower, compact: Boolean) {
 @Composable
 private fun FollowerUndoRow(state: ThreadAgentFollowersState, dispatch: (ThreadAgentFollowersIntent) -> Unit) {
     if (state.undo == null) return
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(stringResource(MR.strings.thread_followers_removed), style = SlockType.Caption)
         SlockModalActionButton(
             label = stringResource(MR.strings.common_undo), enabled = !state.mutating,

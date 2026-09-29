@@ -15350,6 +15350,7 @@ private fun ThreadPageHeader(
                     payload.showMembersAction ||
                     payload.threadHeaderOpenInParentActionVisible()
             )
+    Column(modifier = Modifier.fillMaxWidth()) {
     SlockTopPageHeader(
         title = localizedHeaderTitle,
         backgroundColor = SlockColor.SurfaceWhite,
@@ -15405,7 +15406,6 @@ private fun ThreadPageHeader(
                     }
                     dmAgentActivity?.let { ThreadDmAgentActivity(state = it) }
                 }
-                agentFollowersHeader()
                 headerDisplay.subtitle?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         text = it,
@@ -15443,6 +15443,8 @@ private fun ThreadPageHeader(
             },
         showBodyTopBanner = false,
     )
+    agentFollowersHeader()
+    }
 }
 
 @Composable
