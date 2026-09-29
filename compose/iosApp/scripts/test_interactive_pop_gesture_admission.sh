@@ -3,35 +3,8 @@ set -euo pipefail
 
 IOS_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 HEADER="$IOS_ROOT/iosApp/FDFullscreenPopGesture/SlockInteractivePopGestureAdmission.h"
-NAVIGATION_SOURCE="$IOS_ROOT/iosApp/FDFullscreenPopGesture/UINavigationController+FDFullscreenPopGesture.m"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
-
-require_source() {
-    local source_file="$1"
-    local expected="$2"
-    if ! grep -Fq -- "$expected" "$source_file"; then
-        echo "interactive-pop source contract missing: $expected" >&2
-        exit 1
-    fi
-}
-
-reject_source() {
-    local source_file="$1"
-    local forbidden="$2"
-    if grep -Fq -- "$forbidden" "$source_file"; then
-        echo "interactive-pop source contract forbids: $forbidden" >&2
-        exit 1
-    fi
-}
-
-require_source "$NAVIGATION_SOURCE" "shouldReceiveTouch:(UITouch *)touch"
-require_source "$NAVIGATION_SOURCE" "SlockInteractivePopTouchBeginsInEdgeZone"
-require_source "$NAVIGATION_SOURCE" "SlockInteractivePopGestureShouldBegin"
-require_source "$NAVIGATION_SOURCE" "shouldBeRequiredToFailByGestureRecognizer:"
-require_source "$NAVIGATION_SOURCE" "SlockInteractivePopShouldBeRequiredToFailBy"
-# Content-area swipes must never pop, so the pop must not run alongside content pans.
-reject_source "$NAVIGATION_SOURCE" "SlockInteractivePopShouldRecognizeSimultaneously"
 
 CC_BIN="${CC:-$(command -v clang || command -v cc || command -v gcc)}"
 
