@@ -187,11 +187,6 @@ private fun storedFits(field: RuntimeFormV2Field, stored: JsonElement?): Boolean
 }
 
 /**
- * Set one field and cascade: fields whose choices depend on it are reset to
- * their defaults, recursively, so a stale model can never survive a provider
- * change.
- */
-/**
  * After [sourceId] was re-probed: a select that now holds a value the source no longer offers is
  * reset to its default, and fields depending on it follow — as v1 does after re-probing models.
  * Free-text (custom-value) choices and empty values are left alone.
@@ -214,6 +209,11 @@ internal fun runtimeFormV2ValuesAfterSourceReload(
     return next
 }
 
+/**
+ * Set one field and cascade: fields whose choices depend on it are reset to
+ * their defaults, recursively, so a stale model can never survive a provider
+ * change.
+ */
 internal fun applyRuntimeFormV2Change(
     form: ParsedRuntimeFormV2,
     sources: RuntimeFormV2Sources,
