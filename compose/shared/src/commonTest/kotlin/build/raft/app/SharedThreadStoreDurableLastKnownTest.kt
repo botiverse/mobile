@@ -358,6 +358,49 @@ class SharedThreadStoreDurableLastKnownTest {
     }
 
     @Test
+    fun standInShowsOnlyTheNewestPageOfALargeStoredScope() = runBlocking {
+        // 45 stored facts, network first page = 30 (SharedThreadPaging.DefaultPageSize): the stand-in is
+        // the newest 30 in timeline order, not the whole scope (artin, Hands 2d15915b).
+        val logs = mutableListOf<String>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource(
+                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
+                    reader = FakeReader(frames = mapOf(partition(ownerA) to largeFrame(count = 45))),
+                    identity = { ownerA },
+                    diagnosticsLogger = logs::add,
+                ),
+                scope = scope,
+            )
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        val payload = store.state.value.payload
+        assertEquals("content", payload.status)
+        assertTrue(payload.durableLastKnown)
+        assertEquals((16..45).map { "body $it" }, payload.messages.map { it.body })
+        assertTrue(
+            logs.any { "outcome=frame" in it && "messages=30" in it && "stored=45" in it },
+            logs.toString(),
+        )
+        scope.cancel()
+
+        // Positive control: a scope within one page is shown whole.
+        val smallScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val small =
+            SharedThreadStore(
+                dataSource = dataSource(
+                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
+                    reader = FakeReader(frames = mapOf(partition(ownerA) to largeFrame(count = 12))),
+                    identity = { ownerA },
+                ),
+                scope = smallScope,
+            )
+        small.accept(SharedThreadIntent.Start(basePayload()))
+        assertEquals((1..12).map { "body $it" }, small.state.value.payload.messages.map { it.body })
+        smallScope.cancel()
+    }
+
+    @Test
     fun frameOfAnotherSurfaceKindIsRefusedAndLogged() = runBlocking {
         // Positive control: a "channel" frame renders on the channel route (same logger wiring).
         val controlLogs = mutableListOf<String>()
@@ -462,6 +505,28 @@ class SharedThreadStoreDurableLastKnownTest {
             scope = SyncScopeKey(partition(ownerA), "channel-1", "channel"),
             envelopes = emptyList(),
             cursor = PersistedCursor(null, null, null, hasLoadedOldest = true),
+        )
+
+    /** Facts seq 1..[count], stored newest-first so the stand-in must order and trim by seq itself. */
+    private fun largeFrame(count: Int): ThreadDurableLastKnownFrame =
+        ThreadDurableLastKnownFrame(
+            scope = SyncScopeKey(partition(ownerA), "channel-1", "channel"),
+            envelopes = (count downTo 1).map { index ->
+                CanonicalMessageEnvelopeV2(
+                    fact = CanonicalMessageNodeV2(
+                        id = "v2-$index",
+                        seq = index.toLong(),
+                        senderType = "user",
+                        senderId = "u-a",
+                        content = "body $index",
+                        messageType = "chat",
+                        createdAt = "2026-05-19T16:${(index / 60).toString().padStart(2, '0')}:${(index % 60).toString().padStart(2, '0')}Z",
+                        senderName = "Owner A",
+                    ),
+                    context = CanonicalConversationContextV2.TopLevel(TopLevelScopeRefV2.Channel("server-1", "channel-1")),
+                )
+            },
+            cursor = PersistedCursor(count.toLong(), 1, count.toLong(), hasLoadedOldest = true, epoch = "epoch-v2"),
         )
 
     private fun frame(body: String, scopeKind: String = "channel"): ThreadDurableLastKnownFrame {
