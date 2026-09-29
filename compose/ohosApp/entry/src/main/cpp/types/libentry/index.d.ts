@@ -1,4 +1,4 @@
-export const initKuikly: () => number;
+export const initKuikly: (imageDiagnostic?: (message: string, failed: boolean) => void) => number;
 export const setImageHttp3Enabled: (enabled: boolean) => boolean;
 export const updateProcessNetworkVisibility: (foreground: boolean) => number;
 

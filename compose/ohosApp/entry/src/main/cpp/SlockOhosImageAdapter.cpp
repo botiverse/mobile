@@ -9,6 +9,7 @@
 #include <multimedia/image_framework/image/pixelmap_native.h>
 
 #include <cstdint>
+#include <algorithm>
 #include <atomic>
 #include <exception>
 #include <iomanip>
@@ -71,17 +72,45 @@ bool IsNetworkUrl(const char *src) {
     return value.rfind("https://", 0) == 0 || value.rfind("http://", 0) == 0;
 }
 
-SharedPixelMap DecodePixelMap(const char *data, int data_length) {
+struct ImageDecodeDiagnostic final {
+    int sourceResult = -1;
+    int decodeResult = -1;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    std::string format = "unknown";
+};
+
+SharedPixelMap DecodePixelMap(const char *data, int data_length, ImageDecodeDiagnostic &diagnostic) {
     if (data == nullptr || data_length <= 0) {
         return nullptr;
     }
 
     OH_ImageSourceNative *source = nullptr;
     auto *mutable_data = reinterpret_cast<uint8_t *>(const_cast<char *>(data));
-    if (OH_ImageSourceNative_CreateFromData(mutable_data, static_cast<size_t>(data_length), &source) !=
-            IMAGE_SUCCESS ||
-        source == nullptr) {
+    diagnostic.sourceResult = OH_ImageSourceNative_CreateFromData(
+        mutable_data, static_cast<size_t>(data_length), &source);
+    if (diagnostic.sourceResult != IMAGE_SUCCESS || source == nullptr) {
         return nullptr;
+    }
+
+    OH_ImageSource_Info *info = nullptr;
+    if (OH_ImageSourceInfo_Create(&info) == IMAGE_SUCCESS && info != nullptr) {
+        if (OH_ImageSourceNative_GetImageInfo(source, 0, info) == IMAGE_SUCCESS) {
+            OH_ImageSourceInfo_GetWidth(info, &diagnostic.width);
+            OH_ImageSourceInfo_GetHeight(info, &diagnostic.height);
+            Image_MimeType mime{};
+            if (OH_ImageSourceInfo_GetMimeType(info, &mime) == IMAGE_SUCCESS && mime.data != nullptr) {
+                // MIME storage belongs to info and is not NUL-terminated. Copy only a
+                // bounded, recognized format; never put downloaded payload text in logs.
+                const std::string format(mime.data, std::min(mime.size, size_t{64}));
+                for (const char *known : {"image/jpeg", "image/png", "image/webp", "image/gif",
+                                          "image/bmp", "image/svg+xml", "image/x-icon",
+                                          "image/heif", "image/heic", "image/x-adobe-dng"}) {
+                    if (format == known) diagnostic.format = known;
+                }
+            }
+        }
+        OH_ImageSourceInfo_Release(info);
     }
 
     OH_DecodingOptions *options = nullptr;
@@ -91,12 +120,12 @@ SharedPixelMap DecodePixelMap(const char *data, int data_length) {
     }
 
     OH_PixelmapNative *pixel_map = nullptr;
-    const Image_ErrorCode decode_result = OH_ImageSourceNative_CreatePixelmap(source, options, &pixel_map);
+    diagnostic.decodeResult = OH_ImageSourceNative_CreatePixelmap(source, options, &pixel_map);
     if (options != nullptr) {
         OH_DecodingOptions_Release(options);
     }
     OH_ImageSourceNative_Release(source);
-    if (decode_result != IMAGE_SUCCESS || pixel_map == nullptr) {
+    if (diagnostic.decodeResult != IMAGE_SUCCESS || pixel_map == nullptr) {
         return nullptr;
     }
 
@@ -173,11 +202,32 @@ class PixelMapCache final {
 
 PixelMapCache g_pixel_map_cache;
 
+void RecordImageDiagnostic(napi_env env, napi_value callback, const std::string &message, bool failed) {
+    if (env == nullptr || callback == nullptr || message.empty()) return;
+    napi_value args[2];
+    napi_value receiver;
+    if (napi_create_string_utf8(env, message.c_str(), message.size(), &args[0]) != napi_ok ||
+        napi_get_boolean(env, failed, &args[1]) != napi_ok ||
+        napi_get_undefined(env, &receiver) != napi_ok) return;
+    if (napi_call_function(env, receiver, callback, 2, args, nullptr) != napi_ok) {
+        // Diagnostics must not prevent image delivery if the ArkTS recorder fails.
+        bool pending = false;
+        napi_is_exception_pending(env, &pending);
+        if (pending) {
+            napi_value ignored;
+            napi_get_and_clear_last_exception(env, &ignored);
+        }
+        OH_LOG_Print(LOG_APP, LOG_WARN, kLogDomain, "SlockImageFlight", "diagnostic_callback_failed");
+    }
+}
+
 struct ImageFanoutTask final {
     std::vector<ImageSubscriber> subscribers;
     SharedPixelMap pixelMap;
+    std::string diagnostic;
 
-    void Run() {
+    void Run(napi_env env, napi_value diagnostic_callback) {
+        RecordImageDiagnostic(env, diagnostic_callback, diagnostic, !pixelMap);
         for (const auto &subscriber : subscribers) {
             if (pixelMap) {
                 ArkUI_DrawableDescriptor *descriptor =
@@ -187,26 +237,30 @@ struct ImageFanoutTask final {
                     OH_ArkUI_DrawableDescriptor_Dispose(descriptor);
                     continue;
                 }
+                RecordImageDiagnostic(env, diagnostic_callback,
+                    "drawable_failure urlHash=" + UrlHash(subscriber.src), true);
             }
             subscriber.callback(subscriber.context, subscriber.src.c_str(), nullptr, nullptr);
         }
     }
 };
 
-void RunImageFanoutOnMain(napi_env /*env*/, napi_value /*js_callback*/, void * /*context*/, void *data) {
+void RunImageFanoutOnMain(napi_env env, napi_value js_callback, void * /*context*/, void *data) {
     std::unique_ptr<ImageFanoutTask> task(static_cast<ImageFanoutTask *>(data));
-    if (task) {
-        task->Run();
+    if (task && env != nullptr) {
+        task->Run(env, js_callback);
     }
 }
 
-void DispatchFanout(std::vector<ImageSubscriber> subscribers, SharedPixelMap pixel_map) {
+void DispatchFanout(std::vector<ImageSubscriber> subscribers, SharedPixelMap pixel_map,
+                    std::string diagnostic = {}) {
     if (subscribers.empty()) {
         return;
     }
     auto task = std::make_unique<ImageFanoutTask>();
     task->subscribers = std::move(subscribers);
     task->pixelMap = std::move(pixel_map);
+    task->diagnostic = std::move(diagnostic);
     const napi_status status = napi_call_threadsafe_function(
         g_image_callback_dispatcher,
         task.get(),
@@ -225,6 +279,8 @@ struct CurlResponseState final {
     long httpCode = 0;
     double totalTimeMs = 0;
     bool http3Requested = false;
+    int responseBytes = 0;
+    ImageDecodeDiagnostic decode;
     std::string negotiatedProtocol = "unknown";
 };
 
@@ -236,8 +292,9 @@ void OnCurlResponse(void *callback_ref, CurlResponse *response) {
     state->curlCode = response->code;
     state->httpCode = response->httpCode;
     state->totalTimeMs = response->elapse.totalTimeMs;
+    state->responseBytes = response->dataLen;
     if (response->code == 0 && response->httpCode >= 200 && response->httpCode < 300) {
-        state->pixelMap = DecodePixelMap(response->data, response->dataLen);
+        state->pixelMap = DecodePixelMap(response->data, response->dataLen, state->decode);
     }
 }
 
@@ -313,7 +370,18 @@ void RunImageProducer(std::string key, uint64_t flight_id) {
                      response_state.http3Requested ? 1 : 0,
                      response_state.negotiatedProtocol.c_str());
     }
-    DispatchFanout(std::move(subscribers), std::move(response_state.pixelMap));
+    // A decoded pixelmap is not proof of a displayed frame. Keep this event
+    // distinct from ArkUI's later load/draw result and use only URL hashes.
+    std::ostringstream diagnostic;
+    diagnostic << (response_state.pixelMap ? "flight_decoded" : "flight_failure")
+               << " urlHash=" << url_hash
+               << " curlCode=" << response_state.curlCode << " httpCode=" << response_state.httpCode
+               << " responseBytes=" << response_state.responseBytes
+               << " sourceResult=" << response_state.decode.sourceResult
+               << " decodeResult=" << response_state.decode.decodeResult
+               << " format=" << response_state.decode.format
+               << " width=" << response_state.decode.width << " height=" << response_state.decode.height;
+    DispatchFanout(std::move(subscribers), std::move(response_state.pixelMap), diagnostic.str());
 }
 
 int32_t SlockImageAdapterV3(const void *context,
@@ -353,7 +421,8 @@ int32_t SlockImageAdapterV3(const void *context,
         OH_LOG_Print(LOG_APP, LOG_ERROR, kLogDomain, "SlockImageFlight",
                      "flight_thread_start_failed urlHash=%{public}s reason=%{public}s",
                      url_hash.c_str(), exception.what());
-        DispatchFanout(g_image_flights.Complete(key, join.flightId), nullptr);
+        DispatchFanout(g_image_flights.Complete(key, join.flightId), nullptr,
+                       "flight_thread_start_failed urlHash=" + url_hash);
     }
     return 1;
 }
@@ -367,13 +436,13 @@ bool SetSlockOhosImageHttp3Enabled(bool enabled) {
     return true;
 }
 
-void RegisterSlockOhosImageAdapter(napi_env env) {
+void RegisterSlockOhosImageAdapter(napi_env env, napi_value diagnostic_callback) {
     if (g_image_callback_dispatcher == nullptr) {
         napi_value work_name;
         napi_create_string_utf8(env, "Slock image callback", NAPI_AUTO_LENGTH, &work_name);
         const napi_status status = napi_create_threadsafe_function(
             env,
-            nullptr,
+            diagnostic_callback,
             nullptr,
             work_name,
             0,
