@@ -3087,11 +3087,11 @@ private fun SlockAppShellReadyContent(
             desktopModeOffCleanupDecision(desktopModeOnLargeScreen, desktopModeCleanupArmed)
         desktopModeCleanupArmed = nextArmed
         if (shouldCleanup) {
+            bridge.log(
+                "desktop_mode_off_cleanup edge inline=${railInlineSecondaryDestination.orEmpty()} " +
+                    "moreMenu=$slackNavMoreMenuVisible selectedTab=$selectedTab"
+            )
             if (railInlineSecondaryDestination != null || slackNavMoreMenuVisible) {
-                bridge.log(
-                    "desktop_mode_off_cleanup inline=${railInlineSecondaryDestination.orEmpty()} " +
-                        "moreMenu=$slackNavMoreMenuVisible selectedTab=$selectedTab"
-                )
                 railInlineSecondaryDestination = null
                 slackNavMoreMenuVisible = false
             }
