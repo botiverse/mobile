@@ -580,6 +580,30 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityListDoesNotRecoverWhenOnlyTheLoadMoreFooterIsVisible() {
+        assertEquals(
+            false,
+            activityListShouldRecoverVisibleContent(
+                firstVisibleItemIndex = 12,
+                visibleItemKeys = listOf(ACTIVITY_LOAD_MORE_ROW_KEY),
+                currentItemKeys = listOf("channel:remaining-1", "channel:remaining-2")
+            )
+        )
+    }
+
+    @Test
+    fun activityListDoesNotRecoverWhileLayoutReportsNoVisibleRows() {
+        assertEquals(
+            false,
+            activityListShouldRecoverVisibleContent(
+                firstVisibleItemIndex = 7,
+                visibleItemKeys = emptyList(),
+                currentItemKeys = listOf("channel:remaining-1", "channel:remaining-2")
+            )
+        )
+    }
+
+    @Test
     fun activityPendingUpdateIncrementStaysHiddenNearTop() {
         val items = listOf(activityItem(key = "channel:channel-new"), activityItem(key = "channel:channel-old-top"))
 

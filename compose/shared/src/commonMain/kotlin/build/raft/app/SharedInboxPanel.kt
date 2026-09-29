@@ -1079,8 +1079,21 @@ private fun SharedActivityList(
     val latestOnIntent by rememberUpdatedState(onIntent)
     val refreshPresentation = activityRefreshPresentation(refreshing, pullRefreshing)
     val pullToRefreshState = rememberPullToRefreshState(refreshPresentation.pullRefreshing)
-    LaunchedEffect(presentedItems, active) {
+    // Viewport recovery (#997) is only armed right after the panel becomes
+    // active again (returning from read navigation) or the app returns to the
+    // foreground, and disarms as soon as the reader starts scrolling. A data
+    // change that arrives mid-scroll must never move the viewport (task #436).
+    var viewportRecoveryArmed by remember { mutableStateOf(active) }
+    LaunchedEffect(active, foregroundEpoch) {
+        if (active) viewportRecoveryArmed = true
+    }
+    LaunchedEffect(listState, active) {
         if (!active) return@LaunchedEffect
+        snapshotFlow { listState.isScrollInProgress }
+            .collect { scrolling -> if (scrolling) viewportRecoveryArmed = false }
+    }
+    LaunchedEffect(presentedItems, active, viewportRecoveryArmed) {
+        if (!active || !viewportRecoveryArmed || listState.isScrollInProgress) return@LaunchedEffect
         val visibleItemKeys =
             listState.layoutInfo.visibleItemsInfo.mapNotNull { itemInfo ->
                 itemInfo.key as? String
@@ -1092,6 +1105,7 @@ private fun SharedActivityList(
                 currentItemKeys = presentedItems.map(InboxItem::key)
             )
         ) {
+            viewportRecoveryArmed = false
             updateTracking = updateTracking.consumePending()
             savePresentation()
             listState.scrollToItem(0)
@@ -1341,7 +1355,7 @@ private fun SharedActivityList(
                 )
             }
             if (showLoadMoreFooter) {
-                item(key = "activity_load_more") {
+                item(key = ACTIVITY_LOAD_MORE_ROW_KEY) {
                     val shouldRequest = activityShouldRequestLoadMore(
                         hasMore = snapshot.hasMore,
                         refreshing = refreshing,
@@ -2488,14 +2502,24 @@ internal fun activityLoadMoreFooterMode(
         else -> ActivityLoadMoreFooterMode.Sentinel
     }
 
+internal const val ACTIVITY_LOAD_MORE_ROW_KEY = "activity_load_more"
+
+/**
+ * True only when at least one activity row is visible and none of the visible
+ * rows still exists. The load-more footer is not an activity row, and an empty
+ * visible set is a transient layout state; neither is evidence that the rows
+ * the reader was looking at were removed.
+ */
 internal fun activityListShouldRecoverVisibleContent(
     firstVisibleItemIndex: Int,
     visibleItemKeys: List<String>,
     currentItemKeys: List<String>
 ): Boolean {
     if (firstVisibleItemIndex <= 0 || currentItemKeys.isEmpty()) return false
+    val visibleRowKeys = visibleItemKeys.filter { it != ACTIVITY_LOAD_MORE_ROW_KEY }
+    if (visibleRowKeys.isEmpty()) return false
     val currentKeys = currentItemKeys.toSet()
-    return visibleItemKeys.none(currentKeys::contains)
+    return visibleRowKeys.none(currentKeys::contains)
 }
 
 internal fun activityItemsPreservingPresentedOrder(
