@@ -211,26 +211,30 @@ internal fun ThreadAgentFollowersHeader(
     // Keep the live anchor while an empty popover is open, but never leave an empty trigger.
     Box(Modifier.slockCaptureLiveRootAnchor(anchorRef)) {
         if (agents.isNotEmpty() || state.error == ThreadFollowersError.Load) {
-            val theme = LocalSlockTheme.current
             val description = stringResource(MR.strings.thread_followers_count, agents.size)
-            Row(
-                modifier = Modifier.height(28.dp)
-                    .border(theme.lineWidth, theme.line, RoundedCornerShape(theme.cornerRadius))
-                    .semantics { contentDescription = description }
-                    .clickable {
-                        resolver = anchorRef.resolver(SlockPopoverLocalPoint.BottomEnd)
-                        if (resolver?.resolve() != null) dispatch(ThreadAgentFollowersIntent.Open)
-                    }.padding(horizontal = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ThreadHeaderActionButton(
+                modifier = Modifier.semantics { contentDescription = description },
+                horizontalPadding = 6.dp,
+                onClick = {
+                    resolver = anchorRef.resolver(SlockPopoverLocalPoint.BottomEnd)
+                    if (resolver?.resolve() != null) dispatch(ThreadAgentFollowersIntent.Open)
+                },
             ) {
-                if (state.error == ThreadFollowersError.Load && agents.isEmpty()) {
-                    SlockLucideIcon(SlockLucideIconName.Info, Modifier.size(16.dp))
-                } else {
-                    Row(horizontalArrangement = Arrangement.spacedBy((-4).dp)) {
-                        agents.take(3).forEach { FollowerAvatar(it, compact = true) }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (state.error == ThreadFollowersError.Load && agents.isEmpty()) {
+                        SlockLucideIcon(SlockLucideIconName.Info, Modifier.size(16.dp))
+                    } else {
+                        val visibleAvatars = agents.take(3)
+                        // Explicit offsets: negative Row spacing does not overlap native Kuikly children.
+                        Box(Modifier.width((20 + (visibleAvatars.size - 1) * 14).dp).height(20.dp)) {
+                            visibleAvatars.forEachIndexed { index, agent ->
+                                Box(Modifier.offset(x = (index * 14).dp).zIndex(index.toFloat())) {
+                                    FollowerAvatar(agent, compact = true)
+                                }
+                            }
+                        }
+                        Text(agents.size.toString(), style = SlockType.Caption.copy(fontWeight = FontWeight.Bold), color = SlockColor.TextBlack, maxLines = 1)
                     }
-                    Text(agents.size.toString(), style = SlockType.Caption, color = theme.ink, maxLines = 1)
                 }
             }
         }
@@ -267,9 +271,13 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: SlockPopo
                 ambientColor = theme.shadow.color, spotColor = theme.shadow.color) else Modifier)
             .background(theme.surface, shape)
             .border(theme.lineWidth, theme.line, RoundedCornerShape(theme.cornerRadius)).clickable { }) {
-            Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
-                Text(stringResource(MR.strings.thread_followers_title), style = SlockType.Body, color = theme.ink)
+            Box(Modifier.fillMaxWidth()
+                .background(if (theme.family == SlockThemeFamily.Brutal) SlockColor.SurfaceCream else theme.surface)
+                .padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Text(stringResource(MR.strings.thread_followers_title),
+                    style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold), color = theme.ink)
             }
+            Box(Modifier.fillMaxWidth().height(theme.lineWidth).background(theme.line))
             if (state.loading && agents.isEmpty()) {
                 Box(Modifier.padding(16.dp)) {
                     Text(stringResource(MR.strings.thread_followers_loading), style = SlockType.Caption, color = theme.inkMuted)
@@ -286,9 +294,9 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: SlockPopo
                     Text(stringResource(MR.strings.thread_followers_empty), style = SlockType.Caption, color = theme.inkMuted)
                 }
             } else {
-                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp).padding(horizontal = 12.dp, vertical = 12.dp)) {
                     items(agents, key = { it.id }) { agent ->
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FollowerAvatar(agent, compact = false)
                             val server = agent.serverName?.takeIf { it.isNotBlank() } ?: agent.serverSlug?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.thread_followers_peer_server)
                             val peerExplanation = stringResource(MR.strings.thread_followers_peer_remove_unavailable, server)
