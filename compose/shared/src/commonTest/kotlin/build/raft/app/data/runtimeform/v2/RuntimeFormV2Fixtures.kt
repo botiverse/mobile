@@ -1682,3 +1682,947 @@ internal const val GROK_V2_FORM_JSON: String = """{
   }
 }
 """
+
+/** fixtures/claude.form.json, sha256 4914b834e8447d3a0ed3f09e76ed567c125995d03aee574a40fcf6a25a1b590b */
+internal const val CLAUDE_V2_FORM_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "claude",
+  "schemaVersion": "claude.create.v1",
+  "requiredClientCapabilities": [
+    "select.custom_value",
+    "choice.labels",
+    "option_source.status"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "provider",
+      "model"
+    ],
+    "properties": {
+      "provider": {
+        "type": "string",
+        "title": "Provider",
+        "minLength": 1,
+        "x-optionSource": "provider"
+      },
+      "apiUrl": {
+        "type": "string",
+        "title": "API URL",
+        "format": "uri"
+      },
+      "apiKey": {
+        "type": "string",
+        "title": "API Key",
+        "writeOnly": true
+      },
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "reasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionsFrom": {
+          "field": "model",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      },
+      "fastMode": {
+        "type": "boolean",
+        "title": "Fast mode"
+      },
+      "command": {
+        "type": "string",
+        "title": "Claude Command"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "provider",
+      "apiUrl",
+      "apiKey",
+      "model",
+      "reasoningEffort",
+      "fastMode",
+      "command",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/command",
+        "/envVars"
+      ]
+    },
+    "visibility": [
+      {
+        "pointer": "/apiUrl",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "custom"
+          ]
+        }
+      },
+      {
+        "pointer": "/apiKey",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "custom"
+          ]
+        }
+      }
+    ],
+    "localization": {
+      "provider": {
+        "label": "Provider",
+        "hint": "Default leaves Claude Code provider settings untouched. Custom sets ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY for this agent."
+      },
+      "apiUrl": {
+        "label": "API URL",
+        "placeholder": "https://gateway.example.com"
+      },
+      "apiKey": {
+        "label": "API Key",
+        "placeholder": "sk-ant-..."
+      },
+      "model": {
+        "label": "Model",
+        "hint": "Models Claude Code accepts. You can also type a model ID."
+      },
+      "reasoningEffort": {
+        "label": "Reasoning",
+        "hint": "Available values depend on the selected model.",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "medium": {
+            "label": "Medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          "high": {
+            "label": "High",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          "xhigh": {
+            "label": "Extra High",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          "max": {
+            "label": "Max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          "ultra": {
+            "label": "Ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        }
+      },
+      "fastMode": {
+        "label": "Fast mode",
+        "hint": "Launch this runtime with higher speed at a higher cost per token."
+      },
+      "command": {
+        "label": "Claude Command",
+        "hint": "Executable path or command name; Slock adds the Claude stream-json runtime arguments.",
+        "placeholder": "claude"
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [
+      "/apiKey"
+    ],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "provider": {
+      "protocolVersion": 1,
+      "runtimeId": "claude",
+      "schemaVersion": "claude.create.v1",
+      "sourceId": "provider",
+      "kind": "select",
+      "pointer": "/provider"
+    },
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "claude",
+      "schemaVersion": "claude.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  }
+}
+"""
+
+/** fixtures/claude.edit.json, sha256 7667e567d12db4480c8d0dd459448eee4dca90f675345650de4423e7f5beb4d3 */
+internal const val CLAUDE_V2_EDIT_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "claude",
+  "schemaVersion": "claude.create.v1",
+  "requiredClientCapabilities": [
+    "select.custom_value",
+    "choice.labels",
+    "option_source.status"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "provider",
+      "model"
+    ],
+    "properties": {
+      "provider": {
+        "type": "string",
+        "title": "Provider",
+        "minLength": 1,
+        "x-optionSource": "provider"
+      },
+      "apiUrl": {
+        "type": "string",
+        "title": "API URL",
+        "format": "uri"
+      },
+      "apiKey": {
+        "type": "string",
+        "title": "API Key",
+        "writeOnly": true
+      },
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "reasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionsFrom": {
+          "field": "model",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      },
+      "fastMode": {
+        "type": "boolean",
+        "title": "Fast mode"
+      },
+      "command": {
+        "type": "string",
+        "title": "Claude Command"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "provider",
+      "apiUrl",
+      "apiKey",
+      "model",
+      "reasoningEffort",
+      "fastMode",
+      "command",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/command",
+        "/envVars"
+      ]
+    },
+    "visibility": [
+      {
+        "pointer": "/apiUrl",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "custom"
+          ]
+        }
+      },
+      {
+        "pointer": "/apiKey",
+        "when": {
+          "pointer": "/provider",
+          "in": [
+            "custom"
+          ]
+        }
+      }
+    ],
+    "localization": {
+      "provider": {
+        "label": "Provider",
+        "hint": "Default leaves Claude Code provider settings untouched. Custom sets ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY for this agent."
+      },
+      "apiUrl": {
+        "label": "API URL",
+        "placeholder": "https://gateway.example.com"
+      },
+      "apiKey": {
+        "label": "API Key",
+        "placeholder": "sk-ant-..."
+      },
+      "model": {
+        "label": "Model",
+        "hint": "Models Claude Code accepts. You can also type a model ID."
+      },
+      "reasoningEffort": {
+        "label": "Reasoning",
+        "hint": "Available values depend on the selected model.",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "medium": {
+            "label": "Medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          "high": {
+            "label": "High",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          "xhigh": {
+            "label": "Extra High",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          "max": {
+            "label": "Max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          "ultra": {
+            "label": "Ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        }
+      },
+      "fastMode": {
+        "label": "Fast mode",
+        "hint": "Launch this runtime with higher speed at a higher cost per token."
+      },
+      "command": {
+        "label": "Claude Command",
+        "hint": "Executable path or command name; Slock adds the Claude stream-json runtime arguments.",
+        "placeholder": "claude"
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [
+      "/apiKey"
+    ],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "provider": {
+      "protocolVersion": 1,
+      "runtimeId": "claude",
+      "schemaVersion": "claude.create.v1",
+      "sourceId": "provider",
+      "kind": "select",
+      "pointer": "/provider"
+    },
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "claude",
+      "schemaVersion": "claude.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  },
+  "values": {
+    "provider": "custom",
+    "apiUrl": "https://gateway.example.test",
+    "model": "sonnet",
+    "reasoningEffort": "high",
+    "fastMode": true,
+    "command": "/usr/local/bin/claude",
+    "envVars": {
+      "EXAMPLE_FLAG": "1"
+    }
+  }
+}
+"""
+
+/** fixtures/claude.option-source.provider.json, sha256 6094377f22360553bc81aeea377271c41d4bee990b73cdf0b330ffe405ae3963 */
+internal const val CLAUDE_V2_PROVIDER_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "claude",
+  "schemaVersion": "claude.create.v1",
+  "sourceId": "provider",
+  "kind": "select",
+  "pointer": "/provider",
+  "options": [
+    {
+      "value": "default",
+      "label": "Default"
+    },
+    {
+      "value": "custom",
+      "label": "Custom"
+    }
+  ],
+  "defaultValue": "default",
+  "customValueAllowed": false
+}
+"""
+
+/** fixtures/claude.option-source.fallback.json, sha256 e3f17dfd0209fe41e82a7bdcf06cdbd867901397b293da96a61d11004f0c8f07 */
+internal const val CLAUDE_V2_FALLBACK_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "claude",
+  "schemaVersion": "claude.create.v1",
+  "sourceId": "model",
+  "kind": "select",
+  "pointer": "/model",
+  "options": [
+    {
+      "value": "opus",
+      "label": "Claude Opus",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "fable",
+      "label": "Claude Fable",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "sonnet",
+      "label": "Claude Sonnet",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "haiku",
+      "label": "Claude Haiku",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-opus-5-5",
+      "label": "Claude Opus 5.5",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-opus-5",
+      "label": "Claude Opus 5",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-opus-4-8",
+      "label": "Claude Opus 4.8",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-opus-4-7",
+      "label": "Claude Opus 4.7",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-opus-4-6",
+      "label": "Claude Opus 4.6",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-fable-5-1",
+      "label": "Claude Fable 5.1",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-fable-5",
+      "label": "Claude Fable 5",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-sonnet-5-5",
+      "label": "Claude Sonnet 5.5",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-sonnet-5",
+      "label": "Claude Sonnet 5",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-sonnet-4-6",
+      "label": "Claude Sonnet 4.6",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-haiku-4-5",
+      "label": "Claude Haiku 4.5",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    }
+  ],
+  "defaultValue": "opus",
+  "customValueAllowed": true,
+  "status": "fallback",
+  "reason": "machine_offline",
+  "retryable": true
+}
+"""
+
+/** fixtures/cursor.form.json, sha256 d9ee01cb0e1cd9677e74a7a0bb87fb15c13863522d3f2f164296dc0fbf99aefa */
+internal const val CURSOR_V2_FORM_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "cursor",
+  "schemaVersion": "cursor.create.v1",
+  "requiredClientCapabilities": [
+    "select.custom_value",
+    "option_source.status"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model",
+        "hint": "Models available from this computer's Cursor CLI. You can also type a model ID."
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "cursor",
+      "schemaVersion": "cursor.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  }
+}
+"""
+
+/** fixtures/cursor.edit.json, sha256 2bdc95baf932a192c4b928dd2570ace439b94a40539666740ac6ed9861247e87 */
+internal const val CURSOR_V2_EDIT_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "cursor",
+  "schemaVersion": "cursor.create.v1",
+  "requiredClientCapabilities": [
+    "select.custom_value",
+    "option_source.status"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model",
+        "hint": "Models available from this computer's Cursor CLI. You can also type a model ID."
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "cursor",
+      "schemaVersion": "cursor.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  },
+  "values": {
+    "model": "my-org/cursor-custom",
+    "envVars": {
+      "EXAMPLE_FLAG": "1"
+    }
+  }
+}
+"""
+
+/** fixtures/cursor.option-source.fallback.json, sha256 11878b1c1d668846299231392799cb94ba1326bb1c74aa3a4bc303dc58aad286 */
+internal const val CURSOR_V2_FALLBACK_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "cursor",
+  "schemaVersion": "cursor.create.v1",
+  "sourceId": "model",
+  "kind": "select",
+  "pointer": "/model",
+  "options": [
+    {
+      "value": "composer-2-fast",
+      "label": "Composer 2 Fast"
+    },
+    {
+      "value": "composer-2",
+      "label": "Composer 2"
+    },
+    {
+      "value": "auto",
+      "label": "Auto"
+    }
+  ],
+  "defaultValue": "composer-2-fast",
+  "customValueAllowed": true,
+  "status": "fallback",
+  "reason": "missing_config",
+  "retryable": false
+}
+"""
+
+/** fixtures/copilot.form.json, sha256 8fa777294e76b4871a5195b4382572bd6938cb251caf2593d987476fbc76a70f */
+internal const val COPILOT_V2_FORM_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "copilot",
+  "schemaVersion": "copilot.create.v1",
+  "requiredClientCapabilities": [
+    "select.custom_value",
+    "choice.labels",
+    "option_source.status"
+  ],
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "reasoningEffort": {
+        "type": "string",
+        "title": "Reasoning",
+        "x-optionsFrom": {
+          "field": "model",
+          "attribute": "supportedReasoningEfforts",
+          "defaultAttribute": "defaultReasoningEffort"
+        }
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "reasoningEffort",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model",
+        "hint": "Models GitHub Copilot CLI accepts. You can also type a model ID."
+      },
+      "reasoningEffort": {
+        "label": "Reasoning",
+        "hint": "Available values depend on the selected model.",
+        "choices": {
+          "low": {
+            "label": "Low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          "medium": {
+            "label": "Medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          "high": {
+            "label": "High",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          "xhigh": {
+            "label": "Extra High",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          "max": {
+            "label": "Max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          "ultra": {
+            "label": "Ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        }
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "copilot",
+      "schemaVersion": "copilot.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  }
+}
+"""
+
+/** fixtures/copilot.option-source.live.json, sha256 1f14406e2134b70d80d6066f645d24c98ddfb16729b30ab9588ea6b87b6fdec5 */
+internal const val COPILOT_V2_LIVE_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "copilot",
+  "schemaVersion": "copilot.create.v1",
+  "sourceId": "model",
+  "kind": "select",
+  "pointer": "/model",
+  "options": [
+    {
+      "value": "gpt-5.4",
+      "label": "GPT-5.4",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "gpt-5.2",
+      "label": "GPT-5.2",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-4-sonnet",
+      "label": "Claude 4 Sonnet",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "value": "claude-4.5-sonnet",
+      "label": "Claude 4.5 Sonnet",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    }
+  ],
+  "defaultValue": "gpt-5.4",
+  "customValueAllowed": true,
+  "status": "live"
+}
+"""

@@ -46,6 +46,16 @@ FIXTURES = [
     ("CODEX_V2_FALLBACK_SOURCE_JSON", "codex.option-source.fallback.json"),
     ("CODEX_V2_UNAVAILABLE_SOURCE_JSON", "codex.option-source.unavailable.json"),
     ("GROK_V2_FORM_JSON", "grok.form.json"),
+    # Batch 3b (slock #8637): Claude (provider, custom API url/key, write-only key), Cursor, Copilot.
+    ("CLAUDE_V2_FORM_JSON", "claude.form.json"),
+    ("CLAUDE_V2_EDIT_JSON", "claude.edit.json"),
+    ("CLAUDE_V2_PROVIDER_SOURCE_JSON", "claude.option-source.provider.json"),
+    ("CLAUDE_V2_FALLBACK_SOURCE_JSON", "claude.option-source.fallback.json"),
+    ("CURSOR_V2_FORM_JSON", "cursor.form.json"),
+    ("CURSOR_V2_EDIT_JSON", "cursor.edit.json"),
+    ("CURSOR_V2_FALLBACK_SOURCE_JSON", "cursor.option-source.fallback.json"),
+    ("COPILOT_V2_FORM_JSON", "copilot.form.json"),
+    ("COPILOT_V2_LIVE_SOURCE_JSON", "copilot.option-source.live.json"),
 ]
 
 
