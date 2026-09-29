@@ -423,6 +423,204 @@ class SlockAdaptiveDetailOpenContractTest {
         )
     }
 
+    @Test
+    fun cancelDropRemovesExactPendingAndKeepsRetry() {
+        // task #18 hardening: timeout/cancel drops by requestId — a retry of the same identity
+        // under a new requestId must survive the drop of the stale one.
+        val stalePending =
+            PendingAdaptiveDetailOpen(
+                requestId = "req-1",
+                hostId = "pager-9",
+                identity = detailIdentity(),
+                detailGeneration = 7L,
+                windowFactCapturedAtMillis = 1000L,
+            )
+        val retryPending = stalePending.copy(requestId = "req-2", detailGeneration = 8L)
+        val session =
+            SharedAdaptiveWorkspaceSession(
+                pendingDetailOpens =
+                    mapOf("req-1" to stalePending, "req-2" to retryPending),
+            )
+
+        val dropped = dropSlockAdaptiveDetailOpen("req-1", session)
+        assertNull(dropped.pendingDetailOpens["req-1"])
+        assertEquals(retryPending, dropped.pendingDetailOpens["req-2"])
+        // Unknown requestId is a no-op returning the same session.
+        assertTrue(dropSlockAdaptiveDetailOpen("req-9", session) === session)
+    }
+
+    @Test
+    fun cancelDropRemovesAcknowledgedPendingBeforeCommitReceipt() {
+        // SangLan review point: ACK sent does not mean commit dispatched — draft_drifted/aborted
+        // exits after the accepted ack leave no commit receipt to settle the entry, so the drop
+        // must apply to acknowledged pendings too. Conversely, a REAL commit dispatch suppresses
+        // the cancel path entirely, so no cancel event can target an in-flight commit.
+        val acknowledgedPending =
+            PendingAdaptiveDetailOpen(
+                requestId = "req-ack",
+                hostId = "pager-9",
+                identity = detailIdentity(),
+                detailGeneration = 7L,
+                windowFactCapturedAtMillis = 1000L,
+                acknowledged = true,
+                sourceControllerToken = "src-1",
+                targetControllerToken = "tgt-1",
+            )
+        val session =
+            SharedAdaptiveWorkspaceSession(
+                pendingDetailOpens = mapOf("req-ack" to acknowledgedPending),
+            )
+
+        val dropped = dropSlockAdaptiveDetailOpen("req-ack", session)
+        assertTrue(dropped.pendingDetailOpens.isEmpty())
+    }
+
+    @Test
+    fun lateReadyAfterCancelDropCannotAckStaleGeneration() {
+        // Regression for the 2026-09-28 device timeline: OPEN accepted at T0, source times out
+        // at T1 and posts cancel, the destination's READY lands at T2 — after the drop the
+        // pending is gone so completeSlockAdaptiveDetailOpen resolves to null (shell then logs
+        // ready_no_pending and sends NO accepted ack).
+        val workspace =
+            SlockAdaptiveWorkspaceState(shellInstanceId = "shell-a", serverId = "server-a").let {
+                reduceSlockAdaptiveWorkspace(
+                    it,
+                    SlockAdaptiveWorkspaceIntent.WindowChanged(widePane()),
+                )
+            }.let {
+                reduceSlockAdaptiveWorkspace(
+                    it,
+                    SlockAdaptiveWorkspaceIntent.OpenDetail(detailIdentity()),
+                )
+            }
+        val generation = workspace.selection!!.generation
+        val pending =
+            PendingAdaptiveDetailOpen(
+                requestId = "req-1",
+                hostId = "pager-9",
+                identity = detailIdentity(),
+                detailGeneration = generation,
+                windowFactCapturedAtMillis = 1000L,
+            )
+        val accepted =
+            SharedAdaptiveWorkspaceSession(
+                workspace = workspace,
+                pendingDetailOpens = mapOf("req-1" to pending),
+            )
+
+        // Cancel arrives before READY: pending dropped, late READY ignored.
+        val cancelled = dropSlockAdaptiveDetailOpen("req-1", accepted)
+        val (afterLateReady, latePending) =
+            completeSlockAdaptiveDetailOpen(
+                identityKey = detailIdentity().key,
+                generation = generation,
+                session = cancelled,
+            )
+        assertNull(latePending)
+        assertTrue(afterLateReady.pendingDetailOpens.isEmpty())
+
+        // Retry under a new requestId: the stale READY (same generation) still cannot resolve —
+        // the retry's pending carries a different generation and remains for its own READY.
+        val retryPendingEntry =
+            pending.copy(requestId = "req-2", detailGeneration = generation + 1)
+        val retried =
+            cancelled.copy(pendingDetailOpens = mapOf("req-2" to retryPendingEntry))
+        val (afterStaleReady, stalePending) =
+            completeSlockAdaptiveDetailOpen(
+                identityKey = detailIdentity().key,
+                generation = generation,
+                session = retried,
+            )
+        assertNull(stalePending)
+        assertEquals(
+            retryPendingEntry,
+            afterStaleReady.pendingDetailOpens["req-2"],
+        )
+    }
+
+    @Test
+    fun retryAfterCancelMintsFreshGenerationSoStaleReadyCannotMatch() {
+        // Jony's v12 counterexample: same-identity retry reused generation 1, so the dead
+        // attempt's delayed READY (same identity, same generation) completed the new pending
+        // and emitted a stray accepted ACK -> CommitDispatched. The fix mints a new generation
+        // whenever the selection is orphaned (no pending still owns its generation).
+        val first =
+            evaluateSlockAdaptiveDetailOpen(
+                request = request(requestId = "req-1", hostId = "pager-9"),
+                workspaceEnabled = true,
+                session = sessionWithWorkspace(dualPane = false),
+                nativeGuardedCommitAvailable = true,
+            )
+        val firstGen =
+            (first.second as? SlockAdaptiveDetailOpenDecision.Accepted)?.generation
+                ?: error("first request must be accepted")
+        // Cancel drops the pending but the workspace selection for that identity survives.
+        val cancelled = dropSlockAdaptiveDetailOpen("req-1", first.first)
+        assertNull(cancelled.pendingDetailOpens["req-1"])
+        assertEquals(
+            detailIdentity(),
+            cancelled.workspace?.selection?.identity,
+        )
+
+        val second =
+            evaluateSlockAdaptiveDetailOpen(
+                request =
+                    request(requestId = "req-2", hostId = "pager-9", capturedAtMillis = 2000L),
+                workspaceEnabled = true,
+                session = cancelled,
+                nativeGuardedCommitAvailable = true,
+            )
+        val secondGen =
+            (second.second as? SlockAdaptiveDetailOpenDecision.Accepted)?.generation
+                ?: error("retry must be accepted")
+        assertTrue(
+            secondGen > firstGen,
+            "retry must mint a fresh generation (got $secondGen after $firstGen)",
+        )
+        assertEquals(secondGen, second.first.pendingDetailOpens["req-2"]?.detailGeneration)
+
+        // The stale READY (identity + firstGen) resolves nothing now.
+        val (afterStaleReady, stalePending) =
+            completeSlockAdaptiveDetailOpen(
+                identityKey = detailIdentity().key,
+                generation = firstGen,
+                session = second.first,
+            )
+        assertNull(stalePending)
+        assertEquals(
+            "req-2",
+            afterStaleReady.pendingDetailOpens["req-2"]?.requestId,
+        )
+    }
+
+    @Test
+    fun sameRequestIdRedeliveryKeepsOriginalGeneration() {
+        // Dedupe: replayed requestId answers with the recorded pending generation, never
+        // re-reduces — the selection reuse guard must not fire on this path.
+        val first =
+            evaluateSlockAdaptiveDetailOpen(
+                request = request(requestId = "req-1", hostId = "pager-9"),
+                workspaceEnabled = true,
+                session = sessionWithWorkspace(dualPane = false),
+                nativeGuardedCommitAvailable = true,
+            )
+        val firstGen =
+            (first.second as? SlockAdaptiveDetailOpenDecision.Accepted)?.generation
+                ?: error("first request must be accepted")
+
+        val second =
+            evaluateSlockAdaptiveDetailOpen(
+                request = request(requestId = "req-1", hostId = "pager-9"),
+                workspaceEnabled = true,
+                session = first.first,
+                nativeGuardedCommitAvailable = true,
+            )
+        assertEquals(
+            firstGen,
+            (second.second as? SlockAdaptiveDetailOpenDecision.Accepted)?.generation,
+        )
+    }
+
     private fun request(
         requestId: String,
         hostId: String = "pager-1",

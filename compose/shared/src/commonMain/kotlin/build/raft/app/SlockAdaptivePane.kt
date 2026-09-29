@@ -87,3 +87,26 @@ private fun String.toSlockAdaptivePanePosture(): SlockAdaptivePanePosture =
     }
 
 private const val DualPaneMinimumWidthDp = 840f
+
+internal fun SlockAdaptivePanePosture.toSlockAdaptivePanePostureWireName(): String =
+    when (this) {
+        SlockAdaptivePanePosture.Flat -> "flat"
+        SlockAdaptivePanePosture.Folded -> "folded"
+        SlockAdaptivePanePosture.HalfFolded -> "half_folded"
+        SlockAdaptivePanePosture.Unknown -> "unknown"
+    }
+
+/**
+ * Snapshot a delivered [SlockAdaptivePaneEvent] into the adoption-request carrier. The capture
+ * stamp is taken by the requesting pager, which owns the freshness sequence for its hostId.
+ */
+internal fun SlockAdaptivePaneEvent.toSlockAdaptiveOpenWindowFact(
+    capturedAtMillis: Long,
+): SlockAdaptiveOpenWindowFact =
+    SlockAdaptiveOpenWindowFact(
+        widthPx = widthPx,
+        heightPx = heightPx,
+        density = density,
+        posture = posture.toSlockAdaptivePanePostureWireName(),
+        capturedAtMillis = capturedAtMillis,
+    )

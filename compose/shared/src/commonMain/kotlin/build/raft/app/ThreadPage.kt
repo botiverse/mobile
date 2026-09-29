@@ -131,6 +131,8 @@ import build.raft.app.data.SharedTaskReferenceResolutionSource
 import build.raft.app.data.TaskSnapshot
 import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.SharedAdaptiveScrollAnchor
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
@@ -226,6 +228,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -332,6 +335,7 @@ import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -362,6 +366,7 @@ import kotlinx.serialization.Transient
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlin.coroutines.resume
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.random.Random
@@ -1655,6 +1660,14 @@ internal fun threadHeaderDisplayTitle(
 
 @Page(THREAD_PAGE, supportInLocal = true)
 internal class ComposeThreadPage : AuthenticatedProductPager(AuthenticatedProductRoute.Thread) {
+    /**
+     * Latest host window fact (A4 adoption, task #18). Standalone thread pages are the only
+     * initiation source: the fact is captured here at the pager boundary and reduced by the
+     * screen so a DualPane arrival can trigger one guarded prepare/commit transaction.
+     */
+    private var adaptivePaneState by mutableStateOf(SlockAdaptivePaneState())
+    private var adaptivePaneEvent by mutableStateOf<SlockAdaptivePaneEvent?>(null)
+
     override fun willInit() {
         super.willInit()
         setAuthenticatedContent {
@@ -1662,11 +1675,19 @@ internal class ComposeThreadPage : AuthenticatedProductPager(AuthenticatedProduc
                 Box(modifier = focusDismissModifier.fillMaxSize()) {
                     ThreadPageScreen(
                         pageVisibleTick = slockPageVisibleResumeTick,
-                        pageVisible = slockPageVisible
+                        pageVisible = slockPageVisible,
+                        adaptivePaneState = adaptivePaneState,
+                        adaptivePaneEvent = adaptivePaneEvent,
                     )
                 }
             }
         }
+    }
+
+    override fun onSlockAdaptivePaneChanged(eventData: JSONObject) {
+        val event = eventData.toSlockAdaptivePaneEventOrNull() ?: return
+        adaptivePaneState = reduceSlockAdaptivePane(adaptivePaneState, event)
+        adaptivePaneEvent = event
     }
 }
 
@@ -3674,10 +3695,13 @@ private fun KuiklyThreadTab.toSlockTabSpec(): SlockTabSpec<KuiklyThreadTab> =
         iconName = icon
     )
 
+@OptIn(ExperimentalUuidApi::class)
 @Composable
 private fun ThreadPageScreen(
     pageVisibleTick: Int,
-    pageVisible: Boolean
+    pageVisible: Boolean,
+    adaptivePaneState: SlockAdaptivePaneState = SlockAdaptivePaneState(),
+    adaptivePaneEvent: SlockAdaptivePaneEvent? = null,
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
@@ -3724,10 +3748,103 @@ private fun ThreadPageScreen(
     val storeScope = remember(params.toString(), pager.pagerId) {
         params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
-    val hasExplicitShellScope = remember(params.toString()) {
-        params.slockShellStoreScopeOrNull() != null
-    }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+
+    // A4 adoption (task #18): only a standalone (native-stack) page initiates. The embedded
+    // detail child is identified by SLOCK_EMBEDDED_CHILD_PAGE_PARAM, injected by
+    // slockEmbeddedChildPageData for every SlockKuiklyChildPage mount — not by shell scope
+    // presence, which every openSlockPage-pushed page also carries.
+    val isStandaloneThreadPage =
+        adaptiveCloseRequest == null &&
+            !params.optBoolean(SLOCK_EMBEDDED_CHILD_PAGE_PARAM, false)
+    val adaptiveInitiationEnabled =
+        params.optBoolean(SLOCK_ADAPTIVE_INITIATION_ENABLED, false)
+    val adaptiveInitiationCaptureHolder =
+        remember { ThreadAdaptiveInitiationCaptureHolder() }
+    val adaptiveNativeEditingStateReader =
+        remember { SlockTextFieldNativeEditingStateReader() }
+    val adaptiveDetailOpenInitiator =
+        remember(storeScope.shellInstanceId, pager.pagerId, isStandaloneThreadPage) {
+            if (!isStandaloneThreadPage) return@remember null
+            SlockAdaptiveDetailOpenInitiator(
+                shellInstanceId = storeScope.shellInstanceId,
+                hostId = "pager:${pager.pagerId}",
+                anchorStore = sharedStores.adaptiveScrollAnchorStore(storeScope),
+                eventBus = sharedStores.eventBus,
+                nowEpochMillis = { defaultNowMillis() },
+                nativeAdaptiveNavigation = { action, requestId, token, expectedRefTag, expectedText ->
+                    bridge.adaptiveNavigation(
+                        action = action,
+                        requestId = requestId,
+                        token = token,
+                        // Caller-cancelled prepare still owns its nonce: a late prepared
+                        // reply must retire the accepted transaction, not orphan it into
+                        // request_in_progress.
+                        onLateReply = { reply ->
+                            val lateToken = reply.optString("token").trim()
+                            if (
+                                action == "prepare" &&
+                                reply.optString("status") == "prepared" &&
+                                lateToken.isNotBlank()
+                            ) {
+                                bridge.dispatchAdaptiveCancel(requestId, lateToken)
+                            }
+                        },
+                        expectedEditorRefTag = expectedRefTag,
+                        expectedEditorText = expectedText,
+                    )
+                },
+                dispatchAdaptiveCommit = { requestId, token ->
+                    bridge.dispatchAdaptiveCommit(requestId, token)
+                },
+                dispatchAdaptiveCancel = { requestId, token ->
+                    bridge.dispatchAdaptiveCancel(requestId, token)
+                },
+                captureLatestDraft = captureLatestDraftForAdoption@{ requestId ->
+                    val capture =
+                        adaptiveInitiationCaptureHolder.captureLatestDraft
+                            ?: return@captureLatestDraftForAdoption null
+                    capture(requestId)
+                },
+                captureAnchor = captureAnchorForAdoption@{ requestId ->
+                    adaptiveInitiationCaptureHolder.captureAnchor?.invoke(requestId)
+                },
+                log = { message -> bridge.log("adaptive_initiate $message") },
+                logWarn = { message -> bridge.logWarn("adaptive_initiate $message") },
+            )
+        }
+    LaunchedEffect(adaptivePaneEvent, adaptiveInitiationEnabled, isStandaloneThreadPage) {
+        val event = adaptivePaneEvent ?: return@LaunchedEffect
+        if (!adaptiveInitiationEnabled || !isStandaloneThreadPage) return@LaunchedEffect
+        val initiator = adaptiveDetailOpenInitiator ?: return@LaunchedEffect
+        if (reduceSlockAdaptivePane(adaptivePaneState, event).layout !=
+            SlockAdaptivePaneLayout.DualPane
+        ) {
+            return@LaunchedEffect
+        }
+        val launchPayload =
+            parsedPayload.toWireThreadLaunchPayloadOrNull() ?: return@LaunchedEffect
+        val identity =
+            launchPayload.toSlockAdaptiveDetailIdentity(
+                serverId =
+                    threadParentNavigationServerId(null)
+                        ?: storeScope.initialServerId
+                        ?: run {
+                            bridge.logWarn(
+                                "adaptive_initiate_skip reason=no_server_id pager=${pager.pagerId}"
+                            )
+                            return@LaunchedEffect
+                        }
+            ) ?: return@LaunchedEffect
+        val outcome =
+            initiator.initiate(
+                identity = identity,
+                launchPayload = launchPayload,
+                windowFact = event.toSlockAdaptiveOpenWindowFact(defaultNowMillis()),
+                requestId = "adopt-${pager.pagerId}-${Uuid.random()}",
+            )
+        bridge.log("adaptive_initiate_outcome outcome=$outcome identity=${identity.key}")
+    }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val sharedHomeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
@@ -3956,6 +4073,10 @@ private fun ThreadPageScreen(
         }
         openPage()
     }
+    CompositionLocalProvider(
+        LocalThreadAdaptiveInitiationCapture provides adaptiveInitiationCaptureHolder,
+        LocalThreadAdaptiveNativeEditingReader provides adaptiveNativeEditingStateReader,
+    ) {
     SharedThreadRouteContent(
         initialPayload = payload,
         timeContextProvider = liveTimeContextProvider,
@@ -4111,6 +4232,7 @@ private fun ThreadPageScreen(
             )
         }
     )
+    }
 }
 
 @Composable
@@ -5264,6 +5386,49 @@ private fun ThreadMessageVisualCard(
  * implementation frame small enough to verify. Same shape as task #346's
  * ThreadPageContentData/ThreadPageContentCallbacks and PR #2453.
  */
+/**
+ * Indirection between the A4 initiator (constructed at the standalone ThreadPageScreen level)
+ * and the thread surface internals that only exist deep inside composition: the native editor
+ * reader, the message list state and the composer draft store. The deep surface registers
+ * providers once those objects exist; the initiator invokes them per requestId. Keeping the
+ * holder reference-stable across recomposition means the in-flight initiator always reaches
+ * the *current* providers rather than a stale closure.
+ */
+internal class ThreadAdaptiveInitiationCaptureHolder {
+    // Returns the persisted draft identity snapshot (text + draft key + instance) the
+    // pre-commit fence compares against — equal text across different draft/session
+    // identities is NOT a match. Null = the read/persist barrier failed.
+    var captureLatestDraft: (suspend (requestId: String) -> SharedThreadComposerDraftSnapshot?)? = null
+    var captureAnchor: ((requestId: String) -> SharedAdaptiveScrollAnchor?)? = null
+}
+
+/**
+ * Identity-bearing capture of what the adoption actually persisted: the live editor text
+ * bound to a specific draft key on a specific composer instance. A later capture equal in
+ * every field proves no edit/draft-switch landed in the ACK/READY window; any difference
+ * (including same text under a different draftKey or instanceId) is drift.
+ */
+internal data class SharedThreadComposerDraftSnapshot(
+    val text: String,
+    val draftKey: String?,
+    val instanceId: String,
+    // Kuikly nativeRef of the resolved AutoHeightTextAreaView the read came from; -1 when
+    // the binding could not attribute one (then the capture is rejected at prepare).
+    val editorNativeRef: Int,
+)
+
+/** Present only inside a standalone thread page wired for A4 adoption. */
+internal val LocalThreadAdaptiveInitiationCapture =
+    compositionLocalOf<ThreadAdaptiveInitiationCaptureHolder?> { null }
+
+/**
+ * Native-editing reader shared between the page-level adoption initiator and the composer
+ * leaf so "latest draft" reads go through the same binding the editor writes — no second
+ * UIKit walk, no stale value. Null outside an A4-wired standalone page.
+ */
+internal val LocalThreadAdaptiveNativeEditingReader =
+    compositionLocalOf<SlockTextFieldNativeEditingStateReader?> { null }
+
 private data class SharedThreadRouteContentData(
     val initialPayload: KuiklyThreadScreenPayload,
     val timeContextProvider: SlockTimeContextProvider,
@@ -6958,6 +7123,97 @@ private fun SharedThreadRouteContentContent(
     DisposableEffect(composerDraftViewModel, threadInstanceKey) {
         onDispose {
             composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
+        }
+    }
+    // A4 adoption (task #18): register the draft-persist barrier + viewport anchor providers
+    // with the holder the page-level initiator calls. Registration is keyed on the objects
+    // themselves so a rotated detail never serves a stale provider.
+    val adaptiveNativeEditingStateReader = LocalThreadAdaptiveNativeEditingReader.current
+    val adaptiveInitiationCaptureHolder = LocalThreadAdaptiveInitiationCapture.current
+    DisposableEffect(
+        adaptiveInitiationCaptureHolder,
+        adaptiveNativeEditingStateReader,
+        composerDraftViewModel,
+        threadInstanceKey,
+    ) {
+        val holder = adaptiveInitiationCaptureHolder
+        val reader = adaptiveNativeEditingStateReader
+        if (holder != null && reader != null) {
+            holder.captureLatestDraft = captureLatestDraft@{ _ ->
+                // Unavailable must abort the migration — proceeding with only the stale shared
+                // draft would silently lose whatever is in the live editor (bridge contract).
+                val identityBefore = composerDraftViewModel.state.value
+                val nativeRead =
+                    suspendCancellableCoroutine<SlockTextFieldNativeEditingStateReadResult.Available?> {
+                            continuation ->
+                        reader.readCurrentValue { readResult ->
+                            continuation.resume(
+                                readResult as? SlockTextFieldNativeEditingStateReadResult.Available
+                            )
+                        }
+                    } ?: return@captureLatestDraft null
+                val nativeText = nativeRead.value.text
+                // The draft the native value belongs to is pinned by the state read above;
+                // a composer draft switch/rebind mid-read would attribute the persisted text
+                // to the wrong conversation.
+                val identityAfterRead = composerDraftViewModel.state.value
+                if (
+                    identityAfterRead.draftKey != identityBefore.draftKey ||
+                    identityAfterRead.instanceId != identityBefore.instanceId
+                ) {
+                    return@captureLatestDraft null
+                }
+                val changeReceipt =
+                    runCatchingPreservingCancellation {
+                        composerDraftViewModel.acceptQueued(
+                            SharedThreadComposerDraftIntent.Change(seedText = nativeText)
+                        )
+                    }.getOrElse { return@captureLatestDraft null }
+                // The receipt state must still carry the same draft identity we started from.
+                // A rejected (accepted=false) receipt is a satisfied no-op only when the
+                // serialized lane proves the store already carries the exact native text —
+                // MviFoundation reports an equivalent-state transition as not-accepted with
+                // state=previous. Any other rejection means the draft projection did not
+                // accept our text, and persisting would durably store the wrong content.
+                if (
+                    changeReceipt.state.draftKey != identityBefore.draftKey ||
+                    changeReceipt.state.instanceId != identityBefore.instanceId
+                ) {
+                    return@captureLatestDraft null
+                }
+                val changeSatisfied =
+                    changeReceipt.accepted ||
+                        changeReceipt.state.seedText == nativeText
+                if (!changeSatisfied) {
+                    return@captureLatestDraft null
+                }
+                val flushReceipt =
+                    runCatchingPreservingCancellation {
+                        composerDraftViewModel.acceptQueued(
+                            SharedThreadComposerDraftIntent.Flush
+                        )
+                    }.getOrElse { return@captureLatestDraft null }
+                if (
+                    !flushReceipt.accepted ||
+                    flushReceipt.state.draftKey != identityBefore.draftKey ||
+                    flushReceipt.state.instanceId != identityBefore.instanceId
+                ) {
+                    return@captureLatestDraft null
+                }
+                // Identity-bearing snapshot: the pre-commit fence compares a later capture
+                // field-for-field — same text under a different draft/instance is drift.
+                SharedThreadComposerDraftSnapshot(
+                    text = nativeText,
+                    draftKey = identityBefore.draftKey,
+                    instanceId = identityBefore.instanceId,
+                    editorNativeRef = nativeRead.editorNativeRef,
+                )
+            }
+        }
+        onDispose {
+            if (holder != null && holder.captureLatestDraft != null) {
+                holder.captureLatestDraft = null
+            }
         }
     }
     LaunchedEffect(composerDraftViewModel, threadInstanceKey) {
@@ -14696,7 +14952,9 @@ private fun ThreadPageContentContent(
                                     if (nextInset != composerKeyboardInsetDp) {
                                         composerKeyboardInsetDp = nextInset
                                     }
-                                }
+                                },
+                                adaptiveNativeEditingStateReader =
+                                    LocalThreadAdaptiveNativeEditingReader.current
                             )
                         }
                     }
@@ -15325,7 +15583,8 @@ private fun ThreadComposerRoute(
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
     composerSendKeyEnabled: Boolean = false,
-    onKeyboardHeightChange: (Float) -> Unit
+    onKeyboardHeightChange: (Float) -> Unit,
+    adaptiveNativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
 ) {
     val composerDraftState by composerDraftViewModel.state.collectAsState()
     val expectedDraftKey = remember(surface) { surface.threadComposerDraftKey() }
@@ -15363,7 +15622,8 @@ private fun ThreadComposerRoute(
         composerSendKeyEnabled = composerSendKeyEnabled,
         onKeyboardHeightChange = onKeyboardHeightChange,
         contentPaddingTop = 0.dp,
-        contentPaddingBottom = 0.dp
+        contentPaddingBottom = 0.dp,
+        adaptiveNativeEditingStateReader = adaptiveNativeEditingStateReader,
     )
 }
 
@@ -15402,7 +15662,8 @@ private fun ThreadComposerContentWithSuggestions(
     composerSendKeyEnabled: Boolean = false,
     onKeyboardHeightChange: (Float) -> Unit,
     contentPaddingTop: Dp,
-    contentPaddingBottom: Dp
+    contentPaddingBottom: Dp,
+    adaptiveNativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
 ) {
     val memberSuggestionSlice by memberSuggestionsFlow.collectAsState(SharedMembersMemberSuggestionSlice())
     val channelSuggestionSlice by channelSuggestionsFlow.collectAsState(SharedMembersChannelSuggestionSlice())
@@ -15493,6 +15754,7 @@ private fun ThreadComposerContentWithSuggestions(
         onInsertMentionConsumed = onInsertMentionConsumed,
         onSuggestionDemandChanged = onSuggestionDemandChanged,
         composerSendKeyEnabled = composerSendKeyEnabled,
+        externalNativeEditingStateReader = adaptiveNativeEditingStateReader,
     )
 }
 
@@ -16004,6 +16266,87 @@ private fun ThreadChatTabContent(
     val adaptiveStoreScope = data.adaptiveStoreScope
     val adaptiveEventBus = data.adaptiveEventBus
     val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
+    // A4 destination side (task #18, spec §9): READY must post for EVERY resolved branch —
+    // including empty_state, which renders ThreadStateMessage below and never mounts
+    // ThreadMessagesList (Jony's 8th QA: real empty status is "empty", not "success", and
+    // it bypasses the list entirely). The restore leg for non-empty payloads still lives
+    // inside the list where listState exists; both share this flag so READY can't double.
+    val closeReq = adaptiveCloseRequest
+    val adaptivePager = LocalActivity.current.getPager() as Pager
+    val adaptiveSharedStores = remember(adaptivePager) {
+        SlockSharedStoreRegistry.get(Utils.bridgeModule(adaptivePager.pagerId))
+    }
+    val adaptiveReadyPosted = remember(threadInstanceKey) { mutableStateOf(false) }
+    fun postDetailReadyTrace(hop: String, extra: JSONObject.() -> Unit = {}) {
+        val request = closeReq ?: return
+        val extraJson = JSONObject().apply(extra).toString()
+        diagnosticsLogger(
+            formatAdaptiveTraceLine(
+                side = "detail",
+                hop = hop,
+                identityKey = request.identityKey,
+                generation = request.generation,
+                extra =
+                    "routeActive=$routeActive status=${timelineSlice.status} " +
+                        "messagesCount=${timelineSlice.messages.size}" +
+                        if (extraJson == "{}") "" else " extra=$extraJson",
+            ),
+        )
+        adaptiveEventBus?.postAdaptiveTrace(
+            side = "detail",
+            hop = hop,
+            identityKey = request.identityKey,
+            generation = request.generation,
+        ) {
+            put("routeActive", routeActive)
+            put("status", timelineSlice.status)
+            put("messagesCount", timelineSlice.messages.size)
+            extra()
+        }
+    }
+    LaunchedEffect(closeReq, timelineSlice.status, timelineSlice.messages.size) {
+        val request = closeReq ?: return@LaunchedEffect
+        if (adaptiveReadyPosted.value) return@LaunchedEffect
+        postDetailReadyTrace("effect_enter")
+        when (evaluateSlockAdaptiveReadyGate(
+            adaptiveReadyPosted.value,
+            timelineSlice.status,
+            timelineSlice.messages.size,
+        )) {
+            SlockAdaptiveReadyGate.AlreadyPosted -> return@LaunchedEffect
+            SlockAdaptiveReadyGate.StatusBlocked -> {
+                postDetailReadyTrace("status_gate")
+                return@LaunchedEffect
+            }
+            // Non-empty resolved payload: the list owns anchor restore + READY.
+            SlockAdaptiveReadyGate.RestoreThenReady -> return@LaunchedEffect
+            SlockAdaptiveReadyGate.ReadyImmediately -> Unit
+        }
+        adaptiveSharedStores
+            .adaptiveWorkspaceStore(adaptiveStoreScope)
+            .snapshot()
+            .workspace
+            ?.selection
+            ?.takeIf { sel -> sel.identity.key == request.identityKey }
+            ?: run {
+                postDetailReadyTrace("selection_miss")
+                adaptiveReadyPosted.value = true
+                return@LaunchedEffect
+            }
+        adaptiveReadyPosted.value = true
+        val eventBus = adaptiveEventBus ?: return@LaunchedEffect
+        postDetailReadyTrace("ready_post")
+        eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+            eventData =
+                JSONObject()
+                    .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, request.shellInstanceId)
+                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, request.generation.toDouble()),
+            crossProcess = true,
+            source = "adaptive_detail_ready",
+        )
+    }
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
     val activeReplyDraftParentMessageIds =
@@ -16100,7 +16443,8 @@ private fun ThreadChatTabContent(
                     onThreadContentReady = onThreadContentReady,
                     adaptiveCloseRequest = adaptiveCloseRequest,
                     adaptiveStoreScope = adaptiveStoreScope,
-                    adaptiveEventBus = adaptiveEventBus
+                    adaptiveEventBus = adaptiveEventBus,
+                    adaptiveReadyPosted = adaptiveReadyPosted,
                 )
             } else {
                 ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
@@ -16193,7 +16537,8 @@ private fun ThreadChatTabContent(
                     onThreadContentReady = onThreadContentReady,
                     adaptiveCloseRequest = adaptiveCloseRequest,
                     adaptiveStoreScope = adaptiveStoreScope,
-                    adaptiveEventBus = adaptiveEventBus
+                    adaptiveEventBus = adaptiveEventBus,
+                    adaptiveReadyPosted = adaptiveReadyPosted,
                 )
             } else {
                 LaunchedEffect(threadInstanceKey, timelineSlice.status) {
@@ -16270,7 +16615,8 @@ private fun ThreadChatTabContent(
                 visibleReadTailIndex = visibleReadTailIndex,
                 adaptiveCloseRequest = adaptiveCloseRequest,
                 adaptiveStoreScope = adaptiveStoreScope,
-                adaptiveEventBus = adaptiveEventBus
+                adaptiveEventBus = adaptiveEventBus,
+                adaptiveReadyPosted = adaptiveReadyPosted
             )
     }
 }
@@ -16573,6 +16919,8 @@ private data class ThreadMessagesListData(
     val adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest?,
     val adaptiveStoreScope: SlockShellStoreScope,
     val adaptiveEventBus: SlockEventBus?,
+    /** Shared READY-posted flag owned by ThreadChatTabContent (A4 detail contract). */
+    val adaptiveReadyPosted: MutableState<Boolean>?,
 )
 
 /** task #346: callback payload of [ThreadMessagesList]. See ThreadMessagesListData. */
@@ -16671,7 +17019,8 @@ fun ThreadMessagesList(
     onVisibleReadTailChange: (Int?) -> Unit = {},
     adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest? = null,
     adaptiveStoreScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
-    adaptiveEventBus: SlockEventBus? = null
+    adaptiveEventBus: SlockEventBus? = null,
+    adaptiveReadyPosted: MutableState<Boolean>? = null
 )
  {
     ThreadMessagesListContent(
@@ -16721,6 +17070,7 @@ fun ThreadMessagesList(
                 adaptiveCloseRequest = adaptiveCloseRequest,
                 adaptiveStoreScope = adaptiveStoreScope,
                 adaptiveEventBus = adaptiveEventBus,
+                adaptiveReadyPosted = adaptiveReadyPosted,
             ),
         callbacks =
             ThreadMessagesListCallbacks(
@@ -16823,6 +17173,75 @@ private fun ThreadMessagesListContent(
     val adaptiveStoreScope = data.adaptiveStoreScope
     val adaptiveEventBus = data.adaptiveEventBus
     val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
+    // A4 destination side (task #18, spec §9): the ReadyImmediately leg lives in
+    // ThreadChatTabContent (empty-state branch never reaches this list); this level owns
+    // the RestoreThenReady leg — anchor restore against the real list state, then READY.
+    // Both share the same posted flag so READY cannot fire twice.
+    val closeReq = adaptiveCloseRequest
+    val adaptivePager = LocalActivity.current.getPager() as Pager
+    val adaptiveSharedStores = remember(adaptivePager) {
+        SlockSharedStoreRegistry.get(Utils.bridgeModule(adaptivePager.pagerId))
+    }
+    var localAdaptiveReadyPosted by remember(threadInstanceKey) { mutableStateOf(false) }
+    val adaptiveReadyPosted = data.adaptiveReadyPosted
+    // A4 restore (task #18): while a staged viewport anchor is pending for this destination,
+    // the initial bottom-anchor loop must not dispatch FollowLatest — it races the restore and
+    // re-pins the viewport to the latest item after scrollToItem already ran (v14 non-empty
+    // counterexample: restored mid-list then snapped to A4FX-probe/001). The flag is seeded
+    // synchronously at composition — the anchor is staged before the open request posts, so it
+    // is already visible to the destination's first frame and the bottom-anchor effect's first
+    // iteration sees the restore as in-flight rather than racing it.
+    var adaptiveAnchorRestoreInFlight by remember(threadInstanceKey) {
+        mutableStateOf(
+            run {
+                val request = adaptiveCloseRequest ?: return@run false
+                val identity =
+                    adaptiveSharedStores
+                        .adaptiveWorkspaceStore(adaptiveStoreScope)
+                        .snapshot()
+                        .workspace
+                        ?.selection
+                        ?.takeIf { sel -> sel.identity.key == request.identityKey }
+                        ?.identity
+                        ?: return@run false
+                adaptiveSharedStores
+                    .adaptiveScrollAnchorStore(adaptiveStoreScope)
+                    .peek(adaptiveStoreScope.shellInstanceId, identity)
+                    ?.let { !it.atLatest }
+                    ?: false
+            }
+        )
+    }
+    fun postDetailReadyTrace(hop: String, extra: JSONObject.() -> Unit = {}) {
+        val request = closeReq ?: return
+        // Hop extras must reach the device diagnostics line too — the event-bus trace has no
+        // on-disk subscription, so a hop that carries its fields only via `extra` shows its
+        // name in the JSONL but not the values (Jony's v14 review point).
+        val extraJson = JSONObject().apply(extra).toString()
+        diagnosticsLogger(
+            formatAdaptiveTraceLine(
+                side = "detail",
+                hop = hop,
+                identityKey = request.identityKey,
+                generation = request.generation,
+                extra =
+                    "routeActive=$routeActive status=${timelineSlice.status} " +
+                        "messagesCount=${timelineSlice.messages.size}" +
+                        if (extraJson == "{}") "" else " extra=$extraJson",
+            ),
+        )
+        adaptiveEventBus?.postAdaptiveTrace(
+            side = "detail",
+            hop = hop,
+            identityKey = request.identityKey,
+            generation = request.generation,
+        ) {
+            put("routeActive", routeActive)
+            put("status", timelineSlice.status)
+            put("messagesCount", timelineSlice.messages.size)
+            extra()
+        }
+    }
     if (timelineSlice.messages.isEmpty() && timelineSlice.originStatus == "none") {
         LaunchedEffect(threadInstanceKey, timelineSlice.status) {
             onThreadContentReady()
@@ -16993,70 +17412,17 @@ private fun ThreadMessagesListContent(
     // The durable anchor remains lifecycle-persisted, while the route-local frontier advances on
     // every visible-window change. This makes the pill converge as the user reads and prevents a
     // locally-sent row that is already on screen from being counted as unread.
-    // A4 destination side (task #18, spec §9): a pane child (adaptiveCloseRequest != null)
-    // restores the staged viewport anchor against its own message ordering — canonical message
-    // id first, list index only as fallback — then posts READY so the shell can ack the pending
-    // adoption. The staged record is deliberately NOT consumed here: the shell consumes it only
-    // when the native commit receipt reports `committed`, so a rejected or failed transfer keeps
-    // the anchor available for a retry. Pages without a staged anchor (entry-redirect opens) still
-    // report READY; the shell ignores it when nothing is pending.
-    val closeReq = adaptiveCloseRequest
-    val adaptivePager = LocalActivity.current.getPager() as Pager
-    val adaptiveSharedStores = remember(adaptivePager) {
-        SlockSharedStoreRegistry.get(Utils.bridgeModule(adaptivePager.pagerId))
+    var allowBottomAutoAnchor by remember(threadInstanceKey) {
+        mutableStateOf(true)
     }
-    var adaptiveReadyPosted by remember(threadInstanceKey) { mutableStateOf(false) }
-    LaunchedEffect(closeReq, renderPayload.messages.size, adaptiveReadyPosted) {
-        val request = closeReq ?: return@LaunchedEffect
-        if (adaptiveReadyPosted) return@LaunchedEffect
-        if (renderPayload.status != "success" && renderPayload.messages.isEmpty()) {
-            return@LaunchedEffect
-        }
-        val identity =
-            adaptiveSharedStores
-                .adaptiveWorkspaceStore(adaptiveStoreScope)
-                .snapshot()
-                .workspace
-                ?.selection
-                ?.takeIf { sel -> sel.identity.key == request.identityKey }
-                ?.identity
-            ?: run {
-                adaptiveReadyPosted = true
-                return@LaunchedEffect
-            }
-        val anchorStore = adaptiveSharedStores.adaptiveScrollAnchorStore(adaptiveStoreScope)
-        val anchor = anchorStore.peek(adaptiveStoreScope.shellInstanceId, identity)
-        if (anchor != null && !anchor.atLatest) {
-            val firstMessageIndex = renderPayload.firstMessageListItemIndex()
-            val locatedIndex =
-                anchor.messageId
-                    ?.let { id -> renderPayload.messages.indexOfFirst { m -> m.id == id } }
-                    ?.takeIf { it >= 0 }
-                    ?.let { it + firstMessageIndex }
-            if (locatedIndex != null) {
-                listState.awaitThreadMessagesLayoutFrame()
-                listState.scrollToItem(locatedIndex, anchor.messageOffsetPx)
-            } else if (
-                anchor.fallbackIndex >= 0 &&
-                anchor.fallbackIndex < (listState.layoutInfo.totalItemsCount.takeIf { it > 0 } ?: Int.MAX_VALUE)
-            ) {
-                listState.awaitThreadMessagesLayoutFrame()
-                listState.scrollToItem(anchor.fallbackIndex, anchor.messageOffsetPx)
-            }
-        }
-        adaptiveReadyPosted = true
-        val eventBus = adaptiveEventBus ?: return@LaunchedEffect
-        eventBus.post(
-            eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
-            eventData =
-                JSONObject()
-                    .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, request.shellInstanceId)
-                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, request.generation.toDouble()),
-            crossProcess = true,
-            source = "adaptive_detail_ready",
-        )
+    var initialBottomAnchorReady by remember(threadInstanceKey) {
+        mutableStateOf(false)
     }
+    // Non-empty destination path (continues the READY chain opened above): restore the
+    // staged viewport anchor against this page's message ordering, then post READY. The
+    // staged record is deliberately NOT consumed here: the shell consumes it only when the
+    // native commit receipt reports `committed`, so a rejected or failed transfer keeps the
+    // anchor available for a retry.
 
     val unreadJumpAtCanonicalBottom =
         threadUnreadJumpAtCanonicalBottom(
@@ -17122,6 +17488,241 @@ private fun ThreadMessagesListContent(
             epoch != commandId.epoch || pendingId == null
         }
     }
+    LaunchedEffect(closeReq, renderPayload.status, renderPayload.messages.size) {
+        val request = closeReq ?: return@LaunchedEffect
+        val posted = adaptiveReadyPosted?.value ?: localAdaptiveReadyPosted
+        if (posted) return@LaunchedEffect
+        if (
+            evaluateSlockAdaptiveReadyGate(
+                posted,
+                renderPayload.status,
+                renderPayload.messages.size,
+            ) != SlockAdaptiveReadyGate.RestoreThenReady
+        ) {
+            return@LaunchedEffect
+        }
+        postDetailReadyTrace("effect_enter")
+        val identity =
+            adaptiveSharedStores
+                .adaptiveWorkspaceStore(adaptiveStoreScope)
+                .snapshot()
+                .workspace
+                ?.selection
+                ?.takeIf { sel -> sel.identity.key == request.identityKey }
+                ?.identity
+            ?: run {
+                postDetailReadyTrace("selection_miss")
+                if (adaptiveReadyPosted != null) {
+                    adaptiveReadyPosted.value = true
+                } else {
+                    localAdaptiveReadyPosted = true
+                }
+                return@LaunchedEffect
+            }
+        val anchorStore = adaptiveSharedStores.adaptiveScrollAnchorStore(adaptiveStoreScope)
+        val anchor = anchorStore.peek(adaptiveStoreScope.shellInstanceId, identity)
+        // Success = the target message's item is visible AND sits at the staged
+        // viewport-relative offset (item.offset, negative when scrolled above the top edge).
+        // Comparing the target's own rendered offset — not firstVisibleItemIndex — keeps the
+        // contract in one coordinate space and stays correct when the anchor is a partially
+        // visible row above the top edge or a fully-visible row below it.
+        fun verifyAnchorRestore(
+            targetMessageId: String,
+            targetIndex: Int,
+            expectedItemOffsetPx: Int,
+        ): Boolean {
+            val settledIntent = viewportControllerState.intent as? LazyViewportIntent.Anchored
+            if (settledIntent == null ||
+                settledIntent.target != LazyViewportAnchorTarget.Message(targetMessageId)
+            ) {
+                postDetailReadyTrace("restore_rejected") {
+                    put("anchorMessageId", targetMessageId)
+                    put("reason", "intent_not_anchored")
+                    put("intent", viewportControllerState.intent.logTag())
+                }
+                return false
+            }
+            val renderedItem =
+                listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
+            if (renderedItem == null) {
+                postDetailReadyTrace("restore_rejected") {
+                    put("anchorMessageId", targetMessageId)
+                    put("reason", "position_mismatch")
+                    put("firstVisible", listState.firstVisibleItemIndex.toDouble())
+                    put("targetIndex", targetIndex.toDouble())
+                }
+                return false
+            }
+            // 4px matches the focused-anchor session drift tolerance.
+            if (kotlin.math.abs(renderedItem.offset - expectedItemOffsetPx) > 4) {
+                postDetailReadyTrace("restore_rejected") {
+                    put("anchorMessageId", targetMessageId)
+                    put("reason", "offset_mismatch")
+                    put("firstVisibleOffset", renderedItem.offset.toDouble())
+                    put("expectedOffsetPx", expectedItemOffsetPx.toDouble())
+                }
+                return false
+            }
+            return true
+        }
+        if (anchor != null && !anchor.atLatest) {
+            adaptiveAnchorRestoreInFlight = true
+            val firstMessageIndex = renderPayload.firstMessageListItemIndex()
+            val locatedIndex =
+                anchor.messageId
+                    ?.let { id -> renderPayload.messages.indexOfFirst { m -> m.id == id } }
+                    ?.takeIf { it >= 0 }
+                    ?.let { it + firstMessageIndex }
+            if (locatedIndex != null) {
+                postDetailReadyTrace("layout_wait_begin") {
+                    put("anchorMessageId", anchor.messageId)
+                    put("locatedIndex", locatedIndex.toDouble())
+                }
+                listState.awaitThreadMessagesLayoutFrame()
+                postDetailReadyTrace("layout_wait_end")
+                // Take viewport ownership through the controller, not a bare scroll: with intent
+                // left at FollowingLatest, the next composer_inset_relayout replays
+                // Mutation.InsetChange and yanks the restored viewport back to bottom. Anchored
+                // (ExactOffset) makes later relayouts re-assert this message+offset instead.
+                // Offset contract: anchor.messageOffsetPx is the captured LazyList item.offset
+                // (viewport-relative, negative when scrolled above the top edge). The command
+                // executor runs scrollToItem(index, -target.offset), so the event must carry the
+                // raw item.offset — negating here would scroll the target BELOW the top and
+                // surface the previous row as firstVisible (Jony r18: staged -37 → readback 17).
+                viewportLayoutGeneration += 1L
+                dispatchViewportEvent(
+                    LazyViewportEvent.Anchor(
+                        target = LazyViewportAnchorTarget.Message(requireNotNull(anchor.messageId)),
+                        offset = anchor.messageOffsetPx,
+                        layoutGeneration = viewportLayoutGeneration,
+                        placement = LazyViewportAnchorPlacement.ExactOffset,
+                        fallback = LazyViewportAnchorFallback.Free
+                    )
+                )
+                viewportControllerState.pendingCommand?.id?.let { awaitViewportCommandSettlement(it) }
+                // Settlement returning is not proof of success: AnchorUnavailable settles too
+                // (epoch bump + pending cleared, intent degrades to UserDragging). Gate READY on
+                // intent still Anchored on the target and the readback actually showing it.
+                // firstVisibleItemScrollOffset is always non-negative = -item.offset.
+                if (
+                    !verifyAnchorRestore(
+                        requireNotNull(anchor.messageId),
+                        locatedIndex,
+                        anchor.messageOffsetPx,
+                    )
+                ) {
+                    return@LaunchedEffect
+                }
+                postDetailReadyTrace("restore_applied") {
+                    put("firstVisible", listState.firstVisibleItemIndex.toDouble())
+                    put("firstVisibleOffset", listState.firstVisibleItemScrollOffset.toDouble())
+                    put("anchorOffsetPx", anchor.messageOffsetPx.toDouble())
+                    put("visibleItems", listState.layoutInfo.visibleItemsInfo.size.toDouble())
+                    put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
+                }
+            } else if (
+                anchor.fallbackIndex >= 0 &&
+                anchor.fallbackIndex < (listState.layoutInfo.totalItemsCount.takeIf { it > 0 } ?: Int.MAX_VALUE)
+            ) {
+                postDetailReadyTrace("layout_wait_begin") {
+                    put("anchorMessageId", "miss")
+                    put("fallbackIndex", anchor.fallbackIndex.toDouble())
+                }
+                listState.awaitThreadMessagesLayoutFrame()
+                postDetailReadyTrace("layout_wait_end")
+                val fallbackMessageId =
+                    renderPayload.messages
+                        .getOrNull(anchor.fallbackIndex - firstMessageIndex)
+                        ?.id
+                if (fallbackMessageId != null) {
+                    // Same ownership transfer as the located branch: intent must leave
+                    // FollowingLatest or a later inset relayout replays Latest and yanks the
+                    // restored viewport to bottom.
+                    viewportLayoutGeneration += 1L
+                    dispatchViewportEvent(
+                        LazyViewportEvent.Anchor(
+                            target = LazyViewportAnchorTarget.Message(fallbackMessageId),
+                            offset = anchor.messageOffsetPx,
+                            layoutGeneration = viewportLayoutGeneration,
+                            placement = LazyViewportAnchorPlacement.ExactOffset,
+                            fallback = LazyViewportAnchorFallback.Free
+                        )
+                    )
+                    viewportControllerState.pendingCommand?.id?.let { awaitViewportCommandSettlement(it) }
+                    if (
+                        !verifyAnchorRestore(
+                            fallbackMessageId,
+                            anchor.fallbackIndex,
+                            anchor.messageOffsetPx,
+                        )
+                    ) {
+                        return@LaunchedEffect
+                    }
+                } else {
+                    // No durable message identity at the fallback index — a bare scroll would
+                    // leave intent at FollowingLatest and the next inset relayout would yank
+                    // the viewport to bottom. Hold READY (same contract as restore_skipped):
+                    // readyTimeout cancels the adoption and keeps source + anchor for retry.
+                    postDetailReadyTrace("restore_skipped") {
+                        put("anchorMessageId", anchor.messageId ?: "null")
+                        put("fallbackIndex", anchor.fallbackIndex.toDouble())
+                        put("reason", "no_message_at_fallback_index")
+                        put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
+                    }
+                    return@LaunchedEffect
+                }
+                postDetailReadyTrace("restore_applied") {
+                    put("restoreBasis", "fallback_index")
+                    put("firstVisible", listState.firstVisibleItemIndex.toDouble())
+                    put("firstVisibleOffset", listState.firstVisibleItemScrollOffset.toDouble())
+                    put("anchorOffsetPx", anchor.messageOffsetPx.toDouble())
+                    put("visibleItems", listState.layoutInfo.visibleItemsInfo.size.toDouble())
+                    put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
+                }
+            } else {
+                // Jony's v15 boundary: a staged anchor whose message is absent AND whose
+                // fallback is out of range means the destination cannot honor the transfer —
+                // READY would lie ("restored") and authorize the native commit that pops the
+                // source. Hold READY; the caller's readyTimeout cancels the adoption and keeps
+                // the source page + staged anchor for an explicit retry. Leave
+                // adaptiveAnchorRestoreInFlight set so the bottom-anchor loop cannot claim the
+                // viewport while the handoff is still pending.
+                postDetailReadyTrace("restore_skipped") {
+                    put("anchorMessageId", anchor.messageId ?: "null")
+                    put("fallbackIndex", anchor.fallbackIndex.toDouble())
+                    put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
+                }
+                return@LaunchedEffect
+            }
+            // The restore owns the viewport now: mark the initial bottom anchor settled and
+            // disable auto-bottom so no in-loop FollowLatest or later auto-correction re-pins
+            // the viewport to latest (in-flight coroutine exits on the next iteration).
+            initialBottomAnchorReady = true
+            allowBottomAutoAnchor = false
+            adaptiveAnchorRestoreInFlight = false
+        } else if (anchor != null) {
+            // atLatest=true means the staged anchor sits at the bottom already — the default
+            // bottom-anchor path can own the viewport without fighting the restore.
+            adaptiveAnchorRestoreInFlight = false
+        }
+        if (adaptiveReadyPosted != null) {
+            adaptiveReadyPosted.value = true
+        } else {
+            localAdaptiveReadyPosted = true
+        }
+        val eventBus = adaptiveEventBus ?: return@LaunchedEffect
+        postDetailReadyTrace("ready_post")
+        eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+            eventData =
+                JSONObject()
+                    .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, request.shellInstanceId)
+                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, request.generation.toDouble()),
+            crossProcess = true,
+            source = "adaptive_detail_ready",
+        )
+    }
     var measuredThreadViewportHeightDp by remember(threadInstanceKey) { mutableStateOf(0f) }
     val viewportMeasurementReady = threadViewportMeasurementReady(measuredThreadViewportHeightDp)
     val threadLazyWindowConsumerCounts =
@@ -17176,9 +17777,7 @@ private fun ThreadMessagesListContent(
     }
     var taskStatusMenuMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var taskStatusMenuAnchor by remember(threadInstanceKey) { mutableStateOf<SlockPopoverAnchor?>(null) }
-    var allowBottomAutoAnchor by remember(threadInstanceKey) {
-        mutableStateOf(true)
-    }
+
     var expandedLongMessageIds by remember(threadInstanceKey) {
         mutableStateOf<Set<String>>(emptySet())
     }
@@ -17226,9 +17825,7 @@ private fun ThreadMessagesListContent(
             }
         }
     }
-    var initialBottomAnchorReady by remember(threadInstanceKey) {
-        mutableStateOf(false)
-    }
+
     var backToBottomInteractionGuardActive by remember(threadInstanceKey) {
         mutableStateOf(false)
     }
@@ -17238,6 +17835,44 @@ private fun ThreadMessagesListContent(
     var latestLocalSendBottomAnchorActiveKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     val userScrollGeneration = remember(threadInstanceKey) { ThreadUserScrollGeneration() }
+    // A4 adoption (task #18): the viewport anchor provider is registered here — the only
+    // place listState/timelineSlice/userScrollGeneration coexist. The page-level initiator
+    // calls it under the request fence; a null holder (embedded detail child, or A4 gate
+    // off upstream) leaves this a no-op.
+    val adaptiveInitiationCaptureHolder = LocalThreadAdaptiveInitiationCapture.current
+    // timelineSlice recomposes per frame; the provider must always see the latest slice.
+    val latestTimelineSlice by rememberUpdatedState(timelineSlice)
+    DisposableEffect(adaptiveInitiationCaptureHolder, threadInstanceKey) {
+        val holder = adaptiveInitiationCaptureHolder
+        if (holder != null) {
+            holder.captureAnchor = anchor@{ requestId ->
+                val first =
+                    listState.threadFirstVisibleMessageAnchor(
+                        timelineSlice = latestTimelineSlice,
+                        userScrollGeneration = userScrollGeneration.value,
+                    ) ?: return@anchor null
+                // atLatest must reflect the viewport's settled intent, not instantaneous
+                // geometry: during a resize/rotation frame `canScrollForward` can read
+                // transiently in EITHER direction — true while FollowingLatest at bottom
+                // (Jony r19 atLatest miss), or false while Anchored mid-list (which would
+                // wrongly upgrade a mid anchor to follow-latest). The controller intent is
+                // the only stable signal for both directions.
+                val atLatest =
+                    viewportControllerState.intent is LazyViewportIntent.FollowingLatest
+                SharedAdaptiveScrollAnchor(
+                    requestId = requestId,
+                    messageId = first.messageId,
+                    messageOffsetPx = first.offset,
+                    fallbackIndex = listState.firstVisibleItemIndex,
+                    atLatest = atLatest,
+                    capturedAtMillis = defaultNowMillis(),
+                )
+            }
+        }
+        onDispose {
+            if (holder != null) holder.captureAnchor = null
+        }
+    }
     var lastComposerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(composerKeyboardInsetDp) }
     // task #990 kill-switch: the kill-switch gates run inside long-lived
     // coroutines (the focused session's watch loop, the origin correction's
@@ -17456,7 +18091,9 @@ private fun ThreadMessagesListContent(
             }
     }
     val initialBottomAnchorPending =
-        !initialBottomAnchorReady && latestItemIndex >= 0 && !revealLatestLocalSendBeforeInitialAnchor
+        !initialBottomAnchorReady && latestItemIndex >= 0 &&
+            !revealLatestLocalSendBeforeInitialAnchor &&
+            !adaptiveAnchorRestoreInFlight
     LaunchedEffect(
         threadInstanceKey,
         renderPayload.status,
@@ -18631,6 +19268,12 @@ private fun ThreadMessagesListContent(
         }
         if (!initialBottomAnchorReady) {
             while (!initialBottomAnchorReady) {
+                if (adaptiveAnchorRestoreInFlight) {
+                    // A4 restore owns the viewport (task #18): yield this frame rather than
+                    // dispatching FollowLatest on top of an in-flight staged-anchor scroll.
+                    delay(ThreadInitialBottomAnchorRetryDelayMs)
+                    continue
+                }
                 if (listState.isScrollInProgress) {
                     initialBottomAnchorReady = true
                     return@LaunchedEffect

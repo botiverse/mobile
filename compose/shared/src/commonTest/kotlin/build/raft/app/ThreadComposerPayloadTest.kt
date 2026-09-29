@@ -305,12 +305,16 @@ class ThreadComposerPayloadTest {
         var result: SlockTextFieldNativeEditingStateReadResult? = null
         reader.bind(bindingOwner) { callback ->
             callback(
-                TextInputState(
-                    text = "please",
-                    selectionStart = 99,
-                    selectionEnd = 99,
-                    compositionStart = 2,
-                    compositionEnd = 99,
+                SlockTextFieldNativeEditorRead(
+                    state =
+                        TextInputState(
+                            text = "please",
+                            selectionStart = 99,
+                            selectionEnd = 99,
+                            compositionStart = 2,
+                            compositionEnd = 99,
+                        ),
+                    editorNativeRef = 7,
                 )
             )
         }
@@ -332,19 +336,23 @@ class ThreadComposerPayloadTest {
     fun nativeEditingStateReaderKeepsInFlightReadAcrossSameOwnerRefRefresh() {
         val reader = SlockTextFieldNativeEditingStateReader()
         val bindingOwner = Any()
-        var pendingNativeCallback: ((TextInputState?) -> Unit)? = null
+        var pendingNativeCallback: ((SlockTextFieldNativeEditorRead) -> Unit)? = null
         var result: SlockTextFieldNativeEditingStateReadResult? = null
         reader.bind(bindingOwner) { callback -> pendingNativeCallback = callback }
         reader.readCurrentValue { result = it }
 
-        reader.bind(bindingOwner) { callback -> callback(null) }
+        reader.bind(bindingOwner) { callback -> callback(SlockTextFieldNativeEditorRead(null)) }
         pendingNativeCallback?.invoke(
-            TextInputState(
-                text = "please",
-                selectionStart = 6,
-                selectionEnd = 6,
-                compositionStart = TextInputState.NO_COMPOSITION,
-                compositionEnd = TextInputState.NO_COMPOSITION,
+            SlockTextFieldNativeEditorRead(
+                state =
+                    TextInputState(
+                        text = "please",
+                        selectionStart = 6,
+                        selectionEnd = 6,
+                        compositionStart = TextInputState.NO_COMPOSITION,
+                        compositionEnd = TextInputState.NO_COMPOSITION,
+                    ),
+                editorNativeRef = 7,
             )
         )
 
