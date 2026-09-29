@@ -26,7 +26,9 @@ require_source "$NAVIGATION_SOURCE" "gestureRecognizer.enabled = YES;"
 require_source "$RENDER_SOURCE" "setSlockConversationForwardGestureEnabled:(BOOL)enabled"
 require_source "$RENDER_SOURCE" "fd_setConversationForwardGestureEnabled:"
 
-clang -std=c11 -Wall -Wextra -Werror -I"$(dirname "$HEADER")" -x c -o "$TMP_DIR/forward-admission" - <<'C'
+CC_BIN="${CC:-$(command -v clang || command -v cc || command -v gcc)}"
+
+"$CC_BIN" -std=c11 -Wall -Wextra -Werror -I"$(dirname "$HEADER")" -x c -o "$TMP_DIR/forward-admission" - <<'C'
 #include <assert.h>
 #include "SlockConversationForwardGestureAdmission.h"
 
