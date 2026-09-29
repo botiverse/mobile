@@ -118,7 +118,7 @@ internal fun parseRuntimeFormV2(body: String): ParsedRuntimeFormV2? =
 internal fun parseRuntimeFormV2(value: JsonElement): ParsedRuntimeFormV2? {
     val root = value as? JsonObject ?: return null
     if (root["protocolVersion"].jsonNumberOrNull() != RUNTIME_FORM_V2_PROTOCOL_VERSION) return null
-    if (!RUNTIME_FORM_V2_CLIENT_CAPABILITIES.containsAll(root["requiredClientCapabilities"].stringList())) return null
+    if (!clientMeetsRequiredCapabilities(root["requiredClientCapabilities"])) return null
     val dataSchema = root["dataSchema"] as? JsonObject ?: return null
     val properties = dataSchema["properties"] as? JsonObject ?: return null
 
@@ -182,6 +182,16 @@ internal fun parseRuntimeFormV2(value: JsonElement): ParsedRuntimeFormV2? {
         blockingFieldKeys = fields.filter { it.kind == RuntimeFormV2FieldKind.Unsupported && it.required }.map { it.key },
         values = root["values"] as? JsonObject
     )
+}
+
+/**
+ * A safety gate, so it fails closed: absent means nothing is required; present but
+ * not an array of strings counts as an unknown requirement (fall back to v1).
+ */
+private fun clientMeetsRequiredCapabilities(value: JsonElement?): Boolean {
+    if (value == null || value is kotlinx.serialization.json.JsonNull) return true
+    val required = value as? JsonArray ?: return false
+    return required.all { item -> item.stringOrNull()?.let { it in RUNTIME_FORM_V2_CLIENT_CAPABILITIES } == true }
 }
 
 private fun derivedFrom(value: JsonElement?, properties: JsonObject): RuntimeFormV2DerivedFrom? {

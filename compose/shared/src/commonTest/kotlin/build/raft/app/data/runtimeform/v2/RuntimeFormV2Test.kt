@@ -202,6 +202,11 @@ class RuntimeFormV2Test {
         val needsCustom = formJson(BUILTIN_V2_FORM_JSON)
             .set(listOf("requiredClientCapabilities"), buildJsonArray { add(JsonPrimitive("select.custom_value")) })
         assertNull(parseRuntimeFormV2(needsCustom), "unknown required capability: fall back to v1")
+        val malformed = formJson(BUILTIN_V2_FORM_JSON).set(listOf("requiredClientCapabilities"), JsonPrimitive("select.custom_value"))
+        assertNull(parseRuntimeFormV2(malformed), "a malformed requirement fails closed")
+        val nonString = formJson(BUILTIN_V2_FORM_JSON)
+            .set(listOf("requiredClientCapabilities"), buildJsonArray { add(JsonPrimitive(1)) })
+        assertNull(parseRuntimeFormV2(nonString), "a non-string requirement fails closed")
     }
 
     @Test
