@@ -3,7 +3,7 @@ type: improved
 area: diagnostics
 platforms:
   - ohos
-pull_request: pending
+pull_request: https://github.com/botiverse/mobile/pull/2768
 rollout: full
 ---
 
