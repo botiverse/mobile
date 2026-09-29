@@ -1285,14 +1285,25 @@ internal fun jointBillingNoticeState(
     surfaceKind: String?,
     parentChannelId: String?,
     lookupIds: List<String>,
-    projections: Map<String, SharedConversationDirectoryProjection>
+    projections: Map<String, SharedConversationDirectoryProjection>,
+    nowEpochMillis: Long? = null
 ): JointBillingNotice {
     fun noticeFor(id: String?): JointBillingNotice {
         val projection = id?.let { projections[it] } ?: return JointBillingNotice.None
         if (projection.conversationKind != ConversationKind.Joint) return JointBillingNotice.None
         if (projection.jointBillingLocked == true) return JointBillingNotice.Locked
-        return if (!projection.jointOverLimitGraceEndsAt.isNullOrBlank()) JointBillingNotice.Grace
-        else JointBillingNotice.None
+        val graceEndsAt = projection.jointOverLimitGraceEndsAt?.takeIf { it.isNotBlank() }
+            ?: return JointBillingNotice.None
+        // §18.8: "now >= graceEndsAt" means the grace period has ended and the
+        // channel is read-only — fall back to Locked even if the server has not
+        // flipped jointBillingLocked yet. When no clock is available, keep the
+        // deadline-agnostic Grace (fail-open for an unknown now is safer than
+        // wrongly locking a still-writable channel).
+        val deadlineMillis = parseSlockTimestampEpochMillisOrNull(graceEndsAt, 0)
+        if (nowEpochMillis != null && deadlineMillis != null && nowEpochMillis >= deadlineMillis) {
+            return JointBillingNotice.Locked
+        }
+        return JointBillingNotice.Grace
     }
     if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
         val parent = noticeFor(parentChannelId)
@@ -5961,13 +5972,24 @@ private fun SharedThreadRouteContentContent(
     val billingDirectoryProjections by directoryConversationProjectionFlow.collectAsState(
         initialDirectoryConversationProjections
     )
+    var jointBillingDeadlineTick by remember(payload.instanceId) { mutableStateOf(0) }
     val jointBillingNotice =
-        jointBillingNoticeState(
-            surfaceKind = payload.surfaceKind,
-            parentChannelId = payload.parentChannelId,
-            lookupIds = conversationDirectoryLookupIds,
-            projections = billingDirectoryProjections
-        )
+        remember(
+            billingDirectoryProjections,
+            payload.surfaceKind,
+            payload.parentChannelId,
+            jointBillingDeadlineTick
+        ) {
+            jointBillingNoticeState(
+                surfaceKind = payload.surfaceKind,
+                parentChannelId = payload.parentChannelId,
+                lookupIds = conversationDirectoryLookupIds,
+                projections = billingDirectoryProjections,
+                nowEpochMillis =
+                    payload.nowEpochMillis
+                        ?: build.raft.kuiklybase.datetime.Clock.System.now().toEpochMilliseconds()
+            )
+        }
     val jointGraceDeadlineLabel =
         remember(billingDirectoryProjections) {
             (listOfNotNull(payload.parentChannelId) + conversationDirectoryLookupIds)
@@ -5977,6 +5999,22 @@ private fun SharedThreadRouteContentContent(
                         ?.jointOverLimitGraceEndsAt
                 }
         }
+    // §18.8: flip Grace -> Locked locally at the deadline without waiting for a
+    // new server snapshot. Recompute `jointBillingNotice` via a state bump.
+    LaunchedEffect(jointGraceDeadlineLabel, payload.instanceId) {
+        val deadline =
+            jointGraceDeadlineLabel?.let { parseSlockTimestampEpochMillisOrNull(it, 0) }
+        if (deadline != null) {
+            val remaining =
+                deadline -
+                    (payload.nowEpochMillis
+                        ?: build.raft.kuiklybase.datetime.Clock.System.now().toEpochMilliseconds())
+            if (remaining > 0) {
+                delay(remaining)
+                jointBillingDeadlineTick++
+            }
+        }
+    }
     var lastAcceptedHeaderProjection by remember(headerProjectionInput) {
         mutableStateOf<SharedConversationDirectoryProjection?>(null)
     }
@@ -13548,6 +13586,8 @@ private data class ThreadPageContentData(
     val lastRefreshResultReason: String?,
     val replyParentAuthority: ReplyParentAuthorityStatus,
     val writeActionsEnabled: Boolean,
+    val jointBillingNotice: JointBillingNotice = JointBillingNotice.None,
+    val jointGraceDeadlineLabel: String? = null,
     val channelProfileUpdateStatus: ChannelProfileUpdateStatus,
     val channelProfileUpdateErrorCode: String?,
     val replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
@@ -13743,6 +13783,8 @@ fun ThreadPageContent(
                 lastRefreshResultReason = lastRefreshResultReason,
                 replyParentAuthority = replyParentAuthority,
                 writeActionsEnabled = writeActionsEnabled,
+                jointBillingNotice = jointBillingNotice,
+                jointGraceDeadlineLabel = jointGraceDeadlineLabel,
                 channelProfileUpdateStatus = channelProfileUpdateStatus,
                 channelProfileUpdateErrorCode = channelProfileUpdateErrorCode,
                 replyMetadataByParentId = replyMetadataByParentId,
@@ -13845,6 +13887,8 @@ private fun ThreadPageContentContent(
     val canonicalAccessResolved = data.canonicalAccessResolved
     val replyParentAuthority = data.replyParentAuthority
     val writeActionsEnabled = data.writeActionsEnabled
+    val jointBillingNotice = data.jointBillingNotice
+    val jointGraceDeadlineLabel = data.jointGraceDeadlineLabel
     val channelProfileUpdateStatus = data.channelProfileUpdateStatus
     val channelProfileUpdateErrorCode = data.channelProfileUpdateErrorCode
     val replyMetadataByParentId = data.replyMetadataByParentId

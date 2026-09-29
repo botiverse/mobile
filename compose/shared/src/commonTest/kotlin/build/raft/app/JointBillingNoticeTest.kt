@@ -84,6 +84,59 @@ class JointBillingNoticeTest {
     }
 
     @Test
+    fun expiredGraceFallsBackToLocked() {
+        val projections =
+            mapOf("joint-1" to jointProjection("joint-1", graceEndsAt = "2026-10-01T00:00:00Z"))
+        // now < deadline (2026-09-29) -> still writable grace
+        assertEquals(
+            JointBillingNotice.Grace,
+            jointBillingNoticeState(
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentChannelId = null,
+                lookupIds = listOf("joint-1"),
+                projections = projections,
+                nowEpochMillis = 1790640000000L
+            )
+        )
+        // now >= deadline (2026-10-02) -> locally flips to Locked without waiting for jointBillingLocked
+        assertEquals(
+            JointBillingNotice.Locked,
+            jointBillingNoticeState(
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentChannelId = null,
+                lookupIds = listOf("joint-1"),
+                projections = projections,
+                nowEpochMillis = 1790899200000L
+            )
+        )
+        // now exactly at the deadline -> Locked
+        assertEquals(
+            JointBillingNotice.Locked,
+            jointBillingNoticeState(
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentChannelId = null,
+                lookupIds = listOf("joint-1"),
+                projections = projections,
+                nowEpochMillis = 1790812800000L
+            )
+        )
+    }
+
+    @Test
+    fun blankGraceEndsAtYieldsNoNotice() {
+        val projections = mapOf("joint-1" to jointProjection("joint-1", graceEndsAt = ""))
+        assertEquals(
+            JointBillingNotice.None,
+            jointBillingNoticeState(
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentChannelId = null,
+                lookupIds = listOf("joint-1"),
+                projections = projections
+            )
+        )
+    }
+
+    @Test
     fun regularChannelAndDirectMessageNeverShowNotice() {
         val regular =
             SharedConversationDirectoryProjection(
