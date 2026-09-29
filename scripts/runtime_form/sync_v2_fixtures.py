@@ -56,6 +56,13 @@ FIXTURES = [
     ("CURSOR_V2_FALLBACK_SOURCE_JSON", "cursor.option-source.fallback.json"),
     ("COPILOT_V2_FORM_JSON", "copilot.form.json"),
     ("COPILOT_V2_LIVE_SOURCE_JSON", "copilot.option-source.live.json"),
+    # Batch 4 (slock #8647): Pi, "configured" (Computer's own models, typed allowed) or DeepSeek (per-provider list).
+    ("PI_V2_FORM_JSON", "pi.form.json"),
+    ("PI_V2_EDIT_JSON", "pi.edit.json"),
+    ("PI_V2_EDIT_CONFIGURED_JSON", "pi.edit.configured.json"),
+    ("PI_V2_PROVIDER_SOURCE_JSON", "pi.option-source.provider.json"),
+    ("PI_V2_PROVIDER_MODEL_SOURCE_JSON", "pi.option-source.provider-model.json"),
+    ("PI_V2_FALLBACK_SOURCE_JSON", "pi.option-source.fallback.json"),
 ]
 
 
