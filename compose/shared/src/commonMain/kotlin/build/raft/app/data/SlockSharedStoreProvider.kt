@@ -2969,11 +2969,14 @@ internal class SharedRealtimeDomainEventOwner(
                 )
                 return@forEach
             }
+            deliverGuardedAppShellDomainFinal(resolvedServerId, acceptedEvent, source, activeSinks, admission)
             // Product-side apply receipt for the subscription audit (task #13): logged once per
-            // event that survives the dedup ledger and seq gate and reaches the domain sink.
-            // Ids/seqs only. A duplicate redelivery is dropped upstream at rememberAcceptedKey
-            // (logged as realtime_domain_accept_skip) and never reaches this line, so one line
-            // per (id, seq) is the "applied once" witness on the product store edge.
+            // event AFTER the guarded domain-sink dispatch returned — i.e. after applyHomeShell /
+            // applyHomeUnreadProjection and the member/presence writes completed without throwing.
+            // A duplicate redelivery is dropped upstream at rememberAcceptedKey
+            // (realtime_domain_accept_skip) and never reaches this line, and a sink failure
+            // propagates before it, so one line per (id, seq) is the applied-once witness on the
+            // product store edge — not merely a pre-dispatch gate pass.
             when (acceptedEvent) {
                 is MessageNew ->
                     activeSinks?.log?.invoke(
@@ -2987,7 +2990,6 @@ internal class SharedRealtimeDomainEventOwner(
                     )
                 else -> Unit
             }
-            deliverGuardedAppShellDomainFinal(resolvedServerId, acceptedEvent, source, activeSinks, admission)
         }
     }
 
