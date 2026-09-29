@@ -189,7 +189,8 @@ internal class SlockComputersNetworkApi(
             priority = DataRequestPriority.Foreground,
             path =
                 "servers/${serverId.value}/machines/${machineId.trim()}/runtime-forms/v2/" +
-                    "${runtimeId.trim()}/option-sources/${sourceId.trim()}" + if (refresh) "?refresh=1" else "",
+                    "${runtimeId.trim()}/option-sources/${sourceId.trim()}",
+            query = if (refresh) listOf("refresh" to "1") else emptyList(),
             serverIdOverride = serverId
         )
 
