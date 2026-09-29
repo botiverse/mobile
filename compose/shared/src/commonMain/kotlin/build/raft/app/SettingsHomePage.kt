@@ -4331,6 +4331,26 @@ private fun SlockAppShellReadyContent(
                 return
             }
         }
+        // task #45: while desktop mode is OFF the standalone push still owns the screen,
+        // but a parked workspace (same server) must track the user's current selection —
+        // otherwise the next ON tick would resurrect a stale pre-OFF detail.
+        if (!desktopModeOnLargeScreen && adaptiveIdentity != null) {
+            adaptiveWorkspaceStore.update { current ->
+                val workspace = current.workspace ?: return@update current
+                if (workspace.serverId != adaptiveIdentity.serverId) return@update current
+                val next =
+                    reduceSlockAdaptiveWorkspace(
+                        workspace,
+                        SlockAdaptiveWorkspaceIntent.ParkSelection(adaptiveIdentity),
+                    )
+                current.copy(
+                    workspace = next,
+                    launchPayload =
+                        if (next.selection?.identity == adaptiveIdentity) launchPayload
+                        else current.launchPayload,
+                )
+            }
+        }
         if (recordForwardHistory) {
             readyServerId
                 ?.takeIf { it.isNotBlank() }

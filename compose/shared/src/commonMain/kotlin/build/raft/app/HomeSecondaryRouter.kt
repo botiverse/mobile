@@ -389,6 +389,17 @@ private fun HomeActivityRouterContent(
                         false
                     }
                 if (!handled) {
+                    // task #45: OFF keeps the workspace parked, but the standalone open is
+                    // the user's current selection — record it so a later ON restores this
+                    // conversation instead of a stale pre-OFF one.
+                    parkActivityStandaloneSelection(
+                        environment = environment,
+                        workspaceStore = activityWorkspaceStore,
+                        request = request,
+                        serverId = activityServerId,
+                    )
+                }
+                if (!handled) {
                     environment.pager.openStandaloneHomeMessageRequest(
                         bridge = environment.bridge,
                         request = request,
@@ -581,6 +592,41 @@ private fun HomeActivityRouterContent(
     }
 }
 
+
+
+private fun parkActivityStandaloneSelection(
+    environment: HomeSecondaryRouteEnvironment,
+    workspaceStore: SharedAdaptiveWorkspaceStore,
+    request: HomeMessageOpenRequest,
+    serverId: String?,
+) {
+    val readyServerId = serverId?.trim()?.takeIf(String::isNotBlank) ?: return
+    val launchPayload =
+        buildStandaloneConversationThreadLaunchPayload(
+            conversation = request.conversationIdentity,
+            timeContext = environment.timeContext,
+            alignOwnMessagesRight = environment.alignOwnMessagesRight,
+            compactConsecutiveMessages = environment.compactConsecutiveMessages,
+            anchorMessageId = request.anchorMessageId,
+            originFallback = request.originFallback,
+            onWarn = { environment.bridge.logWarn(it) },
+        ) ?: return
+    val identity = launchPayload.toSlockAdaptiveDetailIdentity(readyServerId) ?: return
+    workspaceStore.update { session ->
+        val workspace = session.workspace ?: return@update session
+        if (workspace.serverId != identity.serverId) return@update session
+        val next =
+            reduceSlockAdaptiveWorkspace(
+                workspace,
+                SlockAdaptiveWorkspaceIntent.ParkSelection(identity),
+            )
+        session.copy(
+            workspace = next,
+            launchPayload =
+                if (next.selection?.identity == identity) launchPayload else session.launchPayload,
+        )
+    }
+}
 
 private fun releaseActivityAdaptiveLease(
     environment: HomeSecondaryRouteEnvironment,

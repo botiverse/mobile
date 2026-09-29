@@ -194,6 +194,15 @@ internal sealed interface SlockAdaptiveWorkspaceIntent {
      * and bumps the generation so late detail-side callbacks can no longer match the old slot.
      */
     data object DismissDetail : SlockAdaptiveWorkspaceIntent
+
+    /**
+     * task #45: records which conversation the user opened through the standalone
+     * (single-column) stack while desktop mode is OFF. The workspace keeps rendering
+     * gated OFF, but the parked selection is overwritten so a later ON restores the
+     * *current* conversation instead of a stale pre-OFF one. Unlike [OpenDetail] this
+     * does not require DualPane — the parked pane fact is preserved untouched.
+     */
+    data class ParkSelection(val identity: SlockAdaptiveDetailIdentity) : SlockAdaptiveWorkspaceIntent
 }
 
 internal fun reduceSlockAdaptiveWorkspace(
@@ -265,6 +274,20 @@ internal fun reduceSlockAdaptiveWorkspace(
                     generationCursor = state.generationCursor.nextAdaptiveGeneration(),
                 )
             }
+
+        is SlockAdaptiveWorkspaceIntent.ParkSelection -> {
+            if (intent.identity.serverId != state.serverId) {
+                state
+            } else if (state.selection?.identity == intent.identity) {
+                state
+            } else {
+                val nextGeneration = state.generationCursor.nextAdaptiveGeneration()
+                state.copy(
+                    selection = SlockAdaptiveDetailSelection(intent.identity, nextGeneration),
+                    generationCursor = nextGeneration,
+                )
+            }
+        }
     }
 
 internal fun SlockAdaptiveWorkspaceState.acceptsDetailCallback(
