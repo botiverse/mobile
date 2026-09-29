@@ -17423,6 +17423,71 @@ private fun ThreadMessagesListContent(
     // staged record is deliberately NOT consumed here: the shell consumes it only when the
     // native commit receipt reports `committed`, so a rejected or failed transfer keeps the
     // anchor available for a retry.
+
+    val unreadJumpAtCanonicalBottom =
+        threadUnreadJumpAtCanonicalBottom(
+            canLoadMoreAfter = renderPayload.canLoadMoreAfter,
+            canScrollTowardBottom = listState.canScrollForward,
+            latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex),
+        )
+    val latestCanonicalReadAnchor =
+        renderPayload.messages
+            .asReversed()
+            .firstOrNull { message -> (message.seq ?: 0L) > 0L }
+            ?.let { message -> ThreadReadAnchor(seq = message.seq!!, messageId = message.id) }
+    val sessionReadAnchor =
+        consumeUnreadJumpFrontierAtCanonicalBottom(
+            sessionAnchor =
+                advanceThreadReadAnchorFrontier(frozenReadAnchor, latestVisibleReadAnchor),
+            latestCanonicalMessage = latestCanonicalReadAnchor,
+            atCanonicalBottom = unreadJumpAtCanonicalBottom,
+        )
+    LaunchedEffect(unreadJumpAtCanonicalBottom, latestCanonicalReadAnchor, routeActive, hostForeground) {
+        if (!routeActive || !hostForeground) return@LaunchedEffect
+        if (!unreadJumpAtCanonicalBottom) return@LaunchedEffect
+        val advanced =
+            consumeUnreadJumpFrontierAtCanonicalBottom(
+                sessionAnchor = latestVisibleReadAnchor,
+                latestCanonicalMessage = latestCanonicalReadAnchor,
+                atCanonicalBottom = true,
+            )
+        if (advanced != latestVisibleReadAnchor) {
+            latestVisibleReadAnchor = advanced
+        }
+    }
+    val unreadJumpProjection =
+        remember(sessionReadAnchor, renderPayload.messages, renderPayload.gapRefillMessageIds) {
+            projectThreadUnreadJump(
+                anchor = sessionReadAnchor,
+                messages =
+                    renderPayload.messages.map { message ->
+                        ThreadUnreadAnchorMessage(id = message.id, seq = message.seq)
+                    },
+                excludedMessageIds = renderPayload.gapRefillMessageIds,
+            )
+        }
+    var viewportControllerState by remember(threadInstanceKey) {
+        diagnosticsLogger("thread_viewport_state_init key=$threadInstanceKey")
+        mutableStateOf(LazyViewportControllerState())
+    }
+    var viewportLayoutGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
+    val dispatchViewportEvent: (LazyViewportEvent) -> Unit = { event ->
+        val previousIntent = viewportControllerState.intent
+        viewportControllerState = reduceLazyViewport(viewportControllerState, event)
+        if (viewportControllerState.intent != previousIntent) {
+            diagnosticsLogger(
+                "thread_viewport_intent key=$threadInstanceKey event=${event::class.simpleName} " +
+                    "from=${previousIntent.logTag()} to=${viewportControllerState.intent.logTag()}"
+            )
+        }
+    }
+    suspend fun awaitViewportCommandSettlement(commandId: LazyViewportCommandId) {
+        snapshotFlow {
+            viewportControllerState.epoch to viewportControllerState.pendingCommand?.id
+        }.first { (epoch, pendingId) ->
+            epoch != commandId.epoch || pendingId == null
+        }
+    }
     LaunchedEffect(closeReq, renderPayload.status, renderPayload.messages.size) {
         val request = closeReq ?: return@LaunchedEffect
         val posted = adaptiveReadyPosted?.value ?: localAdaptiveReadyPosted
@@ -17586,71 +17651,6 @@ private fun ThreadMessagesListContent(
             crossProcess = true,
             source = "adaptive_detail_ready",
         )
-    }
-
-    val unreadJumpAtCanonicalBottom =
-        threadUnreadJumpAtCanonicalBottom(
-            canLoadMoreAfter = renderPayload.canLoadMoreAfter,
-            canScrollTowardBottom = listState.canScrollForward,
-            latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex),
-        )
-    val latestCanonicalReadAnchor =
-        renderPayload.messages
-            .asReversed()
-            .firstOrNull { message -> (message.seq ?: 0L) > 0L }
-            ?.let { message -> ThreadReadAnchor(seq = message.seq!!, messageId = message.id) }
-    val sessionReadAnchor =
-        consumeUnreadJumpFrontierAtCanonicalBottom(
-            sessionAnchor =
-                advanceThreadReadAnchorFrontier(frozenReadAnchor, latestVisibleReadAnchor),
-            latestCanonicalMessage = latestCanonicalReadAnchor,
-            atCanonicalBottom = unreadJumpAtCanonicalBottom,
-        )
-    LaunchedEffect(unreadJumpAtCanonicalBottom, latestCanonicalReadAnchor, routeActive, hostForeground) {
-        if (!routeActive || !hostForeground) return@LaunchedEffect
-        if (!unreadJumpAtCanonicalBottom) return@LaunchedEffect
-        val advanced =
-            consumeUnreadJumpFrontierAtCanonicalBottom(
-                sessionAnchor = latestVisibleReadAnchor,
-                latestCanonicalMessage = latestCanonicalReadAnchor,
-                atCanonicalBottom = true,
-            )
-        if (advanced != latestVisibleReadAnchor) {
-            latestVisibleReadAnchor = advanced
-        }
-    }
-    val unreadJumpProjection =
-        remember(sessionReadAnchor, renderPayload.messages, renderPayload.gapRefillMessageIds) {
-            projectThreadUnreadJump(
-                anchor = sessionReadAnchor,
-                messages =
-                    renderPayload.messages.map { message ->
-                        ThreadUnreadAnchorMessage(id = message.id, seq = message.seq)
-                    },
-                excludedMessageIds = renderPayload.gapRefillMessageIds,
-            )
-        }
-    var viewportControllerState by remember(threadInstanceKey) {
-        diagnosticsLogger("thread_viewport_state_init key=$threadInstanceKey")
-        mutableStateOf(LazyViewportControllerState())
-    }
-    var viewportLayoutGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
-    val dispatchViewportEvent: (LazyViewportEvent) -> Unit = { event ->
-        val previousIntent = viewportControllerState.intent
-        viewportControllerState = reduceLazyViewport(viewportControllerState, event)
-        if (viewportControllerState.intent != previousIntent) {
-            diagnosticsLogger(
-                "thread_viewport_intent key=$threadInstanceKey event=${event::class.simpleName} " +
-                    "from=${previousIntent.logTag()} to=${viewportControllerState.intent.logTag()}"
-            )
-        }
-    }
-    suspend fun awaitViewportCommandSettlement(commandId: LazyViewportCommandId) {
-        snapshotFlow {
-            viewportControllerState.epoch to viewportControllerState.pendingCommand?.id
-        }.first { (epoch, pendingId) ->
-            epoch != commandId.epoch || pendingId == null
-        }
     }
     var measuredThreadViewportHeightDp by remember(threadInstanceKey) { mutableStateOf(0f) }
     val viewportMeasurementReady = threadViewportMeasurementReady(measuredThreadViewportHeightDp)
