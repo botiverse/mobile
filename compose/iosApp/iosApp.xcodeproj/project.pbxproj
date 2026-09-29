@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A42100010000000000000001 /* SlockAdaptiveNavigationSession.m in Sources */ = {isa = PBXBuildFile; fileRef = A42100020000000000000001 /* SlockAdaptiveNavigationSession.m */; };
 		0474A3F329F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m in Sources */ = {isa = PBXBuildFile; fileRef = 0474A3F229F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m */; };
 		04E32B3E29F01975000A6BC5 /* KRRouterHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = 04E32B3D29F01975000A6BC5 /* KRRouterHandler.m */; };
 		058557BB273AAA24004C7B11 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 058557BA273AAA24004C7B11 /* Assets.xcassets */; };
@@ -15,6 +14,7 @@
 		0721899DF9F6E0424B1E4B7D /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B8FDA997E9DD2D474C82E853 /* Foundation.framework */; };
 		2152FB042600AC8F00CF470E /* iOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2152FB032600AC8F00CF470E /* iOSApp.swift */; };
 		3FDCFB96518F86B53D4E5ADD /* Pods_iosApp.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 28A2BBF98AD622240C0C6069 /* Pods_iosApp.framework */; };
+		4983CA96F486D911EC6CCFB8 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CFD86DD765CA5210E2F6061E /* UIKit.framework */; };
 		7555FF83242A565900829871 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7555FF82242A565900829871 /* ContentView.swift */; };
 		8DFBDFF355CB77B1EFE78055 /* Pods_iosApp_iosAppTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E6FE20F52F0830F7F4E65579 /* Pods_iosApp_iosAppTests.framework */; };
 		A12900010000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */; };
@@ -25,11 +25,11 @@
 		A13000010000000000000003 /* SlockIosAdaptivePanePublisherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000002 /* SlockIosAdaptivePanePublisherTests.swift */; };
 		A13000010000000000000004 /* SlockAdaptivePaneRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000003 /* SlockAdaptivePaneRuntimeTests.swift */; };
 		A39600010000000000000001 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A39600020000000000000001 /* InfoPlist.strings */; };
+		A42100010000000000000001 /* SlockAdaptiveNavigationSession.m in Sources */ = {isa = PBXBuildFile; fileRef = A42100020000000000000001 /* SlockAdaptiveNavigationSession.m */; };
 		A42400010000000000000001 /* SlockIosAvatarCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42400020000000000000001 /* SlockIosAvatarCacheProvider.swift */; };
 		A42400010000000000000002 /* SlockIosAvatarCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42400020000000000000001 /* SlockIosAvatarCacheProvider.swift */; };
 		A42400010000000000000003 /* SlockIosAvatarCacheProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42400020000000000000002 /* SlockIosAvatarCacheProviderTests.swift */; };
 		B84B15A29AB40BD06D3F34C8 /* IosUseInteractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C465599FD991429AC545C211 /* IosUseInteractionTests.swift */; };
-		T25800010000000000000001 /* T258ConsumerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T25800010000000000000002 /* T258ConsumerUITests.swift */; };
 		B84B15A39AB40BD06D3F34C9 /* QaAcceptanceLoopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C46559A0D991429AC545C212 /* QaAcceptanceLoopTests.swift */; };
 		D41350012E0F000100C0DE02 /* GeneratedRealtimeContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350032E0F000100C0DE02 /* GeneratedRealtimeContract.swift */; };
 		D41350022E0F000100C0DE02 /* SlockIosRealtimeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */; };
@@ -45,8 +45,6 @@
 		D43B80322E18000100C0DE11 /* SlockStackedItemTabBarTests.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80352E18000100C0DE11 /* SlockStackedItemTabBarTests.m */; };
 		D43B80412E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80462E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m */; };
 		D43B80422E19000100C0DE12 /* SlockSandboxWebViewTests.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80452E19000100C0DE12 /* SlockSandboxWebViewTests.m */; };
-		J0NY00010000000000000001 /* SlockShareControllerFailureReasonTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00020000000000000001 /* SlockShareControllerFailureReasonTests.m */; };
-		J0NY00030000000000000001 /* SlockIosOpenAttachmentTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00040000000000000001 /* SlockIosOpenAttachmentTests.m */; };
 		D43B80432E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m in Sources */ = {isa = PBXBuildFile; fileRef = D43B80462E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m */; };
 		D46363012E17000100C0DE09 /* SlockIosMobileOAuthHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D46363022E17000100C0DE09 /* SlockIosMobileOAuthHost.swift */; };
 		D49163022E14000100C0DE01 /* space_grotesk_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163122E14000100C0DE01 /* space_grotesk_regular.ttf */; };
@@ -55,21 +53,26 @@
 		D49163052E14000100C0DE01 /* space_grotesk_bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163152E14000100C0DE01 /* space_grotesk_bold.ttf */; };
 		D49163062E14000100C0DE01 /* space_mono_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163162E14000100C0DE01 /* space_mono_regular.ttf */; };
 		D49163072E14000100C0DE01 /* space_mono_bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163172E14000100C0DE01 /* space_mono_bold.ttf */; };
+		D9E4627AB87B13FE4B46DA69 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A2F2C0A7ECD160D0FE049EB /* Foundation.framework */; };
+		FD8955B78ECFD1C7E8071ED2 /* SlockAdaptiveEditorSnapshotTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A42700020000000000000001 /* SlockAdaptiveEditorSnapshotTests.m */; };
 		FF6B714429A2A174009349F1 /* KuiklyRenderViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = FF6B713F29A2A173009349F1 /* KuiklyRenderViewController.m */; };
 		FF6B714529A2A174009349F1 /* HRBridgeModule.m in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714129A2A173009349F1 /* HRBridgeModule.m */; };
 		FF6B714729A2A315009349F1 /* KuiklyRenderViewPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714629A2A315009349F1 /* KuiklyRenderViewPage.swift */; };
 		FF6B715029A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714F29A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m */; };
+		J0NY00010000000000000001 /* SlockShareControllerFailureReasonTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00020000000000000001 /* SlockShareControllerFailureReasonTests.m */; };
+		J0NY00030000000000000001 /* SlockIosOpenAttachmentTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00040000000000000001 /* SlockIosOpenAttachmentTests.m */; };
+		T25800010000000000000001 /* T258ConsumerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T25800010000000000000002 /* T258ConsumerUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		F6B1415414C164BA5FC82C87 /* PBXContainerItemProxy */ = {
+		A12900080000000000000001 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 7555FF73242A565900829871 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 7555FF7A242A565900829871;
 			remoteInfo = iosApp;
 		};
-		A12900080000000000000001 /* PBXContainerItemProxy */ = {
+		F6B1415414C164BA5FC82C87 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 7555FF73242A565900829871 /* Project object */;
 			proxyType = 1;
@@ -79,8 +82,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		A42100020000000000000001 /* SlockAdaptiveNavigationSession.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockAdaptiveNavigationSession.m; sourceTree = "<group>"; };
-		A42100020000000000000002 /* SlockAdaptiveNavigationSession.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockAdaptiveNavigationSession.h; sourceTree = "<group>"; };
 		0423580F44476A8BFD9068C7 /* Pods-iosApp-iosAppTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp-iosAppTests.debug.xcconfig"; path = "Target Support Files/Pods-iosApp-iosAppTests/Pods-iosApp-iosAppTests.debug.xcconfig"; sourceTree = "<group>"; };
 		0474A3F129F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "UINavigationController+FDFullscreenPopGesture.h"; sourceTree = "<group>"; };
 		0474A3F229F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "UINavigationController+FDFullscreenPopGesture.m"; sourceTree = "<group>"; };
@@ -93,9 +94,11 @@
 		28A2BBF98AD622240C0C6069 /* Pods_iosApp.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_iosApp.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		312F0DBEF95A91A72E5FCBFA /* Pods-iosApp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp.debug.xcconfig"; path = "Target Support Files/Pods-iosApp/Pods-iosApp.debug.xcconfig"; sourceTree = "<group>"; };
 		55EA1C556347C9913DA93659 /* Pods-iosApp-iosAppTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp-iosAppTests.release.xcconfig"; path = "Target Support Files/Pods-iosApp-iosAppTests/Pods-iosApp-iosAppTests.release.xcconfig"; sourceTree = "<group>"; };
+		674A0D166AA25A29DEFF1F7C /* AdaptiveEditorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AdaptiveEditorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7555FF7B242A565900829871 /* iosApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iosApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7555FF82242A565900829871 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		7555FF8C242A565B00829871 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		7A2F2C0A7ECD160D0FE049EB /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 		A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosNetworkRequestLifetimeAdapter.swift; sourceTree = "<group>"; };
 		A12900020000000000000002 /* SlockIosNetworkRequestLifetimeAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosNetworkRequestLifetimeAdapterTests.swift; sourceTree = "<group>"; };
 		A12900020000000000000003 /* iosAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iosAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -105,13 +108,17 @@
 		A39600030000000000000001 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A39600030000000000000002 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		A39600030000000000000003 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A42100020000000000000001 /* SlockAdaptiveNavigationSession.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockAdaptiveNavigationSession.m; sourceTree = "<group>"; };
+		A42100020000000000000002 /* SlockAdaptiveNavigationSession.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockAdaptiveNavigationSession.h; sourceTree = "<group>"; };
 		A42400020000000000000001 /* SlockIosAvatarCacheProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAvatarCacheProvider.swift; sourceTree = "<group>"; };
 		A42400020000000000000002 /* SlockIosAvatarCacheProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAvatarCacheProviderTests.swift; sourceTree = "<group>"; };
+		A42700020000000000000001 /* SlockAdaptiveEditorSnapshotTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockAdaptiveEditorSnapshotTests.m; sourceTree = "<group>"; };
+		A42700020000000000000002 /* SlockAdaptiveEditorSnapshot.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockAdaptiveEditorSnapshot.h; sourceTree = "<group>"; };
 		A82F000129F6A41000F43E31 /* SlockConversationForwardGestureAdmission.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SlockConversationForwardGestureAdmission.h; sourceTree = "<group>"; };
 		B8FDA997E9DD2D474C82E853 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		C465599FD991429AC545C211 /* IosUseInteractionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IosUseInteractionTests.swift; sourceTree = "<group>"; };
-		T25800010000000000000002 /* T258ConsumerUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = T258ConsumerUITests.swift; sourceTree = "<group>"; };
 		C46559A0D991429AC545C212 /* QaAcceptanceLoopTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QaAcceptanceLoopTests.swift; sourceTree = "<group>"; };
+		CFD86DD765CA5210E2F6061E /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		D41350032E0F000100C0DE02 /* GeneratedRealtimeContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedRealtimeContract.swift; sourceTree = "<group>"; };
 		D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosRealtimeHost.swift; sourceTree = "<group>"; };
 		D41350052E140100100C0DE03 /* SlockIosAppScopeMMKV.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAppScopeMMKV.swift; sourceTree = "<group>"; };
@@ -131,8 +138,6 @@
 		D43B80342E18000100C0DE11 /* SlockStackedItemTabBar.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockStackedItemTabBar.m; sourceTree = "<group>"; };
 		D43B80352E18000100C0DE11 /* SlockStackedItemTabBarTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockStackedItemTabBarTests.m; sourceTree = "<group>"; };
 		D43B80452E19000100C0DE12 /* SlockSandboxWebViewTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockSandboxWebViewTests.m; sourceTree = "<group>"; };
-		J0NY00020000000000000001 /* SlockShareControllerFailureReasonTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockShareControllerFailureReasonTests.m; sourceTree = "<group>"; };
-		J0NY00040000000000000001 /* SlockIosOpenAttachmentTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockIosOpenAttachmentTests.m; sourceTree = "<group>"; };
 		D43B80462E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockSandboxWebViewNavigationCommit.m; sourceTree = "<group>"; };
 		D43B80472E19000100C0DE12 /* SlockSandboxWebViewNavigationCommit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockSandboxWebViewNavigationCommit.h; sourceTree = "<group>"; };
 		D46363022E17000100C0DE09 /* SlockIosMobileOAuthHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosMobileOAuthHost.swift; sourceTree = "<group>"; };
@@ -152,6 +157,9 @@
 		FF6B714C29A2A45D009349F1 /* iosApp-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "iosApp-Bridging-Header.h"; sourceTree = "<group>"; };
 		FF6B714E29A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KuiklyRenderComponentExpandHandler.h; sourceTree = "<group>"; };
 		FF6B714F29A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = KuiklyRenderComponentExpandHandler.m; sourceTree = "<group>"; };
+		J0NY00020000000000000001 /* SlockShareControllerFailureReasonTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockShareControllerFailureReasonTests.m; sourceTree = "<group>"; };
+		J0NY00040000000000000001 /* SlockIosOpenAttachmentTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockIosOpenAttachmentTests.m; sourceTree = "<group>"; };
+		T25800010000000000000002 /* T258ConsumerUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = T258ConsumerUITests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -176,6 +184,15 @@
 			buildActionMask = 2147483647;
 			files = (
 				0721899DF9F6E0424B1E4B7D /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D844A074D60A86C9F3BD0B08 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D9E4627AB87B13FE4B46DA69 /* Foundation.framework in Frameworks */,
+				4983CA96F486D911EC6CCFB8 /* UIKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -222,6 +239,8 @@
 			isa = PBXGroup;
 			children = (
 				B8FDA997E9DD2D474C82E853 /* Foundation.framework */,
+				7A2F2C0A7ECD160D0FE049EB /* Foundation.framework */,
+				CFD86DD765CA5210E2F6061E /* UIKit.framework */,
 			);
 			name = iOS;
 			sourceTree = "<group>";
@@ -245,6 +264,7 @@
 				7555FF7B242A565900829871 /* iosApp.app */,
 				1DAE3769BAE68C43F5D78324 /* iosAppUITests.xctest */,
 				A12900020000000000000003 /* iosAppTests.xctest */,
+				674A0D166AA25A29DEFF1F7C /* AdaptiveEditorTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -291,6 +311,7 @@
 				A12900020000000000000002 /* SlockIosNetworkRequestLifetimeAdapterTests.swift */,
 				A13000020000000000000002 /* SlockIosAdaptivePanePublisherTests.swift */,
 				D43B80352E18000100C0DE11 /* SlockStackedItemTabBarTests.m */,
+				A42700020000000000000001 /* SlockAdaptiveEditorSnapshotTests.m */,
 				D43B80452E19000100C0DE12 /* SlockSandboxWebViewTests.m */,
 				J0NY00020000000000000001 /* SlockShareControllerFailureReasonTests.m */,
 				J0NY00040000000000000001 /* SlockIosOpenAttachmentTests.m */,
@@ -351,6 +372,7 @@
 				FF6B714329A2A174009349F1 /* KuiklyRenderViewController.h */,
 				A42100020000000000000001 /* SlockAdaptiveNavigationSession.m */,
 				A42100020000000000000002 /* SlockAdaptiveNavigationSession.h */,
+				A42700020000000000000002 /* SlockAdaptiveEditorSnapshot.h */,
 				FF6B713F29A2A173009349F1 /* KuiklyRenderViewController.m */,
 				FF6B714029A2A173009349F1 /* Modules */,
 			);
@@ -382,6 +404,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		58446DBDE2D1CA2C2AFC79B7 /* AdaptiveEditorTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A81109DC88326C86FDF262E5 /* Build configuration list for PBXNativeTarget "AdaptiveEditorTests" */;
+			buildPhases = (
+				558AC89118BC41B8CC9EAD4F /* Sources */,
+				D844A074D60A86C9F3BD0B08 /* Frameworks */,
+				74AFCD01D0D9286C1691CC6E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AdaptiveEditorTests;
+			productName = AdaptiveEditorTests;
+			productReference = 674A0D166AA25A29DEFF1F7C /* AdaptiveEditorTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		7555FF7A242A565900829871 /* iosApp */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 7555FFA5242A565B00829871 /* Build configuration list for PBXNativeTarget "iosApp" */;
@@ -488,11 +527,19 @@
 				7555FF7A242A565900829871 /* iosApp */,
 				88BC1E863A7604D85563C5C6 /* iosAppUITests */,
 				A12900040000000000000001 /* iosAppTests */,
+				58446DBDE2D1CA2C2AFC79B7 /* AdaptiveEditorTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		74AFCD01D0D9286C1691CC6E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		7555FF79242A565900829871 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -690,6 +737,14 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		558AC89118BC41B8CC9EAD4F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FD8955B78ECFD1C7E8071ED2 /* SlockAdaptiveEditorSnapshotTests.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		7555FF77242A565900829871 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -754,17 +809,17 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		EAE537CA3D22BBF5D067B254 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			name = iosApp;
-			target = 7555FF7A242A565900829871 /* iosApp */;
-			targetProxy = F6B1415414C164BA5FC82C87 /* PBXContainerItemProxy */;
-		};
 		A12900080000000000000002 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = iosApp;
 			target = 7555FF7A242A565900829871 /* iosApp */;
 			targetProxy = A12900080000000000000001 /* PBXContainerItemProxy */;
+		};
+		EAE537CA3D22BBF5D067B254 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = iosApp;
+			target = 7555FF7A242A565900829871 /* iosApp */;
+			targetProxy = F6B1415414C164BA5FC82C87 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -782,6 +837,23 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		06E45923CD5DFD4EE77E737A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGNING_ALLOWED = NO;
+				ENABLE_TESTING_SEARCH_PATHS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "build.raft.tests.adaptive-editor";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				TEST_HOST = "";
+			};
+			name = Debug;
+		};
 		7555FFA3242A565B00829871 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -978,6 +1050,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 0423580F44476A8BFD9068C7 /* Pods-iosApp-iosAppTests.debug.xcconfig */;
 			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -992,7 +1065,6 @@
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				BUNDLE_LOADER = "$(TEST_HOST)";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/iosApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/iosApp";
 			};
 			name = Debug;
@@ -1001,6 +1073,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 55EA1C556347C9913DA93659 /* Pods-iosApp-iosAppTests.release.xcconfig */;
 			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -1015,7 +1088,6 @@
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				BUNDLE_LOADER = "$(TEST_HOST)";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/iosApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/iosApp";
 				VALIDATE_PRODUCT = YES;
 			};
@@ -1034,6 +1106,24 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = iosApp;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		E97F715CAEAB601A18AB097B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGNING_ALLOWED = NO;
+				ENABLE_TESTING_SEARCH_PATHS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "build.raft.tests.adaptive-editor";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				TEST_HOST = "";
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -1073,6 +1163,15 @@
 			buildConfigurations = (
 				A12900060000000000000001 /* Debug */,
 				A12900060000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A81109DC88326C86FDF262E5 /* Build configuration list for PBXNativeTarget "AdaptiveEditorTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E97F715CAEAB601A18AB097B /* Release */,
+				06E45923CD5DFD4EE77E737A /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
