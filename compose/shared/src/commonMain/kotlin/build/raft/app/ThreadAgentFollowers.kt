@@ -6,6 +6,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import build.raft.app.data.ThreadFollowersNotice
 import build.raft.app.data.ThreadFollowersNoticeKind
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Box
@@ -14,9 +15,13 @@ import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
+import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.geometry.Size
+import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.compose.ui.layout.onSizeChanged
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.semantics.contentDescription
@@ -125,30 +130,62 @@ internal fun ThreadFollowersOverlayHost(content: @Composable () -> Unit) {
                 val anchor = if (overlay.state.open) overlay.anchor?.resolveCurrentPlacement() else null
                 if (anchor != null) FollowersPopover(overlay.state, anchor, overlay.dispatch)
                 overlay.state.notice?.let { notice ->
-                    val isError = notice.kind == ThreadFollowersNoticeKind.RemoveFailed || notice.kind == ThreadFollowersNoticeKind.RestoreFailed
-                    val label = stringResource(when (notice.kind) {
-                        ThreadFollowersNoticeKind.Removed -> MR.strings.thread_followers_removed
-                        ThreadFollowersNoticeKind.Restored -> MR.strings.thread_followers_restored
-                        ThreadFollowersNoticeKind.RemoveFailed -> MR.strings.thread_followers_remove_failed
-                        ThreadFollowersNoticeKind.RestoreFailed -> MR.strings.thread_followers_restore_failed
-                    }, notice.agentLabel)
-                    val theme = LocalSlockTheme.current
-                    Row(
-                        modifier = Modifier.align(Alignment.BottomCenter).zIndex(SlockFloatingOverlayHostZIndex + 1f)
-                            .padding(horizontal = 16.dp, vertical = 24.dp).widthIn(max = 360.dp)
-                            .background(theme.surface, RoundedCornerShape(theme.cornerRadius))
-                            .border(theme.lineWidth, theme.line, RoundedCornerShape(theme.cornerRadius))
-                            .slockNativeDispatchCapture().clickable { }.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        SlockLucideIcon(if (isError) SlockLucideIconName.Info else SlockLucideIconName.CircleCheck, Modifier.size(16.dp))
-                        Text(label, style = SlockType.Caption, color = theme.ink, modifier = Modifier.weight(1f))
-                        if (notice.kind == ThreadFollowersNoticeKind.Removed && overlay.state.undo != null) {
-                            Box(Modifier.clickable(enabled = !overlay.state.mutating) { overlay.dispatch(ThreadAgentFollowersIntent.Undo) }.padding(6.dp)) {
-                                Text(stringResource(MR.strings.common_undo), style = SlockType.Caption, color = theme.ink)
-                            }
-                        }
+                    FollowerNoticeView(
+                        notice = notice,
+                        canUndo = notice.kind == ThreadFollowersNoticeKind.Removed && overlay.state.undo != null,
+                        enabled = !overlay.state.mutating,
+                        onUndo = { overlay.dispatch(ThreadAgentFollowersIntent.Undo) },
+                        modifier = Modifier.align(Alignment.BottomCenter).zIndex(SlockFloatingOverlayHostZIndex + 1f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** raft-ui 0.5.15 toast: tone surface, title row, and a separate right-aligned action row. */
+@Composable
+private fun FollowerNoticeView(
+    notice: ThreadFollowersNotice, canUndo: Boolean, enabled: Boolean,
+    onUndo: () -> Unit, modifier: Modifier = Modifier,
+) {
+    val theme = LocalSlockTheme.current
+    val brutal = theme.family == SlockThemeFamily.Brutal
+    val isError = notice.kind == ThreadFollowersNoticeKind.RemoveFailed || notice.kind == ThreadFollowersNoticeKind.RestoreFailed
+    val label = stringResource(when (notice.kind) {
+        ThreadFollowersNoticeKind.Removed -> MR.strings.thread_followers_removed
+        ThreadFollowersNoticeKind.Restored -> MR.strings.thread_followers_restored
+        ThreadFollowersNoticeKind.RemoveFailed -> MR.strings.thread_followers_remove_failed
+        ThreadFollowersNoticeKind.RestoreFailed -> MR.strings.thread_followers_restore_failed
+    }, notice.agentLabel)
+    val shape = RoundedCornerShape(if (brutal) 0.dp else 12.dp)
+    val surface = if (brutal) {
+        if (isError) SlockColor.AccentOrange else SlockColor.AccentLime
+    } else Color(0xED2C2C2E)
+    val ink = if (brutal) SlockColor.TextBlack else SlockColor.SurfaceWhite
+    Box(modifier.padding(16.dp).widthIn(max = 384.dp)) {
+        if (brutal) Box(Modifier.matchParentSize().offset(4.dp, 4.dp).background(SlockColor.ShadowBlack))
+        Column(
+            Modifier.fillMaxWidth().background(surface, shape)
+                .border(if (brutal) 2.dp else 1.dp, if (brutal) theme.line else Color.White.copy(alpha = 0.2f), shape)
+                .slockNativeDispatchCapture().clickable { }.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(if (brutal) 6.dp else 8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                SlockLucideIcon(if (isError) SlockLucideIconName.Info else SlockLucideIconName.CircleCheck,
+                    Modifier.size(16.dp), color = if (brutal) SlockColor.TextBlackArgb else SlockColor.SurfaceWhiteArgb)
+                Text(label, style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp,
+                    fontWeight = if (brutal) FontWeight.Bold else FontWeight.Medium), color = ink,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            }
+            if (canUndo) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    val buttonShape = RoundedCornerShape(if (brutal) 0.dp else 100.dp)
+                    Box(Modifier.heightIn(min = 28.dp)
+                        .background(if (brutal) SlockColor.TextBlack else Color.White.copy(alpha = 0.06f), buttonShape)
+                        .border(if (brutal) 2.dp else 1.dp, if (brutal) theme.line else Color.White.copy(alpha = 0.14f), buttonShape)
+                        .clickable(enabled = enabled, onClick = onUndo).padding(horizontal = 8.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
+                        Text(stringResource(MR.strings.common_undo), style = SlockType.Caption, color = SlockColor.SurfaceWhite)
                     }
                 }
             }

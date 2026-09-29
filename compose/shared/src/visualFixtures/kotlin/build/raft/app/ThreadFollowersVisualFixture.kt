@@ -16,21 +16,22 @@ internal class ThreadFollowersVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         val elegant = pageData.params.optBoolean("elegant", false)
+        val single = pageData.params.optBoolean("single", false)
         setContent {
             SlockThemeProvider(if (elegant) elegantTheme else brutalTheme) {
-                FollowersVisualContent()
+                FollowersVisualContent(single)
             }
         }
     }
 }
 
 @Composable
-private fun FollowersVisualContent() {
+private fun FollowersVisualContent(single: Boolean) {
     val previousLocale = remember { StringDesc.localeType }
     StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
     DisposableEffect(Unit) { onDispose { StringDesc.localeType = previousLocale } }
     val scope = rememberCoroutineScope()
-    val store = remember { SharedThreadAgentFollowersStore(FollowersVisualRepository(), scope) }
+    val store = remember { SharedThreadAgentFollowersStore(FollowersVisualRepository(single), scope) }
     DisposableEffect(store) { onDispose { store.close() } }
     LaunchedEffect(store) { store.dispatch(ThreadAgentFollowersIntent.Refresh) }
     val state by store.state.collectAsState()
@@ -51,13 +52,13 @@ private fun FollowersVisualContent() {
     }
 }
 
-private class FollowersVisualRepository : ThreadAgentFollowersRepository {
+private class FollowersVisualRepository(single: Boolean) : ThreadAgentFollowersRepository {
     private val all = listOf(
         ThreadAgentFollower("1", "Grace", status = "online", serverId = "local", isCurrentServer = true, canRemove = true),
         ThreadAgentFollower("2", "Josh", status = "offline", serverId = "local", isCurrentServer = true, canRemove = true),
         ThreadAgentFollower("3", "Agent", status = "online", serverId = "peer", serverName = "Peer Server", isCurrentServer = false, canRemove = false),
     )
-    private var agents = all
+    private var agents = if (single) all.take(1) else all
     override suspend fun load() = DataResult.Content(ThreadAgentFollowerRoster("fixture", true, agents))
     override suspend fun remove(agentId: String): DataResult<ThreadAgentFollowerRemoval> {
         agents = agents.filterNot { it.id == agentId }
