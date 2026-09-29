@@ -3112,6 +3112,7 @@ private fun SlockAppShellReadyContent(
         selectedTab,
         selectedHomeDestination,
         authoritativeHomeStartAllowed,
+        railInlineSecondaryDestination,
     ) {
         if (!authoritativeHomeStartAllowed) {
             releaseAdaptiveHandoffLease()
@@ -3165,7 +3166,12 @@ private fun SlockAppShellReadyContent(
             reduceSlockAdaptiveWorkspace(
                 next,
                 SlockAdaptiveWorkspaceIntent.ParentVisibilityChanged(
-                    pageVisible && retainedAppShellSelectedTab(selectedTab) == "home" && selectedHomeDestination == null
+                    pageVisible &&
+                        (
+                            (retainedAppShellSelectedTab(selectedTab) == "home" &&
+                                selectedHomeDestination == null) ||
+                                railInlineSecondaryDestination != null
+                        )
                 ),
             )
         adaptiveWorkspaceStore.update { current -> current.copy(workspace = next) }
