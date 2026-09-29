@@ -190,7 +190,11 @@ private fun RuntimeFormV2FieldRow(
             }
         RuntimeFormV2FieldKind.StringMap -> {
             // Half-typed rows (blank key) stay on screen but never reach the value.
-            var entries by remember(field.key) { mutableStateOf(values[field.key].stringMapValue().toList()) }
+            val external = values[field.key].stringMapValue()
+            var entries by remember(field.key) { mutableStateOf(external.toList()) }
+            // Follow a value set from outside (reset, prefill) unless it is just our own half-typed rows.
+            val ownValue = entries.mapNotNull { (key, value) -> key.trim().takeIf { it.isNotEmpty() }?.let { it to value } }.toMap()
+            if (ownValue != external) entries = external.toList()
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 EnvVarsEditor(
                     entries = entries,

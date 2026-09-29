@@ -117,8 +117,6 @@ private sealed interface RuntimeFormV2DialogLoad {
     data class Failed(val code: String) : RuntimeFormV2DialogLoad
 }
 
-/** Runtimes whose create/edit form the server serves over runtime form v2. */
-internal val RUNTIME_FORM_V2_RUNTIME_IDS: Set<String> = setOf("builtin", CREATE_AGENT_KIMI_SDK_RUNTIME_ID)
 
 internal const val SharedCreateAgentDialogHostRoute = "create-agent"
 
@@ -989,7 +987,9 @@ internal fun SharedCreateAgentDialog(
             hasResolvedExactForm = builtInForm != null
         ) || builtInV2Offered
     val v2Candidate =
-        runtimeFormV2 != null && !external && availableSelectedMachineId != null && runtime in RUNTIME_FORM_V2_RUNTIME_IDS
+        // Any runtime: the server decides which runtimes have a v2 form (404 otherwise, then v1),
+        // so a runtime moving to v2 needs no app release.
+        runtimeFormV2 != null && !external && availableSelectedMachineId != null && runtime.isNotBlank()
     var v2LoadAttempt by remember(runtimeFormV2, availableSelectedMachineId, runtime, external) { mutableStateOf(0) }
     var v2Load by remember(runtimeFormV2, availableSelectedMachineId, runtime, external, v2LoadAttempt) {
         mutableStateOf<RuntimeFormV2DialogLoad>(if (v2Candidate) RuntimeFormV2DialogLoad.Loading else RuntimeFormV2DialogLoad.Idle)

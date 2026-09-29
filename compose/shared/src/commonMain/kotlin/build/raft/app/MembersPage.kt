@@ -9294,6 +9294,7 @@ private fun MembersAgentRuntimeConfigSection(
     val currentProfileEditAuthority by rememberUpdatedState(agentProfileEditAuthority)
     val currentRuntimeModelGenerations by rememberUpdatedState(agentRuntimeModelGenerationsByRuntime)
     val runtimeEditingUnavailable = stringResource(MR.strings.member_error_runtime_edit_unavailable)
+    val runtimeFormV2SavedRefresh = stringResource(MR.strings.runtime_form_v2_saved_refresh)
     val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
     val saveErrorTemplate = membersStringTemplate(MR.strings.member_error_save)
     var editingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
@@ -9491,8 +9492,11 @@ private fun MembersAgentRuntimeConfigSection(
                     val config = (stored?.toAgentDetailSummary().toMembersRuntimeConfigResolution()
                         as? MembersAgentRuntimeConfigResolution.Content)?.config
                     val authority = runtimeEditorAuthority
-                    if (config != null && authority != null) onApplyAgentRuntimeConfigProjection(authority, config)
+                    val projected =
+                        config != null && authority != null && onApplyAgentRuntimeConfigProjection(authority, config)
                     editingRuntimeConfig = false
+                    // The save landed; only the read-back failed, so the rows may lag until a refresh.
+                    if (!projected) onUnavailableAction(runtimeFormV2SavedRefresh)
                 }
                 is DataResult.NoPermission ->
                     runtimeConfigError =
@@ -9543,8 +9547,7 @@ private fun MembersAgentRuntimeConfigSection(
     val runtimeFormV2MachineId = (summary?.machineId ?: member.membersComputerId)?.takeIf { it.isNotBlank() }
     if (
         editingRuntimeConfig && canonicalRuntimeConfig != null && runtimeStatusResolved &&
-            runtimeFormV2Access != null && !runtimeFormV2Declined && runtimeFormV2MachineId != null &&
-            canonicalRuntimeConfig.runtime in RUNTIME_FORM_V2_RUNTIME_IDS
+            runtimeFormV2Access != null && !runtimeFormV2Declined && runtimeFormV2MachineId != null
     ) {
         MembersAgentRuntimeFormV2Dialog(
             access = runtimeFormV2Access,
