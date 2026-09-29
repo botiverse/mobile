@@ -3205,7 +3205,15 @@ private fun SlockAppShellReadyContent(
             return@LaunchedEffect
         }
         val serverId = readyServerId?.trim()?.takeIf(String::isNotBlank)
-        if (!desktopModeOnLargeScreen || serverId == null) {
+        if (!desktopModeOnLargeScreen && serverId != null) {
+            // task #45: toggling the user setting OFF must not destroy the workspace —
+            // destination, selection and drafts must survive a live OFF->ON round trip.
+            // The workspace keeps its last state; rendering gates on the flag, and the
+            // next ON tick re-drives WindowChanged/ParentVisibilityChanged from current
+            // values. (Server loss below still clears it.)
+            return@LaunchedEffect
+        }
+        if (serverId == null) {
             val droppedOpens = adaptiveWorkspaceStore.snapshot().pendingDetailOpens
             adaptiveWorkspaceStore.update { current ->
                 current.copy(
