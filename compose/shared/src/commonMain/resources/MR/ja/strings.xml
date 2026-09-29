@@ -1997,7 +1997,7 @@
     <string name="settings_developer_environment_detail">プリセットを選択するか、API、ソケット、Web の URL を編集します。</string>
     <string name="settings_developer_state_current">現在</string>
     <string name="settings_developer_state_realtime">リアルタイム</string>
-    <string name="settings_developer_diagnostics_detail">認証、サニタイズ済みログ、プロファイラー、フィードバックツールを開きます。</string>
+    <string name="settings_developer_diagnostics_detail">認証、サニタイズ済みログ、フィードバックツールを開きます。</string>
     <string name="settings_developer_route_launcher">ルートランチャー</string>
     <string name="settings_developer_route_launcher_detail">Kuikly ルートランチャーとアイコン比較を開きます。</string>
     <string name="settings_developer_presets">プリセット</string>
@@ -2015,7 +2015,6 @@
     <string name="settings_developer_error_urls">API ベース URL とソケットベース URL は http で始まる必要があります。</string>
     <string name="settings_developer_state_preset">プリセット</string>
     <string name="settings_diagnostics_subtitle">サニタイズ済みログと診断</string>
-    <string name="settings_diagnostics_detail">認証、サニタイズ済みアプリ診断、Kuikly プロファイラーの状態</string>
     <string name="settings_diagnostics_section_environment">環境</string>
     <string name="settings_diagnostics_section_load_status">読み込み状態</string>
     <string name="settings_diagnostics_section_actions">アクション</string>
@@ -2023,19 +2022,9 @@
     <string name="settings_diagnostics_export_logs_detail">環境、状態、最近のアプリ JSONL ログをエクスポートします。</string>
     <string name="settings_diagnostics_action_send">診断を送信</string>
     <string name="settings_diagnostics_send_detail">サニタイズ済みの診断情報をサポートと共有します。</string>
-    <string name="settings_diagnostics_detail_profiler">認証、サニタイズ済みアプリ診断、Kuikly 再コンポジションプロファイラー</string>
     <string name="settings_diagnostics_detail_basic">認証とサニタイズ済みアプリ診断</string>
     <string name="settings_diagnostics_partial">部分的な診断</string>
     <string name="settings_diagnostics_state_partial">部分的</string>
-    <string name="settings_diagnostics_profiler_title">再コンポジションプロファイラー</string>
-    <string name="settings_diagnostics_profiler_status">共有プロファイラーの状態</string>
-    <string name="settings_diagnostics_profiler_detail">このデバッグスイッチをローカルに保存します。有効にすると、共有設定はホストブリッジにプロファイラーモードの確認を求め、デフォルトの Kuikly プロファイルを適用し、再コンポジションの収集を開始します。</string>
-    <string name="settings_diagnostics_profiler_reset">シーンウィンドウをリセット</string>
-    <string name="settings_diagnostics_profiler_reset_detail">対象ページを開く、または対象の操作を再生する直前に、現在のメモリ内カウンターをクリアします。</string>
-    <string name="settings_diagnostics_profiler_refresh">レポートを更新</string>
-    <string name="settings_diagnostics_profiler_refresh_detail">getReport(saveToFile=false) を呼び出し、ファイルを書き換えずに現在のサマリーを更新します。</string>
-    <string name="settings_diagnostics_profiler_export">レポートをエクスポート</string>
-    <string name="settings_diagnostics_profiler_export_detail">getReport(saveToFile=true) を呼び出し、analyzer の入力用に profiler_frames.jsonl を profiler_report.json と並べて保持します。</string>
     <string name="settings_diagnostics_apple_signin_override">Apple サインイン（ローカルテスト）</string>
     <string name="settings_diagnostics_apple_signin_override_detail">ログインページに Apple ボタンをローカル表示してテストします。Apple サインインを開始できるかどうかは、引き続きバックエンドの platform=mobile ゲートが決定します。</string>
     <string name="settings_diagnostics_label_app">アプリ</string>
@@ -2060,12 +2049,6 @@
     <string name="settings_diagnostics_state_socket">ソケット</string>
     <string name="settings_state_on">オン</string>
     <string name="settings_state_off">オフ</string>
-    <string name="settings_state_pending">保留中</string>
-    <string name="settings_state_reset">リセット</string>
-    <string name="settings_state_wait">待機</string>
-    <string name="settings_state_refresh">更新</string>
-    <string name="settings_state_pull">プル</string>
-    <string name="settings_state_write">書き込み</string>
     <string name="settings_state_open">開く</string>
     <string name="settings_state_disabled">無効</string>
     <string name="settings_state_loading">読み込み中</string>

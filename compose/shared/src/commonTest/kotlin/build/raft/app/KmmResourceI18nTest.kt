@@ -522,7 +522,6 @@ class KmmResourceI18nTest {
             MR.strings.settings_developer_api_environment,
             MR.strings.settings_developer_environment_save_detail,
             MR.strings.settings_diagnostics_title,
-            MR.strings.settings_diagnostics_profiler_title,
             MR.strings.settings_diagnostics_action_export_logs,
             MR.strings.settings_state_saved
         ).forEach { resource ->

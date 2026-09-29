@@ -1,7 +1,6 @@
 package build.raft.app.markdown
 
 import android.os.Trace
-import com.tencent.kuikly.compose.profiler.RecompositionProfiler
 
 /**
  * Android actual for `SlockMarkdownTrace`. Delegates to `android.os.Trace.beginSection` /
@@ -21,8 +20,7 @@ internal actual fun traceEnd() {
     Trace.endSection()
 }
 
-internal actual fun slockTraceDiagnosticsEnabled(): Boolean =
-    RecompositionProfiler.isEnabled
+internal actual fun slockTraceDiagnosticsEnabled(): Boolean = false
 
 private const val SpikeLogTag = "SlockMarkdownSpike"
 

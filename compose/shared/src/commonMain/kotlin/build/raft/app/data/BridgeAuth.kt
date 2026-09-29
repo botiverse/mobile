@@ -391,21 +391,6 @@ internal class BridgeSettingsPlatformCapabilities(
         return DataResult.Content(Unit)
     }
 
-    override suspend fun setRecompositionProfilerEnabled(enabled: Boolean): DataResult<Unit> {
-        val response =
-            settingsCapability(
-                JSONObject()
-                    .put("action", "setRecompositionProfilerEnabled")
-                    .put("enabled", enabled)
-            )
-        if (response?.optString("status") != "ok") {
-            return DataResult.Error(
-                ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_profiler_bridge_failed" })
-            )
-        }
-        return DataResult.Content(Unit)
-    }
-
     suspend fun sendFeedback(): Boolean =
         diagnosticsSettingsCapability("sendFeedback")?.optString("status") == "ok"
 

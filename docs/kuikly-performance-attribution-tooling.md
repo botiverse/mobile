@@ -1,5 +1,12 @@
 # Kuikly Performance Attribution Tooling
 
+> **Update (2026-09-29):** the in-app recomposition profiler
+> (`SharedSettingsRecompositionProfiler`, Diagnostics profiler controls) was
+> removed per artin. The collector no longer pulls `KuiklyProfiler/` files; the
+> analyzer still accepts `profiler_report.json` / `profiler_frames.jsonl` from
+> older captures, but new captures rely on the PerformanceModule and OHOS host
+> planes only.
+
 This document defines the first practical path for finding where OHOS Kuikly
 jank comes from. The goal is not to rely on one profiler. We need three aligned
 planes:
@@ -37,11 +44,6 @@ The attribution tool therefore joins both with business markers.
 
 Current code already has the following useful hooks:
 
-- `SharedSettingsRecompositionProfiler` exports `profiler_report.json` and
-  `profiler_frames.jsonl`. The Diagnostics start action applies the shared
-  default policy before `start()`: file logging on, console logging on, and
-  `enableOverlay=true` so the bottom-right hotspot FAB/panel is visible during
-  capture.
 - OHOS `KuiklyViewDelegate.ets` enables `KRMonitorType.LAUNCH`,
   `KRMonitorType.FRAME`, and `KRMonitorType.MEMORY`, then records
   `SlockKuiklyPerf`.
@@ -104,25 +106,15 @@ Minimum marker set:
 
 ## Collection Flow
 
-1. Open the Diagnostics page and start the Kuikly recomposition profiler.
-2. Reset counters before the scenario under test.
-3. Run one focused scenario, for example Home -> Thread -> open members modal.
-4. Stop and export profiler artifacts from the Diagnostics page.
-5. Collect OHOS files and logs:
+1. Run one focused scenario, for example Home -> Thread -> open members modal.
+2. Collect OHOS files and logs:
 
 ```bash
 HDC_BIN=/path/to/hdc ./scripts/collect_kuikly_performance_attribution.sh \
   --out artifacts/kuikly-performance/thread-modal-001
 ```
 
-The collector tries both currently observed profiler locations:
-
-```text
-/data/storage/el2/base/haps/entry/cache/KuiklyProfiler/
-/data/storage/el2/base/haps/entry/files/KuiklyProfiler/
-```
-
-6. Generate the markdown attribution report:
+3. Generate the markdown attribution report:
 
 ```bash
 python3 scripts/analyze_kuikly_performance_attribution.py \

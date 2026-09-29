@@ -2740,9 +2740,6 @@ open class SlockKuiklyActivity :
         internal const val KEY_APP_SHELL_INITIAL_TAB = "slockInitialTab"
         private const val KEY_APP_SHELL_INITIAL_SETTINGS_DESTINATION = "slockInitialSettingsDestination"
         private const val KEY_DIAGNOSTICS_DEEP_LINK_ID = "slockDiagnosticsDeepLinkId"
-        private const val KEY_DIAGNOSTICS_DEEP_LINK_ENABLE_PROFILER = "slockDiagnosticsDeepLinkEnableProfiler"
-        private const val KEY_DIAGNOSTICS_DEEP_LINK_RESET_SCENE = "slockDiagnosticsDeepLinkResetScene"
-        private const val KEY_DIAGNOSTICS_DEEP_LINK_EXPORT_REPORT = "slockDiagnosticsDeepLinkExportReport"
         private const val KEY_DIAGNOSTICS_DEEP_LINK_AUTO_CLOSE_MS = "slockDiagnosticsDeepLinkAutoCloseMs"
         private const val PICKED_THREAD_ATTACHMENT_CACHE_MAX_FILES = 40
         private const val PICKED_THREAD_ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
@@ -2855,8 +2852,7 @@ open class SlockKuiklyActivity :
                     .suppressedForOverheadTest = suppressed
                 SlockAppLog.record(
                     "SlockDiagnostics",
-                    "md_node_sink_receipt mdNodeSink=${if (suppressed) "suppressed" else "enabled"} " +
-                        "profilerExtra=${intent.getBooleanExtra("enable_profiler", false)}"
+                    "md_node_sink_receipt mdNodeSink=${if (suppressed) "suppressed" else "enabled"}"
                 )
             }
             val pageData =
@@ -2866,27 +2862,12 @@ open class SlockKuiklyActivity :
                             .put(KEY_APP_SHELL_INITIAL_SETTINGS_DESTINATION, "diagnostics")
                             .put(KEY_DIAGNOSTICS_DEEP_LINK_ID, "android-diagnostics-${System.currentTimeMillis()}")
                             .put(
-                                    KEY_DIAGNOSTICS_DEEP_LINK_ENABLE_PROFILER,
-                                    intent?.getBooleanExtra("enable_profiler", false) == true
-                            )
-                            .put(
-                                    KEY_DIAGNOSTICS_DEEP_LINK_RESET_SCENE,
-                                    intent?.getBooleanExtra("reset_scene", false) == true
-                            )
-                            .put(
-                                    KEY_DIAGNOSTICS_DEEP_LINK_EXPORT_REPORT,
-                                    intent?.getBooleanExtra("export_report", false) == true
-                            )
-                            .put(
                                     KEY_DIAGNOSTICS_DEEP_LINK_AUTO_CLOSE_MS,
                                     intent?.getLongExtra("auto_close_ms", 0L)?.coerceAtLeast(0L) ?: 0L
                             )
             SlockAppLog.record(
                     "SlockDiagnostics",
                     "diagnostics_deeplink_received " +
-                            "enableProfiler=${pageData.optBoolean(KEY_DIAGNOSTICS_DEEP_LINK_ENABLE_PROFILER, false)} " +
-                            "resetScene=${pageData.optBoolean(KEY_DIAGNOSTICS_DEEP_LINK_RESET_SCENE, false)} " +
-                            "exportReport=${pageData.optBoolean(KEY_DIAGNOSTICS_DEEP_LINK_EXPORT_REPORT, false)} " +
                             "autoCloseMs=${pageData.optLong(KEY_DIAGNOSTICS_DEEP_LINK_AUTO_CLOSE_MS, 0L)}"
             )
             return pageData
@@ -5326,14 +5307,6 @@ internal class SlockKuiklyBridgeModule(
                         "apiEnvironmentChanged" -> onApiEnvironmentChanged(request)
                         "loadDiagnostics" -> loadSettingsDiagnostics()
                         "setDiagnosticFeatureFlagOverride" -> setDiagnosticFeatureFlagOverride(request)
-                        "setRecompositionProfilerEnabled" -> {
-                            val enabled = request.optBoolean("enabled", false)
-                            SlockAppLog.record(
-                                    "SlockDiagnostics",
-                                    "shared_recomposition_profiler_enabled=$enabled"
-                            )
-                            mapOf("status" to "ok", "enabled" to enabled)
-                        }
                         "copyDiagnostics" -> {
                             copyText("Raft diagnostics", buildMergedSettingsDiagnosticsExportText())
                             SlockAppLog.record("SlockDiagnostics", "shared_copy_diagnostics")

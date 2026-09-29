@@ -1,12 +1,12 @@
 ---
 name: slock-android-adb-audit
-description: Use when auditing or debugging Slock Android/KMP/Kuikly surfaces from adb, especially when an agent needs repeatable internal intent navigation, Kuikly page launch, diagnostics/profiler deep links, click, press-key, scroll, screenshot, UI XML, logcat, or Kuikly profiler artifact collection.
+description: Use when auditing or debugging Slock Android/KMP/Kuikly surfaces from adb, especially when an agent needs repeatable internal intent navigation, Kuikly page launch, diagnostics deep links, click, press-key, scroll, screenshot, UI XML, or logcat collection.
 ---
 
 # Slock Android ADB Audit
 
 Use `scripts/slock_android_adb.py` as the standard Android device driver for
-repeatable Kuikly profiler and surface audits. Prefer app-owned debug intents,
+repeatable Kuikly surface audits. Prefer app-owned debug intents,
 Kuikly page launches, and diagnostics hooks over fragile visual-only navigation.
 The CLI prints JSON for every command, and `get-app-state` returns both a
 screenshot path and a UI XML path so the captured state is reusable evidence.
@@ -42,7 +42,7 @@ python3 scripts/slock_android_adb.py --device emulator-5560 get-app-state \
 
 Underscore aliases also work for agent scripting, for example `get_app_state`,
 `press_key`, `start_intent`, `open_page`, `open_diagnostics`,
-`capture_logcat`, and `pull_profiler`.
+and `capture_logcat`.
 
 The JSON result includes:
 
@@ -76,8 +76,6 @@ string, boolean, int, and long extras:
 python3 scripts/slock_android_adb.py --device emulator-5560 start-intent \
   --action ai.slock.android.diagnostics.OPEN \
   --component ai.slock.android/.core.diagnostics.DiagnosticsDeepLinkActivity \
-  --bool-extra enable_profiler=true \
-  --bool-extra reset_scene=true \
   --long-extra auto_close_ms=15000
 ```
 
@@ -99,21 +97,12 @@ signed URLs, or full route state.
 
 ### Diagnostics Deep Link
 
-For Diagnostics/profiler captures, use the dedicated helper once the debug-only
-intent exists:
+To open Diagnostics, use the dedicated helper once the debug-only intent exists:
 
 ```bash
 python3 scripts/slock_android_adb.py --device emulator-5560 open-diagnostics \
-  --enable-profiler \
-  --reset-scene \
-  --export-report \
   --auto-close-ms 15000
 ```
-
-The diagnostics intent is action-like: send exactly the action flags you want.
-`--enable-profiler`, `--reset-scene`, and `--export-report` are independent.
-For example, use `open-diagnostics --export-report` to export the current
-profiler report without also enabling or resetting the scene.
 
 This helper emits:
 
@@ -121,9 +110,6 @@ This helper emits:
 adb shell am start -W \
   -a ai.slock.android.diagnostics.OPEN \
   -n ai.slock.android/.core.diagnostics.DiagnosticsDeepLinkActivity \
-  --ez enable_profiler true \
-  --ez reset_scene true \
-  --ez export_report true \
   --el auto_close_ms 15000
 ```
 
@@ -140,33 +126,19 @@ python3 scripts/slock_android_adb.py --device emulator-5560 capture-logcat \
   --filter-regex 'SlockPerf|SlockPerfScene|tab_switch_frame|Choreographer|Skipped|jank|Exception|FATAL'
 ```
 
-Pull Kuikly profiler artifacts after exporting from Diagnostics:
-
-```bash
-python3 scripts/slock_android_adb.py --device emulator-5560 pull-profiler \
-  --out artifacts/android-adb/thread-001 \
-  --package ai.slock.android
-```
-
 ## Audit Workflow
 
 1. Start or install the candidate app, then launch it with `start-app`.
 2. Navigate with internal intents or `open-page` when available; use visual taps
    only for the specific interaction under audit or while a debug hook is missing.
-3. Open Diagnostics with the exact action flags needed for the scenario, for
-   example `open-diagnostics --enable-profiler --reset-scene` before capture or
-   `open-diagnostics --export-report` when exporting an already-running
-   profiler. Otherwise open Settings -> About -> Diagnostics manually.
+3. Open Diagnostics with `open-diagnostics` when the scenario needs it;
+   otherwise open Settings -> About -> Diagnostics manually.
 4. Use `get-app-state` before and after each scenario step that changes context.
 5. Use `click`, `press-key`, and `scroll` for the actual scenario inputs.
 6. Capture logcat for the same window.
-7. Export the profiler report through `open-diagnostics --export-report` when
-   available; do not add enable/reset flags unless that is also part of the
-   intended action. Otherwise export in Diagnostics UI, then run `pull-profiler`.
-8. Analyze `profiler_report.json`, `profiler_frames.jsonl`, screenshots, UI XML,
-   and logcat together. Do not attribute a jank frame to shared recomposition if
-   profiler events are mostly `noScope` first composition or if host frame logs
-   show the cost outside the shared recomposition window.
+7. Analyze screenshots, UI XML, and logcat together. Do not attribute a jank
+   frame to shared recomposition if host frame logs show the cost outside the
+   shared recomposition window.
 
 ## Extending App Hooks
 
@@ -180,8 +152,6 @@ When a target route cannot be opened repeatably from adb:
 - Keep route/pageData identity-only and let shared repositories/stores load data.
 - Log app-owned diagnostics around the hook (`route`, `pageName`, ids, result,
   error) so a feedback file can prove which path ran.
-- If the hook touches Diagnostics/profiler, preserve the order:
-  open page -> enable profiler -> reset scene -> export -> optional auto-close.
 
 ## Reporting
 
@@ -190,7 +160,6 @@ Every report should include:
 - device serial and app build/git SHA;
 - exact command sequence or a saved script;
 - `get-app-state` JSON paths for before/after states;
-- profiler artifact paths;
 - filtered logcat path;
 - internal intent or page launch used, or the exact missing-hook blocker;
 - whether evidence points to shared recomposition, route first mount, lazy item

@@ -11,12 +11,10 @@ import build.raft.app.data.SharedSettingsDiagnosticFeatureFlagSnapshot
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.DEVELOPER_ACTION_HANDS_UPDATE_CHECK
-import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_ENABLED
 import build.raft.app.data.SERVER_ACTION_MEMBER_REMOVE
 import build.raft.app.data.SERVER_ACTION_MEMBER_ROLE
 import build.raft.app.data.SharedSettingsOpenSourceLicenseItem
 import build.raft.app.data.SharedSettingsOpenSourceLicensesSnapshot
-import build.raft.app.data.SharedSettingsRecompositionProfilerSnapshot
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SettingsServerAdminSnapshot
 import com.tencent.kuikly.compose.ui.text.TextStyle
@@ -57,7 +55,7 @@ class SettingsHomePageDiagnosticsTest {
             )
 
         assertEquals(
-            listOf("Developer tools", "Recomposition profiler", "Actions"),
+            listOf("Developer tools", "Actions"),
             payload.sections.map { it.title },
         )
         val entry = payload.sections.first().rows.single()
@@ -429,32 +427,15 @@ class SettingsHomePageDiagnosticsTest {
     }
 
     @Test
-    fun unsupportedProfilerSnapshotShowsDisabledProfilerStatus() {
+    fun diagnosticsPayloadUsesBasicDetailWithoutProfilerSection() {
         val payload =
             emptyList<build.raft.app.data.SharedSettingsDiagnosticsEntry>().toDiagnosticsPayload(
-                state =
-                    ScreenLoadState.Content(
-                        SharedSettingsDiagnosticsSnapshot(
-                            profiler =
-                                SharedSettingsRecompositionProfilerSnapshot(
-                                    supported = false,
-                                    gateLabel = "Debug only",
-                                    detail = "Recomposition profiler is available only in shared debug builds."
-                                )
-                        )
-                    ),
+                state = ScreenLoadState.Content(SharedSettingsDiagnosticsSnapshot()),
                 actionState = null
             )
 
-        assertEquals("Auth, sanitized app diagnostics, and Kuikly profiler status", payload.detail)
-        assertEquals(
-            listOf("Recomposition profiler", "Actions"),
-            payload.sections.map { it.title }
-        )
-        val profilerRows = payload.sections.first { it.title == "Recomposition profiler" }.rows.associateBy { it.key }
-        assertFalse(profilerRows.getValue(DIAGNOSTICS_ACTION_PROFILER_ENABLED).enabled)
-        assertEquals("Debug only", profilerRows.getValue(DIAGNOSTICS_ACTION_PROFILER_ENABLED).status)
-        assertEquals("Recomposition profiler is available only in shared debug builds.", profilerRows.getValue(DIAGNOSTICS_ACTION_PROFILER_ENABLED).detail)
+        assertEquals("Auth and sanitized app diagnostics", payload.detail)
+        assertEquals(listOf("Actions"), payload.sections.map { it.title })
     }
 
     @Test
@@ -480,15 +461,14 @@ class SettingsHomePageDiagnosticsTest {
                                     selectedServerLabel = "Botiverse",
                                     sessionStatusLabel = "Signed in",
                                     socketStatusLabel = "Host active"
-                                ),
-                            profiler = SharedSettingsRecompositionProfilerSnapshot(supported = false)
+                                )
                         )
                     ),
                 actionState = null
             )
 
         assertEquals(
-            listOf("Environment", "Recomposition profiler", "Actions"),
+            listOf("Environment", "Actions"),
             payload.sections.map { it.title }
         )
         val environmentRows = payload.sections.first { it.title == "Environment" }.rows.associateBy { it.key }
@@ -979,11 +959,7 @@ class SettingsHomePageDiagnosticsTest {
         val payload =
             emptyList<build.raft.app.data.SharedSettingsDiagnosticsEntry>().toDiagnosticsPayload(
                 state =
-                    ScreenLoadState.Content(
-                        SharedSettingsDiagnosticsSnapshot(
-                            profiler = SharedSettingsRecompositionProfilerSnapshot(supported = false)
-                        )
-                    ),
+                    ScreenLoadState.Content(SharedSettingsDiagnosticsSnapshot()),
                 actionState = null
             )
 
@@ -995,38 +971,5 @@ class SettingsHomePageDiagnosticsTest {
         assertEquals("Export", actionRows.getValue("shareLogs").status)
         assertTrue(actionRows.getValue("feedback").enabled)
         assertFalse("clearLogs" in actionRows)
-    }
-
-    @Test
-    fun supportedProfilerSnapshotShowsSharedOnlyProfilerSections() {
-        val payload =
-            emptyList<build.raft.app.data.SharedSettingsDiagnosticsEntry>().toDiagnosticsPayload(
-                state =
-                    ScreenLoadState.Content(
-                        SharedSettingsDiagnosticsSnapshot(
-                            profiler =
-                                SharedSettingsRecompositionProfilerSnapshot(
-                                    supported = true,
-                                    enabled = true,
-                                    gateLabel = "Debug build",
-                                    statusLabel = "Idle",
-                                    detail = "Profiler is ready."
-                                )
-                        )
-                    ),
-                actionState = null
-            )
-
-        assertEquals(
-            listOf("Recomposition profiler", "Actions"),
-            payload.sections.map { it.title }
-        )
-        val switchRow =
-            payload.sections
-                .first { it.title == "Recomposition profiler" }
-                .rows
-                .first { it.key == DIAGNOSTICS_ACTION_PROFILER_ENABLED }
-        assertEquals(true, switchRow.toggleValue)
-        assertEquals("false", switchRow.value)
     }
 }

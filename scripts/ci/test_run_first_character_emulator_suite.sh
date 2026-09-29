@@ -30,7 +30,6 @@ grep -Fq 'ime-visibility-probe' "$SUITE_RUNNER" || fail "missing ime-visibility-
 grep -Fq 'composer-session-retirement' "$SUITE_RUNNER" || fail "missing composer-session-retirement"
 grep -Fq 'thread-composer-suggestion-interaction' "$SUITE_RUNNER" || fail "missing thread-composer-suggestion-interaction"
 grep -Fq 'multiline-text-field-value' "$SUITE_RUNNER" || fail "missing multiline-text-field-value"
-grep -Fq 'kuikly-profiler-runtime-smoke' "$SUITE_RUNNER" || fail "missing kuikly-profiler-runtime-smoke"
 grep -Fq 'attachment-private-file-provider' "$SUITE_RUNNER" || fail "missing attachment-private-file-provider"
 grep -Fq 'attachment-atomic-sink' "$SUITE_RUNNER" || fail "missing attachment-atomic-sink"
 grep -Fq 'attachment-download-runtime' "$SUITE_RUNNER" || fail "missing attachment-download-runtime"
@@ -205,7 +204,7 @@ mkdir -p "$TEST_DIR_PASS"
 
 test -f "$TEST_DIR_PASS/first-character-baseline-suite-summary.txt" || fail "summary file missing"
 grep -Fq "Suite verdict:   PASSED" "$TEST_DIR_PASS/first-character-baseline-suite-summary.txt" || fail "expected PASSED verdict"
-grep -Fq "Executed:        18 (18 passed, 0 failed)" "$TEST_DIR_PASS/first-character-baseline-suite-summary.txt" || fail "expected 18 passed"
+grep -Fq "Executed:        17 (17 passed, 0 failed)" "$TEST_DIR_PASS/first-character-baseline-suite-summary.txt" || fail "expected 17 passed"
 grep -Fq "Not run:         0" "$TEST_DIR_PASS/first-character-baseline-suite-summary.txt" || fail "expected 0 not run"
 grep -Fq "status=passed test=thread-newer-auto-pagination" "$TEST_DIR_PASS/first-character-baseline-suite-summary.txt" || fail "missing manifest row"
 pass "full suite pass scenario verified"
@@ -232,7 +231,7 @@ mkdir -p "$TEST_DIR_SKIP"
 ) || fail "Conditional skip scenario returned non-zero"
 
 grep -Fq "Suite verdict:   PASSED" "$TEST_DIR_SKIP/first-character-baseline-suite-summary.txt" || fail "expected PASSED verdict"
-grep -Fq "Executed:        17 (17 passed, 0 failed)" "$TEST_DIR_SKIP/first-character-baseline-suite-summary.txt" || fail "expected 17 executed"
+grep -Fq "Executed:        16 (16 passed, 0 failed)" "$TEST_DIR_SKIP/first-character-baseline-suite-summary.txt" || fail "expected 16 executed"
 grep -Fq "Not run:         1 (1 conditional skipped, 0 unreached)" "$TEST_DIR_SKIP/first-character-baseline-suite-summary.txt" || fail "expected 1 conditional skipped"
 grep -Fq "status=not_run test=thread-newer-auto-pagination rc=- duration=- class=build.raft.app.shared.SlockThreadNewerAutoPaginationConnectedTest reason=skipped:condition_not_met" "$TEST_DIR_SKIP/first-character-baseline-suite-summary.txt" || fail "missing manifest skipped row"
 pass "conditional skip scenario verified"
@@ -240,7 +239,7 @@ pass "conditional skip scenario verified"
 # 5. Test scenario: Failure isolation (Task #465 flake in composer-session-retirement)
 # Verifies that when composer-session-retirement fails:
 # - Its post-test diagnostics (dumpsys, logcat) are still generated
-# - All downstream tests (5 through 18) continue to execute!
+# - All downstream tests (5 through 17) continue to execute!
 # - Manifest records failure for composer-session-retirement but pass for downstream
 # - Overall exit code is 1
 TEST_DIR_FAIL="$TMP_DIR/test_fail"
@@ -266,14 +265,14 @@ rc_fail=0
 
 test "$rc_fail" -eq 1 || fail "Expected exit 1 on failure, got $rc_fail"
 grep -Fq "Suite verdict:   FAILED" "$TEST_DIR_FAIL/first-character-baseline-suite-summary.txt" || fail "expected FAILED verdict"
-grep -Fq "Executed:        18 (17 passed, 1 failed)" "$TEST_DIR_FAIL/first-character-baseline-suite-summary.txt" || fail "expected 17 passed 1 failed"
+grep -Fq "Executed:        17 (16 passed, 1 failed)" "$TEST_DIR_FAIL/first-character-baseline-suite-summary.txt" || fail "expected 16 passed 1 failed"
 grep -Fq "status=failed test=composer-session-retirement" "$TEST_DIR_FAIL/first-character-baseline-suite-summary.txt" || fail "expected failed status for composer-session-retirement"
 
 # Verify that downstream tests executed despite the failure
 grep -Fq "status=passed test=thread-composer-suggestion-interaction" "$TEST_DIR_FAIL/first-character-baseline-suite-summary.txt" || fail "test 5 was swallowed!"
-grep -Fq "status=passed test=attachment-atomic-sink" "$TEST_DIR_FAIL/first-character-baseline-suite-summary.txt" || fail "test 9 was swallowed!"
-grep -Fq "status=passed test=durable-partition-migration" "$TEST_DIR_FAIL/first-character-baseline-suite-summary.txt" || fail "test 17 was swallowed!"
-grep -Fq "status=passed test=thread-newer-auto-pagination" "$TEST_DIR_FAIL/first-character-baseline-suite-summary.txt" || fail "test 18 was swallowed!"
+grep -Fq "status=passed test=attachment-atomic-sink" "$TEST_DIR_FAIL/first-character-baseline-suite-summary.txt" || fail "test 8 was swallowed!"
+grep -Fq "status=passed test=durable-partition-migration" "$TEST_DIR_FAIL/first-character-baseline-suite-summary.txt" || fail "test 16 was swallowed!"
+grep -Fq "status=passed test=thread-newer-auto-pagination" "$TEST_DIR_FAIL/first-character-baseline-suite-summary.txt" || fail "test 17 was swallowed!"
 
 # Verify post-execution diagnostics were generated for the failed test
 test -f "$TEST_DIR_FAIL/composer-session-retirement-input-method.txt" || fail "diagnostics missing for failed test"
@@ -331,7 +330,7 @@ test "$rc_trap" -ne 0 || fail "Expected non-zero exit on wait-for-device abort"
 test -f "$TEST_DIR_TRAP/first-character-baseline-suite-summary.txt" || fail "summary file missing on abort"
 grep -Fq "Suite verdict:   FAILED" "$TEST_DIR_TRAP/first-character-baseline-suite-summary.txt" || fail "expected FAILED verdict on abort"
 grep -Fq "Executed:        0" "$TEST_DIR_TRAP/first-character-baseline-suite-summary.txt" || fail "expected 0 executed"
-grep -Fq "18 unreached" "$TEST_DIR_TRAP/first-character-baseline-suite-summary.txt" || fail "expected 18 unreached"
+grep -Fq "17 unreached" "$TEST_DIR_TRAP/first-character-baseline-suite-summary.txt" || fail "expected 17 unreached"
 pass "premature abort trap safety verified"
 
 # 8. Test scenario: Partial CLI selection
