@@ -17521,10 +17521,15 @@ private fun ThreadMessagesListContent(
             }
         val anchorStore = adaptiveSharedStores.adaptiveScrollAnchorStore(adaptiveStoreScope)
         val anchor = anchorStore.peek(adaptiveStoreScope.shellInstanceId, identity)
+        // Success = the target message's item is visible AND sits at the staged
+        // viewport-relative offset (item.offset, negative when scrolled above the top edge).
+        // Comparing the target's own rendered offset — not firstVisibleItemIndex — keeps the
+        // contract in one coordinate space and stays correct when the anchor is a partially
+        // visible row above the top edge or a fully-visible row below it.
         fun verifyAnchorRestore(
             targetMessageId: String,
             targetIndex: Int,
-            expectedOffsetPx: Int,
+            expectedItemOffsetPx: Int,
         ): Boolean {
             val settledIntent = viewportControllerState.intent as? LazyViewportIntent.Anchored
             if (settledIntent == null ||
@@ -17537,7 +17542,9 @@ private fun ThreadMessagesListContent(
                 }
                 return false
             }
-            if (listState.firstVisibleItemIndex != targetIndex) {
+            val renderedItem =
+                listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
+            if (renderedItem == null) {
                 postDetailReadyTrace("restore_rejected") {
                     put("anchorMessageId", targetMessageId)
                     put("reason", "position_mismatch")
@@ -17546,18 +17553,13 @@ private fun ThreadMessagesListContent(
                 }
                 return false
             }
-            // Offset must also land on the staged value — same index with a shifted offset is a
-            // partial restore, not success. 4px matches the focused-anchor drift tolerance.
-            if (
-                kotlin.math.abs(
-                    listState.firstVisibleItemScrollOffset - expectedOffsetPx
-                ) > 4
-            ) {
+            // 4px matches the focused-anchor session drift tolerance.
+            if (kotlin.math.abs(renderedItem.offset - expectedItemOffsetPx) > 4) {
                 postDetailReadyTrace("restore_rejected") {
                     put("anchorMessageId", targetMessageId)
                     put("reason", "offset_mismatch")
-                    put("firstVisibleOffset", listState.firstVisibleItemScrollOffset.toDouble())
-                    put("expectedOffsetPx", expectedOffsetPx.toDouble())
+                    put("firstVisibleOffset", renderedItem.offset.toDouble())
+                    put("expectedOffsetPx", expectedItemOffsetPx.toDouble())
                 }
                 return false
             }
@@ -17582,11 +17584,16 @@ private fun ThreadMessagesListContent(
                 // left at FollowingLatest, the next composer_inset_relayout replays
                 // Mutation.InsetChange and yanks the restored viewport back to bottom. Anchored
                 // (ExactOffset) makes later relayouts re-assert this message+offset instead.
+                // Offset contract: anchor.messageOffsetPx is the captured LazyList item.offset
+                // (viewport-relative, negative when scrolled above the top edge). The command
+                // executor runs scrollToItem(index, -target.offset), so the event must carry the
+                // raw item.offset — negating here would scroll the target BELOW the top and
+                // surface the previous row as firstVisible (Jony r18: staged -37 → readback 17).
                 viewportLayoutGeneration += 1L
                 dispatchViewportEvent(
                     LazyViewportEvent.Anchor(
                         target = LazyViewportAnchorTarget.Message(requireNotNull(anchor.messageId)),
-                        offset = -anchor.messageOffsetPx,
+                        offset = anchor.messageOffsetPx,
                         layoutGeneration = viewportLayoutGeneration,
                         placement = LazyViewportAnchorPlacement.ExactOffset,
                         fallback = LazyViewportAnchorFallback.Free
@@ -17596,7 +17603,14 @@ private fun ThreadMessagesListContent(
                 // Settlement returning is not proof of success: AnchorUnavailable settles too
                 // (epoch bump + pending cleared, intent degrades to UserDragging). Gate READY on
                 // intent still Anchored on the target and the readback actually showing it.
-                if (!verifyAnchorRestore(requireNotNull(anchor.messageId), locatedIndex, anchor.messageOffsetPx)) {
+                // firstVisibleItemScrollOffset is always non-negative = -item.offset.
+                if (
+                    !verifyAnchorRestore(
+                        requireNotNull(anchor.messageId),
+                        locatedIndex,
+                        anchor.messageOffsetPx,
+                    )
+                ) {
                     return@LaunchedEffect
                 }
                 postDetailReadyTrace("restore_applied") {
@@ -17628,14 +17642,20 @@ private fun ThreadMessagesListContent(
                     dispatchViewportEvent(
                         LazyViewportEvent.Anchor(
                             target = LazyViewportAnchorTarget.Message(fallbackMessageId),
-                            offset = -anchor.messageOffsetPx,
+                            offset = anchor.messageOffsetPx,
                             layoutGeneration = viewportLayoutGeneration,
                             placement = LazyViewportAnchorPlacement.ExactOffset,
                             fallback = LazyViewportAnchorFallback.Free
                         )
                     )
                     viewportControllerState.pendingCommand?.id?.let { awaitViewportCommandSettlement(it) }
-                    if (!verifyAnchorRestore(fallbackMessageId, anchor.fallbackIndex, anchor.messageOffsetPx)) {
+                    if (
+                        !verifyAnchorRestore(
+                            fallbackMessageId,
+                            anchor.fallbackIndex,
+                            anchor.messageOffsetPx,
+                        )
+                    ) {
                         return@LaunchedEffect
                     }
                 } else {
