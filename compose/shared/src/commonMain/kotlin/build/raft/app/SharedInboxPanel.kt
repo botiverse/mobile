@@ -920,7 +920,8 @@ private fun SharedActivityBodyContent(
                     stableOrderEnabled = stableOrderEnabled,
                     stableOrderDecisionRevision = stableOrderDecisionRevision,
                     presentationStore = presentationStore,
-                    foregroundEpoch = foregroundEpoch
+                    foregroundEpoch = foregroundEpoch,
+                    externalSelectedThreadId = externalSelectedThreadId
                 )
         }
     }
@@ -1023,7 +1024,8 @@ private fun SharedActivityList(
     stableOrderEnabled: Boolean,
     stableOrderDecisionRevision: Long,
     presentationStore: SharedActivityPresentationStore,
-    foregroundEpoch: Long
+    foregroundEpoch: Long,
+    externalSelectedThreadId: String? = null
 ) {
     val presentationServerId = snapshot.server.id.value
     val panelFirstRenderMark = remember { TimeSource.Monotonic.markNow() }
