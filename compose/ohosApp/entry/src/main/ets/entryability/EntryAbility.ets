@@ -362,6 +362,8 @@ export default class EntryAbility extends UIAbility {
 
     try {
       if (!display.isFoldable()) {
+        this.foldPosture = 'flat';
+        this.publishAdaptivePane(mainWindow);
         return;
       }
       this.foldPosture = this.foldPostureName(display.getFoldStatus());
