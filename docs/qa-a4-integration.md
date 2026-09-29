@@ -1,6 +1,6 @@
-# Test-only A4 integration revision 17 — DO NOT MERGE
+# Test-only A4 integration revision 18 — DO NOT MERGE
 
-Shared PR2730: 70dc7ba1004c36d709944b517cf8bbb9dd2bc07e (rebased main includes layout 2727/2728).
+Shared PR2730: 2be50c397f95ae7b6e7e32903191a40333ab30d2 (rebased main includes layout 2727/2728).
 Native PR2731: 4d1628e4779a9fd593dce0d84c98b822084b0b1c.
 
 This QA branch alone sets the source initiation default and nativeGuardedCommitAvailable true.
@@ -106,3 +106,9 @@ off; use a nonzero source offset and compare staged offset, immediate readback,
 post-inset relayout and final wide geometry. Current source checks index but not
 pixel offset in its success predicate; this carrier is for runtime evidence, not
 full contract approval. atLatest and failed restoration remain separate cases.
+
+Revision 18 adds the owner's offset success predicate (within 4px) to both
+located and fallback paths. It supersedes the queued r17 build before that build
+starts; r16 invalid-anchor carrier remains independently running. Nonzero-offset
+normal restoration must still be measured through final wide layout. This source
+bound and QA carrier do not establish physical or complete A4 acceptance.
