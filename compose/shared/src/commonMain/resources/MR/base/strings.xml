@@ -969,6 +969,7 @@
     <string name="member_label_no_creator">No creator assigned</string>
     <string name="member_label_activity_only">Activity only</string>
     <string name="member_label_active">Active</string>
+    <string name="channel_bridge_provider_slack">Slack</string>
     <string name="member_label_muted">Muted</string>
     <string name="member_label_agent_dm">Agent DM</string>
     <string name="member_label_show_more">Show more</string>
