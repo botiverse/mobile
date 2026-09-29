@@ -18488,6 +18488,7 @@ private fun ThreadMessagesListContent(
                 "visible=${listState.layoutInfo.visibleItemsInfo.joinToString(",") { it.index.toString() }}"
         )
     }
+    var pendingOlderPageAnchor by remember(threadInstanceKey) { mutableStateOf<ThreadVisibleMessageAnchor?>(null) }
     var previousOlderMessagesStatus by remember(threadInstanceKey) { mutableStateOf(renderPayload.olderMessagesStatus) }
     var olderPageCycleActive by remember(threadInstanceKey) { mutableStateOf(false) }
     var olderPageSettledUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
@@ -18855,14 +18856,54 @@ private fun ThreadMessagesListContent(
         val previousStatus = previousOlderMessagesStatus
         if (renderPayload.olderMessagesStatus == "loading" && previousStatus != "loading") {
             olderPageCycleActive = true
+            pendingOlderPageAnchor =
+                listState.threadFirstVisibleMessageAnchor(
+                    timelineSlice = renderPayload,
+                    userScrollGeneration = userScrollGeneration.value
+                )
             allowBottomAutoAnchor = false
+            pendingOlderPageAnchor?.let { anchor ->
+                diagnosticsLogger(
+                    "thread_older_anchor_capture messageId=${anchor.messageId} offset=${anchor.offset} " +
+                        "userScrollGeneration=${anchor.userScrollGeneration} " +
+                        "isScrollInProgress=${listState.isScrollInProgress}"
+                )
+            }
             diagnosticsLogger(
                 "thread_older_page_cycle result=loading " +
                     "viewportIntent=${viewportControllerState.intent} " +
                     "isScrollInProgress=${listState.isScrollInProgress}"
             )
         } else if (previousStatus == "loading" && renderPayload.olderMessagesStatus != "loading") {
+            val anchor = pendingOlderPageAnchor
+            pendingOlderPageAnchor = null
             allowBottomAutoAnchor = false
+            if (anchor != null) {
+                listState.awaitThreadMessagesLayoutFrame()
+            }
+            if (
+                anchor != null &&
+                shouldRestoreThreadOlderPageAnchor(
+                    capturedUserScrollGeneration = anchor.userScrollGeneration,
+                    currentUserScrollGeneration = userScrollGeneration.value
+                )
+            ) {
+                val targetIndex = renderPayload.threadMessageListItemIndex(anchor.messageId)
+                if (targetIndex >= 0) {
+                    listState.scrollToItem(targetIndex, -anchor.offset)
+                    diagnosticsLogger(
+                        "thread_older_anchor_restore result=restored messageId=${anchor.messageId} " +
+                            "targetIndex=$targetIndex offset=${anchor.offset} " +
+                            "userScrollGeneration=${userScrollGeneration.value}"
+                    )
+                }
+            } else if (anchor != null) {
+                diagnosticsLogger(
+                    "thread_older_anchor_restore result=skipped_user_moved messageId=${anchor.messageId} " +
+                        "capturedUserScrollGeneration=${anchor.userScrollGeneration} " +
+                        "currentUserScrollGeneration=${userScrollGeneration.value}"
+                )
+            }
             diagnosticsLogger(
                 "thread_older_page_cycle result=settled " +
                     "viewportIntent=${viewportControllerState.intent} " +
@@ -18911,14 +18952,18 @@ private fun ThreadMessagesListContent(
     LaunchedEffect(
         threadInstanceKey,
         latestLocalSendBottomAnchorKey,
-        latestItemIndex,
         newerPageCycleActive
     ) {
         if (newerPageCycleActive) {
             allowBottomAutoAnchor = false
             return@LaunchedEffect
         }
-        if (!shouldAnchorLatestLocalSendToBottom(latestLocalSendBottomAnchorKey, latestItemIndex)) {
+        if (
+            !shouldAnchorLatestLocalSendToBottom(
+                latestLocalSendBottomAnchorKey,
+                currentLatestItemIndexState.value
+            )
+        ) {
             return@LaunchedEffect
         }
         latestLocalSendBottomAnchorStartUserScrollGeneration = userScrollGeneration.value
@@ -22232,6 +22277,11 @@ private fun LazyListState.threadFirstVisibleMessageAnchor(
         userScrollGeneration = userScrollGeneration
     )
 }
+
+internal fun shouldRestoreThreadOlderPageAnchor(
+    capturedUserScrollGeneration: Int,
+    currentUserScrollGeneration: Int
+): Boolean = capturedUserScrollGeneration == currentUserScrollGeneration
 
 internal fun ThreadTimelineSlice.visibleThreadReadAnchor(
     visibleListItemIndexes: List<Int>,
