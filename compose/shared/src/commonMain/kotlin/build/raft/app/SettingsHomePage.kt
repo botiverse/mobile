@@ -3038,6 +3038,10 @@ private fun SlockAppShellReadyContent(
                 railInlineSecondaryDestination = railInlineSecondaryDestination,
                 activityReachedThisSession = railActivityReached,
             )
+        // While an inline secondary destination (Search) covers the middle pane, the
+        // underlying rail tab is the host the cover returns to — clamping it now would
+        // strand the exit path (e.g. Activity + Search -> Home after close).
+        if (railInlineSecondaryDestination != null) return@LaunchedEffect
         if (retainedAppShellSelectedTab(selectedTab) !in allowedKeys) {
             bridge.log(
                 "app_shell_slack_nav_tab_clamp selectedTab=$selectedTab keys=${slackNavTabKeys.joinToString(",")}"
@@ -3221,44 +3225,59 @@ private fun SlockAppShellReadyContent(
             adaptiveDefaultLandingServerId = null
             return@LaunchedEffect
         }
-        var next =
-            adaptiveWorkspaceState
-                ?: SlockAdaptiveWorkspaceState(
-                    shellInstanceId = storeScope.shellInstanceId,
-                    serverId = serverId,
-                )
-        if (next.serverId != serverId) {
-            val droppedOpens = adaptiveWorkspaceStore.snapshot().pendingDetailOpens
+        // Reduce window/visibility on the store's CURRENT workspace inside the atomic
+        // update — seeding from the compose snapshot (`adaptiveWorkspaceState`) here is a
+        // lost-update race: a concurrently-written selection (e.g. a rail Search/Activity
+        // open landing between snapshot read and update) would be silently overwritten.
+        val parentVisible =
+            appShellSharedDetailSurfaceVisible(
+                pageVisible = pageVisible,
+                selectedTab = selectedTab,
+                selectedHomeDestination = selectedHomeDestination,
+                railInlineSecondaryDestination = railInlineSecondaryDestination,
+            )
+        // Capture the dropped pending opens BEFORE the update so the reject/nack path
+        // can still see them (they are cleared inside the update for the authority change).
+        val droppedOpens = adaptiveWorkspaceStore.snapshot().pendingDetailOpens
+        var authorityChanged = false
+        adaptiveWorkspaceStore.update { current ->
+            var next =
+                current.workspace
+                    ?: SlockAdaptiveWorkspaceState(
+                        shellInstanceId = storeScope.shellInstanceId,
+                        serverId = serverId,
+                    )
+            val changed = next.serverId != serverId
+            if (changed) {
+                next =
+                    reduceSlockAdaptiveWorkspace(
+                        next,
+                        SlockAdaptiveWorkspaceIntent.AuthorityChanged(serverId),
+                    )
+                authorityChanged = true
+            }
             next =
                 reduceSlockAdaptiveWorkspace(
                     next,
-                    SlockAdaptiveWorkspaceIntent.AuthorityChanged(serverId),
+                    SlockAdaptiveWorkspaceIntent.WindowChanged(adaptivePane),
                 )
-            adaptiveWorkspaceStore.update { current ->
-                current.copy(launchPayload = null, pendingDetailOpens = emptyMap())
-            }
+            next =
+                reduceSlockAdaptiveWorkspace(
+                    next,
+                    SlockAdaptiveWorkspaceIntent.ParentVisibilityChanged(parentVisible),
+                )
+            current.copy(
+                workspace = next,
+                launchPayload = if (changed) null else current.launchPayload,
+                pendingDetailOpens =
+                    if (changed) emptyMap() else current.pendingDetailOpens,
+            )
+        }
+        if (authorityChanged) {
             rejectPendingAdaptiveDetailOpens(droppedOpens, "authority_changed")
             releaseAdaptiveHandoffLease()
             adaptiveDefaultLandingServerId = null
         }
-        next =
-            reduceSlockAdaptiveWorkspace(
-                next,
-                SlockAdaptiveWorkspaceIntent.WindowChanged(adaptivePane),
-            )
-        next =
-            reduceSlockAdaptiveWorkspace(
-                next,
-                SlockAdaptiveWorkspaceIntent.ParentVisibilityChanged(
-                    appShellSharedDetailSurfaceVisible(
-                        pageVisible = pageVisible,
-                        selectedTab = selectedTab,
-                        selectedHomeDestination = selectedHomeDestination,
-                        railInlineSecondaryDestination = railInlineSecondaryDestination,
-                    )
-                ),
-            )
-        adaptiveWorkspaceStore.update { current -> current.copy(workspace = next) }
     }
     fun postShellAdaptiveTrace(
         hop: String,
@@ -4605,7 +4624,12 @@ private fun SlockAppShellReadyContent(
     }
 
     fun dismissAdaptiveDetailSelection() {
-        val current = adaptiveWorkspaceStore.snapshot().workspace ?: return
+        val current = adaptiveWorkspaceStore.snapshot().workspace
+        bridge.log(
+            "adaptive_detail_dismiss selection=${current?.selection?.identity?.key.orEmpty()} " +
+                "presentation=${current?.presentation}"
+        )
+        if (current == null) return
         val selection = current.selection ?: return
         val next =
             reduceSlockAdaptiveWorkspace(
@@ -4637,7 +4661,7 @@ private fun SlockAppShellReadyContent(
             appShellRailSurfaceBackDismissesDetailFirst(
                 selectedTab = selectedTab,
                 railInlineSecondaryDestination = railInlineSecondaryDestination,
-                selectionPresent = adaptiveWorkspaceState?.selection != null,
+                selectionPresent = adaptiveWorkspaceStore.snapshot().workspace?.selection != null,
             )
         ) {
             dismissAdaptiveDetailSelection()
@@ -5828,6 +5852,11 @@ private fun SlockAppShellReadyContent(
                                     railInlineSecondaryDestination = AppShellRailSearchKey
                                     bridge.log("app_shell_rail_secondary_open destination=search")
                                 } else {
+                                    // Tapping a real rail item dismisses the inline
+                                    // secondary destination even when the underlying
+                                    // tab is already selected (Activity -> Search ->
+                                    // Activity must land back on Activity).
+                                    railInlineSecondaryDestination = null
                                     onAppShellTabSelected(key)
                                 }
                             },
@@ -6486,13 +6515,23 @@ private fun SlockAppShellReadyContent(
                                 inlineOnClose = {
                                     // Same ordering as popMainRoute: a mounted detail
                                     // closes before the inline Search destination exits.
-                                    if (
+                                    // Read the store snapshot, not the compose state: the
+                                    // remember-keyed environment may hold this lambda across
+                                    // recompositions, so only the store has the live truth.
+                                    val liveSelection =
+                                        adaptiveWorkspaceStore.snapshot().workspace?.selection
+                                    val dismissFirst =
                                         appShellRailSurfaceBackDismissesDetailFirst(
                                             selectedTab = selectedTab,
                                             railInlineSecondaryDestination = railInlineSecondaryDestination,
-                                            selectionPresent = adaptiveWorkspaceState?.selection != null,
+                                            selectionPresent = liveSelection != null,
                                         )
-                                    ) {
+                                    bridge.log(
+                                        "rail_inline_secondary_close destination=$railInlineSecondaryDestination " +
+                                            "selectedTab=$selectedTab dismissFirst=$dismissFirst " +
+                                            "selection=${liveSelection?.identity?.key.orEmpty()}"
+                                    )
+                                    if (dismissFirst) {
                                         dismissAdaptiveDetailSelection()
                                     } else {
                                         railInlineSecondaryDestination = null
