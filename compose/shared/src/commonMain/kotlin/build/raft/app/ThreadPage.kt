@@ -17851,12 +17851,19 @@ private fun ThreadMessagesListContent(
                         timelineSlice = latestTimelineSlice,
                         userScrollGeneration = userScrollGeneration.value,
                     ) ?: return@anchor null
+                // atLatest must reflect the viewport's settled intent, not instantaneous
+                // geometry: during a resize/rotation frame `canScrollForward` can transiently
+                // read true even though the controller is FollowingLatest at rendered bottom
+                // (Jony r19 atLatest miss → restored a mid-list anchor over a bottom viewport).
+                val atLatest =
+                    viewportControllerState.intent is LazyViewportIntent.FollowingLatest ||
+                        !listState.canScrollForward
                 SharedAdaptiveScrollAnchor(
                     requestId = requestId,
                     messageId = first.messageId,
                     messageOffsetPx = first.offset,
                     fallbackIndex = listState.firstVisibleItemIndex,
-                    atLatest = !listState.canScrollForward,
+                    atLatest = atLatest,
                     capturedAtMillis = defaultNowMillis(),
                 )
             }
