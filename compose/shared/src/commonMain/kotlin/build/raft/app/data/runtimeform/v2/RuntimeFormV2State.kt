@@ -24,8 +24,22 @@ internal typealias RuntimeFormV2Values = Map<String, JsonElement>
 internal data class RuntimeFormV2Choice(
     val value: String,
     val label: String,
-    val attributes: JsonObject = JsonObject(emptyMap())
+    val attributes: JsonObject = JsonObject(emptyMap()),
+    /** `choice.labels`: only ever from FieldCopy.choices, never from the option itself. */
+    val description: String? = null
 )
+
+/**
+ * Label priority (`choice.labels`): FieldCopy.choices[value].label, else the option's own label,
+ * else the raw value. The description comes only from FieldCopy.choices.
+ */
+private fun RuntimeFormV2Choice.labelledFor(field: RuntimeFormV2Field): RuntimeFormV2Choice {
+    val text = field.choices[value]
+    return copy(
+        label = text?.label?.takeIf { it.isNotEmpty() } ?: label.takeIf { it.isNotEmpty() } ?: value,
+        description = text?.description?.takeIf { it.isNotEmpty() }
+    )
+}
 
 /** Response of the option-sources endpoint, kept tolerant like the form itself. */
 internal data class RuntimeFormV2Source(
@@ -94,13 +108,17 @@ internal fun runtimeFormV2Choices(
 ): RuntimeFormV2Choices? {
     val source = field.optionSourceId?.let { sources[it] }
     return when (field.kind) {
-        RuntimeFormV2FieldKind.Select -> RuntimeFormV2Choices.Select(source?.options.orEmpty(), allowEmpty = false)
+        RuntimeFormV2FieldKind.Select ->
+            RuntimeFormV2Choices.Select(source?.options.orEmpty().map { it.labelledFor(field) }, allowEmpty = false)
         RuntimeFormV2FieldKind.DependentSelect -> {
             val parent = values.text(field.dependsOn)
             if (source?.customValueAllowedByValue?.get(parent) == true) {
                 RuntimeFormV2Choices.FreeText
             } else {
-                RuntimeFormV2Choices.Select(source?.optionsByValue?.get(parent).orEmpty(), allowEmpty = false)
+                RuntimeFormV2Choices.Select(
+                    source?.optionsByValue?.get(parent).orEmpty().map { it.labelledFor(field) },
+                    allowEmpty = false
+                )
             }
         }
         RuntimeFormV2FieldKind.DerivedSelect -> {
@@ -108,7 +126,7 @@ internal fun runtimeFormV2Choices(
             val selected = selectedOption(from.key, sources, values)
             val options = (selected?.attributes?.get(from.attribute) as? JsonArray)
                 ?.mapNotNull { it.stringOrNull() }
-                ?.map { RuntimeFormV2Choice(it, it) }
+                ?.map { RuntimeFormV2Choice(it, it).labelledFor(field) }
                 .orEmpty()
             // An empty value means "the runtime's default"; it is always a valid choice.
             RuntimeFormV2Choices.Select(options, allowEmpty = true)

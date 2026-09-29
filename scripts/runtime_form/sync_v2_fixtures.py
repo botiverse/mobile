@@ -36,6 +36,9 @@ FIXTURES = [
     ("GEMINI_V2_EDIT_JSON", "gemini.edit.json"),
     ("GEMINI_V2_SOURCE_JSON", "gemini.option-source.json"),
     ("ANTIGRAVITY_V2_EDIT_JSON", "antigravity.edit.json"),
+    # Capability `choice.labels` (slock #8625): label priority, description, ignored keys.
+    ("CHOICES_V2_FORM_JSON", "choices.form.json"),
+    ("CHOICES_V2_SOURCE_JSON", "choices.option-source.json"),
 ]
 
 
