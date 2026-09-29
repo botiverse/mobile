@@ -538,6 +538,89 @@ class SlockAdaptiveDetailOpenContractTest {
         )
     }
 
+    @Test
+    fun retryAfterCancelMintsFreshGenerationSoStaleReadyCannotMatch() {
+        // Jony's v12 counterexample: same-identity retry reused generation 1, so the dead
+        // attempt's delayed READY (same identity, same generation) completed the new pending
+        // and emitted a stray accepted ACK -> CommitDispatched. The fix mints a new generation
+        // whenever the selection is orphaned (no pending still owns its generation).
+        val first =
+            evaluateSlockAdaptiveDetailOpen(
+                request = request(requestId = "req-1", hostId = "pager-9"),
+                workspaceEnabled = true,
+                session = sessionWithWorkspace(dualPane = false),
+                nativeGuardedCommitAvailable = true,
+            )
+        val firstGen =
+            (first.second as? SlockAdaptiveDetailOpenDecision.Accepted)?.generation
+                ?: error("first request must be accepted")
+        // Cancel drops the pending but the workspace selection for that identity survives.
+        val cancelled = dropSlockAdaptiveDetailOpen("req-1", first.first)
+        assertNull(cancelled.pendingDetailOpens["req-1"])
+        assertEquals(
+            detailIdentity(),
+            cancelled.workspace?.selection?.identity,
+        )
+
+        val second =
+            evaluateSlockAdaptiveDetailOpen(
+                request =
+                    request(requestId = "req-2", hostId = "pager-9", capturedAtMillis = 2000L),
+                workspaceEnabled = true,
+                session = cancelled,
+                nativeGuardedCommitAvailable = true,
+            )
+        val secondGen =
+            (second.second as? SlockAdaptiveDetailOpenDecision.Accepted)?.generation
+                ?: error("retry must be accepted")
+        assertTrue(
+            secondGen > firstGen,
+            "retry must mint a fresh generation (got $secondGen after $firstGen)",
+        )
+        assertEquals(secondGen, second.first.pendingDetailOpens["req-2"]?.detailGeneration)
+
+        // The stale READY (identity + firstGen) resolves nothing now.
+        val (afterStaleReady, stalePending) =
+            completeSlockAdaptiveDetailOpen(
+                identityKey = detailIdentity().key,
+                generation = firstGen,
+                session = second.first,
+            )
+        assertNull(stalePending)
+        assertEquals(
+            "req-2",
+            afterStaleReady.pendingDetailOpens["req-2"]?.requestId,
+        )
+    }
+
+    @Test
+    fun sameRequestIdRedeliveryKeepsOriginalGeneration() {
+        // Dedupe: replayed requestId answers with the recorded pending generation, never
+        // re-reduces — the selection reuse guard must not fire on this path.
+        val first =
+            evaluateSlockAdaptiveDetailOpen(
+                request = request(requestId = "req-1", hostId = "pager-9"),
+                workspaceEnabled = true,
+                session = sessionWithWorkspace(dualPane = false),
+                nativeGuardedCommitAvailable = true,
+            )
+        val firstGen =
+            (first.second as? SlockAdaptiveDetailOpenDecision.Accepted)?.generation
+                ?: error("first request must be accepted")
+
+        val second =
+            evaluateSlockAdaptiveDetailOpen(
+                request = request(requestId = "req-1", hostId = "pager-9"),
+                workspaceEnabled = true,
+                session = first.first,
+                nativeGuardedCommitAvailable = true,
+            )
+        assertEquals(
+            firstGen,
+            (second.second as? SlockAdaptiveDetailOpenDecision.Accepted)?.generation,
+        )
+    }
+
     private fun request(
         requestId: String,
         hostId: String = "pager-1",

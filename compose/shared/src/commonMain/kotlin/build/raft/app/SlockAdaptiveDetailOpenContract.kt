@@ -587,9 +587,27 @@ internal fun evaluateSlockAdaptiveDetailOpen(
             workspace,
             SlockAdaptiveWorkspaceIntent.WindowChanged(replayedPane),
         )
+    // Retry generation fence (Jony's v12 counterexample): OpenDetail reuses the existing
+    // selection generation when identity matches — correct for re-deliveries of the SAME
+    // requestId (deduped above), wrong for a NEW requestId arriving after a cancel dropped the
+    // old pending. Without a fresh generation, a stale READY for the dead attempt still carries
+    // generation N and would complete the retry's pending — the device log showed exactly that
+    // (timeout-cancelled gen=1 READY acked the retried request). Clear the orphaned selection
+    // first so the reducer mints a new generation for the retry.
+    val selectionForOpen =
+        if (
+            replayed.selection?.identity == request.identity &&
+            session.pendingDetailOpens.values.none {
+                it.detailGeneration == replayed.selection!!.generation
+            }
+        ) {
+            replayed.copy(selection = null)
+        } else {
+            replayed
+        }
     val opened =
         reduceSlockAdaptiveWorkspace(
-            replayed,
+            selectionForOpen,
             SlockAdaptiveWorkspaceIntent.OpenDetail(request.identity),
         )
     if (opened.selection?.identity != request.identity) {
