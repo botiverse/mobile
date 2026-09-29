@@ -7203,7 +7203,7 @@ internal fun SettingsNativeDetailScreen() {
         },
         onServerDrawerSelected = {},
         onHomeServerAvatarSelected = {},
-        bottomContentPadding = SlockSpacing.Lg,
+        bottomContentPadding = slockBottomSafeAreaPadding() + SlockSpacing.Lg,
         timeContext = null,
         diagnosticsLogger = { message -> bridge.log("settings_native_detail $message") },
         onLogout = { pager.openLoginReplacingCurrentPage() },
