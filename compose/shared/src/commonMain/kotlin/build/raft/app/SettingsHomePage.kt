@@ -59,6 +59,7 @@ import build.raft.app.data.MOBILE_ACTION_COMPOSER_SEND_KEY
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
 import build.raft.app.data.MOBILE_ACTION_LINK_OPEN_MODE
 import build.raft.app.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
+import build.raft.app.data.MOBILE_ACTION_DESKTOP_MODE
 import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
 import build.raft.app.data.MOBILE_ACTION_SERVER_DRAWER
 import build.raft.app.data.MOBILE_ACTION_HOME_SERVER_AVATAR
@@ -82,7 +83,6 @@ import build.raft.app.data.LANGUAGE_REGION_ACTION_SERVER_TRANSLATION
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIME_FORMAT
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIMEZONE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY
-import build.raft.app.data.LargeScreenNavigationPreference
 import build.raft.app.data.MyMessageAlignmentPreference
 import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.CONNECTED_APPS_ACTION_DELETE
@@ -119,6 +119,7 @@ import build.raft.app.data.KeyValueNotificationPreferenceStore
 import build.raft.app.data.PersistentNotificationPreferenceRepository
 import build.raft.app.data.PersistentChatLayoutPreferenceRepository
 import build.raft.app.data.ChatLayoutPreferenceSnapshotRuntimeAuthority
+import build.raft.app.data.DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN
 import build.raft.app.data.DEFAULT_SERVER_DRAWER_ENABLED
 import build.raft.app.data.ConversationForwardGestureRuntimeAuthority
 import build.raft.app.data.kuiklyChatLayoutPreferenceRepository
@@ -1263,6 +1264,30 @@ internal fun appShellAllowedTabKeys(
 internal fun shouldHandleAppShellTabSelection(currentTab: String, nextTab: String): Boolean =
     retainedAppShellSelectedTab(currentTab) != retainedAppShellSelectedTab(nextTab)
 
+/**
+ * task #45: whether the ON→OFF transition should clear the rail-only transient
+ * surfaces (inline secondary destination, slack-nav More menu) exactly once.
+ *
+ * Pure decision for the LaunchedEffect in the shell composition: the cleanup is
+ * edge-triggered — it runs only when `desktopModeOnLargeScreen` flips true→false
+ * while armed. While OFF the user may reopen those surfaces, so a persistent
+ * predicate would wipe them; a cold start that begins OFF must not clear state
+ * it never created. Returns true when the caller should reset
+ * `railInlineSecondaryDestination`/`slackNavMoreMenuVisible` now, and the next
+ * armed latch value.
+ */
+internal fun desktopModeOffCleanupDecision(
+    desktopModeOnLargeScreen: Boolean,
+    cleanupArmed: Boolean,
+): Pair<Boolean, Boolean> =
+    if (desktopModeOnLargeScreen) {
+        false to true
+    } else if (cleanupArmed) {
+        true to false
+    } else {
+        false to false
+    }
+
 internal fun shouldDismissHomeNotificationCenterForAppShellTabSelection(currentTab: String, targetTab: String): Boolean =
     retainedAppShellSelectedTab(currentTab) == "home" &&
         retainedAppShellSelectedTab(targetTab) != "home"
@@ -2019,11 +2044,11 @@ private fun SlockAppShellReadyContent(
     val suppressRestoreLanding = remember(pager.pageData.params.toString()) {
         pager.pageData.params.optBoolean(APP_SHELL_SUPPRESS_RESTORE_LANDING, false)
     }
-    val adaptiveHomeWorkspaceEnabled = remember(pager.pageData.params.toString()) {
-        pager.pageData.params.optBoolean(SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED, false)
-    }
-    val adaptiveNavRailEnabled = remember(pager.pageData.params.toString()) {
-        pager.pageData.params.optBoolean(SLOCK_ADAPTIVE_NAV_RAIL_ENABLED, false)
+    // task #45: the user-facing "Desktop mode on large screens" toggle (Settings >
+    // Mobile, default ON) replaces the two QA-only adaptive params. The persisted
+    // value lands via the chat-layout snapshot runtime authority below.
+    var desktopModeOnLargeScreen by remember {
+        mutableStateOf(DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN)
     }
     val authGateInstanceId = remember(pager.pageData.params.toString()) {
         pager.pageData.params.optString(APP_SHELL_AUTH_GATE_INSTANCE_ID)
@@ -2781,9 +2806,6 @@ private fun SlockAppShellReadyContent(
             )
         }
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
-    var largeScreenNavigation by remember {
-        mutableStateOf(LargeScreenNavigationPreference.Default)
-    }
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
     var foregroundMessageBannersEnabled by remember { mutableStateOf(false) }
     var activityTaskStatusBadgesEnabled by remember { mutableStateOf(false) }
@@ -2996,7 +3018,7 @@ private fun SlockAppShellReadyContent(
     LaunchedEffect(
         slackNavTabKeys,
         selectedTab,
-        largeScreenNavigation,
+        desktopModeOnLargeScreen,
         shellScope.adaptivePane,
         railInlineSecondaryDestination,
     ) {
@@ -3006,8 +3028,7 @@ private fun SlockAppShellReadyContent(
         // predicate here (rail = flag && LeftRail pref && DualPane).
         val railActive =
             slockAdaptiveNavRailActive(
-                flagEnabled = adaptiveNavRailEnabled,
-                navigationPreference = largeScreenNavigation,
+                desktopModeEnabled = desktopModeOnLargeScreen,
                 paneState = shellScope.adaptivePane
             )
         if (
@@ -3035,6 +3056,30 @@ private fun SlockAppShellReadyContent(
                 appShellNextChildTabSwitchEpoch(selectedTab, "home", childTabSwitchEpoch)
             selectedTab = "home"
             retainedAppShellTabs = retainedAppShellTabs + "home"
+        }
+    }
+
+    // task #45: rail-only transient surfaces must not leak into the single-column
+    // mobile shell — an open inline rail destination (Search) or a visible More
+    // menu is display state, not user data. This is edge-triggered on the OFF
+    // transition only: while OFF the user may still open the More menu or push a
+    // destination, and those must not be wiped by a persistent predicate.
+    // Destinations, selections and drafts are untouched (the workspace stays
+    // parked for the OFF->ON round trip).
+    var desktopModeCleanupArmed by remember { mutableStateOf(desktopModeOnLargeScreen) }
+    LaunchedEffect(desktopModeOnLargeScreen) {
+        val (shouldCleanup, nextArmed) =
+            desktopModeOffCleanupDecision(desktopModeOnLargeScreen, desktopModeCleanupArmed)
+        desktopModeCleanupArmed = nextArmed
+        if (shouldCleanup) {
+            bridge.log(
+                "desktop_mode_off_cleanup edge inline=${railInlineSecondaryDestination.orEmpty()} " +
+                    "moreMenu=$slackNavMoreMenuVisible selectedTab=$selectedTab"
+            )
+            if (railInlineSecondaryDestination != null || slackNavMoreMenuVisible) {
+                railInlineSecondaryDestination = null
+                slackNavMoreMenuVisible = false
+            }
         }
     }
     val homePreviewServerId =
@@ -3177,7 +3222,7 @@ private fun SlockAppShellReadyContent(
         }
     }
     LaunchedEffect(
-        adaptiveHomeWorkspaceEnabled,
+        desktopModeOnLargeScreen,
         storeScope.shellInstanceId,
         readyServerId,
         adaptivePane,
@@ -3193,7 +3238,15 @@ private fun SlockAppShellReadyContent(
             return@LaunchedEffect
         }
         val serverId = readyServerId?.trim()?.takeIf(String::isNotBlank)
-        if (!adaptiveHomeWorkspaceEnabled || serverId == null) {
+        if (!desktopModeOnLargeScreen && serverId != null) {
+            // task #45: toggling the user setting OFF must not destroy the workspace —
+            // destination, selection and drafts must survive a live OFF->ON round trip.
+            // The workspace keeps its last state; rendering gates on the flag, and the
+            // next ON tick re-drives WindowChanged/ParentVisibilityChanged from current
+            // values. (Server loss below still clears it.)
+            return@LaunchedEffect
+        }
+        if (serverId == null) {
             val droppedOpens = adaptiveWorkspaceStore.snapshot().pendingDetailOpens
             adaptiveWorkspaceStore.update { current ->
                 current.copy(
@@ -3308,7 +3361,7 @@ private fun SlockAppShellReadyContent(
                 val (nextSession, decision) =
                     evaluateSlockAdaptiveDetailOpen(
                         request = request,
-                        workspaceEnabled = adaptiveHomeWorkspaceEnabled,
+                        workspaceEnabled = desktopModeOnLargeScreen,
                         session = session,
                         // Hard off until the native route-token-verified commit action lands
                         // (task #18, Jony follow-up); keeps the merged protocol inert.
@@ -4043,7 +4096,7 @@ private fun SlockAppShellReadyContent(
         remember(foregroundBannerStore) {
             ChatLayoutPreferenceSnapshotRuntimeAuthority { chatLayout ->
                 myMessageAlignment = chatLayout.myMessageAlignment
-                largeScreenNavigation = chatLayout.largeScreenNavigation
+                desktopModeOnLargeScreen = chatLayout.desktopModeOnLargeScreen
                 compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
                 foregroundMessageBannersEnabled = chatLayout.foregroundMessageBannersEnabled
                 if (!chatLayout.foregroundMessageBannersEnabled) {
@@ -4280,7 +4333,7 @@ private fun SlockAppShellReadyContent(
         val adaptiveState = adaptiveWorkspaceState
         val adaptiveIdentity = readyServerId?.let(launchPayload::toSlockAdaptiveDetailIdentity)
         if (
-            adaptiveHomeWorkspaceEnabled &&
+            desktopModeOnLargeScreen &&
             adaptiveState?.pane?.layout == SlockAdaptivePaneLayout.DualPane &&
             adaptiveIdentity != null
         ) {
@@ -4304,6 +4357,26 @@ private fun SlockAppShellReadyContent(
                 conversationForwardHistory.clear()
                 bridge.setConversationForwardGestureEnabled(false)
                 return
+            }
+        }
+        // task #45: while desktop mode is OFF the standalone push still owns the screen,
+        // but a parked workspace (same server) must track the user's current selection —
+        // otherwise the next ON tick would resurrect a stale pre-OFF detail.
+        if (!desktopModeOnLargeScreen && adaptiveIdentity != null) {
+            adaptiveWorkspaceStore.update { current ->
+                val workspace = current.workspace ?: return@update current
+                if (workspace.serverId != adaptiveIdentity.serverId) return@update current
+                val next =
+                    reduceSlockAdaptiveWorkspace(
+                        workspace,
+                        SlockAdaptiveWorkspaceIntent.ParkSelection(adaptiveIdentity),
+                    )
+                current.copy(
+                    workspace = next,
+                    launchPayload =
+                        if (next.selection?.identity == adaptiveIdentity) launchPayload
+                        else current.launchPayload,
+                )
             }
         }
         if (recordForwardHistory) {
@@ -4331,7 +4404,7 @@ private fun SlockAppShellReadyContent(
     }
 
     LaunchedEffect(
-        adaptiveHomeWorkspaceEnabled,
+        desktopModeOnLargeScreen,
         adaptiveWorkspaceState?.pane,
         adaptiveWorkspaceState?.selection,
         adaptiveDefaultLandingServerId,
@@ -4344,7 +4417,7 @@ private fun SlockAppShellReadyContent(
         val workspace = adaptiveWorkspaceState ?: return@LaunchedEffect
         val serverId = readyServerId?.trim()?.takeIf(String::isNotBlank) ?: return@LaunchedEffect
         if (
-            !adaptiveHomeWorkspaceEnabled ||
+            !desktopModeOnLargeScreen ||
             workspace.pane.layout != SlockAdaptivePaneLayout.DualPane ||
             workspace.selection != null ||
             adaptiveDefaultLandingServerId == serverId
@@ -4638,6 +4711,7 @@ private fun SlockAppShellReadyContent(
             return true
         }
         if (
+            desktopModeOnLargeScreen &&
             appShellRailSurfaceBackDismissesDetailFirst(
                 selectedTab = selectedTab,
                 railInlineSecondaryDestination = railInlineSecondaryDestination,
@@ -4660,7 +4734,10 @@ private fun SlockAppShellReadyContent(
             homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
             return true
         }
-        if (adaptiveWorkspaceState?.presentation == SlockAdaptiveWorkspacePresentation.DetailOnly) {
+        if (
+            desktopModeOnLargeScreen &&
+            adaptiveWorkspaceState?.presentation == SlockAdaptiveWorkspacePresentation.DetailOnly
+        ) {
             dismissAdaptiveDetailSelection()
             return true
         }
@@ -5351,8 +5428,7 @@ private fun SlockAppShellReadyContent(
 
     val navRailActive =
         slockAdaptiveNavRailActive(
-            flagEnabled = adaptiveNavRailEnabled,
-            navigationPreference = largeScreenNavigation,
+            desktopModeEnabled = desktopModeOnLargeScreen,
             paneState = shellScope.adaptivePane
         )
     val showAppShellBottomTabs =
@@ -6162,7 +6238,7 @@ private fun SlockAppShellReadyContent(
                                 externalFocusLossDismissEpoch = homeFocusLossDismissEpoch,
                                 selectedConversationId =
                                     resolveSlockHomeSelectedConversationId(
-                                        adaptiveWorkspaceEnabled = adaptiveHomeWorkspaceEnabled,
+                                        adaptiveWorkspaceEnabled = desktopModeOnLargeScreen,
                                         adaptiveSelection = selection,
                                         shellSelectedConversationId = selectedHomeConversationId,
                                         homeSelectedConversationId = homeState.selectedConversationId,
@@ -6227,7 +6303,7 @@ private fun SlockAppShellReadyContent(
                             )
                         }
                         adaptiveSplitListDetail(
-                            adaptiveHomeWorkspaceEnabled,
+                            desktopModeOnLargeScreen,
                             active,
                             homeListPane,
                         )
@@ -6320,13 +6396,15 @@ private fun SlockAppShellReadyContent(
                             shellScope = shellScope,
                             storeScope = navigationStoreScope,
                             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
-                            activitySenderAvatarsEnabled = activitySenderAvatarsEnabled
+                            activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
+                            externalSelectedThreadId =
+                                adaptiveWorkspaceState?.selection?.identity?.threadId
                         )
                     }
                     val activityTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         PerformanceSceneEffect(bridge, "kuikly_activity", active = active)
                         adaptiveSplitListDetail(
-                            adaptiveHomeWorkspaceEnabled,
+                            desktopModeOnLargeScreen,
                             active,
                             activityListPane,
                         )
@@ -6537,7 +6615,7 @@ private fun SlockAppShellReadyContent(
                             )
                         }
                         adaptiveSplitListDetail(
-                            adaptiveHomeWorkspaceEnabled,
+                            desktopModeOnLargeScreen,
                             pageVisible,
                             searchListPane,
                         )
@@ -7006,7 +7084,10 @@ internal fun SettingsNativeDetailScreen() {
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val settingsViewModel: SharedSettingsViewModel =
         viewModel(key = "standalone-settings-native-${pager.pagerId}") {
-            SharedSettingsViewModel(environment.dataSource)
+            SharedSettingsViewModel(
+                environment.dataSource,
+                diagnosticsLogger = { message -> bridge.log("settings_native_detail $message") }
+            )
         }
     val settingsState by settingsViewModel.state.collectAsState()
     var session by remember { mutableStateOf<StoredAuthSession?>(null) }
@@ -7093,8 +7174,9 @@ internal fun SettingsNativeDetailScreen() {
         },
         onServerDrawerSelected = {},
         onHomeServerAvatarSelected = {},
-        bottomContentPadding = SlockSpacing.Lg,
+        bottomContentPadding = slockBottomSafeAreaPadding() + SlockSpacing.Lg,
         timeContext = null,
+        diagnosticsLogger = { message -> bridge.log("settings_native_detail $message") },
         onLogout = { pager.openLoginReplacingCurrentPage() },
     )
 }
@@ -7144,6 +7226,7 @@ private fun SettingsNativeDetailPageContent(
     onHomeServerAvatarSelected: (Boolean) -> Unit,
     bottomContentPadding: Dp,
     timeContext: SlockTimeContext?,
+    diagnosticsLogger: (String) -> Unit = {},
     onSessionCleared: (StoredAuthSession) -> Unit = {},
     onLogout: () -> Unit
 ) {
@@ -7533,6 +7616,9 @@ private fun SettingsNativeDetailPageContent(
                     onMultiShellHostChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetMultiShellHostEnabled(enabled))
                     },
+                    onDesktopModeOnLargeScreenChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetDesktopModeOnLargeScreen(enabled))
+                    },
                     onServerDrawerChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetServerDrawerEnabled(enabled))
                         onServerDrawerSelected(enabled)
@@ -7541,6 +7627,7 @@ private fun SettingsNativeDetailPageContent(
                         onSettingsIntent(SharedSettingsIntent.SetHomeServerAvatarEnabled(enabled))
                         onHomeServerAvatarSelected(enabled)
                     },
+                    diagnosticsLogger = diagnosticsLogger,
                 )
             SettingsNativeDetailPage.About ->
                 SharedSettingsAboutContent(
@@ -8815,8 +8902,10 @@ private fun SettingsMobileContent(
     onActivityTaskStatusBadgesChange: (Boolean) -> Unit,
     onComposerSendKeyChange: (Boolean) -> Unit,
     onMultiShellHostChange: (Boolean) -> Unit,
+    onDesktopModeOnLargeScreenChange: (Boolean) -> Unit,
     onServerDrawerChange: (Boolean) -> Unit,
     onHomeServerAvatarChange: (Boolean) -> Unit,
+    diagnosticsLogger: (String) -> Unit = {},
 ) {
     val snapshot =
         when (state) {
@@ -8910,10 +8999,19 @@ private fun SettingsMobileContent(
                 }
             }
             item {
+                SettingsDesktopModeCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onDesktopModeOnLargeScreenChange = onDesktopModeOnLargeScreenChange,
+                    diagnosticsLogger = diagnosticsLogger
+                )
+            }
+            item {
                 SettingsServerDrawerCard(
                     snapshot = snapshot,
                     actionState = actionState,
-                    onServerDrawerChange = onServerDrawerChange
+                    onServerDrawerChange = onServerDrawerChange,
+                    diagnosticsLogger = diagnosticsLogger
                 )
             }
             item {
@@ -8977,13 +9075,76 @@ private fun SettingsMultiShellHostCard(
 }
 
 @Composable
+private fun SettingsDesktopModeCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onDesktopModeOnLargeScreenChange: (Boolean) -> Unit,
+    diagnosticsLogger: (String) -> Unit = {},
+) {
+    val busy = actionState?.action == MOBILE_ACTION_DESKTOP_MODE && actionState.inProgress
+    val preference = snapshot.desktopModeOnLargeScreen
+    LaunchedEffect(preference.available, preference.enabled, busy) {
+        diagnosticsLogger(
+            "desktop_mode_card_state enabled=${preference.enabled} " +
+                "available=${preference.available} busy=$busy"
+        )
+    }
+    SettingsFormSectionCard(
+        iconName = SlockLucideIconName.Monitor,
+        title = stringResource(MR.strings.settings_mobile_desktop_mode)
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = preference.available && !busy) {
+                        diagnosticsLogger(
+                            "desktop_mode_toggle_click target=${!preference.enabled} " +
+                                "available=${preference.available} busy=$busy"
+                        )
+                        onDesktopModeOnLargeScreenChange(!preference.enabled)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    preference.localizedToggleStatus(),
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray
+                )
+                Text(
+                    stringResource(MR.strings.settings_mobile_desktop_mode_detail),
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+        }
+        if (actionState?.action == MOBILE_ACTION_DESKTOP_MODE && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState)
+        }
+    }
+}
+
+@Composable
 private fun SettingsServerDrawerCard(
     snapshot: SettingsMobileSnapshot,
     actionState: SharedSettingsActionState?,
-    onServerDrawerChange: (Boolean) -> Unit
+    onServerDrawerChange: (Boolean) -> Unit,
+    diagnosticsLogger: (String) -> Unit = {},
 ) {
     val busy = actionState?.action == MOBILE_ACTION_SERVER_DRAWER && actionState.inProgress
     val preference = snapshot.serverDrawer
+    LaunchedEffect(preference.available, preference.enabled, busy) {
+        diagnosticsLogger(
+            "server_drawer_card_state enabled=${preference.enabled} " +
+                "available=${preference.available} busy=$busy"
+        )
+    }
     SettingsFormSectionCard(
         iconName = SlockLucideIconName.Menu,
         title = stringResource(MR.strings.settings_mobile_server_drawer)
@@ -8993,6 +9154,10 @@ private fun SettingsServerDrawerCard(
                 Modifier
                     .fillMaxWidth()
                     .clickable(enabled = preference.available && !busy) {
+                        diagnosticsLogger(
+                            "server_drawer_toggle_click target=${!preference.enabled} " +
+                                "available=${preference.available} busy=$busy"
+                        )
                         onServerDrawerChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
@@ -15138,6 +15303,14 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                                 iconName = SlockLucideIconName.MessageCircle,
                                 title = "Foreground message banners",
                                 fallbackStatus = "Off",
+                                actionState = actionState,
+                                errorStrings = errorStrings
+                            ),
+                            mobile.desktopModeOnLargeScreen.toMobileToggleRow(
+                                key = MOBILE_ACTION_DESKTOP_MODE,
+                                iconName = SlockLucideIconName.Monitor,
+                                title = "Desktop mode on large screens",
+                                fallbackStatus = "On",
                                 actionState = actionState,
                                 errorStrings = errorStrings
                             ),
@@ -22784,17 +22957,6 @@ private fun Pager.openHomeSecondaryPage(
             timeContext?.todayEpochDay?.let { put("todayEpochDay", it) }
             timeContext?.nowEpochMillis?.let { put("nowEpochMillis", it) }
             put("timeFormat", timeContext?.timeFormat ?: SlockTimeFormat24Hour)
-            // task #13: the secondary page decides its adaptive workspace gate from its own
-            // pageData (HuaTuo's alpha-50 evidence: the shell's flag never reached the pushed
-            // page, so activityAdaptiveEnabled stayed false and details mounted full-screen).
-            // Forward the shell's flag value verbatim — OFF stays OFF.
-            put(
-                SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED,
-                this@openHomeSecondaryPage.pageData.params.optBoolean(
-                    SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED,
-                    false,
-                ),
-            )
         }
     openSlockPage(
         pageName = pageName,

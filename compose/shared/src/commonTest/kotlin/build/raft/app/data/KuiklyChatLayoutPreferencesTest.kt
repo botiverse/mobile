@@ -39,7 +39,7 @@ class KuiklyChatLayoutPreferencesTest {
 
         try {
             repository.selectMyMessageAlignment(MyMessageAlignmentPreference.Right)
-            repository.selectLargeScreenNavigation(LargeScreenNavigationPreference.FloatingDock)
+            repository.setDesktopModeOnLargeScreen(false)
             repository.setCompactConsecutiveMessages(false)
             repository.setLongMessageCollapseEnabled(true)
             repository.setSingleTapOpensThreadEnabled(false)
@@ -61,7 +61,7 @@ class KuiklyChatLayoutPreferencesTest {
             assertEquals(firstSnapshots, secondSnapshots)
             firstSnapshots.last().let { snapshot ->
                 assertEquals(MyMessageAlignmentPreference.Right, snapshot.myMessageAlignment)
-                assertEquals(LargeScreenNavigationPreference.FloatingDock, snapshot.largeScreenNavigation)
+                assertFalse(snapshot.desktopModeOnLargeScreen)
                 assertFalse(snapshot.compactConsecutiveMessages)
                 assertTrue(snapshot.longMessageCollapseEnabled)
                 assertFalse(snapshot.singleTapOpensThreadEnabled)

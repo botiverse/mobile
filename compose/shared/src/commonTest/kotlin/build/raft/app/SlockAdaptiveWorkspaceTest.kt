@@ -158,6 +158,37 @@ class SlockAdaptiveWorkspaceTest {
     }
 
     @Test
+    fun parkSelectionTracksStandaloneOpenWhileParkedAndRespectsServerIsolation() {
+        // task #45: ON pick A → OFF → user standalone-opens B → ON must restore B, not A.
+        val opened =
+            initialState()
+                .reduce(SlockAdaptiveWorkspaceIntent.WindowChanged(widePane()))
+                .reduce(SlockAdaptiveWorkspaceIntent.OpenDetail(detailIdentity("thread-a")))
+        val parked =
+            opened.reduce(
+                SlockAdaptiveWorkspaceIntent.ParkSelection(detailIdentity("thread-b"))
+            )
+
+        assertEquals("thread-b", parked.selection?.identity?.threadId)
+        assertTrue(parked.generationCursor > opened.generationCursor)
+        // Parking on a compact pane keeps the pane fact untouched — re-ON restores
+        // whichever presentation the current window implies.
+        assertEquals(SlockAdaptivePaneLayout.DualPane, parked.pane.layout)
+        assertEquals(SlockAdaptiveWorkspacePresentation.Split, parked.presentation)
+
+        // Same identity is a no-op; a foreign server never mutates this workspace.
+        val same = parked.reduce(SlockAdaptiveWorkspaceIntent.ParkSelection(detailIdentity("thread-b")))
+        assertEquals(parked, same)
+        val foreign =
+            parked.reduce(
+                SlockAdaptiveWorkspaceIntent.ParkSelection(
+                    detailIdentity("thread-c").copy(serverId = "server-b")
+                )
+            )
+        assertEquals("thread-b", foreign.selection?.identity?.threadId)
+    }
+
+    @Test
     fun dismissDetailWithoutSelectionIsNoOp() {
         val state = initialState().reduce(SlockAdaptiveWorkspaceIntent.DismissDetail)
 

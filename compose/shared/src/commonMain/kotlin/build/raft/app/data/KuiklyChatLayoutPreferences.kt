@@ -7,7 +7,7 @@ private const val CHAT_LAYOUT_PREFERENCE_SNAPSHOT_EVENT = "slock.chatLayoutPrefe
 private const val KEY_CONVERSATION_FORWARD_GESTURE_ENABLED =
     "conversationForwardGestureEnabled"
 private const val KEY_MY_MESSAGE_ALIGNMENT = "myMessageAlignment"
-private const val KEY_LARGE_SCREEN_NAVIGATION = "largeScreenNavigation"
+private const val KEY_DESKTOP_MODE_ON_LARGE_SCREEN = "desktopModeOnLargeScreen"
 private const val KEY_COMPACT_CONSECUTIVE_MESSAGES = "compactConsecutiveMessages"
 private const val KEY_LONG_MESSAGE_COLLAPSE_ENABLED = "longMessageCollapseEnabled"
 private const val KEY_SINGLE_TAP_OPENS_THREAD_ENABLED = "singleTapOpensThreadEnabled"
@@ -26,7 +26,6 @@ private const val KEY_TRANSLATION_TARGET_LANGUAGE = "translationTargetLanguage"
 private val CHAT_LAYOUT_PREFERENCE_SNAPSHOT_KEYS =
     setOf(
         KEY_MY_MESSAGE_ALIGNMENT,
-        KEY_LARGE_SCREEN_NAVIGATION,
         KEY_COMPACT_CONSECUTIVE_MESSAGES,
         KEY_LONG_MESSAGE_COLLAPSE_ENABLED,
         KEY_SINGLE_TAP_OPENS_THREAD_ENABLED,
@@ -103,10 +102,8 @@ fun kuiklyChatLayoutPreferenceRepository(
         ): ChatLayoutPreferenceSnapshot =
             persistAndPublish { delegate.selectMyMessageAlignment(alignment) }
 
-        override suspend fun selectLargeScreenNavigation(
-            navigation: LargeScreenNavigationPreference
-        ): ChatLayoutPreferenceSnapshot =
-            persistAndPublish { delegate.selectLargeScreenNavigation(navigation) }
+        override suspend fun setDesktopModeOnLargeScreen(enabled: Boolean): ChatLayoutPreferenceSnapshot =
+            persistAndPublish { delegate.setDesktopModeOnLargeScreen(enabled) }
 
         override suspend fun setCompactConsecutiveMessages(enabled: Boolean): ChatLayoutPreferenceSnapshot =
             persistAndPublish { delegate.setCompactConsecutiveMessages(enabled) }
@@ -166,7 +163,7 @@ fun kuiklyChatLayoutPreferenceRepository(
 private fun ChatLayoutPreferenceSnapshot.toPreferenceEventData(): JSONObject =
     JSONObject()
         .put(KEY_MY_MESSAGE_ALIGNMENT, myMessageAlignment.storageKey)
-        .put(KEY_LARGE_SCREEN_NAVIGATION, largeScreenNavigation.storageKey)
+        .put(KEY_DESKTOP_MODE_ON_LARGE_SCREEN, desktopModeOnLargeScreen)
         .put(KEY_COMPACT_CONSECUTIVE_MESSAGES, compactConsecutiveMessages)
         .put(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, longMessageCollapseEnabled)
         .put(KEY_SINGLE_TAP_OPENS_THREAD_ENABLED, singleTapOpensThreadEnabled)
@@ -188,7 +185,7 @@ internal fun JSONObject.toChatLayoutPreferenceSnapshotOrNull(): ChatLayoutPrefer
     if (CHAT_LAYOUT_PREFERENCE_SNAPSHOT_KEYS.any { !has(it) }) return null
     return ChatLayoutPreferenceSnapshot(
         myMessageAlignment = MyMessageAlignmentPreference.fromStorageKey(optString(KEY_MY_MESSAGE_ALIGNMENT)),
-        largeScreenNavigation = LargeScreenNavigationPreference.fromStorageKey(optString(KEY_LARGE_SCREEN_NAVIGATION)),
+        desktopModeOnLargeScreen = optBoolean(KEY_DESKTOP_MODE_ON_LARGE_SCREEN, DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN),
         compactConsecutiveMessages = optBoolean(KEY_COMPACT_CONSECUTIVE_MESSAGES, true),
         longMessageCollapseEnabled = optBoolean(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, false),
         singleTapOpensThreadEnabled = optBoolean(KEY_SINGLE_TAP_OPENS_THREAD_ENABLED, true),

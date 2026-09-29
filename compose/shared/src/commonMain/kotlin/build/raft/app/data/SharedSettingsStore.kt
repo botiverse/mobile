@@ -449,6 +449,7 @@ sealed interface SharedSettingsIntent {
     data class SetActivityTaskStatusBadges(val enabled: Boolean) : SharedSettingsIntent
     data class SetComposerSendKey(val enabled: Boolean) : SharedSettingsIntent
     data class SetMultiShellHostEnabled(val enabled: Boolean) : SharedSettingsIntent
+    data class SetDesktopModeOnLargeScreen(val enabled: Boolean) : SharedSettingsIntent
     data class SetServerDrawerEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetNewDesignSettingsEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetHomeServerAvatarEnabled(val enabled: Boolean) : SharedSettingsIntent
@@ -1195,6 +1196,17 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
+    fun hasChatLayoutPreferenceRepositoryForDiagnostics(): Boolean =
+        chatLayoutPreferenceRepository != null
+
+    suspend fun setDesktopModeOnLargeScreen(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        val repository =
+            chatLayoutPreferenceRepository
+                ?: return DataResult.Error(ScreenError("settings_desktop_mode_unavailable", retryable = false))
+        repository.setDesktopModeOnLargeScreen(enabled)
+        return loadMobilePreferences()
+    }
+
     suspend fun setServerDrawerEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val repository =
             chatLayoutPreferenceRepository
@@ -1577,6 +1589,13 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "The multi-server Home drawer is not available on this platform."
+                    ),
+            desktopModeOnLargeScreen =
+                chatLayout?.toSettingsMobileDesktopModeSnapshot()
+                    ?: desktopModeOnLargeScreen.copy(
+                        available = false,
+                        statusLabel = "Unsupported",
+                        detail = "The large-screen desktop mode preference is not available on this platform."
                     ),
             newDesignSettings =
                 chatLayout?.toSettingsMobileNewDesignSettingsSnapshot()
@@ -2399,6 +2418,21 @@ class SharedSettingsStore(
                     )
                 dataSource.setMultiShellHostEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_MULTI_SHELL_HOST)
+            }
+            is SharedSettingsIntent.SetDesktopModeOnLargeScreen -> {
+                diagnosticsLogger(
+                    "settings_desktop_mode_dispatch enabled=${intent.enabled} " +
+                        "hasRepository=${dataSource.hasChatLayoutPreferenceRepositoryForDiagnostics()}"
+                )
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_DESKTOP_MODE, inProgress = true)
+                    )
+                val result = dataSource.setDesktopModeOnLargeScreen(intent.enabled)
+                diagnosticsLogger(
+                    "settings_desktop_mode_result result=${result.settingsStoreDiagnosticsResult()}"
+                )
+                result.applyMobileActionResult(MOBILE_ACTION_DESKTOP_MODE)
             }
             is SharedSettingsIntent.SetServerDrawerEnabled -> {
                 _state.value =
@@ -3545,6 +3579,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetActivityTaskStatusBadges,
             is SharedSettingsIntent.SetComposerSendKey,
             is SharedSettingsIntent.SetMultiShellHostEnabled,
+            is SharedSettingsIntent.SetDesktopModeOnLargeScreen,
             is SharedSettingsIntent.SetServerDrawerEnabled,
             is SharedSettingsIntent.SetNewDesignSettingsEnabled,
             is SharedSettingsIntent.SetHomeServerAvatarEnabled,
@@ -3745,6 +3780,7 @@ internal const val MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES = "activityTaskStat
 internal const val MOBILE_ACTION_COMPOSER_SEND_KEY = "composerSendKey"
 internal const val MOBILE_ACTION_MULTI_SHELL_HOST = "multiShellHost"
 internal const val MOBILE_ACTION_SERVER_DRAWER = "serverDrawer"
+internal const val MOBILE_ACTION_DESKTOP_MODE = "desktopModeOnLargeScreen"
 internal const val MOBILE_ACTION_NEW_DESIGN_SETTINGS = "newDesignSettings"
 internal const val MOBILE_ACTION_HOME_SERVER_AVATAR = "homeServerAvatar"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
@@ -4021,6 +4057,14 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileMultiShellHostSnapshot(
         available = true,
         statusLabel = if (multiShellHostEnabled) "Enabled" else "Off",
         detail = "Open different workspaces in separate Android app windows. Existing windows remain open until you close them."
+    )
+
+private fun ChatLayoutPreferenceSnapshot.toSettingsMobileDesktopModeSnapshot(): SettingsMobileToggleSnapshot =
+    SettingsMobileToggleSnapshot(
+        enabled = desktopModeOnLargeScreen,
+        available = true,
+        statusLabel = if (desktopModeOnLargeScreen) "Enabled" else "Off",
+        detail = "On large screens, show the left rail with the list and detail side by side. Turn off to keep the single-pane mobile layout with the bottom tab bar."
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileServerDrawerSnapshot(): SettingsMobileToggleSnapshot =
