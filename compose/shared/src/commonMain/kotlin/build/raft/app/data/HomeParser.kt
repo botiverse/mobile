@@ -107,6 +107,8 @@ private data class HomeChannelDetailWireDto(
     val activityMuteSupported: Boolean = false,
     val maxReadSeq: Long? = null,
     val readStateVersion: Long? = null,
+    val lastMessagePreview: String? = null,
+    val lastMessageSenderName: String? = null,
 )
 
 internal fun parseSlockChannelDetail(
@@ -137,6 +139,8 @@ internal fun parseSlockChannelDetail(
             activityMuteSupported = wire.activityMuteSupported,
             maxReadSeq = wire.maxReadSeq,
             readStateVersion = wire.readStateVersion,
+            lastMessagePreview = wire.lastMessagePreview,
+            lastMessageSenderName = wire.lastMessageSenderName,
         ).toDirectMessageRow(warningLogger)
     } else {
         HomeChannelWireDto(
