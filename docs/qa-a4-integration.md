@@ -1,6 +1,6 @@
-# Test-only A4 integration revision 12 — DO NOT MERGE
+# Test-only A4 integration revision 13 — DO NOT MERGE
 
-Shared PR2730: 8bda31aab4885e847e69e941c4e72aeaf96ef85c (rebased main includes layout 2727/2728).
+Shared PR2730: 8e5dff7fcd6ea767caf613d488432ad67af17d51 (rebased main includes layout 2727/2728).
 Native PR2731: 4d1628e4779a9fd593dce0d84c98b822084b0b1c.
 
 This QA branch alone sets the source initiation default and nativeGuardedCommitAvailable true.
@@ -45,3 +45,13 @@ request, then observe old generation READY hitting ready_no_pending. No fake
 receipt or ACK is created; subsequent READY delivery is normal. Reset the app
 with flag 0 for ordinary-path validation. Neither this QA hook nor diagnostic
 probes are proposed in the product PR. Physical coverage remains NOT RUN.
+
+Revision 13 fixes the revision-12 counterexample: after cancellation a same-identity
+retry must obtain a fresh generation, and target pager commit-result events enter
+the shared settlement bus. QA diagnostics/delay injection are unchanged. Repeat
+the normal path with delay 0 and require a matched committed receipt, pending
+removal and anchor consumption. Then use delay 25000: first timeout, narrow/wide
+retry, and old READY arrival while the new attempt is active or settled. Require
+new generation > old, fresh destination READY, and no stale ACK/commit. Revision
+12 reused generation 1 and ACKed the retry from the old READY at 08:19:15+08.
+This source revision is for QA construction, not an independent-review verdict.
