@@ -932,6 +932,7 @@ private fun HomeSearchRouterContent(
                                     request =
                                         HomeMessageOpenRequest(
                                             conversationIdentity = destination.identity,
+                                            anchorMessageId = null,
                                         ),
                                     serverId = searchServerId,
                                 )
