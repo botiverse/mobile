@@ -1214,6 +1214,41 @@ private val retainedAppShellTabKeys =
 internal fun retainedAppShellSelectedTab(selectedTab: String): String =
     selectedTab.takeIf { it in retainedAppShellTabKeys } ?: "home"
 
+/**
+ * task #13: the shared adaptive detail slot lives inside adaptiveSplitListDetail, which is
+ * hosted by the Home surface (no pushed secondary page), the Activity rail tab, or an inline
+ * rail secondary destination (Search). Any other destination — or a backgrounded host —
+ * suspends the detail (ParentVisibilityChanged).
+ */
+internal fun appShellSharedDetailSurfaceVisible(
+    pageVisible: Boolean,
+    selectedTab: String,
+    selectedHomeDestination: String?,
+    railInlineSecondaryDestination: String?,
+): Boolean =
+    pageVisible &&
+        (
+            (retainedAppShellSelectedTab(selectedTab) == "home" && selectedHomeDestination == null) ||
+                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity ||
+                railInlineSecondaryDestination != null
+        )
+
+/**
+ * task #13 two-step Back contract: while a rail surface (Activity tab or an inline secondary
+ * destination like Search) is showing a shared detail selection, the first Back/close must
+ * dismiss the detail; only a detail-free surface exits the destination or falls back to Home.
+ */
+internal fun appShellRailSurfaceBackDismissesDetailFirst(
+    selectedTab: String,
+    railInlineSecondaryDestination: String?,
+    selectionPresent: Boolean,
+): Boolean =
+    selectionPresent &&
+        (
+            railInlineSecondaryDestination != null ||
+                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity
+        )
+
 internal fun shouldHandleAppShellTabSelection(currentTab: String, nextTab: String): Boolean =
     retainedAppShellSelectedTab(currentTab) != retainedAppShellSelectedTab(nextTab)
 
@@ -3166,12 +3201,12 @@ private fun SlockAppShellReadyContent(
             reduceSlockAdaptiveWorkspace(
                 next,
                 SlockAdaptiveWorkspaceIntent.ParentVisibilityChanged(
-                    pageVisible &&
-                        (
-                            (retainedAppShellSelectedTab(selectedTab) == "home" &&
-                                selectedHomeDestination == null) ||
-                                railInlineSecondaryDestination != null
-                        )
+                    appShellSharedDetailSurfaceVisible(
+                        pageVisible = pageVisible,
+                        selectedTab = selectedTab,
+                        selectedHomeDestination = selectedHomeDestination,
+                        railInlineSecondaryDestination = railInlineSecondaryDestination,
+                    )
                 ),
             )
         adaptiveWorkspaceStore.update { current -> current.copy(workspace = next) }
@@ -4549,13 +4584,17 @@ private fun SlockAppShellReadyContent(
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
             return true
         }
+        if (
+            appShellRailSurfaceBackDismissesDetailFirst(
+                selectedTab = selectedTab,
+                railInlineSecondaryDestination = railInlineSecondaryDestination,
+                selectionPresent = adaptiveWorkspaceState?.selection != null,
+            )
+        ) {
+            dismissAdaptiveDetailSelection()
+            return true
+        }
         if (railInlineSecondaryDestination != null) {
-            // Back ordering (task #13): an open detail pane on the rail surface must
-            // dismiss before the secondary destination itself exits.
-            if (adaptiveWorkspaceState?.selection != null) {
-                dismissAdaptiveDetailSelection()
-                return true
-            }
             railInlineSecondaryDestination = null
             return true
         }
@@ -6380,7 +6419,21 @@ private fun SlockAppShellReadyContent(
                                 inlineOpenRequest = { request, source ->
                                     openHomeMessageRequest(request, source)
                                 },
-                                inlineOnClose = { railInlineSecondaryDestination = null },
+                                inlineOnClose = {
+                                    // Same ordering as popMainRoute: a mounted detail
+                                    // closes before the inline Search destination exits.
+                                    if (
+                                        appShellRailSurfaceBackDismissesDetailFirst(
+                                            selectedTab = selectedTab,
+                                            railInlineSecondaryDestination = railInlineSecondaryDestination,
+                                            selectionPresent = adaptiveWorkspaceState?.selection != null,
+                                        )
+                                    ) {
+                                        dismissAdaptiveDetailSelection()
+                                    } else {
+                                        railInlineSecondaryDestination = null
+                                    }
+                                },
                                 inlineOpenEntity = { entity ->
                                     when (entity.destinationOrNull()) {
                                         is HomeSearchEntityDestination.Conversation -> {
