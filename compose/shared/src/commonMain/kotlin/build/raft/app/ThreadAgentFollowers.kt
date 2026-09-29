@@ -245,7 +245,7 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: SlockPopo
     val width = 288.dp
     // Real measured height replaces this estimate after the first layout.
     var measuredSize by remember { mutableStateOf(Size.Zero) }
-    val estimatedHeight = (44 + if (agents.isEmpty()) 80 else agents.take(6).sumOf { if (it.isCurrentServer) 48 else 80 }).dp
+    val estimatedHeight = (44 + if (agents.isEmpty()) 80 else agents.take(6).size * 48).dp
     val size = if (measuredSize != Size.Zero) measuredSize else with(density) { Size(width.toPx(), estimatedHeight.toPx()) }
     SlockAnchoredPopover(
         anchor = anchor, contentSize = size,
