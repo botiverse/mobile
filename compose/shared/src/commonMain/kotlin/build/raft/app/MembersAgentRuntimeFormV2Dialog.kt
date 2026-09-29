@@ -14,6 +14,7 @@ import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
 import build.raft.app.data.runtimeform.v2.applyRuntimeFormV2Change
 import build.raft.app.data.runtimeform.v2.initialRuntimeFormV2Values
 import build.raft.app.data.runtimeform.v2.runtimeFormV2Submission
+import build.raft.app.data.runtimeform.v2.runtimeFormV2ValuesAfterSourceReload
 import build.raft.app.data.runtimeform.v2.validateRuntimeFormV2
 import build.raft.app.model.MemberId
 import build.raft.app.resources.MR
@@ -67,7 +68,10 @@ internal fun MembersAgentRuntimeFormV2Dialog(
     var touched by remember(form) { mutableStateOf(emptySet<String>()) }
     var advancedOpen by remember(form) { mutableStateOf(false) }
     // Re-probed option sources sit on top of the loaded form; render, validate and submit against them.
-    val (current, sourceRefresh) = rememberRuntimeFormV2SourceRefresh(access, machineId, form)
+    val (current, sourceRefresh) =
+        rememberRuntimeFormV2SourceRefresh(access, machineId, form) { updated, sourceId ->
+            values = runtimeFormV2ValuesAfterSourceReload(updated.form, updated.sources, values, sourceId)
+        }
     val errors = current?.let { validateRuntimeFormV2(it.form, it.sources, values, editing = true) }.orEmpty()
     val changed = form != null && values != initialValues
 

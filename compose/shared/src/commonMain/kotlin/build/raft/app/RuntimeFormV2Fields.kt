@@ -322,7 +322,8 @@ internal data class RuntimeFormV2SourceRefresh(
 internal fun rememberRuntimeFormV2SourceRefresh(
     access: RuntimeFormV2Access?,
     machineId: String?,
-    loaded: RuntimeFormV2Loaded?
+    loaded: RuntimeFormV2Loaded?,
+    onSourceReloaded: (updated: RuntimeFormV2Loaded, sourceId: String) -> Unit
 ): Pair<RuntimeFormV2Loaded?, RuntimeFormV2SourceRefresh?> {
     var overrides by remember(loaded) { mutableStateOf(emptyMap<String, RuntimeFormV2Source>()) }
     var refreshing by remember(loaded) { mutableStateOf(emptySet<String>()) }
@@ -337,7 +338,10 @@ internal fun rememberRuntimeFormV2SourceRefresh(
                 failed = failed - sourceId
                 scope.launch {
                     when (val result = access.loader.reloadSource(access.serverId, machineId, loaded.form.runtimeId, sourceId)) {
-                        is DataResult.Content -> overrides = overrides + (sourceId to result.data)
+                        is DataResult.Content -> {
+                            overrides = overrides + (sourceId to result.data)
+                            onSourceReloaded(loaded.copy(sources = loaded.sources + overrides), sourceId)
+                        }
                         is DataResult.Empty,
                         is DataResult.Error,
                         is DataResult.NoPermission -> failed = failed + sourceId

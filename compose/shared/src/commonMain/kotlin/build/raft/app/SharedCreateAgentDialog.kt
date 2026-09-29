@@ -45,6 +45,7 @@ import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
 import build.raft.app.data.runtimeform.v2.applyRuntimeFormV2Change
 import build.raft.app.data.runtimeform.v2.initialRuntimeFormV2Values
 import build.raft.app.data.runtimeform.v2.runtimeFormV2Submission
+import build.raft.app.data.runtimeform.v2.runtimeFormV2ValuesAfterSourceReload
 import build.raft.app.data.runtimeform.v2.validateRuntimeFormV2
 import build.raft.app.data.shouldClearBuiltInWriteOnlySecret
 import build.raft.app.resources.MR
@@ -1002,7 +1003,10 @@ internal fun SharedCreateAgentDialog(
     }
     var v2Touched by remember(v2Loaded) { mutableStateOf(emptySet<String>()) }
     // Re-probed option sources sit on top of the loaded form; render, validate and submit against them.
-    val (v2Form, v2SourceRefresh) = rememberRuntimeFormV2SourceRefresh(runtimeFormV2, availableSelectedMachineId, v2Loaded)
+    val (v2Form, v2SourceRefresh) =
+        rememberRuntimeFormV2SourceRefresh(runtimeFormV2, availableSelectedMachineId, v2Loaded) { updated, sourceId ->
+            v2Values = runtimeFormV2ValuesAfterSourceReload(updated.form, updated.sources, v2Values, sourceId)
+        }
     val v2Errors = v2Form?.let { validateRuntimeFormV2(it.form, it.sources, v2Values) }.orEmpty()
     val builtInFormLoading =
         dialogBuiltInFormRefreshState.loading ||
