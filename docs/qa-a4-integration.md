@@ -1,6 +1,6 @@
-# Test-only A4 integration revision 19 — DO NOT MERGE
+# Test-only A4 integration revision 20 — DO NOT MERGE
 
-Shared PR2730: e10cc1c657e341cf773189021fa99dd455495397 (rebased main includes layout 2727/2728).
+Shared PR2730: 0aa81e31e316982b8f64287dbe1f200698f3e8a9 (rebased main includes layout 2727/2728).
 Native PR2731: 4d1628e4779a9fd593dce0d84c98b822084b0b1c.
 
 This QA branch alone sets the source initiation default and nativeGuardedCommitAvailable true.
@@ -123,3 +123,27 @@ migration, not a pass. Re-run the same real nonzero-offset fixture with invalid
 injection and both READY delays off; require final wide geometry and later inset
 changes to preserve message+offset. Native source, QA diagnostics and product
 flags are unchanged. This branch remains test-only and must not merge to product.
+
+
+Revision 20 binds atLatest capture to viewport FollowingLatest intent, without
+instantaneous canScrollForward geometry. r19 passed middle nonzero offset and
+keyboard relayout, but a separate real bottom-to-wide migration captured an
+ordinary anchor and lost bottom following. That runtime failure and the owner's
+source hypothesis are separate evidence; repeat bottom following on this carrier.
+
+QA diagnostics now record the accepted request's unmodified staged anchor before
+any injection. New default-false `slockQaValidFallbackAdaptiveAnchor` replaces only
+the matching request's messageId with a missing id, retaining fallbackIndex,
+messageOffsetPx, atLatest and all other fields. It runs only for nonlatest anchors
+with nonnegative index; otherwise logs skipped. Existing invalid-anchor injection
+has precedence if both flags are set. Preparation, destination restore, READY,
+ACK and commit all execute real product paths; no receipt is synthesized.
+
+Run two isolated launches of this same carrier: (1) valid-fallback injection off,
+open fixture at real bottom, rotate wide and require captured atLatest=true,
+latest item visible through final geometry and keyboard relayout; (2) injection
+on, use a real middle nonzero-offset source, require captured atLatest=false,
+fallback restoration to the actual reverse-mapped message and preserved offset,
+matched committed settlement, pending=0 and draft retention. This injected missing
+identity is not a natural message-deletion race. Native source and product default
+flags remain unchanged; this QA-only branch must never merge to product.
