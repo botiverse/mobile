@@ -4544,6 +4544,12 @@ private fun SlockAppShellReadyContent(
             return true
         }
         if (railInlineSecondaryDestination != null) {
+            // Back ordering (task #13): an open detail pane on the rail surface must
+            // dismiss before the secondary destination itself exits.
+            if (adaptiveWorkspaceState?.selection != null) {
+                dismissAdaptiveDetailSelection()
+                return true
+            }
             railInlineSecondaryDestination = null
             return true
         }
