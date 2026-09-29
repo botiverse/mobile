@@ -7104,7 +7104,10 @@ internal fun SettingsNativeDetailScreen() {
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val settingsViewModel: SharedSettingsViewModel =
         viewModel(key = "standalone-settings-native-${pager.pagerId}") {
-            SharedSettingsViewModel(environment.dataSource)
+            SharedSettingsViewModel(
+                environment.dataSource,
+                diagnosticsLogger = { message -> bridge.log("settings_native_detail $message") }
+            )
         }
     val settingsState by settingsViewModel.state.collectAsState()
     var session by remember { mutableStateOf<StoredAuthSession?>(null) }
@@ -7202,6 +7205,7 @@ internal fun SettingsNativeDetailScreen() {
         onHomeServerAvatarSelected = {},
         bottomContentPadding = SlockSpacing.Lg,
         timeContext = null,
+        diagnosticsLogger = { message -> bridge.log("settings_native_detail $message") },
         onLogout = { pager.openLoginReplacingCurrentPage() },
     )
 }
@@ -7251,6 +7255,7 @@ private fun SettingsNativeDetailPageContent(
     onHomeServerAvatarSelected: (Boolean) -> Unit,
     bottomContentPadding: Dp,
     timeContext: SlockTimeContext?,
+    diagnosticsLogger: (String) -> Unit = {},
     onSessionCleared: (StoredAuthSession) -> Unit = {},
     onLogout: () -> Unit
 ) {
@@ -7651,6 +7656,7 @@ private fun SettingsNativeDetailPageContent(
                         onSettingsIntent(SharedSettingsIntent.SetHomeServerAvatarEnabled(enabled))
                         onHomeServerAvatarSelected(enabled)
                     },
+                    diagnosticsLogger = diagnosticsLogger,
                 )
             SettingsNativeDetailPage.About ->
                 SharedSettingsAboutContent(
@@ -8936,6 +8942,7 @@ private fun SettingsMobileContent(
     onDesktopModeOnLargeScreenChange: (Boolean) -> Unit,
     onServerDrawerChange: (Boolean) -> Unit,
     onHomeServerAvatarChange: (Boolean) -> Unit,
+    diagnosticsLogger: (String) -> Unit = {},
 ) {
     val snapshot =
         when (state) {
@@ -9032,7 +9039,8 @@ private fun SettingsMobileContent(
                 SettingsDesktopModeCard(
                     snapshot = snapshot,
                     actionState = actionState,
-                    onDesktopModeOnLargeScreenChange = onDesktopModeOnLargeScreenChange
+                    onDesktopModeOnLargeScreenChange = onDesktopModeOnLargeScreenChange,
+                    diagnosticsLogger = diagnosticsLogger
                 )
             }
             item {
@@ -9106,7 +9114,8 @@ private fun SettingsMultiShellHostCard(
 private fun SettingsDesktopModeCard(
     snapshot: SettingsMobileSnapshot,
     actionState: SharedSettingsActionState?,
-    onDesktopModeOnLargeScreenChange: (Boolean) -> Unit
+    onDesktopModeOnLargeScreenChange: (Boolean) -> Unit,
+    diagnosticsLogger: (String) -> Unit = {},
 ) {
     val busy = actionState?.action == MOBILE_ACTION_DESKTOP_MODE && actionState.inProgress
     val preference = snapshot.desktopModeOnLargeScreen
@@ -9119,6 +9128,10 @@ private fun SettingsDesktopModeCard(
                 Modifier
                     .fillMaxWidth()
                     .clickable(enabled = preference.available && !busy) {
+                        diagnosticsLogger(
+                            "desktop_mode_toggle_click target=${!preference.enabled} " +
+                                "available=${preference.available} busy=$busy"
+                        )
                         onDesktopModeOnLargeScreenChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),

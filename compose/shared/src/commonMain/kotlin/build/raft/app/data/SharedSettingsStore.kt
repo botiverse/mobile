@@ -1254,6 +1254,9 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
+    fun hasChatLayoutPreferenceRepositoryForDiagnostics(): Boolean =
+        chatLayoutPreferenceRepository != null
+
     suspend fun setDesktopModeOnLargeScreen(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val repository =
             chatLayoutPreferenceRepository
@@ -2545,12 +2548,19 @@ class SharedSettingsStore(
                     .applyMobileActionResult(MOBILE_ACTION_MULTI_SHELL_HOST)
             }
             is SharedSettingsIntent.SetDesktopModeOnLargeScreen -> {
+                diagnosticsLogger(
+                    "settings_desktop_mode_dispatch enabled=${intent.enabled} " +
+                        "hasRepository=${dataSource.hasChatLayoutPreferenceRepositoryForDiagnostics()}"
+                )
                 _state.value =
                     _state.value.copy(
                         actionState = SharedSettingsActionState(MOBILE_ACTION_DESKTOP_MODE, inProgress = true)
                     )
-                dataSource.setDesktopModeOnLargeScreen(intent.enabled)
-                    .applyMobileActionResult(MOBILE_ACTION_DESKTOP_MODE)
+                val result = dataSource.setDesktopModeOnLargeScreen(intent.enabled)
+                diagnosticsLogger(
+                    "settings_desktop_mode_result result=${result.settingsStoreDiagnosticsResult()}"
+                )
+                result.applyMobileActionResult(MOBILE_ACTION_DESKTOP_MODE)
             }
             is SharedSettingsIntent.SetServerDrawerEnabled -> {
                 _state.value =
