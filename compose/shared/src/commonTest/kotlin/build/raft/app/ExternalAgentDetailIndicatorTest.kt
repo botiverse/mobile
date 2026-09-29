@@ -50,6 +50,101 @@ class ExternalAgentDetailIndicatorTest {
         lastActivityAt: String? = null
     ) = ExternalAgentStatusSnapshot(setupState = setup, lastActivityAt = lastActivityAt)
 
+    // task #410: lastSeenAt presence tiers (web EXTERNAL_AGENT_ONLINE_WINDOW_MS)
+
+    @Test
+    fun lastSeenAtWithinTwoMinutesRendersOnlineBeforeActivityTiers() {
+        // Web AgentStatusBadge: the presence tier wins over the 5-minute
+        // activity tier — an agent seen 30s ago is "Online" even when
+        // lastActivityAt is absent.
+        val result = externalAgentDetailIndicator(
+            status = status(ExternalAgentSetupState.Connected),
+            nowEpochMillis = now,
+            lastSeenAt = iso(now - 30_000L)
+        )
+        assertEquals(SlockColor.AccentLime, result.state.color)
+        assertEquals(ExternalAgentDetailCaption.Online, result.caption)
+    }
+
+    @Test
+    fun lastSeenAtOutsideTwoMinutesRendersLastSeen() {
+        val result = externalAgentDetailIndicator(
+            status = status(ExternalAgentSetupState.Connected),
+            nowEpochMillis = now,
+            lastSeenAt = iso(now - 200_000L)
+        )
+        assertEquals(SlockColor.AccentCyan, result.state.color)
+        assertEquals(
+            ExternalAgentDetailCaption.LastSeen(now - 200_000L, iso(now - 200_000L)),
+            result.caption
+        )
+    }
+
+    @Test
+    fun waitingForLoginStillWinsOverAnOnlineLastSeenAt() {
+        // Existing mobile-only divergence: not signed in ⇒ gray + setup copy
+        // even when the credential was just seen. The dot never disagrees
+        // with the text beside it.
+        val result = externalAgentDetailIndicator(
+            status = status(ExternalAgentSetupState.WaitingForLogin),
+            nowEpochMillis = now,
+            lastSeenAt = iso(now - 10_000L)
+        )
+        assertEquals(SlockColor.StatusNeutralGray, result.state.color)
+        assertEquals(ExternalAgentDetailCaption.SetupRequired, result.caption)
+    }
+
+    @Test
+    fun missingLastSeenAtFallsBackToActivityTiers() {
+        val result = externalAgentDetailIndicator(
+            status = status(ExternalAgentSetupState.Connected, iso(now - 60_000L)),
+            nowEpochMillis = now,
+            lastSeenAt = null
+        )
+        assertEquals(SlockColor.AccentLime, result.state.color)
+        assertEquals(ExternalAgentDetailCaption.Active, result.caption)
+    }
+
+    @Test
+    fun noStatusStillReadsLastSeenAtFromTheSummary() {
+        // externalStatus is permission-gated (null on non-managers). The
+        // summary's lastSeenAt still carries the presence tiers — the row
+        // should never stay a bare cyan "External" when the agent was seen.
+        val result = externalAgentDetailIndicator(
+            status = null,
+            nowEpochMillis = now,
+            lastSeenAt = iso(now - 5_000L)
+        )
+        assertEquals(SlockColor.AccentLime, result.state.color)
+        assertEquals(ExternalAgentDetailCaption.Online, result.caption)
+
+        val stale = externalAgentDetailIndicator(
+            status = null,
+            nowEpochMillis = now,
+            lastSeenAt = iso(now - 300_000L)
+        )
+        assertEquals(SlockColor.AccentCyan, stale.state.color)
+        assertEquals(
+            ExternalAgentDetailCaption.LastSeen(now - 300_000L, iso(now - 300_000L)),
+            stale.caption
+        )
+    }
+
+    @Test
+    fun onlineWindowBoundaryIsExclusiveAtTwoMinutes() {
+        // now - lastSeenAt == 120_000 is OFFLINE (web `<`, not `<=`).
+        val result = externalAgentDetailIndicator(
+            status = status(ExternalAgentSetupState.Connected),
+            nowEpochMillis = now,
+            lastSeenAt = iso(now - ExternalAgentOnlineWindowMillis)
+        )
+        assertEquals(SlockColor.AccentCyan, result.state.color)
+        assertEquals(
+            ExternalAgentDetailCaption.LastSeen(now - ExternalAgentOnlineWindowMillis, iso(now - ExternalAgentOnlineWindowMillis)),
+            result.caption
+        )
+    }
+
     @Test
     fun notProvidedStatusIsPlainExternalCyanNeverGray() {
         val result = externalAgentDetailIndicator(status = null, nowEpochMillis = now)

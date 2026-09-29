@@ -54,6 +54,7 @@ class GeneratedRealtimeSocketEventContract {
   readonly TaskUpdated: string = "task:updated";
   readonly TaskDeleted: string = "task:deleted";
   readonly AgentActivity: string = "agent:activity";
+  readonly AgentSeen: string = "agent:seen";
   readonly AgentSession: string = "agent:session";
   readonly AgentCreated: string = "agent:created";
   readonly AgentDeleted: string = "agent:deleted";

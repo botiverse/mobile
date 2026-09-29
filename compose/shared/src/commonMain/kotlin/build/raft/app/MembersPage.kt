@@ -1236,15 +1236,25 @@ private fun rememberExternalAgentDetailIndicatorState(
     timeContext: SlockTimeContext
 ): SlockAgentStatusIndicatorState {
     val externalStatus = detail?.externalStatus
+    // task #410: lastSeenAt comes from the detail summary (GET /agents/:id
+    // carries it for external agents) and realtime agent:seen updates it in
+    // SharedAgentDetailStore — no extra request.
+    val lastSeenAt = detail?.summary?.lastSeenAt
     val now = timeContext.nowEpochMillis ?: remember(externalStatus) { defaultNowMillis() }
-    val indicator = remember(externalStatus, now) { externalAgentDetailIndicator(externalStatus, now) }
+    val indicator = remember(externalStatus, lastSeenAt, now) {
+        externalAgentDetailIndicator(externalStatus, now, lastSeenAt)
+    }
     val label =
         when (val caption = indicator.caption) {
             ExternalAgentDetailCaption.External -> stringResource(MR.strings.member_external_status)
+            ExternalAgentDetailCaption.Online -> stringResource(MR.strings.member_external_online)
             ExternalAgentDetailCaption.SetupRequired -> stringResource(MR.strings.member_external_setup_required)
             ExternalAgentDetailCaption.Active -> stringResource(MR.strings.member_external_active)
             is ExternalAgentDetailCaption.LastActivity ->
                 membersStringTemplate(MR.strings.member_external_last_activity)
+                    .membersFormat(timeContext.formatTimestampLabel(caption.iso).ifBlank { caption.iso })
+            is ExternalAgentDetailCaption.LastSeen ->
+                membersStringTemplate(MR.strings.member_external_last_seen)
                     .membersFormat(timeContext.formatTimestampLabel(caption.iso).ifBlank { caption.iso })
             ExternalAgentDetailCaption.NoRaftActivity -> stringResource(MR.strings.member_external_no_raft_activity)
             ExternalAgentDetailCaption.NotConfigured -> stringResource(MR.strings.member_external_not_configured)

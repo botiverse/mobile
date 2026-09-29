@@ -108,6 +108,12 @@ private data class WireAgent(
     val activity: String? = null,
     val activityDetail: String? = null,
     val deletedAt: String? = null,
+    /**
+     * External agents only (server sends it on `GET /agents` when
+     * `runtime === "external"`): ISO-8601 `lastSeenAt` — the credential's
+     * last use. Drives the online window; realtime `agent:seen` supersedes it.
+     */
+    val lastSeenAt: String? = null,
     val runtimeProfile: WireAgentRuntimeProfileSummary? = null,
     val createdAgents: List<WireAgentCreatedSummary> = emptyList(),
 )
@@ -762,6 +768,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         agentStatus = agentStatus,
         membershipStatus = if (deletedAt.isNullOrBlank()) null else "deleted",
         agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
+        lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
         model = firstNonBlank(model, runtimeProfile?.current?.model),
         permissionBadges = listOfNotNull(
             runtime?.takeIf { it.isNotBlank() },

@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.base.putIfAbsent
+import build.raft.app.parseExternalAgentTimestampOrNull
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.AgentStatus
@@ -303,7 +304,15 @@ data class SharedServerMemberStatus(
      * producer that forgets it fails to compile instead of silently rendering
      * an external agent with a managed green dot (task #1119).
      */
-    val external: Boolean
+    val external: Boolean,
+    /**
+     * External agents only (task #410): `lastSeenAt` — the credential's last
+     * use (ISO-8601), sourced from `GET /agents*` and advanced by realtime
+     * `agent:seen`. Presence derives from it: online while
+     * `now - lastSeenAt < 120s` (web `EXTERNAL_AGENT_ONLINE_WINDOW_MS`).
+     * Null on managed members.
+     */
+    val lastSeenAt: String? = null
 )
 
 /**
@@ -381,6 +390,12 @@ private fun SharedServerMembersEntry.visibleDirectoryEntry(): SharedServerMember
 private fun MemberProfile?.toSharedServerMemberStatus(
     presenceFact: MemberPresenceUpdated?
 ): SharedServerMemberStatus? {
+    val resolvedLastSeenAt =
+        listOfNotNull(presenceFact?.lastSeenAt, this?.lastSeenAt)
+            .filter { it.isNotBlank() }
+            // The newest observation wins whichever channel delivered it:
+            // realtime agent:seen fact or the REST roster profile.
+            .maxByOrNull { parseExternalAgentTimestampOrNull(it) ?: Long.MIN_VALUE }
     if (
         presenceFact != null &&
         (
@@ -395,14 +410,16 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             statusLabel = presenceFact.statusLabel,
             // A presence fact never carries external-ness; it comes from the
             // authoritative profile and must survive every liveness update.
-            external = this?.isExternal == true
+            external = this?.isExternal == true,
+            lastSeenAt = resolvedLastSeenAt
         )
     }
     if (this?.kind != MemberKind.Agent) return null
     return SharedServerMemberStatus(
         status = agentStatus,
         presence = presence,
-        external = isExternal
+        external = isExternal,
+        lastSeenAt = resolvedLastSeenAt
     )
 }
 

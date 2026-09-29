@@ -3289,8 +3289,10 @@ private fun RealtimeEvent.realtimeDomainKey(serverId: String): String? =
             // agent:activity serverSeq is monotonic per agent, not per server.
             // Include memberId so different agents with the same seq do not
             // suppress each other's presence updates in the app-shell fanout.
+            // agent:seen is seq-less; lastSeenAt is the key so a new
+            // observation is never deduped away.
             serverSeq?.let { "member:presence:$serverId:${memberId.value}:$it" }
-                ?: "member:presence:$serverId:${memberId.value}:${presence.name}:${agentStatus?.name.orEmpty()}:${statusLabel.orEmpty()}"
+                ?: "member:presence:$serverId:${memberId.value}:${presence.name}:${agentStatus?.name.orEmpty()}:${statusLabel.orEmpty()}:${lastSeenAt.orEmpty()}"
         // task #136: refresh hints are idempotent TRIGGERS, not facts, and the
         // event carries no seq — a stable key made the accepted-key ledger
         // swallow every later identical hint (artin's device logs:

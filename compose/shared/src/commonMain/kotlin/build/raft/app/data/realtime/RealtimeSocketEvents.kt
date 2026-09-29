@@ -30,6 +30,7 @@ object RealtimeSocketEvents {
     const val TaskUpdated = GeneratedRealtimeContract.SocketEvent.TaskUpdated
     const val TaskDeleted = GeneratedRealtimeContract.SocketEvent.TaskDeleted
     const val AgentActivity = GeneratedRealtimeContract.SocketEvent.AgentActivity
+    const val AgentSeen = GeneratedRealtimeContract.SocketEvent.AgentSeen
     const val AgentSession = GeneratedRealtimeContract.SocketEvent.AgentSession
     const val AgentCreated = GeneratedRealtimeContract.SocketEvent.AgentCreated
     const val AgentDeleted = GeneratedRealtimeContract.SocketEvent.AgentDeleted

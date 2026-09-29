@@ -440,10 +440,23 @@ internal class ProcessMemberPresenceRegistry {
             ) {
                 return
             }
-            // Same visible presence still stores the newer canonical fact so
-            // its seq watermark advances. The current-state mutation fence
-            // advances in the same CAS, making an in-flight REST response stale.
-            val nextOwnerFacts = ownerFacts + (memberId to event)
+            // agent:seen is a seq-less presence fact whose only payload is
+            // lastSeenAt + derived Active presence; merge it onto the previous
+            // fact so it never clobbers an agentStatus/statusLabel that came
+            // from agent:activity. Same visible presence still stores the
+            // newer canonical fact so its seq watermark advances. The
+            // current-state mutation fence advances in the same CAS, making
+            // an in-flight REST response stale.
+            val mergedEvent =
+                if (event.serverSeq == null && event.lastSeenAt != null && previous != null) {
+                    event.copy(
+                        agentStatus = event.agentStatus ?: previous.agentStatus,
+                        statusLabel = event.statusLabel ?: previous.statusLabel
+                    )
+                } else {
+                    event
+                }
+            val nextOwnerFacts = ownerFacts + (memberId to mergedEvent)
             val nextPartitions =
                 current.partitions
                     .let { partitions -> if (transportAdvanced) partitions - owner else partitions }
@@ -894,4 +907,5 @@ internal fun MemberPresenceUpdated.hasSameVisibleRegisteredPresenceAs(
     presence == previous.presence &&
         agentStatus == previous.agentStatus &&
         statusLabel == previous.statusLabel &&
-        kind == previous.kind
+        kind == previous.kind &&
+        lastSeenAt == previous.lastSeenAt

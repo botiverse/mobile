@@ -405,7 +405,9 @@ internal data class AgentSummary(
     val activityDetail: String?,
     val deletedAt: String?,
     /** Web parity: `agent.external === true || runtime === "external"`. */
-    val isExternal: Boolean = false
+    val isExternal: Boolean = false,
+    /** External agents only: `lastSeenAt` from `GET /agents*` (`agent:seen` updates it in the store). */
+    val lastSeenAt: String? = null
 )
 
 internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
@@ -436,7 +438,8 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         createdAgents = createdAgents,
         activity = activity,
         activityDetail = activityDetail,
-        deletedAt = deletedAt
+        deletedAt = deletedAt,
+        lastSeenAt = lastSeenAt
     )
 internal data class AgentCommandResult(val ok: Boolean)
 internal data class AgentDmPage(val itemCount: Int)
@@ -620,6 +623,11 @@ private data class AgentWireDto(
     val activity: String? = null,
     val activityDetail: String? = null,
     val deletedAt: String? = null,
+    /**
+     * External agents only: ISO-8601 `lastSeenAt` from `GET /agents*` — last
+     * credential use; presence derives from it (`agent:seen` supersedes).
+     */
+    val lastSeenAt: String? = null,
     val runtimeProfile: AgentRuntimeProfileDto? = null,
 )
 
@@ -667,7 +675,8 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         createdAgents = createdAgents.mapNotNull { it.toDomain() },
         activity = activity,
         activityDetail = activityDetail,
-        deletedAt = deletedAt
+        deletedAt = deletedAt,
+        lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() }
     )
 }
 

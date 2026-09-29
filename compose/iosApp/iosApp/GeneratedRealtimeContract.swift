@@ -56,6 +56,7 @@ enum GeneratedRealtimeContract {
         static let taskUpdated = "task:updated"
         static let taskDeleted = "task:deleted"
         static let agentActivity = "agent:activity"
+        static let agentSeen = "agent:seen"
         static let agentSession = "agent:session"
         static let agentCreated = "agent:created"
         static let agentDeleted = "agent:deleted"

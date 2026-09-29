@@ -704,7 +704,9 @@ data class AgentDetailSummary(
     val createdAgents: List<AgentCreatedSummary> = emptyList(),
     val activity: String? = null,
     val activityDetail: String? = null,
-    val deletedAt: String? = null
+    val deletedAt: String? = null,
+    /** External agents only: `lastSeenAt` — credential last-use; realtime `agent:seen` advances it (task #410). */
+    val lastSeenAt: String? = null
 )
 
 data class AgentCreatorSummary(

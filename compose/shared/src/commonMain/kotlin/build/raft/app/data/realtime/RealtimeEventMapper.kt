@@ -207,6 +207,8 @@ class RealtimeEventMapper(
                 decodeOrNull(TaskUpdatedDto.serializer(), element)?.toDomain(diagnosticsLogger)
             RealtimeSocketEvents.TaskDeleted ->
                 decodeOrNull(TaskDeletedDto.serializer(), element)?.let { TaskDeleted(TaskId(it.taskId)) }
+            RealtimeSocketEvents.AgentSeen ->
+                decodeOrNull(AgentSeenDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.AgentActivity ->
                 decodeOrNull(AgentActivityDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.AgentSession ->
@@ -553,6 +555,12 @@ private data class TaskUpdatedDto(
 private data class TaskDeletedDto(
     val channelId: String? = null,
     val taskId: String,
+)
+
+@Serializable
+private data class AgentSeenDto(
+    val agentId: String,
+    val lastSeenAt: String,
 )
 
 @Serializable
@@ -933,6 +941,19 @@ private fun TaskInfoWireDto.toDomain(
         channelName = channelName,
         updatedAtLabel = updatedAt ?: createdAt.orEmpty(),
         canClaim = true,
+    )
+}
+
+private fun AgentSeenDto.toDomain(): MemberPresenceUpdated? {
+    val cleanId = agentId.trim().takeIf { it.isNotBlank() } ?: return null
+    val seen = lastSeenAt.trim().takeIf { it.isNotBlank() } ?: return null
+    return MemberPresenceUpdated(
+        memberId = MemberId(cleanId),
+        // The server emits agent:seen only for external agents; presence is
+        // derived — Active means "seen", not a runtime state.
+        presence = Presence.Active,
+        kind = MemberKind.Agent,
+        lastSeenAt = seen
     )
 }
 
