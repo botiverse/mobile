@@ -3049,6 +3049,30 @@ private fun SlockAppShellReadyContent(
             retainedAppShellTabs = retainedAppShellTabs + "home"
         }
     }
+
+    // task #45: rail-only transient surfaces must not leak into the single-column
+    // mobile shell — an open inline rail destination (Search) or a visible More
+    // menu is display state, not user data. This is edge-triggered on the OFF
+    // transition only: while OFF the user may still open the More menu or push a
+    // destination, and those must not be wiped by a persistent predicate.
+    // Destinations, selections and drafts are untouched (the workspace stays
+    // parked for the OFF->ON round trip).
+    var desktopModeCleanupArmed by remember { mutableStateOf(desktopModeOnLargeScreen) }
+    LaunchedEffect(desktopModeOnLargeScreen) {
+        if (desktopModeOnLargeScreen) {
+            desktopModeCleanupArmed = true
+        } else if (desktopModeCleanupArmed) {
+            desktopModeCleanupArmed = false
+            if (railInlineSecondaryDestination != null || slackNavMoreMenuVisible) {
+                bridge.log(
+                    "desktop_mode_off_cleanup inline=${railInlineSecondaryDestination.orEmpty()} " +
+                        "moreMenu=$slackNavMoreMenuVisible selectedTab=$selectedTab"
+                )
+                railInlineSecondaryDestination = null
+                slackNavMoreMenuVisible = false
+            }
+        }
+    }
     val homePreviewServerId =
         selectedServerId?.trim()?.takeIf(String::isNotBlank) ?: homePreviewSession?.currentServerId
     val createChannelAgentStatusResolver =
