@@ -191,6 +191,8 @@ sealed interface HomeConversationRow {
     val jointPeerServerName: String?
     val jointPeerServerSlug: String?
     val jointPeerStatus: String?
+    val jointBillingLocked: Boolean?
+    val jointOverLimitGraceEndsAt: String?
     val activityNotificationPreference: ChannelActivityNotificationPreference
     val permissions: ConversationPermissions
 
@@ -237,6 +239,8 @@ data class HomeChannelRow(
     override val jointPeerServerName: String? = null,
     override val jointPeerServerSlug: String? = null,
     override val jointPeerStatus: String? = null,
+    override val jointBillingLocked: Boolean? = null,
+    override val jointOverLimitGraceEndsAt: String? = null,
     override val activityNotificationPreference: ChannelActivityNotificationPreference =
         ChannelActivityNotificationPreference.Unsupported,
     override val permissions: ConversationPermissions = ConversationPermissions()
@@ -277,6 +281,8 @@ data class HomeDirectMessageRow(
     override val jointPeerServerName: String? = null,
     override val jointPeerServerSlug: String? = null,
     override val jointPeerStatus: String? = null,
+    override val jointBillingLocked: Boolean? = null,
+    override val jointOverLimitGraceEndsAt: String? = null,
     override val activityNotificationPreference: ChannelActivityNotificationPreference =
         ChannelActivityNotificationPreference.Unsupported,
     override val permissions: ConversationPermissions = ConversationPermissions()
@@ -316,6 +322,8 @@ fun HomeConversationRow.toConversationSummary(): ConversationSummary =
         jointPeerServerName = jointPeerServerName,
         jointPeerServerSlug = jointPeerServerSlug,
         jointPeerStatus = jointPeerStatus,
+        jointBillingLocked = jointBillingLocked,
+        jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
         activityNotificationPreference = activityNotificationPreference,
         permissions = permissions
     )
@@ -354,6 +362,8 @@ fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
         jointPeerServerName = jointPeerServerName,
         jointPeerServerSlug = jointPeerServerSlug,
         jointPeerStatus = jointPeerStatus,
+        jointBillingLocked = jointBillingLocked,
+        jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
         activityNotificationPreference = activityNotificationPreference,
         permissions = permissions
     )

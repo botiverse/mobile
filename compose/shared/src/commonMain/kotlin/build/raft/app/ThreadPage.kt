@@ -1272,6 +1272,36 @@ internal fun threadComposerEventRequiresWriteAccess(action: String): Boolean =
             "retryAttachments"
         )
 
+/** Joint channel billing notice (contract #contracts:97dbd451 v0.3 §18.8). */
+internal enum class JointBillingNotice { None, Grace, Locked }
+
+/**
+ * Resolve the joint over-limit state for the rendered surface. Reply threads
+ * inherit the notice from their parent joint channel (thread projections carry
+ * no billing metadata). `parentChannelId` takes precedence for reply threads;
+ * a channel surface falls back to any joint projection among its lookup ids.
+ */
+internal fun jointBillingNoticeState(
+    surfaceKind: String?,
+    parentChannelId: String?,
+    lookupIds: List<String>,
+    projections: Map<String, SharedConversationDirectoryProjection>
+): JointBillingNotice {
+    fun noticeFor(id: String?): JointBillingNotice {
+        val projection = id?.let { projections[it] } ?: return JointBillingNotice.None
+        if (projection.conversationKind != ConversationKind.Joint) return JointBillingNotice.None
+        if (projection.jointBillingLocked == true) return JointBillingNotice.Locked
+        return if (!projection.jointOverLimitGraceEndsAt.isNullOrBlank()) JointBillingNotice.Grace
+        else JointBillingNotice.None
+    }
+    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+        val parent = noticeFor(parentChannelId)
+        if (parent != JointBillingNotice.None) return parent
+    }
+    return lookupIds.firstNotNullOfOrNull { noticeFor(it).takeIf { n -> n != JointBillingNotice.None } }
+        ?: JointBillingNotice.None
+}
+
 internal fun threadEventAllowed(writeActionsEnabled: Boolean, action: String): Boolean =
     writeActionsEnabled || !threadEventRequiresWriteAccess(action)
 
@@ -5926,6 +5956,27 @@ private fun SharedThreadRouteContentContent(
                     }
                 }
         }
+    // Unfiltered directory projections (header owner drops non-display rows, but a
+    // reply thread's joint billing state lives on its parent channel projection).
+    val billingDirectoryProjections by directoryConversationProjectionFlow.collectAsState(
+        initialDirectoryConversationProjections
+    )
+    val jointBillingNotice =
+        jointBillingNoticeState(
+            surfaceKind = payload.surfaceKind,
+            parentChannelId = payload.parentChannelId,
+            lookupIds = conversationDirectoryLookupIds,
+            projections = billingDirectoryProjections
+        )
+    val jointGraceDeadlineLabel =
+        remember(billingDirectoryProjections) {
+            (listOfNotNull(payload.parentChannelId) + conversationDirectoryLookupIds)
+                .firstNotNullOfOrNull { id ->
+                    billingDirectoryProjections[id]
+                        ?.takeIf { it.conversationKind == ConversationKind.Joint }
+                        ?.jointOverLimitGraceEndsAt
+                }
+        }
     var lastAcceptedHeaderProjection by remember(headerProjectionInput) {
         mutableStateOf<SharedConversationDirectoryProjection?>(null)
     }
@@ -7063,8 +7114,8 @@ private fun SharedThreadRouteContentContent(
         remember(baseRenderedPayload, threadMembersProjection) {
             baseRenderedPayload.withThreadMembersProjection(threadMembersProjection)
         }
-    val renderedThread = renderedPayload.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled)
-    val renderedTimelineSlice = timelineSlice.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled)
+    val renderedThread = renderedPayload.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && jointBillingNotice != JointBillingNotice.Locked)
+    val renderedTimelineSlice = timelineSlice.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && jointBillingNotice != JointBillingNotice.Locked)
     val emptyMemberSuggestionSliceFlow = remember { MutableStateFlow(SharedMembersMemberSuggestionSlice()) }
     val memberSuggestionsFlow =
         remember(
@@ -14356,6 +14407,7 @@ private fun ThreadPageContentContent(
         )
     val showComposerForSelectedTab =
         primaryFooterReady &&
+        jointBillingNotice != JointBillingNotice.Locked &&
         shouldShowThreadComposerForReadyContent(
             joined = payload.joined,
             showComposer = payload.showComposer,
@@ -14753,6 +14805,28 @@ private fun ThreadPageContentContent(
                 )
             },
             body = {
+            if (jointBillingNotice != JointBillingNotice.None) {
+                val deadlineLabel = jointGraceDeadlineLabel?.takeIf { it.isNotBlank() }
+                SlockRaftUiBanner(
+                    status =
+                        if (jointBillingNotice == JointBillingNotice.Locked) SlockRaftUiBannerStatus.Destructive
+                        else SlockRaftUiBannerStatus.Warning,
+                    title =
+                        stringResource(
+                            if (jointBillingNotice == JointBillingNotice.Locked) MR.strings.joint_billing_locked_title
+                            else MR.strings.joint_over_limit_grace_title
+                        ),
+                    description =
+                        if (jointBillingNotice == JointBillingNotice.Locked) {
+                            stringResource(MR.strings.joint_billing_locked_detail)
+                        } else {
+                            stringResource(MR.strings.joint_over_limit_grace_detail, deadlineLabel ?: "")
+                        },
+                    size = SlockRaftUiBannerSize.Medium,
+                    iconName = SlockLucideIconName.TriangleAlert,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
             if (payload.showModeTabs) {
                 SlockTabbedScaffold(
                     tabs = availableTabs.map { it.toSlockTabSpec() },

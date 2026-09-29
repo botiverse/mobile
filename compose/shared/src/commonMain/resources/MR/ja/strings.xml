@@ -2107,4 +2107,8 @@
     <string name="runtime_form_v2_load_failed">ランタイムフォームを読み込めませんでした（%1$s）。</string>
     <string name="runtime_form_v2_source_refresh_failed">一覧を更新できませんでした。前回の選択肢を表示しています。</string>
     <string name="runtime_form_v2_saved_refresh">保存しました。最新の設定は再読み込みで確認できます。</string>
+    <string name="joint_over_limit_grace_title">ジョイントチャンネルが上限超過です</string>
+    <string name="joint_over_limit_grace_detail">このジョイントチャンネルは %1$s までメンバー数上限を超過しています。いずれかのサーバーの管理者がアップグレードするか、無料サーバーが脱退する必要があります。</string>
+    <string name="joint_billing_locked_title">ジョイントチャンネルは読み取り専用です</string>
+    <string name="joint_billing_locked_detail">猶予期間が終了しました。管理者がアップグレードするか無料サーバーが脱退するまで、このチャンネルは読み取り専用です。</string>
 </resources>

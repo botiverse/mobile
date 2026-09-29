@@ -107,7 +107,10 @@ fun ConversationSummary.withTitleFallback(fallback: ConversationSummary?): Conve
         jointPeerServerId = jointPeerServerId ?: fallback.jointPeerServerId.takeIf { sameConversation },
         jointPeerServerName = jointPeerServerName ?: fallback.jointPeerServerName.takeIf { sameConversation },
         jointPeerServerSlug = jointPeerServerSlug ?: fallback.jointPeerServerSlug.takeIf { sameConversation },
-        jointPeerStatus = jointPeerStatus ?: fallback.jointPeerStatus.takeIf { sameConversation }
+        jointPeerStatus = jointPeerStatus ?: fallback.jointPeerStatus.takeIf { sameConversation },
+        jointBillingLocked = jointBillingLocked ?: fallback.jointBillingLocked.takeIf { sameConversation },
+        jointOverLimitGraceEndsAt =
+            jointOverLimitGraceEndsAt ?: fallback.jointOverLimitGraceEndsAt.takeIf { sameConversation }
     )
 }
 
