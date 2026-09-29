@@ -338,6 +338,47 @@ class RealConversationRepository private constructor(
         )
     }
 
+    override suspend fun getLatestChannelMessage(
+        channelId: ChannelId,
+        priority: DataRequestPriority,
+    ): DataResult<Message> {
+        val context = currentContext() ?: return authRequired()
+        val result =
+            executeConversation(
+                emptyReason = EmptyReason.NoMessages,
+                block = {
+                    networkClient.channelMessages(
+                        priority = priority,
+                        channelId = channelId,
+                        limit = 1,
+                        serverIdOverride = context.server.id,
+                    )
+                },
+                emptyWhen = { it.messages.isEmpty() },
+                source = "messages_channel_latest",
+                mapper = { bodyText ->
+                    parseSharedChannelMessages(
+                        bodyText = bodyText,
+                        fallbackThreadId = ThreadId(channelId.value),
+                        diagnostics = warningLogger,
+                    )
+                }
+            )
+        return when (result) {
+            is DataResult.Content -> {
+                val latest = result.data.messages.firstOrNull()
+                if (latest != null) {
+                    DataResult.Content(latest)
+                } else {
+                    DataResult.Empty(EmptyReason.NoMessages)
+                }
+            }
+            is DataResult.Empty -> result
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
+    }
+
     override suspend fun getAttachmentUploadCapabilities(): DataResult<AttachmentUploadCapabilities> {
         currentContext() ?: return authRequired()
         return executeConversation(

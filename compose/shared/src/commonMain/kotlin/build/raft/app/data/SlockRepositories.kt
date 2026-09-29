@@ -165,6 +165,12 @@ interface ConversationRepository {
     ): DataResult<ConversationSummary> =
         DataResult.Error(ScreenError(code = "conversation_detail_unavailable", retryable = true))
 
+    suspend fun getLatestChannelMessage(
+        channelId: ChannelId,
+        priority: DataRequestPriority = DataRequestPriority.Background,
+    ): DataResult<Message> =
+        DataResult.Empty(EmptyReason.NoMessages)
+
     suspend fun getThread(
         threadId: ThreadId,
         includeFollowedSummaries: Boolean = false,

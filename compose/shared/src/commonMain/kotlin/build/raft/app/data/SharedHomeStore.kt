@@ -26,6 +26,7 @@ import build.raft.app.model.PerReceiverPinnedChanged
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.Message
+import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.RealtimeEvent
@@ -635,6 +636,8 @@ internal class SharedHomeStore(
                 applyReadReceiptPrediction(intent.prediction)
             is SharedHomeIntent.ApplyReadReceiptFailure ->
                 handleReadReceiptFailure(intent.request)
+            is SharedHomeIntent.HydrateDirectMessagePreview ->
+                hydrateDirectMessagePreview(intent)
         }
         }
     }
@@ -2841,6 +2844,36 @@ internal class SharedHomeStore(
         if (shouldRefresh) dispatch(SharedHomeIntent.Refresh)
     }
 
+    internal fun hydrateDirectMessagePreview(intent: SharedHomeIntent.HydrateDirectMessagePreview) {
+        val current = _state.value.content as? SharedHomeContentState.Content ?: return
+        if (current.snapshot.server.id != intent.serverId) return
+        if (intent.accountId.isNotBlank() && current.snapshot.currentMember.id.value != intent.accountId) return
+
+        applyHomeSnapshotLocally(intentOverride = intent) { snapshot ->
+            if (snapshot.server.id != intent.serverId) return@applyHomeSnapshotLocally snapshot
+            if (intent.accountId.isNotBlank() && snapshot.currentMember.id.value != intent.accountId) return@applyHomeSnapshotLocally snapshot
+            val targetDm = snapshot.directMessages.firstOrNull { it.matchesHomeConversation(intent.channelId.value) }
+                ?: return@applyHomeSnapshotLocally snapshot
+
+            if (!targetDm.lastMessagePreview.isNullOrBlank()) {
+                return@applyHomeSnapshotLocally snapshot
+            }
+
+            val updatedDm = targetDm.copy(
+                lastMessagePreview = intent.preview?.takeIf { it.isNotBlank() },
+                lastMessageSenderName = intent.senderName?.takeIf { it.isNotBlank() },
+                lastMessageAt = targetDm.lastMessageAt ?: intent.lastMessageAt,
+                lastMessageId = targetDm.lastMessageId ?: intent.lastMessageId,
+            )
+
+            snapshot.copy(
+                directMessages = snapshot.directMessages.map { row ->
+                    if (row.matchesHomeConversation(intent.channelId.value)) updatedDm else row
+                }
+            )
+        }
+    }
+
     private fun HomeSnapshot.matchesReadReceiptOwner(owner: ReadReceiptOwner): Boolean {
         val serverId = server.id.value
         val accountId = currentMember.id.value
@@ -3570,6 +3603,7 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.ApplyPerReceiverPinned -> "pinned:${update.serverId.value}:${update.version}"
         is SharedHomeIntent.ApplyReadReceiptPrediction -> "read_prediction:${prediction.channelId.value}:${prediction.revision}"
         is SharedHomeIntent.ApplyReadReceiptFailure -> "read_failure:${request.channelId.value}:${request.revision}"
+        is SharedHomeIntent.HydrateDirectMessagePreview -> "hydrate_dm_preview:${channelId.value}"
     }
 
 private fun RealtimeEvent.toSharedHomeChannelFoldEvent(): SharedHomeChannelFoldEvent =
@@ -4261,6 +4295,15 @@ sealed interface SharedHomeIntent {
     data class ApplyPerReceiverPinned(val update: PerReceiverPinnedUpdate) : SharedHomeIntent
     data class ApplyReadReceiptPrediction(val prediction: ReadReceiptPrediction) : SharedHomeIntent
     data class ApplyReadReceiptFailure(val request: ReadReceiptRequest) : SharedHomeIntent
+    data class HydrateDirectMessagePreview(
+        val serverId: ServerId,
+        val channelId: ChannelId,
+        val preview: String?,
+        val senderName: String?,
+        val lastMessageAt: String? = null,
+        val lastMessageId: MessageId? = null,
+        val accountId: String = "",
+    ) : SharedHomeIntent
 }
 
 private val SharedHomeIntent.loadsHome: Boolean
@@ -4300,7 +4343,8 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.ApplyPerReceiverServerOrder,
             is SharedHomeIntent.ApplyPerReceiverPinned,
             is SharedHomeIntent.ApplyReadReceiptPrediction,
-            is SharedHomeIntent.ApplyReadReceiptFailure -> false
+            is SharedHomeIntent.ApplyReadReceiptFailure,
+            is SharedHomeIntent.HydrateDirectMessagePreview -> false
         }
 
 private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
@@ -4340,7 +4384,8 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.ApplyPerReceiverServerOrder,
             is SharedHomeIntent.ApplyPerReceiverPinned,
             is SharedHomeIntent.ApplyReadReceiptPrediction,
-            is SharedHomeIntent.ApplyReadReceiptFailure -> false
+            is SharedHomeIntent.ApplyReadReceiptFailure,
+            is SharedHomeIntent.HydrateDirectMessagePreview -> false
         }
 
 private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
@@ -4380,7 +4425,8 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.ApplyPerReceiverServerOrder,
             is SharedHomeIntent.ApplyPerReceiverPinned,
             is SharedHomeIntent.ApplyReadReceiptPrediction,
-            is SharedHomeIntent.ApplyReadReceiptFailure -> false
+            is SharedHomeIntent.ApplyReadReceiptFailure,
+            is SharedHomeIntent.HydrateDirectMessagePreview -> false
         }
 
 sealed interface SharedHomeContentState {

@@ -69,6 +69,17 @@ class HomeParserTest {
     }
 
     @Test
+    fun detailDirectMessagePreservesLastMessagePreviewAndSenderName() {
+        val detail =
+            parseSlockChannelDetail(
+                """{"id":"dm-1","name":"alice","type":"dm","peerType":"user","peerId":"u-1","peerName":"alice","lastMessagePreview":"Hello world","lastMessageSenderName":"Alice"}"""
+            )
+        requireNotNull(detail)
+        assertEquals("Hello world", detail.lastMessagePreview)
+        assertEquals("Alice", detail.lastMessageSenderName)
+    }
+
+    @Test
     fun detailTypeAlonePreservesCanonicalJointKind() {
         val detail =
             parseSlockChannelDetail(

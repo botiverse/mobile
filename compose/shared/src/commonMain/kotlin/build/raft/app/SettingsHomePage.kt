@@ -293,6 +293,7 @@ import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedConversationIdentityProvider
 import build.raft.app.data.SharedConversationIdentitySupplementSource
+import build.raft.app.data.SharedDirectMessagePreviewPrefetchCoordinator
 import build.raft.app.data.SharedHomeStore
 import build.raft.app.data.mergedSharedConversationDirectoryState
 import build.raft.app.data.toSharedConversationDirectoryState
@@ -2640,6 +2641,14 @@ private fun SlockAppShellReadyContent(
                 archiveChannel = { channelId -> channelRepository.archiveChannel(channelId) },
                 setChannelActivityMuted = { channelId, muted -> channelRepository.setChannelActivityMuted(channelId, muted) },
                 pinUpdateFailureCallback = { message -> bridge.toast(message) },
+            )
+        }
+    val dmPreviewPrefetchCoordinator =
+        remember(conversationRepository, homeStore) {
+            SharedDirectMessagePreviewPrefetchCoordinator(
+                conversationRepository = conversationRepository,
+                dispatchHome = { intent -> homeStore.dispatch(intent) },
+                diagnostics = slockLogger("SlockDmPreviewPrefetch", "dm_preview_prefetch", SlockLogLevel.Debug),
             )
         }
     val homeActivityReplyThreadPrewarmDataSource =
@@ -6158,6 +6167,21 @@ private fun SlockAppShellReadyContent(
                                     sharedStores.conversationIdentityProvider(storeScope),
                                 draftPersistSlice = composerDraftPersistSlice
                             )
+
+                        val dmsContentSnapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot
+                        LaunchedEffect(active, readyServerId, dmsContentSnapshot != null) {
+                            if (!active || readyServerId.isNullOrBlank() || dmsContentSnapshot == null) return@LaunchedEffect
+                            val accountId = readySession?.user?.id
+                                ?: dmsContentSnapshot.currentMember.id.value.takeIf { it.isNotBlank() }
+                                ?: return@LaunchedEffect
+                            dmPreviewPrefetchCoordinator.enqueue(
+                                serverId = ServerId(readyServerId),
+                                accountId = accountId,
+                                directMessages = dmsContentSnapshot.directMessages,
+                                scope = this,
+                            )
+                        }
+
                         val dmsMemberAvatarResolver =
                             remember(appShellServerMembersStore, readyServerId) {
                                 slockMemberAvatarResolver(appShellServerMembersStore, readyServerId)

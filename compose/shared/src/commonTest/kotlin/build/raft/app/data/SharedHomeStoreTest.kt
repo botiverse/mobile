@@ -7216,4 +7216,94 @@ class SharedHomeStoreTest {
         )
 
     // end #211 --------------------------------------------------------------
+
+    @Test
+    fun hydrateDirectMessagePreviewUpdatesEmptyPreviewWithoutModifyingUnreadOrExistingPreview() = runTest {
+        val server = sampleServer()
+        val dm1 = HomeDirectMessageRow(
+            threadId = ThreadId("dm-1"),
+            channelId = ChannelId("dm-1"),
+            name = "DM 1",
+            unreadCount = 5,
+            lastMessagePreview = null,
+            lastMessageSenderName = null,
+            lastMessageAt = null,
+        )
+        val dm2 = HomeDirectMessageRow(
+            threadId = ThreadId("dm-2"),
+            channelId = ChannelId("dm-2"),
+            name = "DM 2",
+            unreadCount = 2,
+            lastMessagePreview = "Authoritative preview",
+            lastMessageSenderName = "Alice",
+            lastMessageAt = "2026-03-29T09:00:00Z",
+        )
+        val snapshot = sampleHome(server.id).copy(
+            directMessages = listOf(dm1, dm2)
+        )
+        val store = createStore(snapshot)
+
+        // 1. Hydrate dm1 with empty preview -> should update preview and senderName, keeping unread unchanged
+        store.hydrateDirectMessagePreview(
+            SharedHomeIntent.HydrateDirectMessagePreview(
+                serverId = server.id,
+                channelId = ChannelId("dm-1"),
+                preview = "New preview text",
+                senderName = "Bob",
+                lastMessageAt = "2026-03-29T10:00:00Z",
+                lastMessageId = MessageId("msg-1"),
+            )
+        )
+
+        val stateAfter1 = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        val updatedDm1 = stateAfter1.directMessages.first { it.channelId == ChannelId("dm-1") }
+        assertEquals("New preview text", updatedDm1.lastMessagePreview)
+        assertEquals("Bob", updatedDm1.lastMessageSenderName)
+        assertEquals("2026-03-29T10:00:00Z", updatedDm1.lastMessageAt)
+        assertEquals(5, updatedDm1.unreadCount)
+
+        // 2. Hydrate dm2 which already has a preview -> must NOT clobber
+        store.hydrateDirectMessagePreview(
+            SharedHomeIntent.HydrateDirectMessagePreview(
+                serverId = server.id,
+                channelId = ChannelId("dm-2"),
+                preview = "Attempted clobber preview",
+                senderName = "Mallory",
+                lastMessageAt = "2026-03-29T11:00:00Z",
+                lastMessageId = MessageId("msg-2"),
+            )
+        )
+
+        val stateAfter2 = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        val dm2After = stateAfter2.directMessages.first { it.channelId == ChannelId("dm-2") }
+        assertEquals("Authoritative preview", dm2After.lastMessagePreview)
+        assertEquals("Alice", dm2After.lastMessageSenderName)
+        assertEquals("2026-03-29T09:00:00Z", dm2After.lastMessageAt)
+        assertEquals(2, dm2After.unreadCount)
+
+        // 3. Hydrate with mismatched accountId -> must NOT hydrate
+        val dm3 = HomeDirectMessageRow(
+            threadId = ThreadId("dm-3"),
+            channelId = ChannelId("dm-3"),
+            name = "DM 3",
+            lastMessagePreview = null,
+            lastMessageSenderName = null,
+            unreadCount = 1,
+        )
+        val snapshotWithDm3 = stateAfter2.copy(directMessages = stateAfter2.directMessages + dm3)
+        val storeWithDm3 = createStore(snapshotWithDm3)
+        storeWithDm3.hydrateDirectMessagePreview(
+            SharedHomeIntent.HydrateDirectMessagePreview(
+                serverId = server.id,
+                channelId = ChannelId("dm-3"),
+                preview = "Foreign account preview",
+                senderName = "Eve",
+                accountId = "other-account",
+            )
+        )
+        val stateAfter3 = (storeWithDm3.state.value.content as SharedHomeContentState.Content).snapshot
+        val dm3After = stateAfter3.directMessages.first { it.channelId == ChannelId("dm-3") }
+        assertNull(dm3After.lastMessagePreview)
+    }
 }
+
