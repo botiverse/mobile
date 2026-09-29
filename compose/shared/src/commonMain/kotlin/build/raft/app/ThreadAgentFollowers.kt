@@ -18,6 +18,7 @@ import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.ui.draw.alpha
+import com.tencent.kuikly.compose.ui.draw.shadow
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -256,8 +257,15 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: SlockPopo
         verticalPlacement = SlockFloatingVerticalPlacement.Auto,
         dismissActivationDelayMillis = 0L,
     ) {
-        Column(Modifier.width(width).onSizeChanged { measuredSize = Size(it.width.toFloat(), it.height.toFloat()) }
-            .background(theme.surface, RoundedCornerShape(theme.cornerRadius))
+        Box(Modifier.onSizeChanged { measuredSize = Size(it.width.toFloat(), it.height.toFloat()) }) {
+        val shape = RoundedCornerShape(theme.cornerRadius)
+        if (theme.family == SlockThemeFamily.Brutal) {
+            Box(Modifier.matchParentSize().offset(4.dp, 4.dp).background(theme.shadow.color))
+        }
+        Column(Modifier.width(width)
+            .then(if (theme.family == SlockThemeFamily.Elegant) Modifier.shadow(4.dp, shape, clip = false,
+                ambientColor = theme.shadow.color, spotColor = theme.shadow.color) else Modifier)
+            .background(theme.surface, shape)
             .border(theme.lineWidth, theme.line, RoundedCornerShape(theme.cornerRadius)).clickable { }) {
             Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
                 Text(stringResource(MR.strings.thread_followers_title), style = SlockType.Body, color = theme.ink)
@@ -313,6 +321,7 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: SlockPopo
                 }
             }
         }
+    }
     }
 }
 
