@@ -29,6 +29,7 @@
 @interface _FDFullscreenPopGestureRecognizerDelegate : NSObject <UIGestureRecognizerDelegate>
 
 @property (nonatomic, weak) UINavigationController *navigationController;
+@property (nonatomic, assign) BOOL touchBeganInEdgeZone;
 
 @end
 
@@ -118,102 +119,57 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
 
 @end
 
-static BOOL SlockInteractivePopHasChildScrollView(UIView *view, UIView *rootView)
-{
-    UIView *candidate = view;
-    while (candidate && candidate != rootView) {
-        if ([candidate isKindOfClass:UIScrollView.class]) {
-            return YES;
-        }
-        candidate = candidate.superview;
-    }
-    return NO;
-}
+@implementation _FDFullscreenPopGestureRecognizerDelegate
 
-static BOOL SlockInteractivePopHasScrolledHorizontalScrollView(UIView *view, UIView *rootView, BOOL isLeftToRight)
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch
 {
-    UIView *candidate = view;
-    while (candidate && candidate != rootView) {
-        if ([candidate isKindOfClass:UIScrollView.class]) {
-            UIScrollView *scrollView = (UIScrollView *)candidate;
-            BOOL isHorizontal =
-                scrollView.alwaysBounceHorizontal ||
-                scrollView.contentSize.width > CGRectGetWidth(scrollView.bounds) + 1.0;
-            if (isHorizontal) {
-                if (isLeftToRight) {
-                    CGFloat leadingOffset = -scrollView.contentInset.left;
-                    if (scrollView.contentOffset.x > leadingOffset + 0.5) {
-                        return YES;
-                    }
-                } else {
-                    CGFloat trailingOffset = scrollView.contentSize.width - CGRectGetWidth(scrollView.bounds) + scrollView.contentInset.right;
-                    if (scrollView.contentOffset.x < trailingOffset - 0.5) {
-                        return YES;
-                    }
-                }
-            }
-        }
-        candidate = candidate.superview;
+    // Record at touch-down whether this touch may start a back swipe. Only the leading-edge
+    // strip qualifies, so content-area swipes (pagers, lists) never pop.
+    if (gestureRecognizer.numberOfTouches > 0) {
+        return YES;
     }
-    return NO;
-}
-
-static SlockInteractivePopGestureAdmission SlockBuildInteractivePopGestureAdmission(
-    UINavigationController *navigationController,
-    UIPanGestureRecognizer *gestureRecognizer
-) {
+    UINavigationController *navigationController = self.navigationController;
     UIViewController *topViewController = navigationController.viewControllers.lastObject;
-    CGPoint beginningLocation = [gestureRecognizer locationInView:gestureRecognizer.view];
-    CGPoint translation = [gestureRecognizer translationInView:gestureRecognizer.view];
-    CGPoint velocity = [gestureRecognizer velocityInView:gestureRecognizer.view];
-    BOOL isLeftToRight = [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight;
-    BOOL transitioning = [[navigationController valueForKey:@"_isTransitioning"] boolValue];
-
-    return (SlockInteractivePopGestureAdmission) {
+    CGPoint location = [touch locationInView:gestureRecognizer.view];
+    SlockInteractivePopTouchAdmission admission = {
         .navigationStackCount = navigationController.viewControllers.count,
         .interactivePopDisabled = topViewController.fd_interactivePopDisabled,
-        .transitioning = transitioning,
+        .transitioning = [[navigationController valueForKey:@"_isTransitioning"] boolValue],
         .maxAllowedInitialDistance = topViewController.fd_interactivePopMaxAllowedInitialDistanceToLeftEdge,
-        .beginningLocationX = beginningLocation.x,
+        .touchLocationX = location.x,
+        .viewWidth = CGRectGetWidth(gestureRecognizer.view.bounds),
+        .isLeftToRight = [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight,
+    };
+    self.touchBeganInEdgeZone = SlockInteractivePopTouchBeginsInEdgeZone(admission);
+    return YES;
+}
+
+- (BOOL)gestureRecognizerShouldBegin:(UIPanGestureRecognizer *)gestureRecognizer
+{
+    CGPoint translation = [gestureRecognizer translationInView:gestureRecognizer.view];
+    CGPoint velocity = [gestureRecognizer velocityInView:gestureRecognizer.view];
+    SlockInteractivePopGestureAdmission admission = {
+        .touchBeganInEdgeZone = self.touchBeganInEdgeZone,
+        .transitioning = [[self.navigationController valueForKey:@"_isTransitioning"] boolValue],
         .translationX = translation.x,
         .translationY = translation.y,
         .velocityX = velocity.x,
         .velocityY = velocity.y,
-        .isLeftToRight = isLeftToRight,
+        .isLeftToRight = [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight,
     };
-}
-
-@implementation _FDFullscreenPopGestureRecognizerDelegate
-
-- (BOOL)gestureRecognizerShouldBegin:(UIPanGestureRecognizer *)gestureRecognizer
-{
-    SlockInteractivePopGestureAdmission admission =
-        SlockBuildInteractivePopGestureAdmission(self.navigationController, gestureRecognizer);
     return SlockInteractivePopGestureShouldBegin(admission);
 }
 
-- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer
 {
-    if (![otherGestureRecognizer isKindOfClass:UIPanGestureRecognizer.class]) {
-        return NO;
-    }
-    if (![gestureRecognizer isKindOfClass:UIPanGestureRecognizer.class]) {
-        return NO;
-    }
-    UIPanGestureRecognizer *pan = (UIPanGestureRecognizer *)gestureRecognizer;
-    SlockInteractivePopGestureAdmission admission =
-        SlockBuildInteractivePopGestureAdmission(self.navigationController, pan);
     UIView *rootView = self.navigationController.view;
-    BOOL hasChildScrollView = SlockInteractivePopHasChildScrollView(otherGestureRecognizer.view, rootView);
-    BOOL hasScrolledHorizontal = SlockInteractivePopHasScrolledHorizontalScrollView(otherGestureRecognizer.view, rootView, admission.isLeftToRight);
-
-    SlockInteractivePopSimultaneousAdmission simAdmission = {
-        .isPanGesture = true,
-        .hasChildScrollView = hasChildScrollView,
-        .hasScrolledHorizontalScrollView = hasScrolledHorizontal,
-        .popAdmission = admission,
-    };
-    return SlockInteractivePopShouldRecognizeSimultaneously(simAdmission);
+    BOOL otherIsContentPan =
+        [otherGestureRecognizer isKindOfClass:UIPanGestureRecognizer.class] &&
+        ![otherGestureRecognizer isKindOfClass:UIScreenEdgePanGestureRecognizer.class] &&
+        otherGestureRecognizer.view != nil &&
+        otherGestureRecognizer.view != gestureRecognizer.view &&
+        [otherGestureRecognizer.view isDescendantOfView:rootView];
+    return SlockInteractivePopShouldBeRequiredToFailBy(self.touchBeganInEdgeZone, otherIsContentPan);
 }
 
 @end

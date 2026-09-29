@@ -16,12 +16,22 @@ require_source() {
     fi
 }
 
-require_source "$NAVIGATION_SOURCE" "shouldRecognizeSimultaneouslyWithGestureRecognizer:"
+reject_source() {
+    local source_file="$1"
+    local forbidden="$2"
+    if grep -Fq -- "$forbidden" "$source_file"; then
+        echo "interactive-pop source contract forbids: $forbidden" >&2
+        exit 1
+    fi
+}
+
+require_source "$NAVIGATION_SOURCE" "shouldReceiveTouch:(UITouch *)touch"
+require_source "$NAVIGATION_SOURCE" "SlockInteractivePopTouchBeginsInEdgeZone"
 require_source "$NAVIGATION_SOURCE" "SlockInteractivePopGestureShouldBegin"
-require_source "$NAVIGATION_SOURCE" "SlockInteractivePopShouldRecognizeSimultaneously"
-require_source "$NAVIGATION_SOURCE" "SlockInteractivePopHasChildScrollView"
-require_source "$NAVIGATION_SOURCE" "SlockInteractivePopHasScrolledHorizontalScrollView"
-require_source "$NAVIGATION_SOURCE" "SlockBuildInteractivePopGestureAdmission"
+require_source "$NAVIGATION_SOURCE" "shouldBeRequiredToFailByGestureRecognizer:"
+require_source "$NAVIGATION_SOURCE" "SlockInteractivePopShouldBeRequiredToFailBy"
+# Content-area swipes must never pop, so the pop must not run alongside content pans.
+reject_source "$NAVIGATION_SOURCE" "SlockInteractivePopShouldRecognizeSimultaneously"
 
 CC_BIN="${CC:-$(command -v clang || command -v cc || command -v gcc)}"
 
@@ -29,13 +39,22 @@ CC_BIN="${CC:-$(command -v clang || command -v cc || command -v gcc)}"
 #include <assert.h>
 #include "SlockInteractivePopGestureAdmission.h"
 
-static SlockInteractivePopGestureAdmission allowed(void) {
-    return (SlockInteractivePopGestureAdmission) {
+static SlockInteractivePopTouchAdmission edgeTouch(void) {
+    return (SlockInteractivePopTouchAdmission) {
         .navigationStackCount = 2,
         .interactivePopDisabled = false,
         .transitioning = false,
         .maxAllowedInitialDistance = 0.0,
-        .beginningLocationX = 100.0,
+        .touchLocationX = 10.0,
+        .viewWidth = 390.0,
+        .isLeftToRight = true,
+    };
+}
+
+static SlockInteractivePopGestureAdmission rightSwipe(void) {
+    return (SlockInteractivePopGestureAdmission) {
+        .touchBeganInEdgeZone = true,
+        .transitioning = false,
         .translationX = 20.0,
         .translationY = 2.0,
         .velocityX = 250.0,
@@ -45,91 +64,67 @@ static SlockInteractivePopGestureAdmission allowed(void) {
 }
 
 int main(void) {
-    SlockInteractivePopGestureAdmission input = allowed();
+    SlockInteractivePopTouchAdmission touch = edgeTouch();
+    assert(SlockInteractivePopTouchBeginsInEdgeZone(touch));
+
+    // Default strip is 40pt wide: inclusive at the boundary, content area beyond it never pops
+    touch = edgeTouch(); touch.touchLocationX = 40.0;
+    assert(SlockInteractivePopTouchBeginsInEdgeZone(touch));
+    touch = edgeTouch(); touch.touchLocationX = 41.0;
+    assert(!SlockInteractivePopTouchBeginsInEdgeZone(touch));
+    touch = edgeTouch(); touch.touchLocationX = 195.0;
+    assert(!SlockInteractivePopTouchBeginsInEdgeZone(touch));
+
+    // A page-specific limit replaces the default strip width
+    touch = edgeTouch(); touch.maxAllowedInitialDistance = 60.0; touch.touchLocationX = 55.0;
+    assert(SlockInteractivePopTouchBeginsInEdgeZone(touch));
+    touch = edgeTouch(); touch.maxAllowedInitialDistance = 20.0; touch.touchLocationX = 30.0;
+    assert(!SlockInteractivePopTouchBeginsInEdgeZone(touch));
+
+    // RTL: the strip is on the right edge
+    touch = edgeTouch(); touch.isLeftToRight = false; touch.touchLocationX = 380.0;
+    assert(SlockInteractivePopTouchBeginsInEdgeZone(touch));
+    touch = edgeTouch(); touch.isLeftToRight = false; touch.touchLocationX = 10.0;
+    assert(!SlockInteractivePopTouchBeginsInEdgeZone(touch));
+
+    // Root, disabled and transitioning stacks never arm the strip
+    touch = edgeTouch(); touch.navigationStackCount = 1;
+    assert(!SlockInteractivePopTouchBeginsInEdgeZone(touch));
+    touch = edgeTouch(); touch.interactivePopDisabled = true;
+    assert(!SlockInteractivePopTouchBeginsInEdgeZone(touch));
+    touch = edgeTouch(); touch.transitioning = true;
+    assert(!SlockInteractivePopTouchBeginsInEdgeZone(touch));
+
+    SlockInteractivePopGestureAdmission input = rightSwipe();
     assert(SlockInteractivePopGestureShouldBegin(input));
 
-    // Navigation stack at root must not pop
-    input = allowed(); input.navigationStackCount = 1;
+    // Content-area swipe never pops, whatever the direction
+    input = rightSwipe(); input.touchBeganInEdgeZone = false;
     assert(!SlockInteractivePopGestureShouldBegin(input));
 
-    // Explicitly disabled interactive pop
-    input = allowed(); input.interactivePopDisabled = true;
+    input = rightSwipe(); input.transitioning = true;
     assert(!SlockInteractivePopGestureShouldBegin(input));
 
-    // Navigation controller in transition
-    input = allowed(); input.transitioning = true;
+    // Direction in LTR / RTL
+    input = rightSwipe(); input.translationX = -20.0; input.velocityX = -250.0;
     assert(!SlockInteractivePopGestureShouldBegin(input));
-
-    // Distance to edge constraints
-    input = allowed(); input.maxAllowedInitialDistance = 50.0; input.beginningLocationX = 80.0;
-    assert(!SlockInteractivePopGestureShouldBegin(input));
-
-    input = allowed(); input.maxAllowedInitialDistance = 50.0; input.beginningLocationX = 30.0;
+    input = rightSwipe(); input.isLeftToRight = false; input.translationX = -20.0; input.velocityX = -250.0;
     assert(SlockInteractivePopGestureShouldBegin(input));
-
-    // Direction constraints in LTR
-    input = allowed(); input.translationX = -20.0; input.velocityX = -250.0;
+    input = rightSwipe(); input.isLeftToRight = false;
     assert(!SlockInteractivePopGestureShouldBegin(input));
 
-    // Direction constraints in RTL
-    input = allowed(); input.isLeftToRight = false; input.translationX = -20.0; input.velocityX = -250.0;
-    assert(SlockInteractivePopGestureShouldBegin(input));
-
-    input = allowed(); input.isLeftToRight = false; input.translationX = 20.0; input.velocityX = 250.0;
-    assert(!SlockInteractivePopGestureShouldBegin(input));
-
-    // Vertical dominance constraints
-    input = allowed(); input.translationX = 5.0; input.translationY = 30.0; input.velocityX = 10.0; input.velocityY = 100.0;
-    assert(!SlockInteractivePopGestureShouldBegin(input));
-
-    // Diagonal tie (dx == dy) is not strictly horizontal-dominant
-    input = allowed(); input.translationX = 10.0; input.translationY = 10.0; input.velocityX = 0.0; input.velocityY = 0.0;
+    // A vertical scroll that starts in the strip stays a scroll
+    input = rightSwipe(); input.translationX = 5.0; input.translationY = 30.0; input.velocityX = 10.0; input.velocityY = 100.0;
     assert(!SlockInteractivePopGestureShouldBegin(input));
 
     // Low velocity falls back to translation
-    input = allowed(); input.velocityX = 0.5; input.velocityY = 0.1; input.translationX = 15.0; input.translationY = 2.0;
+    input = rightSwipe(); input.velocityX = 0.5; input.velocityY = 0.1; input.translationX = 15.0; input.translationY = 2.0;
     assert(SlockInteractivePopGestureShouldBegin(input));
 
-    // Simultaneous recognition tests
-    SlockInteractivePopSimultaneousAdmission sim = {
-        .isPanGesture = true,
-        .hasChildScrollView = true,
-        .hasScrolledHorizontalScrollView = false,
-        .popAdmission = allowed(),
-    };
-    assert(SlockInteractivePopShouldRecognizeSimultaneously(sim));
-
-    // Non-pan gesture recognizers must not be admitted
-    sim.isPanGesture = false;
-    assert(!SlockInteractivePopShouldRecognizeSimultaneously(sim));
-
-    // Touch not inside a scroll view hierarchy
-    sim = (SlockInteractivePopSimultaneousAdmission){
-        .isPanGesture = true,
-        .hasChildScrollView = false,
-        .hasScrolledHorizontalScrollView = false,
-        .popAdmission = allowed(),
-    };
-    assert(!SlockInteractivePopShouldRecognizeSimultaneously(sim));
-
-    // Scrolled horizontal scroll view (e.g. TabPager on Tab 1) must yield to pager scrolling
-    sim = (SlockInteractivePopSimultaneousAdmission){
-        .isPanGesture = true,
-        .hasChildScrollView = true,
-        .hasScrolledHorizontalScrollView = true,
-        .popAdmission = allowed(),
-    };
-    assert(!SlockInteractivePopShouldRecognizeSimultaneously(sim));
-
-    // Inadmissible pop must reject simultaneous recognition
-    input = allowed(); input.navigationStackCount = 1;
-    sim = (SlockInteractivePopSimultaneousAdmission){
-        .isPanGesture = true,
-        .hasChildScrollView = true,
-        .hasScrolledHorizontalScrollView = false,
-        .popAdmission = input,
-    };
-    assert(!SlockInteractivePopShouldRecognizeSimultaneously(sim));
+    // Inside the strip content pans wait for the pop; outside nothing waits
+    assert(SlockInteractivePopShouldBeRequiredToFailBy(true, true));
+    assert(!SlockInteractivePopShouldBeRequiredToFailBy(false, true));
+    assert(!SlockInteractivePopShouldBeRequiredToFailBy(true, false));
 
     return 0;
 }
