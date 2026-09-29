@@ -208,7 +208,6 @@ import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsNavItem
 import build.raft.app.data.SharedSettingsOpenSourceLicenseItem
 import build.raft.app.data.SharedSettingsOpenSourceLicensesSnapshot
-import build.raft.app.data.SharedSettingsRecompositionProfilerSnapshot
 import build.raft.app.data.SharedSettingsRoute
 import build.raft.app.data.SharedSettingsState
 import build.raft.app.data.SharedSettingsStorageRow
@@ -229,12 +228,6 @@ import build.raft.app.data.attemptSlockDatabaseLaunch
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.toSharedHomeAppUpdateNotification
 import build.raft.app.data.DIAGNOSTICS_ACTION_APPLE_SIGNIN_LOCAL_OVERRIDE
-import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_EXPORT
-import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_ENABLED
-import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_REPORT
-import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_RESET
-import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_START
-import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_STOP
 import build.raft.app.data.isAuthSessionError
 import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.data.isSubmittableChannelName
@@ -640,9 +633,6 @@ internal val SettingsRouteVisualPageDataFields =
 private const val SettingsDeveloperUnlockTapCount = 7
 private const val AppShellInitialTabKey = "slockInitialTab"
 private const val DiagnosticsDeepLinkIdKey = "slockDiagnosticsDeepLinkId"
-private const val DiagnosticsDeepLinkEnableProfilerKey = "slockDiagnosticsDeepLinkEnableProfiler"
-private const val DiagnosticsDeepLinkResetSceneKey = "slockDiagnosticsDeepLinkResetScene"
-private const val DiagnosticsDeepLinkExportReportKey = "slockDiagnosticsDeepLinkExportReport"
 private const val DiagnosticsDeepLinkAutoCloseMsKey = "slockDiagnosticsDeepLinkAutoCloseMs"
 private const val SharedSettingsDefaultWebBaseUrl = "https://app.raft.build"
 private const val AppUpdateNotificationRefreshIntervalMs = 30L * 60L * 1000L
@@ -1282,9 +1272,6 @@ internal data class AppShellLaunchSelection(
 
 internal data class DiagnosticsDeepLinkRequest(
     val id: String,
-    val enableProfiler: Boolean = false,
-    val resetScene: Boolean = false,
-    val exportReport: Boolean = false,
     val autoCloseMs: Long = 0L
 )
 
@@ -1297,9 +1284,6 @@ internal fun JSONObject.diagnosticsDeepLinkRequest(): DiagnosticsDeepLinkRequest
     val id = optString(DiagnosticsDeepLinkIdKey).takeIf { it.isNotBlank() } ?: return null
     return DiagnosticsDeepLinkRequest(
         id = id,
-        enableProfiler = optBoolean(DiagnosticsDeepLinkEnableProfilerKey, false),
-        resetScene = optBoolean(DiagnosticsDeepLinkResetSceneKey, false),
-        exportReport = optBoolean(DiagnosticsDeepLinkExportReportKey, false),
         autoCloseMs = optLong(DiagnosticsDeepLinkAutoCloseMsKey, 0L).coerceAtLeast(0L)
     )
 }
@@ -3838,9 +3822,7 @@ private fun SlockAppShellReadyContent(
         selectAppShellTab("settings")
         retainedAppShellTabs = retainedAppShellTabs + "settings"
         bridge.log(
-            "diagnostics_deeplink_start id=${request.id} " +
-                "enableProfiler=${request.enableProfiler} resetScene=${request.resetScene} " +
-                "exportReport=${request.exportReport} autoCloseMs=${request.autoCloseMs}"
+            "diagnostics_deeplink_start id=${request.id} autoCloseMs=${request.autoCloseMs}"
         )
         val opened =
             pager.openSettingsNativeDetailPage(
@@ -3848,9 +3830,6 @@ private fun SlockAppShellReadyContent(
                 storeScope = navigationStoreScope,
                 launchIntent =
                     SettingsNativeDetailLaunchIntent(
-                        enableProfiler = request.enableProfiler,
-                        resetScene = request.resetScene,
-                        exportReport = request.exportReport,
                         autoCloseMs = request.autoCloseMs,
                     ),
             )
@@ -7029,15 +7008,6 @@ internal fun SettingsNativeDetailScreen() {
             loadPageContent = {
                 settingsViewModel.accept(SharedSettingsIntent.LoadPageContent(route.page.storeDestination))
             },
-            enableProfiler = {
-                settingsViewModel.accept(SharedSettingsIntent.SetRecompositionProfilerEnabled(true))
-            },
-            resetProfiler = {
-                settingsViewModel.accept(SharedSettingsIntent.ResetRecompositionProfiler)
-            },
-            exportProfilerReport = {
-                settingsViewModel.accept(SharedSettingsIntent.ExportRecompositionProfilerReport)
-            },
             waitForAutoClose = { delay(it) },
             closePage = closePage,
         )
@@ -7596,14 +7566,6 @@ private fun SettingsNativeDetailPageContent(
                             onOpenLocalFeatureOverridesPage()
                         }
                     },
-                    onSetProfilerEnabled = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetRecompositionProfilerEnabled(enabled))
-                    },
-                    onStartProfiler = { onSettingsIntent(SharedSettingsIntent.StartRecompositionProfiler) },
-                    onStopProfiler = { onSettingsIntent(SharedSettingsIntent.StopRecompositionProfiler) },
-                    onResetProfiler = { onSettingsIntent(SharedSettingsIntent.ResetRecompositionProfiler) },
-                    onRefreshProfilerReport = { onSettingsIntent(SharedSettingsIntent.RefreshRecompositionProfilerReport) },
-                    onExportProfilerReport = { onSettingsIntent(SharedSettingsIntent.ExportRecompositionProfilerReport) },
                     onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) }
                 )
             SettingsNativeDetailPage.LocalFeatureOverrides ->
@@ -12522,12 +12484,6 @@ internal fun SharedSettingsDiagnosticsContent(
     onOpenLocalFeatureOverrides: (() -> Unit)? = null,
     onSetAppleSignInLocalOverride: ((Boolean) -> Unit)? = null,
     onCopyValue: ((String) -> Unit)? = null,
-    onSetProfilerEnabled: (Boolean) -> Unit,
-    onStartProfiler: () -> Unit,
-    onStopProfiler: () -> Unit,
-    onResetProfiler: () -> Unit,
-    onRefreshProfilerReport: () -> Unit,
-    onExportProfilerReport: () -> Unit,
     onSendFeedback: () -> Unit
 ) {
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data
@@ -12550,12 +12506,6 @@ internal fun SharedSettingsDiagnosticsContent(
             "copyLogs" -> onCopyLogs()
             "shareLogs" -> onShareLogs()
             DIAGNOSTICS_ACTION_APPLE_SIGNIN_LOCAL_OVERRIDE -> onSetAppleSignInLocalOverride?.invoke(value == "true")
-            DIAGNOSTICS_ACTION_PROFILER_ENABLED -> onSetProfilerEnabled(value == "true")
-            "startProfiler" -> onStartProfiler()
-            "stopProfiler" -> onStopProfiler()
-            "resetProfiler" -> onResetProfiler()
-            "refreshProfilerReport" -> onRefreshProfilerReport()
-            "exportProfilerReport" -> onExportProfilerReport()
             "feedback" -> onSendFeedback()
             LOCAL_FEATURE_OVERRIDES_OPEN_ACTION -> onOpenLocalFeatureOverrides?.invoke()
             else ->
@@ -15593,16 +15543,6 @@ private fun build.raft.app.data.SharedSettingsActionState?.isDiagnosticsActionLo
 private fun <T> ScreenLoadState<T>.currentContent(): T? =
     (this as? ScreenLoadState.Content<T>)?.data
 
-private val profilerActionKeys =
-    setOf(
-        DIAGNOSTICS_ACTION_PROFILER_ENABLED,
-        DIAGNOSTICS_ACTION_PROFILER_START,
-        DIAGNOSTICS_ACTION_PROFILER_STOP,
-        DIAGNOSTICS_ACTION_PROFILER_RESET,
-        DIAGNOSTICS_ACTION_PROFILER_REPORT,
-        DIAGNOSTICS_ACTION_PROFILER_EXPORT
-    )
-
 internal data class SettingsAboutPayloadCopy(
     val title: String = "About",
     val detail: String = "Version, build, and source",
@@ -15675,7 +15615,7 @@ internal data class SettingsDeveloperPayloadCopy(
     val current: String = "Current",
     val realtime: String = "Realtime",
     val diagnostics: String = "Diagnostics",
-    val diagnosticsDetail: String = "Open auth, sanitized logs, profiler, and feedback tools.",
+    val diagnosticsDetail: String = "Open auth, sanitized logs, and feedback tools.",
     val routeLauncher: String = "Route launcher",
     val routeLauncherDetail: String = "Open Kuikly route launcher and icon compare."
 )
@@ -15705,35 +15645,18 @@ private fun settingsDeveloperPayloadCopy(): SettingsDeveloperPayloadCopy =
 
 internal data class SettingsDiagnosticsPayloadCopy(
     val title: String = "Diagnostics",
-    val detailProfiler: String = "Auth, sanitized app diagnostics, and Kuikly recomposition profiler",
-    val detailStatus: String = "Auth, sanitized app diagnostics, and Kuikly profiler status",
     val detailBasic: String = "Auth and sanitized app diagnostics",
     val environment: String = "Environment",
     val loadStatus: String = "Load status",
     val actions: String = "Actions",
     val partialDiagnostics: String = "Partial diagnostics",
     val partial: String = "Partial",
-    val profiler: String = "Recomposition profiler",
-    val profilerStatus: String = "Shared profiler status",
-    val profilerDetail: String = "Persist this debug switch locally. When enabled, shared settings asks the host bridge to acknowledge profiler mode, applies the default Kuikly profile, and starts collecting recompositions.",
-    val resetProfiler: String = "Reset scene window",
-    val resetProfilerDetail: String = "Clear the current in-memory counters right before opening the target page or replaying the target interaction.",
-    val refreshProfiler: String = "Refresh report",
-    val refreshProfilerDetail: String = "Call getReport(saveToFile=false) to refresh the current summary without rewriting files.",
-    val exportProfiler: String = "Export report",
-    val exportProfilerDetail: String = "Call getReport(saveToFile=true) and keep profiler_frames.jsonl beside profiler_report.json for analyzer input.",
     val appleSignInOverride: String = "Apple sign-in (local test)",
     val appleSignInOverrideDetail: String = "Locally show the Apple button on the login page for testing. The backend platform=mobile gate still decides whether an Apple sign-in start succeeds.",
     val loading: String = "Loading",
     val on: String = "On",
-    val pending: String = "Pending",
     val off: String = "Off",
-    val reset: String = "Reset",
-    val wait: String = "Wait",
-    val refresh: String = "Refresh",
-    val pull: String = "Pull",
     val export: String = "Export",
-    val write: String = "Write",
     val disabled: String = "Disabled",
     val send: String = "Send",
     val exportLogs: String = "Export logs",
@@ -15767,35 +15690,18 @@ internal data class SettingsDiagnosticsPayloadCopy(
 private fun settingsDiagnosticsPayloadCopy(): SettingsDiagnosticsPayloadCopy =
     SettingsDiagnosticsPayloadCopy(
         title = stringResource(MR.strings.settings_diagnostics_title),
-        detailProfiler = stringResource(MR.strings.settings_diagnostics_detail_profiler),
-        detailStatus = stringResource(MR.strings.settings_diagnostics_detail),
         detailBasic = stringResource(MR.strings.settings_diagnostics_detail_basic),
         environment = stringResource(MR.strings.settings_diagnostics_section_environment),
         loadStatus = stringResource(MR.strings.settings_diagnostics_section_load_status),
         actions = stringResource(MR.strings.settings_diagnostics_section_actions),
         partialDiagnostics = stringResource(MR.strings.settings_diagnostics_partial),
         partial = stringResource(MR.strings.settings_diagnostics_state_partial),
-        profiler = stringResource(MR.strings.settings_diagnostics_profiler_title),
-        profilerStatus = stringResource(MR.strings.settings_diagnostics_profiler_status),
-        profilerDetail = stringResource(MR.strings.settings_diagnostics_profiler_detail),
-        resetProfiler = stringResource(MR.strings.settings_diagnostics_profiler_reset),
-        resetProfilerDetail = stringResource(MR.strings.settings_diagnostics_profiler_reset_detail),
-        refreshProfiler = stringResource(MR.strings.settings_diagnostics_profiler_refresh),
-        refreshProfilerDetail = stringResource(MR.strings.settings_diagnostics_profiler_refresh_detail),
-        exportProfiler = stringResource(MR.strings.settings_diagnostics_profiler_export),
-        exportProfilerDetail = stringResource(MR.strings.settings_diagnostics_profiler_export_detail),
         appleSignInOverride = stringResource(MR.strings.settings_diagnostics_apple_signin_override),
         appleSignInOverrideDetail = stringResource(MR.strings.settings_diagnostics_apple_signin_override_detail),
         loading = stringResource(MR.strings.settings_state_loading),
         on = stringResource(MR.strings.settings_state_on),
-        pending = stringResource(MR.strings.settings_state_pending),
         off = stringResource(MR.strings.settings_state_off),
-        reset = stringResource(MR.strings.settings_state_reset),
-        wait = stringResource(MR.strings.settings_state_wait),
-        refresh = stringResource(MR.strings.settings_state_refresh),
-        pull = stringResource(MR.strings.settings_state_pull),
         export = stringResource(MR.strings.settings_state_export),
-        write = stringResource(MR.strings.settings_state_write),
         disabled = stringResource(MR.strings.settings_state_disabled),
         send = stringResource(MR.strings.settings_state_send),
         exportLogs = stringResource(MR.strings.settings_diagnostics_action_export_logs),
@@ -16166,10 +16072,6 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
 ): KuiklySharedSettingsPayload {
     val diagnosticsExportAvailable = state is ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data
-    val profiler = snapshot?.profiler
-        ?: SharedSettingsRecompositionProfilerSnapshot()
-    val profilerRunning = profiler.statusLabel == "Running"
-    val profilerBusy = actionState?.action in profilerActionKeys && actionState?.inProgress == true
     val environmentRows =
         snapshot?.about?.toDiagnosticsEnvironmentRows(copy).orEmpty()
     val structuredLoadErrorMessage =
@@ -16196,96 +16098,6 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                 )
             }
             .orEmpty()
-    val profilerControlSection =
-        KuiklySharedSettingsSection(
-            title = copy.profiler,
-            rows =
-                if (profiler.supported) {
-                    listOf(
-                            KuiklySharedSettingsRow(
-                                "profilerStatus",
-                                SlockLucideIconName.Activity,
-                                copy.profilerStatus,
-                                profiler.detail,
-                                status = profiler.statusLabel
-                            ),
-                            KuiklySharedSettingsRow(
-                                DIAGNOSTICS_ACTION_PROFILER_ENABLED,
-                                SlockLucideIconName.Activity,
-                                copy.profiler,
-                                copy.profilerDetail,
-                                value = (!profiler.enabled).toString(),
-                                status =
-                                    when {
-                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_ENABLED) -> copy.loading
-                                        profiler.enabled && profilerRunning -> copy.on
-                                        profiler.enabled -> copy.pending
-                                        else -> copy.off
-                                    },
-                                enabled = !profilerBusy,
-                                toggleValue = profiler.enabled
-                            ),
-                            KuiklySharedSettingsRow(
-                                "resetProfiler",
-                                SlockLucideIconName.RotateCcw,
-                                copy.resetProfiler,
-                                copy.resetProfilerDetail,
-                                status =
-                                    when {
-                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_RESET) -> copy.loading
-                                        profilerRunning -> copy.reset
-                                        else -> copy.wait
-                                    },
-                                enabled = profilerRunning && !profilerBusy
-                            ),
-                            KuiklySharedSettingsRow(
-                                "refreshProfilerReport",
-                                SlockLucideIconName.RefreshCw,
-                                copy.refreshProfiler,
-                                copy.refreshProfilerDetail,
-                                status =
-                                    when {
-                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_REPORT) -> copy.loading
-                                        profiler.report.reportAvailable -> copy.refresh
-                                        else -> copy.pull
-                                    },
-                                enabled = !profilerBusy
-                            ),
-                            KuiklySharedSettingsRow(
-                                "exportProfilerReport",
-                                SlockLucideIconName.FileCode,
-                                copy.exportProfiler,
-                                copy.exportProfilerDetail,
-                                status =
-                                    when {
-                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_EXPORT) -> copy.loading
-                                        profiler.report.reportAvailable -> copy.export
-                                        else -> copy.write
-                                    },
-                                enabled = !profilerBusy
-                            )
-                        )
-                } else {
-                    listOf(
-                        KuiklySharedSettingsRow(
-                            "profilerStatus",
-                            SlockLucideIconName.Activity,
-                            copy.profilerStatus,
-                            profiler.detail,
-                            status = profiler.gateLabel
-                        ),
-                        KuiklySharedSettingsRow(
-                            DIAGNOSTICS_ACTION_PROFILER_ENABLED,
-                            SlockLucideIconName.Activity,
-                            copy.profiler,
-                            profiler.detail,
-                            status = profiler.gateLabel,
-                            enabled = false,
-                            toggleValue = false
-                        )
-                    )
-                }
-        )
     val appleSignInOverrideSection =
         appleSignInLocalOverride?.let { enabled ->
             KuiklySharedSettingsSection(
@@ -16332,15 +16144,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-diagnostics",
         title = copy.title,
-        detail =
-            profiler.actionFeedback
-                ?: if (profiler.supported) {
-                    copy.detailProfiler
-                } else if (profiler.detail.isNotBlank()) {
-                    copy.detailStatus
-                } else {
-                    copy.detailBasic
-                },
+        detail = copy.detailBasic,
         heroIconName = SlockLucideIconName.ClipboardList,
         heroLabel = copy.title,
         sections =
@@ -16351,7 +16155,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                 loadStatusRows.takeIf { it.isNotEmpty() }?.let {
                     KuiklySharedSettingsSection(title = copy.loadStatus, rows = it)
                 }
-            ) + listOfNotNull(localFeatureOverridesSection) + listOfNotNull(appleSignInOverrideSection) + listOf(profilerControlSection) + listOf(
+            ) + listOfNotNull(localFeatureOverridesSection) + listOfNotNull(appleSignInOverrideSection) + listOf(
                 KuiklySharedSettingsSection(
                     title = copy.actions,
                     rows =

@@ -21,8 +21,8 @@ layout dumps, and HiLog capture/analysis.
 
 `android-use` packages the older `scripts/slock_android_adb.py` workflow into a
 library/CLI: ADB device discovery, install/launch/intent helpers, Kuikly
-page open, diagnostics deep links, screenshots, uiautomator XML, input, logcat,
-and Kuikly profiler pulls. The old script remains as a compatibility wrapper.
+page open, diagnostics deep links, screenshots, uiautomator XML, input, and
+logcat. The old script remains as a compatibility wrapper.
 
 `ios-use` covers the repeatable Xcode/simulator operations that do not require
 extra dependencies: simctl device discovery, boot/shutdown, xcodebuild build,
@@ -158,7 +158,7 @@ Open Slock/KMP surfaces:
 
 ```bash
 android-use open-page compose_thread --page-data '{"channelId":"..."}' --pretty
-android-use open-diagnostics --enable-profiler --reset-scene --pretty
+android-use open-diagnostics --auto-close-ms 15000 --pretty
 android-use start-intent -a build.raft.app.diagnostics.OPEN -n build.raft.app/.core.diagnostics.DiagnosticsDeepLinkActivity --pretty
 ```
 
@@ -171,13 +171,12 @@ android-use swipe --direction up
 android-use key BACK
 ```
 
-Capture/analyze logs and profiler artifacts:
+Capture/analyze logs:
 
 ```bash
 android-use logcat --duration 10 --filter-regex 'Slock|Kuikly|AndroidRuntime' --out /tmp/android-use --pretty
 android-use analyze-log /tmp/android-use/state-logcat.txt --pretty
 android-use analyze-log /tmp/android-use/state-logcat.txt --trim-last-start --trim-out /tmp/android-use/last-start-logcat.txt --pretty
-android-use pull-profiler --out /tmp/android-use --allow-missing --pretty
 ```
 
 `analyze-log` counts app launches from ActivityTaskManager/ActivityManager

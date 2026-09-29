@@ -1263,17 +1263,11 @@ class SlockAppShellTest {
         val params =
             JSONObject()
                 .put("slockDiagnosticsDeepLinkId", "deep-link-1")
-                .put("slockDiagnosticsDeepLinkEnableProfiler", true)
-                .put("slockDiagnosticsDeepLinkResetScene", true)
-                .put("slockDiagnosticsDeepLinkExportReport", true)
                 .put("slockDiagnosticsDeepLinkAutoCloseMs", 15000L)
 
         assertEquals(
             DiagnosticsDeepLinkRequest(
                 id = "deep-link-1",
-                enableProfiler = true,
-                resetScene = true,
-                exportReport = true,
                 autoCloseMs = 15000L
             ),
             params.diagnosticsDeepLinkRequest()

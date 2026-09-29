@@ -11,9 +11,6 @@ const val SETTINGS_NATIVE_DETAIL_PAGE = "compose_settings_native_detail"
 
 internal const val SETTINGS_NATIVE_DETAIL_PAGE_KEY = "settingsPage"
 internal const val SETTINGS_NATIVE_DETAIL_ITEM_ID = "settingsItemId"
-internal const val SETTINGS_NATIVE_DETAIL_ENABLE_PROFILER = "settingsEnableProfiler"
-internal const val SETTINGS_NATIVE_DETAIL_RESET_SCENE = "settingsResetScene"
-internal const val SETTINGS_NATIVE_DETAIL_EXPORT_REPORT = "settingsExportReport"
 internal const val SETTINGS_NATIVE_DETAIL_AUTO_CLOSE_MS = "settingsAutoCloseMs"
 
 private const val SETTINGS_NATIVE_DETAIL_MAX_AUTO_CLOSE_MS = 10 * 60 * 1_000L
@@ -47,9 +44,6 @@ internal val settingsNativeDetailPageKeys: Set<String> =
     SettingsNativeDetailPage.entries.mapTo(linkedSetOf()) { page -> page.key }
 
 internal data class SettingsNativeDetailLaunchIntent(
-    val enableProfiler: Boolean = false,
-    val resetScene: Boolean = false,
-    val exportReport: Boolean = false,
     val autoCloseMs: Long = 0L,
 )
 
@@ -88,18 +82,10 @@ internal class SettingsNativeDetailRoute private constructor(
 internal suspend fun runSettingsNativeDetailLaunchSequence(
     route: SettingsNativeDetailRoute,
     loadPageContent: suspend () -> Unit,
-    enableProfiler: suspend () -> Unit,
-    resetProfiler: suspend () -> Unit,
-    exportProfilerReport: suspend () -> Unit,
     waitForAutoClose: suspend (Long) -> Unit,
     closePage: () -> Unit,
 ) {
     loadPageContent()
-    if (route.page == SettingsNativeDetailPage.Diagnostics) {
-        if (route.launchIntent.enableProfiler) enableProfiler()
-        if (route.launchIntent.resetScene) resetProfiler()
-        if (route.launchIntent.exportReport) exportProfilerReport()
-    }
     route.launchIntent.autoCloseMs.takeIf { it > 0L }?.let { delayMs ->
         waitForAutoClose(delayMs)
         closePage()
@@ -129,9 +115,6 @@ internal fun settingsNativeDetailPageData(
         put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
         storeScope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
         if (route.page == SettingsNativeDetailPage.Diagnostics) {
-            if (route.launchIntent.enableProfiler) put(SETTINGS_NATIVE_DETAIL_ENABLE_PROFILER, true)
-            if (route.launchIntent.resetScene) put(SETTINGS_NATIVE_DETAIL_RESET_SCENE, true)
-            if (route.launchIntent.exportReport) put(SETTINGS_NATIVE_DETAIL_EXPORT_REPORT, true)
             route.launchIntent.autoCloseMs
                 .coerceIn(0L, SETTINGS_NATIVE_DETAIL_MAX_AUTO_CLOSE_MS)
                 .takeIf { it > 0L }
@@ -157,9 +140,6 @@ internal fun settingsNativeDetailRoute(params: JSONObject): SettingsNativeDetail
     val launchIntent =
         if (page == SettingsNativeDetailPage.Diagnostics) {
             SettingsNativeDetailLaunchIntent(
-                enableProfiler = params.optBoolean(SETTINGS_NATIVE_DETAIL_ENABLE_PROFILER, false),
-                resetScene = params.optBoolean(SETTINGS_NATIVE_DETAIL_RESET_SCENE, false),
-                exportReport = params.optBoolean(SETTINGS_NATIVE_DETAIL_EXPORT_REPORT, false),
                 autoCloseMs =
                     params.optLong(SETTINGS_NATIVE_DETAIL_AUTO_CLOSE_MS, 0L)
                         .coerceIn(0L, SETTINGS_NATIVE_DETAIL_MAX_AUTO_CLOSE_MS),

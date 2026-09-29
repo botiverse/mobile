@@ -1439,13 +1439,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           callback(this.loadDiagnosticsCapability());
           return;
         }
-        case "setRecompositionProfilerEnabled": {
-          const rawEnabled = records["enabled"];
-          const enabled = rawEnabled === true || rawEnabled === "true";
-          SlockOhosDiagnostics.record("Settings", `recomposition_profiler_enabled=${enabled}`);
-          callback({ "status": "ok", "enabled": enabled });
-          return;
-        }
         case "copyDiagnostics": {
           callback(this.copyDiagnosticsCapability());
           return;

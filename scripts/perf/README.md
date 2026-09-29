@@ -170,8 +170,8 @@ python3 scripts/perf/regression_compare.py \
   monitor-contention table rendering. Use `python3 -m perf.atrace_summary`
   to side-step until fixed.
 - Compose `Recomposer:animation` event count doesn't differentiate
- 60Hz-spinner-driven from lower-frequency animations — pair with the
- recomposition profiler for component-level attribution.
+ 60Hz-spinner-driven from lower-frequency animations — pair with explicit
+ `Trace.beginSection` markers for component-level attribution.
 - Per-thread jiffies capture (`proc_task_stat/<tid>_<name>.stat`) is more
   precise than `top -H` for CPU breakdown, but doesn't show **what** the
   thread was executing — use `atrace` for that.

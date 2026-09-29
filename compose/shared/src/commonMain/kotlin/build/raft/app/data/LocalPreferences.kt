@@ -812,51 +812,6 @@ class PersistentChatLayoutPreferenceRepository(
 
 }
 
-data class RecompositionProfilerPreferenceSnapshot(
-    val enabled: Boolean
-)
-
-interface RecompositionProfilerPreferenceStore {
-    fun readEnabledSync(): Boolean
-    suspend fun readEnabled(): Boolean
-    suspend fun saveEnabled(enabled: Boolean)
-}
-
-class KeyValueRecompositionProfilerPreferenceStore(
-    private val store: SharedPreferenceStore
-) : RecompositionProfilerPreferenceStore {
-    override fun readEnabledSync(): Boolean =
-        store.getBoolean(KEY_ENABLED, false)
-
-    override suspend fun readEnabled(): Boolean =
-        readEnabledSync()
-
-    override suspend fun saveEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_ENABLED, enabled)
-    }
-
-    private companion object {
-        const val KEY_ENABLED = "diagnostics:recomposition_profiler_enabled"
-    }
-}
-
-interface RecompositionProfilerPreferenceRepository {
-    suspend fun getPreference(): RecompositionProfilerPreferenceSnapshot
-    suspend fun setEnabled(enabled: Boolean): RecompositionProfilerPreferenceSnapshot
-}
-
-class PersistentRecompositionProfilerPreferenceRepository(
-    private val store: RecompositionProfilerPreferenceStore
-) : RecompositionProfilerPreferenceRepository {
-    override suspend fun getPreference(): RecompositionProfilerPreferenceSnapshot =
-        RecompositionProfilerPreferenceSnapshot(enabled = store.readEnabled())
-
-    override suspend fun setEnabled(enabled: Boolean): RecompositionProfilerPreferenceSnapshot {
-        store.saveEnabled(enabled)
-        return RecompositionProfilerPreferenceSnapshot(enabled = enabled)
-    }
-}
-
 interface TasksViewPreferenceRepository {
     fun getTasksViewModeSync(defaultMode: TasksViewMode): TasksViewMode
     suspend fun getTasksViewMode(defaultMode: TasksViewMode): TasksViewMode

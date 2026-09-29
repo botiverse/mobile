@@ -5236,10 +5236,6 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
             ]
         };
     }
-    if ([action isEqualToString:@"setRecompositionProfilerEnabled"]) {
-        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", [NSString stringWithFormat:@"recomposition_profiler_enabled=%@", SlockBridgeBool(params[@"enabled"]) ? @"true" : @"false"]);
-        return @{ @"status" : @"ok" };
-    }
     if ([action isEqualToString:@"copyDiagnostics"]) {
         NSString *exportText = SlockDiagnosticsBuildExportText([self slock_settingsCapabilityResultForAction:@"loadAbout" params:@{}], YES);
         SlockBridgeRunOnMain(^{

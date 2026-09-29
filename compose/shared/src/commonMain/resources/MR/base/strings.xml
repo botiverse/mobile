@@ -2003,7 +2003,7 @@
     <string name="settings_developer_environment_detail">Choose presets or edit API, socket, and web URLs.</string>
     <string name="settings_developer_state_current">Current</string>
     <string name="settings_developer_state_realtime">Realtime</string>
-    <string name="settings_developer_diagnostics_detail">Open auth, sanitized logs, profiler, and feedback tools.</string>
+    <string name="settings_developer_diagnostics_detail">Open auth, sanitized logs, and feedback tools.</string>
     <string name="settings_developer_route_launcher">Route launcher</string>
     <string name="settings_developer_route_launcher_detail">Open Kuikly route launcher and icon compare.</string>
     <string name="settings_developer_presets">Presets</string>
@@ -2021,7 +2021,6 @@
     <string name="settings_developer_error_urls">API Base URL and Socket Base URL must start with http.</string>
     <string name="settings_developer_state_preset">Preset</string>
     <string name="settings_diagnostics_subtitle">Sanitized logs and diagnostics</string>
-    <string name="settings_diagnostics_detail">Auth, sanitized app diagnostics, and Kuikly profiler status</string>
     <string name="settings_diagnostics_section_environment">Environment</string>
     <string name="settings_diagnostics_section_load_status">Load status</string>
     <string name="settings_diagnostics_section_actions">Actions</string>
@@ -2029,19 +2028,9 @@
     <string name="settings_diagnostics_export_logs_detail">Export environment, status, and recent app JSONL logs.</string>
     <string name="settings_diagnostics_action_send">Send diagnostics</string>
     <string name="settings_diagnostics_send_detail">Share sanitized diagnostics with support.</string>
-    <string name="settings_diagnostics_detail_profiler">Auth, sanitized app diagnostics, and Kuikly recomposition profiler</string>
     <string name="settings_diagnostics_detail_basic">Auth and sanitized app diagnostics</string>
     <string name="settings_diagnostics_partial">Partial diagnostics</string>
     <string name="settings_diagnostics_state_partial">Partial</string>
-    <string name="settings_diagnostics_profiler_title">Recomposition profiler</string>
-    <string name="settings_diagnostics_profiler_status">Shared profiler status</string>
-    <string name="settings_diagnostics_profiler_detail">Persist this debug switch locally. When enabled, shared settings asks the host bridge to acknowledge profiler mode, applies the default Kuikly profile, and starts collecting recompositions.</string>
-    <string name="settings_diagnostics_profiler_reset">Reset scene window</string>
-    <string name="settings_diagnostics_profiler_reset_detail">Clear the current in-memory counters right before opening the target page or replaying the target interaction.</string>
-    <string name="settings_diagnostics_profiler_refresh">Refresh report</string>
-    <string name="settings_diagnostics_profiler_refresh_detail">Call getReport(saveToFile=false) to refresh the current summary without rewriting files.</string>
-    <string name="settings_diagnostics_profiler_export">Export report</string>
-    <string name="settings_diagnostics_profiler_export_detail">Call getReport(saveToFile=true) and keep profiler_frames.jsonl beside profiler_report.json for analyzer input.</string>
     <string name="settings_diagnostics_apple_signin_override">Apple sign-in (local test)</string>
     <string name="settings_diagnostics_apple_signin_override_detail">Locally show the Apple button on the login page for testing. The backend platform=mobile gate still decides whether an Apple sign-in start succeeds.</string>
     <string name="settings_diagnostics_label_app">App</string>
@@ -2066,12 +2055,6 @@
     <string name="settings_diagnostics_state_socket">Socket</string>
     <string name="settings_state_on">On</string>
     <string name="settings_state_off">Off</string>
-    <string name="settings_state_pending">Pending</string>
-    <string name="settings_state_reset">Reset</string>
-    <string name="settings_state_wait">Wait</string>
-    <string name="settings_state_refresh">Refresh</string>
-    <string name="settings_state_pull">Pull</string>
-    <string name="settings_state_write">Write</string>
     <string name="settings_state_open">Open</string>
     <string name="settings_state_disabled">Disabled</string>
     <string name="settings_state_loading">Loading</string>

@@ -51,7 +51,6 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("scroll").add_argument("--direction")
     sub.add_parser("press-key").add_argument("key")
     sub.add_parser("capture-logcat")
-    sub.add_parser("pull-profiler")
 
     return p
 

@@ -1115,11 +1115,6 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                                     .toDiagnosticsScreenLoadState()
                         }
                     },
-                    onSetProfilerEnabled = { enabled ->
-                        bridgeCallScope.launch {
-                            diagnosticsState = settingsDataSource.setRecompositionProfilerEnabled(enabled).toDiagnosticsScreenLoadState()
-                        }
-                    },
                     onSetAppleSignInLocalOverride = { enabled ->
                         bridgeCallScope.launch {
                             diagnosticsState =
@@ -1128,31 +1123,6 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                         }
                     },
                     onCopyValue = { value -> settingsCapabilities.bridgeCopyToClipboard(value) },
-                    onStartProfiler = {
-                        bridgeCallScope.launch {
-                            diagnosticsState = settingsDataSource.startRecompositionProfiler().toDiagnosticsScreenLoadState()
-                        }
-                    },
-                    onStopProfiler = {
-                        bridgeCallScope.launch {
-                            diagnosticsState = settingsDataSource.stopRecompositionProfiler().toDiagnosticsScreenLoadState()
-                        }
-                    },
-                    onResetProfiler = {
-                        bridgeCallScope.launch {
-                            diagnosticsState = settingsDataSource.resetRecompositionProfiler().toDiagnosticsScreenLoadState()
-                        }
-                    },
-                    onRefreshProfilerReport = {
-                        bridgeCallScope.launch {
-                            diagnosticsState = settingsDataSource.refreshRecompositionProfilerReport().toDiagnosticsScreenLoadState()
-                        }
-                    },
-                    onExportProfilerReport = {
-                        bridgeCallScope.launch {
-                            diagnosticsState = settingsDataSource.exportRecompositionProfilerReport().toDiagnosticsScreenLoadState()
-                        }
-                    },
                     onSendFeedback = {
                         bridgeCallScope.launch {
                             val about = (aboutState as? ScreenLoadState.Content<SharedSettingsAboutSnapshot>)?.data

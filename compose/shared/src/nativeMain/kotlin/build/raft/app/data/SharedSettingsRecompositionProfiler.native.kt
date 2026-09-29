@@ -1,8 +1,0 @@
-package build.raft.app.data
-
-internal actual fun sharedProfilerSupportState(): SharedSettingsRecompositionProfilerSupportState =
-    SharedSettingsRecompositionProfilerSupportState(
-        supported = false,
-        gateLabel = "Unavailable",
-        unavailableDetail = "Recomposition profiler debug controls are not enabled on the current native host."
-    )

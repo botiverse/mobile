@@ -2003,7 +2003,7 @@
     <string name="settings_developer_environment_detail">选择预设，或编辑 API、Socket 和 Web 地址。</string>
     <string name="settings_developer_state_current">当前</string>
     <string name="settings_developer_state_realtime">实时</string>
-    <string name="settings_developer_diagnostics_detail">打开认证、脱敏日志、性能分析和反馈工具。</string>
+    <string name="settings_developer_diagnostics_detail">打开认证、脱敏日志和反馈工具。</string>
     <string name="settings_developer_route_launcher">路由启动器</string>
     <string name="settings_developer_route_launcher_detail">打开 Kuikly 路由启动器和图标对比。</string>
     <string name="settings_developer_presets">预设</string>
@@ -2021,7 +2021,6 @@
     <string name="settings_developer_error_urls">API 基础地址和 Socket 基础地址必须以 http 开头。</string>
     <string name="settings_developer_state_preset">预设</string>
     <string name="settings_diagnostics_subtitle">脱敏日志与诊断</string>
-    <string name="settings_diagnostics_detail">认证、脱敏应用诊断和 Kuikly 性能分析状态</string>
     <string name="settings_diagnostics_section_environment">环境</string>
     <string name="settings_diagnostics_section_load_status">加载状态</string>
     <string name="settings_diagnostics_section_actions">操作</string>
@@ -2029,19 +2028,9 @@
     <string name="settings_diagnostics_export_logs_detail">导出环境、状态和近期应用 JSONL 日志。</string>
     <string name="settings_diagnostics_action_send">发送诊断</string>
     <string name="settings_diagnostics_send_detail">向支持团队分享脱敏诊断信息。</string>
-    <string name="settings_diagnostics_detail_profiler">认证、脱敏应用诊断和 Kuikly 重组性能分析</string>
     <string name="settings_diagnostics_detail_basic">认证和脱敏应用诊断</string>
     <string name="settings_diagnostics_partial">部分诊断信息</string>
     <string name="settings_diagnostics_state_partial">部分</string>
-    <string name="settings_diagnostics_profiler_title">重组性能分析器</string>
-    <string name="settings_diagnostics_profiler_status">共享性能分析器状态</string>
-    <string name="settings_diagnostics_profiler_detail">在本地持久化此调试开关。启用后，共享设置会请求宿主桥确认性能分析模式、应用默认 Kuikly 配置并开始采集重组数据。</string>
-    <string name="settings_diagnostics_profiler_reset">重置场景窗口</string>
-    <string name="settings_diagnostics_profiler_reset_detail">在打开目标页面或重放目标交互前，清除当前内存计数器。</string>
-    <string name="settings_diagnostics_profiler_refresh">刷新报告</string>
-    <string name="settings_diagnostics_profiler_refresh_detail">调用 getReport(saveToFile=false) 刷新当前摘要且不重写文件。</string>
-    <string name="settings_diagnostics_profiler_export">导出报告</string>
-    <string name="settings_diagnostics_profiler_export_detail">调用 getReport(saveToFile=true)，并将 profiler_frames.jsonl 与 profiler_report.json 一同保留供分析器使用。</string>
     <string name="settings_diagnostics_apple_signin_override">Apple 登录（本地测试）</string>
     <string name="settings_diagnostics_apple_signin_override_detail">在登录页本地显示 Apple 按钮以便测试。Apple 登录能否真正发起仍由后端 platform=mobile 开关决定。</string>
     <string name="settings_diagnostics_label_app">应用</string>
@@ -2066,12 +2055,6 @@
     <string name="settings_diagnostics_state_socket">Socket</string>
     <string name="settings_state_on">开启</string>
     <string name="settings_state_off">关闭</string>
-    <string name="settings_state_pending">待处理</string>
-    <string name="settings_state_reset">重置</string>
-    <string name="settings_state_wait">等待</string>
-    <string name="settings_state_refresh">刷新</string>
-    <string name="settings_state_pull">拉取</string>
-    <string name="settings_state_write">写入</string>
     <string name="settings_state_open">打开</string>
     <string name="settings_state_disabled">已停用</string>
     <string name="settings_state_loading">加载中</string>

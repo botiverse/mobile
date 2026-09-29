@@ -42,7 +42,6 @@ DECLARED_TEST_IDS=(
   "composer-session-retirement"
   "thread-composer-suggestion-interaction"
   "multiline-text-field-value"
-  "kuikly-profiler-runtime-smoke"
   "attachment-private-file-provider"
   "attachment-atomic-sink"
   "attachment-download-runtime"
@@ -105,12 +104,6 @@ init_test_metadata() {
   TEST_RETRIES["multiline-text-field-value"]=1
   TEST_OUTPUT["multiline-text-field-value"]="multiline-text-field-value-instrumentation.txt"
   TEST_CONDITION["multiline-text-field-value"]="always"
-
-  TEST_CLASS["kuikly-profiler-runtime-smoke"]="build.raft.app.shared.KuiklyProfilerRuntimeSmokeTest"
-  TEST_RUNNER["kuikly-profiler-runtime-smoke"]="$RUNNER_CONNECTED"
-  TEST_RETRIES["kuikly-profiler-runtime-smoke"]=1
-  TEST_OUTPUT["kuikly-profiler-runtime-smoke"]="kuikly-profiler-runtime-smoke-instrumentation.txt"
-  TEST_CONDITION["kuikly-profiler-runtime-smoke"]="always"
 
   TEST_CLASS["attachment-private-file-provider"]="build.raft.app.shared.AndroidAttachmentPrivateFileProviderConnectedTest"
   TEST_RUNNER["attachment-private-file-provider"]="$RUNNER_CONNECTED"
