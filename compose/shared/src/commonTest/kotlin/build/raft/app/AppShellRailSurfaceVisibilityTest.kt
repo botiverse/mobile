@@ -112,4 +112,36 @@ class AppShellRailSurfaceVisibilityTest {
             )
         )
     }
+
+    @Test
+    fun `activity destination survives narrowing once reached`() {
+        val legacy = SlockSlackNavTabs.LegacyOrder
+        // Wide rail: Activity allowed even under legacy keys.
+        assertTrue(
+            SlockSlackNavTabs.Activity in
+                appShellAllowedTabKeys(legacy, railActive = true, railInlineSecondaryDestination = null, activityReachedThisSession = false)
+        )
+        // Narrow while an inline destination covers the middle pane: still allowed.
+        assertTrue(
+            SlockSlackNavTabs.Activity in
+                appShellAllowedTabKeys(legacy, railActive = false, railInlineSecondaryDestination = AppShellRailSearchKey, activityReachedThisSession = false)
+        )
+        // Narrow after the destination was reached earlier this session: still allowed.
+        assertTrue(
+            SlockSlackNavTabs.Activity in
+                appShellAllowedTabKeys(legacy, railActive = false, railInlineSecondaryDestination = null, activityReachedThisSession = true)
+        )
+        // Narrow with Activity never reached: legacy clamp unchanged.
+        assertFalse(
+            SlockSlackNavTabs.Activity in
+                appShellAllowedTabKeys(legacy, railActive = false, railInlineSecondaryDestination = null, activityReachedThisSession = false)
+        )
+        // Slack order already contains Activity: never duplicated.
+        val slack = SlockSlackNavTabs.DefaultOrder
+        assertTrue(
+            appShellAllowedTabKeys(slack, railActive = true, railInlineSecondaryDestination = null, activityReachedThisSession = false).count {
+                it == SlockSlackNavTabs.Activity
+            } == 1
+        )
+    }
 }

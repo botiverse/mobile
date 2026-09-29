@@ -1249,6 +1249,25 @@ internal fun appShellRailSurfaceBackDismissesDetailFirst(
                 retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity
         )
 
+/**
+ * task #13 destination preservation: once the wide rail (or an inline rail destination like
+ * Search) has let the user reach Activity — a rail-only key absent from the legacy ordered
+ * tab set — narrowing back to compact must not silently evict that live selection to Home.
+ * The Activity key stays allowed for the rest of the shell session once reachable; unrelated
+ * keys still clamp to Home exactly as before.
+ */
+internal fun appShellAllowedTabKeys(
+    tabKeys: List<String>,
+    railActive: Boolean,
+    railInlineSecondaryDestination: String?,
+    activityReachedThisSession: Boolean,
+): List<String> =
+    if (railActive || railInlineSecondaryDestination != null || activityReachedThisSession) {
+        if (SlockSlackNavTabs.Activity in tabKeys) tabKeys else tabKeys + SlockSlackNavTabs.Activity
+    } else {
+        tabKeys
+    }
+
 internal fun shouldHandleAppShellTabSelection(currentTab: String, nextTab: String): Boolean =
     retainedAppShellSelectedTab(currentTab) != retainedAppShellSelectedTab(nextTab)
 
@@ -2050,6 +2069,10 @@ private fun SlockAppShellReadyContent(
     // destination rendered INLINE in the AppShell middle pane — never a pushed secondary page
     // (the rail must stay). Narrow or flag-off keeps the legacy push path unchanged.
     var railInlineSecondaryDestination by remember { mutableStateOf<String?>(null) }
+    // task #13: once a rail surface exposes Activity (rail active or an inline destination is
+    // covering the middle pane) the live tab must survive width transitions — narrowing must
+    // not clamp a user-reached Activity selection back to Home.
+    var railActivityReached by remember { mutableStateOf(false) }
     val bottomTabTapClock = remember { TimeSource.Monotonic.markNow() }
     var hostNetworkStatus by remember { mutableStateOf(SlockAppShellNetworkStatus.Online) }
     val childTabShellId = remember(pager.pagerId) { "app-shell-child-tabs-${pager.pagerId}" }
@@ -2976,7 +2999,13 @@ private fun SlockAppShellReadyContent(
     // the Slack keys are not child pages, and with the gate on the legacy hidden keys (tasks/
     // members) are not first-class tabs anymore. Home is the safe anchor in both cases.
     // Mirrors selectAppShellTab but avoids the local-function ordering constraint.
-    LaunchedEffect(slackNavTabKeys, selectedTab, largeScreenNavigation, shellScope.adaptivePane) {
+    LaunchedEffect(
+        slackNavTabKeys,
+        selectedTab,
+        largeScreenNavigation,
+        shellScope.adaptivePane,
+        railInlineSecondaryDestination,
+    ) {
         // task #13: while the wide rail is active, Activity is a first-class rail
         // destination even under the legacy tab order — the clamp must not evict it.
         // navRailActive is declared later in this composable, so inline the same
@@ -2987,8 +3016,19 @@ private fun SlockAppShellReadyContent(
                 navigationPreference = largeScreenNavigation,
                 paneState = shellScope.adaptivePane
             )
+        if (
+            retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity &&
+            (railActive || railInlineSecondaryDestination != null)
+        ) {
+            railActivityReached = true
+        }
         val allowedKeys =
-            if (railActive) slackNavTabKeys + SlockSlackNavTabs.Activity else slackNavTabKeys
+            appShellAllowedTabKeys(
+                tabKeys = slackNavTabKeys,
+                railActive = railActive,
+                railInlineSecondaryDestination = railInlineSecondaryDestination,
+                activityReachedThisSession = railActivityReached,
+            )
         if (retainedAppShellSelectedTab(selectedTab) !in allowedKeys) {
             bridge.log(
                 "app_shell_slack_nav_tab_clamp selectedTab=$selectedTab keys=${slackNavTabKeys.joinToString(",")}"
