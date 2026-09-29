@@ -1039,7 +1039,9 @@ private fun SharedActivityList(
         }
     var activeMenuItem by remember { mutableStateOf<InboxItem?>(null) }
     var menuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
-    var selectedItemKey by remember { mutableStateOf<String?>(null) }
+    var selectedItemKey by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
+        mutableStateOf(restoredPresentation.selectedItemKey)
+    }
     var updateTracking by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
         mutableStateOf(restoredPresentation.updateTracking)
     }
@@ -1072,7 +1074,8 @@ private fun SharedActivityList(
                     presentedItems = presentedItems,
                     updateTracking = updateTracking,
                     presentationGeneration = presentationGeneration,
-                    pullRefreshInFlight = pullRefreshInFlight
+                    pullRefreshInFlight = pullRefreshInFlight,
+                    selectedItemKey = selectedItemKey
                 )
         )
     }
@@ -1103,6 +1106,12 @@ private fun SharedActivityList(
         if (selected != null && presentedItems.none { it.key == selected }) {
             selectedItemKey = null
         }
+    }
+    // task #45: persist the selected row key with the presentation checkpoint so
+    // remounting the panel (e.g. an inline rail destination covering it) keeps
+    // the highlight instead of resetting to unselected.
+    LaunchedEffect(selectedItemKey) {
+        savePresentation()
     }
     LaunchedEffect(
         selectedFilter,
