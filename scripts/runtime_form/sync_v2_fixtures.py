@@ -26,6 +26,16 @@ FIXTURES = [
     ("KIMI_SDK_V2_FORM_JSON", "kimi-sdk.form.json"),
     ("KIMI_SDK_V2_EDIT_JSON", "kimi-sdk.edit.json"),
     ("CAPABILITIES_V2_FORM_JSON", "capabilities.form.json"),
+    # Batch 2 (slock #8612): OpenCode create/edit; retired Kimi CLI / Gemini / Antigravity edit only;
+    # option sources incl. the built-in list the server returns when probing did not succeed.
+    ("OPENCODE_V2_FORM_JSON", "opencode.form.json"),
+    ("OPENCODE_V2_EDIT_JSON", "opencode.edit.json"),
+    ("OPENCODE_V2_FALLBACK_SOURCE_JSON", "opencode.option-source.fallback.json"),
+    ("KIMI_CLI_V2_EDIT_JSON", "kimi.edit.json"),
+    ("KIMI_CLI_V2_FALLBACK_SOURCE_JSON", "kimi.option-source.fallback.json"),
+    ("GEMINI_V2_EDIT_JSON", "gemini.edit.json"),
+    ("GEMINI_V2_SOURCE_JSON", "gemini.option-source.json"),
+    ("ANTIGRAVITY_V2_EDIT_JSON", "antigravity.edit.json"),
 ]
 
 

@@ -551,3 +551,428 @@ internal const val CAPABILITIES_V2_FORM_JSON: String = """{
   }
 }
 """
+
+/** fixtures/opencode.form.json, sha256 59d6ebb15c0b4932f83692a83016a1ede0a85adf41db54e829ab3736d18d3416 */
+internal const val OPENCODE_V2_FORM_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "opencode",
+  "schemaVersion": "opencode.create.v1",
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model",
+        "hint": "Models available from this computer's OpenCode configuration."
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "opencode",
+      "schemaVersion": "opencode.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  }
+}
+"""
+
+/** fixtures/opencode.edit.json, sha256 49028ef003d1c699e68a216897bb67f29e907f881b020f87709379e35022762c */
+internal const val OPENCODE_V2_EDIT_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "opencode",
+  "schemaVersion": "opencode.create.v1",
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model",
+        "hint": "Models available from this computer's OpenCode configuration."
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "opencode",
+      "schemaVersion": "opencode.create.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  },
+  "values": {
+    "model": "deepseek/deepseek-v4-pro",
+    "envVars": {
+      "EXAMPLE_FLAG": "1"
+    }
+  }
+}
+"""
+
+/** fixtures/opencode.option-source.fallback.json, sha256 a98aca7539a5073682bf1877a7eb0efcc9ca5106189d8a2904d506732b2e87e6 */
+internal const val OPENCODE_V2_FALLBACK_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "opencode",
+  "schemaVersion": "opencode.create.v1",
+  "sourceId": "model",
+  "kind": "select",
+  "pointer": "/model",
+  "options": [
+    {
+      "value": "default",
+      "label": "Configured Default / Auto"
+    },
+    {
+      "value": "deepseek/deepseek-v4-pro",
+      "label": "DeepSeek V4 Pro · DeepSeek"
+    },
+    {
+      "value": "openrouter/anthropic/claude-opus-4.5",
+      "label": "Claude Opus 4.5 · Anthropic via OpenRouter"
+    },
+    {
+      "value": "fusecode/opus[1m]",
+      "label": "Opus 1M · FuseCode"
+    }
+  ],
+  "defaultValue": "default"
+}
+"""
+
+/** fixtures/kimi.edit.json, sha256 b9de5f5677c67fa43d90f82b3bf059742f56408522730ac46a0bd8edd4c7dea3 */
+internal const val KIMI_CLI_V2_EDIT_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "kimi",
+  "schemaVersion": "kimi.edit.v1",
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model",
+        "hint": "Models available from this computer's Kimi CLI configuration."
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "kimi",
+      "schemaVersion": "kimi.edit.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  },
+  "values": {
+    "model": "default",
+    "envVars": {}
+  }
+}
+"""
+
+/** fixtures/kimi.option-source.fallback.json, sha256 c4d56dab0e5023be2b187b2163f5c8fff84f330a8211977d806aa547a76f2775 */
+internal const val KIMI_CLI_V2_FALLBACK_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "kimi",
+  "schemaVersion": "kimi.edit.v1",
+  "sourceId": "model",
+  "kind": "select",
+  "pointer": "/model",
+  "options": [
+    {
+      "value": "default",
+      "label": "Configured Default"
+    }
+  ],
+  "defaultValue": "default"
+}
+"""
+
+/** fixtures/gemini.edit.json, sha256 caaa3e9d1a2acb8ad7c4b20a7302558bee638e14db6d78cf059da5c5cf6e7a0f */
+internal const val GEMINI_V2_EDIT_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "gemini",
+  "schemaVersion": "gemini.edit.v1",
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model"
+    ],
+    "properties": {
+      "model": {
+        "type": "string",
+        "title": "Model",
+        "minLength": 1,
+        "x-optionSource": "model"
+      },
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "model",
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "model": {
+        "label": "Model"
+      },
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {
+    "model": {
+      "protocolVersion": 1,
+      "runtimeId": "gemini",
+      "schemaVersion": "gemini.edit.v1",
+      "sourceId": "model",
+      "kind": "select",
+      "pointer": "/model"
+    }
+  },
+  "values": {
+    "model": "gemini-2.5-pro",
+    "envVars": {
+      "EXAMPLE_FLAG": "1"
+    }
+  }
+}
+"""
+
+/** fixtures/gemini.option-source.json, sha256 63e866000a4b950ef3e2958fa3c25ed7127bbd3bfc9474b6cb6f12879afa24c3 */
+internal const val GEMINI_V2_SOURCE_JSON: String = """{
+  "protocolVersion": 1,
+  "runtimeId": "gemini",
+  "schemaVersion": "gemini.edit.v1",
+  "sourceId": "model",
+  "kind": "select",
+  "pointer": "/model",
+  "options": [
+    {
+      "value": "default",
+      "label": "Configured Default / Auto"
+    },
+    {
+      "value": "gemini-3.1-pro-preview",
+      "label": "Gemini 3.1 Pro (Preview)"
+    },
+    {
+      "value": "gemini-3-flash-preview",
+      "label": "Gemini 3 Flash (Preview)"
+    },
+    {
+      "value": "gemini-2.5-pro",
+      "label": "Gemini 2.5 Pro"
+    },
+    {
+      "value": "gemini-2.5-flash",
+      "label": "Gemini 2.5 Flash"
+    }
+  ],
+  "defaultValue": "default"
+}
+"""
+
+/** fixtures/antigravity.edit.json, sha256 23a95b2d3af36c1de1bbbf7bdeb165d98546d889e94d14ffc18e2c48037b09ba */
+internal const val ANTIGRAVITY_V2_EDIT_JSON: String = """{
+  "protocolVersion": 2,
+  "runtimeId": "antigravity",
+  "schemaVersion": "antigravity.edit.v1",
+  "dataSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [],
+    "properties": {
+      "envVars": {
+        "type": "object",
+        "title": "Environment Variables",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "order": [
+      "envVars"
+    ],
+    "layout": {
+      "advanced": [
+        "/envVars"
+      ]
+    },
+    "visibility": [],
+    "localization": {
+      "envVars": {
+        "label": "Environment Variables",
+        "hint": "These will be injected into the runtime command environment."
+      }
+    }
+  },
+  "capabilities": {
+    "providerKinds": [],
+    "writeOnlyPointers": [],
+    "forbiddenPointers": [
+      "/hostUserState"
+    ]
+  },
+  "optionSources": {},
+  "values": {
+    "envVars": {
+      "EXAMPLE_FLAG": "1"
+    }
+  }
+}
+"""
