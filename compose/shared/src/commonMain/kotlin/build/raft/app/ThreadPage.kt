@@ -218,6 +218,7 @@ import build.raft.app.model.SlockTimeFormat24Hour
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
+import build.raft.app.model.isInternalJointStorageIdentity
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -2402,12 +2403,29 @@ internal fun KuiklyThreadScreenPayload.resolveReplyParentConversationOpenRequest
 ): HomeMessageOpenRequest? {
     val routeIdentity = resolveThreadRouteIdentity()
     if (routeIdentity.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
+    val parentKind = routeIdentity.parentConversationKind ?: return null
     val parentId = parentChannelId?.trim()?.takeIf { it.isNotBlank() } ?: return null
     val server = threadParentNavigationServerId(serverId)?.let(::ServerId) ?: return null
+    // The directory is a candidate projection and may be cold when Activity opens a reply
+    // thread. The route's paired parent id + typed kind is sufficient to rebuild the parent
+    // identity; if a projection is present, it must still agree with that typed kind.
     val parentProjection = conversationIdentityProvider?.resolveProjection(server, parentId)
     if (
-        routeIdentity.parentConversationKind == ConversationKind.Joint &&
-        parentProjection?.conversationKind != ConversationKind.Joint
+        parentProjection != null &&
+        parentProjection.serverId.isNotBlank() &&
+        parentProjection.serverId != server.value
+    ) {
+        return null
+    }
+    if (
+        parentKind == ConversationKind.Joint &&
+        isInternalJointStorageIdentity(parentId)
+    ) {
+        return null
+    }
+    if (
+        parentProjection != null &&
+        parentProjection.conversationKind != parentKind
     ) {
         return null
     }
@@ -2419,7 +2437,7 @@ internal fun KuiklyThreadScreenPayload.resolveReplyParentConversationOpenRequest
             source = ConversationOpenSource.ParentConversation,
             messageId = null,
             channelId = parentId,
-            conversationKind = routeIdentity.parentConversationKind
+            conversationKind = parentKind
         )
     return (resolveOpenRequest(server.value, sourceIdentity, directory) as? ConversationOpenResolution.Resolved)
         ?.request
