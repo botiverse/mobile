@@ -223,6 +223,7 @@ import build.raft.app.model.formatSlockTimestampLabel
 import build.raft.app.network.SlockRequestTimeoutException
 import build.raft.app.network.sync.ThreadRepliesReadModel
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
+import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.resolveAvatarSlot
@@ -293,6 +294,7 @@ import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.layout.wrapContentHeight
 import com.tencent.kuikly.compose.foundation.layout.wrapContentWidth
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
+import com.tencent.kuikly.compose.foundation.lazy.LazyListScope
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
@@ -7206,6 +7208,25 @@ private fun SharedThreadRouteContentContent(
             }
         } ?: false
 
+    // Decided once per thread open (a Local Feature Overrides change applies to the next open):
+    // flipping the layout under a live list would re-map every index.
+    val threadReverseLayoutEnabled =
+        remember(threadInstanceKey, markdownLightGateInputs != null) {
+            markdownLightGateInputs?.let { gateInputs ->
+                resolveThreadReverseLayoutEnabled(
+                    registry = ProcessDiagnosticFeatureFlagOverrides.registry,
+                    serverEffective =
+                        sharedStores.serverFeatureFlags.isEnabled(
+                            ServerId(gateInputs.serverId),
+                            MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
+                        ),
+                    environmentId = gateInputs.environmentId,
+                    accountId = gateInputs.accountId,
+                    serverId = gateInputs.serverId
+                )
+            } ?: false
+        }
+
     LaunchedEffect(threadInstanceKey, threadTimelineKey, timelineSlice.status, timelineSlice.messages.size) {
         if (payload.isReadyForThreadPerformanceGate() && firstContentLoggedThreadId != threadInstanceKey) {
             firstContentLoggedThreadId = threadInstanceKey
@@ -10589,6 +10610,7 @@ private fun SharedThreadRouteContentContent(
                 LocalSlockMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
                 LocalSlockMarkdownRenderConfig provides
                     SlockMarkdownRenderConfig(singleParagraphLightPath = singleParagraphLightPathEnabled),
+                LocalThreadReverseLayout provides threadReverseLayoutEnabled,
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
                 LocalThreadMessageLongPressGestureOwnerStore provides
                     threadMessageLongPressGestureOwnerStore,
@@ -16950,6 +16972,10 @@ private fun ThreadChatTabContent(
                     adaptiveEventBus = adaptiveEventBus,
                     adaptiveReadyPosted = adaptiveReadyPosted,
                 )
+            } else if (LocalThreadReverseLayout.current) {
+                // A bottom-up list has nothing to position, so there is no layout to hide: a brief
+                // wait for the first payload shows the bare page, not a loading placeholder.
+                ThreadDeferredLoadingMessage(threadInstanceKey)
             } else {
                 ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
             }
@@ -17860,13 +17886,18 @@ private fun ThreadMessagesListContent(
         } else {
             0
         }
-    val listState = rememberLazyListState(
+    // Decided once per list instance: re-mapping indices under a live list would be wrong.
+    val reverseLayoutRequested = LocalThreadReverseLayout.current
+    val reverseLayout = remember(threadInstanceKey) { reverseLayoutRequested }
+    val rawListState = rememberLazyListState(
         // Kuikly commits a non-top initial Compose viewport to native ScrollView
         // before its first child placement. Start at the final latest viewport;
         // the existing anchor owner only performs measured bottom correction.
+        // Reversed, physical item 0 (the bottom padding row) already is that viewport.
         initialFirstVisibleItemIndex =
-            threadInitialFirstVisibleItemIndex(latestItemIndex = latestItemIndex)
+            if (reverseLayout) 0 else threadInitialFirstVisibleItemIndex(latestItemIndex = latestItemIndex)
     )
+    val listState = remember(rawListState, reverseLayout) { ThreadListViewport(rawListState, reverseLayout) }
     var frozenReadAnchor by remember(threadInstanceKey, readAnchorOwner, readAnchorSessionGeneration) {
         mutableStateOf(readAnchorOwner?.let(readAnchorStore::read))
     }
@@ -20441,7 +20472,8 @@ private fun ThreadMessagesListContent(
                 )
             }
             LazyColumn(
-                state = listState,
+                state = listState.raw,
+                reverseLayout = reverseLayout,
                 modifier = Modifier.fillMaxSize()
                     .keyboardDismissModeInteractiveIOS()
                     .dismissInputFocusOnScrollableChrome()
@@ -20534,6 +20566,8 @@ private fun ThreadMessagesListContent(
                     PaddingValues(top = if (offlineLastKnownChrome.insetActive) ThreadOfflineLastKnownTipHeight else 0.dp),
                 beyondBoundsItemCount = activeListBeyondBoundsItems
             ) {
+            val threadListSegments = mutableListOf<LazyListScope.() -> Unit>()
+            threadListSegments += {
             if (renderPayload.hasThreadOriginItem()) {
                 item(key = ThreadOriginListItemKey) {
                     ThreadOriginCard(
@@ -20606,6 +20640,8 @@ private fun ThreadMessagesListContent(
                     )
                 }
             }
+            }
+            threadListSegments += {
             if (renderPayload.hasThreadHistoryBoundaryItem()) {
                 item(key = ThreadOlderMessagesListItemKey) {
                     when {
@@ -20621,6 +20657,8 @@ private fun ThreadMessagesListContent(
                     }
                 }
             }
+            }
+            threadListSegments += {
             if (showReplyEmptyState) {
                 item(key = ThreadReplyEmptyListItemKey) {
                     ThreadStateMessage(
@@ -20629,15 +20667,25 @@ private fun ThreadMessagesListContent(
                     )
                 }
             }
+            }
+            threadListSegments += {
             if (showReplyLoadingSkeleton) {
                 item(key = ThreadReplyLoadingListItemKey) {
                     ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
                 }
             }
+            }
+            threadListSegments += {
+            val messageCount = renderPayload.messages.size
             items(
-                renderPayload.messages.size,
-                key = { index -> renderPayload.messages[index].messageListItemKey(duplicateMessageRandomIds) }
-            ) { index ->
+                messageCount,
+                key = { slot ->
+                    renderPayload.messages[if (reverseLayout) messageCount - 1 - slot else slot]
+                        .messageListItemKey(duplicateMessageRandomIds)
+                }
+            ) { slot ->
+                // `index` stays the forward (oldest-first) message index in both layouts.
+                val index = if (reverseLayout) messageCount - 1 - slot else slot
                 val message = renderPayload.messages[index]
                 val absoluteMessageIndex = index
                 val previousMessage = renderPayload.messages.getOrNull(index - 1)
@@ -20923,6 +20971,8 @@ private fun ThreadMessagesListContent(
                     }
                 }
             }
+            }
+            threadListSegments += {
             if (renderPayload.canLoadMoreAfter) {
                 item(key = ThreadNewerMessagesListItemKey) {
                     ThreadNewerMessagesBoundaryRow(
@@ -20931,6 +20981,8 @@ private fun ThreadMessagesListContent(
                     )
                 }
             }
+            }
+            threadListSegments += {
             item(key = ThreadBottomScrollPaddingListItemKey) {
                 Spacer(
                     modifier = Modifier
@@ -20946,6 +20998,10 @@ private fun ThreadMessagesListContent(
                         )
                 )
             }
+            }
+            // Reversed (bottom-up) layout emits the same rows newest-first: physical item 0 is the
+            // bottom padding row, the messages count down, the origin card comes last (at the top).
+            (if (reverseLayout) threadListSegments.asReversed() else threadListSegments).forEach { segment -> segment() }
         }
         if (inlineSearchVisible) {
             ThreadInlineSearchBar(
@@ -21764,7 +21820,7 @@ private data class ThreadLazyWindowStats(
 private fun threadMessagePerformanceKey(messageId: String, index: Int): String =
     "message:$index:${messageId.take(8)}"
 
-private fun LazyListState.threadLazyWindowStats(
+private fun ThreadListViewport.threadLazyWindowStats(
     timelineSlice: ThreadTimelineSlice,
     lazyItemCount: Int,
     beyondBoundsItems: Int
@@ -22704,7 +22760,7 @@ private class ThreadUserScrollGeneration(
     var value: Int = 0
 )
 
-private fun LazyListState.threadFirstVisibleMessageAnchor(
+private fun ThreadListViewport.threadFirstVisibleMessageAnchor(
     timelineSlice: ThreadTimelineSlice,
     userScrollGeneration: Int
 ): ThreadVisibleMessageAnchor? {
@@ -22747,7 +22803,7 @@ internal fun ThreadTimelineSlice.visibleThreadReadAnchor(
         .maxByOrNull { anchor -> anchor.seq }
 }
 
-private fun LazyListState.isThreadOlderAutoLoadThreshold(
+private fun ThreadListViewport.isThreadOlderAutoLoadThreshold(
     boundaryIndex: Int,
     userScrollGeneration: Int,
     lastSettledUserScrollGeneration: Int
@@ -22775,7 +22831,7 @@ internal fun shouldThreadAutoLoadOlderMessages(
     return firstVisibleIndex <= boundaryIndex + ThreadOlderAutoLoadVisibleItemThreshold
 }
 
-private suspend fun LazyListState.awaitThreadMessagesLayoutFrame(): Boolean {
+private suspend fun ThreadListViewport.awaitThreadMessagesLayoutFrame(): Boolean {
     repeat(ThreadLayoutStabilityMaxFrames) {
         val layoutInfo = layoutInfo
         if (layoutInfo.totalItemsCount > 0 &&
@@ -22789,20 +22845,20 @@ private suspend fun LazyListState.awaitThreadMessagesLayoutFrame(): Boolean {
     return false
 }
 
-private fun LazyListState.isThreadItemVisible(index: Int): Boolean {
+private fun ThreadListViewport.isThreadItemVisible(index: Int): Boolean {
     if (index < 0) return false
     return layoutInfo.visibleItemsInfo.any { it.index == index }
 }
 
 // task #567: the target's current offset inside the viewport, or null when it
 // is not among the visible items (= fully drifted).
-private fun LazyListState.focusedAnchorTargetOffset(targetIndex: Int): Int? =
+private fun ThreadListViewport.focusedAnchorTargetOffset(targetIndex: Int): Int? =
     layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }?.offset
 
-private fun LazyListState.canScrollToThreadItem(index: Int): Boolean =
+private fun ThreadListViewport.canScrollToThreadItem(index: Int): Boolean =
     index >= 0 && layoutInfo.totalItemsCount > index
 
-private suspend fun LazyListState.scrollLatestItemToRenderedBottom(
+private suspend fun ThreadListViewport.scrollLatestItemToRenderedBottom(
     latestItemIndex: Int,
     trailingPaddingSize: Int = 0,
     commandStillCurrent: () -> Boolean
@@ -22830,7 +22886,7 @@ private suspend fun LazyListState.scrollLatestItemToRenderedBottom(
     return commandStillCurrent()
 }
 
-private suspend fun LazyListState.scrollThreadItemToFocusedViewport(
+private suspend fun ThreadListViewport.scrollThreadItemToFocusedViewport(
     itemIndex: Int,
     commandStillCurrent: () -> Boolean
 ): Boolean {
@@ -22863,7 +22919,7 @@ private suspend fun LazyListState.scrollThreadItemToFocusedViewport(
     return didScroll
 }
 
-private suspend fun LazyListState.scrollThreadItemToRenderedBottom(
+private suspend fun ThreadListViewport.scrollThreadItemToRenderedBottom(
     itemIndex: Int,
     trailingPaddingSize: Int,
     commandStillCurrent: () -> Boolean
@@ -22898,7 +22954,7 @@ private suspend fun LazyListState.scrollThreadItemToRenderedBottom(
     return didScroll
 }
 
-private fun LazyListState.threadFocusedTailFit(
+private fun ThreadListViewport.threadFocusedTailFit(
     targetItemIndex: Int,
     latestMessageItemIndex: Int,
     bottomPaddingItemIndex: Int,
@@ -22921,7 +22977,7 @@ private fun LazyListState.threadFocusedTailFit(
     )
 }
 
-private fun LazyListState.threadViewportGeometryDiagnostics(targetIndex: Int): String {
+private fun ThreadListViewport.threadViewportGeometryDiagnostics(targetIndex: Int): String {
     val info = layoutInfo
     val visibleItems = info.visibleItemsInfo
     val first = visibleItems.firstOrNull()
@@ -22933,7 +22989,7 @@ private fun LazyListState.threadViewportGeometryDiagnostics(targetIndex: Int): S
         "target=${target?.index ?: -1}:${target?.offset ?: 0}+${target?.size ?: 0}"
 }
 
-private suspend fun LazyListState.awaitThreadMessagesLayoutStability(
+private suspend fun ThreadListViewport.awaitThreadMessagesLayoutStability(
     latestItemIndex: Int
 ): Boolean {
     var previous: ThreadMessagesLayoutStabilitySnapshot? = null
@@ -22954,7 +23010,7 @@ private suspend fun LazyListState.awaitThreadMessagesLayoutStability(
     return false
 }
 
-private fun LazyListState.threadMessagesLayoutStabilitySnapshot(
+private fun ThreadListViewport.threadMessagesLayoutStabilitySnapshot(
     latestItemIndex: Int
 ): ThreadMessagesLayoutStabilitySnapshot {
     val layoutInfo = layoutInfo
@@ -23029,7 +23085,7 @@ internal fun threadFocusedItemScrollOffset(
     return 0
 }
 
-private fun LazyListState.shouldShowThreadBackToBottom(latestItemIndex: Int): Boolean {
+private fun ThreadListViewport.shouldShowThreadBackToBottom(latestItemIndex: Int): Boolean {
     if (latestItemIndex <= 0) return false
     if (!canScrollForward) return false
     val layoutInfo = layoutInfo
@@ -23039,7 +23095,7 @@ private fun LazyListState.shouldShowThreadBackToBottom(latestItemIndex: Int): Bo
     return latestBottom < layoutInfo.viewportEndOffset - ThreadBackToBottomTolerancePx
 }
 
-private fun LazyListState.isLatestItemAtRenderedBottom(
+private fun ThreadListViewport.isLatestItemAtRenderedBottom(
     latestItemIndex: Int,
     trailingPaddingSize: Int = 0
 ): Boolean {
@@ -32179,6 +32235,23 @@ private fun localizedThreadJoinLabel(value: String): String =
     } else {
         value
     }
+
+/** The loading placeholder, shown only once a load has taken longer than [ThreadLoadingRevealDelayMs]. */
+@Composable
+private fun ThreadDeferredLoadingMessage(threadInstanceKey: String) {
+    var revealed by remember(threadInstanceKey) { mutableStateOf(false) }
+    LaunchedEffect(threadInstanceKey) {
+        delay(ThreadLoadingRevealDelayMs)
+        revealed = true
+    }
+    if (revealed) {
+        ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
+    } else {
+        Box(modifier = Modifier.fillMaxSize())
+    }
+}
+
+internal const val ThreadLoadingRevealDelayMs = 600L
 
 @Composable
 private fun ThreadStateMessage(title: String, detail: String?) {
