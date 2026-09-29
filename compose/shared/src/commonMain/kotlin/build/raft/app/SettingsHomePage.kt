@@ -4661,7 +4661,7 @@ private fun SlockAppShellReadyContent(
             appShellRailSurfaceBackDismissesDetailFirst(
                 selectedTab = selectedTab,
                 railInlineSecondaryDestination = railInlineSecondaryDestination,
-                selectionPresent = adaptiveWorkspaceState?.selection != null,
+                selectionPresent = adaptiveWorkspaceStore.snapshot().workspace?.selection != null,
             )
         ) {
             dismissAdaptiveDetailSelection()
@@ -6515,16 +6515,21 @@ private fun SlockAppShellReadyContent(
                                 inlineOnClose = {
                                     // Same ordering as popMainRoute: a mounted detail
                                     // closes before the inline Search destination exits.
+                                    // Read the store snapshot, not the compose state: the
+                                    // remember-keyed environment may hold this lambda across
+                                    // recompositions, so only the store has the live truth.
+                                    val liveSelection =
+                                        adaptiveWorkspaceStore.snapshot().workspace?.selection
                                     val dismissFirst =
                                         appShellRailSurfaceBackDismissesDetailFirst(
                                             selectedTab = selectedTab,
                                             railInlineSecondaryDestination = railInlineSecondaryDestination,
-                                            selectionPresent = adaptiveWorkspaceState?.selection != null,
+                                            selectionPresent = liveSelection != null,
                                         )
                                     bridge.log(
                                         "rail_inline_secondary_close destination=$railInlineSecondaryDestination " +
                                             "selectedTab=$selectedTab dismissFirst=$dismissFirst " +
-                                            "selection=${adaptiveWorkspaceState?.selection?.identity?.key.orEmpty()}"
+                                            "selection=${liveSelection?.identity?.key.orEmpty()}"
                                     )
                                     if (dismissFirst) {
                                         dismissAdaptiveDetailSelection()

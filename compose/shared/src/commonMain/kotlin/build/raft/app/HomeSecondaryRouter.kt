@@ -213,7 +213,10 @@ private fun rememberHomeSecondaryRouteEnvironment(
         storeScope,
         hasExplicitShellScope,
         adaptivePane,
-        shellScope
+        shellScope,
+        inlineOpenRequest,
+        inlineOpenEntity,
+        inlineOnClose,
     ) {
         HomeSecondaryRouteEnvironment(
             pager = pager,
