@@ -186,7 +186,7 @@ class SlockMarkdownTest {
         val resolved = source.withSlockMessagePermalinkChips { "proj-server-management" }
         val labelStyle =
             resolved.spanStyles.first {
-                it.item.fontSize == 14.sp && it.item.fontWeight == FontWeight.Bold
+                it.item.fontSize == 14.sp && it.item.fontFamily == slockFontFamilyForWeight(FontWeight.Bold)
             }
         val suffixStyle = resolved.spanStyles.first { it.item.fontSize == 10.sp }
 
