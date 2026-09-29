@@ -1,6 +1,6 @@
-# Test-only A4 integration revision 14 — DO NOT MERGE
+# Test-only A4 integration revision 15 — DO NOT MERGE
 
-Shared PR2730: 8e5dff7fcd6ea767caf613d488432ad67af17d51 (rebased main includes layout 2727/2728).
+Shared PR2730: b7fb7f346aa3b187c4c87a4da13efc2f3dd879ed (rebased main includes layout 2727/2728).
 Native PR2731: 4d1628e4779a9fd593dce0d84c98b822084b0b1c.
 
 This QA branch alone sets the source initiation default and nativeGuardedCommitAvailable true.
@@ -64,3 +64,16 @@ generation and acknowledged state. Both delay jobs are canceled on disposal and
 run in the existing shell coroutine scope. Product shared/native heads unchanged.
 Revision13 proved settlement and old READY rejection after the new request settled;
 this additional interleaving must be independently captured, not inferred.
+
+Revision 15 integrates nonempty restoration arbitration and persisted readback fields.
+Revision 14 proved old READY isolation while the new generation remained pending,
+but its 52-row QA fixture lost middle position after successful native commit.
+Source item18/-72px became final item2/-21px; initial bottom positioning also ran
+after READY, though the exact causal chain remains unproven. This revision ends
+the initial bottom loop after nonlatest restoration, disables automatic bottom
+following for that restored view, and writes staged target/offset and immediate
+scroll readback to device diagnostics. Keep both QA READY delays at zero for
+this ordinary nonempty test. Compare staged, immediate and final 777x834 viewport;
+do not treat ordered hops or anchorConsumed alone as acceptance. atLatest and
+restore-skipped paths require separate coverage. Product defaults remain OFF;
+this is an unreviewed QA integration carrier, not a product merge verdict.
