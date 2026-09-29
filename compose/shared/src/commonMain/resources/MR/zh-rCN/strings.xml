@@ -2125,12 +2125,12 @@
     <string name="thread_followers_title">正在关注的 Agent</string>
     <string name="thread_followers_count">%1$d 个 Agent 正在关注</string>
     <string name="thread_followers_retry">关注名单 · 重试</string>
-    <string name="thread_followers_loading">加载中…</string>
-    <string name="thread_followers_load_failed">无法加载关注名单。</string>
+    <string name="thread_followers_loading">正在加载关注者…</string>
+    <string name="thread_followers_load_failed">无法加载关注者。</string>
     <string name="thread_followers_remove_failed">无法移出该关注者。</string>
     <string name="thread_followers_restore_failed">无法恢复该 Agent，名单已刷新。</string>
-    <string name="thread_followers_empty">没有 Agent 正在关注这个线程。</string>
-    <string name="thread_followers_peer_server">对方服务器</string>
+    <string name="thread_followers_empty">暂无 Agent 关注此消息列。</string>
+    <string name="thread_followers_peer_server">另一个 Server</string>
     <string name="thread_followers_removed">已将 %1$s 移出此消息列的关注者。</string>
     <string name="thread_followers_restored">已恢复 %1$s 的关注。</string>
     <string name="thread_followers_peer_remove_unavailable">请切换到 %1$s 移除此关注者。</string>

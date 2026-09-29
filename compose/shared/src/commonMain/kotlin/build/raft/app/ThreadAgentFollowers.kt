@@ -15,6 +15,7 @@ import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
+import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.layout.onSizeChanged
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
@@ -144,8 +145,9 @@ internal fun ThreadFollowersOverlayHost(content: @Composable () -> Unit) {
                         SlockLucideIcon(if (isError) SlockLucideIconName.Info else SlockLucideIconName.CircleCheck, Modifier.size(16.dp))
                         Text(label, style = SlockType.Caption, color = theme.ink, modifier = Modifier.weight(1f))
                         if (notice.kind == ThreadFollowersNoticeKind.Removed && overlay.state.undo != null) {
-                            Text(stringResource(MR.strings.common_undo), style = SlockType.Caption, color = theme.ink,
-                                modifier = Modifier.clickable(enabled = !overlay.state.mutating) { overlay.dispatch(ThreadAgentFollowersIntent.Undo) }.padding(6.dp))
+                            Box(Modifier.clickable(enabled = !overlay.state.mutating) { overlay.dispatch(ThreadAgentFollowersIntent.Undo) }.padding(6.dp)) {
+                                Text(stringResource(MR.strings.common_undo), style = SlockType.Caption, color = theme.ink)
+                            }
                         }
                     }
                 }
@@ -167,6 +169,7 @@ internal fun ThreadAgentFollowersHeader(
     val stableDispatch = remember { { intent: ThreadAgentFollowersIntent -> latestDispatch(intent) } }
     SideEffect { owner?.value = FollowersOverlay(state, resolver, stableDispatch) }
     DisposableEffect(owner) { onDispose { owner?.value = null } }
+    if (agents.isEmpty() && !state.open && state.error != ThreadFollowersError.Load) return
     // Keep the live anchor while an empty popover is open, but never leave an empty trigger.
     Box(Modifier.slockCaptureLiveRootAnchor(anchorRef)) {
         if (agents.isNotEmpty() || state.error == ThreadFollowersError.Load) {
@@ -201,6 +204,7 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: SlockPopo
     val agents = state.roster?.agents.orEmpty()
     val theme = LocalSlockTheme.current
     val density = LocalDensity.current
+    var peerHint by remember { mutableStateOf<String?>(null) }
     val width = 288.dp
     // Real measured height replaces this estimate after the first layout.
     var measuredSize by remember { mutableStateOf(Size.Zero) }
@@ -218,40 +222,56 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: SlockPopo
         Column(Modifier.width(width).onSizeChanged { measuredSize = Size(it.width.toFloat(), it.height.toFloat()) }
             .background(theme.surface, RoundedCornerShape(theme.cornerRadius))
             .border(theme.lineWidth, theme.line, RoundedCornerShape(theme.cornerRadius)).clickable { }) {
-            Text(stringResource(MR.strings.thread_followers_title), style = SlockType.Body, color = theme.ink,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp))
+            Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
+                Text(stringResource(MR.strings.thread_followers_title), style = SlockType.Body, color = theme.ink)
+            }
             if (state.loading && agents.isEmpty()) {
-                Text(stringResource(MR.strings.thread_followers_loading), style = SlockType.Caption, color = theme.inkMuted, modifier = Modifier.padding(16.dp))
+                Box(Modifier.padding(16.dp)) {
+                    Text(stringResource(MR.strings.thread_followers_loading), style = SlockType.Caption, color = theme.inkMuted)
+                }
             } else if (state.error == ThreadFollowersError.Load) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(stringResource(MR.strings.thread_followers_load_failed), style = SlockType.Caption, color = theme.inkMuted)
-                    Text(stringResource(MR.strings.common_retry), style = SlockType.Caption, color = theme.ink,
-                        modifier = Modifier.clickable(enabled = !state.loading) { dispatch(ThreadAgentFollowersIntent.Refresh) }.padding(8.dp))
+                    Box(Modifier.clickable(enabled = !state.loading) { dispatch(ThreadAgentFollowersIntent.Refresh) }.padding(8.dp)) {
+                        Text(stringResource(MR.strings.common_retry), style = SlockType.Caption, color = theme.ink)
+                    }
                 }
             } else if (agents.isEmpty()) {
-                Text(stringResource(MR.strings.thread_followers_empty), style = SlockType.Caption, color = theme.inkMuted, modifier = Modifier.padding(16.dp))
+                Box(Modifier.padding(16.dp)) {
+                    Text(stringResource(MR.strings.thread_followers_empty), style = SlockType.Caption, color = theme.inkMuted)
+                }
             } else {
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp).padding(horizontal = 8.dp, vertical = 4.dp)) {
                     items(agents, key = { it.id }) { agent ->
                         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FollowerAvatar(agent, compact = false)
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text(agent.label, style = SlockType.Caption, color = theme.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            val server = agent.serverName?.takeIf { it.isNotBlank() } ?: agent.serverSlug?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.thread_followers_peer_server)
+                            val peerExplanation = stringResource(MR.strings.thread_followers_peer_remove_unavailable, server)
+                            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(agent.label, style = SlockType.Caption, color = theme.ink, modifier = Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 if (!agent.isCurrentServer) {
-                                    val server = agent.serverName?.takeIf { it.isNotBlank() } ?: agent.serverSlug?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.thread_followers_peer_server)
-                                    Text(server, style = SlockType.Caption, color = theme.inkMuted,
-                                        modifier = Modifier.background(theme.surfaceMuted).padding(horizontal = 4.dp, vertical = 2.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(stringResource(MR.strings.thread_followers_peer_remove_unavailable, server), style = SlockType.Caption, color = theme.inkMuted)
+                                    Box(Modifier.background(theme.surfaceMuted).padding(horizontal = 4.dp, vertical = 2.dp)) {
+                                        Text(server, style = SlockType.Caption, color = theme.inkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
                                 }
                             }
-                            if (state.roster?.canManage == true && agent.canRemove && agent.isCurrentServer) {
-                                val removeLabel = stringResource(MR.strings.common_remove)
+                            if (state.roster?.canManage == true) {
+                                val canRemove = agent.canRemove && agent.isCurrentServer
+                                val removeLabel = if (canRemove) stringResource(MR.strings.common_remove) else peerExplanation
                                 Box(Modifier.size(28.dp).semantics { contentDescription = removeLabel }
-                                    .clickable(enabled = !state.mutating && state.undo == null) { dispatch(ThreadAgentFollowersIntent.Remove(agent.id)) }, contentAlignment = Alignment.Center) {
-                                    SlockLucideIcon(SlockLucideIconName.X, Modifier.size(14.dp))
+                                    .clickable(enabled = !state.mutating && (state.undo == null || !canRemove)) {
+                                        if (canRemove) dispatch(ThreadAgentFollowersIntent.Remove(agent.id))
+                                        else peerHint = peerExplanation
+                                    }, contentAlignment = Alignment.Center) {
+                                    SlockLucideIcon(SlockLucideIconName.X, Modifier.size(14.dp).alpha(if (canRemove) 1f else 0.45f))
                                 }
                             }
                         }
+                    }
+                }
+                peerHint?.let { hint ->
+                    Box(Modifier.fillMaxWidth().background(theme.surfaceMuted).padding(12.dp).clickable { peerHint = null }) {
+                        Text(hint, style = SlockType.Caption, color = theme.inkMuted)
                     }
                 }
             }

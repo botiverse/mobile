@@ -104,7 +104,7 @@ internal class SharedThreadAgentFollowersStore(
                         roster = state.value.roster?.let { it.copy(agents = it.agents.filterNot { row -> row.id == id }) },
                         mutating = false, undo = pendingUndo,
                     )
-                    showNotice(ThreadFollowersNoticeKind.Removed, agent.label)
+                    if (removal.removed) showNotice(ThreadFollowersNoticeKind.Removed, agent.label)
                     expiryJob?.cancel()
                     if (pendingUndo != null) expiryJob = scope.launch {
                         delay(5_000L)
