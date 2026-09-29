@@ -920,14 +920,31 @@ private fun HomeSearchRouterContent(
         onOpenEntity = { entity ->
             val opened =
                 environment.inlineOpenEntity?.invoke(entity)
-                    ?: environment.pager.openHomeSearchEntity(
-                        bridge = environment.bridge,
-                        entity = entity,
-                        timeContext = environment.timeContext,
-                        alignOwnMessagesRight = environment.alignOwnMessagesRight,
-                        compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                        storeScope = environment.storeScope
-                    )
+                    ?: run {
+                        // task #45: OFF standalone entity opens (channel/DM search results)
+                        // park the current selection so re-enabling restores this
+                        // conversation — same contract as the message-open fallback above.
+                        (entity.destinationOrNull() as? HomeSearchEntityDestination.Conversation)
+                            ?.let { destination ->
+                                parkStandaloneSelection(
+                                    environment = environment,
+                                    workspaceStore = environment.sharedWorkspaceStore,
+                                    request =
+                                        HomeMessageOpenRequest(
+                                            conversationIdentity = destination.identity,
+                                        ),
+                                    serverId = searchServerId,
+                                )
+                            }
+                        environment.pager.openHomeSearchEntity(
+                            bridge = environment.bridge,
+                            entity = entity,
+                            timeContext = environment.timeContext,
+                            alignOwnMessagesRight = environment.alignOwnMessagesRight,
+                            compactConsecutiveMessages = environment.compactConsecutiveMessages,
+                            storeScope = environment.storeScope
+                        )
+                    }
             if (opened) {
                 val entityKey = entity.searchPersonalizationEntityKeyOrNull()
                 searchSavedViewModel.dispatch(
