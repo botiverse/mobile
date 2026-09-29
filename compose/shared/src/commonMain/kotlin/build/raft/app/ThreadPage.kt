@@ -17521,7 +17521,11 @@ private fun ThreadMessagesListContent(
             }
         val anchorStore = adaptiveSharedStores.adaptiveScrollAnchorStore(adaptiveStoreScope)
         val anchor = anchorStore.peek(adaptiveStoreScope.shellInstanceId, identity)
-        fun verifyAnchorRestore(targetMessageId: String, targetIndex: Int): Boolean {
+        fun verifyAnchorRestore(
+            targetMessageId: String,
+            targetIndex: Int,
+            expectedOffsetPx: Int,
+        ): Boolean {
             val settledIntent = viewportControllerState.intent as? LazyViewportIntent.Anchored
             if (settledIntent == null ||
                 settledIntent.target != LazyViewportAnchorTarget.Message(targetMessageId)
@@ -17539,6 +17543,21 @@ private fun ThreadMessagesListContent(
                     put("reason", "position_mismatch")
                     put("firstVisible", listState.firstVisibleItemIndex.toDouble())
                     put("targetIndex", targetIndex.toDouble())
+                }
+                return false
+            }
+            // Offset must also land on the staged value — same index with a shifted offset is a
+            // partial restore, not success. 4px matches the focused-anchor drift tolerance.
+            if (
+                kotlin.math.abs(
+                    listState.firstVisibleItemScrollOffset - expectedOffsetPx
+                ) > 4
+            ) {
+                postDetailReadyTrace("restore_rejected") {
+                    put("anchorMessageId", targetMessageId)
+                    put("reason", "offset_mismatch")
+                    put("firstVisibleOffset", listState.firstVisibleItemScrollOffset.toDouble())
+                    put("expectedOffsetPx", expectedOffsetPx.toDouble())
                 }
                 return false
             }
@@ -17577,7 +17596,7 @@ private fun ThreadMessagesListContent(
                 // Settlement returning is not proof of success: AnchorUnavailable settles too
                 // (epoch bump + pending cleared, intent degrades to UserDragging). Gate READY on
                 // intent still Anchored on the target and the readback actually showing it.
-                if (!verifyAnchorRestore(requireNotNull(anchor.messageId), locatedIndex)) {
+                if (!verifyAnchorRestore(requireNotNull(anchor.messageId), locatedIndex, anchor.messageOffsetPx)) {
                     return@LaunchedEffect
                 }
                 postDetailReadyTrace("restore_applied") {
@@ -17616,7 +17635,7 @@ private fun ThreadMessagesListContent(
                         )
                     )
                     viewportControllerState.pendingCommand?.id?.let { awaitViewportCommandSettlement(it) }
-                    if (!verifyAnchorRestore(fallbackMessageId, anchor.fallbackIndex)) {
+                    if (!verifyAnchorRestore(fallbackMessageId, anchor.fallbackIndex, anchor.messageOffsetPx)) {
                         return@LaunchedEffect
                     }
                 } else {
