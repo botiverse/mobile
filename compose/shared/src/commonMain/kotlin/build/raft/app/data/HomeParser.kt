@@ -5,6 +5,7 @@ import build.raft.app.strictMemberKindOrNull
 import build.raft.app.strictProjectionDiagnosticsLogger
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelActivityNotificationPreference
+import build.raft.app.model.ChannelCapabilities
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
@@ -73,6 +74,7 @@ data class HomeChannelWireDto(
     val activityMuteSupported: Boolean = false,
     val maxReadSeq: Long? = null,
     val readStateVersion: Long? = null,
+    val channelCapabilities: WireChannelCapabilities? = null,
 )
 
 @Serializable
@@ -128,7 +130,25 @@ private data class HomeChannelDetailWireDto(
     val readStateVersion: Long? = null,
     val lastMessagePreview: String? = null,
     val lastMessageSenderName: String? = null,
+    val channelCapabilities: WireChannelCapabilities? = null,
 )
+
+/** Wire shape of `channelCapabilities` on channel records (web parity:
+ *  `channel.channelCapabilities` in ChannelMembers.tsx). All keys optional —
+ *  an absent key means "not resolved", not "denied". */
+@Serializable
+data class WireChannelCapabilities(
+    val addChannelMembers: Boolean? = null,
+    val removeChannelMembers: Boolean? = null,
+    val changeChannelMemberRoles: Boolean? = null,
+) {
+    fun toModel(): ChannelCapabilities =
+        ChannelCapabilities(
+            addChannelMembers = addChannelMembers,
+            removeChannelMembers = removeChannelMembers,
+            changeChannelMemberRoles = changeChannelMemberRoles
+        )
+}
 
 internal fun parseSlockChannelDetail(
     bodyText: String,
@@ -184,6 +204,7 @@ internal fun parseSlockChannelDetail(
             activityMuteSupported = wire.activityMuteSupported,
             maxReadSeq = wire.maxReadSeq,
             readStateVersion = wire.readStateVersion,
+            channelCapabilities = wire.channelCapabilities,
         ).toChannelRow()
     }
 }
@@ -391,7 +412,8 @@ private fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
             canSend = joined,
             canAttach = joined,
             canCreateTask = joined
-        )
+        ),
+        channelCapabilities = channelCapabilities?.toModel()
     )
 }
 
