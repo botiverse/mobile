@@ -56,7 +56,11 @@ internal data class SharedConversationDirectoryProjection(
     val archived: Boolean = false,
     val activityNotificationPreference: ChannelActivityNotificationPreference =
         ChannelActivityNotificationPreference.Unsupported,
-    val permissions: ConversationPermissions = ConversationPermissions()
+    val permissions: ConversationPermissions = ConversationPermissions(),
+    val jointBillingLocked: Boolean? = null,
+    val jointOverLimitGraceEndsAt: String? = null,
+    // task #396: external bridge provider ("slack") carried from `channel.bridge.provider`.
+    val bridgeProvider: String? = null
 ) {
     val activityMuted: Boolean
         get() = activityNotificationPreference.activityMuted
@@ -296,16 +300,18 @@ internal fun HomeSnapshot.toSharedConversationDirectoryState(
     )
 
 internal fun InboxSnapshot.toSharedConversationDirectoryState(
+    dmPeerNames: Map<String, String> = emptyMap(),
     logger: (String) -> Unit = {}
 ): SharedConversationDirectoryState =
-    items.toSharedConversationDirectoryState(server.id, logger)
+    items.toSharedConversationDirectoryState(server.id, dmPeerNames, logger)
 
 internal fun Iterable<InboxItem>.toSharedConversationDirectoryState(
     serverId: ServerId,
+    dmPeerNames: Map<String, String> = emptyMap(),
     logger: (String) -> Unit = {}
 ): SharedConversationDirectoryState =
     sharedConversationDirectoryStateFromProjections(
-        projections = flatMap { item -> item.toSharedConversationDirectoryProjections(serverId, logger) },
+        projections = flatMap { item -> item.toSharedConversationDirectoryProjections(serverId, dmPeerNames, logger) },
         logger = logger
     )
 
@@ -441,31 +447,36 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
         joined = joined && permissions.canRead,
         archived = archived,
         activityNotificationPreference = activityNotificationPreference,
-        permissions = permissions
+        permissions = permissions,
+        jointBillingLocked = jointBillingLocked,
+        jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
+        bridgeProvider = if (kind == ConversationKind.Thread) null else bridgeProvider
     )
 }
 
 private fun InboxItem.toSharedConversationDirectoryProjections(
     serverId: ServerId,
+    dmPeerNames: Map<String, String> = emptyMap(),
     logger: (String) -> Unit
 ): List<SharedConversationDirectoryProjection> {
     val parentProjection =
         if (kind == InboxItemKind.Thread) {
-            parentChannelProjection(serverId, logger)
+            parentChannelProjection(serverId, dmPeerNames, logger)
         } else {
             null
         }
-    val itemProjection = toSharedConversationDirectoryProjection(serverId)
+    val itemProjection = toSharedConversationDirectoryProjection(serverId, dmPeerNames)
     return listOfNotNull(parentProjection, itemProjection)
 }
 
 private fun InboxItem.parentChannelProjection(
     serverId: ServerId,
+    dmPeerNames: Map<String, String> = emptyMap(),
     logger: (String) -> Unit
 ): SharedConversationDirectoryProjection? {
     val parentId = parentChannelId?.value?.takeIf { it.isNotBlank() } ?: return null
     val title =
-        parentChannelName
+        parentChannelTitle(dmPeerNames)
             .safeInboxDisplayNameOrNull(additionalIdentityIds = setOf(parentId))
             ?: parentId
     val conversationKind =
@@ -497,7 +508,8 @@ private fun InboxItem.parentChannelProjection(
 }
 
 internal fun InboxItem.toSharedConversationDirectoryProjection(
-    serverId: ServerId
+    serverId: ServerId,
+    dmPeerNames: Map<String, String> = emptyMap()
 ): SharedConversationDirectoryProjection? {
     val canonicalChannelId =
         when (kind) {
@@ -516,7 +528,7 @@ internal fun InboxItem.toSharedConversationDirectoryProjection(
         }
     val titleSource =
         when (kind) {
-            InboxItemKind.Thread -> parentChannelName ?: channelName
+            InboxItemKind.Thread -> parentChannelTitle(dmPeerNames)
             else -> channelName
         }
     val title =
@@ -563,6 +575,20 @@ internal fun InboxItem.toSharedConversationDirectoryProjection(
         parentMessageId = parentMessage
     )
 }
+
+/**
+ * task #399: the parent title for a DM-parent thread is the peer's display
+ * name (hydrated from the Home DM list), not the raw channel name; the raw
+ * name is only a fail-soft fallback when the DM list has not landed.
+ */
+private fun InboxItem.parentChannelTitle(dmPeerNames: Map<String, String>): String =
+    if (parentChannelKind == ConversationKind.DirectMessage) {
+        parentChannelId?.value?.let(dmPeerNames::get)?.takeIf { it.isNotBlank() }
+            ?: parentChannelName
+            ?: channelName
+    } else {
+        parentChannelName ?: channelName
+    }
 
 private data class SharedConversationDirectorySender(
     val messageIds: Set<String>,

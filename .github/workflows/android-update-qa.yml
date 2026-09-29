@@ -44,6 +44,11 @@ jobs:
       baseline_build: ${{ steps.inputs.outputs.baseline_build }}
       target_build: ${{ steps.inputs.outputs.target_build }}
     steps:
+      - name: Checkout version formula
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts/ci
+          sparse-checkout-cone-mode: false
       - id: inputs
         shell: bash
         run: |
@@ -58,8 +63,8 @@ jobs:
           [[ "${MAJOR}" =~ ^[1-9][0-9]*$ ]] || { echo "version_major must be a positive integer" >&2; exit 1; }
           [[ "${A}" =~ ^[0-9]+$ && "${B}" =~ ^[0-9]+$ ]] || { echo "build components must be non-negative integers" >&2; exit 1; }
           [ "${B}" -gt "${A}" ] || { echo "target_build must be greater than baseline_build" >&2; exit 1; }
-          A_CODE=$((MAJOR * 1000000 + A))
-          B_CODE=$((MAJOR * 1000000 + B))
+          A_CODE="$(scripts/ci/version_code.sh "${MAJOR}" 0 0 "${A}")"
+          B_CODE="$(scripts/ci/version_code.sh "${MAJOR}" 0 0 "${B}")"
           [ "${B_CODE}" -lt 2147483647 ] || { echo "target versionCode exceeds Android maximum" >&2; exit 1; }
           {
             echo "source_sha=${SOURCE}"

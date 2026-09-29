@@ -7,6 +7,7 @@ from pathlib import Path
 workflow = Path(".github/workflows/ios-release.yml").read_text()
 publisher = Path("scripts/publish_ios_hands_release.sh").read_text()
 paired_sop = Path("docs/mobile-paired-release-sop.md").read_text()
+ios_practices = Path("docs/ios-hands-release-practices-2026-07-09.md").read_text()
 
 required_version_fragments = (
     "release_notes_version:",
@@ -53,6 +54,44 @@ required_publisher_fragments = (
 for fragment in required_publisher_fragments:
     if fragment not in publisher:
         raise SystemExit(f"iOS publisher contract missing: {fragment}")
+
+required_notification_receipt_fragments = (
+    "`external_build_state=IN_BETA_TESTING`",
+    "`not_requested`",
+    "`scheduled`",
+    "`sent`",
+    "`already_sent`",
+)
+for path, text in (
+    ("docs/mobile-paired-release-sop.md", paired_sop),
+    ("docs/ios-hands-release-practices-2026-07-09.md", ios_practices),
+):
+    for fragment in required_notification_receipt_fragments:
+        if fragment not in text:
+            raise SystemExit(f"{path} TestFlight notification receipt contract missing: {fragment}")
+if "`notification=sent|already_sent` operation receipt" not in paired_sop:
+    raise SystemExit("paired release SOP must preserve the TestFlight notification operation receipt")
+if "`notification=sent` (or `already_sent`" not in ios_practices:
+    raise SystemExit("iOS practices must accept sent and already_sent notification receipts")
+if "without `--wait`" not in paired_sop or "Do not combine this receipt-producing call with `--wait`" not in ios_practices:
+    raise SystemExit("TestFlight notification receipt contract must preserve POST response without --wait")
+for path, text in (
+    ("docs/mobile-paired-release-sop.md", paired_sop),
+    ("docs/ios-hands-release-practices-2026-07-09.md", ios_practices),
+):
+    if "first" not in text or "`scheduled`" not in text or "replay" not in text or "`already_sent`" not in text:
+        raise SystemExit(f"{path} must preserve the scheduled-to-already_sent replay contract")
+
+example = ios_practices.split(
+    "Example for an already-approved external build:", 1
+)[1].split("Do not infer notification", 1)[0]
+publish_command = example.split("hands builds testflight-status", 1)[0]
+if "--wait" in publish_command:
+    raise SystemExit(
+        "TestFlight publish example must preserve the POST notification receipt; do not use --wait"
+    )
+if "hands builds testflight-status" not in example:
+    raise SystemExit("TestFlight publish example must use a separate status readback")
 
 print("iOS Hands release notes contract: PASS")
 PY

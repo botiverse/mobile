@@ -186,17 +186,35 @@ internal fun processMemberPresenceRealtimeSink(
  *    writeGeneration, then the new immutable quadruple publishes.
  *
  * The body is intentionally non-suspending (StateFlow set + registry CAS +
- * one key-value read): no IO, no locks, no re-entry into authority APIs.
+ * one key-value read).  [onBindingRetired] may perform a synchronous,
+ * fail-closed durable cleanup, but it must not suspend or re-enter authority
+ * APIs; [onBindingBound] may synchronously retire stale durable rows while
+ * preserving the exact current generation.  Both callbacks must not suspend
+ * or re-enter authority APIs; the registry transition itself remains lock/CAS
+ * based.
  */
 internal fun processPresenceBindingTransition(
     presenceAuthContext: MutableStateFlow<ProcessPresenceAuthContext?>,
     registry: ProcessMemberPresenceRegistry,
-    currentEnvironmentId: () -> String
+    onBindingRetired: (ProcessPresenceAuthContext) -> Unit = {},
+    onBindingBound: (ProcessPresenceAuthContext) -> Unit = {},
+    /**
+     * Same-binding auth revision rotation (transparent token refresh): the binding identity
+     * (environment + principal) is unchanged, only the authority generation advanced. Defaults
+     * to [onBindingRetired] (delete semantics) so existing callers keep their behavior; the
+     * pending-send journal wires this to rehome rows into the successor generation instead.
+     * Declared BEFORE [currentEnvironmentId] so existing trailing-lambda call sites (which bind
+     * the trailing lambda to currentEnvironmentId) keep compiling unchanged.
+     */
+    onBindingAuthRevisionRotated: (retired: ProcessPresenceAuthContext, bound: ProcessPresenceAuthContext) -> Unit =
+        { retired, _ -> onBindingRetired(retired) },
+    currentEnvironmentId: () -> String,
 ): (RealtimeAuthRevision) -> Unit = { revision ->
     val principal = revision.session?.principalId?.trim()?.takeIf { it.isNotBlank() }
     val environmentId = currentEnvironmentId()
     val previous = presenceAuthContext.value
     if (principal == null || environmentId.isBlank()) {
+        previous?.let(onBindingRetired)
         presenceAuthContext.value = null
         registry.clearAll(reason = "authority_session_cleared")
     } else if (
@@ -204,16 +222,28 @@ internal fun processPresenceBindingTransition(
         previous.accountId == principal &&
         previous.environmentId == environmentId
     ) {
-        presenceAuthContext.value = previous.copy(authorityGeneration = revision.generation)
+        // A token/auth-generation rotation keeps the presence facts and the
+        // registry write generation alive. Durable client-owned projections keyed by the old
+        // authority generation are either rehomed into the successor (pending sends, via
+        // onBindingAuthRevisionRotated) or retired (default), never silently orphaned.
+        val bound = previous.copy(authorityGeneration = revision.generation)
+        if (previous.authorityGeneration != revision.generation) {
+            onBindingAuthRevisionRotated(previous, bound)
+        }
+        presenceAuthContext.value = bound
+        onBindingBound(bound)
     } else {
+        previous?.let(onBindingRetired)
         val writeGeneration = registry.clearAll(reason = "authority_binding_changed")
-        presenceAuthContext.value =
+        val bound =
             ProcessPresenceAuthContext(
                 environmentId = environmentId,
                 accountId = principal,
                 authorityGeneration = revision.generation,
                 writeGeneration = writeGeneration
             )
+        presenceAuthContext.value = bound
+        onBindingBound(bound)
     }
 }
 
@@ -410,10 +440,23 @@ internal class ProcessMemberPresenceRegistry {
             ) {
                 return
             }
-            // Same visible presence still stores the newer canonical fact so
-            // its seq watermark advances. The current-state mutation fence
-            // advances in the same CAS, making an in-flight REST response stale.
-            val nextOwnerFacts = ownerFacts + (memberId to event)
+            // agent:seen is a seq-less presence fact whose only payload is
+            // lastSeenAt + derived Active presence; merge it onto the previous
+            // fact so it never clobbers an agentStatus/statusLabel that came
+            // from agent:activity. Same visible presence still stores the
+            // newer canonical fact so its seq watermark advances. The
+            // current-state mutation fence advances in the same CAS, making
+            // an in-flight REST response stale.
+            val mergedEvent =
+                if (event.serverSeq == null && event.lastSeenAt != null && previous != null) {
+                    event.copy(
+                        agentStatus = event.agentStatus ?: previous.agentStatus,
+                        statusLabel = event.statusLabel ?: previous.statusLabel
+                    )
+                } else {
+                    event
+                }
+            val nextOwnerFacts = ownerFacts + (memberId to mergedEvent)
             val nextPartitions =
                 current.partitions
                     .let { partitions -> if (transportAdvanced) partitions - owner else partitions }
@@ -864,4 +907,5 @@ internal fun MemberPresenceUpdated.hasSameVisibleRegisteredPresenceAs(
     presence == previous.presence &&
         agentStatus == previous.agentStatus &&
         statusLabel == previous.statusLabel &&
-        kind == previous.kind
+        kind == previous.kind &&
+        lastSeenAt == previous.lastSeenAt

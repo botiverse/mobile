@@ -24,9 +24,7 @@ Options:
   -h, --help             Show this help.
 
 Before running:
-  1. Start/reset the shared Kuikly recomposition profiler in Diagnostics.
-  2. Run one focused scenario.
-  3. Stop/export the profiler from Diagnostics.
+  1. Run one focused scenario.
 USAGE
 }
 
@@ -90,24 +88,6 @@ fi
 } > "$OUT_DIR/metadata.txt"
 
 "$HDC_BIN" list targets > "$OUT_DIR/hdc_targets.txt" 2>&1 || true
-
-pull_file() {
-  local remote="$1"
-  local local_name="$2"
-  local dest="$OUT_DIR/$local_name"
-  local log="$dest.recv.log"
-
-  if "$HDC_BIN" file recv "$remote" "$dest" > "$log" 2>&1; then
-    echo "pulled $remote -> $dest"
-  else
-    echo "missing $remote" >> "$OUT_DIR/missing_files.txt"
-  fi
-}
-
-pull_file "/data/storage/el2/base/haps/entry/cache/KuiklyProfiler/profiler_report.json" "cache_profiler_report.json"
-pull_file "/data/storage/el2/base/haps/entry/cache/KuiklyProfiler/profiler_frames.jsonl" "cache_profiler_frames.jsonl"
-pull_file "/data/storage/el2/base/haps/entry/files/KuiklyProfiler/profiler_report.json" "files_profiler_report.json"
-pull_file "/data/storage/el2/base/haps/entry/files/KuiklyProfiler/profiler_frames.jsonl" "files_profiler_frames.jsonl"
 
 if [[ "$COLLECT_HILOG" -eq 1 ]]; then
   perl -e 'alarm shift; exec @ARGV' "$HILOG_SECONDS" "$HDC_BIN" shell hilog > "$OUT_DIR/hilog.txt" 2>&1 || true

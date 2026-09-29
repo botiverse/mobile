@@ -19,6 +19,8 @@ import build.raft.app.components.SlockFormField
 import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.components.SlockRaftUiSelectionPopover
 import build.raft.app.components.SlockRaftUiSelectionOption
+import build.raft.app.components.TabPager
+import build.raft.app.components.TabPagerGesturePolicy
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AgentActivityEntry
 import build.raft.app.data.AgentIssueReportRepository
@@ -87,11 +89,19 @@ import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
+import build.raft.app.data.ComputerStatus
+import build.raft.app.data.ComputerSummary
+import build.raft.app.data.SharedComputersLoadStatus
+import build.raft.app.data.selectComputerServerSlice
 import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedHomeStore
 import build.raft.app.data.CREATE_AGENT_BUILTIN_RUNTIME_ID
+import build.raft.app.data.CREATE_AGENT_KIMI_SDK_RUNTIME_ID
+import build.raft.app.data.SharedRuntimeFormDefinitionRef
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
+import build.raft.app.data.toAgentDetailSummary
 import build.raft.app.data.buildBuiltInRuntimeConfig
 import build.raft.app.data.AGENT_CREATE_FORM_REFRESH_FAILED
 import build.raft.app.data.AGENT_CREATE_NAME_TAKEN
@@ -124,6 +134,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.buildRuntimeConfig
+import build.raft.app.model.preferredAvatarWireValue
 import build.raft.app.model.supportsRuntimeFastMode
 import build.raft.app.model.supportsRuntimeReasoningEffort
 import build.raft.app.model.ServerId
@@ -146,6 +157,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -161,6 +173,7 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
 import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.ColumnScope
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
@@ -180,6 +193,7 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.extension.NestedScrollMode
 import com.tencent.kuikly.compose.extension.nestedScroll
 import com.tencent.kuikly.compose.material3.Text
@@ -234,6 +248,8 @@ import kotlinx.serialization.json.contentOrNull
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
+import build.raft.app.model.isExternalAgentRuntime
+import build.raft.app.data.defaultNowMillis
 
 const val MEMBERS_PAGE = "compose_members"
 const val MEMBER_DETAIL_PAGE = "compose_member_detail"
@@ -244,6 +260,36 @@ private val MembersPageInset = SlockSpacing.Md
 // React Sidebar members view: scroll container `px-2` (8px) + per-row/section `px-2` (8px) = 16px
 // total; the container half lives on the LazyColumn, the row half on each row/header.
 internal val MembersListContainerInset = 8.dp
+
+/**
+ * Spec (task #12 §3): single-pane body content may not stretch unbounded on wide
+ * windows — at most 720dp and centered, with side margins >=24dp on DualPane
+ * windows. The cap is measured against the actual content-slot width, not the
+ * whole window, so any future chrome (e.g. the nav rail) that narrows the slot
+ * automatically keeps margins honest instead of over-claiming space.
+ *
+ * Compact windows are untouched: when the slot is <=720dp the content fills it
+ * exactly as before (no new padding is introduced for narrow screens).
+ */
+internal val MembersListContentMaxWidth = 720.dp
+internal val MembersListContentMinSideMargin = 24.dp
+
+/**
+ * §3 cap, gated on the window's DualPane layout fact and measured against the
+ * actual content-slot width:
+ * - Compact windows (paneLayout != DualPane): return slotWidth unchanged — no
+ *   new padding or cap on narrow screens, whatever the slot happens to be.
+ * - DualPane windows: content = min(720dp, slotWidth - 48dp), so the >=24dp
+ *   side margins hold even if rail chrome narrows the slot below 840+48.
+ */
+internal fun membersListContentMaxWidth(
+    slotWidth: Dp,
+    paneLayout: SlockAdaptivePaneLayout,
+): Dp {
+    if (paneLayout != SlockAdaptivePaneLayout.DualPane) return slotWidth
+    val cap = slotWidth - MembersListContentMinSideMargin * 2
+    return if (cap < MembersListContentMaxWidth) cap else MembersListContentMaxWidth
+}
 internal val MembersListHorizontalInset = 8.dp
 internal val MembersListAvatarSize = 18.dp
 internal val MembersListRowMinHeight = 34.dp
@@ -265,9 +311,9 @@ internal val MembersListMachineLabelTextStyle =
     SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 14.sp)
 private val MemberStatusDotSize = 10.dp
 private val MembersActionSize = 28.dp
-private val MembersAgentActivityTimeColumnWidth = 74.dp
-private val MembersAgentActivityIndicatorLaneWidth = 12.dp
-private val MembersAgentActivityContentGap = 6.dp
+// Web AgentActivityLog row: `gap-2` (8) + StatusDot sm (`size-2` = 8) + `gap-2` (8).
+private val MembersAgentActivityIndicatorLaneWidth = 24.dp
+private val MembersAgentActivityContentGap = 0.dp
 
 internal enum class MembersAgentDetailTab(
     val label: String,
@@ -401,14 +447,136 @@ internal fun String?.toMembersAgentServerRoleOrNull(): MembersAgentServerRole? =
         else -> null
     }
 
+/**
+ * What the role chip should show. Three outcomes, deliberately distinct.
+ *
+ * The wire meaning of an absent `serverRole` is **no server-membership row** -- not "role
+ * unknown" and not "member by default". `server_agent_members.role` is NOT NULL with a
+ * default and a (serverId, agentId) primary key, so "is a member with no role set" cannot
+ * exist; `getAgentMemberRole` returns null only when the row is missing, and the server
+ * counts that case as an anomaly (`countActiveAgentsMissingServerMembership`). Verified by
+ * LiBai against slock-source@01d0064d9; task #261.
+ */
+internal sealed interface MembersAgentServerRoleDisplay {
+    /** A role we recognise: render its own label and colour. */
+    data class Known(val role: MembersAgentServerRole) : MembersAgentServerRoleDisplay
+
+    /**
+     * The server sent a role we do not recognise (a future "moderator", say). Show the name
+     * it sent -- claiming "No role" here would deny a role we were explicitly told about
+     * (@artin: "那就展示成角色名").
+     */
+    data class Unrecognized(val rawName: String) : MembersAgentServerRoleDisplay
+
+    /**
+     * No membership row, or the agent is deleted. Render nothing at all (@artin: "隐藏显示").
+     * Two different causes, one outcome -- kept as one case only because both hide. If either
+     * ever needs its own wording they must split again, since a label written for the anomaly
+     * would be wrong on a deleted agent, which is an ordinary state the DELETED block already
+     * explains.
+     */
+    data object Hidden : MembersAgentServerRoleDisplay
+}
+
+/**
+ * What the machine status row on the agent detail page should show. Mirrors web's
+ * `machineRunLabel.ts`, which is a SIX-way choice, not four (LiBai, task #259):
+ *
+ *   status != online                   -> ComputerOffline / DaemonOffline
+ *   status == online && version != null -> ComputerVersion / DaemonVersion
+ *   status == online && version == null -> ComputerOnline  / DaemonOnline
+ *
+ * The last pair exists because a non-owner REST read returns `status = online` with
+ * `version = null`. An earlier web build routed that into the offline label and showed a
+ * live Computer as offline (#wg-raft-computer:de94165c). Do not collapse those two cases.
+ *
+ * The status word (Connected / Offline) and the run label are TWO independent facts from
+ * the same machine record and are asserted separately; the " · " separator between them is
+ * layout, not part of either string (web renders it as literal JSX text).
+ */
+internal sealed interface MembersMachineRunLabel {
+    data class ComputerVersion(val version: String) : MembersMachineRunLabel
+    data class DaemonVersion(val version: String) : MembersMachineRunLabel
+    data object ComputerOnline : MembersMachineRunLabel
+    data object DaemonOnline : MembersMachineRunLabel
+    data object ComputerOffline : MembersMachineRunLabel
+    data object DaemonOffline : MembersMachineRunLabel
+}
+
+internal sealed interface MembersMachineStatusRow {
+    /** computers store has not answered yet: render nothing for this row (artin: 甲). */
+    data object Loading : MembersMachineStatusRow
+    /** No machineId, or machineId not in the loaded store: "no computer assigned", no dot. */
+    data object NoComputer : MembersMachineStatusRow
+    data class Machine(
+        val online: Boolean,
+        val runLabel: MembersMachineRunLabel
+    ) : MembersMachineStatusRow
+}
+
+internal fun membersMachineRunLabel(machine: ComputerSummary): MembersMachineRunLabel {
+    val online = machine.status == ComputerStatus.Online
+    val version = (if (machine.isComputer) machine.computerVersion else machine.daemonVersion)
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+    return when {
+        !online && machine.isComputer -> MembersMachineRunLabel.ComputerOffline
+        !online -> MembersMachineRunLabel.DaemonOffline
+        version != null && machine.isComputer -> MembersMachineRunLabel.ComputerVersion(version)
+        version != null -> MembersMachineRunLabel.DaemonVersion(version)
+        machine.isComputer -> MembersMachineRunLabel.ComputerOnline
+        else -> MembersMachineRunLabel.DaemonOnline
+    }
+}
+
+/**
+ * Cell 6 of the task #259 table. `machineId` present but absent from a *loaded* store and
+ * "store not loaded yet" look identical on the map; only the load status tells them apart.
+ * The loading case must not fall through to NoComputer -- web does exactly that and flashes
+ * "no computer assigned" on every open (its own defect, not a reference to copy).
+ */
+internal fun membersMachineStatusRow(
+    machineId: String?,
+    machines: List<ComputerSummary>,
+    loadStatus: SharedComputersLoadStatus,
+    hasSnapshot: Boolean
+): MembersMachineStatusRow {
+    val id = machineId?.trim()?.takeIf { it.isNotBlank() }
+        ?: return MembersMachineStatusRow.NoComputer
+    if (!hasSnapshot && loadStatus != SharedComputersLoadStatus.Loaded) {
+        return MembersMachineStatusRow.Loading
+    }
+    val machine = machines.firstOrNull { it.id == id } ?: return MembersMachineStatusRow.NoComputer
+    return MembersMachineStatusRow.Machine(
+        online = machine.status == ComputerStatus.Online,
+        runLabel = membersMachineRunLabel(machine)
+    )
+}
+
 internal fun membersAgentDisplayServerRole(
     memberServerRole: String?,
-    summaryServerRole: String?
-): MembersAgentServerRole? {
+    summaryServerRole: String?,
+    deleted: Boolean = false
+): MembersAgentServerRoleDisplay {
     val rawRole = memberServerRole?.trim()?.takeIf { it.isNotBlank() }
         ?: summaryServerRole?.trim()?.takeIf { it.isNotBlank() }
+    // Deleted first, and this branch is NOT dead -- it guards a *client-cache* path, not a
+    // wire one. Reading only the wire says the combination cannot happen: once an agent is
+    // deleted the server stops sending a role (getServerAgentRoleMap filters on
+    // isNull(agents.deletedAt)), so deleted-with-a-role never arrives. But
+    // SharedServerMembersStore.mergeSeedProfile merges `serverRole = serverRole ?: seed`,
+    // fill-only, and mergeAuthoritativeProfile begins by calling it -- so a role cached
+    // before deletion survives every later update, including authoritative ones. Client
+    // state therefore does hold deletedAt != null together with serverRole = "admin", and
+    // without this branch that agent would show an Admin chip (LiBai, task #261).
+    //
+    // Keep the reason attached: verifying reachability at the wire layer alone concludes
+    // this is dead code and deletes it. That merge is separately wrong for a mutable field
+    // -- a demotion never reaches the UI -- tracked apart from this card.
+    if (deleted || rawRole == null) return MembersAgentServerRoleDisplay.Hidden
     return rawRole.toMembersAgentServerRoleOrNull()
-        ?: if (rawRole == null) MembersAgentServerRole.Member else null
+        ?.let(MembersAgentServerRoleDisplay::Known)
+        ?: MembersAgentServerRoleDisplay.Unrecognized(rawRole)
 }
 
 internal fun membersAgentServerRoleOptions(
@@ -420,6 +588,35 @@ internal fun membersAgentServerRoleOptions(
             label = role.label,
             selected = role == selectedRole
         )
+    }
+
+internal enum class MembersAgentServerRoleSaveOutcome {
+    Success,
+    Empty,
+    MismatchedContent,
+    NoPermission,
+    Error
+}
+
+internal fun DataResult<MemberProfile>.membersAgentServerRoleSaveOutcome(
+    expectedMemberId: MemberId,
+    expectedServerId: ServerId,
+    expectedRole: MembersAgentServerRole
+): MembersAgentServerRoleSaveOutcome =
+    when (this) {
+        is DataResult.Content ->
+            if (
+                data.id == expectedMemberId &&
+                data.serverId == expectedServerId &&
+                    data.serverRole.toMembersAgentServerRoleOrNull() == expectedRole
+            ) {
+                MembersAgentServerRoleSaveOutcome.Success
+            } else {
+                MembersAgentServerRoleSaveOutcome.MismatchedContent
+            }
+        is DataResult.Empty -> MembersAgentServerRoleSaveOutcome.Empty
+        is DataResult.NoPermission -> MembersAgentServerRoleSaveOutcome.NoPermission
+        is DataResult.Error -> MembersAgentServerRoleSaveOutcome.Error
     }
 
 private fun String?.normalizedMembersServerRole(): String =
@@ -582,6 +779,41 @@ internal val MembersAgentDetailTab.serverOrderKey: String
 internal fun List<MembersAgentDetailTab>.toMembersAgentPanelTabOrderWireKeys(): List<String> =
     map { it.serverOrderKey }
 
+/**
+ * Pager index the agent-detail [TabPager] must show for [selectedTab]. Index-
+ * aligned with [visibleTabs] exactly like the pager's pages; a selection that
+ * is not visible (stale override while tabs are recomputed) pins page 0
+ * rather than a negative index, mirroring `selectedTab`'s own fallback.
+ */
+internal fun membersAgentDetailPagerIndex(
+    visibleTabs: List<MembersAgentDetailTab>,
+    selectedTab: MembersAgentDetailTab
+): Int = visibleTabs.indexOf(selectedTab).coerceAtLeast(0)
+
+/**
+ * Tab a pager page renders, or null when the page index has no tab (pager
+ * page count and [visibleTabs] can disagree for one frame while visibility
+ * changes) — the caller composes an empty page instead of crashing.
+ */
+internal fun membersAgentDetailPageTab(
+    visibleTabs: List<MembersAgentDetailTab>,
+    page: Int
+): MembersAgentDetailTab? = visibleTabs.getOrNull(page)
+
+/**
+ * Whether [pageTab] should compose its full tab body inside the agent-detail
+ * [TabPager]. Unvisited tabs render a lightweight loading placeholder so
+ * opening Agent Detail only composes the initial [selectedTab]; once a tab has
+ * been selected (added to [visitedTabs]), it remains composed across swipes
+ * (`keepItemAlive = true`) so swiping back and forth never unmounts or flashes
+ * a loading spinner.
+ */
+internal fun membersAgentDetailShouldComposeTab(
+    pageTab: MembersAgentDetailTab?,
+    selectedTab: MembersAgentDetailTab,
+    visitedTabs: Set<MembersAgentDetailTab>,
+): Boolean = pageTab != null && (pageTab == selectedTab || pageTab in visitedTabs)
+
 internal fun List<MembersAgentDetailTab>.membersMoveTab(
     fromIndex: Int,
     toIndex: Int
@@ -603,6 +835,16 @@ internal fun membersAgentTabVisibleAnchorIndex(
         else -> selectedIndex - 1
     }
 }
+
+/**
+ * Stable identity for the lazy body item on an agent detail page.
+ *
+ * The body swaps whole composable surfaces (Profile/Chat/…); giving each surface a
+ * distinct identity prevents the Kuikly lazy provider from reusing a different
+ * surface's remember-slot table during a tab transition.
+ */
+internal fun membersAgentDetailBodyItemKey(memberId: String, selectedTab: MembersAgentDetailTab): String =
+    "member-detail-${memberId.trim()}-tab-${selectedTab.name}"
 
 private fun String.toMembersAgentTabOrderKey(): String =
     trim().lowercase()
@@ -653,13 +895,47 @@ internal fun memberDetailAgentPanelTabOrderServerId(
     routeServerId.cleanMemberDetailServerId()
         ?: payloadSourceServerId.cleanMemberDetailServerId()
 
+/**
+ * Task #336: `machineKnown` is the "this machineId is registered on the current
+ * server" gate. The web Computers surface 404s when the App opens a machineId
+ * the server does not list, so the link must not exist then. The gate is a
+ * three-state enum mirroring [membersMachineStatusRow]: [Unknown] while the
+ * computers store has not answered (keep the affordance), [Absent] once a
+ * loaded snapshot proves the machine is not on this server (withdraw it).
+ */
+internal enum class MembersAgentComputerKnownState {
+    Unknown,
+    Present,
+    Absent,
+}
+
+internal fun membersAgentComputerKnownState(
+    machineId: String?,
+    machines: List<ComputerSummary>,
+    loadStatus: SharedComputersLoadStatus,
+    hasSnapshot: Boolean
+): MembersAgentComputerKnownState {
+    val id = machineId?.trim()?.takeIf { it.isNotBlank() }
+        ?: return MembersAgentComputerKnownState.Absent
+    if (!hasSnapshot && loadStatus != SharedComputersLoadStatus.Loaded) {
+        return MembersAgentComputerKnownState.Unknown
+    }
+    return if (machines.any { it.id == id }) {
+        MembersAgentComputerKnownState.Present
+    } else {
+        MembersAgentComputerKnownState.Absent
+    }
+}
+
 internal fun membersAgentComputerNavigationTarget(
     serverId: String?,
     summaryMachineId: String?,
     memberMachineId: String?,
     accessMode: MemberDetailAccessMode,
+    machineKnown: MembersAgentComputerKnownState = MembersAgentComputerKnownState.Unknown,
 ): SettingsComputerRouteIdentity? {
     if (!accessMode.allowsPrivateAgentSurfaces) return null
+    if (machineKnown == MembersAgentComputerKnownState.Absent) return null
     val normalizedServerId = serverId.cleanMemberDetailServerId() ?: return null
     val normalizedMachineId =
         summaryMachineId?.trim()?.takeIf { it.isNotBlank() }
@@ -948,27 +1224,90 @@ internal fun membersResolvedPrimaryLifecycleAction(
             )
     }
 
+/**
+ * Detail-page dot + caption for an external agent. Tiers mirror web
+ * `AgentStatusBadge`; the caption is localized here because the pure mapping
+ * ([externalAgentDetailIndicator]) must stay free of string resources.
+ * A missing status (non-external, 403, failure) renders plain cyan "External".
+ */
+@Composable
+private fun rememberExternalAgentDetailIndicatorState(
+    detail: AgentDetailSnapshot?,
+    timeContext: SlockTimeContext
+): SlockAgentStatusIndicatorState {
+    val externalStatus = detail?.externalStatus
+    // task #410: lastSeenAt comes from the detail summary (GET /agents/:id
+    // carries it for external agents) and realtime agent:seen updates it in
+    // SharedAgentDetailStore — no extra request.
+    val lastSeenAt = detail?.summary?.lastSeenAt
+    val now = timeContext.nowEpochMillis ?: remember(externalStatus) { defaultNowMillis() }
+    val indicator = remember(externalStatus, lastSeenAt, now) {
+        externalAgentDetailIndicator(externalStatus, now, lastSeenAt)
+    }
+    val label =
+        when (val caption = indicator.caption) {
+            ExternalAgentDetailCaption.External -> stringResource(MR.strings.member_external_status)
+            ExternalAgentDetailCaption.Online -> stringResource(MR.strings.member_external_online)
+            ExternalAgentDetailCaption.SetupRequired -> stringResource(MR.strings.member_external_setup_required)
+            ExternalAgentDetailCaption.Active -> stringResource(MR.strings.member_external_active)
+            is ExternalAgentDetailCaption.LastActivity ->
+                membersStringTemplate(MR.strings.member_external_last_activity)
+                    .membersFormat(timeContext.formatTimestampLabel(caption.iso).ifBlank { caption.iso })
+            is ExternalAgentDetailCaption.LastSeen ->
+                membersStringTemplate(MR.strings.member_external_last_seen)
+                    .membersFormat(timeContext.formatTimestampLabel(caption.iso).ifBlank { caption.iso })
+            ExternalAgentDetailCaption.NoRaftActivity -> stringResource(MR.strings.member_external_no_raft_activity)
+            ExternalAgentDetailCaption.NotConfigured -> stringResource(MR.strings.member_external_not_configured)
+        }
+    return indicator.state.copy(label = label)
+}
+
 private fun unknownMembersAgentStatusIndicatorState(): SlockAgentStatusIndicatorState =
     slockAgentStatusIndicatorState(
         status = null,
         presence = Presence.Offline,
-        statusLabel = MembersUnknownAgentStatusLabel
+        statusLabel = MembersUnknownAgentStatusLabel,
+        external = false
     )
 
+/**
+ * The observed state, or null when nothing authoritative (or fixture-supplied) exists.
+ *
+ * Surfaces that paint a dot must use this, never [resolveMembersAgentStatusIndicatorState]:
+ * that one substitutes [unknownMembersAgentStatusIndicatorState], whose colour maps through
+ * `Presence.Offline` to StatusNeutralGray, so an unknown agent would render the same dot as
+ * an offline one while its label reads "—" (task #256; @LiBai's review of PR #2325 caught the
+ * first attempt fixing only the elvis-fallback spelling of this defect and missing this one).
+ */
+internal fun resolveMembersAgentStatusIndicatorStateOrNull(
+    canonicalState: SlockAgentStatusIndicatorState?,
+    fixtureFallback: SlockAgentStatusIndicatorState?,
+    fixtureStatusFallbackEnabled: Boolean
+): SlockAgentStatusIndicatorState? =
+    canonicalState ?: fixtureFallback.takeIf { fixtureStatusFallbackEnabled }
+
+/**
+ * Label-facing resolution: never null, because an explicit unknown must outrank a stale
+ * summary caption (see `explicitCanonicalUnknownCannotBeCaptionedByStaleSummaryActivity`).
+ * Do not use it to choose a dot colour.
+ */
 internal fun resolveMembersAgentStatusIndicatorState(
     canonicalState: SlockAgentStatusIndicatorState?,
     fixtureFallback: SlockAgentStatusIndicatorState?,
     fixtureStatusFallbackEnabled: Boolean
 ): SlockAgentStatusIndicatorState =
-    canonicalState
-        ?: fixtureFallback.takeIf { fixtureStatusFallbackEnabled }
-        ?: unknownMembersAgentStatusIndicatorState()
+    resolveMembersAgentStatusIndicatorStateOrNull(
+        canonicalState = canonicalState,
+        fixtureFallback = fixtureFallback,
+        fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
+    ) ?: unknownMembersAgentStatusIndicatorState()
 
 private fun SlockAgentStatusIndicatorState.toMembersAgentStatusDisplayState(): MembersAgentStatusDisplayState =
     MembersAgentStatusDisplayState(
         status = status,
         color = color,
-        pulsing = pulsing
+        pulsing = pulsing,
+        external = external
     )
 
 @Page(MEMBERS_SMOKE_PAGE, supportInLocal = true)
@@ -987,9 +1326,16 @@ internal class ComposeMembersSmokePage : build.raft.app.base.BasePager() {
 
 @Page(MEMBERS_PAGE, supportInLocal = true)
 internal class ComposeMembersPage : AuthenticatedProductPager(AuthenticatedProductRoute.Members) {
+    private var adaptivePane by mutableStateOf(SlockAdaptivePaneState())
+
     override fun willInit() {
         super.willInit()
-        setAuthenticatedContent { MembersPageContent() }
+        setAuthenticatedContent { MembersPageContent(paneLayout = adaptivePane.layout) }
+    }
+
+    override fun onSlockAdaptivePaneChanged(eventData: JSONObject) {
+        val event = eventData.toSlockAdaptivePaneEventOrNull() ?: return
+        adaptivePane = reduceSlockAdaptivePane(adaptivePane, event)
     }
 }
 
@@ -1104,6 +1450,65 @@ private val membersSmokePayload = KuiklyMembersPayload(
     )
 )
 
+/**
+ * The four machines from packages/visual-testing/shared/fixtureData.json, as the computers
+ * store would hold them, so the visual routes resolve the status row from a loaded store
+ * rather than from an empty one (which would render every fixture agent as "no computer
+ * assigned" -- the exact defect #2355 removed from the avatar grid).
+ *
+ * Why literals and not an injected list: the machine-status capture cases run on the
+ * production `compose_member_detail` page (MEMBER_DETAIL_PAGE, this file), whose `visual-`
+ * seeds are built here in commonMain. That route has no gated wrapper that could read
+ * VisualFixtureData and pass a `List<ComputerSummary>` in. (The gated
+ * `compose_members_agent_detail_visual` page *could* inject -- it just doesn't carry these
+ * cells.) The drift gate (visual-testing.yml "Check fixture data drift") covers
+ * VisualFixtureData.kt, NOT these lines; a separate lint (XiShi, task #259) asserts each row
+ * below equals VisualFixtureData.Machines.* field for field, with `computer-missing`
+ * listed as the deliberate absent id. Keep the two in lockstep.
+ */
+private val membersVisualFixtureMachines: List<ComputerSummary> =
+    listOf(
+        membersVisualFixtureMachine("computer-mbp", "Jiachengs-MacBook-Pro", ComputerStatus.Online, isComputer = true, computerVersion = "0.0.48", daemonVersion = "0.65.0"),
+        membersVisualFixtureMachine("computer-studio", "Studio Test Rig", ComputerStatus.Offline, isComputer = true, computerVersion = "0.0.50", daemonVersion = "0.65.0"),
+        membersVisualFixtureMachine("computer-long-name", "ci-visual-capture-runner-us-west-2b_node17_macbookpro_m4max_buildhost_2026", ComputerStatus.Online, isComputer = true, computerVersion = "0.0.48", daemonVersion = "0.65.0"),
+        membersVisualFixtureMachine("computer-daemon-only", "build-box-bare-daemon", ComputerStatus.Online, isComputer = false, computerVersion = null, daemonVersion = "0.65.0")
+    )
+
+private fun membersVisualFixtureMachine(
+    id: String,
+    name: String,
+    status: ComputerStatus,
+    isComputer: Boolean,
+    computerVersion: String?,
+    daemonVersion: String?
+): ComputerSummary =
+    ComputerSummary(
+        id = id,
+        name = name,
+        status = status,
+        statusVersion = 0L,
+        apiKeyPrefix = null,
+        runtimes = emptyList(),
+        daemonVersion = daemonVersion,
+        computerVersion = computerVersion,
+        isComputer = isComputer,
+        hostname = null,
+        os = null,
+        description = null,
+        lastHeartbeat = null,
+        createdAt = null
+    )
+
+/** Fixture routes: the store is "loaded" with the fixture machines; `computer-missing` resolves to NoComputer by design. */
+private val membersVisualFixtureMachineStatusRow: (String?) -> MembersMachineStatusRow = { machineId ->
+    membersMachineStatusRow(
+        machineId = machineId,
+        machines = membersVisualFixtureMachines,
+        loadStatus = SharedComputersLoadStatus.Loaded,
+        hasSnapshot = true
+    )
+}
+
 private val membersAgentDetailVisualMember = MemberProfile(
     id = MemberId("agent-product-ux"),
     displayName = "Product UX Designer",
@@ -1111,7 +1516,7 @@ private val membersAgentDetailVisualMember = MemberProfile(
     kind = MemberKind.Agent,
     description = "Turns product feedback, screenshots, and release notes into actionable UX specs.",
     roleDescription = "Product / UX agent",
-    avatar = AvatarReference.Pixel("paint"),
+    avatar = AvatarReference.Pixel("robot"),
     avatarLabel = "P",
     presence = Presence.Active,
     agentStatus = AgentStatus.Working,
@@ -1151,13 +1556,133 @@ private val membersAgentDetailVisualScopeSet = AgentScopeSet(
     updatedAt = "2026-06-19T12:28:00.000Z"
 )
 
+/**
+ * task #535 / #537 — Computer-row oracle variants of the agent-detail visual seed.
+ * Same page, same data except the identity and the Computer row inputs, so a
+ * capture difference against the default seed is attributable to that row.
+ * Values mirror packages/visual-testing/shared/fixtureData.json (agents
+ * computerOffline / computerMissing / noComputer / longMachine, machines
+ * studio / longName); the slock-side test pins them there.
+ */
+private data class MembersAgentDetailVisualVariant(
+    val id: String,
+    val name: String,
+    val displayName: String,
+    val avatarLabel: String,
+    val description: String,
+    val machineId: String?,
+    val machineName: String?,
+    val daemonVersion: String?,
+    /** Server role as the wire sends it. Every fixture agent is a server member;
+        one is admin so the role chip cell can fail (task #261). Without this the
+        default seed leaves it null and membersAgentDisplayServerRole draws Member. */
+    val serverRole: String
+)
+
+private val membersAgentDetailVisualVariants = listOf(
+    // store knows the machine and reports it offline: web = gray dot + Offline
+    MembersAgentDetailVisualVariant(
+        id = "agent-computer-offline",
+        name = "Computer-Offline-Probe",
+        displayName = "Computer Offline Probe",
+        avatarLabel = "C",
+        description = "Bound to a computer the store knows and reports offline: web shows a gray dot and Offline.",
+        machineId = "computer-studio",
+        machineName = "Studio Test Rig",
+        daemonVersion = "0.65.0",
+        serverRole = "member"
+    ),
+    // machineId points at a machine the store never loaded: web = "No computer assigned", no dot
+    MembersAgentDetailVisualVariant(
+        id = "agent-computer-missing",
+        name = "Computer-Missing-Probe",
+        displayName = "Computer Missing Probe",
+        avatarLabel = "C",
+        description = "machineId points at a computer the store has never seen: web shows No computer assigned, no dot.",
+        machineId = "computer-missing",
+        machineName = null,
+        daemonVersion = null,
+        serverRole = "member"
+    ),
+    // no machineId at all: web = "No computer assigned", no dot
+    MembersAgentDetailVisualVariant(
+        id = "agent-no-computer",
+        name = "No-Computer-Probe",
+        displayName = "No Computer Probe",
+        avatarLabel = "N",
+        description = "No machineId at all: web shows No computer assigned, no dot.",
+        machineId = null,
+        machineName = null,
+        daemonVersion = null,
+        serverRole = "member"
+    ),
+    // a machine name that cannot fit one 390dp line (44-char run with no break opportunity)
+    MembersAgentDetailVisualVariant(
+        id = "agent-long-machine",
+        name = "Long-Machine-Name-Probe",
+        displayName = "Long Machine Name Probe",
+        avatarLabel = "L",
+        description = "Bound to a computer whose name cannot fit one 390dp line, so wrap vs truncate is observable.",
+        machineId = "computer-long-name",
+        machineName = "ci-visual-capture-runner-us-west-2b_node17_macbookpro_m4max_buildhost_2026",
+        daemonVersion = "0.65.0",
+        serverRole = "admin"
+    ),
+    // a bare daemon (isComputer=false) with no computer version: web = green dot + Online + "daemon v0.65.0"
+    MembersAgentDetailVisualVariant(
+        id = "agent-daemon-only",
+        name = "Daemon-Only-Probe",
+        displayName = "Daemon Only Probe",
+        avatarLabel = "DO",
+        description = "Bound to a bare daemon (not a managed Computer): web shows Connected · daemon vX, never a computer version.",
+        machineId = "computer-daemon-only",
+        machineName = "build-box-bare-daemon",
+        daemonVersion = "0.65.0",
+        serverRole = "member"
+    )
+)
+
+private fun MembersAgentDetailVisualVariant.toMember(): MemberProfile =
+    membersAgentDetailVisualMember.copy(
+        id = MemberId(id),
+        displayName = displayName,
+        handle = "@$name",
+        description = description,
+        avatarLabel = avatarLabel,
+        serverRole = serverRole,
+        permissionBadges = listOfNotNull(machineName?.let { "computer:$it" }, "runtime:Codex")
+    )
+
+private fun MembersAgentDetailVisualVariant.toSeed(): MemberDetailVisualSeed {
+    val member = toMember()
+    // The default seed always carries a summary; a null here would mean the
+    // default case itself lost its Computer row, which is the wrong place to hide.
+    val summary = checkNotNull(membersAgentDetailVisualSnapshot.summary).copy(
+        id = id,
+        name = name,
+        displayName = displayName,
+        machineId = machineId,
+        machineName = machineName,
+        daemonVersion = daemonVersion,
+        serverRole = serverRole,
+        activityDetail = "Holding a fixed Computer-row state for the visual oracle"
+    )
+    return MemberDetailVisualSeed(
+        member = member,
+        agentDetailState = MembersAgentDetailLoadState.Content(
+            membersAgentDetailVisualSnapshot.copy(agentId = member.id, summary = summary)
+        ),
+        agentScopeSet = membersAgentDetailVisualScopeSet.copy(agentId = member.id)
+    )
+}
+
 private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
     agentId = membersAgentDetailVisualMember.id,
     summary = AgentDetailSummary(
         id = membersAgentDetailVisualMember.id.value,
         name = "Product-UX-Designer",
         displayName = membersAgentDetailVisualMember.displayName,
-        createdAt = "2026-06-01T09:15:00Z",
+        createdAt = "2026-06-18T00:00:00.000Z",
         status = "working",
         runtime = "codex",
         model = "gpt-5-codex",
@@ -1165,7 +1690,7 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
         executionMode = "byoc",
         machineId = "computer-mbp",
         machineName = "Jiachengs-MacBook-Pro",
-        daemonVersion = "0.61.1",
+        daemonVersion = "0.65.0",
         creatorId = "artin",
         creatorType = "user",
         creator = AgentCreatorSummary(
@@ -1182,7 +1707,8 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
                 name = "visual-qa",
                 displayName = "Visual QA",
                 runtime = "codex",
-                status = "idle"
+                status = "idle",
+                isExternal = false
             )
         ),
         activity = "working",
@@ -1376,7 +1902,9 @@ private fun String.toMembersAgentDetailVisualMode(): MembersAgentDetailVisualMod
     }
 
 @Composable
-internal fun MembersPageContent() {
+internal fun MembersPageContent(
+    paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
+) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
     val errorStrings = localizedErrorPresentationStrings()
@@ -1431,6 +1959,14 @@ internal fun MembersPageContent() {
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val agentDetailStore = remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
     val createAgentFormStore = remember(sharedStores, storeScope) { sharedStores.createAgentFormStore(storeScope) }
+    // Task #409: members-page agent machine groups persist their collapse
+    // state in the same slock:sidebarCollapsed:<userId>:agent-machine-group:*
+    // key family the web sidebar uses.
+    val membersAgentGroupCollapseStore = remember {
+        build.raft.app.data.KeyValueMembersAgentMachineGroupCollapseStore(
+            build.raft.app.data.slockSharedPreferenceStore()
+        )
+    }
     val agentsApiClient = remember(networkClient) {
         build.raft.app.data.SlockAgentsApiClient(
             transport = build.raft.app.data.SlockAgentsNetworkApi(networkClient),
@@ -1493,8 +2029,11 @@ internal fun MembersPageContent() {
     // `readCurrentServerId()` stub (fixed QA-3): machines load + plan limit
     // checks now use the real selected server.
     var activeServerId by remember { mutableStateOf<String?>(null) }
+    var membersCurrentUserId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(authStore) {
-        activeServerId = authStore.readSession()?.currentServerId
+        val session = authStore.readSession()
+        activeServerId = session?.currentServerId
+        membersCurrentUserId = session?.user?.id
     }
     val serverId = activeServerId ?: ""
     val agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore
@@ -1790,6 +2329,7 @@ internal fun MembersPageContent() {
         refreshing = membersRefreshing,
         onBack = { bridge.closePage() },
         onRefresh = refreshMembers,
+        paneLayout = paneLayout,
         onAddHuman = { /* humans "+" wired via addHumanSubmit below */ },
         onOpenMemberDetail = { member ->
             scope.launch {
@@ -1843,28 +2383,35 @@ internal fun MembersPageContent() {
         agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = memberAvatarResolver,
         canCreateAgents = payload.canCreateAgents,
-        createAgentSubmit = createAgentSubmit,
-        createAgentMachines = computersSlice.machines,
-        createAgentMachinesLoading = computersSlice.initialLoadInFlight,
-        createAgentMachinesErrorMessage = computersSlice.initialLoadError?.userFacingMessage(errorStrings),
-        createAgentCurrentAgentCount = currentAgentCount,
-        createAgentMaxAgents = maxAgents,
-        createAgentLoadMachines = loadMachines,
-        createAgentRetryMachines = retryMachines,
-        createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
-        createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
-        createAgentLoadRuntimeModels = loadRuntimeModels,
-        createAgentFormStore = createAgentFormStore,
-        createAgentServerId = serverId,
-        inviteHumanSubmit = inviteHumanSubmit,
-        inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
-        inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
-        inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
-        inviteHumanJoinLinkCopy = { url ->
-            bridge.copyToPasteboard(url)
-            inviteJoinLinkCopied = true
-        },
-        inviteHumanLoadJoinLink = { loadInviteJoinLink() },
+        createAgent = MembersCreateAgentInputs(
+            createAgentSubmit = createAgentSubmit,
+            createAgentMachines = computersSlice.machines,
+            createAgentMachinesLoading = computersSlice.initialLoadInFlight,
+            createAgentMachinesErrorMessage = computersSlice.initialLoadError?.userFacingMessage(errorStrings),
+            createAgentCurrentAgentCount = currentAgentCount,
+            createAgentMaxAgents = maxAgents,
+            createAgentLoadMachines = loadMachines,
+            createAgentRetryMachines = retryMachines,
+            createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
+            createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
+            createAgentLoadRuntimeModels = loadRuntimeModels,
+            createAgentFormStore = createAgentFormStore,
+            createAgentServerId = serverId
+        ),
+        inviteHuman = MembersInviteHumanInputs(
+            inviteHumanSubmit = inviteHumanSubmit,
+            inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
+            inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
+            inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
+            inviteHumanJoinLinkCopy = { url ->
+                bridge.copyToPasteboard(url)
+                inviteJoinLinkCopied = true
+            },
+            inviteHumanLoadJoinLink = { loadInviteJoinLink() }
+        ),
+        // Task #409: persist per-machine collapse under the session user id.
+        currentUserId = membersCurrentUserId,
+        agentGroupCollapseStore = membersAgentGroupCollapseStore,
         // #89: pass agentsApiClient so Permissions tab can call
         // `agentScopes` / `updateAgentScopes` / `resetAgentScopes` directly.
         agentsApiClient = agentsApiClient
@@ -2026,6 +2573,8 @@ internal fun memberDetailInitialRouteState(
                 accessMode = identity.memberDetailAccessMode(activeServer)
             )
         MemberKind.System -> null
+        // External projections never open a member detail route.
+        MemberKind.External -> null
     }
 }
 
@@ -2261,6 +2810,12 @@ private class MemberDetailRouteProvider(
                         profileGeneration = profileGeneration
                     )
                 )
+                // Agent detail hydration carries the canonical avatarUrl; seed it back so
+                // the scoped roster cache drops a stale pixel fallback in-session.
+                serverMembersStore.seedProfiles(
+                    profileServerId,
+                    listOf(detail.toStaticMembersProfile(profileServer.copy(id = profileServerId)))
+                )
                 MemberDetailRouteState.Agent(
                     server = profileServer.copy(id = profileServerId),
                     currentUserId = currentUserId,
@@ -2309,6 +2864,12 @@ private class MemberDetailRouteProvider(
                     )
                 )
                 serverMembersStore.applyAgentDetailSnapshot(presenceRequest, detailResult.data)
+                // Same reason as the remote-profile branch: publish the freshly loaded
+                // avatar/profile fields so in-session roster observers update.
+                serverMembersStore.seedProfiles(
+                    server.id,
+                    listOf(detailResult.data.toStaticMembersProfile(server))
+                )
                 MemberDetailRouteState.Agent(
                     server = server,
                     currentUserId = currentUserId
@@ -2520,6 +3081,7 @@ private class MemberDetailRouteProvider(
                 MemberKind.Agent -> channelRepository.openAgentDirectMessage(member.id)
                 MemberKind.Human -> channelRepository.openUserDirectMessage(member.id)
                 MemberKind.System -> DataResult.Empty(EmptyReason.NoMembers)
+                MemberKind.External -> DataResult.Empty(EmptyReason.NoMembers)
             }
         if (result is DataResult.Content && authority != null) {
             sharedHomeStore?.supplementOpenedDirectMessage(
@@ -2874,6 +3436,26 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
         val serverId = statusLookupServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         provider.computersStore.dispatch(SharedComputersIntent.EnsureComputerPicker(serverId))
     }
+    // Task #259: the status row's truth source is the computers store, not `machineId != null`.
+    // The slice for this server is what EnsureComputerPicker above is loading; the resolver
+    // distinguishes "store has not answered" (render nothing) from "answered, machine absent"
+    // ("no computer assigned") -- web collapses the two and flashes the latter on every open.
+    val computersState by provider.computersStore.state.collectAsState()
+    val machineStatusRow: (String?) -> MembersMachineStatusRow =
+        remember(computersState, statusLookupServerId) {
+            // selectComputerServerSlice normalises the key; indexing serverSlices directly
+            // would miss silently and read as "store never answered".
+            val slice = computersState.selectComputerServerSlice(statusLookupServerId)
+            ;
+            { machineId ->
+                membersMachineStatusRow(
+                    machineId = machineId,
+                    machines = slice.machines,
+                    loadStatus = slice.status,
+                    hasSnapshot = slice.hasSnapshot
+                )
+            }
+        }
     LaunchedEffect(provider.agentPanelTabOrderStore, agentPanelTabOrderServerId, payload.agentPanelTabOrder) {
         val serverId = agentPanelTabOrderServerId ?: return@LaunchedEffect
         provider.agentPanelTabOrderStore.bindServer(
@@ -3084,12 +3666,24 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                 val agentMachineId =
                     selectedAgentDetail.summary?.machineId
                         ?: member.membersComputerId
+                // Task #336: gate the "Computer" link on the machine actually being
+                // registered on this server. Same three-state source as
+                // machineStatusRow: while the computers store has not answered the
+                // link stays (unknown), once a snapshot proves the machine is not
+                // here the link is withdrawn instead of opening a guaranteed 404.
+                val computerSliceForLink = computersState.selectComputerServerSlice(statusLookupServerId)
                 val computerNavigationTarget =
                     membersAgentComputerNavigationTarget(
                         serverId = current.server.id.value,
                         summaryMachineId = selectedAgentDetail.summary?.machineId,
                         memberMachineId = member.membersComputerId,
                         accessMode = current.accessMode,
+                        machineKnown = membersAgentComputerKnownState(
+                            machineId = agentMachineId,
+                            machines = computerSliceForLink.machines,
+                            loadStatus = computerSliceForLink.status,
+                            hasSnapshot = computerSliceForLink.hasSnapshot,
+                        ),
                     )
                 val onOpenComputer: (() -> Unit)? =
                     computerNavigationTarget?.let { target ->
@@ -3276,18 +3870,20 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                     serverMembersState = serverMembersState,
                     agentDetailState = agentDetailState,
                     agentActivityLoadState = agentActivityLoadState,
-                    agentMachineRuntimes =
-                        membersAgentMachineRuntimeIds(
-                            machines = computerPickerSlice.machines,
-                            machineId = selectedAgentDetail.summary?.machineId ?: member.membersComputerId
-                        ),
-                    agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
-                    agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsByRuntime,
-                    agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
-                    agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
+                    runtimeModels = MembersAgentRuntimeModelInputs(
+                        agentMachineRuntimes =
+                            membersAgentMachineRuntimeIds(
+                                machines = computerPickerSlice.machines,
+                                machineId = selectedAgentDetail.summary?.machineId ?: member.membersComputerId
+                            ),
+                        agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
+                        agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsByRuntime,
+                        agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
+                        agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
+                        onAgentRuntimeModelsRequest = loadAgentRuntimeModels
+                    ),
                     createAgentFormStore = provider.createAgentFormStore,
                     agentProfileEditAuthority = agentProfileEditAuthority,
-                    onAgentRuntimeModelsRequest = loadAgentRuntimeModels,
                     canViewPrivateAgentSurfaces = { _, detail ->
                         current.accessMode.allowsPrivateAgentSurfaces &&
                             (current.server.permissions.canManageSettings ||
@@ -3300,138 +3896,145 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                             detail?.summary?.creatorId == current.currentUserId
                             )
                     },
-                    onBack = { provider.bridge.closePage() },
-                    onOpenDirectMessage = {
-                        routeScope.launch {
-                            provider.openDirectMessage(member).openMembersDirectMessageResult(
-                                pager = pager,
-                                member = member,
-                                timeContext = timeContext,
-                                unavailableMessage = directMessageOpenError,
-                                errorTemplate = directMessageOpenErrorTemplate,
-                                permissionMessage = directMessagePermissionError,
-                                errorStrings = errorStrings,
-                                onUnavailableAction = { bridge.toast(it) }
-                            )
-                        }
-                    },
-                    onOpenComputer = onOpenComputer,
-                    onCopyMemberId = {
-                        provider.copyMemberId(member, memberIdCopied)
-                    },
-                    onRemoveMember = {
-                        provider.bridge.toast(removeFromSettings)
-                    },
-                    onOpenUrl = { linkNavigator.open(it) },
-                    onOpenReminderMessage = { permalink ->
-                        pager.openMembersReminderMessage(
-                            permalink = permalink,
-                            server = current.server,
-                            conversationIdentityProvider = provider.conversationIdentityProvider,
-                            storeScope = provider.storeScope,
-                            timeContext = timeContext,
-                            onOpenExternal = {
-                                linkNavigator.openMembersReminderForceExternalFallback(it)
-                            },
-                            unavailableMessage = reminderOpenError,
-                            onUnavailableAction = { provider.bridge.toast(it) }
-                        )
-                    },
-                    agentDetailActions = agentDetailActions,
-                    onUpdateAgentProfile = { request ->
-                        agentDetailActions.updateAgentProfile(request)
-                    },
-                    onApplyAgentProfileResult = { updatedMember ->
-                        provider.updateCachedMemberProfile(updatedMember, current.server.id)
-                    },
-                    onApplyAgentRuntimeConfigProjection = provider::applyRuntimeConfigProjection,
-                    onPickAgentAvatarFile = {
-                        provider.pickAgentAvatarFile()
-                    },
-                    onUploadAgentAvatar = { agentId, file ->
-                        val result = provider.uploadAgentAvatar(current.server.id, agentId, file)
-                        if (result is DataResult.Content) {
-                            provider.updateCachedMemberProfile(result.data, current.server.id)
-                        }
-                        result
-                    },
-                    onAgentLifecycleAction = { agentId, action ->
-                        agentDetailActions.runLifecycleAction(agentId, action)
-                    },
-                    agentWorkspaceTreeLoader = { agentId ->
-                        provider.memberRepository.getAgentWorkspaceTree(DataRequestPriority.Visible, agentId)
-                    },
-                    agentWorkspaceChildrenLoader = { agentId, dirPath ->
-                        provider.memberRepository.getAgentWorkspaceChildren(DataRequestPriority.Visible, agentId, dirPath)
-                    },
-                    onCopyAgentDiagnostics = agentDetailActions::copyDiagnostics,
-                    onCopyAgentIssueReference = provider.bridge::copyToPasteboard,
-                    onReportAgentIssue = agentDetailActions::reportIssue,
-                    onUnavailableAction = { bridge.toast(it) },
-                    timeContext = timeContext,
-                    pageVisibleTick = pageVisibleTick,
-                    sharedAgentDetailStore = provider.agentDetailStore,
-                    initialAgentTab =
-                        if (current.accessMode.allowsPrivateAgentSurfaces) {
-                            initialAgentTabForRender
-                        } else {
-                            MembersAgentDetailTab.Profile
-                        },
-                    accessMode = current.accessMode,
-                    agentPanelTabOrder = agentPanelTabOrder,
-                    onAgentPanelTabOrderChange = { orderedTabs ->
-                        val previousOrder = agentPanelTabOrder
-                        val nextOrder = orderedTabs.toMembersAgentPanelTabOrderWireKeys()
-                        if (nextOrder != previousOrder) {
-                            provider.agentPanelTabOrderStore.applyOptimistic(
-                                serverId = statusLookupServerId,
-                                order = nextOrder,
-                                source = "member_detail_user_reorder_optimistic",
-                                logger = { message -> bridge.log(message) }
-                            )
+                    machineStatusRow = machineStatusRow,
+                    actions = MembersDetailActions(
+                        onBack = { provider.bridge.closePage() },
+                        onOpenDirectMessage = {
                             routeScope.launch {
-                                when (val result = provider.updateAgentPanelTabOrder(orderedTabs)) {
-                                    is DataResult.Content ->
-                                        provider.agentPanelTabOrderStore.applyLoaded(
-                                            serverId = statusLookupServerId,
-                                            order = result.data,
-                                            source = "member_detail_user_reorder_save_success",
-                                            logger = { message -> bridge.log(message) }
-                                        )
-                                    is DataResult.Empty -> {
-                                        provider.agentPanelTabOrderStore.applyLoaded(
-                                            serverId = statusLookupServerId,
-                                            order = previousOrder,
-                                            source = "member_detail_user_reorder_save_empty_rollback",
-                                            logger = { message -> bridge.log(message) }
-                                        )
-                                        bridge.toast(tabOrderSaveError)
-                                    }
-                                    is DataResult.Error -> {
-                                        provider.agentPanelTabOrderStore.applyLoaded(
-                                            serverId = statusLookupServerId,
-                                            order = previousOrder,
-                                            source = "member_detail_user_reorder_save_error_rollback",
-                                            logger = { message -> bridge.log(message) }
-                                        )
-                                        bridge.toast(
-                                            tabOrderSaveErrorTemplate
-                                                .membersFormat(result.error.userFacingMessage(errorStrings))
-                                        )
-                                    }
-                                    is DataResult.NoPermission -> {
-                                        provider.agentPanelTabOrderStore.applyLoaded(
-                                            serverId = statusLookupServerId,
-                                            order = previousOrder,
-                                            source = "member_detail_user_reorder_save_blocked_rollback",
-                                            logger = { message -> bridge.log(message) }
-                                        )
-                                        bridge.toast(tabOrderPermissionError)
+                                provider.openDirectMessage(member).openMembersDirectMessageResult(
+                                    pager = pager,
+                                    member = member,
+                                    timeContext = timeContext,
+                                    unavailableMessage = directMessageOpenError,
+                                    errorTemplate = directMessageOpenErrorTemplate,
+                                    permissionMessage = directMessagePermissionError,
+                                    errorStrings = errorStrings,
+                                    onUnavailableAction = { bridge.toast(it) }
+                                )
+                            }
+                        },
+                        onOpenComputer = onOpenComputer,
+                        onCopyMemberId = {
+                            provider.copyMemberId(member, memberIdCopied)
+                        },
+                        onRemoveMember = {
+                            provider.bridge.toast(removeFromSettings)
+                        },
+                        onOpenUrl = { linkNavigator.open(it) },
+                        onOpenReminderMessage = { permalink ->
+                            pager.openMembersReminderMessage(
+                                permalink = permalink,
+                                server = current.server,
+                                conversationIdentityProvider = provider.conversationIdentityProvider,
+                                storeScope = provider.storeScope,
+                                timeContext = timeContext,
+                                onOpenExternal = {
+                                    linkNavigator.openMembersReminderForceExternalFallback(it)
+                                },
+                                unavailableMessage = reminderOpenError,
+                                onUnavailableAction = { provider.bridge.toast(it) }
+                            )
+                        },
+                        onUnavailableAction = { bridge.toast(it) }
+                    ),
+                    agentDetailActions = agentDetailActions,
+                    agentCallbacks = MembersAgentDetailCallbacks(
+                        onUpdateAgentProfile = { request ->
+                            agentDetailActions.updateAgentProfile(request)
+                        },
+                        onApplyAgentProfileResult = { updatedMember ->
+                            provider.updateCachedMemberProfile(updatedMember, current.server.id)
+                        },
+                        onApplyAgentRuntimeConfigProjection = provider::applyRuntimeConfigProjection,
+                        onPickAgentAvatarFile = {
+                            provider.pickAgentAvatarFile()
+                        },
+                        onUploadAgentAvatar = { agentId, file ->
+                            val result = provider.uploadAgentAvatar(current.server.id, agentId, file)
+                            if (result is DataResult.Content) {
+                                provider.updateCachedMemberProfile(result.data, current.server.id)
+                            }
+                            result
+                        },
+                        onAgentLifecycleAction = { agentId, action ->
+                            agentDetailActions.runLifecycleAction(agentId, action)
+                        },
+                        agentWorkspaceTreeLoader = { agentId ->
+                            provider.memberRepository.getAgentWorkspaceTree(DataRequestPriority.Visible, agentId)
+                        },
+                        agentWorkspaceChildrenLoader = { agentId, dirPath ->
+                            provider.memberRepository.getAgentWorkspaceChildren(DataRequestPriority.Visible, agentId, dirPath)
+                        },
+                        onCopyAgentDiagnostics = agentDetailActions::copyDiagnostics,
+                        onCopyAgentIssueReference = provider.bridge::copyToPasteboard,
+                        onReportAgentIssue = agentDetailActions::reportIssue
+                    ),
+                    timeContext = timeContext,
+                    presentation = MembersAgentDetailPresentation(
+                        pageVisibleTick = pageVisibleTick,
+                        initialAgentTab =
+                            if (current.accessMode.allowsPrivateAgentSurfaces) {
+                                initialAgentTabForRender
+                            } else {
+                                MembersAgentDetailTab.Profile
+                            },
+                        agentPanelTabOrder = agentPanelTabOrder,
+                        onAgentPanelTabOrderChange = { orderedTabs ->
+                            val previousOrder = agentPanelTabOrder
+                            val nextOrder = orderedTabs.toMembersAgentPanelTabOrderWireKeys()
+                            if (nextOrder != previousOrder) {
+                                provider.agentPanelTabOrderStore.applyOptimistic(
+                                    serverId = statusLookupServerId,
+                                    order = nextOrder,
+                                    source = "member_detail_user_reorder_optimistic",
+                                    logger = { message -> bridge.log(message) }
+                                )
+                                routeScope.launch {
+                                    when (val result = provider.updateAgentPanelTabOrder(orderedTabs)) {
+                                        is DataResult.Content ->
+                                            provider.agentPanelTabOrderStore.applyLoaded(
+                                                serverId = statusLookupServerId,
+                                                order = result.data,
+                                                source = "member_detail_user_reorder_save_success",
+                                                logger = { message -> bridge.log(message) }
+                                            )
+                                        is DataResult.Empty -> {
+                                            provider.agentPanelTabOrderStore.applyLoaded(
+                                                serverId = statusLookupServerId,
+                                                order = previousOrder,
+                                                source = "member_detail_user_reorder_save_empty_rollback",
+                                                logger = { message -> bridge.log(message) }
+                                            )
+                                            bridge.toast(tabOrderSaveError)
+                                        }
+                                        is DataResult.Error -> {
+                                            provider.agentPanelTabOrderStore.applyLoaded(
+                                                serverId = statusLookupServerId,
+                                                order = previousOrder,
+                                                source = "member_detail_user_reorder_save_error_rollback",
+                                                logger = { message -> bridge.log(message) }
+                                            )
+                                            bridge.toast(
+                                                tabOrderSaveErrorTemplate
+                                                    .membersFormat(result.error.userFacingMessage(errorStrings))
+                                            )
+                                        }
+                                        is DataResult.NoPermission -> {
+                                            provider.agentPanelTabOrderStore.applyLoaded(
+                                                serverId = statusLookupServerId,
+                                                order = previousOrder,
+                                                source = "member_detail_user_reorder_save_blocked_rollback",
+                                                logger = { message -> bridge.log(message) }
+                                            )
+                                            bridge.toast(tabOrderPermissionError)
+                                        }
                                     }
                                 }
                             }
                         }
-                    },
+                    ),
+                    sharedAgentDetailStore = provider.agentDetailStore,
+                    accessMode = current.accessMode,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
                     agentsApiClient = provider.agentsApiClient
@@ -3463,60 +4066,69 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                 agentDetailState = MembersAgentDetailLoadState.Idle,
                 canViewPrivateAgentSurfaces = { _, _ -> false },
                 canManageAgent = { _, _ -> false },
-                onBack = { provider.bridge.closePage() },
-                onOpenDirectMessage = {
-                    routeScope.launch {
-                        provider.openDirectMessage(current.member).openMembersDirectMessageResult(
-                            pager = pager,
-                            member = current.member,
+                machineStatusRow = machineStatusRow,
+                actions = MembersDetailActions(
+                    onBack = { provider.bridge.closePage() },
+                    onOpenDirectMessage = {
+                        routeScope.launch {
+                            provider.openDirectMessage(current.member).openMembersDirectMessageResult(
+                                pager = pager,
+                                member = current.member,
+                                timeContext = timeContext,
+                                unavailableMessage = directMessageOpenError,
+                                errorTemplate = directMessageOpenErrorTemplate,
+                                permissionMessage = directMessagePermissionError,
+                                errorStrings = errorStrings,
+                                onUnavailableAction = { bridge.toast(it) }
+                            )
+                        }
+                    },
+                    onCopyMemberId = {
+                        provider.copyMemberId(current.member, memberIdCopied)
+                    },
+                    onRemoveMember = if (canRemoveHumanMember) ({
+                        provider.bridge.toast(removeFromSettings)
+                    }) else null,
+                    onOpenUrl = { linkNavigator.open(it) },
+                    onOpenReminderMessage = { permalink ->
+                        pager.openMembersReminderMessage(
+                            permalink = permalink,
+                            server = current.server,
+                            conversationIdentityProvider = provider.conversationIdentityProvider,
+                            storeScope = provider.storeScope,
                             timeContext = timeContext,
-                            unavailableMessage = directMessageOpenError,
-                            errorTemplate = directMessageOpenErrorTemplate,
-                            permissionMessage = directMessagePermissionError,
-                            errorStrings = errorStrings,
-                            onUnavailableAction = { bridge.toast(it) }
+                            onOpenExternal = {
+                                linkNavigator.openMembersReminderForceExternalFallback(it)
+                            },
+                            unavailableMessage = reminderOpenError,
+                            onUnavailableAction = { provider.bridge.toast(it) }
                         )
+                    },
+                    onUnavailableAction = { bridge.toast(it) }
+                ),
+                humanRole = MembersHumanRoleInputs(
+                    humanActorRole = current.server.role,
+                    humanOwnerCount = ownerCount.takeIf { it > 0 },
+                    humanAccessMode = current.accessMode,
+                    onUpdateHumanRole = { memberId, role ->
+                        provider.updateHumanRole(current.server.id.value, memberId, role)
                     }
-                },
-                onCopyMemberId = {
-                    provider.copyMemberId(current.member, memberIdCopied)
-                },
-                onRemoveMember = if (canRemoveHumanMember) ({
-                    provider.bridge.toast(removeFromSettings)
-                }) else null,
-                humanActorRole = current.server.role,
-                humanOwnerCount = ownerCount.takeIf { it > 0 },
-                humanAccessMode = current.accessMode,
-                onUpdateHumanRole = { memberId, role ->
-                    provider.updateHumanRole(current.server.id.value, memberId, role)
-                },
-                onOpenUrl = { linkNavigator.open(it) },
-                onOpenReminderMessage = { permalink ->
-                    pager.openMembersReminderMessage(
-                        permalink = permalink,
-                        server = current.server,
-                        conversationIdentityProvider = provider.conversationIdentityProvider,
-                        storeScope = provider.storeScope,
-                        timeContext = timeContext,
-                        onOpenExternal = {
-                            linkNavigator.openMembersReminderForceExternalFallback(it)
-                        },
-                        unavailableMessage = reminderOpenError,
-                        onUnavailableAction = { provider.bridge.toast(it) }
-                    )
-                },
-                onUpdateAgentProfile = null,
-                onUploadAgentAvatar = null,
-                onAgentLifecycleAction = null,
-                agentWorkspaceTreeLoader = null,
-                agentWorkspaceChildrenLoader = null,
-                onCopyAgentDiagnostics = {},
-                onReportAgentIssue = null,
-                onUnavailableAction = { bridge.toast(it) },
+                ),
+                agentCallbacks = MembersAgentDetailCallbacks(
+                    onUpdateAgentProfile = null,
+                    onUploadAgentAvatar = null,
+                    onAgentLifecycleAction = null,
+                    agentWorkspaceTreeLoader = null,
+                    agentWorkspaceChildrenLoader = null,
+                    onCopyAgentDiagnostics = {},
+                    onReportAgentIssue = null
+                ),
                 timeContext = timeContext,
-                pageVisibleTick = pageVisibleTick,
-                initialAgentTab = initialAgentTab,
-                agentPanelTabOrder = payload.agentPanelTabOrder,
+                presentation = MembersAgentDetailPresentation(
+                    pageVisibleTick = pageVisibleTick,
+                    initialAgentTab = initialAgentTab,
+                    agentPanelTabOrder = payload.agentPanelTabOrder
+                ),
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver
             )
@@ -3538,7 +4150,9 @@ private fun KuiklyMemberDetailPayload.toMemberDetailVisualSeedOrNull(): MemberDe
                 member = membersHumanDetailVisualMember,
                 agentDetailState = MembersAgentDetailLoadState.Idle
             )
-        else -> null
+        else -> membersAgentDetailVisualVariants
+            .firstOrNull { it.id == identity?.memberId?.value }
+            ?.toSeed()
     }
 }
 
@@ -3561,48 +4175,57 @@ private fun MemberDetailVisualSeedContent(
         agentDetailState = seed.agentDetailState,
         canViewPrivateAgentSurfaces = { member, _ -> member.kind == MemberKind.Agent },
         canManageAgent = { member, _ -> member.kind == MemberKind.Agent },
-        onBack = {},
-        onOpenDirectMessage = {},
-        onCopyMemberId = {},
-        humanActorRole = "owner",
-        humanOwnerCount = 2,
-        onUpdateHumanRole = { _, _ -> DataResult.Content(SettingsServerActionResult(success = true)) },
-        onOpenUrl = {},
-        onUpdateAgentProfile = { DataResult.Content(seed.member) },
-        onUploadAgentAvatar = null,
-        onAgentLifecycleAction = { agentId, action ->
-            DataResult.Content(
-                AgentLifecycleActionResult(
-                    agentId = agentId,
-                    action = action.actionKey,
-                    success = true
+        machineStatusRow = membersVisualFixtureMachineStatusRow,
+        actions = MembersDetailActions(
+            onBack = {},
+            onOpenDirectMessage = {},
+            onCopyMemberId = {},
+            onOpenUrl = {},
+            onUnavailableAction = {}
+        ),
+        humanRole = MembersHumanRoleInputs(
+            humanActorRole = "owner",
+            humanOwnerCount = 2,
+            onUpdateHumanRole = { _, _ -> DataResult.Content(SettingsServerActionResult(success = true)) }
+        ),
+        agentCallbacks = MembersAgentDetailCallbacks(
+            onUpdateAgentProfile = { DataResult.Content(seed.member) },
+            onUploadAgentAvatar = null,
+            onAgentLifecycleAction = { agentId, action ->
+                DataResult.Content(
+                    AgentLifecycleActionResult(
+                        agentId = agentId,
+                        action = action.actionKey,
+                        success = true
+                    )
                 )
-            )
-        },
-        agentWorkspaceTreeLoader = { DataResult.Content(membersAgentDetailVisualWorkspaceTreeSnapshot) },
-        agentWorkspaceChildrenLoader = { _, _ ->
-            DataResult.Content(membersAgentDetailVisualWorkspaceNotesChildren)
-        },
-        onCopyAgentDiagnostics = {},
-        onReportAgentIssue = {
-            DataResult.Content(
-                AgentIssueReportResult(
-                    reportId = "7e91c120-f424-42d7-96e5-21eb816866d0",
-                    artifactId = "95d629bd-3ed7-42ff-97eb-3ed35c6dc6ab",
-                    serverId = "65598229-cd0a-4e92-96f3-c33e7e2e4cc1",
-                    issueDescription = "The agent stopped responding after a long-running command.",
-                    transcriptRequested = true
+            },
+            agentWorkspaceTreeLoader = { DataResult.Content(membersAgentDetailVisualWorkspaceTreeSnapshot) },
+            agentWorkspaceChildrenLoader = { _, _ ->
+                DataResult.Content(membersAgentDetailVisualWorkspaceNotesChildren)
+            },
+            onCopyAgentDiagnostics = {},
+            onReportAgentIssue = {
+                DataResult.Content(
+                    AgentIssueReportResult(
+                        reportId = "7e91c120-f424-42d7-96e5-21eb816866d0",
+                        artifactId = "95d629bd-3ed7-42ff-97eb-3ed35c6dc6ab",
+                        serverId = "65598229-cd0a-4e92-96f3-c33e7e2e4cc1",
+                        issueDescription = "The agent stopped responding after a long-running command.",
+                        transcriptRequested = true
+                    )
                 )
-            )
-        },
-        onUnavailableAction = {},
+            }
+        ),
         timeContext = payload.toSlockTimeContext(),
-        pageVisibleTick = pageVisibleTick,
-        initialVisualMode = visualMode,
-        initialAgentTab = initialAgentTab,
-        agentPanelTabOrder = payload.agentPanelTabOrder,
-        initialAgentScopeSet = seed.agentScopeSet,
-        stableVisualCapture = true
+        presentation = MembersAgentDetailPresentation(
+            pageVisibleTick = pageVisibleTick,
+            initialVisualMode = visualMode,
+            initialAgentTab = initialAgentTab,
+            agentPanelTabOrder = payload.agentPanelTabOrder,
+            initialAgentScopeSet = seed.agentScopeSet,
+            stableVisualCapture = true
+        )
     )
 }
 
@@ -3669,34 +4292,56 @@ internal fun MembersAgentDetailVisualContent() {
         agentDetailState = MembersAgentDetailLoadState.Content(membersAgentDetailVisualSnapshot),
         canViewPrivateAgentSurfaces = { _, _ -> true },
         canManageAgent = { _, _ -> true },
-        onBack = {},
-        onOpenDirectMessage = {},
-        onCopyMemberId = {},
-        onOpenUrl = {},
-        onUpdateAgentProfile = { DataResult.Content(membersAgentDetailVisualMember) },
-        onAgentLifecycleAction = { _, action ->
-            DataResult.Content(
-                AgentLifecycleActionResult(
-                    agentId = membersAgentDetailVisualMember.id,
-                    action = action.actionKey,
-                    success = true
+        // Without this the avatar picker never expands under capture. MembersAgentProfileTab
+        // gates editing on `agentProfileEditAuthority != null` (canEdit), and the header only
+        // draws MembersAgentAvatarChoiceGrid when canEdit && showAvatarPicker -- so the
+        // avatar-management visual case was photographing the *collapsed* state while web
+        // photographed the expanded grid. Its 23.83% mismatch was "expanded vs collapsed",
+        // not a spacing difference (XiShi, task #264). The values are fixture identity;
+        // nothing here is authoritative for any real server.
+        agentProfileEditAuthority =
+            MembersAgentProfileEditAuthority(
+                memberId = membersAgentDetailVisualMember.id,
+                environmentId = "visual-fixture",
+                accountId = "visual-fixture",
+                serverId = ServerId("visual-fixture"),
+                profileGeneration = 0L
+            ),
+        machineStatusRow = membersVisualFixtureMachineStatusRow,
+        actions = MembersDetailActions(
+            onBack = {},
+            onOpenDirectMessage = {},
+            onCopyMemberId = {},
+            onOpenUrl = {},
+            onUnavailableAction = {}
+        ),
+        agentCallbacks = MembersAgentDetailCallbacks(
+            onUpdateAgentProfile = { DataResult.Content(membersAgentDetailVisualMember) },
+            onAgentLifecycleAction = { _, action ->
+                DataResult.Content(
+                    AgentLifecycleActionResult(
+                        agentId = membersAgentDetailVisualMember.id,
+                        action = action.actionKey,
+                        success = true
+                    )
                 )
-            )
-        },
-        agentWorkspaceTreeLoader = null,
-        agentWorkspaceChildrenLoader = null,
-        onCopyAgentDiagnostics = {},
-        onReportAgentIssue = null,
-        onUnavailableAction = {},
-        onUploadAgentAvatar = null,
+            },
+            agentWorkspaceTreeLoader = null,
+            agentWorkspaceChildrenLoader = null,
+            onCopyAgentDiagnostics = {},
+            onReportAgentIssue = null,
+            onUploadAgentAvatar = null
+        ),
         timeContext = SlockTimeContext(
             localOffsetMinutes = 480,
             todayEpochDay = 20623,
             nowEpochMillis = 1781872200000,
             timeFormat = SlockTimeFormat24Hour
         ),
-        initialVisualMode = visualMode,
-        stableVisualCapture = true
+        presentation = MembersAgentDetailPresentation(
+            initialVisualMode = visualMode,
+            stableVisualCapture = true
+        )
     )
 }
 
@@ -3925,6 +4570,48 @@ private fun JSONObject.optStringArray(key: String): List<String> =
         }
     }
 
+/**
+ * Parameter holders for [MembersRouteContent] / [MembersListContent] (task #1130): both took 33
+ * parameters, past the 31-per-int `$changed` / `$default` mask boundary. Same caveats as
+ * [MembersAgentRuntimeModelInputs]: plain unstable classes, behaviour unchanged, no
+ * `@Stable` / `@Immutable` later.
+ */
+internal class MembersCreateAgentInputs(
+    /**
+     * Optional create-agent flow. When non-null, the agents section "+" opens a
+     * SharedCreateAgentDialog and submit is forwarded to this host callback.
+     * The host is responsible for the actual API call and refreshing the members
+     * payload.
+     */
+    val createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = null,
+    val createAgentMachines: List<SharedCreateAgentMachineOption> = emptyList(),
+    val createAgentMachinesLoading: Boolean = false,
+    val createAgentMachinesErrorMessage: String? = null,
+    val createAgentCurrentAgentCount: Int = 0,
+    val createAgentMaxAgents: Int = -1,
+    val createAgentLoadMachines: () -> Unit = {},
+    val createAgentRetryMachines: () -> Unit = {},
+    val createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
+    val createAgentRuntimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
+    val createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
+    val createAgentFormStore: build.raft.app.data.SharedCreateAgentFormStore? = null,
+    val createAgentServerId: String? = null
+)
+
+internal class MembersInviteHumanInputs(
+    /**
+     * Optional invite-human flow. When non-null, the humans section "+" opens
+     * a [SharedInviteHumanDialog] and submit is forwarded to this host
+     * callback. Mirrors the [MembersCreateAgentInputs.createAgentSubmit] pattern.
+     */
+    val inviteHumanSubmit: (suspend (emails: List<String>) -> DataResult<Unit>)? = null,
+    val inviteHumanJoinLinkLoading: Boolean = false,
+    val inviteHumanJoinLinkUrl: String? = null,
+    val inviteHumanJoinLinkCopied: Boolean = false,
+    val inviteHumanJoinLinkCopy: (String) -> Unit = {},
+    val inviteHumanLoadJoinLink: () -> Unit = {}
+)
+
 @Composable
 internal fun MembersRouteContent(
     payload: KuiklyMembersPayload,
@@ -3934,46 +4621,27 @@ internal fun MembersRouteContent(
     onOpenMemberDetail: (MemberProfile) -> Unit,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    /**
-     * Optional create-agent flow. When non-null, the agents section "+" opens a
-     * SharedCreateAgentDialog and submit is forwarded to this host callback.
-     * The host is responsible for the actual API call and refreshing the members
-     * payload.
-     */
-    createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = null,
-    createAgentMachines: List<SharedCreateAgentMachineOption> = emptyList(),
-    createAgentMachinesLoading: Boolean = false,
-    createAgentMachinesErrorMessage: String? = null,
-    createAgentCurrentAgentCount: Int = 0,
-    createAgentMaxAgents: Int = -1,
-    createAgentLoadMachines: () -> Unit = {},
-    createAgentRetryMachines: () -> Unit = {},
-    createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
-    createAgentRuntimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
-    createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
-    createAgentFormStore: build.raft.app.data.SharedCreateAgentFormStore? = null,
-    createAgentServerId: String? = null,
+    createAgent: MembersCreateAgentInputs = MembersCreateAgentInputs(),
+    inviteHuman: MembersInviteHumanInputs = MembersInviteHumanInputs(),
     /**
      * Permission gate for showing the agents "+". Defaults to false (no create).
      * When true, the agents "+" is rendered. When false, the "+" is hidden.
      */
     canCreateAgents: Boolean = false,
-    /**
-     * Optional invite-human flow. When non-null, the humans section "+" opens
-     * a [SharedInviteHumanDialog] and submit is forwarded to this host
-     * callback. Mirrors the [createAgentSubmit] pattern.
-     */
-    inviteHumanSubmit: (suspend (emails: List<String>) -> DataResult<Unit>)? = null,
-    inviteHumanJoinLinkLoading: Boolean = false,
-    inviteHumanJoinLinkUrl: String? = null,
-    inviteHumanJoinLinkCopied: Boolean = false,
-    inviteHumanJoinLinkCopy: (String) -> Unit = {},
-    inviteHumanLoadJoinLink: () -> Unit = {},
     agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
+    /**
+     * Task #409: current session's user id, used as the persistence scope for
+     * per-machine agent-group collapse (same `slock:sidebarCollapsed:<userId>`
+     * key family as web). Null keeps the groups collapsible but unpersisted
+     * (smoke/test surfaces).
+     */
+    currentUserId: String? = null,
+    agentGroupCollapseStore: build.raft.app.data.MembersAgentMachineGroupCollapseStore? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     scrollToTopRequest: Int = 0,
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
+    paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
     onRefresh: () -> Unit = {}
 ) {
     MembersListContent(
@@ -3986,29 +4654,15 @@ internal fun MembersRouteContent(
         agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = memberAvatarResolver,
         canCreateAgents = canCreateAgents,
-        createAgentSubmit = createAgentSubmit,
-        createAgentMachines = createAgentMachines,
-        createAgentMachinesLoading = createAgentMachinesLoading,
-        createAgentMachinesErrorMessage = createAgentMachinesErrorMessage,
-        createAgentCurrentAgentCount = createAgentCurrentAgentCount,
-        createAgentMaxAgents = createAgentMaxAgents,
-        createAgentLoadMachines = createAgentLoadMachines,
-        createAgentRetryMachines = createAgentRetryMachines,
-        createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModelsByMachineAndRuntime,
-        createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
-        createAgentLoadRuntimeModels = createAgentLoadRuntimeModels,
-        createAgentFormStore = createAgentFormStore,
-        createAgentServerId = createAgentServerId,
-        inviteHumanSubmit = inviteHumanSubmit,
-        inviteHumanJoinLinkLoading = inviteHumanJoinLinkLoading,
-        inviteHumanJoinLinkUrl = inviteHumanJoinLinkUrl,
-        inviteHumanJoinLinkCopied = inviteHumanJoinLinkCopied,
-        inviteHumanJoinLinkCopy = inviteHumanJoinLinkCopy,
-        inviteHumanLoadJoinLink = { inviteHumanLoadJoinLink() },
+        createAgent = createAgent,
+        inviteHuman = inviteHuman,
         bottomContentPadding = bottomContentPadding,
         scrollToTopRequest = scrollToTopRequest,
         initialListState = initialListState,
-        onListStateSnapshot = onListStateSnapshot
+        onListStateSnapshot = onListStateSnapshot,
+        paneLayout = paneLayout,
+        currentUserId = currentUserId,
+        agentGroupCollapseStore = agentGroupCollapseStore
     )
 }
 
@@ -4022,32 +4676,37 @@ internal fun MembersListContent(
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     canCreateAgents: Boolean = false,
-    createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = null,
-    createAgentMachines: List<SharedCreateAgentMachineOption> = emptyList(),
-    createAgentMachinesLoading: Boolean = false,
-    createAgentMachinesErrorMessage: String? = null,
-    createAgentCurrentAgentCount: Int = 0,
-    createAgentMaxAgents: Int = -1,
-    createAgentLoadMachines: () -> Unit = {},
-    createAgentRetryMachines: () -> Unit = {},
-    createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
-    createAgentRuntimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
-    createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
-    createAgentFormStore: build.raft.app.data.SharedCreateAgentFormStore? = null,
-    createAgentServerId: String? = null,
-    inviteHumanSubmit: (suspend (emails: List<String>) -> DataResult<Unit>)? = null,
-    inviteHumanJoinLinkLoading: Boolean = false,
-    inviteHumanJoinLinkUrl: String? = null,
-    inviteHumanJoinLinkCopied: Boolean = false,
-    inviteHumanJoinLinkCopy: (String) -> Unit = {},
-    inviteHumanLoadJoinLink: () -> Unit = {},
+    createAgent: MembersCreateAgentInputs = MembersCreateAgentInputs(),
+    inviteHuman: MembersInviteHumanInputs = MembersInviteHumanInputs(),
     agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     scrollToTopRequest: Int = 0,
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
-    onRefresh: () -> Unit = {}
+    paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
+    onRefresh: () -> Unit = {},
+    currentUserId: String? = null,
+    agentGroupCollapseStore: build.raft.app.data.MembersAgentMachineGroupCollapseStore? = null
 ) {
+    val createAgentSubmit = createAgent.createAgentSubmit
+    val createAgentMachines = createAgent.createAgentMachines
+    val createAgentMachinesLoading = createAgent.createAgentMachinesLoading
+    val createAgentMachinesErrorMessage = createAgent.createAgentMachinesErrorMessage
+    val createAgentCurrentAgentCount = createAgent.createAgentCurrentAgentCount
+    val createAgentMaxAgents = createAgent.createAgentMaxAgents
+    val createAgentLoadMachines = createAgent.createAgentLoadMachines
+    val createAgentRetryMachines = createAgent.createAgentRetryMachines
+    val createAgentRuntimeModelsByMachineAndRuntime = createAgent.createAgentRuntimeModelsByMachineAndRuntime
+    val createAgentRuntimeModelLoadsInFlight = createAgent.createAgentRuntimeModelLoadsInFlight
+    val createAgentLoadRuntimeModels = createAgent.createAgentLoadRuntimeModels
+    val createAgentFormStore = createAgent.createAgentFormStore
+    val createAgentServerId = createAgent.createAgentServerId
+    val inviteHumanSubmit = inviteHuman.inviteHumanSubmit
+    val inviteHumanJoinLinkLoading = inviteHuman.inviteHumanJoinLinkLoading
+    val inviteHumanJoinLinkUrl = inviteHuman.inviteHumanJoinLinkUrl
+    val inviteHumanJoinLinkCopied = inviteHuman.inviteHumanJoinLinkCopied
+    val inviteHumanJoinLinkCopy = inviteHuman.inviteHumanJoinLinkCopy
+    val inviteHumanLoadJoinLink = inviteHuman.inviteHumanLoadJoinLink
     val errorStrings = localizedErrorPresentationStrings()
     val displayTitle =
         canonicalMembersDisplayText(
@@ -4071,7 +4730,7 @@ internal fun MembersListContent(
         payload.members.groupBy {
             when (it.kind) {
                 MemberKind.Human -> payload.labels.humans
-                MemberKind.Agent, MemberKind.System -> payload.labels.agents
+                MemberKind.Agent, MemberKind.System, MemberKind.External -> payload.labels.agents
             }
         }
     }
@@ -4079,9 +4738,24 @@ internal fun MembersListContent(
     val humans = groupedMembers[payload.labels.humans].orEmpty()
     var agentsExpanded by remember(payload.instanceId) { mutableStateOf(initialListState.agentsExpanded) }
     var humansExpanded by remember(payload.instanceId) { mutableStateOf(initialListState.humansExpanded) }
+    val membersCurrentUserId = currentUserId?.trim().orEmpty()
+    // Task #409: collapse state = persisted default + this page's user taps.
+    // The members payload and the session user id both arrive asynchronously,
+    // so the stored state cannot be read once eagerly: a group that does not
+    // exist yet when the store is read would render expanded forever. Resolve
+    // per group at render instead: user taps this session override the stored
+    // value, untouched groups read the store. This survives members arriving
+    // after the user id (and vice versa) on the standalone members page.
+    var agentGroupCollapseOverrides by remember(payload.instanceId, membersCurrentUserId) {
+        mutableStateOf<Map<String, Boolean>>(emptyMap())
+    }
+    fun isAgentGroupCollapsed(groupKey: String): Boolean =
+        resolveAgentGroupCollapsed(groupKey, agentGroupCollapseOverrides, membersCurrentUserId, agentGroupCollapseStore)
     var activeCreateAgent by remember(payload.instanceId) { mutableStateOf(false) }
     var createAgentSubmitting by remember { mutableStateOf(false) }
     var createAgentError by remember { mutableStateOf<String?>(null) }
+    // Runtime form v2: fields a rejected create pointed at (`/formValues/<field>`).
+    var createAgentErrorFields by remember { mutableStateOf(emptySet<String>()) }
     var activeInviteHuman by remember(payload.instanceId) { mutableStateOf(false) }
     var inviteHumanSubmitting by remember { mutableStateOf(false) }
     var inviteHumanError by remember { mutableStateOf<String?>(null) }
@@ -4107,6 +4781,10 @@ internal fun MembersListContent(
             humansCount = humans.size,
             agentsExpanded = agentsExpanded,
             humansExpanded = humansExpanded,
+            collapsedAgentGroupKeys =
+                groupedAgentMembers(agents)
+                    .mapNotNull { group -> group.key.takeIf { isAgentGroupCollapsed(it) } }
+                    .toSet(),
             showHumanDirectory = payload.showHumanDirectory,
             hasPullToRefreshItem = showPullToRefreshItem
         )
@@ -4151,13 +4829,21 @@ internal fun MembersListContent(
             .background(SlockColor.SurfaceWhite)
     ) {
         MembersPageHeader(title = displayTitle, refreshing = refreshing, onBack = onBack)
+        BoxWithConstraints(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+        val lazyMaxWidth = maxWidth
         LazyColumn(
             state = listState,
             // React parity: the web members view pads the scroll container itself (Sidebar
             // sidebarScrollClassName `px-2`) on top of the per-row/section `px-2`, totalling 16px.
             // Rows/headers here carry MembersListHorizontalInset (8dp), so the container level was
             // the missing half — without it the list sits 8dp from the screen edge (task #140).
-            modifier = Modifier.fillMaxSize().padding(horizontal = MembersListContainerInset),
+            modifier = Modifier
+                .widthIn(max = membersListContentMaxWidth(lazyMaxWidth, paneLayout))
+                .fillMaxSize()
+                .padding(horizontal = MembersListContainerInset),
             verticalArrangement = Arrangement.spacedBy(MembersListRowSpacing),
             beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
         ) {
@@ -4200,15 +4886,40 @@ internal fun MembersListContent(
             }
             if (agentsExpanded) {
                 groupedAgentMembers(agents).forEach { group ->
-                    item("group_${group.label}") {
+                    item("group_${group.key}") {
+                        val groupExpanded = !isAgentGroupCollapsed(group.key)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = MembersListMachineLabelInset)
-                                .padding(top = SlockSpacing.Xs),
+                                .padding(top = SlockSpacing.Xs)
+                                .clickable {
+                                    // Slot stores *collapsed*; toggling writes !collapsed
+                                    // (writing !groupExpanded stored the old value and made the
+                                    // row a no-op — task #409 regression).
+                                    val collapseNow =
+                                        resolveAgentGroupCollapseToggle(
+                                            isAgentGroupCollapsed(group.key)
+                                        )
+                                    agentGroupCollapseOverrides =
+                                        agentGroupCollapseOverrides + (group.key to collapseNow)
+                                    agentGroupCollapseStore?.setCollapsed(
+                                        membersCurrentUserId,
+                                        group.key,
+                                        collapseNow
+                                    )
+                                },
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
                         ) {
+                            SlockLucideIcon(
+                                SlockLucideIconName.ChevronRight,
+                                modifier = Modifier.size(MembersListMachineLabelIconSize),
+                                color = SlockColor.TextMutedGrayArgb,
+                                rotationDegrees = if (groupExpanded) 90f else 0f,
+                                rotationAnimationDurationSeconds =
+                                    SlockCollapsibleSectionTokens.AnimationDurationSeconds
+                            )
                             SlockLucideIcon(
                                 SlockLucideIconName.Monitor,
                                 modifier = Modifier.size(MembersListMachineLabelIconSize),
@@ -4219,19 +4930,27 @@ internal fun MembersListContent(
                                 style = MembersListMachineLabelTextStyle,
                                 color = SlockColor.TextMutedGray,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            Text(
+                                text = group.members.size.toString(),
+                                style = MembersListMachineLabelTextStyle,
+                                color = SlockColor.TextMutedGray
                             )
                         }
                     }
-                    items(group.members.size, key = { "agent_${group.members[it].id.value}" }) { index ->
-                        val member = group.members[index]
-                        MembersListRow(
-                            member = member,
-                            agentStatusResolver = agentStatusResolver,
-                            memberAvatarResolver = memberAvatarResolver,
-                            modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
-                            onClick = { onOpenMember(member) }
-                        )
+                    if (!isAgentGroupCollapsed(group.key)) {
+                        items(group.members.size, key = { "agent_${group.members[it].id.value}" }) { index ->
+                            val member = group.members[index]
+                            MembersListRow(
+                                member = member,
+                                agentStatusResolver = agentStatusResolver,
+                                memberAvatarResolver = memberAvatarResolver,
+                                modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
+                                onClick = { onOpenMember(member) }
+                            )
+                        }
                     }
                 }
             }
@@ -4273,6 +4992,7 @@ internal fun MembersListContent(
             }
             item { Spacer(Modifier.height(bottomContentPadding)) }
         }
+        }
     }
     val submit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = createAgentSubmit
     if (activeCreateAgent && submit != null) {
@@ -4280,6 +5000,7 @@ internal fun MembersListContent(
         SharedCreateAgentDialog(
             submitting = createAgentSubmitting,
             errorMessage = createAgentError,
+            errorFieldKeys = createAgentErrorFields,
             machines = createAgentMachines,
             machinesLoading = createAgentMachinesLoading,
             machinesErrorMessage = createAgentMachinesErrorMessage,
@@ -4300,9 +5021,11 @@ internal fun MembersListContent(
             onSubmit = { request ->
                 createAgentSubmitting = true
                 createAgentError = null
+                createAgentErrorFields = emptySet()
                 scope.launch {
                     val result = submit(request)
                     createAgentSubmitting = false
+                    createAgentErrorFields = (result as? DataResult.Error)?.error?.formFieldKeys.orEmpty().toSet()
                     when (result) {
                         is DataResult.Content -> {
                             activeCreateAgent = false
@@ -4382,11 +5105,39 @@ internal fun MembersListContent(
     }
 }
 
+/**
+ * Task #409: a group's collapsed state is the user's tap this page session if
+ * they made one, otherwise the persisted value under `userId`. Resolving per
+ * group (rather than snapshotting the stored set once) keeps groups that
+ * arrive after the first read — the standalone members page fills its list
+ * asynchronously — from silently rendering expanded.
+ */
+/**
+ * The collapsed value a machine-group tap should write: the opposite of the
+ * currently resolved collapsed state. Kept as a named pure function because a
+ * previous implementation wrote the non-inverted state, which made taps a
+ * no-op (task #409 regression).
+ */
+internal fun resolveAgentGroupCollapseToggle(currentlyCollapsed: Boolean): Boolean =
+    !currentlyCollapsed
+
+internal fun resolveAgentGroupCollapsed(
+    groupKey: String,
+    overrides: Map<String, Boolean>,
+    userId: String,
+    store: build.raft.app.data.MembersAgentMachineGroupCollapseStore?
+): Boolean {
+    overrides[groupKey]?.let { return it }
+    if (userId.isBlank() || store == null) return false
+    return store.isCollapsed(userId, groupKey)
+}
+
 internal fun membersLazyItemCount(
     agents: List<MemberProfile>,
     humansCount: Int,
     agentsExpanded: Boolean,
     humansExpanded: Boolean,
+    collapsedAgentGroupKeys: Set<String> = emptySet(),
     showHumanDirectory: Boolean = true,
     hasPullToRefreshItem: Boolean = true
 ): Int {
@@ -4398,12 +5149,65 @@ internal fun membersLazyItemCount(
             1 // bottom spacer
     val agentItems =
         if (agentsExpanded) {
-            groupedAgentMembers(agents).sumOf { group -> 1 + group.members.size }
+            groupedAgentMembers(agents).sumOf { group ->
+                // Task #409: a collapsed machine group still renders its header
+                // row (computer name + count) but none of its member rows.
+                if (collapsedAgentGroupKeys.contains(group.key)) 1 else 1 + group.members.size
+            }
         } else {
             0
         }
     return fixedItems + agentItems + (if (showHumanDirectory && humansExpanded) humansCount else 0)
 }
+
+/**
+ * Parameter holders for [MembersDetailContent] (task #1130): the composable took 53 parameters,
+ * past the same 31-per-int `$changed` / `$default` mask boundary as [MembersAgentProfileTab].
+ * Same shape and same caveats as [MembersAgentRuntimeModelInputs]: plain unstable classes,
+ * behaviour unchanged, no `@Stable` / `@Immutable` later.
+ */
+private class MembersHumanRoleInputs(
+    val humanActorRole: String? = null,
+    val humanOwnerCount: Int? = null,
+    val humanAccessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull,
+    val onUpdateHumanRole: (suspend (String, MembersHumanServerRole) -> DataResult<SettingsServerActionResult>)? = null
+)
+
+private class MembersAgentDetailCallbacks(
+    val onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
+    val onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
+    val onApplyAgentRuntimeConfigProjection:
+        suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
+    val onUploadAgentAvatar: (suspend (MemberId, PlatformFile) -> DataResult<MemberProfile>)?,
+    val onPickAgentAvatarFile: suspend () -> DataResult<PlatformFile> = { DataResult.Empty(EmptyReason.NoMembers) },
+    val onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction) -> DataResult<AgentLifecycleActionResult>)?,
+    val agentWorkspaceTreeLoader: (suspend (MemberId) -> DataResult<AgentWorkspaceTreeSnapshot>)?,
+    val agentWorkspaceChildrenLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceChildrenSnapshot>)?,
+    val onCopyAgentDiagnostics: (String) -> Unit,
+    val onCopyAgentIssueReference: (String) -> Unit = onCopyAgentDiagnostics,
+    val onReportAgentIssue: (suspend (SharedAgentIssueReportRequest) -> DataResult<AgentIssueReportResult>)?
+)
+
+private class MembersDetailActions(
+    val onBack: () -> Unit,
+    val onOpenDirectMessage: () -> Unit,
+    val onOpenComputer: (() -> Unit)? = null,
+    val onCopyMemberId: () -> Unit,
+    val onRemoveMember: (() -> Unit)? = null,
+    val onOpenUrl: (String) -> Unit,
+    val onOpenReminderMessage: (String) -> Unit = {},
+    val onUnavailableAction: (String) -> Unit
+)
+
+private class MembersAgentDetailPresentation(
+    val pageVisibleTick: Int = 0,
+    val initialVisualMode: MembersAgentDetailVisualMode = MembersAgentDetailVisualMode.Profile,
+    val initialAgentTab: MembersAgentDetailTab? = null,
+    val agentPanelTabOrder: List<String> = emptyList(),
+    val onAgentPanelTabOrderChange: ((List<MembersAgentDetailTab>) -> Unit)? = null,
+    val initialAgentScopeSet: AgentScopeSet? = null,
+    val stableVisualCapture: Boolean = false
+)
 
 @Composable
 private fun MembersDetailContent(
@@ -4413,58 +5217,64 @@ private fun MembersDetailContent(
     serverMembersState: SharedServerMembersState = SharedServerMembersState(),
     agentDetailState: MembersAgentDetailLoadState,
     agentActivityLoadState: MembersAgentActivityLoadState = MembersAgentActivityLoadState.Idle,
-    agentMachineRuntimes: List<String> = emptyList(),
-    agentRuntimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
-    agentRuntimeModelLoadsInFlight: Set<String> = emptySet(),
-    agentRuntimeModelErrorsByRuntime: Map<String, String> = emptyMap(),
-    agentRuntimeModelGenerationsByRuntime: Map<String, Long> = emptyMap(),
+    runtimeModels: MembersAgentRuntimeModelInputs = MembersAgentRuntimeModelInputs(),
     createAgentFormStore: SharedCreateAgentFormStore? = null,
     agentProfileEditAuthority: MembersAgentProfileEditAuthority? = null,
-    onAgentRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> },
     canViewPrivateAgentSurfaces: (MemberProfile, AgentDetailSnapshot?) -> Boolean,
     canManageAgent: (MemberProfile, AgentDetailSnapshot?) -> Boolean,
-    onBack: () -> Unit,
-    onOpenDirectMessage: () -> Unit,
-    onOpenComputer: (() -> Unit)? = null,
-    onCopyMemberId: () -> Unit,
-    onRemoveMember: (() -> Unit)? = null,
-    humanActorRole: String? = null,
-    humanOwnerCount: Int? = null,
-    humanAccessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull,
-    onUpdateHumanRole: (suspend (String, MembersHumanServerRole) -> DataResult<SettingsServerActionResult>)? = null,
-    onOpenUrl: (String) -> Unit,
-    onOpenReminderMessage: (String) -> Unit = {},
+    /** Task #259: resolves the machine status row from the computers store. No default on purpose -- a silent fallback here is the #253 shape. */
+    machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
+    actions: MembersDetailActions,
+    humanRole: MembersHumanRoleInputs = MembersHumanRoleInputs(),
     agentDetailActions: SharedAgentDetailActions? = null,
-    onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
-    onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
-    onApplyAgentRuntimeConfigProjection:
-        suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
-    onUploadAgentAvatar: (suspend (MemberId, PlatformFile) -> DataResult<MemberProfile>)?,
-    onPickAgentAvatarFile: suspend () -> DataResult<PlatformFile> = { DataResult.Empty(EmptyReason.NoMembers) },
-    onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction) -> DataResult<AgentLifecycleActionResult>)?,
-    agentWorkspaceTreeLoader: (suspend (MemberId) -> DataResult<AgentWorkspaceTreeSnapshot>)?,
-    agentWorkspaceChildrenLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceChildrenSnapshot>)?,
-    onCopyAgentDiagnostics: (String) -> Unit,
-    onCopyAgentIssueReference: (String) -> Unit = onCopyAgentDiagnostics,
-    onReportAgentIssue: (suspend (SharedAgentIssueReportRequest) -> DataResult<AgentIssueReportResult>)?,
-    onUnavailableAction: (String) -> Unit,
+    agentCallbacks: MembersAgentDetailCallbacks,
     timeContext: SlockTimeContext,
-    pageVisibleTick: Int = 0,
     sharedAgentDetailStore: SharedAgentDetailStore? = null,
-    initialVisualMode: MembersAgentDetailVisualMode = MembersAgentDetailVisualMode.Profile,
-    initialAgentTab: MembersAgentDetailTab? = null,
+    presentation: MembersAgentDetailPresentation = MembersAgentDetailPresentation(),
     accessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull,
-    agentPanelTabOrder: List<String> = emptyList(),
-    onAgentPanelTabOrderChange: ((List<MembersAgentDetailTab>) -> Unit)? = null,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     // #89: forwarded to the Permissions tab so it can call
     // `agentScopes` / `updateAgentScopes` / `resetAgentScopes`. When null
     // the Permissions tab renders an "Agent API not available" error banner.
-    agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
-    initialAgentScopeSet: AgentScopeSet? = null,
-    stableVisualCapture: Boolean = false
+    agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null
 ) {
+    val agentMachineRuntimes = runtimeModels.agentMachineRuntimes
+    val agentRuntimeModelsByRuntime = runtimeModels.agentRuntimeModelsByRuntime
+    val agentRuntimeModelLoadsInFlight = runtimeModels.agentRuntimeModelLoadsInFlight
+    val agentRuntimeModelErrorsByRuntime = runtimeModels.agentRuntimeModelErrorsByRuntime
+    val agentRuntimeModelGenerationsByRuntime = runtimeModels.agentRuntimeModelGenerationsByRuntime
+    val onAgentRuntimeModelsRequest = runtimeModels.onAgentRuntimeModelsRequest
+    val humanActorRole = humanRole.humanActorRole
+    val humanOwnerCount = humanRole.humanOwnerCount
+    val humanAccessMode = humanRole.humanAccessMode
+    val onUpdateHumanRole = humanRole.onUpdateHumanRole
+    val onUpdateAgentProfile = agentCallbacks.onUpdateAgentProfile
+    val onApplyAgentProfileResult = agentCallbacks.onApplyAgentProfileResult
+    val onApplyAgentRuntimeConfigProjection = agentCallbacks.onApplyAgentRuntimeConfigProjection
+    val onUploadAgentAvatar = agentCallbacks.onUploadAgentAvatar
+    val onPickAgentAvatarFile = agentCallbacks.onPickAgentAvatarFile
+    val onAgentLifecycleAction = agentCallbacks.onAgentLifecycleAction
+    val agentWorkspaceTreeLoader = agentCallbacks.agentWorkspaceTreeLoader
+    val agentWorkspaceChildrenLoader = agentCallbacks.agentWorkspaceChildrenLoader
+    val onCopyAgentDiagnostics = agentCallbacks.onCopyAgentDiagnostics
+    val onCopyAgentIssueReference = agentCallbacks.onCopyAgentIssueReference
+    val onReportAgentIssue = agentCallbacks.onReportAgentIssue
+    val onBack = actions.onBack
+    val onOpenDirectMessage = actions.onOpenDirectMessage
+    val onOpenComputer = actions.onOpenComputer
+    val onCopyMemberId = actions.onCopyMemberId
+    val onRemoveMember = actions.onRemoveMember
+    val onOpenUrl = actions.onOpenUrl
+    val onOpenReminderMessage = actions.onOpenReminderMessage
+    val onUnavailableAction = actions.onUnavailableAction
+    val pageVisibleTick = presentation.pageVisibleTick
+    val initialVisualMode = presentation.initialVisualMode
+    val initialAgentTab = presentation.initialAgentTab
+    val agentPanelTabOrder = presentation.agentPanelTabOrder
+    val onAgentPanelTabOrderChange = presentation.onAgentPanelTabOrderChange
+    val initialAgentScopeSet = presentation.initialAgentScopeSet
+    val stableVisualCapture = presentation.stableVisualCapture
     val errorStrings = localizedErrorPresentationStrings()
     val detail = (agentDetailState as? MembersAgentDetailLoadState.Content)?.detail
     val managementUnavailable = stringResource(MR.strings.member_error_action_unavailable)
@@ -4476,10 +5286,12 @@ private fun MembersDetailContent(
     val diagnosticsCopied = stringResource(MR.strings.member_action_diagnostics_copied)
     val issueReported = stringResource(MR.strings.member_action_issue_reported)
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
-    val agentStatusIndicatorState =
+    // task #256: observed-or-null drives the dot. The label-facing resolution below may
+    // substitute the unknown placeholder, which is grey and would impersonate Offline.
+    val managedAgentStatusObservedState =
         if (member.kind == MemberKind.Agent) {
             val canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.id.value)
-            resolveMembersAgentStatusIndicatorState(
+            resolveMembersAgentStatusIndicatorStateOrNull(
                 canonicalState = canonicalState,
                 fixtureFallback =
                     if (stableVisualCapture) {
@@ -4495,6 +5307,29 @@ private fun MembersDetailContent(
         } else {
             null
         }
+    val managedAgentStatusIndicatorState =
+        if (member.kind == MemberKind.Agent) {
+            managedAgentStatusObservedState ?: unknownMembersAgentStatusIndicatorState()
+        } else {
+            null
+        }
+    val isExternalAgent =
+        member.kind == MemberKind.Agent && (member.isExternal || detail?.summary?.isExternal == true)
+    // task #1119 PR 2: the detail page (and only the detail page) reads the
+    // external agent's setup/activity status — React AgentDetailPanel parity.
+    val agentStatusIndicatorState =
+        if (isExternalAgent) {
+            rememberExternalAgentDetailIndicatorState(detail = detail, timeContext = timeContext)
+        } else {
+            managedAgentStatusIndicatorState
+        }
+    // task #256 x #1119: the no-manufactured-dot rule covers the MANAGED branch only. An
+    // external agent's tiers are cyan/green — never StatusNeutralGray — so that state is an
+    // observation in its own right and must keep painting its dot. Suppressing it here would
+    // silently undo #1119's setup/activity tiers, which is exactly what resolving this
+    // conflict in favour of either side alone would have done.
+    val agentStatusObservedState =
+        if (isExternalAgent) agentStatusIndicatorState else managedAgentStatusObservedState
     val canViewPrivate = member.kind == MemberKind.Agent && canViewPrivateAgentSurfaces(member, detail)
     val canManage = member.kind == MemberKind.Agent && !deleted && canManageAgent(member, detail)
     val scope = rememberCoroutineScope()
@@ -4522,6 +5357,21 @@ private fun MembersDetailContent(
     // first server-ordered tab is the default.
     var selectedTabOverride by remember(member.id.value, initialAgentTab) {
         mutableStateOf(initialAgentTab)
+    }
+    // task #232 PR2 (@LiBai review): each tab's list scroll position lives here,
+    // keyed by TAB rather than by pager index so it survives both a swipe away
+    // and a tab reorder. Inside the page the LazyColumn is discarded whenever
+    // the page is not the selected one, so a state remembered there would
+    // reset to the top on every return — the Activity caller hoists its
+    // per-page states for the same reason (SharedInboxPanel pageListStates).
+    // rememberLazyListState (saveable, like Activity's) rather than a bare
+    // LazyListState so rotation keeps the position too; key() re-creates the
+    // set when the detail switches member, so one member's scroll offsets
+    // never show up on another (same pattern as ThreadPage's listState). The
+    // map covers the FULL enum, so getValue below is total whatever the
+    // visible-tab set is.
+    val agentTabListStates = key(member.id.value) {
+        MembersAgentDetailTab.entries.associateWith { rememberLazyListState() }
     }
     var managementMenuOpen by remember(member.id.value, initialVisualMode) { mutableStateOf(false) }
     val storeLifecycleInFlight: String? = storeState.lifecycleActionInFlight
@@ -4618,6 +5468,12 @@ private fun MembersDetailContent(
     val selectedTab = selectedTabOverride?.takeIf { it in visibleTabs }
         ?: visibleTabs.firstOrNull()
         ?: MembersAgentDetailTab.Profile
+    var visitedAgentTabs by remember(member.id.value) {
+        mutableStateOf(setOf(selectedTab))
+    }
+    if (selectedTab !in visitedAgentTabs) {
+        visitedAgentTabs = visitedAgentTabs + selectedTab
+    }
     fun loadWorkspaceRoot() {
         val callback = agentWorkspaceTreeLoader
         if (callback == null) {
@@ -4905,175 +5761,240 @@ private fun MembersDetailContent(
                 )
             }
             if (member.kind == MemberKind.Agent) {
-                MembersAgentTabBar(
-                    tabs = visibleTabs,
-                    selectedTab = selectedTab,
-                    onSelectedTabChange = { selectedTabOverride = it },
-                    onReorderTabs = onAgentPanelTabOrderChange,
-                    autoScrollSelectedTab = !stableVisualCapture
-                )
-            }
-            if (member.kind == MemberKind.Agent && selectedTab == MembersAgentDetailTab.Activity) {
-                MembersAgentActivityTab(
-                    detail = detail,
-                    loadState = agentActivityLoadState,
-                    diagnosticActionState = effectiveDiagnosticActionState,
-                    onCopyDiagnostics = { copyDiagnostics() },
-                    timeContext = timeContext,
-                    onOpenUrl = onOpenUrl,
-                    autoScrollToLatest = !stableVisualCapture,
+                // task #232 PR2: the six agent tabs share TabPager with Activity
+                // (PR1, #2224). The tab bar stays the tap surface and selection
+                // owner; a horizontal swipe on the body settles on a neighbour
+                // tab. Gating matches the Activity caller exactly: a page
+                // composes real content only while it is the pager's current
+                // page AND the selection has settled on it (`active` is the
+                // pager's own current-page flag, and onSelectedIndexChange
+                // fires once per settle), so an incoming page shows the
+                // loading body for the whole drag, then fills — and a
+                // keepItemAlive-hidden page stops composing its tab content
+                // instead of keeping its effects alive. Per-tab cost therefore equals the
+                // previous single `when (selectedTab)`. State that must survive
+                // a swipe is hoisted above: workspace tree, chat tick, profile
+                // editing, and (agentTabListStates) each tab's scroll position.
+                TabPager(
+                    selectedIndex = membersAgentDetailPagerIndex(visibleTabs, selectedTab),
+                    onSelectedIndexChange = { index ->
+                        membersAgentDetailPageTab(visibleTabs, index)?.let { selectedTabOverride = it }
+                    },
+                    pageCount = visibleTabs.size.coerceAtLeast(1),
+                    gesturePolicy = TabPagerGesturePolicy(
+                        startEdgeInset = slockPlatformTabPagerStartEdgeInsetDp().dp,
+                    ),
+                    keepItemAlive = true,
+                    tabBar = {
+                        MembersAgentTabBar(
+                            tabs = visibleTabs,
+                            selectedTab = selectedTab,
+                            onSelectedTabChange = { selectedTabOverride = it },
+                            onReorderTabs = onAgentPanelTabOrderChange,
+                            autoScrollSelectedTab = !stableVisualCapture
+                        )
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                )
+                ) { page, active ->
+                    val pageTab = membersAgentDetailPageTab(visibleTabs, page)
+                    if (pageTab == null || !active || !membersAgentDetailShouldComposeTab(pageTab, selectedTab, visitedAgentTabs)) {
+                        // SlockCenteredLoading renders common_loading when message
+                        // is null — only shown for tabs that have not been visited yet.
+                        SlockCenteredLoading(modifier = Modifier.fillMaxSize())
+                    } else if (pageTab == MembersAgentDetailTab.Activity) {
+                        MembersAgentActivityTab(
+                            detail = detail,
+                            loadState = agentActivityLoadState,
+                            diagnosticActionState = effectiveDiagnosticActionState,
+                            onCopyDiagnostics = { copyDiagnostics() },
+                            timeContext = timeContext,
+                            onOpenUrl = onOpenUrl,
+                            autoScrollToLatest = !stableVisualCapture,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        LazyColumn(
+                            state = agentTabListStates.getValue(pageTab),
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+                            beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
+                        ) {
+                            if (initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement) {
+                                item(key = "member-detail-${member.id.value}-top-spacer") {
+                                    Spacer(Modifier.height(SlockSpacing.Sm))
+                                }
+                            }
+                            if (
+                                membersAgentDetailShowsProfileStateNotice(
+                                    selectedTab = pageTab,
+                                    avatarManagementMode = initialVisualMode == MembersAgentDetailVisualMode.AvatarManagement
+                                )
+                            ) {
+                                item(key = "member-detail-${member.id.value}-state-notice") {
+                                    MembersAgentDetailStateNotice(
+                                        state = agentDetailState,
+                                        modifier = Modifier.padding(horizontal = MembersPageInset)
+                                    )
+                                }
+                            }
+                            // This item switches between composables with different remember slots
+                            // as the selected tab/member changes.  An implicit index key lets
+                            // Kuikly's lazy provider reuse the previous tab's slot table; on
+                            // Android that can make rememberCoroutineScope read a Boolean (or
+                            // another tab state) as CompositionScopedCoroutineScopeCanceller and
+                            // crash while entering the profile.  Keep each member/tab surface a
+                            // distinct lazy item so state is disposed/recreated at the boundary.
+                            item(key = membersAgentDetailBodyItemKey(member.id.value, pageTab)) {
+                                // Kuikly's lazy item key is not sufficient to fence the nested
+                                // composition on every renderer.  Give each tab surface its own
+                                // Compose group as well, so remember slots from Profile/Chat/etc.
+                                // can never be reused across a tab switch.
+                                key(pageTab) {
+                                    when (pageTab) {
+                                    MembersAgentDetailTab.Profile ->
+                                        MembersAgentProfileTab(
+                                            member = member,
+                                            detail = detail,
+                                            runtimeModels = MembersAgentRuntimeModelInputs(
+                                                agentMachineRuntimes = agentMachineRuntimes,
+                                                agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
+                                                agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
+                                                agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
+                                                agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
+                                                onAgentRuntimeModelsRequest = onAgentRuntimeModelsRequest
+                                            ),
+                                            createAgentFormStore = createAgentFormStore,
+                                            agentProfileEditAuthority = agentProfileEditAuthority,
+                                            canManage = canManage,
+                                            agentStatusIndicatorState = agentStatusIndicatorState,
+                                            agentStatusObservedState = agentStatusObservedState,
+                                            agentStatusResolver = agentStatusResolver,
+                                            memberAvatarResolver = memberAvatarResolver,
+                                            showAvatarPicker = showAvatarPicker && canManage && !deleted,
+                                            onToggleAvatarPicker = {
+                                                showAvatarPicker = !showAvatarPicker
+                                            },
+                                            onSelectAvatar = { key ->
+                                                saveAvatar("pixel:$key")
+                                            },
+                                            onClearAvatar = {
+                                                saveAvatar(null)
+                                            },
+                                            onUploadAvatar = {
+                                                val uploadCallback = onUploadAgentAvatar
+                                                if (uploadCallback == null) {
+                                                    DataResult.Empty(EmptyReason.NoMembers)
+                                                } else {
+                                                    val picked = onPickAgentAvatarFile()
+                                                    when (picked) {
+                                                        is DataResult.Content ->
+                                                            uploadCallback(member.id, picked.data)
+                                                        is DataResult.Empty -> DataResult.Empty(picked.reason)
+                                                        is DataResult.Error -> DataResult.Error(picked.error)
+                                                        is DataResult.NoPermission -> DataResult.NoPermission(picked.blocker)
+                                                    }
+                                                }
+                                            },
+                                            sharedAgentDetailStore = sharedAgentDetailStore,
+                                            storeState = storeState.takeIf { sharedAgentDetailStore != null },
+                                            agentDetailActions = agentDetailActions,
+                                            onUpdateAgentProfile = onUpdateAgentProfile,
+                                            onApplyAgentProfileResult = onApplyAgentProfileResult,
+                                            onApplyAgentRuntimeConfigProjection = onApplyAgentRuntimeConfigProjection,
+                                            onUnavailableAction = onUnavailableAction,
+                                            lifecycle = MembersAgentLifecycleInputs(
+                                                lifecycleInFlight = lifecycleInFlight,
+                                                diagnosticActionState = effectiveDiagnosticActionState,
+                                                onRunLifecycleAction = { runLifecycleAction(it) },
+                                                onOpenRestartReset = { openRestartResetDialog() },
+                                                onCopyDiagnostics = { copyDiagnostics() },
+                                                onReportIssue = {
+                                                    issueReportReceipt = null
+                                                    issueReportReferenceCopied = false
+                                                    reportIssueDialogOpen = true
+                                                },
+                                                onOpenComputer = onOpenComputer
+                                            ),
+                                            machineStatusRow = machineStatusRow,
+                                            timeContext = timeContext,
+                                            fixtureStatusFallbackEnabled = stableVisualCapture,
+                                            modifier = Modifier.padding(horizontal = MembersPageInset)
+                                        )
+                                    MembersAgentDetailTab.Chat ->
+                                        MembersAgentChatTab(
+                                            detail = detail,
+                                            currentServerId = currentServerId,
+                                            serverMembersState = serverMembersState,
+                                            timeContext = timeContext,
+                                            pageVisibleTick = pageVisibleTick,
+                                            modifier = Modifier.padding(horizontal = MembersPageInset)
+                                        )
+                                    MembersAgentDetailTab.Reminders ->
+                                        MembersAgentRemindersTab(
+                                            detail = detail,
+                                            timeContext = timeContext,
+                                            onOpenMessageRef = onOpenReminderMessage,
+                                            modifier = Modifier.padding(horizontal = MembersPageInset)
+                                        )
+                                    MembersAgentDetailTab.Workspace ->
+                                        MembersAgentWorkspaceTab(
+                                            treeState = workspaceTreeState,
+                                            expandedDirs = expandedWorkspaceDirs,
+                                            loadedDirs = loadedWorkspaceDirs,
+                                            loadingDirs = loadingWorkspaceDirs,
+                                            dirErrors = workspaceDirErrors,
+                                            onRefresh = { loadWorkspaceRoot() },
+                                            onToggleDirectory = { toggleWorkspaceDirectory(it) },
+                                            onSelectFile = { selectWorkspaceFile(it) },
+                                            modifier = Modifier.padding(horizontal = MembersPageInset)
+                                        )
+                                    MembersAgentDetailTab.Apps ->
+                                        MembersAgentAppsTab(
+                                            detail = detail,
+                                            timeContext = timeContext,
+                                            onOpenUrl = onOpenUrl,
+                                            modifier = Modifier.padding(horizontal = MembersPageInset)
+                                        )
+                                        MembersAgentDetailTab.Activity -> Unit
+                                    }
+                                }
+                            }
+                            item(key = "member-detail-${member.id.value}-bottom-spacer") {
+                                Spacer(Modifier.height(180.dp))
+                            }
+                        }
+                    }
+                }
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
                     beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
                 ) {
-                    if (initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement) {
-                        item { Spacer(Modifier.height(SlockSpacing.Sm)) }
+                    item(key = "member-detail-${member.id.value}-human-content") {
+                        MembersHumanDetailSections(
+                            member = member,
+                            timeContext = timeContext,
+                            memberAvatarResolver = memberAvatarResolver,
+                            agentStatusResolver = agentStatusResolver,
+                            fixtureStatusFallbackEnabled = stableVisualCapture,
+                            actorRole = humanActorRole,
+                            accessMode = humanAccessMode,
+                            currentUserId = currentUserId,
+                            currentServerId = currentServerId,
+                            ownerCount = humanOwnerCount,
+                            onUpdateRole = onUpdateHumanRole,
+                            onRemoveMember = onRemoveMember?.takeIf {
+                                member.membershipStatus != "removed"
+                            },
+                            modifier = Modifier.padding(horizontal = MembersPageInset)
+                        )
                     }
-                    if (member.kind == MemberKind.Agent) {
-                        if (
-                            membersAgentDetailShowsProfileStateNotice(
-                                selectedTab = selectedTab,
-                                avatarManagementMode = initialVisualMode == MembersAgentDetailVisualMode.AvatarManagement
-                            )
-                        ) {
-                            item {
-                                MembersAgentDetailStateNotice(
-                                    state = agentDetailState,
-                                    modifier = Modifier.padding(horizontal = MembersPageInset)
-                                )
-                            }
-                        }
-                        item {
-                            when (selectedTab) {
-                                MembersAgentDetailTab.Profile ->
-                                    MembersAgentProfileTab(
-                                        member = member,
-                                        detail = detail,
-                                        agentMachineRuntimes = agentMachineRuntimes,
-                                        agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
-                                        agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
-                                        agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
-                                        agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
-                                        createAgentFormStore = createAgentFormStore,
-                                        agentProfileEditAuthority = agentProfileEditAuthority,
-                                        onAgentRuntimeModelsRequest = onAgentRuntimeModelsRequest,
-                                        canManage = canManage,
-                                        agentStatusIndicatorState = agentStatusIndicatorState,
-                                        agentStatusResolver = agentStatusResolver,
-                                        memberAvatarResolver = memberAvatarResolver,
-                                        showAvatarPicker = showAvatarPicker && canManage && !deleted,
-                                        onToggleAvatarPicker = {
-                                            showAvatarPicker = !showAvatarPicker
-                                        },
-                                        onSelectAvatar = { key ->
-                                            saveAvatar("pixel:$key")
-                                        },
-                                        onClearAvatar = {
-                                            saveAvatar(null)
-                                        },
-                                        onUploadAvatar = {
-                                            val uploadCallback = onUploadAgentAvatar
-                                            if (uploadCallback == null) {
-                                                DataResult.Empty(EmptyReason.NoMembers)
-                                            } else {
-                                                val picked = onPickAgentAvatarFile()
-                                                when (picked) {
-                                                    is DataResult.Content ->
-                                                        uploadCallback(member.id, picked.data)
-                                                    is DataResult.Empty -> DataResult.Empty(picked.reason)
-                                                    is DataResult.Error -> DataResult.Error(picked.error)
-                                                    is DataResult.NoPermission -> DataResult.NoPermission(picked.blocker)
-                                                }
-                                            }
-                                        },
-                                        sharedAgentDetailStore = sharedAgentDetailStore,
-                                        storeState = storeState.takeIf { sharedAgentDetailStore != null },
-                                        agentDetailActions = agentDetailActions,
-                                        onUpdateAgentProfile = onUpdateAgentProfile,
-                                        onApplyAgentProfileResult = onApplyAgentProfileResult,
-                                        onApplyAgentRuntimeConfigProjection = onApplyAgentRuntimeConfigProjection,
-                                        onUnavailableAction = onUnavailableAction,
-                                        lifecycleInFlight = lifecycleInFlight,
-                                        diagnosticActionState = effectiveDiagnosticActionState,
-                                        onRunLifecycleAction = { runLifecycleAction(it) },
-                                        onOpenRestartReset = { openRestartResetDialog() },
-                                        onCopyDiagnostics = { copyDiagnostics() },
-                                        onReportIssue = {
-                                            issueReportReceipt = null
-                                            issueReportReferenceCopied = false
-                                            reportIssueDialogOpen = true
-                                        },
-                                        onOpenComputer = onOpenComputer,
-                                        timeContext = timeContext,
-                                        fixtureStatusFallbackEnabled = stableVisualCapture,
-                                        modifier = Modifier.padding(horizontal = MembersPageInset)
-                                    )
-                                MembersAgentDetailTab.Chat ->
-                                    MembersAgentChatTab(
-                                        detail = detail,
-                                        currentServerId = currentServerId,
-                                        serverMembersState = serverMembersState,
-                                        timeContext = timeContext,
-                                        pageVisibleTick = pageVisibleTick,
-                                        modifier = Modifier.padding(horizontal = MembersPageInset)
-                                    )
-                                MembersAgentDetailTab.Reminders ->
-                                    MembersAgentRemindersTab(
-                                        detail = detail,
-                                        timeContext = timeContext,
-                                        onOpenMessageRef = onOpenReminderMessage,
-                                        modifier = Modifier.padding(horizontal = MembersPageInset)
-                                    )
-                                MembersAgentDetailTab.Workspace ->
-                                    MembersAgentWorkspaceTab(
-                                        treeState = workspaceTreeState,
-                                        expandedDirs = expandedWorkspaceDirs,
-                                        loadedDirs = loadedWorkspaceDirs,
-                                        loadingDirs = loadingWorkspaceDirs,
-                                        dirErrors = workspaceDirErrors,
-                                        onRefresh = { loadWorkspaceRoot() },
-                                        onToggleDirectory = { toggleWorkspaceDirectory(it) },
-                                        onSelectFile = { selectWorkspaceFile(it) },
-                                        modifier = Modifier.padding(horizontal = MembersPageInset)
-                                    )
-                                MembersAgentDetailTab.Apps ->
-                                    MembersAgentAppsTab(
-                                        detail = detail,
-                                        timeContext = timeContext,
-                                        onOpenUrl = onOpenUrl,
-                                        modifier = Modifier.padding(horizontal = MembersPageInset)
-                                    )
-                                MembersAgentDetailTab.Activity -> Unit
-                            }
-                        }
-                    } else {
-                        item {
-                            MembersHumanDetailSections(
-                                member = member,
-                                timeContext = timeContext,
-                                memberAvatarResolver = memberAvatarResolver,
-                                agentStatusResolver = agentStatusResolver,
-                                fixtureStatusFallbackEnabled = stableVisualCapture,
-                                actorRole = humanActorRole,
-                                accessMode = humanAccessMode,
-                                currentUserId = currentUserId,
-                                currentServerId = currentServerId,
-                                ownerCount = humanOwnerCount,
-                                onUpdateRole = onUpdateHumanRole,
-                                onRemoveMember = onRemoveMember?.takeIf {
-                                    member.membershipStatus != "removed"
-                                },
-                                modifier = Modifier.padding(horizontal = MembersPageInset)
-                            )
-                        }
+                    item(key = "member-detail-${member.id.value}-bottom-spacer") {
+                        Spacer(Modifier.height(180.dp))
                     }
-                    item { Spacer(Modifier.height(180.dp)) }
                 }
             }
         }
@@ -6513,7 +7434,7 @@ private fun MembersHumanProfileSummary(
             ) {
                 Text(
                     text = member.detailHandle,
-                    style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 14.sp, lineHeight = 18.sp),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -6695,7 +7616,7 @@ private fun MembersHumanInfoSection(
             MembersHumanInfoItem(label = stringResource(MR.strings.member_label_email)) {
                 Text(
                     text = email,
-                    style = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 22.sp),
+                    style = SlockType.Input.copy(fontFamily = SlockMonoFamily, fontSize = 16.sp, lineHeight = 22.sp),
                     color = SlockColor.TextBlack,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -6706,7 +7627,7 @@ private fun MembersHumanInfoSection(
             MembersHumanInfoItem(label = stringResource(MR.strings.member_label_joined)) {
                 Text(
                     text = joinedDate,
-                    style = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 22.sp),
+                    style = SlockType.Input.copy(fontFamily = SlockMonoFamily, fontSize = 16.sp, lineHeight = 22.sp),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -6836,9 +7757,38 @@ private fun MembersServerRoleEditor(
     }
 }
 
+/**
+ * Title-cases a role name we do not recognise so it sits beside "Admin"/"Member" without
+ * looking like a different kind of value. The parser lowercases every role
+ * (`normalizedServerRoleOrNull`), so the server's original casing is already gone by here --
+ * this restores presentation only, it does not recover the wire form.
+ */
+private fun String.membersRoleDisplayName(): String =
+    replace('_', ' ')
+        .replace('-', ' ')
+        .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+
+private fun MembersAgentServerRoleDisplay.rememberKey(): String =
+    when (this) {
+        is MembersAgentServerRoleDisplay.Known -> role.wireValue
+        is MembersAgentServerRoleDisplay.Unrecognized -> "unrecognized:$rawName"
+        MembersAgentServerRoleDisplay.Hidden -> "hidden"
+    }
+
 @Composable
-private fun MembersAgentServerRoleChip(role: MembersAgentServerRole?) {
-    val label = role?.localizedLabel() ?: stringResource(MR.strings.member_role_none)
+private fun MembersAgentServerRoleChip(display: MembersAgentServerRoleDisplay) {
+    // Hidden renders nothing: no membership row, or a deleted agent. Any chip here would
+    // assert a membership that does not exist (#261).
+    if (display is MembersAgentServerRoleDisplay.Hidden) return
+    val role = (display as? MembersAgentServerRoleDisplay.Known)?.role
+    val label =
+        when (display) {
+            is MembersAgentServerRoleDisplay.Known -> display.role.localizedLabel()
+            // Shown as sent, only title-cased to match the recognised chips. We have no
+            // colour for a role we do not know, so it takes the neutral background.
+            is MembersAgentServerRoleDisplay.Unrecognized -> display.rawName.membersRoleDisplayName()
+            MembersAgentServerRoleDisplay.Hidden -> ""
+        }
     val backgroundColor = role?.backgroundColor ?: SlockColor.EmptyStateGray
     Box(
         modifier = Modifier
@@ -7009,8 +7959,8 @@ private fun MembersHumanCreatedAgentRow(
     fixtureStatusFallbackEnabled: Boolean = false
 ) {
     val profile = remember(agent) { agent.toStaticMembersProfile() }
-    val statusIndicatorState =
-        resolveMembersAgentStatusIndicatorState(
+    val observedIndicatorState =
+        resolveMembersAgentStatusIndicatorStateOrNull(
             canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, profile.id.value),
             fixtureFallback =
                 if (fixtureStatusFallbackEnabled) {
@@ -7020,7 +7970,9 @@ private fun MembersHumanCreatedAgentRow(
                 },
             fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
         )
+    val statusIndicatorState = observedIndicatorState ?: unknownMembersAgentStatusIndicatorState()
     val statusDisplayState = statusIndicatorState.toMembersAgentStatusDisplayState()
+    val observedDisplayState = observedIndicatorState?.toMembersAgentStatusDisplayState()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -7058,103 +8010,12 @@ private fun MembersHumanCreatedAgentRow(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        SlockStatusIndicator(
-            color = statusDisplayState.color,
-            size = 10.dp,
-            pulsing = statusDisplayState.pulsing
-        )
-    }
-}
-
-@Composable
-private fun MembersAgentAvatarPicker(
-    member: MemberProfile,
-    onSelect: (String) -> Unit,
-    onClear: () -> Unit,
-    onUpload: suspend () -> DataResult<MemberProfile>,
-    onUnavailableAction: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val scope = rememberCoroutineScope()
-    val errorStrings = localizedErrorPresentationStrings()
-    val avatarUploadCancelled = stringResource(MR.strings.member_error_avatar_upload_cancelled)
-    val avatarUploadFailed = membersStringTemplate(MR.strings.member_error_avatar_upload)
-    val permissionFailed = membersStringTemplate(MR.strings.member_error_permission)
-    var uploading by remember(member.id.value) { mutableStateOf(false) }
-    // Use SlockUnifiedDialog (the unified modal engine — wraps Kuikly `Modal(...)` for
-    // overlay rendering) instead of SlockModalLayer (which is a plain Box and was getting
-    // 0 vertical space when rendered as a sibling after a fillMaxSize LazyColumn in
-    // MembersDetailContent's outer Column — see #49 top-left avatar bug thread).
-    SlockUnifiedDialog(
-        title = stringResource(MR.strings.member_dialog_change_avatar),
-        dismissEnabled = !uploading,
-        onDismiss = onDismiss
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
-        ) {
-            Text(
-                text = member.displayName,
-                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-            ) {
-                MembersAvatar(
-                    member = member,
-                    avatarSize = 80.dp,
-                    showStatusOverlay = false
-                )
-                Text(
-                    text = member.avatar?.wireValue ?: member.avatarUrl ?: stringResource(MR.strings.member_label_default),
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextMutedGray,
-                    textAlign = TextAlign.Center
-                )
-            }
-            Text(
-                text = stringResource(MR.strings.member_action_choose_avatar),
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp)
-                    .withSlockFontWeight(FontWeight.Bold),
-                color = SlockColor.TextBlack,
-            )
-            MembersAgentAvatarChoiceGrid(
-                member = member,
-                uploading = uploading,
-                onUploadClick = {
-                    if (!uploading) {
-                        uploading = true
-                        scope.launch {
-                            when (val result = onUpload()) {
-                                is DataResult.Content -> onDismiss()
-                                is DataResult.Empty -> {
-                                    uploading = false
-                                    onUnavailableAction(avatarUploadCancelled)
-                                }
-                                is DataResult.Error -> {
-                                    uploading = false
-                                    onUnavailableAction(
-                                        membersFormattedScreenError(avatarUploadFailed, result.error, errorStrings)
-                                    )
-                                }
-                                is DataResult.NoPermission -> {
-                                    uploading = false
-                                    onUnavailableAction(
-                                        membersFormattedPermissionError(permissionFailed, result.blocker, errorStrings)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                },
-                onClear = onClear,
-                onSelect = onSelect
+        // Unknown is not Offline: no dot until something is observed (task #256).
+        observedDisplayState?.let { observed ->
+            SlockStatusIndicator(
+                color = observed.color,
+                size = 10.dp,
+                pulsing = observed.pulsing
             )
         }
     }
@@ -7259,11 +8120,91 @@ private fun MembersAgentAvatarPickerCell(
 
 private const val MembersAgentProfileDescriptionMaxLength = 3000
 
+// Web AgentDetailPanel's INFO block uses five different spacings here. They are
+// kept as five separate constants on purpose: collapsing them onto shared tokens
+// (SlockSpacing.Xs/Sm) reads as tidier and can even score better at 390dp, but it
+// removes the ability to change one without the others, and the layout only holds
+// at narrow widths because these differ. See task #257.
+private val MembersInfoBlockGap = 6.dp // web space-y-1.5, within one field
+private val MembersInfoLabelGap = 4.dp // web mb-1, under a label — deliberately not the block gap
+private val MembersInfoFieldGapX = 32.dp // web gap-x-8, between Created and Creator
+private val MembersInfoFieldGapY = 12.dp // web gap-y-3, when those two wrap onto separate lines
+private val MembersInfoStatusGapX = 6.dp // web gap-x-1.5, inside the machine status line
+private val MembersInfoStatusGapY = 4.dp // web gap-y-1, when that status line wraps
+
+// Task #259: web's status line is text-xs (12px); the old row was 10sp. Dot matches web StatusDot.
+private val MembersMachineStatusFontSize = 12.sp
+private val MembersMachineStatusLineHeight = 16.sp
+private val MembersMachineStatusDotSize = 8.dp
+
+/**
+ * Label -> string resource pairing, kept out of the Composable so the six pairs are unit-testable
+ * (MembersMachineStatusRowTest). Three of the six branches have no visual fixture until Batch 3,
+ * so without this a swapped resource would compile, pass the logic tests and only show in pixels.
+ */
+internal fun MembersMachineRunLabel.resource(): StringResource =
+    when (this) {
+        is MembersMachineRunLabel.ComputerVersion -> MR.strings.member_machine_run_computer_version
+        is MembersMachineRunLabel.DaemonVersion -> MR.strings.member_machine_run_daemon_version
+        MembersMachineRunLabel.ComputerOnline -> MR.strings.member_machine_run_computer_online
+        MembersMachineRunLabel.DaemonOnline -> MR.strings.member_machine_run_daemon_online
+        MembersMachineRunLabel.ComputerOffline -> MR.strings.member_machine_run_computer_offline
+        MembersMachineRunLabel.DaemonOffline -> MR.strings.member_machine_run_daemon_offline
+    }
+
+/** The single `%1$s` argument for the two version labels; null for the four argument-free ones. */
+internal fun MembersMachineRunLabel.formatArg(): String? =
+    when (this) {
+        is MembersMachineRunLabel.ComputerVersion -> version
+        is MembersMachineRunLabel.DaemonVersion -> version
+        MembersMachineRunLabel.ComputerOnline,
+        MembersMachineRunLabel.DaemonOnline,
+        MembersMachineRunLabel.ComputerOffline,
+        MembersMachineRunLabel.DaemonOffline -> null
+    }
+
+@Composable
+private fun MembersMachineRunLabel.localized(): String {
+    val arg = formatArg()
+    return if (arg != null) stringResource(resource(), arg) else stringResource(resource())
+}
+
+// Value text is 14sp/black; the label is 12sp/muted. The previous rows used 13sp
+// values and 11sp labels with an 86dp label gutter.
+private val MembersInfoValueFontSize = 14.sp
+private val MembersInfoValueLineHeight = 20.sp
+
+/**
+ * One INFO metadata field: label above value, matching web's stacked block rather
+ * than the fixed-gutter two-column row this replaced.
+ *
+ * The Computer block previously hand-wrote its label styling instead of sharing it,
+ * which is how its label drifted from the others. Routing every field through here
+ * means a future label change cannot land on some rows and miss one.
+ */
+@Composable
+private fun MembersAgentInfoField(
+    label: String,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(modifier = modifier) {
+        Text(
+            text = label,
+            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+            color = SlockColor.TextMutedGray,
+            modifier = Modifier.padding(bottom = MembersInfoLabelGap)
+        )
+        content()
+    }
+}
+
 @Composable
 private fun MembersAgentProfileHeader(
     member: MemberProfile,
     summary: AgentDetailSummary?,
     canEdit: Boolean,
+    agentStatusObservedState: SlockAgentStatusIndicatorState?,
     agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     showAvatarPicker: Boolean,
@@ -7324,7 +8265,7 @@ private fun MembersAgentProfileHeader(
                 )
                 Text(
                     text = member.detailHandle,
-                    style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 14.sp, lineHeight = 18.sp),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -7333,14 +8274,21 @@ private fun MembersAgentProfileHeader(
                     horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SlockStatusIndicator(
-                        color = agentStatusIndicatorState?.color ?: SlockColor.StatusNeutralGray,
-                        size = 8.dp,
-                        pulsing = agentStatusIndicatorState?.pulsing == true
-                    )
+                    // A null resolution is Unknown/not-ready, and StatusNeutralGray is the
+                    // Offline/Disconnected colour — falling back to it makes the dot claim
+                    // offline while the label beside it says Unknown, the disagreement
+                    // SlockAgentStatusIndicator's own contract forbids. Render nothing until
+                    // something authoritative arrives (task #253/#256).
+                    agentStatusObservedState?.let { state ->
+                        SlockStatusIndicator(
+                            color = state.color,
+                            size = 8.dp,
+                            pulsing = state.pulsing
+                        )
+                    }
                     Text(
                         text = statusLabel,
-                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
                         color = SlockColor.TextMutedGray,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -7399,79 +8347,96 @@ private fun MembersAgentProfileHeader(
     }
 }
 
+/**
+ * Parameter holders for [MembersAgentProfileTab]. They are deliberate and must stay.
+ *
+ * Why: the tab used to take 36 parameters, past the Compose compiler's 31-parameters-per-int
+ * packing boundary for the generated `$changed` / `$default` masks (Composer + 4 `$changed`
+ * + 2 `$default` ints), and its body is ~1070 lines, which compiles to one method with
+ * ~270 registers and ~5.6k dex instructions. On release 1.11.0 Android alpha builds this
+ * function crashed on cold entry with a ClassCastException inside [rememberCoroutineScope]
+ * (a Boolean came back from the slot where the scope canceller was expected). Two
+ * diagnostic builds that only added an annotation or one read at the function head were
+ * rejected outright by the ART verifier on this function: the dex showed the live
+ * `$default1` mask register being reused as a reference temporary inside the default
+ * lambda `remember {}` blocks. The generated code for this signature sits on a register
+ * allocation boundary; every probe that changed this function's shape changed the outcome,
+ * while probes on the callers or the lazy list did not.
+ *
+ * Bundling the 6 runtime-model inputs and the 7 lifecycle/diagnostic inputs brings the
+ * signature to 25 parameters (1 `$changed` int fewer, `$default1` gone) and changes the
+ * register allocation of the whole method. This is a mitigation with two effects at once
+ * (a different signature/register shape and holder-based comparison); it does not establish
+ * a safe parameter threshold (26–31 were not tested). The holders are unpacked into same-named locals
+ * at the top of the function so the body is unchanged. Cost: the holders are plain
+ * classes holding Map/List/lambda members, so Compose treats them as unstable, and the
+ * caller builds new instances on each recomposition; the tab therefore no longer skips
+ * (the same cost as `@NonSkippableComposable`). That is acceptable for one screen of
+ * content. Do not add `@Stable` / `@Immutable` to the holders later as an "optimisation":
+ * it changes the comparison semantics. Splitting the function into smaller composables is the
+ * long-term shape and is tracked separately (task #1130), together with the other
+ * >31-parameter composables in this file.
+ *
+ * Verification is device-only (compiler layer): alpha build 1110013 (this exact code on
+ * 8a8ca1b11e) on cloud device vjdp, Members → agent detail, 6 cold starts, 0 crashes,
+ * 0 VerifyError, pid unchanged; the unbundled base crashed 6/6 on the same path in earlier
+ * rounds (1110001–1110005, 1110007), not all on the same device. The other >31-parameter
+ * composables in this file were not exercised by this verification.
+ */
+private class MembersAgentRuntimeModelInputs(
+    val agentMachineRuntimes: List<String> = emptyList(),
+    val agentRuntimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
+    val agentRuntimeModelLoadsInFlight: Set<String> = emptySet(),
+    val agentRuntimeModelErrorsByRuntime: Map<String, String> = emptyMap(),
+    val agentRuntimeModelGenerationsByRuntime: Map<String, Long> = emptyMap(),
+    val onAgentRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> }
+)
+
+private class MembersAgentLifecycleInputs(
+    val lifecycleInFlight: String? = null,
+    val diagnosticActionState: MembersAgentDiagnosticActionState? = null,
+    val onRunLifecycleAction: (MembersAgentLifecycleAction) -> Unit = {},
+    val onOpenRestartReset: () -> Unit = {},
+    val onCopyDiagnostics: () -> Unit = {},
+    val onReportIssue: () -> Unit = {},
+    val onOpenComputer: (() -> Unit)? = null
+)
+
+/**
+ * Inputs shared by the editable sections of [MembersAgentProfileTab] (task #1130 part 2).
+ * Plain unstable class like the other Members holders; do not add `@Stable`/`@Immutable`.
+ */
+private class MembersAgentProfileEditInputs(
+    val canEdit: Boolean,
+    val agentProfileEditAuthority: MembersAgentProfileEditAuthority?,
+    val agentDetailActions: SharedAgentDetailActions?,
+    val onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
+    val onApplyAgentProfileResult: (MemberProfile) -> Unit,
+    val onUnavailableAction: (String) -> Unit,
+    val errorStrings: ErrorPresentationStrings
+)
+
+/**
+ * PROFILE section of the agent detail tab: display name + description with their independent
+ * pencil-edit state machines (task #1130 part 2, moved verbatim out of [MembersAgentProfileTab]).
+ */
 @Composable
-private fun MembersAgentProfileTab(
+private fun MembersAgentProfileFieldsSection(
     member: MemberProfile,
-    detail: AgentDetailSnapshot?,
-    agentMachineRuntimes: List<String> = emptyList(),
-    agentRuntimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
-    agentRuntimeModelLoadsInFlight: Set<String> = emptySet(),
-    agentRuntimeModelErrorsByRuntime: Map<String, String> = emptyMap(),
-    agentRuntimeModelGenerationsByRuntime: Map<String, Long> = emptyMap(),
-    createAgentFormStore: SharedCreateAgentFormStore? = null,
-    agentProfileEditAuthority: MembersAgentProfileEditAuthority? = null,
-    onAgentRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> },
-    canManage: Boolean,
-    agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    showAvatarPicker: Boolean,
-    onToggleAvatarPicker: () -> Unit,
-    onSelectAvatar: (String) -> Unit,
-    onClearAvatar: () -> Unit,
-    onUploadAvatar: suspend () -> DataResult<MemberProfile>,
-    sharedAgentDetailStore: SharedAgentDetailStore? = null,
-    storeState: SharedAgentDetailState? = null,
-    agentDetailActions: SharedAgentDetailActions? = null,
-    onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
-    onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
-    onApplyAgentRuntimeConfigProjection:
-        suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
-    onUnavailableAction: (String) -> Unit,
-    lifecycleInFlight: String? = null,
-    diagnosticActionState: MembersAgentDiagnosticActionState? = null,
-    onRunLifecycleAction: (MembersAgentLifecycleAction) -> Unit = {},
-    onOpenRestartReset: () -> Unit = {},
-    onCopyDiagnostics: () -> Unit = {},
-    onReportIssue: () -> Unit = {},
-    onOpenComputer: (() -> Unit)? = null,
-    timeContext: SlockTimeContext,
-    fixtureStatusFallbackEnabled: Boolean = false,
-    modifier: Modifier = Modifier
+    edit: MembersAgentProfileEditInputs,
+    sharedAgentDetailStore: SharedAgentDetailStore?,
+    storeState: SharedAgentDetailState?
 ) {
-    val errorStrings = localizedErrorPresentationStrings()
-    val summary = detail?.summary
-    val runtimeConfigResolution = remember(summary) { summary.toMembersRuntimeConfigResolution() }
-    val canonicalRuntimeConfig =
-        (runtimeConfigResolution as? MembersAgentRuntimeConfigResolution.Content)?.config
-    val canonicalRuntimeId = canonicalRuntimeConfig?.runtime
-    val canonicalRuntimeModel = canonicalRuntimeConfig?.model
-    // Runtime mutations need an explicit canonical status. A null status is
-    // deliberately neutral in the renderer; treating it as "inactive" here
-    // would allow a reset-sensitive edit while presence is still unknown.
-    val canonicalRuntimeStatus = agentStatusIndicatorState?.status
-    val runtimeStatusResolved = membersAgentRuntimeStatusResolved(canonicalRuntimeStatus)
-    val activeAgent = membersAgentRuntimeActive(canonicalRuntimeStatus)
-    val runtimeEditorReady =
-        runtimeStatusResolved &&
-            canonicalRuntimeConfig != null &&
-            membersAgentRuntimeConfigSaveAttemptEnabled(
-                runtime = canonicalRuntimeConfig.runtime,
-                model = canonicalRuntimeConfig.toMembersRuntimeModelValue(),
-                customModelMode = canonicalRuntimeModel is RuntimeModelConfig.Custom,
-                customModelName = (canonicalRuntimeModel as? RuntimeModelConfig.Custom)?.name.orEmpty(),
-                machineRuntimeIds = agentMachineRuntimes
-            )
+    val canEdit = edit.canEdit
+    val agentProfileEditAuthority = edit.agentProfileEditAuthority
+    val agentDetailActions = edit.agentDetailActions
+    val onUpdateAgentProfile = edit.onUpdateAgentProfile
+    val onApplyAgentProfileResult = edit.onApplyAgentProfileResult
+    val onUnavailableAction = edit.onUnavailableAction
+    val errorStrings = edit.errorStrings
     val scope = rememberCoroutineScope()
     val currentProfileEditAuthority by rememberUpdatedState(agentProfileEditAuthority)
-    val currentRuntimeModelGenerations by rememberUpdatedState(agentRuntimeModelGenerationsByRuntime)
-    val deleted = summary?.deletedAt?.isNotBlank() == true
-    // Roster metadata is never edit authority. Only a canonical loaded profile summary may enter
-    // an editor or construct an update request.
-    val canEdit = canManage && summary != null && agentProfileEditAuthority != null && !deleted
     val profileEditingUnavailable = stringResource(MR.strings.member_error_profile_edit_unavailable)
-    val roleEditingUnavailable = stringResource(MR.strings.member_error_role_edit_unavailable)
-    val runtimeEditingUnavailable = stringResource(MR.strings.member_error_runtime_edit_unavailable)
     val displayNameRequired = stringResource(MR.strings.member_error_display_name_required)
     val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
     val saveErrorTemplate = membersStringTemplate(MR.strings.member_error_save)
@@ -7516,29 +8481,6 @@ private fun MembersAgentProfileTab(
         if (storeBackedProfileEdit) profileState.roleSaving else localSavingRole
     val roleError =
         if (storeBackedProfileEdit) profileState.roleError else localRoleError
-    val currentServerRole = membersAgentDisplayServerRole(member.serverRole, summary?.serverRole)
-    val canEditServerRole = canEdit
-    var editingServerRole by remember(member.id.value, currentServerRole?.wireValue) { mutableStateOf(false) }
-    var draftServerRole by remember(member.id.value, currentServerRole?.wireValue) {
-        mutableStateOf(currentServerRole ?: MembersAgentServerRole.Member)
-    }
-    var serverRoleMenuExpanded by remember(member.id.value, currentServerRole?.wireValue) { mutableStateOf(false) }
-    var roleHelpOpen by remember(member.id.value) { mutableStateOf(false) }
-    var savingServerRole by remember(member.id.value) { mutableStateOf(false) }
-    var serverRoleError by remember(member.id.value, currentServerRole?.wireValue) { mutableStateOf<String?>(null) }
-    var serverRoleEditorAuthority by remember(member.id.value) {
-        mutableStateOf<MembersAgentProfileEditAuthority?>(null)
-    }
-    var editingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
-    var runtimeEditorAuthority by remember(member.id.value) {
-        mutableStateOf<MembersAgentProfileEditAuthority?>(null)
-    }
-    var savingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
-    var runtimeConfigError by remember(member.id.value) { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(canonicalRuntimeId) {
-        canonicalRuntimeId?.let { onAgentRuntimeModelsRequest(it, false) }
-    }
 
     fun saveDisplayName() {
         val callback = onUpdateAgentProfile
@@ -7721,6 +8663,256 @@ private fun MembersAgentProfileTab(
         }
     }
 
+    // PROFILE section — light divider style (no box border) per React parity.
+    // Each field is its own column with eyebrow label + content, mirroring React's
+    // `<div className="px-5 py-3"><SectionEyebrow>...</SectionEyebrow><p>...</p></div>`
+    // pattern. Display Name and Description each have an independent pencil-edit
+    // state machine (mirrors React `editingDisplayName` + `editingRole`).
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        // Display Name field
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            MembersEditableSectionTitleRow(
+                title = stringResource(MR.strings.member_label_display_name).uppercase(),
+                showEdit = canEdit && !editingDisplayName,
+                onEditClick = {
+                    displayNameEditorAuthority = agentProfileEditAuthority
+                    if (storeBackedProfileEdit) {
+                        profileStore.dispatch(
+                            SharedAgentDetailIntent.BeginEditDisplayName(member.displayName)
+                        )
+                    } else {
+                        localDraftDisplayName = member.displayName
+                        localDisplayNameError = null
+                        localEditingDisplayName = true
+                    }
+                }
+            )
+        }
+        if (editingDisplayName) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+            ) {
+                SlockFormField(
+                    label = stringResource(MR.strings.member_label_display_name),
+                    error = displayNameError,
+                    showLabel = false
+                ) {
+                    SlockBrutalInputField(
+                        value = draftDisplayName,
+                        placeholder = stringResource(MR.strings.member_label_display_name),
+                        onValueChange = {
+                            if (storeBackedProfileEdit) {
+                                profileStore.dispatch(
+                                    SharedAgentDetailIntent.UpdateDisplayNameDraft(it)
+                                )
+                            } else {
+                                localDraftDisplayName = it
+                                if (localDisplayNameError != null) localDisplayNameError = null
+                            }
+                        },
+                        enabled = !savingDisplayName,
+                        autoFocus = true,
+                        borderColor = if (displayNameError != null) SlockColor.AccentRed else SlockColor.BorderBlack,
+                        enabledBackgroundColor = if (displayNameError != null) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+                    SlockBrutalActionButton(
+                        label = if (savingDisplayName) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
+                        onClick = { saveDisplayName() },
+                        enabled = !savingDisplayName,
+                        backgroundColor = SlockColor.BrandYellow
+                    )
+                    SlockBrutalActionButton(
+                        label = stringResource(MR.strings.common_cancel),
+                        onClick = {
+                            if (storeBackedProfileEdit) {
+                                profileStore.dispatch(
+                                    SharedAgentDetailIntent.CancelEditDisplayName
+                                )
+                            } else {
+                                localDraftDisplayName = member.displayName
+                                localDisplayNameError = null
+                                localEditingDisplayName = false
+                            }
+                            displayNameEditorAuthority = null
+                        },
+                        enabled = !savingDisplayName,
+                        backgroundColor = SlockColor.SurfaceWhite
+                    )
+                }
+            }
+        } else {
+            Text(
+                text = member.displayName,
+                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        // Description field (independent edit state machine)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            MembersEditableSectionTitleRow(
+                title = stringResource(MR.strings.member_section_description).uppercase(),
+                showEdit = canEdit && !editingRole,
+                onEditClick = {
+                    roleEditorAuthority = agentProfileEditAuthority
+                    if (storeBackedProfileEdit) {
+                        profileStore.dispatch(
+                            SharedAgentDetailIntent.BeginEditRole(member.description.orEmpty())
+                        )
+                    } else {
+                        localDraftRole = member.description.orEmpty()
+                        localRoleError = null
+                        localEditingRole = true
+                    }
+                }
+            )
+        }
+        if (editingRole) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+            ) {
+                SlockFormField(
+                    label = stringResource(MR.strings.member_section_description),
+                    error = roleError,
+                    showLabel = false
+                ) {
+                    SlockBrutalInputField(
+                        value = draftRole,
+                        placeholder = stringResource(MR.strings.member_placeholder_description),
+                        onValueChange = {
+                            if (storeBackedProfileEdit) {
+                                profileStore.dispatch(
+                                    SharedAgentDetailIntent.UpdateRoleDraft(it)
+                                )
+                            } else {
+                                localDraftRole = it
+                                if (localRoleError != null) localRoleError = null
+                            }
+                        },
+                        enabled = !savingRole,
+                        autoFocus = true,
+                        maxLines = 4,
+                        fieldMinHeight = 86.dp,
+                        borderColor = if (roleError != null) SlockColor.AccentRed else SlockColor.BorderBlack,
+                        enabledBackgroundColor = if (roleError != null) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SlockBrutalActionButton(
+                        label = if (savingRole) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
+                        onClick = { saveRole() },
+                        enabled = !savingRole,
+                        backgroundColor = SlockColor.BrandYellow
+                    )
+                    SlockBrutalActionButton(
+                        label = stringResource(MR.strings.common_cancel),
+                        onClick = {
+                            if (storeBackedProfileEdit) {
+                                profileStore.dispatch(
+                                    SharedAgentDetailIntent.CancelEditRole
+                                )
+                            } else {
+                                localDraftRole = member.description.orEmpty()
+                                localRoleError = null
+                                localEditingRole = false
+                            }
+                        },
+                        enabled = !savingRole,
+                        backgroundColor = SlockColor.SurfaceWhite
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = "${draftRole.trim().length}/$MembersAgentProfileDescriptionMaxLength",
+                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 14.sp),
+                        color = SlockColor.TextMutedGray
+                    )
+                }
+            }
+        } else {
+            Text(
+                text = member.description?.takeIf { it.isNotBlank() }
+                    ?: stringResource(MR.strings.member_state_no_description),
+                style = SlockType.Body.copy(
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    fontStyle = if (member.description.isNullOrBlank()) FontStyle.Italic else FontStyle.Normal
+                ),
+                color = if (member.description.isNullOrBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                maxLines = 6,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/**
+ * INFO section of the agent detail tab: server role (with its edit state machine), computer
+ * status, created date and creator (task #1130 part 2, moved verbatim out of [MembersAgentProfileTab]).
+ */
+@Composable
+private fun MembersAgentInfoSection(
+    member: MemberProfile,
+    summary: AgentDetailSummary?,
+    deleted: Boolean,
+    edit: MembersAgentProfileEditInputs,
+    machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
+    onOpenComputer: (() -> Unit)?,
+    timeContext: SlockTimeContext,
+    memberAvatarResolver: SlockMemberAvatarResolver
+) {
+    val canEdit = edit.canEdit
+    val agentProfileEditAuthority = edit.agentProfileEditAuthority
+    val agentDetailActions = edit.agentDetailActions
+    val onUpdateAgentProfile = edit.onUpdateAgentProfile
+    val onApplyAgentProfileResult = edit.onApplyAgentProfileResult
+    val onUnavailableAction = edit.onUnavailableAction
+    val errorStrings = edit.errorStrings
+    val scope = rememberCoroutineScope()
+    val currentProfileEditAuthority by rememberUpdatedState(agentProfileEditAuthority)
+    val roleEditingUnavailable = stringResource(MR.strings.member_error_role_edit_unavailable)
+    val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
+    val saveErrorTemplate = membersStringTemplate(MR.strings.member_error_save)
+    val emptyResponseMessage = stringResource(MR.strings.member_error_empty_response)
+    val roleUpdateUnconfirmedMessage = stringResource(MR.strings.member_error_role_update_unconfirmed)
+    val serverRoleDisplay =
+        membersAgentDisplayServerRole(member.serverRole, summary?.serverRole, deleted = deleted)
+    val currentServerRole = (serverRoleDisplay as? MembersAgentServerRoleDisplay.Known)?.role
+    // The editor can only express Admin/Member. Offering it while the server holds a role we
+    // do not recognise would let a save silently rewrite that role to one of ours, so the
+    // affordance is withdrawn for Unrecognized -- the chip still shows the real name (#261).
+    val canEditServerRole = canEdit && serverRoleDisplay !is MembersAgentServerRoleDisplay.Unrecognized
+    val serverRoleRememberKey = serverRoleDisplay.rememberKey()
+    var editingServerRole by remember(member.id.value, serverRoleRememberKey) { mutableStateOf(false) }
+    var draftServerRole by remember(member.id.value, serverRoleRememberKey) {
+        mutableStateOf(currentServerRole ?: MembersAgentServerRole.Member)
+    }
+    var serverRoleMenuExpanded by remember(member.id.value, serverRoleRememberKey) { mutableStateOf(false) }
+    var roleHelpOpen by remember(member.id.value) { mutableStateOf(false) }
+    var savingServerRole by remember(member.id.value) { mutableStateOf(false) }
+    var serverRoleError by remember(member.id.value, serverRoleRememberKey) { mutableStateOf<String?>(null) }
+    var serverRoleEditorAuthority by remember(member.id.value) {
+        mutableStateOf<MembersAgentProfileEditAuthority?>(null)
+    }
+
     fun saveServerRole() {
         val callback = onUpdateAgentProfile
         if (
@@ -7738,6 +8930,11 @@ private fun MembersAgentProfileTab(
             serverRoleError = null
             return
         }
+        val expectedServerId = serverRoleEditorAuthority?.serverId
+            ?: run {
+                onUnavailableAction(roleEditingUnavailable)
+                return
+            }
         scope.launch {
             if (serverRoleEditorAuthority != currentProfileEditAuthority) {
                 onUnavailableAction(roleEditingUnavailable)
@@ -7767,17 +8964,25 @@ private fun MembersAgentProfileTab(
             if (serverRoleEditorAuthority != currentProfileEditAuthority) return@launch
             when (result) {
                 is DataResult.Content -> {
-                    onApplyAgentProfileResult(result.data)
-                    editingServerRole = false
-                    serverRoleMenuExpanded = false
+                    when (result.membersAgentServerRoleSaveOutcome(member.id, expectedServerId, next)) {
+                        MembersAgentServerRoleSaveOutcome.Success -> {
+                            onApplyAgentProfileResult(result.data)
+                            editingServerRole = false
+                            serverRoleMenuExpanded = false
+                        }
+                        MembersAgentServerRoleSaveOutcome.MismatchedContent ->
+                            serverRoleError = roleUpdateUnconfirmedMessage
+                        else -> serverRoleError = roleUpdateUnconfirmedMessage
+                    }
                 }
-                is DataResult.Empty -> {
-                    editingServerRole = false
-                    serverRoleMenuExpanded = false
-                }
+                is DataResult.Empty -> serverRoleError = emptyResponseMessage
                 is DataResult.NoPermission ->
                     serverRoleError =
-                        membersFormattedPermissionError(permissionErrorTemplate, result.blocker, errorStrings)
+                        membersFormattedPermissionError(
+                            permissionErrorTemplate,
+                            result.blocker,
+                            errorStrings
+                        )
                 is DataResult.Error ->
                     serverRoleError = membersFormattedScreenError(saveErrorTemplate, result.error, errorStrings)
             }
@@ -7785,10 +8990,347 @@ private fun MembersAgentProfileTab(
         }
     }
 
+    // INFO section — mirrors React AgentDetailPanel's Computer / Created / Creator rows.
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        MembersDetailSectionDivider()
+        MembersDetailSectionTitle(stringResource(MR.strings.member_section_info).uppercase())
+        // Role row: React keeps this as a label affordance plus an inline role chip/editor,
+        // not the compact two-column metadata row used by Computer/Created/Creator.
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(MR.strings.member_label_role),
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextMutedGray
+                )
+                SlockLucideIcon(
+                    SlockLucideIconName.Info,
+                    modifier = Modifier
+                        .size(14.dp)
+                        .clickable { roleHelpOpen = true },
+                    color = SlockColor.TextMutedGrayArgb
+                )
+                if (canEditServerRole && !editingServerRole) {
+                    MembersProfilePencilButton(
+                        onClick = {
+                            serverRoleEditorAuthority = agentProfileEditAuthority
+                            draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
+                            serverRoleError = null
+                            serverRoleMenuExpanded = true
+                            editingServerRole = true
+                        }
+                    )
+                }
+            }
+            if (editingServerRole) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                ) {
+                    MembersServerRoleEditor(
+                        displayValue = draftServerRole.localizedLabel(),
+                        badgeBackgroundColor = draftServerRole.backgroundColor,
+                        expanded = serverRoleMenuExpanded,
+                        enabled = !savingServerRole,
+                        saving = savingServerRole,
+                        saveEnabled = draftServerRole != currentServerRole,
+                        options = membersAgentServerRoleOptions(draftServerRole),
+                        selectedId = draftServerRole.wireValue,
+                        error = serverRoleError,
+                        onToggle = { serverRoleMenuExpanded = !serverRoleMenuExpanded },
+                        onSelect = { roleId ->
+                            roleId.toMembersAgentServerRoleOrNull()?.let { nextRole ->
+                                draftServerRole = nextRole
+                                serverRoleMenuExpanded = false
+                                serverRoleError = null
+                            }
+                        },
+                        onSave = { saveServerRole() },
+                        onCancel = {
+                            draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
+                            serverRoleError = null
+                            serverRoleMenuExpanded = false
+                            editingServerRole = false
+                        }
+                    )
+                }
+            } else {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MembersAgentServerRoleChip(serverRoleDisplay)
+                }
+            }
+        }
+        if (roleHelpOpen) {
+            MembersAgentRoleHelpDialog(onDismiss = { roleHelpOpen = false })
+        }
+        // Computer / Created / Creator — web AgentDetailPanel stacks label ABOVE
+        // value here rather than using a fixed left gutter. The old 86dp label
+        // column is what made a long machine name ellipsize: the gutter never
+        // yields, so the value gets whatever is left. Stacked, the value owns the
+        // full width and wraps instead.
+        MembersAgentInfoField(label = stringResource(MR.strings.member_label_computer)) {
+            val machineName = summary?.machineName.orBadgeFallback(member.membersComputerName)
+            val machineNameStyle =
+                SlockType.Body.copy(
+                    fontFamily = slockMonoFamilyForWeight(FontWeight.SemiBold),
+                    fontSize = MembersInfoValueFontSize,
+                    lineHeight = MembersInfoValueLineHeight,
+                    fontWeight = FontWeight.Normal
+                ).let { base ->
+                    // Web renders the name as a button with a hover underline. Android
+                    // has no hover, so the underline is shown whenever it is actually
+                    // tappable — the affordance has to be visible without a pointer.
+                    if (onOpenComputer != null) base.copy(textDecoration = TextDecoration.Underline) else base
+                }
+            Text(
+                text = machineName,
+                style = machineNameStyle,
+                color = SlockColor.TextBlack,
+                // Web sets break-all on this specific value: machine names are
+                // unbroken tokens, so without it a long one overflows its box. No
+                // maxLines/ellipsis here on purpose — truncating a machine name
+                // hides exactly the part that distinguishes two similar hosts.
+                softWrap = true,
+                modifier = (if (onOpenComputer != null) Modifier.clickable(onClick = onOpenComputer) else Modifier)
+                    .fillMaxWidth()
+            )
+            // Status line (task #259). Truth source is the computers store, not
+            // `machineId != null`; the six-way run label mirrors web machineRunLabel.ts.
+            // Two independent facts -- status word and run label -- rendered as two
+            // spans with a literal " · " between them, exactly as web does in JSX.
+            when (val statusRow = machineStatusRow(summary?.machineId)) {
+                // artin: 甲 -- until the store has answered, render nothing here. Web
+                // falls through to "no computer assigned" during this window; that is
+                // its defect, not a reference to copy.
+                MembersMachineStatusRow.Loading -> Unit
+                MembersMachineStatusRow.NoComputer ->
+                    Text(
+                        text = stringResource(MR.strings.member_machine_no_computer_assigned),
+                        style = SlockType.Caption.copy(
+                            fontSize = MembersMachineStatusFontSize,
+                            lineHeight = MembersMachineStatusLineHeight,
+                            fontStyle = FontStyle.Italic
+                        ),
+                        color = SlockColor.TextMutedGray,
+                        modifier = Modifier.padding(top = MembersInfoBlockGap)
+                    )
+                is MembersMachineStatusRow.Machine -> {
+                    @OptIn(ExperimentalLayoutApi::class)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth().padding(top = MembersInfoBlockGap),
+                        horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
+                        verticalArrangement = Arrangement.spacedBy(MembersInfoStatusGapY)
+                    ) {
+                        // web: <StatusDot class="shrink-0"> -- fixed size, never compressed.
+                        Box(
+                            modifier = Modifier
+                                .size(MembersMachineStatusDotSize)
+                                .background(
+                                    if (statusRow.online) SlockColor.AccentLime else SlockColor.StatusNeutralGray,
+                                    shape = RoundedCornerShape(MembersMachineStatusDotSize / 2)
+                                )
+                                // FlowRow in this fork has no per-item vertical alignment; the
+                                // dot sits on the row's top edge. Web centres it (items-center).
+                                // Recorded as a known, visible divergence for the capture.
+                        )
+                        Text(
+                            text = stringResource(
+                                if (statusRow.online) MR.strings.member_label_connected else MR.strings.member_label_offline
+                            ),
+                            style = SlockType.Caption.copy(
+                                fontSize = MembersMachineStatusFontSize,
+                                lineHeight = MembersMachineStatusLineHeight
+                            ),
+                            color = SlockColor.TextMutedGray
+                        )
+                        // web: <span class="font-mono">· {runLabel}</span> -- the separator is
+                        // layout text inside the mono span, not part of any i18n string.
+                        Text(
+                            text = "· " + statusRow.runLabel.localized(),
+                            style = SlockType.Caption.copy(
+                                fontFamily = SlockMonoFamily,
+                                fontSize = MembersMachineStatusFontSize,
+                                lineHeight = MembersMachineStatusLineHeight
+                            ),
+                            color = SlockColor.TextMutedGray
+                        )
+                    }
+                }
+            }
+        }
+        // Created and Creator sit side by side while they fit and drop to their own
+        // lines when they do not. A fixed two-column Row would keep them side by
+        // side at any width, which is the failure this section is meant to avoid.
+        @OptIn(ExperimentalLayoutApi::class)
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(MembersInfoFieldGapX),
+            verticalArrangement = Arrangement.spacedBy(MembersInfoFieldGapY)
+        ) {
+            summary?.createdAt?.membersAgentCreatedDate(timeContext)?.takeIf { it.isNotBlank() }?.let { createdDate ->
+                MembersAgentInfoField(label = stringResource(MR.strings.member_label_created)) {
+                    Text(
+                        text = createdDate,
+                        style = SlockType.Body.copy(
+                            fontFamily = SlockMonoFamily,
+                            fontSize = MembersInfoValueFontSize,
+                            lineHeight = MembersInfoValueLineHeight
+                        ),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            // Creator value stays a clickable identity chip (web opens the profile).
+            MembersAgentInfoField(label = stringResource(MR.strings.member_label_creator)) {
+                val creatorProfile = summary?.creator?.toStrictMemberProfile()
+                if (creatorProfile != null) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        MembersAvatar(
+                            member = creatorProfile,
+                            avatarSize = 22.dp,
+                            statusSize = 0.dp,
+                            memberAvatarResolver = memberAvatarResolver,
+                            showStatusOverlay = false
+                        )
+                        Text(
+                            text = creatorProfile.displayName,
+                            style = SlockType.Body.copy(
+                                fontSize = MembersInfoValueFontSize,
+                                lineHeight = MembersInfoValueLineHeight
+                            ).withSlockFontWeight(FontWeight.Bold),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            // fill = false so the name shrinks to its content and the
+                            // handle beside it is not pushed out; without this the
+                            // name would claim the row and squeeze its sibling.
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        Text(
+                            text = creatorProfile.detailHandle,
+                            style = SlockType.Caption.copy(
+                                fontFamily = SlockMonoFamily,
+                                fontSize = 11.sp,
+                                lineHeight = 16.sp
+                            ),
+                            color = SlockColor.TextMutedGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                } else {
+                    Text(
+                        text = stringResource(MR.strings.member_state_no_creator_assigned),
+                        style = SlockType.Body.copy(
+                            fontSize = MembersInfoValueFontSize,
+                            lineHeight = MembersInfoValueLineHeight,
+                            fontStyle = FontStyle.Italic
+                        ),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * RUNTIME CONFIG section of the agent detail tab: read-only rows plus the shared runtime-config
+ * editor dialog and its save flow (task #1130 part 2, moved verbatim out of [MembersAgentProfileTab]).
+ */
+@Composable
+private fun MembersAgentRuntimeConfigSection(
+    member: MemberProfile,
+    summary: AgentDetailSummary?,
+    agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
+    edit: MembersAgentProfileEditInputs,
+    runtimeModels: MembersAgentRuntimeModelInputs,
+    createAgentFormStore: SharedCreateAgentFormStore?,
+    onApplyAgentRuntimeConfigProjection: suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean
+) {
+    val canEdit = edit.canEdit
+    val agentProfileEditAuthority = edit.agentProfileEditAuthority
+    val agentDetailActions = edit.agentDetailActions
+    val onUpdateAgentProfile = edit.onUpdateAgentProfile
+    val onApplyAgentProfileResult = edit.onApplyAgentProfileResult
+    val onUnavailableAction = edit.onUnavailableAction
+    val errorStrings = edit.errorStrings
+    val agentMachineRuntimes = runtimeModels.agentMachineRuntimes
+    val agentRuntimeModelsByRuntime = runtimeModels.agentRuntimeModelsByRuntime
+    val agentRuntimeModelLoadsInFlight = runtimeModels.agentRuntimeModelLoadsInFlight
+    val agentRuntimeModelErrorsByRuntime = runtimeModels.agentRuntimeModelErrorsByRuntime
+    val agentRuntimeModelGenerationsByRuntime = runtimeModels.agentRuntimeModelGenerationsByRuntime
+    val onAgentRuntimeModelsRequest = runtimeModels.onAgentRuntimeModelsRequest
+    val runtimeConfigResolution = remember(summary) { summary.toMembersRuntimeConfigResolution() }
+    val canonicalRuntimeConfig =
+        (runtimeConfigResolution as? MembersAgentRuntimeConfigResolution.Content)?.config
+    val canonicalRuntimeId = canonicalRuntimeConfig?.runtime
+    val canonicalRuntimeModel = canonicalRuntimeConfig?.model
+    // Runtime mutations need an explicit canonical status. A null status is
+    // deliberately neutral in the renderer; treating it as "inactive" here
+    // would allow a reset-sensitive edit while presence is still unknown.
+    val canonicalRuntimeStatus = agentStatusIndicatorState?.status
+    val runtimeStatusResolved = membersAgentRuntimeStatusResolved(canonicalRuntimeStatus)
+    val activeAgent = membersAgentRuntimeActive(canonicalRuntimeStatus)
+    val runtimeEditorReady =
+        runtimeStatusResolved &&
+            canonicalRuntimeConfig != null &&
+            membersAgentRuntimeConfigSaveAttemptEnabled(
+                runtime = canonicalRuntimeConfig.runtime,
+                model = canonicalRuntimeConfig.toMembersRuntimeModelValue(),
+                customModelMode = canonicalRuntimeModel is RuntimeModelConfig.Custom,
+                customModelName = (canonicalRuntimeModel as? RuntimeModelConfig.Custom)?.name.orEmpty(),
+                machineRuntimeIds = agentMachineRuntimes
+            )
+    val scope = rememberCoroutineScope()
+    val currentProfileEditAuthority by rememberUpdatedState(agentProfileEditAuthority)
+    val currentRuntimeModelGenerations by rememberUpdatedState(agentRuntimeModelGenerationsByRuntime)
+    val runtimeEditingUnavailable = stringResource(MR.strings.member_error_runtime_edit_unavailable)
+    val runtimeFormV2SavedRefresh = stringResource(MR.strings.runtime_form_v2_saved_refresh)
+    val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
+    val saveErrorTemplate = membersStringTemplate(MR.strings.member_error_save)
+    var editingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
+    var runtimeEditorAuthority by remember(member.id.value) {
+        mutableStateOf<MembersAgentProfileEditAuthority?>(null)
+    }
+    var savingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
+    var runtimeConfigError by remember(member.id.value) { mutableStateOf<String?>(null) }
+    // Runtime form v2 edit (flag `runtime_form_v2_web`); any v2 load failure or a runtime
+    // change hands the same editing session to the v1 dialog below.
+    val runtimeFormV2Access =
+        agentProfileEditAuthority?.serverId?.value?.let { createAgentFormStore?.runtimeFormV2Access(it) }
+    var runtimeFormV2Declined by remember(member.id.value, editingRuntimeConfig) { mutableStateOf(false) }
+    var runtimeFormV2ErrorFields by remember(member.id.value, editingRuntimeConfig) { mutableStateOf(emptySet<String>()) }
+
+    LaunchedEffect(canonicalRuntimeId) {
+        canonicalRuntimeId?.let { onAgentRuntimeModelsRequest(it, false) }
+    }
+
+
     fun saveRuntimeConfig(
         nextConfig: RuntimeConfig,
         openedCatalogGeneration: Long,
-        retainBuiltInProviderSecret: Boolean
+        retainBuiltInProviderSecret: Boolean,
+        kimiSdkFormDefinitionRef: SharedRuntimeFormDefinitionRef? = null
     ) {
         val callback = onUpdateAgentProfile
         if (
@@ -7842,7 +9384,8 @@ private fun MembersAgentProfileTab(
                         runtimeConfig = nextConfig,
                         includeRuntimeConfig = true,
                         retainOmittedBuiltInProviderSecret = retainBuiltInProviderSecret,
-                        runtimeResetMode = restartMode
+                        runtimeResetMode = restartMode,
+                        formDefinitionRef = kimiSdkFormDefinitionRef
                     )
                     if (agentDetailActions != null) {
                         agentDetailActions.updateAgentProfile(request)
@@ -7899,6 +9442,237 @@ private fun MembersAgentProfileTab(
         }
     }
 
+    fun saveRuntimeConfigV2(submit: RuntimeFormV2SubmitBody) {
+        val callback = onUpdateAgentProfile
+        val access = runtimeFormV2Access
+        if (
+            !canEdit ||
+                !runtimeStatusResolved ||
+                access == null ||
+                (agentDetailActions == null && callback == null) ||
+                savingRuntimeConfig
+        ) {
+            onUnavailableAction(runtimeEditingUnavailable)
+            return
+        }
+        val openedAuthority = runtimeEditorAuthority
+        val authorityCurrent = {
+            membersAgentProfileEditAuthorityMatches(
+                opened = openedAuthority,
+                current = currentProfileEditAuthority,
+                openedCatalogGeneration = 0L,
+                currentCatalogGeneration = 0L
+            )
+        }
+        if (!authorityCurrent()) {
+            runtimeConfigError = "agent_runtime_editor_stale"
+            onUnavailableAction(runtimeEditingUnavailable)
+            return
+        }
+        scope.launch {
+            savingRuntimeConfig = true
+            runtimeConfigError = null
+            runtimeFormV2ErrorFields = emptySet()
+            val result =
+                try {
+                    // Same runtime only (a runtime switch goes through v1), so an active agent restarts
+                    // to pick the change up, exactly as the v1 editor decides.
+                    val request = AgentProfileUpdateRequest(
+                        agentId = member.id,
+                        displayName = member.displayName,
+                        description = member.description?.takeIf { it.isNotBlank() },
+                        runtimeResetMode = if (activeAgent) AgentResetMode.Restart else null,
+                        runtimeFormV2 = submit
+                    )
+                    if (agentDetailActions != null) {
+                        agentDetailActions.updateAgentProfile(request)
+                    } else {
+                        requireNotNull(callback).invoke(request)
+                    }
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    DataResult.Error(ScreenError("agent_runtime_config_save_failed"))
+                }
+            if (!authorityCurrent()) return@launch
+            when (result) {
+                is DataResult.Content, is DataResult.Empty -> {
+                    (result as? DataResult.Content)?.let { onApplyAgentProfileResult(it.data) }
+                    // The server assembled the config; show what it stored rather than guessing locally.
+                    val stored = (access.loader.agent(member.id) as? DataResult.Content)?.data
+                    val config = (stored?.toAgentDetailSummary().toMembersRuntimeConfigResolution()
+                        as? MembersAgentRuntimeConfigResolution.Content)?.config
+                    val authority = runtimeEditorAuthority
+                    val projected =
+                        config != null && authority != null && onApplyAgentRuntimeConfigProjection(authority, config)
+                    editingRuntimeConfig = false
+                    // The save landed; only the read-back failed, so the rows may lag until a refresh.
+                    if (!projected) onUnavailableAction(runtimeFormV2SavedRefresh)
+                }
+                is DataResult.NoPermission ->
+                    runtimeConfigError =
+                        membersFormattedPermissionError(permissionErrorTemplate, result.blocker, errorStrings)
+                is DataResult.Error -> {
+                    runtimeFormV2ErrorFields = result.error.formFieldKeys.toSet()
+                    runtimeConfigError = membersFormattedScreenError(saveErrorTemplate, result.error, errorStrings)
+                }
+            }
+            savingRuntimeConfig = false
+        }
+    }
+
+    // RUNTIME CONFIG section — mirrors React `AgentDetailPanel` runtime block:
+    // key/value rows with brutal semantic chips, env vars embedded in the same
+    // section, and a pencil entry point for the shared runtime-config editor.
+    // No catalog-retry affordance in this read-only view (React parity): a failed
+    // model-catalog prefetch only matters inside the editor dialog, which
+    // re-requests on open and renders its own error + Retry (task #96).
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        MembersDetailSectionDivider()
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            MembersEditableSectionTitleRow(
+                title = stringResource(MR.strings.member_section_runtime_config).uppercase(),
+                showEdit = canEdit && runtimeEditorReady && !editingRuntimeConfig,
+                onEditClick = {
+                    runtimeConfigError = null
+                    runtimeEditorAuthority = agentProfileEditAuthority
+                    editingRuntimeConfig = true
+                }
+            )
+        }
+        MembersAgentRuntimeConfigRows(
+            resolution = runtimeConfigResolution,
+            runtimeModelsCatalog =
+                canonicalRuntimeId?.let(agentRuntimeModelsByRuntime::get)
+        )
+        MembersAgentRuntimeEnvVars(summary)
+    }
+
+    val runtimeFormV2MachineId = (summary?.machineId ?: member.membersComputerId)?.takeIf { it.isNotBlank() }
+    if (
+        editingRuntimeConfig && canonicalRuntimeConfig != null && runtimeStatusResolved &&
+            runtimeFormV2Access != null && !runtimeFormV2Declined && runtimeFormV2MachineId != null
+    ) {
+        MembersAgentRuntimeFormV2Dialog(
+            access = runtimeFormV2Access,
+            agentId = member.id,
+            machineId = runtimeFormV2MachineId,
+            saving = savingRuntimeConfig,
+            error = runtimeConfigError,
+            errorFieldKeys = runtimeFormV2ErrorFields,
+            onDismiss = {
+                if (!savingRuntimeConfig) {
+                    editingRuntimeConfig = false
+                    runtimeEditorAuthority = null
+                    runtimeConfigError = null
+                }
+            },
+            onLoadFailed = { runtimeFormV2Declined = true },
+            onChangeRuntime = {
+                runtimeConfigError = null
+                runtimeFormV2Declined = true
+            },
+            onSave = ::saveRuntimeConfigV2
+        )
+    } else if (editingRuntimeConfig && canonicalRuntimeConfig != null && runtimeStatusResolved) {
+        MembersAgentRuntimeConfigDialog(
+            initialConfig = canonicalRuntimeConfig,
+            memberId = member.id,
+            activeAgent = activeAgent,
+            machineRuntimeIds = agentMachineRuntimes,
+            runtimeModelsByRuntime = agentRuntimeModelsByRuntime,
+            runtimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
+            runtimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
+            runtimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
+            createAgentFormStore = createAgentFormStore,
+            currentServerId = agentProfileEditAuthority?.serverId?.value,
+            machineId = summary?.machineId ?: member.membersComputerId,
+            openedProfileAuthority = runtimeEditorAuthority,
+            currentProfileAuthority = agentProfileEditAuthority,
+            onRuntimeModelsRequest = onAgentRuntimeModelsRequest,
+            saving = savingRuntimeConfig,
+            error = runtimeConfigError,
+            onDismiss = {
+                if (!savingRuntimeConfig) {
+                    editingRuntimeConfig = false
+                    runtimeEditorAuthority = null
+                    runtimeConfigError = null
+                }
+            },
+            onSave = { nextConfig, catalogGeneration, retainBuiltInProviderSecret, kimiSdkFormDefinitionRef ->
+                saveRuntimeConfig(
+                    nextConfig,
+                    catalogGeneration,
+                    retainBuiltInProviderSecret,
+                    kimiSdkFormDefinitionRef
+                )
+            }
+        )
+    }
+}
+
+@Composable
+private fun MembersAgentProfileTab(
+    member: MemberProfile,
+    detail: AgentDetailSnapshot?,
+    runtimeModels: MembersAgentRuntimeModelInputs = MembersAgentRuntimeModelInputs(),
+    createAgentFormStore: SharedCreateAgentFormStore? = null,
+    agentProfileEditAuthority: MembersAgentProfileEditAuthority? = null,
+    canManage: Boolean,
+    agentStatusObservedState: SlockAgentStatusIndicatorState?,
+    agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    showAvatarPicker: Boolean,
+    onToggleAvatarPicker: () -> Unit,
+    onSelectAvatar: (String) -> Unit,
+    onClearAvatar: () -> Unit,
+    onUploadAvatar: suspend () -> DataResult<MemberProfile>,
+    sharedAgentDetailStore: SharedAgentDetailStore? = null,
+    storeState: SharedAgentDetailState? = null,
+    agentDetailActions: SharedAgentDetailActions? = null,
+    onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
+    onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
+    onApplyAgentRuntimeConfigProjection:
+        suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
+    onUnavailableAction: (String) -> Unit,
+    lifecycle: MembersAgentLifecycleInputs = MembersAgentLifecycleInputs(),
+    machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
+    timeContext: SlockTimeContext,
+    fixtureStatusFallbackEnabled: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    val lifecycleInFlight = lifecycle.lifecycleInFlight
+    val diagnosticActionState = lifecycle.diagnosticActionState
+    val onRunLifecycleAction = lifecycle.onRunLifecycleAction
+    val onOpenRestartReset = lifecycle.onOpenRestartReset
+    val onCopyDiagnostics = lifecycle.onCopyDiagnostics
+    val onReportIssue = lifecycle.onReportIssue
+    val onOpenComputer = lifecycle.onOpenComputer
+    val errorStrings = localizedErrorPresentationStrings()
+    val summary = detail?.summary
+    val deleted = summary?.deletedAt?.isNotBlank() == true
+    // Roster metadata is never edit authority. Only a canonical loaded profile summary may enter
+    // an editor or construct an update request.
+    val canEdit = canManage && summary != null && agentProfileEditAuthority != null && !deleted
+    val edit =
+        MembersAgentProfileEditInputs(
+            canEdit = canEdit,
+            agentProfileEditAuthority = agentProfileEditAuthority,
+            agentDetailActions = agentDetailActions,
+            onUpdateAgentProfile = onUpdateAgentProfile,
+            onApplyAgentProfileResult = onApplyAgentProfileResult,
+            onUnavailableAction = onUnavailableAction,
+            errorStrings = errorStrings
+        )
+
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
         if (deleted) {
             MembersDetailSection(title = stringResource(MR.strings.member_status_deleted).uppercase()) {
@@ -7912,6 +9686,7 @@ private fun MembersAgentProfileTab(
             summary = summary,
             canEdit = canEdit,
             agentStatusIndicatorState = agentStatusIndicatorState,
+            agentStatusObservedState = agentStatusObservedState,
             memberAvatarResolver = memberAvatarResolver,
             showAvatarPicker = showAvatarPicker,
             onToggleAvatarPicker = onToggleAvatarPicker,
@@ -7921,484 +9696,31 @@ private fun MembersAgentProfileTab(
             onUnavailableAction = onUnavailableAction
         )
 
-        // PROFILE section — light divider style (no box border) per React parity.
-        // Each field is its own column with eyebrow label + content, mirroring React's
-        // `<div className="px-5 py-3"><SectionEyebrow>...</SectionEyebrow><p>...</p></div>`
-        // pattern. Display Name and Description each have an independent pencil-edit
-        // state machine (mirrors React `editingDisplayName` + `editingRole`).
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-        ) {
-            // Display Name field
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                MembersEditableSectionTitleRow(
-                    title = stringResource(MR.strings.member_label_display_name).uppercase(),
-                    showEdit = canEdit && !editingDisplayName,
-                    onEditClick = {
-                        displayNameEditorAuthority = agentProfileEditAuthority
-                        if (storeBackedProfileEdit) {
-                            profileStore.dispatch(
-                                SharedAgentDetailIntent.BeginEditDisplayName(member.displayName)
-                            )
-                        } else {
-                            localDraftDisplayName = member.displayName
-                            localDisplayNameError = null
-                            localEditingDisplayName = true
-                        }
-                    }
-                )
-            }
-            if (editingDisplayName) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-                ) {
-                    SlockFormField(
-                        label = stringResource(MR.strings.member_label_display_name),
-                        error = displayNameError,
-                        showLabel = false
-                    ) {
-                        SlockBrutalInputField(
-                            value = draftDisplayName,
-                            placeholder = stringResource(MR.strings.member_label_display_name),
-                            onValueChange = {
-                                if (storeBackedProfileEdit) {
-                                    profileStore.dispatch(
-                                        SharedAgentDetailIntent.UpdateDisplayNameDraft(it)
-                                    )
-                                } else {
-                                    localDraftDisplayName = it
-                                    if (localDisplayNameError != null) localDisplayNameError = null
-                                }
-                            },
-                            enabled = !savingDisplayName,
-                            autoFocus = true,
-                            borderColor = if (displayNameError != null) SlockColor.AccentRed else SlockColor.BorderBlack,
-                            enabledBackgroundColor = if (displayNameError != null) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite
-                        )
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-                        SlockBrutalActionButton(
-                            label = if (savingDisplayName) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
-                            onClick = { saveDisplayName() },
-                            enabled = !savingDisplayName,
-                            backgroundColor = SlockColor.BrandYellow
-                        )
-                        SlockBrutalActionButton(
-                            label = stringResource(MR.strings.common_cancel),
-                            onClick = {
-                                if (storeBackedProfileEdit) {
-                                    profileStore.dispatch(
-                                        SharedAgentDetailIntent.CancelEditDisplayName
-                                    )
-                                } else {
-                                    localDraftDisplayName = member.displayName
-                                    localDisplayNameError = null
-                                    localEditingDisplayName = false
-                                }
-                                displayNameEditorAuthority = null
-                            },
-                            enabled = !savingDisplayName,
-                            backgroundColor = SlockColor.SurfaceWhite
-                        )
-                    }
-                }
-            } else {
-                Text(
-                    text = member.displayName,
-                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                    color = SlockColor.TextBlack,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            // Description field (independent edit state machine)
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                MembersEditableSectionTitleRow(
-                    title = stringResource(MR.strings.member_section_description).uppercase(),
-                    showEdit = canEdit && !editingRole,
-                    onEditClick = {
-                        roleEditorAuthority = agentProfileEditAuthority
-                        if (storeBackedProfileEdit) {
-                            profileStore.dispatch(
-                                SharedAgentDetailIntent.BeginEditRole(member.description.orEmpty())
-                            )
-                        } else {
-                            localDraftRole = member.description.orEmpty()
-                            localRoleError = null
-                            localEditingRole = true
-                        }
-                    }
-                )
-            }
-            if (editingRole) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-                ) {
-                    SlockFormField(
-                        label = stringResource(MR.strings.member_section_description),
-                        error = roleError,
-                        showLabel = false
-                    ) {
-                        SlockBrutalInputField(
-                            value = draftRole,
-                            placeholder = stringResource(MR.strings.member_placeholder_description),
-                            onValueChange = {
-                                if (storeBackedProfileEdit) {
-                                    profileStore.dispatch(
-                                        SharedAgentDetailIntent.UpdateRoleDraft(it)
-                                    )
-                                } else {
-                                    localDraftRole = it
-                                    if (localRoleError != null) localRoleError = null
-                                }
-                            },
-                            enabled = !savingRole,
-                            autoFocus = true,
-                            maxLines = 4,
-                            fieldMinHeight = 86.dp,
-                            borderColor = if (roleError != null) SlockColor.AccentRed else SlockColor.BorderBlack,
-                            enabledBackgroundColor = if (roleError != null) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        SlockBrutalActionButton(
-                            label = if (savingRole) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
-                            onClick = { saveRole() },
-                            enabled = !savingRole,
-                            backgroundColor = SlockColor.BrandYellow
-                        )
-                        SlockBrutalActionButton(
-                            label = stringResource(MR.strings.common_cancel),
-                            onClick = {
-                                if (storeBackedProfileEdit) {
-                                    profileStore.dispatch(
-                                        SharedAgentDetailIntent.CancelEditRole
-                                    )
-                                } else {
-                                    localDraftRole = member.description.orEmpty()
-                                    localRoleError = null
-                                    localEditingRole = false
-                                }
-                            },
-                            enabled = !savingRole,
-                            backgroundColor = SlockColor.SurfaceWhite
-                        )
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            text = "${draftRole.trim().length}/$MembersAgentProfileDescriptionMaxLength",
-                            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                            color = SlockColor.TextMutedGray
-                        )
-                    }
-                }
-            } else {
-                Text(
-                    text = member.description?.takeIf { it.isNotBlank() }
-                        ?: stringResource(MR.strings.member_state_no_description),
-                    style = SlockType.Body.copy(
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
-                        fontStyle = if (member.description.isNullOrBlank()) FontStyle.Italic else FontStyle.Normal
-                    ),
-                    color = if (member.description.isNullOrBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
-                    maxLines = 6,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-
-        // INFO section — mirrors React AgentDetailPanel's Computer / Created / Creator rows.
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-        ) {
-            MembersDetailSectionDivider()
-            MembersDetailSectionTitle(stringResource(MR.strings.member_section_info).uppercase())
-            // Role row: React keeps this as a label affordance plus an inline role chip/editor,
-            // not the compact two-column metadata row used by Computer/Created/Creator.
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = stringResource(MR.strings.member_label_role),
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextMutedGray
-                    )
-                    SlockLucideIcon(
-                        SlockLucideIconName.Info,
-                        modifier = Modifier
-                            .size(14.dp)
-                            .clickable { roleHelpOpen = true },
-                        color = SlockColor.TextMutedGrayArgb
-                    )
-                    if (canEditServerRole && !editingServerRole) {
-                        MembersProfilePencilButton(
-                            onClick = {
-                                serverRoleEditorAuthority = agentProfileEditAuthority
-                                draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
-                                serverRoleError = null
-                                serverRoleMenuExpanded = true
-                                editingServerRole = true
-                            }
-                        )
-                    }
-                }
-                if (editingServerRole) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-                    ) {
-                        MembersServerRoleEditor(
-                            displayValue = draftServerRole.localizedLabel(),
-                            badgeBackgroundColor = draftServerRole.backgroundColor,
-                            expanded = serverRoleMenuExpanded,
-                            enabled = !savingServerRole,
-                            saving = savingServerRole,
-                            saveEnabled = draftServerRole != currentServerRole,
-                            options = membersAgentServerRoleOptions(draftServerRole),
-                            selectedId = draftServerRole.wireValue,
-                            error = serverRoleError,
-                            onToggle = { serverRoleMenuExpanded = !serverRoleMenuExpanded },
-                            onSelect = { roleId ->
-                                roleId.toMembersAgentServerRoleOrNull()?.let { nextRole ->
-                                    draftServerRole = nextRole
-                                    serverRoleMenuExpanded = false
-                                    serverRoleError = null
-                                }
-                            },
-                            onSave = { saveServerRole() },
-                            onCancel = {
-                                draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
-                                serverRoleError = null
-                                serverRoleMenuExpanded = false
-                                editingServerRole = false
-                            }
-                        )
-                    }
-                } else {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        MembersAgentServerRoleChip(currentServerRole)
-                    }
-                }
-            }
-            if (roleHelpOpen) {
-                MembersAgentRoleHelpDialog(onDismiss = { roleHelpOpen = false })
-            }
-            // Computer row
-            val computerRowModifier =
-                if (onOpenComputer != null) {
-                    Modifier.fillMaxWidth().clickable(onClick = onOpenComputer)
-                } else {
-                    Modifier.fillMaxWidth()
-                }
-            val computerNameStyle =
-                SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp).let { baseStyle ->
-                    if (onOpenComputer != null) {
-                        baseStyle.copy(textDecoration = TextDecoration.Underline)
-                    } else {
-                        baseStyle
-                    }
-                }
-            Row(
-                modifier = computerRowModifier,
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = stringResource(MR.strings.member_label_computer),
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextMutedGray,
-                    modifier = Modifier.width(86.dp)
-                )
-                Text(
-                    text = summary?.machineName.orBadgeFallback(member.membersComputerName),
-                    style = computerNameStyle,
-                    color = SlockColor.TextBlack,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                val machineStatusLabel =
-                    if (summary?.machineId != null) stringResource(MR.strings.member_label_connected) else stringResource(MR.strings.member_label_offline)
-                Text(
-                    text = machineStatusLabel,
-                    style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                    color = SlockColor.TextMutedGray
-                )
-                if (summary?.daemonVersion != null) {
-                    Text(
-                        text = stringResource(MR.strings.member_daemon_version_suffix, summary.daemonVersion),
-                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextMutedGray
-                    )
-                }
-            }
-            summary?.createdAt?.membersAgentCreatedDate(timeContext)?.takeIf { it.isNotBlank() }?.let { createdDate ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = stringResource(MR.strings.member_label_created),
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextMutedGray,
-                        modifier = Modifier.width(86.dp)
-                    )
-                    Text(
-                        text = createdDate,
-                        style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            // Creator row (clickable button — React opens the creator's profile)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = stringResource(MR.strings.member_label_creator),
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextMutedGray,
-                    modifier = Modifier.width(86.dp)
-                )
-                val creatorProfile = summary?.creator?.toStrictMemberProfile()
-                if (creatorProfile != null) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        MembersAvatar(
-                            member = creatorProfile,
-                            avatarSize = 22.dp,
-                            statusSize = 0.dp,
-                            memberAvatarResolver = memberAvatarResolver,
-                            showStatusOverlay = false
-                        )
-                        Text(
-                            text = creatorProfile.displayName,
-                            style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
-                                .withSlockFontWeight(FontWeight.Bold),
-                            color = SlockColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                        Text(
-                            text = creatorProfile.detailHandle,
-                            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                            color = SlockColor.TextMutedGray,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                } else {
-                    Text(
-                        text = stringResource(MR.strings.member_state_no_creator_assigned),
-                        style = SlockType.Body.copy(
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            fontStyle = FontStyle.Italic
-                        ),
-                        color = SlockColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-
-        // RUNTIME CONFIG section — mirrors React `AgentDetailPanel` runtime block:
-        // key/value rows with brutal semantic chips, env vars embedded in the same
-        // section, and a pencil entry point for the shared runtime-config editor.
-        // No catalog-retry affordance in this read-only view (React parity): a failed
-        // model-catalog prefetch only matters inside the editor dialog, which
-        // re-requests on open and renders its own error + Retry (task #96).
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-        ) {
-            MembersDetailSectionDivider()
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-            ) {
-                MembersEditableSectionTitleRow(
-                    title = stringResource(MR.strings.member_section_runtime_config).uppercase(),
-                    showEdit = canEdit && runtimeEditorReady && !editingRuntimeConfig,
-                    onEditClick = {
-                        runtimeConfigError = null
-                        runtimeEditorAuthority = agentProfileEditAuthority
-                        editingRuntimeConfig = true
-                    }
-                )
-            }
-            MembersAgentRuntimeConfigRows(
-                resolution = runtimeConfigResolution,
-                runtimeModelsCatalog =
-                    canonicalRuntimeId?.let(agentRuntimeModelsByRuntime::get)
-            )
-            MembersAgentRuntimeEnvVars(summary)
-        }
-
-        if (editingRuntimeConfig && canonicalRuntimeConfig != null && runtimeStatusResolved) {
-            MembersAgentRuntimeConfigDialog(
-                initialConfig = canonicalRuntimeConfig,
-                memberId = member.id,
-                activeAgent = activeAgent,
-                machineRuntimeIds = agentMachineRuntimes,
-                runtimeModelsByRuntime = agentRuntimeModelsByRuntime,
-                runtimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
-                runtimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
-                runtimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
-                createAgentFormStore = createAgentFormStore,
-                currentServerId = agentProfileEditAuthority?.serverId?.value,
-                machineId = summary?.machineId ?: member.membersComputerId,
-                openedProfileAuthority = runtimeEditorAuthority,
-                currentProfileAuthority = agentProfileEditAuthority,
-                onRuntimeModelsRequest = onAgentRuntimeModelsRequest,
-                saving = savingRuntimeConfig,
-                error = runtimeConfigError,
-                onDismiss = {
-                    if (!savingRuntimeConfig) {
-                        editingRuntimeConfig = false
-                        runtimeEditorAuthority = null
-                        runtimeConfigError = null
-                    }
-                },
-                onSave = { nextConfig, catalogGeneration, retainBuiltInProviderSecret ->
-                    saveRuntimeConfig(nextConfig, catalogGeneration, retainBuiltInProviderSecret)
-                }
-            )
-        }
+        MembersAgentProfileFieldsSection(
+            member = member,
+            edit = edit,
+            sharedAgentDetailStore = sharedAgentDetailStore,
+            storeState = storeState
+        )
+        MembersAgentInfoSection(
+            member = member,
+            summary = summary,
+            deleted = deleted,
+            edit = edit,
+            machineStatusRow = machineStatusRow,
+            onOpenComputer = onOpenComputer,
+            timeContext = timeContext,
+            memberAvatarResolver = memberAvatarResolver
+        )
+        MembersAgentRuntimeConfigSection(
+            member = member,
+            summary = summary,
+            agentStatusIndicatorState = agentStatusIndicatorState,
+            edit = edit,
+            runtimeModels = runtimeModels,
+            createAgentFormStore = createAgentFormStore,
+            onApplyAgentRuntimeConfigProjection = onApplyAgentRuntimeConfigProjection
+        )
 
         // Avatar editing is surfaced from the top-left avatar in `MembersDetailHeader`
         // (PUX #49 spec v4 lock). Clicking it opens the floating `MembersAgentAvatarPicker`
@@ -8567,7 +9889,17 @@ private fun MembersAgentRuntimeConfigRows(
                 )
             }
         }
-        if (supportsRuntimeReasoningEffort(runtimeId)) {
+        // kimi-sdk (task #275): the chip is gated on the selected model's LIVE
+        // catalog capability (never the static runtime set); submit-time
+        // authority additionally requires the resolved kimi-sdk form ref.
+        if (
+            supportsRuntimeReasoningEffort(runtimeId) ||
+            kimiSdkLiveReasoningCapability(
+                runtime = runtimeId,
+                model = runtimeConfig.toMembersRuntimeModelValue(),
+                runtimeModelsOverride = runtimeModelsCatalog?.models.orEmpty()
+            ) != null
+        ) {
             MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_reasoning)) {
                 MembersAgentRuntimeChip(
                     label = runtimeConfig.reasoningEffort?.toMembersDisplayLabel() ?: stringResource(MR.strings.member_label_default),
@@ -8588,7 +9920,11 @@ private fun MembersAgentRuntimeConfigRows(
                 val providerId = runtimeConfig.provider.membersBuiltInProviderId()
                 Text(
                     text = providerId.ifBlank { stringResource(MR.strings.member_label_default) },
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                    style = SlockType.Caption.copy(
+                        fontFamily = if (providerId.isBlank()) SlockType.Caption.fontFamily else SlockMonoFamily,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp
+                    ),
                     color = if (providerId.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -8601,7 +9937,11 @@ private fun MembersAgentRuntimeConfigRows(
                     (runtimeConfig.provider as? RuntimeProviderConfig.PiBuiltin)?.providerId
                 Text(
                     text = providerId ?: stringResource(MR.strings.member_label_default),
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                    style = SlockType.Caption.copy(
+                        fontFamily = if (providerId == null) SlockType.Caption.fontFamily else SlockMonoFamily,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp
+                    ),
                     color = if (providerId == null) SlockColor.TextMutedGray else SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -8614,6 +9954,7 @@ private fun MembersAgentRuntimeConfigRows(
                 Text(
                     text = provider?.apiUrl?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.member_label_default),
                     style = SlockType.Caption.copy(
+                        fontFamily = if (provider == null) SlockType.Caption.fontFamily else SlockMonoFamily,
                         fontSize = 11.sp,
                         lineHeight = 16.sp,
                         fontStyle = if (provider == null) FontStyle.Italic else FontStyle.Normal
@@ -8628,6 +9969,7 @@ private fun MembersAgentRuntimeConfigRows(
                 Text(
                     text = command ?: stringResource(MR.strings.member_label_default),
                     style = SlockType.Caption.copy(
+                        fontFamily = if (command == null) SlockType.Caption.fontFamily else SlockMonoFamily,
                         fontSize = 11.sp,
                         lineHeight = 16.sp,
                         fontStyle = if (command == null) FontStyle.Italic else FontStyle.Normal
@@ -8661,6 +10003,9 @@ internal fun membersAgentRuntimeModelDisplayLabel(
             ?.firstOrNull { it.id == normalizedModelId }
             ?.label
             .verifiedDisplayLabel()
+        // The agent genuinely carries this model id; hiding it entirely reads as
+        // "model missing" (task #284). Fall back to the raw id rather than nothing.
+        ?: normalizedModelId
 }
 
 @Composable
@@ -8770,7 +10115,12 @@ private fun MembersAgentRuntimeConfigDialog(
     saving: Boolean,
     error: String?,
     onDismiss: () -> Unit,
-    onSave: (RuntimeConfig, catalogGeneration: Long, retainBuiltInProviderSecret: Boolean) -> Unit
+    onSave: (
+        RuntimeConfig,
+        catalogGeneration: Long,
+        retainBuiltInProviderSecret: Boolean,
+        kimiSdkFormDefinitionRef: SharedRuntimeFormDefinitionRef?
+    ) -> Unit
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     val stableInitialConfig = remember(memberId.value, initialConfig) { initialConfig }
@@ -8819,14 +10169,26 @@ private fun MembersAgentRuntimeConfigDialog(
     var builtInSupportsImageInput by remember(stableInitialConfig) {
         mutableStateOf((initialBuiltInProvider as? RuntimeProviderConfig.Gateway)?.supportsImageInput == true)
     }
+    var builtInLoadLocalPlugins by remember(stableInitialConfig) {
+        mutableStateOf(stableInitialConfig.loadLocalPlugins == true)
+    }
     var fastMode by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.mode is RuntimeModeConfig.Fast) }
     var reasoningEffort by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.reasoningEffort) }
+    // kimi-sdk (task #275): only an explicit selector pick counts as "changed";
+    // reconciles from model switches or capability arrivals never set this.
+    var reasoningEffortTouched by remember(stableInitialConfig) { mutableStateOf(false) }
+    // Tracks whether the kimi capability was ever live in this editing session,
+    // so "never had it" (still loading) is not treated as "lost mid-edit".
+    var kimiSdkCapabilitySeen by remember(stableInitialConfig) { mutableStateOf(false) }
     var command by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.command.orEmpty()) }
     var envVarEntries by remember(stableInitialConfig) {
         mutableStateOf(stableInitialConfig.envVars.orEmpty().entries.map { it.key to it.value })
     }
     var pendingRuntimeSwitchConfig by remember(stableInitialConfig) { mutableStateOf<RuntimeConfig?>(null) }
     var pendingRetainBuiltInProviderSecret by remember(stableInitialConfig) { mutableStateOf(false) }
+    var pendingKimiSdkFormDefinitionRef by remember(stableInitialConfig) {
+        mutableStateOf<SharedRuntimeFormDefinitionRef?>(null)
+    }
     var awaitingServerModelForRuntime by remember(stableInitialConfig) { mutableStateOf(false) }
     var acceptedCatalogGeneration by remember(stableInitialConfig) {
         mutableStateOf(runtimeModelGenerationsByRuntime[stableInitialConfig.runtime] ?: 0L)
@@ -8836,7 +10198,7 @@ private fun MembersAgentRuntimeConfigDialog(
     }
     var saveValidationError by remember(stableInitialConfig) { mutableStateOf<String?>(null) }
     var advancedOpen by remember(stableInitialConfig) {
-        mutableStateOf(command.isNotBlank() || envVarEntries.isNotEmpty())
+        mutableStateOf(command.isNotBlank() || envVarEntries.isNotEmpty() || builtInLoadLocalPlugins)
     }
     val formStoreState = createAgentFormStore?.state?.collectAsState()?.value
     val cleanServerId = currentServerId?.trim().orEmpty()
@@ -8853,6 +10215,18 @@ private fun MembersAgentRuntimeConfigDialog(
             key.machineId == cleanMachineId &&
             key.ref.runtimeId == CREATE_AGENT_BUILTIN_RUNTIME_ID
     } == true
+    // kimi-sdk (task #275): resolved exact form for the current agent's
+    // computer. The store's owner/generation fencing keeps a stale or
+    // out-of-order form from replacing a newer resolution.
+    val kimiSdkForm = formStoreState?.resolvedForms?.entries
+        ?.singleOrNull { (key, _) ->
+            key.serverId == cleanServerId &&
+                key.machineId == cleanMachineId &&
+                key.ref.runtimeId == CREATE_AGENT_KIMI_SDK_RUNTIME_ID
+        }
+        ?.value
+        ?.takeIf { it.definition.ref.isSupportedKimiSdk }
+    val kimiSdkFormRef = kimiSdkReasoningFormRef(kimiSdkForm)
     var builtInFormError by remember(stableInitialConfig) { mutableStateOf<String?>(null) }
     var builtInFormReloadGeneration by remember(stableInitialConfig) { mutableStateOf(0) }
     val customModelMissing = customModelMode && customModelName.trim().isBlank()
@@ -8870,6 +10244,10 @@ private fun MembersAgentRuntimeConfigDialog(
     val runtimeModelsOverride = runtimeModelsCatalog?.models.orEmpty()
     val runtimeModelsLoading = runtime in runtimeModelLoadsInFlight
     val runtimeModelsError = runtimeModelErrorsByRuntime[runtime]
+    // kimi-sdk (task #275): selector/save capability = selected model's LIVE
+    // catalog entry + the resolved exact form ref. No static fallback.
+    val kimiSdkCatalogCapability = kimiSdkLiveReasoningCapability(runtime, model, runtimeModelsOverride)
+    val kimiSdkEditCapability = kimiSdkCatalogCapability.takeIf { kimiSdkFormRef != null }
     val catalogValidationInFlight = pendingCatalogValidatedSave != null
     val retainBuiltInProviderSecret =
         membersCanRetainBuiltInProviderSecret(
@@ -8889,7 +10267,8 @@ private fun MembersAgentRuntimeConfigDialog(
                 baseUrl = builtInBaseUrl,
                 model = model,
                 envVars = envVarEntries.toMembersRuntimeEnvVars(),
-                supportsImageInput = builtInSupportsImageInput
+                supportsImageInput = builtInSupportsImageInput,
+                loadLocalPlugins = builtInLoadLocalPlugins
             )?.membersProjectRetainedBuiltInSecret(retainBuiltInProviderSecret)
         } else {
             null
@@ -8939,6 +10318,36 @@ private fun MembersAgentRuntimeConfigDialog(
             }
         }
     }
+    // kimi-sdk (task #275): parallel form load with the same store-level
+    // generation fencing. Fail-closed: a missing/failed form just keeps the
+    // reasoning selector hidden (it is optional, unlike Built-in's apiKey).
+    LaunchedEffect(runtime, createAgentFormStore, cleanServerId, cleanMachineId) {
+        if (
+            runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID &&
+            createAgentFormStore != null &&
+            cleanServerId.isNotBlank() &&
+            cleanMachineId.isNotBlank()
+        ) {
+            createAgentFormStore.loadSupportedKimiSdkFormForEdit(cleanServerId, cleanMachineId)
+        }
+    }
+    // kimi-sdk: reconcile the draft effort against the live capability once it
+    // arrives; if it is lost mid-edit (catalog refreshed empty, form dropped),
+    // fail closed back to Default with no explicit selection left to submit.
+    LaunchedEffect(runtime, kimiSdkEditCapability) {
+        if (runtime != CREATE_AGENT_KIMI_SDK_RUNTIME_ID) return@LaunchedEffect
+        val capability = kimiSdkEditCapability
+        if (capability != null) {
+            kimiSdkCapabilitySeen = true
+            val reconciled = reconcileKimiSdkReasoningEffort(capability, reasoningEffort)
+            if (reconciled != reasoningEffort) {
+                reasoningEffort = reconciled
+            }
+        } else if (kimiSdkCapabilitySeen) {
+            reasoningEffort = null
+            reasoningEffortTouched = false
+        }
+    }
     LaunchedEffect(runtime, builtInForm) {
         if (runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID && builtInForm != null) {
             val providerSource =
@@ -8951,6 +10360,7 @@ private fun MembersAgentRuntimeConfigDialog(
                 builtInBaseUrl = ""
                 builtInApiKey = TextFieldValue("")
                 builtInSupportsImageInput = false
+                builtInLoadLocalPlugins = false
                 val modelSource =
                     builtInForm.optionSources["model"] as?
                         build.raft.app.data.SharedAgentCreateFormOptionSource.DependentSelect
@@ -9034,11 +10444,39 @@ private fun MembersAgentRuntimeConfigDialog(
         }
         acceptedCatalogGeneration = currentGeneration
         pendingCatalogValidatedSave = null
-        if (membersRuntimeConfigSwitchConfirmation(stableInitialConfig, pending.config, activeAgent) != null) {
-            pendingRuntimeSwitchConfig = pending.config
+        // kimi-sdk: recompute the effort/ref decision against the catalog that
+        // was just validated, so the save never targets a stale capability.
+        val completedKimiSdkDecision =
+            if (pending.runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID && runtime == pending.runtime) {
+                membersKimiSdkReasoningSaveDecision(
+                    capability =
+                        kimiSdkLiveReasoningCapability(pending.runtime, pending.model, catalog.models)
+                            .takeIf { kimiSdkFormRef != null },
+                    formRef = kimiSdkFormRef,
+                    effortTouched = reasoningEffortTouched,
+                    modelChanged = pending.model != stableInitialConfig.toMembersRuntimeModelValue(),
+                    currentEffort = reasoningEffort
+                )
+            } else {
+                null
+            }
+        val completedConfig =
+            if (completedKimiSdkDecision != null) {
+                pending.config.copy(reasoningEffort = completedKimiSdkDecision.reasoningEffort)
+            } else {
+                pending.config
+            }
+        if (membersRuntimeConfigSwitchConfirmation(stableInitialConfig, completedConfig, activeAgent) != null) {
+            pendingRuntimeSwitchConfig = completedConfig
             pendingRetainBuiltInProviderSecret = pending.retainBuiltInProviderSecret
+            pendingKimiSdkFormDefinitionRef = completedKimiSdkDecision?.formDefinitionRef
         } else {
-            onSave(pending.config, currentGeneration, pending.retainBuiltInProviderSecret)
+            onSave(
+                completedConfig,
+                currentGeneration,
+                pending.retainBuiltInProviderSecret,
+                completedKimiSdkDecision?.formDefinitionRef
+            )
         }
     }
     val runtimeEditorProfileAuthorityCurrent =
@@ -9054,6 +10492,12 @@ private fun MembersAgentRuntimeConfigDialog(
     val runtimeConfigListState = rememberLazyListState()
     val runtimeConfigScrollScope = rememberCoroutineScope()
     var runtimeConfigViewport by remember { mutableStateOf<Rect?>(null) }
+    val runtimeConfigScrollCoordinator = remember {
+        SlockFocusedEditorScrollRequestCoordinator()
+    }
+    DisposableEffect(runtimeConfigScrollCoordinator) {
+        onDispose { runtimeConfigScrollCoordinator.invalidate() }
+    }
 
     SlockUnifiedDialog(
         title = stringResource(MR.strings.member_dialog_edit_runtime_config).uppercase(),
@@ -9066,8 +10510,9 @@ private fun MembersAgentRuntimeConfigDialog(
 
         fun keepFocusedRuntimeEditorVisible(params: KeyboardParams) {
             dialogKeyboardHeightChange(params)
+            val requestGeneration = runtimeConfigScrollCoordinator.begin()
             if (params.height <= 0f) return
-            runtimeConfigScrollScope.launch {
+            val job = runtimeConfigScrollScope.launch {
                 slockUnifiedDialogKeepFocusedEditorVisible(
                     keyboardHeight = params.height,
                     awaitRelayoutFrame = { withFrameNanos { } },
@@ -9081,9 +10526,14 @@ private fun MembersAgentRuntimeConfigDialog(
                     },
                     scrollToItem = { index, scrollOffset ->
                         runtimeConfigListState.scrollToItem(index, scrollOffset)
+                    },
+                    isScrollInProgress = { runtimeConfigListState.isScrollInProgress },
+                    isRequestCurrent = {
+                        runtimeConfigScrollCoordinator.isCurrent(requestGeneration)
                     }
                 )
             }
+            runtimeConfigScrollCoordinator.attach(job)
         }
 
         CompositionLocalProvider(
@@ -9141,6 +10591,7 @@ private fun MembersAgentRuntimeConfigDialog(
                                     builtInApiKey = TextFieldValue("")
                                     builtInBaseUrl = ""
                                     builtInSupportsImageInput = false
+                                    builtInLoadLocalPlugins = false
                                 }
                                 builtInProviderId = nextProvider
                             },
@@ -9150,6 +10601,8 @@ private fun MembersAgentRuntimeConfigDialog(
                             onBaseUrlChange = { builtInBaseUrl = it },
                             supportsImageInput = builtInSupportsImageInput,
                             onSupportsImageInputChange = { builtInSupportsImageInput = it },
+                            loadLocalPlugins = builtInLoadLocalPlugins,
+                            onLoadLocalPluginsChange = { builtInLoadLocalPlugins = it },
                             model = model,
                             onModelChange = { model = it },
                             envVarEntries = envVarEntries,
@@ -9212,7 +10665,17 @@ private fun MembersAgentRuntimeConfigDialog(
                         model = model,
                         onModelSelectionChange = { selection ->
                             model = selection.model
-                            reasoningEffort = selection.reasoningEffort
+                            // kimi-sdk: reconcile against the NEW model's live
+                            // catalog entry; never leak the old model's effort.
+                            reasoningEffort =
+                                if (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID) {
+                                    reconcileKimiSdkReasoningEffort(
+                                        kimiSdkLiveReasoningCapability(runtime, selection.model, runtimeModelsOverride),
+                                        reasoningEffort
+                                    )
+                                } else {
+                                    selection.reasoningEffort
+                                }
                             customModelName = selection.model
                         },
                         customModelMode = customModelMode,
@@ -9263,7 +10726,13 @@ private fun MembersAgentRuntimeConfigDialog(
                         fastMode = fastMode,
                         onFastModeChange = { fastMode = it },
                         reasoningEffort = reasoningEffort,
-                        onReasoningEffortChange = { reasoningEffort = it },
+                        onReasoningEffortChange = { nextEffort ->
+                            reasoningEffort = nextEffort
+                            if (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID) {
+                                reasoningEffortTouched = true
+                            }
+                        },
+                        kimiSdkReasoningCapability = kimiSdkEditCapability,
                         envVarEntries = envVarEntries,
                         onEnvVarEntriesChange = { envVarEntries = it },
                         command = command,
@@ -9353,6 +10822,30 @@ private fun MembersAgentRuntimeConfigDialog(
                                 envVars = envVarEntries.toMembersRuntimeEnvVars(),
                                 command = command
                             )
+                        // kimi-sdk (task #275): buildRuntimeConfig keeps kimi
+                        // efforts null (static gate); the live-capability save
+                        // decision is the only channel for an explicit effort
+                        // and for the exact form ref.
+                        val kimiSdkSaveDecision =
+                            if (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID) {
+                                membersKimiSdkReasoningSaveDecision(
+                                    capability = kimiSdkEditCapability,
+                                    formRef = kimiSdkFormRef,
+                                    effortTouched = reasoningEffortTouched,
+                                    modelChanged =
+                                        effectiveModel != stableInitialConfig.toMembersRuntimeModelValue(),
+                                    currentEffort = reasoningEffort
+                                )
+                            } else {
+                                null
+                            }
+                        val saveConfig =
+                            if (kimiSdkSaveDecision != null) {
+                                nextConfig.copy(reasoningEffort = kimiSdkSaveDecision.reasoningEffort)
+                            } else {
+                                nextConfig
+                            }
+                        val saveFormDefinitionRef = kimiSdkSaveDecision?.formDefinitionRef
                         if (runtime != CREATE_AGENT_BUILTIN_RUNTIME_ID &&
                             !membersAgentRuntimeConfigSaveEnabled(
                                 runtime = runtime,
@@ -9370,7 +10863,7 @@ private fun MembersAgentRuntimeConfigDialog(
                                 (runtimeModelGenerationsByRuntime[runtime] ?: 0L) + 1L
                             pendingCatalogValidatedSave =
                                 MembersPendingRuntimeConfigSave(
-                                    config = nextConfig,
+                                    config = saveConfig,
                                     runtime = runtime,
                                     model = model,
                                     customModelMode = customModelMode,
@@ -9384,11 +10877,12 @@ private fun MembersAgentRuntimeConfigDialog(
                         val validatedCatalogGeneration =
                             runtimeModelGenerationsByRuntime[runtime] ?: 0L
                         acceptedCatalogGeneration = validatedCatalogGeneration
-                        if (membersRuntimeConfigSwitchConfirmation(stableInitialConfig, nextConfig, activeAgent) != null) {
-                            pendingRuntimeSwitchConfig = nextConfig
+                        if (membersRuntimeConfigSwitchConfirmation(stableInitialConfig, saveConfig, activeAgent) != null) {
+                            pendingRuntimeSwitchConfig = saveConfig
                             pendingRetainBuiltInProviderSecret = retainBuiltInProviderSecret
+                            pendingKimiSdkFormDefinitionRef = saveFormDefinitionRef
                         } else {
-                            onSave(nextConfig, validatedCatalogGeneration, retainBuiltInProviderSecret)
+                            onSave(saveConfig, validatedCatalogGeneration, retainBuiltInProviderSecret, saveFormDefinitionRef)
                         }
                     }
                 )
@@ -9406,14 +10900,17 @@ private fun MembersAgentRuntimeConfigDialog(
                     onSave(
                         pendingConfig,
                         acceptedCatalogGeneration,
-                        pendingRetainBuiltInProviderSecret
+                        pendingRetainBuiltInProviderSecret,
+                        pendingKimiSdkFormDefinitionRef
                     )
                     pendingRetainBuiltInProviderSecret = false
+                    pendingKimiSdkFormDefinitionRef = null
                 },
                 onCancel = {
                     if (!saving) {
                         pendingRuntimeSwitchConfig = null
                         pendingRetainBuiltInProviderSecret = false
+                        pendingKimiSdkFormDefinitionRef = null
                     }
                 }
             )
@@ -9454,6 +10951,41 @@ internal fun membersRuntimeConfigResetMode(
         activeAgent -> AgentResetMode.Restart
         else -> null
     }
+
+internal data class MembersKimiSdkReasoningSaveDecision(
+    val reasoningEffort: String?,
+    val formDefinitionRef: SharedRuntimeFormDefinitionRef?
+)
+
+/**
+ * kimi-sdk edit-save wire split (task #275), driven ONLY by live capability:
+ * - effort untouched AND model unchanged → null effort and NO formDefinitionRef:
+ *   the server's legacy same-model retention preserves any stored effort.
+ * - effort explicitly picked, or model switched → explicit effort (reconciled
+ *   against the selected model's live catalog entry, so an old model's value
+ *   can never leak) plus the current exact kimi-sdk form ref.
+ * - any capability gap (no resolved form ref, empty live efforts, invalid
+ *   default) fails closed: null effort, no ref.
+ */
+internal fun membersKimiSdkReasoningSaveDecision(
+    capability: KimiSdkLiveReasoningCapability?,
+    formRef: SharedRuntimeFormDefinitionRef?,
+    effortTouched: Boolean,
+    modelChanged: Boolean,
+    currentEffort: String?
+): MembersKimiSdkReasoningSaveDecision {
+    val ref = formRef?.takeIf { it.isSupportedKimiSdk }
+    if (!effortTouched && !modelChanged) {
+        return MembersKimiSdkReasoningSaveDecision(reasoningEffort = null, formDefinitionRef = null)
+    }
+    if (capability == null || ref == null) {
+        return MembersKimiSdkReasoningSaveDecision(reasoningEffort = null, formDefinitionRef = null)
+    }
+    return MembersKimiSdkReasoningSaveDecision(
+        reasoningEffort = currentEffort?.takeIf { it in capability.supportedReasoningEfforts },
+        formDefinitionRef = ref
+    )
+}
 
 internal fun membersRuntimeConfigSwitchConfirmation(
     currentConfig: RuntimeConfig,
@@ -9924,8 +11456,8 @@ private fun MembersAgentCreatedAgentRow(
     fixtureStatusFallbackEnabled: Boolean = false
 ) {
     val profile = remember(agent) { agent.toStaticMembersProfile() }
-    val statusIndicatorState =
-        resolveMembersAgentStatusIndicatorState(
+    val observedIndicatorState =
+        resolveMembersAgentStatusIndicatorStateOrNull(
             canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, profile.id.value),
             fixtureFallback =
                 if (fixtureStatusFallbackEnabled) {
@@ -9935,7 +11467,9 @@ private fun MembersAgentCreatedAgentRow(
                 },
             fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
         )
+    val statusIndicatorState = observedIndicatorState ?: unknownMembersAgentStatusIndicatorState()
     val statusDisplayState = statusIndicatorState.toMembersAgentStatusDisplayState()
+    val observedDisplayState = observedIndicatorState?.toMembersAgentStatusDisplayState()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -9973,11 +11507,14 @@ private fun MembersAgentCreatedAgentRow(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        SlockStatusIndicator(
-            color = statusDisplayState.color,
-            size = 10.dp,
-            pulsing = statusDisplayState.pulsing
-        )
+        // Unknown is not Offline: no dot until something is observed (task #256).
+        observedDisplayState?.let { observed ->
+            SlockStatusIndicator(
+                color = observed.color,
+                size = 10.dp,
+                pulsing = observed.pulsing
+            )
+        }
     }
 }
 
@@ -10306,7 +11843,7 @@ private fun MembersAgentReminderCard(
             }
             Text(
                 text = reminder.fireAt.membersReminderShortDateTime(timeContext),
-                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
                 color = SlockColor.TextBlack.copy(alpha = 0.5f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -10898,16 +12435,15 @@ private fun MembersAgentActivityRow(
         modifier = Modifier
             .fillMaxWidth()
             .background(SlockColor.SurfaceWhite)
-            .padding(horizontal = 12.dp, vertical = 5.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.Top
     ) {
+        // Web: `shrink-0 font-mono text-xs whitespace-nowrap` — natural width, no fixed column.
         Text(
             text = activity.timestamp.membersActivityDisplayTime(timeContext),
-            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 15.sp),
+            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
             color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            textAlign = TextAlign.End,
-            modifier = Modifier.requiredWidth(MembersAgentActivityTimeColumnWidth)
+            maxLines = 1
         )
         Box(
             modifier = Modifier.requiredWidth(MembersAgentActivityIndicatorLaneWidth),
@@ -10917,14 +12453,14 @@ private fun MembersAgentActivityRow(
                 color = (activity.statusActivity ?: activity.type).membersActivityAccentColor(),
                 size = 8.dp,
                 pulsing = (activity.statusActivity ?: activity.type).membersActivityPulsing(),
-                modifier = Modifier.padding(top = 5.dp)
+                modifier = Modifier.padding(top = 6.dp)
             )
         }
         Column(
             modifier = Modifier
                 .padding(start = MembersAgentActivityContentGap)
                 .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(3.dp)
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -10933,8 +12469,8 @@ private fun MembersAgentActivityRow(
             ) {
                 Text(
                     text = activity.title,
-                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
-                        .withSlockFontWeight(FontWeight.Bold),
+                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp)
+                        .withSlockFontWeight(FontWeight.Medium),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -10957,13 +12493,13 @@ private fun MembersAgentActivityRow(
                 if (activity.refTextEnabled) {
                     SlockMarkdownBody(
                         body = displayBody,
-                        textStyle = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                        textStyle = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
                         onOpenUrl = onOpenUrl,
                     )
                 } else {
                     Text(
                         text = displayBody,
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
                         color = SlockColor.TextMutedGray,
                         maxLines = if (expanded) 12 else 3,
                         overflow = TextOverflow.Ellipsis,
@@ -11744,11 +13280,15 @@ private fun MembersListRow(
             }
         }
         if (member.kind == MemberKind.Agent) {
-            SlockStatusIndicator(
-                color = agentStatusDisplayState?.color ?: SlockColor.StatusNeutralGray,
-                size = MemberStatusDotSize,
-                pulsing = agentStatusDisplayState?.pulsing == true
-            )
+            // Same contract as the detail header: null is Unknown, not Offline, so the row
+            // shows no dot rather than a grey one until a resolution exists (task #253/#256).
+            agentStatusDisplayState?.let { state ->
+                SlockStatusIndicator(
+                    color = state.color,
+                    size = MemberStatusDotSize,
+                    pulsing = state.pulsing
+                )
+            }
         }
     }
 }
@@ -11796,66 +13336,60 @@ private val MemberKind.membersAvatarColor: Color
         MemberKind.Human -> SlockColor.AccentLavender
         MemberKind.Agent -> SlockColor.AccentPink
         MemberKind.System -> SlockColor.AccentCyan
+        MemberKind.External -> SlockColor.AccentCyan
     }
-
-private fun AgentStatus?.membersStatusColor(presence: Presence): Color =
-    slockAgentStatusIndicatorState(this, presence).color
-
-private fun AgentStatus?.membersStatusPulsing(): Boolean =
-    slockAgentStatusIndicatorState(this, this?.presence ?: Presence.Offline).pulsing
 
 internal data class MembersAgentStatusDisplayState(
     val status: AgentStatus?,
     val color: Color,
-    val pulsing: Boolean
+    val pulsing: Boolean,
+    val external: Boolean
 )
 
 private val MembersUnknownAgentStatusDisplayState =
     MembersAgentStatusDisplayState(
         status = null,
         color = SlockColor.StatusNeutralGray,
-        pulsing = false
+        pulsing = false,
+        external = false
     )
 
 internal fun MemberProfile.membersAgentStatusDisplayState(
     summaryStatus: String? = null,
     summaryActivity: String? = null
-): MembersAgentStatusDisplayState {
-    val resolvedStatus = membersResolvedAgentStatus(summaryStatus, summaryActivity)
-    return MembersAgentStatusDisplayState(
-        status = resolvedStatus,
-        color = resolvedStatus.membersStatusColor(presence),
-        pulsing = resolvedStatus.membersStatusPulsing()
-    )
-}
+): MembersAgentStatusDisplayState =
+    toFixtureSlockAgentStatusIndicatorState(
+        summaryStatus = summaryStatus,
+        summaryActivity = summaryActivity
+    ).toMembersAgentStatusDisplayState()
 
+/**
+ * Fixture fallback goes through the single canonical mapping so the external
+ * short-circuit (task #1119) applies here exactly as it does to the live resolver.
+ */
 private fun MemberProfile.toFixtureSlockAgentStatusIndicatorState(
     summaryStatus: String? = null,
     summaryActivity: String? = null
-): SlockAgentStatusIndicatorState {
-    val display = membersAgentStatusDisplayState(
-        summaryStatus = summaryStatus,
-        summaryActivity = summaryActivity
+): SlockAgentStatusIndicatorState =
+    slockAgentStatusIndicatorState(
+        status = membersResolvedAgentStatus(summaryStatus, summaryActivity),
+        presence = presence,
+        external = isExternal
     )
-    return SlockAgentStatusIndicatorState(
-        status = display.status,
-        color = display.color,
-        pulsing = display.pulsing,
-        label = display.status?.label ?: presence.name
-    )
-}
 
 private fun AgentCreatedSummary.toFixtureSlockAgentStatusIndicatorState(): SlockAgentStatusIndicatorState =
     slockAgentStatusIndicatorState(
         status = normalizedAgentRuntimeStatus(activity = null, lifecycleStatus = status),
-        presence = Presence.Offline
+        presence = Presence.Offline,
+        external = isExternal
     )
 
 private fun AgentProfile.toFixtureSlockAgentStatusIndicatorState(): SlockAgentStatusIndicatorState =
     slockAgentStatusIndicatorState(
         status = agentStatus,
         presence = presence,
-        statusLabel = statusLabel
+        statusLabel = statusLabel,
+        external = isExternal
     )
 
 private val MemberProfile.detailHandle: String
@@ -11868,6 +13402,7 @@ private val MemberProfile.detailRoleLabel: String
                 MemberKind.Agent -> "Agent"
                 MemberKind.Human -> "Human member"
                 MemberKind.System -> "System"
+                MemberKind.External -> "External"
             }
 
 private fun MemberProfile.membersHumanRoleChipColor(): Color =
@@ -12054,7 +13589,8 @@ private fun AgentCreatedSummary.toStaticMembersProfile(): MemberProfile {
         avatarUrl = avatarWireValue,
         avatar = AvatarReference.fromWireValue(avatarWireValue),
         avatarLabel = display.take(1).uppercase(),
-        roleDescription = runtime
+        roleDescription = runtime,
+        isExternal = isExternal
     )
 }
 
@@ -12191,6 +13727,8 @@ internal fun AgentDetailSnapshot.toStaticMembersProfile(server: ServerSummary): 
         avatarLabel = label.take(1).uppercase(),
         presence = Presence.Offline,
         agentStatus = null,
+        // Detail summaries carry the runtime sentinel only (no projected boolean).
+        isExternal = isExternalAgentRuntime(summary?.runtime),
         permissionBadges = listOfNotNull(
             summary?.runtime?.takeIf { it.isNotBlank() },
             summary?.machineName?.takeIf { it.isNotBlank() }?.let { "computer:$it" },
@@ -12210,7 +13748,7 @@ internal fun AgentDetailSnapshot.withMemberProfileProjection(member: MemberProfi
             displayName = member.displayName.ifBlank { fallbackName },
             description = member.description?.takeIf { it.isNotBlank() },
             runtime = member.roleDescription ?: summary?.runtime,
-            avatarUrl = member.avatar?.wireValue ?: member.avatarUrl ?: summary?.avatarUrl
+            avatarUrl = preferredAvatarWireValue(member.avatar, member.avatarUrl) ?: summary?.avatarUrl
         )
     return copy(summary = nextSummary)
 }
@@ -12384,7 +13922,14 @@ internal fun membersAgentActivityNextBottomAnchor(
         else -> current
     }
 
-private data class MembersAgentGroup(
+internal data class MembersAgentGroup(
+    /**
+     * Task #409: the persisted-collapse key — the machine's `computer-id:`
+     * badge when present (stable across renames, same reason web keys by
+     * `machineId`), otherwise the display name, otherwise the shared
+     * [build.raft.app.data.MembersAgentMachineGroupNoMachineKey] sentinel.
+     */
+    val key: String,
     val label: String,
     val members: List<MemberProfile>
 )
@@ -12447,13 +13992,20 @@ private fun SlockSpinnerIcon(
     )
 }
 
-private fun groupedAgentMembers(members: List<MemberProfile>): List<MembersAgentGroup> =
+internal fun groupedAgentMembers(members: List<MemberProfile>): List<MembersAgentGroup> =
     members
         .groupBy { member ->
-            member.permissionBadges
-                .firstNotNullOfOrNull { badge ->
-                    badge.removePrefix("computer:")
-                        .takeIf { badge.startsWith("computer:") && it.isNotBlank() }
-                } ?: "no computer"
+            member.membersComputerId
+                ?: member.membersComputerName
+                ?: build.raft.app.data.MembersAgentMachineGroupNoMachineKey
         }
-        .map { (label, groupedMembers) -> MembersAgentGroup(label, groupedMembers) }
+        .map { (key, groupedMembers) ->
+            MembersAgentGroup(
+                key = key,
+                label = groupedMembers.firstOrNull()?.membersComputerName
+                    ?: membersNoComputerGroupLabel,
+                members = groupedMembers
+            )
+        }
+
+internal const val membersNoComputerGroupLabel = "no computer"

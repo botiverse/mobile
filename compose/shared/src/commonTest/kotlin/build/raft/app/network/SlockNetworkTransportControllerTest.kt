@@ -11,13 +11,36 @@ import kotlin.test.assertTrue
 
 class SlockNetworkTransportControllerTest {
     @Test
-    fun unresolvedRemotePolicyDefaultsToCurlHttp3() {
+    fun unresolvedRemotePolicyDefaultsToCurlHttp2() {
         val controller = readyController(curlRequired = false)
 
         val request = NetworkRequest(url = "https://example.test/default")
         assertEquals(NetworkTransportEngine.CURL, controller.selectionFor(request).requestedEngine)
-        assertEquals(true, request.curlHttp3EnabledOverride)
-        assertTrue(controller.getPreferenceSync().effectiveHttp3Enabled)
+        assertEquals(false, request.curlHttp3EnabledOverride)
+        assertFalse(controller.getPreferenceSync().effectiveHttp3Enabled)
+    }
+
+    @Test
+    fun presignedUploadHttp1OnlyOverridesDefaultCurlH2() {
+        val controller = readyController(curlRequired = false)
+
+        val request = NetworkRequest(url = "https://example.test/presigned").apply { flagHttp1Only {} }
+
+        assertEquals(NetworkTransportEngine.CURL, controller.selectionFor(request).requestedEngine)
+        assertEquals(false, request.curlHttp3EnabledOverride)
+    }
+
+    @Test
+    fun presignedUploadHttp1OnlyAlsoOverridesExplicitCurlH3RemoteVariant() {
+        val controller = readyController(curlRequired = false)
+        controller.updateRemoteEnvironment("production")
+        controller.updateRemoteActiveSelection("shell-a", "server-a")
+        controller.applyRemoteEvaluation("production", 1L, "server-a", true, "curl_h3")
+
+        val request = NetworkRequest(url = "https://example.test/presigned").apply { flagHttp1Only {} }
+
+        assertEquals(NetworkTransportEngine.CURL, controller.selectionFor(request).requestedEngine)
+        assertEquals(false, request.curlHttp3EnabledOverride)
     }
 
     @Test
@@ -74,16 +97,39 @@ class SlockNetworkTransportControllerTest {
     }
 
     @Test
-    fun disabledOrInvalidEvaluationKeepsDefaultCurlH3() {
+    fun blankShellScopeSelectionIsIgnoredInsteadOfSharingOneLegacySlot() {
+        val controller = readyController(curlRequired = false)
+        controller.updateRemoteEnvironment("production")
+
+        // Positive control: a named scope makes server-a the active server, so its variant applies.
+        controller.updateRemoteActiveSelection("shell-a", "server-a")
+        controller.applyRemoteEvaluation("production", 1L, "server-a", true, "curl_h2")
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
+
+        // A blank scope is not a caller identity: it cannot register server-b as active
+        // (which would fail-safe the conflict to KTOR) and cannot clear shell-a's selection.
+        assertEquals(null, controller.updateRemoteActiveSelection("  ", "server-b"))
+        controller.applyRemoteEvaluation("production", 2L, "server-b", true, "ktor")
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
+        assertEquals(null, controller.updateRemoteActiveSelection("", null))
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
+
+        // The same operations under a real scope do mutate state, proving the assertions above bite.
+        controller.updateRemoteActiveSelection("shell-b", "server-b")
+        assertSelection(controller, NetworkTransportEngine.KTOR, http3 = false)
+    }
+
+    @Test
+    fun disabledOrInvalidEvaluationKeepsDefaultCurlH2() {
         val controller = readyController(curlRequired = false)
         controller.updateRemoteEnvironment("production")
         controller.updateRemoteActiveSelection("shell-a", "server-a")
 
         controller.applyRemoteEvaluation("production", 1L, "server-a", false, "ktor")
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = true)
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
 
         controller.applyRemoteEvaluation("production", 2L, "server-a", true, "not-a-transport")
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = true)
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
     }
 
     @Test
@@ -104,7 +150,7 @@ class SlockNetworkTransportControllerTest {
 
         assertTrue(diagnostics.orEmpty().contains("applied=false"))
         assertEquals(0L, controller.getPreferenceSync().generation)
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = true)
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
     }
 
     @Test
@@ -158,7 +204,7 @@ class SlockNetworkTransportControllerTest {
     private fun policy(curlRequired: Boolean): SlockNetworkTransportPlatformPolicy =
         SlockNetworkTransportPlatformPolicy(
             platformLabel = if (curlRequired) "OHOS" else "Android",
-            defaultHttp3Enabled = true,
+            defaultHttp3Enabled = false,
             curlRequired = curlRequired,
             appOwnedTrustRequired = !curlRequired,
             readyDetail = "ready"

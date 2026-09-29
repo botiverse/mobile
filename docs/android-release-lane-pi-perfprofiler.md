@@ -29,10 +29,14 @@ in any channel (usually `#artifacts`). Lane assumptions:
    git reset --hard origin/main       # only in a clean release worktree
    git rev-parse --short HEAD
    git status --short --branch       # expect clean and equal to origin/main
-   git ls-tree HEAD third_party/kuikly-ui third_party/slock-source
+   git submodule status
    ```
-   Then decide base + pinned submodule SHAs. Hands Android SDK and the migrated
-   KuiklyBase dependencies resolve anonymously from Raft Maven.
+   Then decide the base and pinned Mobile submodule SHAs. The Slock server/
+   React source is external to this release worktree; if a visual or contract
+   check needs it, set `SLOCK_SOURCE_REPO` and record `git -C
+   "$SLOCK_SOURCE_REPO" rev-parse HEAD` with the evidence. Hands Android SDK
+   and the migrated KuiklyBase dependencies resolve anonymously from Raft
+   Maven.
 
 2. **Create detached worktree** at the base commit.
    ```bash
@@ -47,9 +51,10 @@ in any channel (usually `#artifacts`). Lane assumptions:
    reusable script). It will:
    - `cp` the canonical-checkout script into `<worktree>/.tools/`
    - `sed` the `WT=...` path
-   - For each of the 6 submodules (`kuikly-ui`, `slock-source`,
-     `slock-visual-testing`-removed, `sqldelight`, `sqliter`, `stately`,
-     `KuiklyUI` skill), write the right `core.worktree` in
+   - For each of the three Mobile dependency submodules
+     (`third_party/stately`, `third_party/sqliter`, and `third_party/sqldelight`)
+     plus the `.agents/skills/kuikly-ui-framework/references/KuiklyUI` skill
+     reference, write the right `core.worktree` in
      `~/.slock-checkout/.git/modules/...` and use `git archive <pinned-sha> |
      tar -x` to materialize a clean tree (avoiding main-checkout dirty files).
    See "Submodule strategy" below for the rationale.
@@ -167,11 +172,11 @@ in any channel (usually `#artifacts`). Lane assumptions:
 
 ## Submodule strategy (why a helper script)
 
-The canonical Slock checkout has, at any given moment, a dirty working tree
-in `third_party/kuikly-ui` and/or `third_party/slock-source` (AD3 WIP
-lanes). The lane cannot `cd` into those submodules from the canonical
-checkout, nor can it `git submodule update --init` (it would clobber the
-dirty work). The lane's solution:
+The canonical Mobile checkout may have dirty fork/reference worktrees in
+active development lanes. The external `botiverse/slock` checkout is a
+separate repository and must never be materialized as a Mobile submodule or
+under a `third_party/` path. The lane's source-checkout solution is to set
+`SLOCK_SOURCE_REPO` explicitly and pin its SHA for any evidence:
 
 - `materialize-submodules.sh` writes a clean `core.worktree` in
   `~/.slock-checkout/.git/modules/...` pointing at the **worktree's**

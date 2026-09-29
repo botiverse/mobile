@@ -1,6 +1,6 @@
 ---
 name: mobile-use
-description: Use when controlling or auditing Raft mobile apps from command line across Android, iOS, and Harmony/OHOS with the repo-local mobile-use package. Covers android-use, ios-use, harmony-use, screenshots/layout capture, log capture/analysis, launch trimming, profiler pulls, and remote host wrappers.
+description: Use when controlling or auditing Raft mobile apps from command line across Android, iOS, and Harmony/OHOS with the repo-local mobile-use package. Covers android-use, ios-use, harmony-use, screenshots/layout capture, log capture/analysis, launch trimming, and remote host wrappers.
 ---
 
 # Mobile Use
@@ -10,7 +10,7 @@ device automation. It installs three platform-specific CLIs and keeps shared
 bottom helpers in one package:
 
 - `android-use` for ADB, Android app launch/control, logcat, screenshots, UI XML,
-  diagnostics intents, and Kuikly profiler artifacts.
+  and diagnostics intents.
 - `ios-use` for Xcode/simctl build/install/launch, simulator control,
   screenshots, logs, and remote wrappers.
 - `harmony-use` for DevEco/HDC/Hvigor, OHOS install/launch, emulator control,
@@ -39,7 +39,7 @@ Prefer app-owned entry points over fragile visual navigation:
 ```bash
 android-use devices --pretty
 android-use launch --pretty
-android-use open-diagnostics --enable-profiler --reset-scene --pretty
+android-use open-diagnostics --pretty
 android-use open-page compose_thread --page-data '{"channelId":"<id>"}' --pretty
 android-use state --out artifacts/android --prefix thread --pretty
 ```
@@ -63,12 +63,6 @@ path. It detects app starts from `ActivityTaskManager START`,
 `ActivityManager Start proc`, `Displayed`, and `wm_on_resume_called` markers for
 the configured Android package.
 
-Pull Kuikly profiler artifacts:
-
-```bash
-android-use pull-profiler --out artifacts/android --allow-missing --pretty
-```
-
 The legacy `scripts/slock_android_adb.py` remains a compatibility wrapper around
 `android-use`; prefer `android-use` directly for new automation.
 
@@ -80,9 +74,15 @@ ios-use build --workspace compose/iosApp/iosApp.xcworkspace --scheme iosApp --pr
 ios-use install --pretty
 ios-use launch --pretty
 ios-use screenshot --out artifacts/ios --pretty
+ios-use tap-text Home --pretty
+ios-use interact --actions '[{"type":"tapText","text":"all"}]' --pretty
 ios-use log --duration 10 --predicate 'process == "iosApp"' --out artifacts/ios --pretty
 ios-use analyze-log artifacts/ios/state-ios-log.txt --pretty
 ```
+
+UI inspect/act defaults to `agent-device` (`AGENT_DEVICE_BIN` or PATH). Use
+`--driver qa-loop --workspace compose/iosApp/iosApp.xcworkspace` only for the
+legacy XCTest file protocol. Product-log verdicts stay outside `ios-use`.
 
 ## Harmony/OHOS Flow
 

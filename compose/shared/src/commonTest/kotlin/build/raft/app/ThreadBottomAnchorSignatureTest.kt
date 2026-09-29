@@ -2603,6 +2603,24 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun visibleReadMarkerKey_respectsRenderedVisibleTail() {
+        // task #232: the read marker must stop at the rendered visible tail so
+        // live appends while off-bottom never advance the shared read frontier.
+        val slice =
+            payload(messages = listOf(message("m1"), message("m2"), message("m3")))
+                .copy(status = "content", sourceThreadId = "channel-1")
+                .toThreadTimelineSlice()
+
+        val fullTail = slice.visibleReadMarkerKey("channel-1", null)
+        val visibleTail = slice.visibleReadMarkerKey("channel-1", 0)
+
+        assertEquals(slice.visibleReadMarkerKey("channel-1"), fullTail)
+        assertNotEquals(fullTail, visibleTail)
+        assertTrue(visibleTail!!.endsWith(":m1"))
+        assertEquals(fullTail, slice.visibleReadMarkerKey("channel-1", 99))
+    }
+
+    @Test
     fun visibleRead_requiresActiveForegroundThread() {
         val marker = "channel-1:11:m2"
 

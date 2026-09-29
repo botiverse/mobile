@@ -41,6 +41,9 @@ private fun AuthChooseServerPageContent() {
     val fromShell = remember(pager.pageData.params.toString()) {
         pager.pageData.params.optBoolean(AUTH_CHOOSE_SERVER_FROM_SHELL, false)
     }
+    val usesScopedStore = remember(pager.pageData.params.toString()) {
+        authChooseServerUsesScopedStore(pager.pageData.params)
+    }
     val sourceStoreScope = remember(pager.pageData.params.toString(), pager.pagerId) {
         pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
@@ -66,22 +69,30 @@ private fun AuthChooseServerPageContent() {
                 bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext()
             )
         }
-    val authDataSource = remember(sharedStores, avatarNativeCache) {
-        sharedStores.createAuthDataSourceForCurrentEnvironment(avatarNativeCache)
+    val authSessionStore = remember(sharedStores, usesScopedStore, sourceStoreScope) {
+        if (usesScopedStore) sharedStores.authStore(sourceStoreScope) else sharedStores.authStore
+    }
+    val authDataSource = remember(sharedStores, usesScopedStore, sourceStoreScope, avatarNativeCache) {
+        if (usesScopedStore) {
+            sharedStores.createAuthDataSourceForCurrentEnvironment(sourceStoreScope, avatarNativeCache)
+        } else {
+            sharedStores.createAuthDataSourceForCurrentEnvironment(avatarNativeCache)
+        }
     }
     var session by remember { mutableStateOf<StoredAuthSession?>(null) }
     var errorPresentation by remember { mutableStateOf<AuthGateMessage?>(null) }
     var restoreAttempt by remember { mutableStateOf(0) }
     val errorMessage = errorPresentation.localizedMessage()
 
-    LaunchedEffect(fromShell, skipInitialLoad) {
+    LaunchedEffect(fromShell, usesScopedStore, skipInitialLoad) {
         authDataSource.logDiagnostics(
-            "auth_choose_server_page_enter fromShell=$fromShell skipInitialLoad=$skipInitialLoad"
+            "auth_choose_server_page_enter fromShell=$fromShell scopedStore=$usesScopedStore " +
+                "skipInitialLoad=$skipInitialLoad"
         )
     }
 
-    LaunchedEffect(sharedStores.authStore, restoreAttempt) {
-        runCatchingPreservingCancellation { sharedStores.authStore.readSession() }
+    LaunchedEffect(authSessionStore, restoreAttempt) {
+        runCatchingPreservingCancellation { authSessionStore.readSession() }
             .onSuccess { restored ->
                 session = restored
                 authDataSource.logDiagnostics(

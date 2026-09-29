@@ -7,7 +7,7 @@ import display from '@ohos.display';
 import UIAbility from '@ohos.app.ability.UIAbility';
 import Want from '@ohos.app.ability.Want';
 import window from '@ohos.window';
-import { registerSingleServiceProvider, setup, init } from '@kuiklybase/knoi';
+import { invoke, registerSingleServiceProvider, setup, init } from '@kuiklybase/knoi';
 import { KuiklyRenderAdapterManager } from '@kuikly-open/render';
 import { LogAdapter } from '../kuikly/adapter/LogAdapter';
 import { RouterAdapter } from '../kuikly/adapter/RouterAdapter';
@@ -31,6 +31,10 @@ import {
   SLOCK_OHOS_PLATFORM_FILE_READER_SERVICE,
   SlockOhosPlatformFileReader
 } from './SlockOhosPlatformFileReader';
+import {
+  SLOCK_OHOS_THREAD_COMPOSER_TEMPORARY_FILE_RETIREMENT_SERVICE,
+  SlockOhosThreadComposerTemporaryFileRetirementProvider
+} from './SlockOhosThreadComposerTemporaryFileRetirement';
 import slockOhosProcessNetworkLifecycle from './SlockOhosProcessNetworkLifecycle';
 import BuildProfile from 'BuildProfile';
 
@@ -144,11 +148,53 @@ export default class EntryAbility extends UIAbility {
     );
     this.setupKnoi();
     this.mobileOAuthIngress.captureColdStart(want.uri);
+    this.captureVisualFixtureWant(want);
     slockOhosProcessNetworkLifecycle.install(this.context.getApplicationContext());
   }
 
   onNewWant(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
     this.mobileOAuthIngress.captureWarmStart(want.uri);
+    this.captureVisualFixtureWant(want);
+  }
+
+  /*
+   * Debug-only visual-fixture ingress (task #10, 2026-09-21): lets a local
+   * harness open an arbitrary Kuikly visual page with a fixture key via
+   *   hdc shell aa start ... --ps slockVisualPage <page> --ps slockVisualFixture <key>
+   * Release builds ignore these parameters entirely; the AppStorage keys are
+   * only ever written when BuildProfile.DEBUG is true.
+   */
+  private captureVisualFixtureWant(want: Want): void {
+    if (!BuildProfile.DEBUG) {
+      return;
+    }
+    const parameters = (want.parameters ?? {}) as Record<string, Object>;
+    const page = this.stringValueParameter(parameters['slockVisualPage']);
+    if (page.length === 0) {
+      // A want without visual parameters clears any stale ingress state so a
+      // later parameterless cold start of Index cannot pick up an old fixture.
+      AppStorage.delete('slock.visual.pageName');
+      AppStorage.delete('slock.visual.fixture');
+      AppStorage.delete('slock.visual.instanceId');
+      return;
+    }
+    const fixture = this.stringValueParameter(parameters['slockVisualFixture']);
+    const instanceId = this.stringValueParameter(parameters['slockVisualInstanceId'])
+      || `ohos-visual-${fixture.length > 0 ? fixture : page}`;
+    AppStorage.setOrCreate<string>('slock.visual.pageName', page);
+    AppStorage.setOrCreate<string>('slock.visual.fixture', fixture);
+    AppStorage.setOrCreate<string>('slock.visual.instanceId', instanceId);
+    SlockOhosDiagnostics.record(
+      'SlockRouteHost',
+      `visual_want_ingress page=${page} fixture=${fixture} instanceId=${instanceId}`
+    );
+  }
+
+  private stringValueParameter(raw: Object | undefined): string {
+    if (typeof raw === 'string') {
+      return raw;
+    }
+    return '';
   }
 
   onDestroy(): void {
@@ -269,6 +315,23 @@ export default class EntryAbility extends UIAbility {
       SLOCK_NETWORK_APP_IDENTITY_SERVICE,
       new SlockOhosNetworkAppIdentityService()
     );
+    // The shared draft owner may retire picker/editor refs before the first page is loaded.
+    // Register the synchronous, bridge-free physical owner first, then install the common
+    // handler while KNOI is live.  The handler quarantines the exact raw path; only its
+    // tombstone may be deleted asynchronously.
+    registerSingleServiceProvider(
+      SLOCK_OHOS_THREAD_COMPOSER_TEMPORARY_FILE_RETIREMENT_SERVICE,
+      new SlockOhosThreadComposerTemporaryFileRetirementProvider(this.context)
+    );
+    const retirementInstalled = invoke<boolean>('slockInstallOhosThreadComposerTemporaryFileRetirement');
+    if (!retirementInstalled) {
+      hilog.error(
+        0x0000,
+        SLOCK_KNOI_LOG_TAG,
+        '%{public}s',
+        'Unable to install OHOS temporary-file retirement handler'
+      );
+    }
     // KmmResource contract: must complete after KNOI setup()/init() and
     // before any Kuikly/shared page exists — the first shared
     // stringResource() otherwise SIGSEGVs in native string lookup
@@ -299,6 +362,8 @@ export default class EntryAbility extends UIAbility {
 
     try {
       if (!display.isFoldable()) {
+        this.foldPosture = 'flat';
+        this.publishAdaptivePane(mainWindow);
         return;
       }
       this.foldPosture = this.foldPostureName(display.getFoldStatus());

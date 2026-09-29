@@ -1,5 +1,10 @@
 import XCTest
 
+// One-shot batch harness. ios-use tap/tap-text/interact no longer use this:
+// a new XCTest process that only activate()s an already-running app can see
+// Kuikly Home nodes and still fail to deliver the tap. Drive those actions
+// through QaAcceptanceLoopTests instead.
+
 final class IosUseInteractionTests: XCTestCase {
     private struct Action: Decodable {
         let type: String

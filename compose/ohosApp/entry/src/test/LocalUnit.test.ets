@@ -43,6 +43,9 @@ import {
 } from '../main/ets/entryability/SlockOhosPlatformFileReader';
 import { SlockOhosProcessNetworkLifecycle } from '../main/ets/entryability/SlockOhosProcessNetworkLifecycle';
 import {
+  isSlockOhosThreadComposerTemporaryFileRefAuthorityAllowed,
+} from '../main/ets/entryability/SlockOhosThreadComposerTemporaryFileRetirement';
+import {
   cacheSlockOhosPickedAttachment,
   ensureSlockOhosAttachmentCacheDirectory,
   normalizeSlockOhosImagePickerFileName,
@@ -1184,6 +1187,25 @@ export default function localUnitTest() {
       expect(cached.mimeType).assertEqual('image/jpeg');
       expect(cached.sizeBytes).assertEqual(4);
       expect(backend.removedPaths.length).assertEqual(0);
+    });
+
+    it('temporaryFileRetirementAllowsOnlyHostlessOrOwnBundleAuthority', 0, () => {
+      const ownBundle = 'build.raft.mobile';
+      expect(isSlockOhosThreadComposerTemporaryFileRefAuthorityAllowed(
+        'file:///data/storage/el2/base/cache/picked.jpg', ownBundle
+      )).assertTrue();
+      expect(isSlockOhosThreadComposerTemporaryFileRefAuthorityAllowed(
+        'file://build.raft.mobile/data/storage/el2/base/cache/picked.jpg', ownBundle
+      )).assertTrue();
+      expect(isSlockOhosThreadComposerTemporaryFileRefAuthorityAllowed(
+        'file://BUILD.RAFT.MOBILE/data/storage/el2/base/cache/picked.jpg', ownBundle
+      )).assertTrue();
+      expect(isSlockOhosThreadComposerTemporaryFileRefAuthorityAllowed(
+        'file://foreign.bundle/data/storage/el2/base/cache/picked.jpg', ownBundle
+      )).assertFalse();
+      expect(isSlockOhosThreadComposerTemporaryFileRefAuthorityAllowed(
+        'content://foreign.bundle/data/storage/el2/base/cache/picked.jpg', ownBundle
+      )).assertFalse();
     });
 
     it('pickedAttachmentCacheFailsClosedAndRemovesPartialCopyOnSizeMismatch', 0, () => {

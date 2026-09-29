@@ -11,6 +11,39 @@ The operating model is **fixed date and quality, variable scope**. A feature
 that misses the evidence cutoff leaves the train; the train does not lower its
 quality gate or silently move its date to keep that feature.
 
+## Release closeout and Notion ledger
+
+The first release operation, before branch creation, freeze or CI dispatch,
+is to create the version instance in
+[Mobile Release History](https://app.notion.com/p/36c5aa6ce9a74939b56c5913dbc94075)
+from its Mobile Release SOP template. Record owner, scope, branch and exact
+source; maintain platform build, QA, approval and distribution states during
+execution. A chat receipt does not replace this ledger. If a record is added
+late, label it retrospective; never mark missing pre-release steps complete.
+After an authorized release, update the ledger and publish the installation
+link, platform availability and unresolved limitations in `#raft-mobile`.
+Internal TestFlight, external review pending and public availability are
+separate states.
+
+When the owner closes a version, stop both merges and new builds for that
+version. Reconcile accepted release-only fixes into `main` through reviewed
+PRs, then close redundant backports. Protect the closed release branch with
+an active exact-ref update/deletion/non-fast-forward restriction and no bypass
+actors. Record the rule, accountable owner and explicit revocation condition;
+reopening requires a new owner directive. Preserve the branch and artifacts.
+For the next version, select a reviewed `main` commit and create a new release
+branch at that time; do not reuse the closed branch. Existing store-review
+follow-up remains separate from building a new carrier, and open defects stay
+open until the next candidate passes the required product verification.
+
+Current owner decision (artin, 2026-09-28 17:22–17:24 UTC):
+`release/1.12.0` is closed to merges and new builds. All subsequent fixes go to
+`main`; the next version is `1.12.1`, with `release/1.12.1` created when its
+candidate is selected. GitHub ruleset `24130656` locks the old branch until
+explicitly revoked by the release owner. Android `11200904` remains a test
+draft and is no longer awaiting publication. The existing slash-named
+branches above are the owner's explicit naming convention for these trains.
+
 ## Roles
 
 - **Release owner** sets the date, delivery intent, scope, and exceptions.
@@ -48,17 +81,60 @@ must remain separate for the exact being reviewed.
    Artifacts release set. Record the exact version, source commit/tree/tag,
    complete manifest, and per-artifact bytes and SHA-256. A missing manifest,
    incomplete platform set, hash mismatch, version range, `latest`, or silent
-   fallback to a gitlink, `mavenLocal`, local pod, HAR, or source build blocks
-   the candidate. A source checkout may remain as a provenance anchor, but it
-   is not a production dependency fallback.
-8. When the release owner says **publish iOS** or **publish to TestFlight**
-   without narrowing the boundary, the delivery contract ends only after the
-   selected testers have actually been notified. Upload completion, an ASC
-   `VALID` build, beta-group assignment, localized What to Test, Beta App
-   Review approval, or a build that is merely eligible for notification are
-   intermediate states. A narrower instruction such as `upload only`,
-   `internal only`, `submit for review`, or `do not notify` overrides this
-   default and must be repeated in the receipt.
+   fallback of those pinned coordinates to a gitlink, `mavenLocal`, local pod,
+   HAR, or source build blocks the candidate. A source checkout may remain as
+   a provenance anchor, but it is not a production dependency fallback.
+   Kuikly (`com.tencent.kuikly-open`) and Hands (`build.hands`) are routed
+   with Gradle `exclusiveContent` to Raft Artifacts, so they cannot fall
+   through to `mavenLocal()`. Declaring `mavenLocal()` in repository lists is
+   therefore not a preflight blocker. Other shared forks keep their own
+   provenance rules and are not covered by deleting that repository entry.
+8. Platform versionName / versionCode / CFBundleVersion values are **CI
+   dispatch inputs**. Frozen source may keep placeholder defaults
+   (`1.0.0` / `1000000` on Android and OHOS; iOS `MARKETING_VERSION=1.0` /
+   `CURRENT_PROJECT_VERSION=1`). Do not rewrite those placeholders into the
+   freeze tree, and do not fail preflight merely because the source defaults
+   are still present. The version gate is: allocate monotonic coordinates,
+   inject them at workflow dispatch, then verify the signed artifacts. Android,
+   OHOS and iOS all use the train semantic version (artin, 2026-09-27: iOS
+   1.12.0 ships as marketing version `1.12.0` build 1, not `1.0.0`). iOS
+   dispatches `version_major/minor/patch` = the train version and
+   `version_build` restarting at 1 per marketing version; the resulting
+   `CFBundleVersion` comes from `scripts/ci/version_code.sh` and stays
+   monotonic across trains.
+9. TestFlight is **internal first, external only after artin has tested**
+   (artin, 2026-09-27). When the release owner says **publish iOS** or
+   **publish to TestFlight** without naming an audience, the contract is:
+   upload the verified Hands IPA, assign it to the named internal group
+   (Botiverse `e10b6b3e-000d-4cbe-a160-2a9275f76977`) with What to Test,
+   fresh-read `internal_build_state=IN_BETA_TESTING`, then report to artin
+   and **stop**. External groups (What to Test, Beta App Review, tester
+   notification) require a separate, explicit go from artin given after he
+   has tested that exact build; an earlier publish instruction never carries
+   over to external. Once external is authorized, that contract ends only
+   after the selected external testers have actually been notified; upload
+   completion, ASC `VALID`, group assignment, What to Test, Beta App Review
+   approval, or notification eligibility are intermediate states. A narrower
+   instruction such as `upload only` or `do not notify` still overrides and
+   must be repeated in the receipt.
+9a. A standing owner directive may make **TestFlight internal** the default
+    after every successful iOS Hands draft. Record the named internal group
+    in the release plan. Each later iOS rebuild on that train is uploaded and
+    assigned to that internal group without a per-build go. This still does
+    not authorize Insiders, external testers, App Store production, Hands
+    activation, or a community announcement. For internal groups, Hands
+    `notify_testers` is `NOTIFY_EXTERNAL_ONLY`; completion is
+    `processing_state=VALID`, the named internal group assigned, and
+    `internal_build_state=IN_BETA_TESTING` (Apple `auto_notify_enabled` may
+    be the only notify path).
+10. Starting a release train requires a Raft **interval reminder**. As soon as
+    the first platform draft is dispatched, the operator schedules a recurring
+    10-minute reminder on the release thread. Each firing must fresh-read every
+    in-flight Android, iOS, and OHOS run, Hands draft/readback, and any
+    TestFlight processing state, then post a short status in that thread.
+    Cancel the reminder only after every dispatched platform is terminal and
+    the receipt is written, or the owner explicitly stops the train. A release
+    with in-flight carriers and no interval reminder is a process defect.
 
 ## 1. Open The Release Plan
 
@@ -157,13 +233,21 @@ production train.
 Start from a clean checkout equal to `origin/release-X.Y.Z`. Record branch,
 carrier source exact, tree, required PRs, and terminal exact-source checks.
 
-Before dispatch, resolve every private fork dependency from an empty cache
-using only the plan's exact Raft Artifacts manifest. Require the resolved
-Android/KMP, Apple, OHOS, plugin, and renderer set selected by the plan to be
-complete and byte-identical to that manifest. Record the dependency release
-version, source exact, manifest digest, and resolved artifact digests in the
-candidate receipt. Publishing the dependency set and consuming it are separate
-gates; neither is inferred from a source merge.
+Before dispatch, allocate and record each platform's version coordinates as
+workflow inputs. Source-tree placeholders are expected. Then resolve the
+plan's Raft Artifacts Kuikly/Hands coordinates from an empty cache using only
+that exact manifest. Require the resolved Android/KMP, Apple, OHOS, plugin,
+and renderer set selected by the plan to be complete and byte-identical to
+that manifest. Record the dependency release version, source exact, manifest
+digest, and resolved artifact digests in the candidate receipt. Publishing
+the dependency set and consuming it are separate gates; neither is inferred
+from a source merge. An empty-cache proof is for those pinned coordinates,
+not a requirement to delete `mavenLocal()` from Gradle settings.
+
+When the first platform draft is dispatched, schedule the 10-minute Raft
+interval reminder on the release thread before walking away. Keep it running
+until all dispatched platforms are terminal. The reminder does not authorize
+activation.
 
 Android:
 
@@ -219,10 +303,43 @@ For iOS, record and independently verify:
 - app binary UUID equals dSYM UUID;
 - byte equality between GitHub and Hands IPA/dSYM assets.
 
-Then run the plan's acceptance matrix. At minimum cover fresh install, supported
-upgrade paths, authentication/session, Home/Activity/Thread, attachments,
-composer/IME, crash scans, and every accepted changeset. Mark unrun cases
-`NOT RUN`; never infer physical-device behavior from Simulator or compile.
+Then run **release smoke**. The QA Acceptance workflow default goal is login +
+home channels + open one channel. That default is **not** release smoke. A
+login/home pass must never be recorded as a complete smoke pass.
+
+Release smoke is a hard gate before activation:
+
+1. Bind every identity and functional receipt to `versionName` + `versionCode` +
+   source commit + artifact SHA-256 + signature + CI/run id. A PASS on one
+   versionCode does not transfer to a later build of the same marketing version.
+2. Freeze a case manifest/revision. Each case needs a terminal assertion.
+   Testbed's case library is a dispatch list, not an automated suite.
+   `testbed run` creates a pending ticket; a device seat or CI agent still has
+   to execute it. Unrun, un-dispatched, or harness-blocked core cases are
+   `NOT RUN` or blocked — they do not aggregate into PASS.
+3. Required every train, on the exact release APK/IPA/HAP: image
+   picker → Done → composer preview → send → server or message-row readback
+   (`select-and-upload-image` or the platform equivalent). Also prove upload
+   size limits are readable and that an oversized sibling is dropped while
+   remaining files still upload. A file-attachment path is separate; an image
+   PASS does not cover it.
+4. Keep platform/carrier grids separate (Android cloud device, iOS Simulator,
+   OHOS emulator, physical device). Do not infer across them. Record
+   preconditions, duration, fixture/device capability, and failure class.
+
+A broader matrix (fresh install, upgrades, auth, Home/Activity/Thread,
+composer/IME, crash scans, accepted changesets) remains in the plan. Until a
+named seat has timed one image-upload case on the release carrier, do not treat
+the full testbed table as a hard time-box. Physical OHOS stays `NOT RUN` unless
+a physical seat exists.
+
+A **hotfix** train may skip the full smoke matrix only with a recorded owner
+exception. Record `release_mode=hotfix`, waiver owner, scope, expiry or
+follow-up date, skipped cases, compensating checks on the affected path, and
+risk. Skipped cases are `NOT RUN · hotfix waiver`. Never record a waiver as
+PASS. Identity/signature receipts on the exact versionCode + SHA-256 are
+**not** waivable. An affected core path (for example image upload on an upload
+hotfix) is not silently skipped.
 
 ## 7. Apply Notes With Revision Preconditions
 
@@ -243,9 +360,9 @@ The release plan names each platform's intended boundary. Examples:
 | --- | --- | --- |
 | Android Hands | Activate exact draft and scope | Yes |
 | iOS Hands | Activate exact draft | Yes |
-| TestFlight upload | Upload verified Hands IPA | Yes |
-| TestFlight internal | Assign named internal group | Yes |
-| TestFlight external | Assign named group, What to Test, Beta Review, notification | Yes |
+| TestFlight upload | Upload verified Hands IPA | Yes, unless the plan has standing internal-after-draft |
+| TestFlight internal | Assign named internal group | Yes, unless the plan has standing internal-after-draft for that named group |
+| TestFlight external | Assign named group, What to Test, Beta Review, notification | Yes — only after artin has tested the exact build internally |
 | App Store production | Submit/publish production version | Yes |
 | Community | Post approved announcement | Yes |
 
@@ -271,17 +388,30 @@ endpoint. Conversely, `BETA_APPROVED`, assigned groups, or a public-link-enabled
 group is not proof that testers were notified. For an already-approved build,
 the release operator must execute the exact external publish with
 `notify_testers=true` (CLI: `--notify-testers`) and preserve the returned
-`notification=sent|already_sent` operation receipt. Then fresh-read the exact
-build and require `external_build_state=IN_BETA_TESTING`. If either receipt is
-missing, report `notification unverified`; do not say `published`, `sent`, or
-`available`.
+`notification=sent|already_sent` operation receipt. Run that mutating command
+without `--wait`: the current CLI's `--wait --json` output is the later GET
+status and does not preserve the POST operation receipt. Then use the separate
+read-only `testflight-status` command in a bounded recheck to fresh-read the
+exact build and require `external_build_state=IN_BETA_TESTING`. If either
+receipt is missing after the bounded recheck, report `notification unverified`;
+do not say `published`, `sent`, or `available`.
+
+Treat the complete `notification` enum explicitly: `not_requested` means no
+notification was requested, `scheduled` means notification is pending, `sent`
+means the notification operation succeeded, and `already_sent` is the
+idempotent-success result. Only the last two can satisfy the operation-receipt
+half of the completion contract. If the first receipt is `scheduled`, wait for
+the exact build to reach `IN_BETA_TESTING`, then replay the same external
+publish without `--wait`, preserve its `already_sent` receipt, and fresh-read
+the exact status once more before reporting completion.
 
 Internal groups and external groups are separate audiences. The release plan
 must name which audience the owner's publish instruction covers. If it says
-only `publish iOS/TestFlight`, the Raft Mobile default is the currently selected
-external tester audience plus notification; do not silently substitute an
-internal all-builds group. App Store production remains a separate mutation
-and is never implied by TestFlight publication.
+only `publish iOS/TestFlight`, the Raft Mobile default is the named internal
+group only (rule 9); do not promote to external until artin has tested the
+exact build and explicitly approves external distribution. App Store
+production remains a separate mutation and is never implied by TestFlight
+publication.
 
 Android and iOS do not need the same delivery mechanism. A valid paired train
 may end with Android Hands active and iOS Hands draft while the same IPA is in
@@ -425,6 +555,31 @@ When a shipped or distributed carrier produces a material regression:
 4. Do not expand rollout while a live safety hold applies.
 5. A containment guard is not a root-cause fix unless the causal failure and
    the corrected contract are proven.
+
+### Freeze and resume Hands updates
+
+The release owner named in the release plan decides whether an incident
+requires freezing the public update pointer. The release operator may execute
+that decision only against a fresh-read exact release and revision. A freeze, rollback, share revocation,
+release deletion, and removal of an installed build are different mutations;
+authorization for one never implies another.
+
+Hands owns the resolver and rollout mechanics. Follow the authoritative
+[`Staged rollouts`](https://hands.build/docs/public-api-reference#staged-rollouts)
+contract when setting rollout to zero or resuming distribution. Do not copy or
+reinterpret those API semantics in this repository.
+
+The Mobile incident/release receipt must record:
+
+- the release-owner directive and exact affected release/source;
+- release revision and rollout before and after the authorized mutation;
+- the resolver, probe-identity, eligible-release, and share readbacks required
+  by the authoritative Hands `Staged rollouts` contract;
+- the incident owner, open blocker, and explicit lift condition.
+
+Resuming distribution requires a new release-owner directive naming the target
+release and rollout. Execute the resume and preserve its readbacks exactly as
+required by the authoritative Hands `Staged rollouts` contract.
 
 Repository closeout may continue so shipped source and evidence are durable,
 but the receipt must preserve the open product blocker and its lift condition.

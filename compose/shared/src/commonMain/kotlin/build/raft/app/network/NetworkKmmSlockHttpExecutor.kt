@@ -7,6 +7,7 @@ import com.tencent.kmm.network.export.NetworkRequest
 import com.tencent.kmm.network.export.NetworkRequestPolicy
 import com.tencent.kmm.network.export.NetworkProgressCallbacks
 import com.tencent.kmm.network.export.NetworkResponse
+import com.tencent.kmm.network.export.NetworkStreamTimeoutPolicy
 import com.tencent.kmm.network.export.VBTransportResultCode
 import com.tencent.kmm.network.export.VBTransportMethod
 import com.tencent.kmm.network.export.IVBPBLog
@@ -22,13 +23,44 @@ import kotlin.time.TimeSource
  * All platforms route HTTP through the KuiklyBase NetworkKMM client
  * (task #12): OHOS because Ktor CIO has no native TLS there (task #6),
  * Android/iOS so the app has one explicit network stack with pooling
- * owned by the infra library (raft.4).
+ * owned by the infra library (raft.6).
  */
 internal fun createPlatformSlockHttpExecutor(
     warningLogger: (String) -> Unit
 ): SlockHttpExecutor = NetworkKmmSlockHttpExecutor(warningLogger)
 
 private const val SLOCK_REQUEST_TIMEOUT_MILLIS = 30_000L
+
+/**
+ * task #1138: the connect-phase budget for ordinary requests (login, lists,
+ * plain GET/POST). Before this constant existed those requests passed no
+ * connect timeout and silently inherited the NetworkKMM library default,
+ * which moved from 3s to 10s in `0.1.0-raft.38` without any app-side
+ * change or telemetry. The value is deliberately equal to today's library
+ * default so behaviour is unchanged; what changes is that the number now has
+ * ONE app-side source, is logged as `configConnectTimeoutMillis`, and a
+ * library bump can no longer move it unnoticed.
+ */
+internal const val SLOCK_CONNECT_TIMEOUT_MILLIS = 10_000L
+
+/**
+ * The single constructor for every [NetworkRequestPolicy] the app hands to
+ * NetworkKMM. Call sites must not build the policy inline: a policy built
+ * without [NetworkStreamTimeoutPolicy.connectTimeoutMillis] silently falls
+ * back to the library default, which is exactly the regression task #1138
+ * closes. Presigned uploads pass their own [connectTimeoutMillis]; everything
+ * else takes [SLOCK_CONNECT_TIMEOUT_MILLIS].
+ */
+internal fun slockNetworkRequestPolicy(
+    totalTimeoutMillis: Long,
+    priority: NetworkPriority = NetworkPriority.NORMAL,
+    connectTimeoutMillis: Long = SLOCK_CONNECT_TIMEOUT_MILLIS,
+): NetworkRequestPolicy =
+    NetworkRequestPolicy(
+        timeoutMillis = totalTimeoutMillis,
+        priority = priority,
+        streamTimeouts = NetworkStreamTimeoutPolicy(connectTimeoutMillis = connectTimeoutMillis),
+    )
 
 /**
  * task #783 (human ruling in `#proj-chat:8b673a88`): streaming fileRef
@@ -39,6 +71,34 @@ private const val SLOCK_REQUEST_TIMEOUT_MILLIS = 30_000L
  * Tap to retry, draft preserved, zero send side effects) stays as-is.
  */
 internal const val SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS = 180_000L
+
+/**
+ * task #1135: keep connect at 10s and leave the total upload budget
+ * unchanged. This presigned PUT path is normally pinned to curl via
+ * http1Only, but Android's allowedEngines can fall back to Ktor; Ktor has no
+ * Happy Eyeballs, so a connect timeout is the decision to abandon the whole
+ * address family, and 30s would drag an IPv6-blackholed user's cold connect
+ * to 30s.
+ */
+private const val SLOCK_UPLOAD_CONNECT_TIMEOUT_MILLIS = 10_000L
+
+/**
+ * In-memory bytes presigned PUTs keep the ordinary 30s total budget, so their
+ * connect phase must stay well below that bound or a slow connect consumes the
+ * whole deadline and connection failures become indistinguishable from
+ * transfer failures.
+ */
+private const val SLOCK_BYTES_CONNECT_TIMEOUT_MILLIS = 10_000L
+
+/**
+ * task #321 / #783 follow-up (human ruling by @artin on 2026-09-11 in
+ * `#proj-mobile:aaad615a`): the presigned direct-upload PUT carries the same
+ * file stream as multipart, but a 160 MiB cross-region PUT can legitimately
+ * outlive the multipart 3-minute budget. Direct-upload streaming file bodies
+ * therefore get a 30-minute total budget; multipart streaming keeps
+ * [SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS] unchanged.
+ */
+internal const val SLOCK_DIRECT_UPLOAD_TOTAL_TIMEOUT_MILLIS = 1_800_000L
 
 /**
  * Only multipart requests that stream a fileRef body get the upload budget;
@@ -95,7 +155,7 @@ internal class NetworkKmmSlockHttpExecutor(
         ensureNetworkKmmInitialized(warningLogger)
         NetworkClient(
             slockNetworkClientConfig(
-                defaultPolicy = NetworkRequestPolicy(timeoutMillis = SLOCK_REQUEST_TIMEOUT_MILLIS),
+                defaultPolicy = slockNetworkRequestPolicy(SLOCK_REQUEST_TIMEOUT_MILLIS),
                 diagnosticsLogger = warningLogger
             )
         )
@@ -117,6 +177,8 @@ internal class NetworkKmmSlockHttpExecutor(
         warningLogger(
             "slock_networkkmm_execute_start path=$path method=${method.uppercase()} " +
                 "priority=$priority jsonBody=$jsonBody requestBytes=$requestBytes " +
+                "configTotalTimeoutMillis=$SLOCK_REQUEST_TIMEOUT_MILLIS " +
+                "configConnectTimeoutMillis=$SLOCK_CONNECT_TIMEOUT_MILLIS " +
                 "clientRequestId=$clientRequestId headers=${traceHeaders.toSafeHeaderDiagnostics()}"
         )
         return try {
@@ -131,8 +193,8 @@ internal class NetworkKmmSlockHttpExecutor(
                             else -> NetworkBody.Text(bodyText)
                         },
                     policy =
-                        NetworkRequestPolicy(
-                            timeoutMillis = SLOCK_REQUEST_TIMEOUT_MILLIS,
+                        slockNetworkRequestPolicy(
+                            totalTimeoutMillis = SLOCK_REQUEST_TIMEOUT_MILLIS,
                             priority = priority.toNetworkKmmPriority()
                         )
                 )
@@ -166,7 +228,11 @@ internal class NetworkKmmSlockHttpExecutor(
                     "priority=$priority jsonBody=$jsonBody requestBytes=$requestBytes " +
                     "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} ${error.safeDiagnosticsSummary()}"
             )
-            SlockHttpExecutorResponse(code = 0, bodyText = null, errorBodyText = error.message)
+            SlockHttpExecutorResponse(
+                code = 0,
+                bodyText = null,
+                errorBodyText = error.message?.redactNetworkErrorText()
+            )
         }
     }
 
@@ -190,6 +256,7 @@ internal class NetworkKmmSlockHttpExecutor(
             "slock_networkkmm_multipart_start path=$path method=POST priority=$priority " +
                 "fields=${fields.size} files=${files.size} requestBytes=$requestBytes " +
                 "totalTimeoutMs=$totalTimeoutMillis " +
+                "configConnectTimeoutMillis=$SLOCK_CONNECT_TIMEOUT_MILLIS " +
                 "clientRequestId=$clientRequestId headers=${traceHeaders.toSafeHeaderDiagnostics()}"
         )
         return try {
@@ -213,8 +280,8 @@ internal class NetworkKmmSlockHttpExecutor(
                                     }
                         ),
                     policy =
-                        NetworkRequestPolicy(
-                            timeoutMillis = totalTimeoutMillis,
+                        slockNetworkRequestPolicy(
+                            totalTimeoutMillis = totalTimeoutMillis,
                             priority = priority.toNetworkKmmPriority()
                         )
                 )
@@ -257,14 +324,153 @@ internal class NetworkKmmSlockHttpExecutor(
                     "fields=${fields.size} files=${files.size} requestBytes=$requestBytes " +
                     "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} ${error.safeDiagnosticsSummary()}"
             )
-            SlockHttpExecutorResponse(code = 0, bodyText = null, errorBodyText = error.message)
+            SlockHttpExecutorResponse(
+                code = 0,
+                bodyText = null,
+                errorBodyText = error.message?.redactNetworkErrorText()
+            )
+        }
+    }
+
+    override suspend fun executeBytes(
+        priority: SlockRequestPriority,
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        bodyBytes: ByteArray,
+        onUploadProgress: ((SlockTransferProgress) -> Unit)?,
+    ): SlockHttpExecutorResponse =
+        executeBinary(
+            priority = priority,
+            url = url,
+            method = method,
+            headers = headers,
+            body = NetworkBody.Bytes(bodyBytes),
+            requestBytes = bodyBytes.size.toLong(),
+            totalTimeoutMillis = SLOCK_REQUEST_TIMEOUT_MILLIS,
+            connectTimeoutMillis = SLOCK_BYTES_CONNECT_TIMEOUT_MILLIS,
+            bodyKind = "bytes",
+            http1Only = true,
+            onUploadProgress = onUploadProgress,
+        )
+
+    override suspend fun executeFile(
+        priority: SlockRequestPriority,
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        body: SlockHttpFileBody,
+        onUploadProgress: ((SlockTransferProgress) -> Unit)?,
+    ): SlockHttpExecutorResponse =
+        executeBinary(
+            priority = priority,
+            url = url,
+            method = method,
+            headers = headers,
+            body = NetworkBody.FileRef(
+                path = body.path,
+                contentType = body.contentType,
+                contentLength = body.contentLength,
+                openStreamBlock = { _ -> body.openStream() },
+            ),
+            requestBytes = body.contentLength,
+            totalTimeoutMillis = SLOCK_DIRECT_UPLOAD_TOTAL_TIMEOUT_MILLIS,
+            connectTimeoutMillis = SLOCK_UPLOAD_CONNECT_TIMEOUT_MILLIS,
+            bodyKind = "file",
+            http1Only = true,
+            onUploadProgress = onUploadProgress,
+        )
+
+    private suspend fun executeBinary(
+        priority: SlockRequestPriority,
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        body: NetworkBody,
+        requestBytes: Long,
+        totalTimeoutMillis: Long,
+        connectTimeoutMillis: Long,
+        bodyKind: String,
+        http1Only: Boolean = false,
+        onUploadProgress: ((SlockTransferProgress) -> Unit)?,
+    ): SlockHttpExecutorResponse {
+        val startedAt = TimeSource.Monotonic.markNow()
+        // Presigned URLs are bearer capabilities.  Never include the URL (or its query) in
+        // diagnostics; only a fixed category and safe header names are emitted.
+        val traceHeaders = networkKmmTraceHeaders(headers)
+        val clientRequestId = traceHeaders.getValue(NETWORK_KMM_REQUEST_ID_HEADER)
+        warningLogger(
+            "slock_networkkmm_binary_start category=presigned_upload bodyKind=$bodyKind " +
+                "method=${method.uppercase()} priority=$priority requestBytes=$requestBytes " +
+                "configTotalTimeoutMillis=$totalTimeoutMillis " +
+                "configConnectTimeoutMillis=$connectTimeoutMillis " +
+                "clientRequestId=$clientRequestId headers=${traceHeaders.toSafeHeaderDiagnostics()}"
+        )
+        return try {
+            val request = NetworkRequest(
+                method = method.toTransportMethod(),
+                url = url,
+                body = body,
+                policy = slockNetworkRequestPolicy(
+                    totalTimeoutMillis = totalTimeoutMillis,
+                    priority = priority.toNetworkKmmPriority(),
+                    connectTimeoutMillis = connectTimeoutMillis
+                )
+            )
+            if (http1Only) {
+                request.flagHttp1Only(warningLogger)
+            }
+            traceHeaders.forEach { (name, value) -> request.setHeader(name, value) }
+            if (onUploadProgress != null) {
+                request.progress =
+                    NetworkProgressCallbacks(
+                        uploadProgress = { progress ->
+                            onUploadProgress(
+                                SlockTransferProgress(
+                                    bytesTransferred = progress.bytesTransferred,
+                                    bytesTotal = progress.bytesTotal,
+                                )
+                            )
+                        }
+                    )
+            }
+            val response = executeNetworkRequest(
+                request = request,
+                methodClass = SlockNetworkMethodClass.ProcessMutation,
+                timeoutMillis = totalTimeoutMillis,
+                redactSensitiveResponse = true
+            )
+            warningLogger(
+                "slock_networkkmm_binary_finish category=presigned_upload bodyKind=$bodyKind " +
+                    "method=${method.uppercase()} priority=$priority requestBytes=$requestBytes " +
+                    "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "code=${response.code} clientRequestId=$clientRequestId " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                    (response.transportDiagnostics ?: "engine=networkkmm status=none kind=none rawCode=none detail=none")
+            )
+            response
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            warningLogger(
+                "slock_networkkmm_binary_failed category=presigned_upload bodyKind=$bodyKind " +
+                    "method=${method.uppercase()} priority=$priority requestBytes=$requestBytes " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} ${error.safeDiagnosticsSummary()}"
+            )
+            SlockHttpExecutorResponse(
+                code = 0,
+                bodyText = null,
+                errorBodyText = "attachment_presigned_upload_transport_failed"
+            )
         }
     }
 
     private suspend fun executeNetworkRequest(
         request: NetworkRequest,
         methodClass: SlockNetworkMethodClass,
-        timeoutMillis: Long
+        timeoutMillis: Long,
+        redactSensitiveResponse: Boolean = false
     ): SlockHttpExecutorResponse {
         val outcome =
             requestLifetimeCoordinator.execute<NetworkResponse>(
@@ -277,7 +483,8 @@ internal class NetworkKmmSlockHttpExecutor(
                     }
             }
         return when (outcome) {
-            is SlockNetworkRequestLifetimeOutcome.Completed -> outcome.value.toExecutorResponse()
+            is SlockNetworkRequestLifetimeOutcome.Completed ->
+                outcome.value.toExecutorResponse(redactSensitive = redactSensitiveResponse)
             is SlockNetworkRequestLifetimeOutcome.Retired -> outcome.toExecutorResponse()
         }
     }
@@ -390,36 +597,79 @@ private fun SlockRequestPriority.toNetworkKmmPriority(): NetworkPriority =
         SlockRequestPriority.Background -> NetworkPriority.LOW
     }
 
-private fun NetworkResponse.toExecutorResponse(): SlockHttpExecutorResponse {
+private fun NetworkResponse.toExecutorResponse(redactSensitive: Boolean = false): SlockHttpExecutorResponse {
     val status = statusCode
-    val diagnostics = networkKmmDiagnostics()
+    val diagnostics = networkKmmDiagnostics(redactSensitive = redactSensitive)
     if (status == null) {
         return SlockHttpExecutorResponse(
             code = 0,
             bodyText = null,
-            errorBodyText = error?.message ?: "network_kmm_no_status",
+            errorBodyText =
+                if (redactSensitive) {
+                    "attachment_presigned_upload_transport_failed"
+                } else {
+                    error?.message?.redactNetworkErrorText() ?: "network_kmm_no_status"
+                },
             transportDiagnostics = diagnostics,
-            responseHeaders = headers
+            responseHeaders = if (redactSensitive) emptyMap() else headers
         )
     }
     val text = body.text()
     return if (status in 200..299) {
         SlockHttpExecutorResponse(
             code = status,
-            bodyText = text,
+            bodyText = if (redactSensitive) null else text,
             errorBodyText = null,
             transportDiagnostics = diagnostics,
-            responseHeaders = headers
+            responseHeaders = if (redactSensitive) emptyMap() else headers
         )
     } else {
         SlockHttpExecutorResponse(
             code = status,
             bodyText = null,
-            errorBodyText = text ?: error?.message,
+            errorBodyText =
+                if (redactSensitive) {
+                    "attachment_presigned_upload_http_$status"
+                } else if (isEdgeBlockedErrorBody(status, headers, text)) {
+                    // An edge layer (CDN/proxy/WAF) answered 403 with an HTML
+                    // page instead of the API's JSON envelope. Re-encode it as
+                    // the canonical marker so route adapters surface
+                    // serverMessage="edge_blocked" and the UI shows the
+                    // network-blocked copy instead of "no permission".
+                    """{"error":"edge_blocked"}"""
+                } else {
+                    (text ?: error?.message)?.redactNetworkErrorText()
+                },
             transportDiagnostics = diagnostics,
-            responseHeaders = headers
+            responseHeaders = if (redactSensitive) emptyMap() else headers
         )
     }
+}
+
+/**
+ * True when a 403 response body is not the API's JSON error envelope but an
+ * HTML block page produced by an edge layer (CDN/WAF/corporate proxy).
+ *
+ * Two signals, either is sufficient:
+ * - a `Content-Type: text/html` response header, or
+ * - a body that starts with `<` after whitespace — the API never emits XML/HTML
+ *   payloads, and JSON bodies always start with `{` or `[`.
+ */
+internal fun isEdgeBlockedErrorBody(
+    status: Int,
+    headers: Map<String, List<String>>,
+    bodyText: String?
+): Boolean {
+    if (status != 403) return false
+    val contentType =
+        headers.entries
+            .firstOrNull { (name, _) -> name.equals("Content-Type", ignoreCase = true) }
+            ?.value
+            ?.firstOrNull()
+            ?.substringBefore(';')
+            ?.trim()
+    if (contentType != null && contentType.equals("text/html", ignoreCase = true)) return true
+    return bodyText?.trimStart()?.startsWith("<") == true
 }
 
 private fun SlockNetworkRequestLifetimeOutcome.Retired.toExecutorResponse(): SlockHttpExecutorResponse {
@@ -438,7 +688,7 @@ private fun SlockNetworkRequestLifetimeOutcome.Retired.toExecutorResponse(): Slo
     )
 }
 
-internal fun NetworkResponse.networkKmmDiagnostics(): String {
+internal fun NetworkResponse.networkKmmDiagnostics(redactSensitive: Boolean = false): String {
     val rawCode = error?.rawCode ?: rawResponse?.errorCode
     val rawCodeLabel =
         when (rawCode) {
@@ -450,9 +700,15 @@ internal fun NetworkResponse.networkKmmDiagnostics(): String {
             else -> rawCode.toString()
         }
     val detail =
-        listOfNotNull(error?.message, rawResponse?.errorMessage)
+        if (redactSensitive) {
+            listOfNotNull(error?.kind?.toString(), rawCodeLabel)
+                .firstOrNull { it.isNotBlank() }
+                ?.toSafeDiagnosticsToken()
+        } else {
+            listOfNotNull(error?.message, rawResponse?.errorMessage)
             .firstOrNull { it.isNotBlank() }
             ?.toSafeDiagnosticsToken()
+        }
             ?: "none"
     return "engine=networkkmm status=${statusCode ?: "none"} " +
         "kind=${error?.kind ?: "none"} rawCode=$rawCodeLabel detail=$detail " +
@@ -486,7 +742,11 @@ internal fun NetworkResponse.networkKmmDiagnostics(): String {
         "curlPreTransferTimingAvailable=${timing.curlPreTransferTimingAvailable ?: "none"} " +
         "curlStartTransferTimingAvailable=${timing.curlStartTransferTimingAvailable ?: "none"} " +
         "curlTotalTimingAvailable=${timing.curlTotalTimingAvailable ?: "none"} " +
-        "curlTlsTimingState=${timing.curlTlsTimingState?.toSafeDiagnosticsToken() ?: "none"}"
+        "curlTlsTimingState=${timing.curlTlsTimingState?.toSafeDiagnosticsToken() ?: "none"} " +
+        // task #372 / #1135: connect budget actually handed to the engine after the
+        // library's total/whole-transfer clamp (0.1.0-raft.38). 0 means the engine
+        // route did not report it; surface that as none rather than a fake zero.
+        "effectiveConnectTimeoutMillis=${timing.effectiveConnectTimeoutMillis.takeIf { it > 0 }?.toString() ?: "none"}"
 }
 
 internal fun String.sanitizeMultipartFileName(): String =

@@ -37,6 +37,19 @@ private val homeJson = Json {
     coerceInputValues = true
 }
 
+/**
+ * task #396: presentation-only external bridge metadata attached by the server's
+ * `channelService.attachExternalBridgeMetadata` to `GET /channels` and `GET /channels/:id`
+ * (`bridge?: { provider: "slack"; providerConversationId; state: "active" | "paused" | "quarantined" }`).
+ * Secret-free; mobile only reads [provider] to render the `[Slack]` badge (Web Sidebar parity).
+ */
+@Serializable
+data class HomeChannelBridgeWireDto(
+    val provider: String? = null,
+    val providerConversationId: String? = null,
+    val state: String? = null,
+)
+
 @Serializable
 data class HomeChannelWireDto(
     val id: String,
@@ -52,6 +65,9 @@ data class HomeChannelWireDto(
     val jointPeerServerName: String? = null,
     val jointPeerServerSlug: String? = null,
     val jointPeerStatus: String? = null,
+    val jointBillingLocked: Boolean? = null,
+    val jointOverLimitGraceEndsAt: String? = null,
+    val bridge: HomeChannelBridgeWireDto? = null,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false,
@@ -77,6 +93,8 @@ data class HomeDirectMessageWireDto(
     val activityMuteSupported: Boolean = false,
     val maxReadSeq: Long? = null,
     val readStateVersion: Long? = null,
+    val lastMessagePreview: String? = null,
+    val lastMessageSenderName: String? = null,
 )
 
 @Serializable
@@ -100,11 +118,16 @@ private data class HomeChannelDetailWireDto(
     val jointPeerServerName: String? = null,
     val jointPeerServerSlug: String? = null,
     val jointPeerStatus: String? = null,
+    val jointBillingLocked: Boolean? = null,
+    val jointOverLimitGraceEndsAt: String? = null,
+    val bridge: HomeChannelBridgeWireDto? = null,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false,
     val maxReadSeq: Long? = null,
     val readStateVersion: Long? = null,
+    val lastMessagePreview: String? = null,
+    val lastMessageSenderName: String? = null,
 )
 
 internal fun parseSlockChannelDetail(
@@ -135,6 +158,8 @@ internal fun parseSlockChannelDetail(
             activityMuteSupported = wire.activityMuteSupported,
             maxReadSeq = wire.maxReadSeq,
             readStateVersion = wire.readStateVersion,
+            lastMessagePreview = wire.lastMessagePreview,
+            lastMessageSenderName = wire.lastMessageSenderName,
         ).toDirectMessageRow(warningLogger)
     } else {
         HomeChannelWireDto(
@@ -151,6 +176,9 @@ internal fun parseSlockChannelDetail(
             jointPeerServerName = wire.jointPeerServerName,
             jointPeerServerSlug = wire.jointPeerServerSlug,
             jointPeerStatus = wire.jointPeerStatus,
+            jointBillingLocked = wire.jointBillingLocked,
+            jointOverLimitGraceEndsAt = wire.jointOverLimitGraceEndsAt,
+            bridge = wire.bridge,
             activityMuted = wire.activityMuted,
             muteFromSeq = wire.muteFromSeq,
             activityMuteSupported = wire.activityMuteSupported,
@@ -325,6 +353,9 @@ fun parseSharedChannelDeleteResult(bodyText: String, channelId: ChannelId): Chan
         if (decoded.ok) ChannelDeleteResult(channelId = channelId, deleted = true) else null
     }.getOrNull()
 
+internal fun HomeChannelBridgeWireDto?.normalizedBridgeProviderOrNull(): String? =
+    this?.provider?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+
 private fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
     val isJoint =
         type.equals("joint", ignoreCase = true) ||
@@ -347,6 +378,9 @@ private fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
         jointPeerServerName = jointPeerServerName?.takeIf { it.isNotBlank() },
         jointPeerServerSlug = jointPeerServerSlug?.takeIf { it.isNotBlank() },
         jointPeerStatus = jointPeerStatus?.takeIf { it.isNotBlank() },
+        jointBillingLocked = jointBillingLocked,
+        jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt?.takeIf { it.isNotBlank() },
+        bridgeProvider = bridge.normalizedBridgeProviderOrNull(),
         activityNotificationPreference =
             ChannelActivityNotificationPreference(
                 activityMuted = activityMuted,
@@ -381,6 +415,8 @@ private fun HomeDirectMessageWireDto.toDirectMessageRow(warningLogger: (String) 
         directMessagePeerAvatarWireValue = peerAvatarUrl?.takeIf { it.isNotBlank() },
         presenceMemberId = MemberId(peerId),
         lastMessageAt = lastMessageAt,
+        lastMessagePreview = lastMessagePreview,
+        lastMessageSenderName = lastMessageSenderName,
         readStateV1Hydrate = readStateV1HydrateCarrier(),
         activityNotificationPreference =
             ChannelActivityNotificationPreference(

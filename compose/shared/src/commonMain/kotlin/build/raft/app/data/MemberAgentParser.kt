@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.isExternalAgent
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AvatarReference
@@ -92,7 +93,8 @@ private data class WireAgent(
     val avatarUrl: String? = null,
     val status: String = "inactive",
     val runtime: String? = null,
-    val role: String? = null,
+    val external: Boolean? = null,
+    val serverRole: String? = null,
     val model: String? = null,
     val reasoningEffort: String? = null,
     val executionMode: String? = null,
@@ -106,6 +108,12 @@ private data class WireAgent(
     val activity: String? = null,
     val activityDetail: String? = null,
     val deletedAt: String? = null,
+    /**
+     * External agents only (server sends it on `GET /agents` when
+     * `runtime === "external"`): ISO-8601 `lastSeenAt` — the credential's
+     * last use. Drives the online window; realtime `agent:seen` supersedes it.
+     */
+    val lastSeenAt: String? = null,
     val runtimeProfile: WireAgentRuntimeProfileSummary? = null,
     val createdAgents: List<WireAgentCreatedSummary> = emptyList(),
 )
@@ -746,7 +754,8 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         serverSlug = serverSlug?.takeIf { it.isNotBlank() },
         description = description,
         roleDescription = runtime,
-        serverRole = role?.normalizedServerRoleOrNull(),
+        isExternal = isExternalAgent(external, runtime),
+        serverRole = serverRole?.normalizedServerRoleOrNull(),
         avatarUrl = avatarUrl,
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = label.take(1).uppercase(),
@@ -759,6 +768,8 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         agentStatus = agentStatus,
         membershipStatus = if (deletedAt.isNullOrBlank()) null else "deleted",
         agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
+        lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
+        model = firstNonBlank(model, runtimeProfile?.current?.model),
         permissionBadges = listOfNotNull(
             runtime?.takeIf { it.isNotBlank() },
             firstNonBlank(computerName, computerHostname, runtimeProfile?.current?.machineName)
@@ -808,6 +819,7 @@ private fun WireAgent.toAgentProfile(): AgentProfile {
         agentStatus = agentStatus,
         statusLabel = agentStatus?.label,
         runtime = runtime,
+        isExternal = isExternalAgent(external, runtime),
         model = model,
         reasoning = reasoningEffort,
         permissionBadges = listOfNotNull(

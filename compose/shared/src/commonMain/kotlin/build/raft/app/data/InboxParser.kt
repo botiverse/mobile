@@ -70,6 +70,8 @@ private data class WireInboxItem(
     val taskNumber: Int? = null,
     val taskStatus: String? = null,
     val taskClaimedByName: String? = null,
+    // thread follow state; only an explicit false means Unfollowed
+    val isFollowing: Boolean? = null,
     // mention_action
     val messageId: String? = null,
     val messagePreview: String? = null,
@@ -148,6 +150,7 @@ fun parseFollowedThreadListResponse(
     val items = decoded.threads
         .map { it.copy(kind = "thread") }
         .mapNotNull { it.toThreadDomain(diagnostics) }
+        .map { item -> item.withActivityFollowStateProjection() }
         .distinctBy { it.key }
     SharedThreadListItems(
         items = items,
@@ -191,7 +194,8 @@ internal fun parseChannelThreadSummaryRecordElement(
                 .copy(kind = "thread", parentMessageId = cleanParentMessageId)
         // A summary response is one authority record. A malformed child cannot be silently
         // omitted and reinterpreted as an authoritative empty/partial snapshot.
-        projected += decoded.toThreadDomain(diagnostics) ?: return@runCatching null
+        projected += decoded.toThreadDomain(diagnostics)?.withActivityFollowStateProjection()
+            ?: return@runCatching null
     }
     val items = projected.distinctBy { it.key }
     SharedThreadListItems(
@@ -207,6 +211,8 @@ data class SharedInboxSnapshot(
     val hasMore: Boolean,
     val totalCount: Int,
     val totalUnreadCount: Int,
+    /** Number of server rows consumed for this page before client projection. */
+    val rawItemCount: Int = items.size,
 )
 
 fun parseSharedInboxSnapshot(
@@ -214,14 +220,38 @@ fun parseSharedInboxSnapshot(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): SharedInboxSnapshot? = runCatching {
     val decoded = inboxJson.decodeFromString(WireInboxResponse.serializer(), bodyText)
-    val items = decoded.items.mapNotNull { it.toDomain(diagnostics) }.distinctBy { it.key }
+    val rawItems = decoded.items.mapNotNull { it.toDomain(diagnostics) }.distinctBy { it.key }
+    val items = rawItems.map(InboxItem::withActivityFollowStateProjection)
     val derivedCount = items.size
     val derivedUnread = items.sumOf { it.unreadCount }
+    // Calculate the suppressed contribution from the same parsed rows that
+    // can reach the domain model. An invalid/duplicate wire row must not alter
+    // the aggregate for a row that was discarded by the strict parser.
+    val rawItemsUnread = rawItems.sumOf { it.unreadCount }
+    val rawUnfollowedUnread = rawItems
+        .asSequence()
+        .filter(InboxItem::isUnfollowedActivityThread)
+        .sumOf { it.unreadCount }
+    val wireUnread = decoded.totalUnreadCount
+    // A compliant server already reports zero attention for an unfollowed
+    // row. If an older/lagging serving path includes that row's raw unread
+    // value in the aggregate, remove just that projected contribution. When
+    // the aggregate is lower than the page's raw sum it is already an
+    // active-only aggregate, so retain it rather than subtracting twice.
+    val projectedUnread =
+        when {
+            wireUnread == null -> derivedUnread
+            rawUnfollowedUnread <= 0 -> maxOf(wireUnread, derivedUnread)
+            wireUnread >= rawItemsUnread ->
+                maxOf(derivedUnread, (wireUnread - rawUnfollowedUnread).coerceAtLeast(0))
+            else -> maxOf(wireUnread, derivedUnread)
+        }
     SharedInboxSnapshot(
         items = items,
         hasMore = decoded.hasMore,
         totalCount = maxOf(decoded.totalCount ?: derivedCount, derivedCount),
-        totalUnreadCount = maxOf(decoded.totalUnreadCount ?: derivedUnread, derivedUnread),
+        totalUnreadCount = projectedUnread,
+        rawItemCount = decoded.items.size,
     )
 }.getOrNull()
 
@@ -311,6 +341,7 @@ private fun WireInboxItem.toThreadDomain(diagnostics: (String) -> Unit): InboxIt
             taskStatus?.takeIf { it.isNotBlank() }
                 ?.strictTaskStatusOrNull("inbox_task", diagnostics),
         taskClaimedByName = taskClaimedByName,
+        isFollowing = isFollowing,
     )
 }
 
@@ -485,7 +516,7 @@ private fun WireSavedEntry.toInboxItem(diagnostics: (String) -> Unit): InboxItem
             senderType.toSenderKind(
                 source = "saved_message_sender",
                 diagnostics = diagnostics,
-                contract = MemberKindWireContract.InternalActor,
+                contract = MemberKindWireContract.MessageSender,
             ),
         threadChannelId = if (itemKind == InboxItemKind.Thread) ChannelId(channelId) else null,
         parentChannelId = parentChannelId?.let(::ChannelId),
@@ -573,7 +604,7 @@ private fun WireSearchResult.toInboxItem(diagnostics: (String) -> Unit): InboxIt
             senderType.toSenderKind(
                 source = "search_message_sender",
                 diagnostics = diagnostics,
-                contract = MemberKindWireContract.InternalActor,
+                contract = MemberKindWireContract.MessageSender,
             ),
         threadChannelId = if (itemKind == InboxItemKind.Thread) ChannelId(channelId) else null,
         parentChannelId = ChannelId(parentChannelId),

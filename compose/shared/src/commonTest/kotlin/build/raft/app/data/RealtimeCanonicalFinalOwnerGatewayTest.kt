@@ -365,6 +365,7 @@ internal class CanonicalFinalGatewayFixture(
             registry = registry,
             authStore = auth,
             authEvents = auth,
+            currentEnvironmentId = { "env-test" },
             canonicalFinalIntegration = integration.takeIf { configured },
         )
     val owner =
@@ -550,4 +551,4 @@ internal fun session(accessToken: String = "access") =
     )
 
 internal fun partition(grant: RealtimeGrantRecord) =
-    DurablePartitionKey(grant.serverId, grant.principalId, SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID)
+    DurablePartitionKey(grant.serverId, grant.principalId, SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID, grant.environmentId)

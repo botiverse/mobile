@@ -9,6 +9,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import build.raft.app.model.toMemberProfile
 
 class MemberAgentParserTest {
     @Test
@@ -426,7 +429,7 @@ class MemberAgentParserTest {
               "name": "builder",
               "displayName": "Builder",
               "runtime": "codex",
-              "role": "Admin"
+              "serverRole": "Admin"
             }
             """.trimIndent()
         )
@@ -470,5 +473,136 @@ class MemberAgentParserTest {
         assertEquals("Mac Studio", snapshot.computerName)
         assertEquals("Slock", snapshot.directWorkspaces.single().name)
         assertEquals("/Users/artin/AndroidStudioProjects/Slock", snapshot.directWorkspaces.single().path)
+    }
+
+    // task #1119: web keeps `agent.external === true || runtime === "external"` as
+    // parallel sources (agentStore.ts); either alone must mark the agent external so a
+    // payload missing one key cannot silently demote it to a managed (green) agent.
+    @Test
+    fun agentsListMarksExternalFromProjectedBoolean() {
+        val profile =
+            assertNotNull(
+                parseSharedSettingsAgentsAsMembers(
+                    """
+                    [{"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external","external":true}]
+                    """.trimIndent()
+                )
+            ).single()
+        assertTrue(profile.isExternal)
+    }
+
+    @Test
+    fun agentsListMarksExternalFromRuntimeSentinelWhenBooleanMissing() {
+        val profile =
+            assertNotNull(
+                parseSharedSettingsAgentsAsMembers(
+                    """
+                    [{"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external"}]
+                    """.trimIndent()
+                )
+            ).single()
+        assertTrue(profile.isExternal)
+    }
+
+    @Test
+    fun agentsListMarksExternalFromBooleanWhenRuntimeIsAbsent() {
+        val profile =
+            assertNotNull(
+                parseSharedSettingsAgentsAsMembers(
+                    """
+                    [{"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","external":true}]
+                    """.trimIndent()
+                )
+            ).single()
+        assertTrue(profile.isExternal)
+    }
+
+    @Test
+    fun agentsListKeepsManagedAgentsNonExternal() {
+        val profiles =
+            assertNotNull(
+                parseSharedSettingsAgentsAsMembers(
+                    """
+                    [
+                      {"id":"agent-a","name":"claude","displayName":"Claude","status":"active","runtime":"claude","external":false},
+                      {"id":"agent-b","name":"codex","displayName":"Codex","status":"active","runtime":"codex"},
+                      {"id":"agent-c","name":"odd","displayName":"Odd","status":"active","runtime":"External"}
+                    ]
+                    """.trimIndent()
+                )
+            )
+        assertEquals(3, profiles.size)
+        // Exact sentinel match only (shared isExternalAgentRuntime parity): "External" is not it.
+        profiles.forEach { assertFalse(it.isExternal, "${it.handle} must stay managed") }
+    }
+
+    @Test
+    fun agentProfileAndCreatedAgentsCarryExternal() {
+        val agent =
+            assertNotNull(
+                parseSharedAgentProfile(
+                    """
+                    {"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external","external":true}
+                    """.trimIndent()
+                )
+            )
+        assertTrue(agent.isExternal)
+
+        val human =
+            assertNotNull(
+                parseSharedMemberProfile(
+                    """
+                    {
+                      "userId":"user-1","name":"owner","displayName":"Owner","role":"member",
+                      "createdAgents":[
+                        {"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external"},
+                        {"id":"agent-y","name":"claude","displayName":"Claude","status":"active","runtime":"claude"}
+                      ]
+                    }
+                    """.trimIndent()
+                )
+            )
+        assertFalse(human.isExternal)
+        assertEquals(listOf(true, false), human.createdAgents.map { it.isExternal })
+    }
+
+    @Test
+    fun agentProfileToMemberProfilePreservesExternal() {
+        val external =
+            assertNotNull(
+                parseSharedAgentProfile(
+                    """
+                    {"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external"}
+                    """.trimIndent()
+                )
+            )
+        val managed =
+            assertNotNull(
+                parseSharedAgentProfile(
+                    """
+                    {"id":"agent-y","name":"claude","displayName":"Claude","status":"active","runtime":"claude"}
+                    """.trimIndent()
+                )
+            )
+        // parseSharedAgentProfile already yields a MemberProfile; round-trip through the
+        // human profile's createdAgents (AgentProfile) and back to MemberProfile.
+        val human =
+            assertNotNull(
+                parseSharedMemberProfile(
+                    """
+                    {"userId":"user-1","name":"owner","displayName":"Owner","role":"member",
+                     "createdAgents":[
+                       {"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external"},
+                       {"id":"agent-y","name":"claude","displayName":"Claude","status":"active","runtime":"claude"}
+                     ]}
+                    """.trimIndent()
+                )
+            )
+        assertEquals(
+            listOf(true, false),
+            human.createdAgents.map { it.toMemberProfile().isExternal }
+        )
+        assertTrue(external.isExternal)
+        assertFalse(managed.isExternal)
     }
 }

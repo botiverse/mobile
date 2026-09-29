@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.SlockSlackNavTabs
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.MemberId
@@ -366,6 +367,25 @@ class SharedHomeShellStoreTest {
     }
 
     @Test
+    fun clearingSelectedConversationForwardsClearToHomeStore() {
+        // task #299: leaving a conversation must clear the home store's
+        // selectedConversationId too, otherwise realtime merges keep
+        // suppressing unread for the last opened conversation.
+        val fixture = fixture()
+        val store = fixture.store
+
+        store.dispatch(SharedHomeShellIntent.SetSelectedConversation("channel-1"))
+        store.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
+
+        assertNull(store.state.value.selectedConversationId)
+        assertEquals(
+            listOf<SharedHomeIntent>(SharedHomeIntent.ClearSelectedConversation),
+            fixture.homeIntents
+        )
+        fixture.cancel()
+    }
+
+    @Test
     fun mutedConversationDisablesLocalActivityMessagePatchButStillForwardsEvent() {
         val fixture = fixture(homeState = homeStateForServer("server-1", activityMuted = true))
         val event =
@@ -397,6 +417,125 @@ class SharedHomeShellStoreTest {
             ),
             fixture.activityIntents.last()
         )
+        fixture.cancel()
+    }
+
+    @Test
+    fun setSelectedTabActivityMarksVisibleAndRefreshesActivity() {
+        val fixture = fixture()
+        val store = fixture.store
+
+        assertEquals(false, store.state.value.isActivityVisible)
+        assertNull(store.state.value.selectedTab)
+
+        store.dispatch(SharedHomeShellIntent.SetSelectedTab(SlockSlackNavTabs.Activity))
+
+        assertEquals(true, store.state.value.isActivityVisible)
+        assertEquals(SlockSlackNavTabs.Activity, store.state.value.selectedTab)
+        assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.Refresh), fixture.activityIntents)
+
+        // Redundant set does not re-dispatch refresh
+        store.dispatch(SharedHomeShellIntent.SetSelectedTab(SlockSlackNavTabs.Activity))
+        assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.Refresh), fixture.activityIntents)
+
+        // Switching away resets isActivityVisible
+        store.dispatch(SharedHomeShellIntent.SetSelectedTab(SlockSlackNavTabs.Dms))
+        assertEquals(false, store.state.value.isActivityVisible)
+        assertEquals(SlockSlackNavTabs.Dms, store.state.value.selectedTab)
+
+        fixture.cancel()
+    }
+
+    @Test
+    fun slackNavActivityTabReceivesRealtimeEvents() {
+        val fixture = fixture(homeState = homeStateForServer("server-1", activityMuted = false))
+        val event =
+            build.raft.app.model.MessageNew(
+                Message(
+                    id = MessageId("message-1"),
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    seq = 10,
+                    author =
+                        MemberProfile(
+                            id = MemberId("user-2"),
+                            displayName = "User Two",
+                            handle = "user-2",
+                            kind = MemberKind.Human
+                        ),
+                    timestampLabel = "2026-07-13T03:00:00Z",
+                    body = "New activity message"
+                )
+            )
+
+        fixture.store.dispatch(SharedHomeShellIntent.SetSelectedTab(SlockSlackNavTabs.Activity))
+        fixture.store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
+
+        assertEquals(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                event = event,
+                allowLocalPatch = true
+            ),
+            fixture.activityIntents.last()
+        )
+        fixture.cancel()
+    }
+
+    @Test
+    fun slackNavActivityTabRefreshesOnForegroundRefresh() {
+        val fixture = fixture()
+        val store = fixture.store
+
+        store.dispatch(SharedHomeShellIntent.SetSelectedTab(SlockSlackNavTabs.Activity))
+        fixture.activityIntents.clear()
+        fixture.homeIntents.clear()
+
+        store.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+
+        assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.Refresh), fixture.activityIntents)
+        assertEquals(emptyList<SharedHomeIntent>(), fixture.homeIntents)
+        fixture.cancel()
+    }
+
+    @Test
+    fun destinationPriorityOverSelectedTabOnForegroundRefresh() {
+        val fixture = fixture()
+        val store = fixture.store
+
+        // User is on Slack Activity tab, then opens Saved overlay
+        store.dispatch(SharedHomeShellIntent.SetSelectedTab(SlockSlackNavTabs.Activity))
+        store.dispatch(SharedHomeShellIntent.OpenSaved)
+        fixture.activityIntents.clear()
+        fixture.searchSavedIntents.clear()
+        fixture.homeIntents.clear()
+
+        // Returning to foreground must refresh the visible overlay (Saved), not underlying Activity
+        store.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+
+        assertEquals(
+            listOf<SharedHomeSearchSavedIntent>(SharedHomeSearchSavedIntent.RefreshSaved),
+            fixture.searchSavedIntents
+        )
+        assertEquals(emptyList<SharedActivityIntent>(), fixture.activityIntents)
+        assertEquals(emptyList<SharedHomeIntent>(), fixture.homeIntents)
+
+        // Same priority contract for Search overlay
+        store.dispatch(SharedHomeShellIntent.OpenSearch)
+        fixture.searchSavedIntents.clear()
+        store.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+        assertEquals(
+            listOf<SharedHomeSearchSavedIntent>(SharedHomeSearchSavedIntent.RefreshSearch),
+            fixture.searchSavedIntents
+        )
+        assertEquals(emptyList<SharedActivityIntent>(), fixture.activityIntents)
+
+        // Closing overlay restores Activity tab foreground refresh
+        store.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
+        fixture.searchSavedIntents.clear()
+        store.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+        assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.Refresh), fixture.activityIntents)
+        assertEquals(emptyList<SharedHomeSearchSavedIntent>(), fixture.searchSavedIntents)
+
         fixture.cancel()
     }
 

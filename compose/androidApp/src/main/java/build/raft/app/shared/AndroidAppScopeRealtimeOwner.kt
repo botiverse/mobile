@@ -421,8 +421,16 @@ internal object AndroidAppScopeRealtimeOwner {
                 connectionFamilyId = witness.connectionFamilyId,
                 accessToken = accessToken,
             )
-        val identityChanged = multiSessionIdentity != null && multiSessionIdentity != nextIdentity
-        if (identityChanged) {
+        val previousIdentity = multiSessionIdentity
+        val identityChanged = previousIdentity != null && previousIdentity != nextIdentity
+        // task #333: identity = the env/account binding (socketUrl, environmentId,
+        // principalId, connectionFamilyId). A silent token rotation bumps authGeneration
+        // and accessToken on the SAME binding — a credential refresh, not an identity
+        // replacement. Only a real binding change may disconnect-all with
+        // process_identity_replaced; a credential rotation just re-auths the socket.
+        val bindingReplaced =
+            previousIdentity != null && !previousIdentity.sameBindingAs(nextIdentity)
+        if (bindingReplaced) {
             multiSessionRegistry?.disconnectAll("process_identity_replaced")
             multiSessionRegistry = null
         }
@@ -441,7 +449,8 @@ internal object AndroidAppScopeRealtimeOwner {
         SlockAppLog.d(
             LOG_TAG,
             "process_reconcile result=applied serverCount=1 serverId=${desiredServerId.value} " +
-                "identityChanged=$identityChanged forceReconnect=$forceReconnect"
+                "identityChanged=$identityChanged bindingReplaced=$bindingReplaced " +
+                "forceReconnect=$forceReconnect"
         )
     }
 
@@ -1026,7 +1035,16 @@ internal object AndroidAppScopeRealtimeOwner {
         val authGeneration: Long,
         val connectionFamilyId: String,
         val accessToken: String,
-    )
+    ) {
+        // task #333: binding = the durable env/account socket identity. authGeneration
+        // and accessToken are credential state that rotate on every silent token
+        // refresh on the SAME binding — they must not be treated as an identity swap.
+        fun sameBindingAs(other: MultiSessionIdentity): Boolean =
+            environmentId == other.environmentId &&
+                socketUrl == other.socketUrl &&
+                principalId == other.principalId &&
+                connectionFamilyId == other.connectionFamilyId
+    }
 
     private val ProcessWideDisconnectReasons =
         setOf(

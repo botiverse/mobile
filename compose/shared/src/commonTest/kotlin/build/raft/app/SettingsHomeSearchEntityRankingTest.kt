@@ -34,14 +34,13 @@ class SettingsHomeSearchEntityRankingTest {
         assertEquals(listOf("conversation:channel-pinyin"), keysFor("dh"))
         assertEquals(listOf("sender:server-1:Human:human-pinyin"), keysFor("zhaoziqi"))
         assertEquals(listOf("sender:server-1:Human:human-pinyin"), keysFor("zzq"))
-        assertEquals(
-            listOf("conversation:dm-agent", "sender:server-1:Agent:agent-pinyin"),
-            keysFor("xiaoming")
-        )
-        assertEquals(
-            listOf("conversation:dm-agent", "sender:server-1:Agent:agent-pinyin"),
-            keysFor("xmzs")
-        )
+        // task #238: `dm-agent` carries presenceMemberId "agent-pinyin" on server-1, i.e. it is the
+        // *same* entity as the sender row. These two assertions previously pinned the duplicate
+        // that was reported (one DM row + one member row for one principal). The member row is now
+        // the single surviving row and carries the DM's launch identity, so ranking is asserted
+        // over one key rather than two.
+        assertEquals(listOf("sender:server-1:Agent:agent-pinyin"), keysFor("xiaoming"))
+        assertEquals(listOf("sender:server-1:Agent:agent-pinyin"), keysFor("xmzs"))
 
         val fuzzy = resultsFor("gnrl")
         assertEquals("conversation:channel-prefix", fuzzy.first().key)
@@ -81,6 +80,40 @@ class SettingsHomeSearchEntityRankingTest {
         assertEquals("server-1", human.memberIdentity?.sourceServerId?.value)
         assertEquals("dm-human", human.conversationIdentity?.threadId?.value)
         assertEquals("human", searchEntityPinTarget(human)?.kind)
+    }
+
+    @Test
+    fun queryAndFrequentChannelRowsDistinguishPublicPrivateAndJointLeadingIcons() {
+        val joint = resultsFor("joint-bridge").single()
+        val public = resultsFor("general").first { it.key == "conversation:channel-prefix" }
+        val private = resultsFor("private-room").single()
+
+        assertEquals(SlockLucideIconName.GitBranch, joint.homeSearchEntityLeadingIconName())
+        assertEquals(SlockLucideIconName.Hash, public.homeSearchEntityLeadingIconName())
+        assertEquals(SlockLucideIconName.Lock, private.homeSearchEntityLeadingIconName())
+
+        val frequent =
+            homeSearchFrequentEntityResults(
+                homeState = entityHomeState,
+                senderFilters = entitySenders,
+                ranks =
+                    mapOf(
+                        SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "channel-joint") to
+                            SearchFrequentEntityRank(score = 2.0, lastOpenedAtMillis = 2L),
+                        SearchPersonalizationEntityKey(SearchPersonalizationEntityKind.Channel, "channel-private") to
+                            SearchFrequentEntityRank(score = 1.0, lastOpenedAtMillis = 1L),
+                    ),
+                channelLabel = "Channel",
+                dmLabel = "DM",
+                agentLabel = "Agent",
+                personLabel = "Person",
+                membersLabel = "Members",
+            )
+
+        assertEquals(
+            listOf(SlockLucideIconName.GitBranch, SlockLucideIconName.Lock),
+            frequent.map { it.homeSearchEntityLeadingIconName() },
+        )
     }
 
     @Test
@@ -352,6 +385,18 @@ class SettingsHomeSearchEntityRankingTest {
                                             threadId = ThreadId("channel-prefix"),
                                             channelId = ChannelId("channel-prefix"),
                                             name = "general"
+                                        ),
+                                        HomeChannelRow(
+                                            threadId = ThreadId("channel-joint"),
+                                            channelId = ChannelId("channel-joint"),
+                                            kind = ConversationKind.Joint,
+                                            name = "joint-bridge"
+                                        ),
+                                        HomeChannelRow(
+                                            threadId = ThreadId("channel-private"),
+                                            channelId = ChannelId("channel-private"),
+                                            channelType = "private",
+                                            name = "private-room"
                                         ),
                                         HomeChannelRow(
                                             threadId = ThreadId("channel-archived"),

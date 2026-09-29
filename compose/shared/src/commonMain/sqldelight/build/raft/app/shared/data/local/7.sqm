@@ -1,0 +1,60 @@
+-- Schema v8: durable, identity-bound Thread pending-send journal.
+-- Legacy outbox rows are intentionally left untouched; this table stores the
+-- full optimistic projection/context needed for process recreation without
+-- turning canonical message facts into client-owned rows.
+CREATE TABLE threadPendingSendEntity (
+  environmentId TEXT NOT NULL,
+  principalId TEXT NOT NULL,
+  serverId TEXT NOT NULL,
+  ownerScopeId TEXT NOT NULL,
+  authGeneration INTEGER NOT NULL,
+  selectionGeneration INTEGER NOT NULL,
+  routeInstanceKey TEXT NOT NULL,
+  routeSurfaceKind TEXT NOT NULL,
+  routeChannelKind TEXT,
+  routeParentConversationKind TEXT,
+  routeTimelineKey TEXT,
+  routeParentKey TEXT,
+  localId TEXT NOT NULL,
+  randomId TEXT NOT NULL,
+  messageJson TEXT NOT NULL,
+  pendingContextJson TEXT NOT NULL,
+  status TEXT NOT NULL,
+  createdAtMs INTEGER NOT NULL,
+  lastErrorCode TEXT,
+  lastErrorMessage TEXT,
+  PRIMARY KEY (
+    environmentId,
+    principalId,
+    serverId,
+    ownerScopeId,
+    authGeneration,
+    selectionGeneration,
+    routeInstanceKey,
+    localId
+  )
+);
+
+CREATE INDEX threadPendingSendEntity_identityRoute
+ON threadPendingSendEntity(
+  environmentId,
+  principalId,
+  serverId,
+  ownerScopeId,
+  authGeneration,
+  selectionGeneration,
+  routeInstanceKey,
+  createdAtMs,
+  localId
+);
+
+CREATE UNIQUE INDEX threadPendingSendEntity_randomId
+ON threadPendingSendEntity(
+  environmentId,
+  principalId,
+  serverId,
+  ownerScopeId,
+  authGeneration,
+  selectionGeneration,
+  randomId
+);

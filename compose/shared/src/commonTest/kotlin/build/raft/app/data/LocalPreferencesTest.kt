@@ -140,7 +140,7 @@ class LocalPreferencesTest {
         assertEquals(false, snapshot.composerSendKeyEnabled)
         assertEquals(false, snapshot.multiShellHostEnabled)
         assertEquals(false, snapshot.serverDrawerEnabled)
-        assertEquals(false, snapshot.newDesignSettingsEnabled)
+        assertEquals(true, snapshot.newDesignSettingsEnabled)
         assertEquals(false, snapshot.homeServerAvatarEnabled)
         assertEquals(TranslationModePreference.Manual, snapshot.translationMode)
         assertEquals(TranslationTargetLanguages.Browser, snapshot.translationTargetLanguage)
@@ -150,6 +150,18 @@ class LocalPreferencesTest {
                 LargeScreenNavigationPreference.FloatingDock
             )
         )
+    }
+
+    @Test
+    fun threadUnreadJumpDefaultsOffButPreservesExplicitOn() = runBlocking {
+        val store = InMemorySlockKeyValueStore()
+        val repository = PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(store))
+
+        assertEquals(false, repository.getChatLayoutPreference().threadUnreadJumpEnabled)
+
+        repository.setThreadUnreadJumpEnabled(true)
+
+        assertEquals(true, repository.getChatLayoutPreference().threadUnreadJumpEnabled)
     }
 
     @Test

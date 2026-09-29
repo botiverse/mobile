@@ -214,6 +214,13 @@ internal class CanonicalMessageV2ProductionCanary(
         }
     }
 
+    /**
+     * Read-only view for writers outside the canary (task #1124 enter-snapshot): whether [scope] is
+     * the scope this canary currently owns for its partition. Never selects, never widens.
+     */
+    suspend fun isSelected(scope: SyncScopeKey): Boolean =
+        selectionMutex.withLock { selectedScopeByPartition[scope.partition] == scope }
+
     suspend fun modeFor(serverId: String, scopeId: String): CanonicalMessageV2CanaryMode =
         selectionMutex.withLock {
             val selected = selectedScopeByPartition.values.firstOrNull { it.serverId == serverId }

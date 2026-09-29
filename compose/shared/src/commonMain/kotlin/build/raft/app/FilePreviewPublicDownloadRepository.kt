@@ -178,7 +178,7 @@ internal fun slockFilePreviewPublicDownloadStateAfterOpen(
     result: JSONObject?
 ): SlockFilePreviewPublicDownloadState =
     when (result?.optString("status").orEmpty()) {
-        "missing", "storage_failed" -> SlockFilePreviewPublicDownloadState.NotDownloaded
+        "missing", "storage_failed", "download_failed" -> SlockFilePreviewPublicDownloadState.NotDownloaded
         "opened" ->
             if (result?.optBoolean("cached", false) == true) {
                 current

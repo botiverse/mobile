@@ -11,6 +11,9 @@ class SlockLucideIconCatalogTest {
         assertTrue(SlockLucideIcons.Names.contains(SlockLucideIconName.Undo2.wireName))
         assertTrue(SlockLucideIcons.Names.contains(SlockLucideIconName.Redo2.wireName))
         assertTrue(SlockLucideIcons.Names.contains(SlockLucideIconName.Grid3x3.wireName))
+        assertTrue(SlockLucideIcons.Names.contains(SlockLucideIconName.Blend.wireName))
+        assertTrue(SlockLucideIcons.Names.contains(SlockLucideIconName.Mosaic.wireName))
+        assertTrue(SlockLucideIcons.Names.contains(SlockLucideIconName.Crop.wireName))
     }
 
     @Test

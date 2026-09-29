@@ -70,8 +70,9 @@ class SharedServerMembersStoreTest {
             "https://cdn.raft.build/avatars/agents/cafebabecafebabecafebabecafebabe.webp"
 
         store.seedThreadAuthorProfiles(serverId, listOf(fallback), source = "sparse")
-        assertEquals(
-            "pixel:robot",
+        // A render-time pixel fallback is not member data: a sparse author snapshot must not
+        // write `pixel:robot` into the SSOT where it would outrank a later/parallel avatarUrl.
+        assertNull(
             store.state.value.memberProfile(serverId, "agent-1")?.avatar?.wireValue
         )
 
@@ -184,9 +185,54 @@ class SharedServerMembersStoreTest {
 
         store.seedProfileCandidates(serverId, listOf(messageAuthorCandidate))
 
+        // The snapshot's Active/Online must not survive (a message author snapshot is not a
+        // status observation), and task #253 makes the stripped result publish nothing rather
+        // than a forced Presence.Offline that renders as a definite "Offline" label.
+        assertNull(store.memberStatusFlow(serverId, "agent-1").first())
+    }
+
+    @Test
+    fun agentDetailSeedReplacesStalePixelAvatarInSession() = runBlocking {
+        val serverId = ServerId("server-1")
+        val uploadedAvatar =
+            "https://cdn.raft.build/avatars/agents/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.webp"
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        // Roster first learned this agent as a pixel fallback (pre-avatar-upload cache).
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(
+                    member("agent-1", "Cindy").copy(
+                        kind = MemberKind.Agent,
+                        avatar = AvatarReference.fromWireValue("pixel:bell"),
+                        avatarUrl = "pixel:bell",
+                        serverId = serverId
+                    )
+                )
+            )
+        )
         assertEquals(
-            SharedServerMemberStatus(status = null, presence = Presence.Offline),
-            store.memberStatusFlow(serverId, "agent-1").first()
+            "pixel:bell",
+            store.state.value.memberProfile(serverId, "agent-1")?.avatar?.wireValue
+        )
+
+        // Opening the member detail hydrates the canonical profile; seeding it back must
+        // replace the stale pixel avatar without a process restart.
+        store.seedProfiles(
+            serverId,
+            listOf(
+                member("agent-1", "Cindy").copy(
+                    kind = MemberKind.Agent,
+                    avatar = AvatarReference.fromWireValue(uploadedAvatar),
+                    avatarUrl = uploadedAvatar,
+                    serverId = serverId
+                )
+            )
+        )
+
+        assertEquals(
+            uploadedAvatar,
+            store.memberProfileFlow(serverId, "agent-1").first()?.avatar?.wireValue
         )
     }
 
@@ -242,7 +288,7 @@ class SharedServerMembersStoreTest {
         )
 
         assertEquals(
-            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active),
+            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active, external = false),
             store.memberStatusFlow(serverId, "agent-1").first()
         )
 
@@ -252,7 +298,7 @@ class SharedServerMembersStoreTest {
         )
 
         assertEquals(
-            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active),
+            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active, external = false),
             store.memberStatusFlow(serverId, "agent-1").first(),
             "an authoritative profile without a runtime fact must preserve the prior status pair"
         )
@@ -978,7 +1024,7 @@ class SharedServerMembersStoreTest {
         assertEquals(Presence.Offline, members.single { it.id.value == "agent-1" }.presence)
         // … while the registry-backed read edge shows the live fact.
         assertEquals(
-            SharedServerMemberStatus(status = AgentStatus.Thinking, presence = AgentStatus.Thinking.presence),
+            SharedServerMemberStatus(status = AgentStatus.Thinking, presence = AgentStatus.Thinking.presence, external = false),
             runBlocking { store.memberStatusFlow(ServerId("server-1"), "agent-1").first() }
         )
         assertEquals(MemberKind.Human, members.single { it.id.value == "u1" }.kind)
@@ -1068,7 +1114,7 @@ class SharedServerMembersStoreTest {
         )
 
         assertEquals(
-            SharedServerMemberStatus(status = AgentStatus.Online, presence = Presence.Offline),
+            SharedServerMemberStatus(status = AgentStatus.Online, presence = Presence.Offline, external = false),
             runBlocking { store.memberStatusFlow(ServerId("server-1"), "agent-1").first() }
         )
     }
@@ -1134,7 +1180,8 @@ class SharedServerMembersStoreTest {
             SharedServerMemberStatus(
                 status = AgentStatus.Working,
                 presence = Presence.Active,
-                statusLabel = "Building"
+                statusLabel = "Building",
+                external = false
             ),
             runBlocking { store.memberStatusFlow(ServerId("server-1"), "agent-1").first() }
         )
@@ -1402,7 +1449,7 @@ class SharedServerMembersStoreTest {
             store.channelMemberSliceFlow(ServerId("server-1"), ChannelId("channel-1")).first().status
         )
         assertEquals(
-            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active),
+            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active, external = false),
             store.memberStatusFlow(ServerId("server-1"), "agent-1").first()
         )
         assertEquals(
@@ -1813,7 +1860,7 @@ class SharedServerMembersStoreTest {
         assertEquals(AgentStatus.Online, member.agentStatus)
         assertEquals(Presence.Active, member.presence)
         assertEquals(
-            SharedServerMemberStatus(status = AgentStatus.Thinking, presence = AgentStatus.Thinking.presence),
+            SharedServerMemberStatus(status = AgentStatus.Thinking, presence = AgentStatus.Thinking.presence, external = false),
             store.memberStatusFlow(ServerId("server-1"), "agent-1").first()
         )
     }
@@ -2167,8 +2214,8 @@ class SharedServerMembersStoreTest {
 
         val expected: List<SharedServerMemberStatus?> =
             listOf(
-                SharedServerMemberStatus(status = AgentStatus.Online, presence = Presence.Active),
-                SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active)
+                SharedServerMemberStatus(status = AgentStatus.Online, presence = Presence.Active, external = false),
+                SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active, external = false)
             )
         assertEquals(expected, emissions)
     }
@@ -2213,7 +2260,7 @@ class SharedServerMembersStoreTest {
         )
 
         assertEquals(
-            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active),
+            SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active, external = false),
             store.memberStatusFlow(ServerId("server-1"), "agent-1").first()
         )
         assertEquals(
@@ -2829,6 +2876,307 @@ class SharedServerMembersStoreTest {
         assertEquals(AgentStatus.Working, routeStatus?.status)
         assertEquals("Working", routeStatus?.label)
         assertNull(unknownScopeStatus)
+    }
+
+    @Test
+    fun coldStartThreadAuthorSeedShowsNoIndicatorUntilSomethingAuthoritativeArrives() = runBlocking {
+        // Cold start: a thread page paints message authors before the roster hydrates and
+        // before realtime attaches a transport, so the only profile in scope is the
+        // volatile-status-stripped seed. Presence has no Unknown member, so that seed carries
+        // a forced Presence.Offline; publishing it labelled a working agent "Offline"
+        // (task #253). The indicator must stay absent instead.
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        val serverId = ServerId("server-1")
+        store.seedThreadAuthorProfiles(
+            serverId,
+            listOf(
+                KuiklyThreadMessageItem(
+                    id = "cold-start-message",
+                    authorId = "agent-1",
+                    authorName = "Argus",
+                    authorKind = "agent"
+                )
+            ),
+            source = "cold_start"
+        )
+
+        assertNull(
+            slockScopedAgentStatusResolver(store, serverId.value).invoke("agent-1").first(),
+            "a stripped seed must not render any dot, least of all one labelled Offline"
+        )
+
+        // ...and the indicator returns as soon as an authoritative record exists, so this is a
+        // deferral, not a permanent suppression.
+        store.seed(
+            MemberSnapshot(
+                server(serverId.value),
+                listOf(
+                    member("agent-1", "Argus").copy(
+                        kind = MemberKind.Agent,
+                        agentStatus = AgentStatus.Working,
+                        presence = Presence.Active
+                    )
+                )
+            )
+        )
+        val hydrated = slockScopedAgentStatusResolver(store, serverId.value).invoke("agent-1").first()
+        assertEquals(AgentStatus.Working, hydrated?.status)
+        assertEquals("Working", hydrated?.label)
+    }
+
+    @Test
+    fun seedOnlyOfflinePolicyRewritesOnlyTheForcedOfflineSeedArtefact() {
+        val forcedSeedArtefact = SharedServerMemberStatus(status = null, presence = Presence.Offline, external = false)
+
+        // Today's shipped behaviour, held until the task #253 product choice lands.
+        assertEquals(
+            forcedSeedArtefact,
+            applySeedOnlyOfflinePolicy(
+                forcedSeedArtefact,
+                seedOnly = true,
+                policy = SeedOnlyOfflinePolicy.PublishAsOffline
+            )
+        )
+        // Candidate A.
+        assertEquals(
+            forcedSeedArtefact.copy(statusLabel = "—"),
+            applySeedOnlyOfflinePolicy(
+                forcedSeedArtefact,
+                seedOnly = true,
+                policy = SeedOnlyOfflinePolicy.PublishNeutralLabel
+            )
+        )
+        // Candidate B.
+        assertNull(
+            applySeedOnlyOfflinePolicy(
+                forcedSeedArtefact,
+                seedOnly = true,
+                policy = SeedOnlyOfflinePolicy.PublishNothing
+            )
+        )
+
+        // An authoritative record is never rewritten, whatever the policy: a roster member
+        // that really is offline must keep saying so under every candidate.
+        SeedOnlyOfflinePolicy.entries.forEach { policy ->
+            assertEquals(
+                forcedSeedArtefact,
+                applySeedOnlyOfflinePolicy(forcedSeedArtefact, seedOnly = false, policy = policy),
+                "an authoritative Offline must survive policy $policy"
+            )
+            assertEquals(
+                SharedServerMemberStatus(status = AgentStatus.Offline, presence = Presence.Offline, external = false),
+                applySeedOnlyOfflinePolicy(
+                    SharedServerMemberStatus(status = AgentStatus.Offline, presence = Presence.Offline, external = false),
+                    seedOnly = true,
+                    policy = policy
+                ),
+                "a seed carrying a real Offline status is an observation, not an artefact ($policy)"
+            )
+            assertEquals(
+                SharedServerMemberStatus(status = null, presence = Presence.Active, external = false),
+                applySeedOnlyOfflinePolicy(
+                    SharedServerMemberStatus(status = null, presence = Presence.Active, external = false),
+                    seedOnly = true,
+                    policy = policy
+                ),
+                "a non-Offline presence is untouched ($policy)"
+            )
+        }
+    }
+
+    @Test
+    fun memberStatusFlowPassesSeedProvenanceIntoThePolicy() = runBlocking {
+        // Pins the WIRING, not the pure function: that this edge passes the right `seedOnly`.
+        // Under the shipped PublishNothing policy a seed and an authoritative Offline publish
+        // different results, so the two cases below are distinguishable without injecting
+        // anything — mislabelling the seed cache as authoritative turns this red.
+        val serverId = ServerId("server-1")
+        val seedOnlyStore = SharedServerMembersStore(FakeMemberRepository())
+        seedOnlyStore.seedThreadAuthorProfiles(
+            serverId,
+            listOf(
+                KuiklyThreadMessageItem(
+                    id = "cold-start-message",
+                    authorId = "agent-1",
+                    authorName = "Argus",
+                    authorKind = "agent"
+                )
+            ),
+            source = "cold_start"
+        )
+        assertNull(seedOnlyStore.memberStatusFlow(serverId, "agent-1").first())
+
+        val rosterStore = SharedServerMembersStore(FakeMemberRepository())
+        rosterStore.seed(
+            MemberSnapshot(
+                server(serverId.value),
+                listOf(
+                    member("agent-1", "Argus").copy(
+                        kind = MemberKind.Agent,
+                        agentStatus = null,
+                        presence = Presence.Offline
+                    )
+                )
+            )
+        )
+        assertEquals(
+            SharedServerMemberStatus(status = null, presence = Presence.Offline, external = false),
+            rosterStore.memberStatusFlow(serverId, "agent-1").first(),
+            "a roster member is authoritative: its Offline is an observation and must survive"
+        )
+    }
+
+    @Test
+    fun snapshotMemberStatusAppliesTheSamePolicyForRosterAndSeedProfiles() {
+        // Roster and seed only — that is where this edge and memberStatusFlow agree. The
+        // slice-only case they disagree on is unreachable from here (see memberStatus).
+        val serverId = ServerId("server-1")
+        val seedOnlyStore = SharedServerMembersStore(FakeMemberRepository())
+        seedOnlyStore.seedThreadAuthorProfiles(
+            serverId,
+            listOf(
+                KuiklyThreadMessageItem(
+                    id = "cold-start-message",
+                    authorId = "agent-1",
+                    authorName = "Argus",
+                    authorKind = "agent"
+                )
+            ),
+            source = "cold_start"
+        )
+        assertNull(seedOnlyStore.state.value.memberStatus(serverId, "agent-1"))
+
+        val rosterStore = SharedServerMembersStore(FakeMemberRepository())
+        rosterStore.seed(
+            MemberSnapshot(
+                server(serverId.value),
+                listOf(
+                    member("agent-1", "Argus").copy(
+                        kind = MemberKind.Agent,
+                        agentStatus = null,
+                        presence = Presence.Offline
+                    )
+                )
+            )
+        )
+        assertEquals(
+            SharedServerMemberStatus(status = null, presence = Presence.Offline, external = false),
+            rosterStore.state.value.memberStatus(serverId, "agent-1"),
+            "a roster member's Offline is an observation and must survive here too"
+        )
+    }
+
+    @Test
+    fun rosterHydrationMakesTheSameMemberAuthoritativeAfterASeed() = runBlocking {
+        // The provenance seam must flip once the roster arrives, otherwise whichever policy
+        // ships would keep suppressing a real status for the rest of the session.
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        val serverId = ServerId("server-1")
+        store.seedThreadAuthorProfiles(
+            serverId,
+            listOf(
+                KuiklyThreadMessageItem(
+                    id = "cold-start-message",
+                    authorId = "agent-1",
+                    authorName = "Argus",
+                    authorKind = "agent"
+                )
+            ),
+            source = "cold_start"
+        )
+        assertNull(store.memberStatusFlow(serverId, "agent-1").first())
+
+        store.seed(
+            MemberSnapshot(
+                server(serverId.value),
+                listOf(
+                    member("agent-1", "Argus").copy(
+                        kind = MemberKind.Agent,
+                        agentStatus = AgentStatus.Working,
+                        presence = Presence.Active
+                    )
+                )
+            )
+        )
+
+        val hydrated = store.memberStatusFlow(serverId, "agent-1").first()
+        assertEquals(AgentStatus.Working, hydrated?.status)
+        assertEquals(Presence.Active, hydrated?.presence)
+    }
+
+    @Test
+    fun memberStatusAndProfileFlowsAreMemoizedPerServerMemberPair() = runBlocking {
+        val serverId = ServerId("server-1")
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(
+                    member("agent-1", "Agent").copy(
+                        kind = MemberKind.Agent,
+                        agentStatus = AgentStatus.Working,
+                        presence = Presence.Active
+                    )
+                )
+            )
+        )
+
+        // task #329: repeated calls for the same normalized (server, member) pair must
+        // share one upstream flow recipe so N mounted rows don't each rebuild the
+        // entryFlow/presence combine and rescan the roster.
+        assertTrue(
+            store.memberStatusFlow(serverId, "agent-1") ===
+                store.memberStatusFlow(serverId, "agent-1"),
+            "memberStatusFlow should return the memoized instance for the same pair"
+        )
+        assertTrue(
+            store.memberProfileFlow(serverId, "agent-1") ===
+                store.memberProfileFlow(serverId, "agent-1"),
+            "memberProfileFlow should return the memoized instance for the same pair"
+        )
+        // Distinct members and servers must not collide.
+        assertTrue(
+            store.memberStatusFlow(serverId, "agent-2") !==
+                store.memberStatusFlow(serverId, "agent-1")
+        )
+        assertTrue(
+            store.memberStatusFlow(ServerId("server-2"), "agent-1") !==
+                store.memberStatusFlow(serverId, "agent-1")
+        )
+
+        // Behaviour parity: the memoized flow still resolves the seeded status.
+        assertEquals(
+            AgentStatus.Working,
+            store.memberStatusFlow(serverId, "agent-1").first()?.status
+        )
+    }
+
+    @Test
+    fun clearScopedReadCachesDropsMemoizedFlows() = runBlocking {
+        val serverId = ServerId("server-1")
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(member("agent-1", "Agent").copy(kind = MemberKind.Agent))
+            )
+        )
+
+        val before = store.memberStatusFlow(serverId, "agent-1")
+        assertTrue(before === store.memberStatusFlow(serverId, "agent-1"))
+
+        store.clearScopedReadCaches()
+
+        assertTrue(
+            before !== store.memberStatusFlow(serverId, "agent-1"),
+            "session/account clear must mint fresh recipes so retired auth-bound " +
+                "read edges cannot be reused"
+        )
+        assertTrue(
+            store.memberStatusFlow(serverId, "agent-1") ===
+                store.memberStatusFlow(serverId, "agent-1"),
+            "post-clear calls re-memoize normally"
+        )
     }
 
     private class FakeMemberRepository : MemberRepository {

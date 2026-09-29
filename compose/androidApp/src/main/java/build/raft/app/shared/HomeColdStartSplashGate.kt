@@ -3,7 +3,17 @@ package build.raft.app.shared
 import android.app.Activity
 import org.json.JSONObject
 
-internal const val HOME_COLD_START_SPLASH_TIMEOUT_MILLIS = 1_500L
+/**
+ * Keep the platform splash bounded, but long enough to cover the normal
+ * AppShell attach/auth handoff on Android 12+ devices.
+ */
+internal const val HOME_COLD_START_SPLASH_TIMEOUT_MILLIS = 5_000L
+
+/**
+ * The branded native fallback may outlive the platform splash while a slow
+ * auth/flag request finishes. It must still yield to an auth/error surface.
+ */
+internal const val HOME_COLD_START_SPLASH_FALLBACK_TIMEOUT_MILLIS = 10_000L
 
 internal fun shouldInstallHomeColdStartSplash(pageName: String, pageDataText: String?): Boolean {
     if (pageName != SlockKuiklyActivity.PAGE_APP_SHELL) return false
@@ -46,7 +56,7 @@ internal class HomeColdStartSplashGate(
 
     @Synchronized
     fun release(): Boolean {
-        if (state != State.Pending) return false
+        if (state == State.Released) return false
         state = State.Released
         return true
     }
@@ -65,6 +75,13 @@ internal class HomeColdStartSplashGate(
         if (state != State.Pending) return 0L
         val elapsedMillis = (nowMillis - startedAtMillis).coerceAtLeast(0L)
         return (timeoutMillis - elapsedMillis).coerceAtLeast(0L)
+    }
+
+    @Synchronized
+    fun millisUntilFallbackTimeout(nowMillis: Long): Long {
+        if (state == State.Released) return 0L
+        val elapsedMillis = (nowMillis - startedAtMillis).coerceAtLeast(0L)
+        return (HOME_COLD_START_SPLASH_FALLBACK_TIMEOUT_MILLIS - elapsedMillis).coerceAtLeast(0L)
     }
 
     fun timedOut(): Boolean = state == State.TimedOut

@@ -97,6 +97,50 @@ class ThreadReadAnchorStoreTest {
         )
     }
 
+    @Test
+    fun gapRefillExclusionShrinksUnreadCountWithoutTouchingFrontier() {
+        val messages =
+            listOf(
+                ThreadUnreadAnchorMessage("m10", 10L),
+                ThreadUnreadAnchorMessage("m11", 11L),
+                ThreadUnreadAnchorMessage("m12", 12L),
+                ThreadUnreadAnchorMessage("m13", 13L),
+            )
+
+        // Without exclusion all tail messages count.
+        assertEquals(
+            ThreadUnreadJumpProjection(unreadCount = 3, targetMessageId = "m11"),
+            projectThreadUnreadJump(ThreadReadAnchor(10L, "m10"), messages),
+        )
+        // Gap-refill arrivals are excluded from the ↓ x new count (task #232 contract).
+        assertEquals(
+            ThreadUnreadJumpProjection(unreadCount = 1, targetMessageId = "m11"),
+            projectThreadUnreadJump(
+                ThreadReadAnchor(10L, "m10"),
+                messages,
+                excludedMessageIds = setOf("m12", "m13"),
+            ),
+        )
+        // Excluding every unread message clears the pill entirely.
+        assertEquals(
+            ThreadUnreadJumpProjection(unreadCount = 0, targetMessageId = null),
+            projectThreadUnreadJump(
+                ThreadReadAnchor(10L, "m10"),
+                messages,
+                excludedMessageIds = setOf("m11", "m12", "m13"),
+            ),
+        )
+        // Excluding unknown/already-read IDs changes nothing.
+        assertEquals(
+            ThreadUnreadJumpProjection(unreadCount = 3, targetMessageId = "m11"),
+            projectThreadUnreadJump(
+                ThreadReadAnchor(10L, "m10"),
+                messages,
+                excludedMessageIds = setOf("m10", "ghost"),
+            ),
+        )
+    }
+
     private fun owner(
         accountId: String = "account",
         conversationId: String = "channel",

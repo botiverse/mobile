@@ -8,6 +8,19 @@ internal const val SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY = "slockAdaptiveDetailIden
 internal const val SLOCK_ADAPTIVE_DETAIL_GENERATION = "slockAdaptiveDetailGeneration"
 internal const val SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED = "slockAdaptiveHomeWorkspaceEnabled"
 
+// task #23: host flag gating the wide-layout left navigation rail. Off by
+// default; when on and the pane is DualPane with the LeftRail preference, the
+// app shell swaps the bottom tab bar for a left rail and recovers the bottom
+// bar in compact layouts.
+internal const val SLOCK_ADAPTIVE_NAV_RAIL_ENABLED = "slockAdaptiveNavRailEnabled"
+
+/**
+ * A4 source-side initiation gate (task #18): the standalone thread page only runs a
+ * prepare→open→commit adoption when this flag is set on its pageData. Off by default —
+ * the native guarded commit lands behind it so an in-flight protocol can merge inert.
+ */
+internal const val SLOCK_ADAPTIVE_INITIATION_ENABLED = "slockAdaptiveInitiationEnabled"
+
 /**
  * Identity and intent for one adaptive conversation detail.
  *
@@ -182,6 +195,13 @@ internal sealed interface SlockAdaptiveWorkspaceIntent {
     data class AuthorityChanged(val serverId: String) : SlockAdaptiveWorkspaceIntent
 
     data object TerminalReset : SlockAdaptiveWorkspaceIntent
+
+    /**
+     * Single-pane Back on the detail root: dismiss the selection so Home shows its list again.
+     * Unlike [CloseDetail] this needs no key/generation proof (the parent itself is authoritative)
+     * and bumps the generation so late detail-side callbacks can no longer match the old slot.
+     */
+    data object DismissDetail : SlockAdaptiveWorkspaceIntent
 }
 
 internal fun reduceSlockAdaptiveWorkspace(
@@ -243,6 +263,16 @@ internal fun reduceSlockAdaptiveWorkspace(
                 selection = null,
                 generationCursor = state.generationCursor.nextAdaptiveGeneration(),
             )
+
+        SlockAdaptiveWorkspaceIntent.DismissDetail ->
+            if (state.selection == null) {
+                state
+            } else {
+                state.copy(
+                    selection = null,
+                    generationCursor = state.generationCursor.nextAdaptiveGeneration(),
+                )
+            }
     }
 
 internal fun SlockAdaptiveWorkspaceState.acceptsDetailCallback(

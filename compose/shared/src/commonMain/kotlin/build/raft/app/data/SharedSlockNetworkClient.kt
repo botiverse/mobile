@@ -7,15 +7,19 @@ import build.raft.app.network.HEADER_AUTHORIZATION
 import build.raft.app.network.HEADER_SERVER_ID
 import build.raft.app.network.MultipartFile
 import build.raft.app.network.MultipartFileStreamOpener
+import build.raft.app.network.SLOCK_DIRECT_UPLOAD_TOTAL_TIMEOUT_MILLIS
 import build.raft.app.network.SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS
 import build.raft.app.network.SlockHttpExecutor
 import build.raft.app.network.SlockHttpExecutorResponse
+import build.raft.app.network.SlockHttpFileBody
 import build.raft.app.network.SlockRequestPriority
 import build.raft.app.network.SlockRequestScheduler
 import build.raft.app.network.hasStreamingFileRefParts
 import build.raft.app.network.SlockRequestTimeoutException
 import build.raft.app.network.createPlatformSlockHttpExecutor
 import build.raft.app.network.toSafeDiagnosticsToken
+import build.raft.app.network.redactPresignedUrlText
+import com.tencent.kmm.network.export.NetworkByteStream
 import kotlin.time.TimeSource
 
 internal const val SLOCK_UPLOAD_SCHEDULER_DISPATCH_MARGIN_MILLIS = 15_000L
@@ -53,7 +57,8 @@ internal class SharedSlockNetworkClient(
             logger = warningLogger,
             warningLogger = warningLogger,
             criticalLogger = criticalWarningLogger,
-            terminalAuthLossReporter = terminalAuthLossReporter
+            terminalAuthLossReporter = terminalAuthLossReporter,
+            environmentIdProvider = { currentBaseUrl() },
         )
 
     override suspend fun request(
@@ -230,6 +235,49 @@ internal class SharedSlockNetworkClient(
         }
     }
 
+    override suspend fun createAttachmentUploadSession(
+        priority: DataRequestPriority,
+        request: AttachmentUploadSessionCreateRequest,
+        serverIdOverride: ServerId?,
+    ): HomeNetworkResponse = authorityBindingRequiredResponse()
+
+    override suspend fun completeAttachmentUploadSession(
+        priority: DataRequestPriority,
+        uploadId: String,
+        serverIdOverride: ServerId?,
+    ): HomeNetworkResponse = authorityBindingRequiredResponse()
+
+    override suspend fun cancelAttachmentUploadSession(
+        priority: DataRequestPriority,
+        uploadId: String,
+        serverIdOverride: ServerId?,
+    ): HomeNetworkResponse = authorityBindingRequiredResponse()
+
+    override suspend fun statusAttachmentUploadSession(
+        priority: DataRequestPriority,
+        uploadId: String,
+        serverIdOverride: ServerId?,
+    ): HomeNetworkResponse = authorityBindingRequiredResponse()
+
+    override suspend fun putAttachmentUploadBytes(
+        priority: DataRequestPriority,
+        upload: AttachmentUploadSessionPut,
+        bytes: ByteArray,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
+    ): HomeNetworkResponse = authorityBindingRequiredResponse()
+
+    override suspend fun putAttachmentUploadFile(
+        priority: DataRequestPriority,
+        upload: AttachmentUploadSessionPut,
+        file: PlatformFile,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
+    ): HomeNetworkResponse = authorityBindingRequiredResponse()
+
+    override suspend fun prepareAttachmentUploadFile(
+        file: PlatformFile,
+    ): SlockPlatformFilePreparationResult =
+        SlockPlatformFilePreparationResult.Rejected("auth_authority_binding_required")
+
     override suspend fun uploadAttachments(
         priority: DataRequestPriority,
         channelId: ChannelId,
@@ -259,6 +307,222 @@ internal class SharedSlockNetworkClient(
     ): HomeNetworkResponse =
         uploadAttachmentsInternal(priority, channelId, files, expectedAuthority, onProgress = null)
 
+    override suspend fun createAttachmentUploadSessionBound(
+        priority: DataRequestPriority,
+        request: AttachmentUploadSessionCreateRequest,
+        expectedAuthority: SlockExpectedAuthBinding,
+    ): HomeNetworkResponse =
+        requestInternal(
+            priority = priority,
+            path = "attachments/upload-sessions",
+            method = "POST",
+            query = emptyList(),
+            serverIdOverride = ServerId(expectedAuthority.serverId),
+            bodyText = encodeSharedAttachmentUploadSessionCreateRequest(request),
+            expectedAuthority = expectedAuthority,
+        )
+
+    override suspend fun completeAttachmentUploadSessionBound(
+        priority: DataRequestPriority,
+        uploadId: String,
+        expectedAuthority: SlockExpectedAuthBinding,
+    ): HomeNetworkResponse {
+        val normalizedUploadId = uploadId.trim()
+        if (!isLegalAttachmentUploadSessionId(normalizedUploadId)) {
+            return invalidAttachmentUploadSessionIdResponse()
+        }
+        return requestInternal(
+            priority = priority,
+            path = "attachments/upload-sessions/$normalizedUploadId/complete",
+            method = "POST",
+            query = emptyList(),
+            serverIdOverride = ServerId(expectedAuthority.serverId),
+            bodyText = null,
+            expectedAuthority = expectedAuthority,
+        )
+    }
+
+    override suspend fun cancelAttachmentUploadSessionBound(
+        priority: DataRequestPriority,
+        uploadId: String,
+        expectedAuthority: SlockExpectedAuthBinding,
+    ): HomeNetworkResponse {
+        val normalizedUploadId = uploadId.trim()
+        if (!isLegalAttachmentUploadSessionId(normalizedUploadId)) {
+            return invalidAttachmentUploadSessionIdResponse()
+        }
+        return requestInternal(
+            priority = priority,
+            path = "attachments/upload-sessions/$normalizedUploadId",
+            method = "DELETE",
+            query = emptyList(),
+            serverIdOverride = ServerId(expectedAuthority.serverId),
+            bodyText = null,
+            expectedAuthority = expectedAuthority,
+        )
+    }
+
+    override suspend fun statusAttachmentUploadSessionBound(
+        priority: DataRequestPriority,
+        uploadId: String,
+        expectedAuthority: SlockExpectedAuthBinding,
+    ): HomeNetworkResponse {
+        val normalizedUploadId = uploadId.trim()
+        if (!isLegalAttachmentUploadSessionId(normalizedUploadId)) {
+            return invalidAttachmentUploadSessionIdResponse()
+        }
+        return requestInternal(
+            priority = priority,
+            path = "attachments/upload-sessions/$normalizedUploadId",
+            method = "GET",
+            query = emptyList(),
+            serverIdOverride = ServerId(expectedAuthority.serverId),
+            bodyText = null,
+            expectedAuthority = expectedAuthority,
+        )
+    }
+
+    override suspend fun putAttachmentUploadBytesBound(
+        priority: DataRequestPriority,
+        upload: AttachmentUploadSessionPut,
+        bytes: ByteArray,
+        expectedAuthority: SlockExpectedAuthBinding,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
+    ): HomeNetworkResponse =
+        executePresignedPut(
+            priority = priority,
+            upload = upload,
+            bodyBytes = bytes,
+            bodyFile = null,
+            expectedAuthority = expectedAuthority,
+            onUploadProgress = onUploadProgress,
+        )
+
+    override suspend fun putAttachmentUploadFileBound(
+        priority: DataRequestPriority,
+        upload: AttachmentUploadSessionPut,
+        file: PlatformFile,
+        expectedAuthority: SlockExpectedAuthBinding,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
+    ): HomeNetworkResponse {
+        // Do not even stat a private file after the captured route authority has gone stale.
+        // [executePresignedPut] repeats this check immediately before and after transport; this
+        // earlier fence keeps local-file resolution in the same authority-bound operation.
+        if (!expectedAuthority.isCurrentForPresignedPut()) {
+            return routeEnvironmentChangedResponse()
+        }
+        val resolved =
+            when (
+                val result =
+                    listOf(
+                        MultipartFile(
+                            name = "file",
+                            fileName = file.fileName,
+                            mimeType = file.mimeType ?: "application/octet-stream",
+                            bytes = file.bytes,
+                            fileRef = file.fileRef,
+                            sizeBytes = file.sizeBytes,
+                        )
+                    ).preparePlatformFileStreams()
+            ) {
+                is ResolvedPlatformFiles.Content -> result.files.single()
+                is ResolvedPlatformFiles.Error -> return result.response
+            }
+        val opener = resolved.streamOpener
+        val ref = resolved.fileRef
+        return if (opener != null && ref != null && resolved.bytes.isEmpty()) {
+            // `executeFile` must receive the length obtained from the resolver's successful stat
+            // operation.  Never fall back to the caller's optional hint (or zero): a stale/missing
+            // hint would let the HTTP engine advertise a length which is not what the opened file
+            // can produce, and some platforms reject that only after bytes have started flowing.
+            val verifiedContentLength =
+                resolved.sizeBytes?.takeIf { it > 0L }
+                    ?: return invalidPlatformFileLengthResponse()
+            executePresignedPut(
+                priority = priority,
+                upload = upload,
+                bodyBytes = null,
+                bodyFile = SlockHttpFileBody(
+                    path = ref,
+                    contentType = upload.headers["Content-Type"].orEmpty(),
+                    contentLength = verifiedContentLength,
+                    openStream = { opener.open() },
+                ),
+                expectedAuthority = expectedAuthority,
+                onUploadProgress = onUploadProgress,
+            )
+        } else {
+            executePresignedPut(
+                priority = priority,
+                upload = upload,
+                bodyBytes = resolved.bytes,
+                bodyFile = null,
+                expectedAuthority = expectedAuthority,
+                onUploadProgress = onUploadProgress,
+            )
+        }
+    }
+
+    override suspend fun prepareAttachmentUploadFileBound(
+        file: PlatformFile,
+        expectedAuthority: SlockExpectedAuthBinding,
+    ): SlockPlatformFilePreparationResult {
+        if (!expectedAuthority.isCurrentForPresignedPut()) {
+            return SlockPlatformFilePreparationResult.Rejected(
+                code = "auth_authority_changed",
+                retryable = true,
+            )
+        }
+        val ref = file.fileRef?.trim()?.takeIf { it.isNotBlank() }
+        if (ref == null) {
+            if (file.bytes.isEmpty()) {
+                return SlockPlatformFilePreparationResult.Rejected(
+                    code = "attachment_size_unavailable",
+                    retryable = false,
+                )
+            }
+            return SlockPlatformFilePreparationResult.Ready(file.bytes.size.toLong())
+        }
+        if (file.bytes.isNotEmpty()) {
+            return SlockPlatformFilePreparationResult.Rejected(
+                code = "attachment_file_input_conflict",
+                retryable = false,
+            )
+        }
+        val resolver = platformFileResolver
+            ?: return SlockPlatformFilePreparationResult.Rejected(
+                code = "file_ref_upload_requires_app_scope_file_resolver",
+                retryable = false,
+            )
+        val stat = try {
+            resolver.statFile(ref)
+        } catch (cancellation: kotlinx.coroutines.CancellationException) {
+            // Cancellation is a caller-owned lifecycle signal, not a local stat failure.  Do
+            // not turn it into a retryable admission error: the coordinator must propagate it
+            // so its NonCancellable compensation path can run for any already-created sibling.
+            throw cancellation
+        } catch (_: Throwable) {
+            return SlockPlatformFilePreparationResult.Rejected(
+                code = "attachment_size_unavailable",
+                retryable = true,
+            )
+        }
+        if (!expectedAuthority.isCurrentForPresignedPut()) {
+            return SlockPlatformFilePreparationResult.Rejected(
+                code = "auth_authority_changed",
+                retryable = true,
+            )
+        }
+        val size = stat.sizeBytes?.takeIf { stat.code in 200..299 && it > 0L }
+            ?: return SlockPlatformFilePreparationResult.Rejected(
+                // Platform resolver codes/messages may contain implementation details or private
+                // file paths. Direct-session admission exposes one canonical local error only.
+                code = "attachment_size_unavailable",
+                retryable = stat.code == 0 || stat.code in 500..599,
+            )
+        return SlockPlatformFilePreparationResult.Ready(size)
+    }
+
     private suspend fun uploadAttachmentsInternal(
         priority: DataRequestPriority,
         channelId: ChannelId,
@@ -279,6 +543,147 @@ internal class SharedSlockNetworkClient(
             expectedAuthority = expectedAuthority,
             onUploadProgress = onProgress
         )
+    }
+
+    /** Execute a presigned object PUT without exposing the bearer URL to diagnostics. */
+    private suspend fun executePresignedPut(
+        priority: DataRequestPriority,
+        upload: AttachmentUploadSessionPut,
+        bodyBytes: ByteArray?,
+        bodyFile: SlockHttpFileBody?,
+        expectedAuthority: SlockExpectedAuthBinding,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
+    ): HomeNetworkResponse {
+        // A presigned URL is intentionally sent without Authorization, but it remains part of
+        // the same captured route operation.  Fence both sides of the I/O against session,
+        // account, server, and environment changes so a URL issued for A cannot be used after a
+        // switch to B (or a runtime environment change).
+        if (!expectedAuthority.isCurrentForPresignedPut()) {
+            return routeEnvironmentChangedResponse()
+        }
+        // A presigned PUT has exactly one admitted body source. An empty in-memory body (or a
+        // file body without a positive resolver-derived length) is never a valid attachment and
+        // must fail before scheduler admission or transport can issue an empty object.
+        if (bodyFile == null && (bodyBytes == null || bodyBytes.isEmpty())) {
+            return invalidPlatformFileLengthResponse()
+        }
+        if (bodyFile != null && bodyFile.contentLength <= 0L) {
+            return invalidPlatformFileLengthResponse()
+        }
+        if (upload.method != "PUT") {
+            return HomeNetworkResponse(
+                code = 400,
+                bodyText = null,
+                errorBodyText = "{\"error\":\"attachment_upload_method_invalid\"}",
+            )
+        }
+        val contractError = runCatching {
+            requireValidAttachmentUploadPresignedUrl(upload.url)
+            requireValidAttachmentUploadPutHeaders(upload.headers)
+        }.exceptionOrNull()
+        if (contractError != null) {
+            return HomeNetworkResponse(
+                code = 400,
+                bodyText = null,
+                errorBodyText = "{\"error\":\"attachment_upload_contract_invalid\"}",
+            )
+        }
+        val key = "attachments/upload-sessions/presigned-put"
+        return try {
+            val schedulerTimeoutMillis =
+                if (bodyFile != null) {
+                    SLOCK_DIRECT_UPLOAD_TOTAL_TIMEOUT_MILLIS + SLOCK_UPLOAD_SCHEDULER_DISPATCH_MARGIN_MILLIS
+                } else {
+                    SLOCK_UPLOAD_TOTAL_TIMEOUT_MILLIS + SLOCK_UPLOAD_SCHEDULER_DISPATCH_MARGIN_MILLIS
+                }
+            requestScheduler.run(
+                priority = priority.toNetworkPriority(),
+                key = key,
+                reason = "PUT",
+                timeoutMillis = schedulerTimeoutMillis,
+            ) {
+                if (!expectedAuthority.isCurrentForPresignedPut()) {
+                    return@run routeEnvironmentChangedResponse()
+                }
+                var openedFileStream: NetworkByteStream? = null
+                val transportBody =
+                    bodyFile?.copy(
+                        openStream = {
+                            bodyFile.openStream().also { openedFileStream = it }
+                        }
+                    )
+                val response =
+                    try {
+                        if (transportBody != null) {
+                            executor.executeFile(
+                                priority = priority.toNetworkPriority(),
+                                url = upload.url,
+                                method = upload.method,
+                                headers = upload.headers,
+                                body = transportBody,
+                                onUploadProgress = onUploadProgress,
+                            )
+                        } else {
+                            executor.executeBytes(
+                                priority = priority.toNetworkPriority(),
+                                url = upload.url,
+                                method = upload.method,
+                                headers = upload.headers,
+                                bodyBytes = bodyBytes!!,
+                                onUploadProgress = onUploadProgress,
+                            )
+                        }
+                    } catch (failure: Throwable) {
+                        // The bottom executor owns normal stream consumption. If it opens the
+                        // stream and then fails during request setup, reclaim that source here;
+                        // NetworkByteStream.cancel is idempotent with bounded stream cleanup.
+                        openedFileStream?.cancel()
+                        throw failure
+                    }
+                // Deliberately log only the stable category; the signed URL is never emitted.
+                // The presigned URL is a bearer capability.  Redact URL-bearing transport error
+                // text before it can reach repository error mapping or a user-facing message.
+                val homeResponse = response.toHomeNetworkResponse(redactSensitive = true)
+                warningLogger(
+                    "endpoint category=attachment_presigned_put method=PUT " +
+                        "bodyKind=${if (bodyFile == null) "bytes" else "file"} " +
+                        "requestBytes=${bodyFile?.contentLength ?: bodyBytes?.size ?: 0} " +
+                        "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
+                        "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
+                        "code=${response.code} result=${homeResponse.networkDiagnosticsResult()}" +
+                        homeResponse.requestIdLogSuffix() + homeResponse.transportDiagnosticsLogSuffix()
+                )
+                if (expectedAuthority.isCurrentForPresignedPut()) {
+                    homeResponse
+                } else {
+                    routeEnvironmentChangedResponse()
+                }
+            }
+        } catch (timeout: SlockRequestTimeoutException) {
+            timeout.toTimeoutNetworkResponse(
+                category = "attachment_presigned_put",
+                path = "attachments/upload-sessions/{uploadId}/put",
+                method = "PUT",
+                requestBytes = bodyFile?.contentLength ?: bodyBytes?.size?.toLong() ?: 0L,
+                durationMs = 0L,
+                safeMessage = "attachment_presigned_upload_timeout",
+                warningLogger = warningLogger,
+            )
+        }
+    }
+
+    private suspend fun SlockExpectedAuthBinding.isCurrentForPresignedPut(): Boolean {
+        val expected = this
+        val environment = expected.environmentId.normalizedEnvironmentId()
+        if (environment.isBlank() || environment != currentBaseUrl().normalizedEnvironmentId()) {
+            return false
+        }
+        val session = sessionStore.readSession() ?: return false
+        return session.matchesExpectedAuthority(
+            expected = expected,
+            effectiveServerId = expected.serverId,
+            effectiveEnvironmentId = environment,
+        ) && session.servers.any { server -> server.id.trim() == expected.serverId.trim() }
     }
 
     override suspend fun uploadAccountAvatar(
@@ -337,6 +742,20 @@ internal class SharedSlockNetworkClient(
     }
 
     private suspend fun List<MultipartFile>.preparePlatformFileStreams(): ResolvedPlatformFiles {
+        // A file reference and an in-memory body are two competing sources for one upload.  Do
+        // not let the presence of bytes make the resolver predicate false and silently choose the
+        // byte array: direct-session create admitted the reference's identity/size, while the PUT
+        // would otherwise send unrelated bytes.  Reject the tuple before any stat, stream open,
+        // scheduler, or transport work.
+        if (any { it.fileRef?.trim()?.isNotBlank() == true && it.bytes.isNotEmpty() }) {
+            return ResolvedPlatformFiles.Error(
+                HomeNetworkResponse(
+                    code = 400,
+                    bodyText = null,
+                    errorBodyText = "{\"error\":\"attachment_file_input_conflict\"}",
+                )
+            )
+        }
         if (!requiresPlatformFileResolver()) return ResolvedPlatformFiles.Content(this)
         val resolver = platformFileResolver
             ?: return ResolvedPlatformFiles.Error(fileRefUnsupportedResponse())
@@ -347,31 +766,26 @@ internal class SharedSlockNetworkClient(
                 resolved += file
                 return@forEach
             }
-            val stat = resolver.statFile(fileRef)
-            if (!stat.success) {
-                return ResolvedPlatformFiles.Error(
-                    HomeNetworkResponse(
-                        code = 400,
-                        bodyText = null,
-                        errorBodyText =
-                            platformFileReadErrorBody(
-                                errorCode = stat.errorCode,
-                                message = stat.message
-                            )
-                    )
-                )
+            val stat =
+                try {
+                    resolver.statFile(fileRef)
+                } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    // Resolver failures are local admission failures.  Do not expose exception
+                    // text (which may contain a private path), open the source, or execute the
+                    // request after a stat failure.
+                    return ResolvedPlatformFiles.Error(invalidPlatformFileLengthResponse())
+                }
+            if (stat.code !in 200..299) {
+                // Resolver diagnostics may contain private paths or platform-specific codes.
+                // Direct-session admission has one stable local failure contract; do not let
+                // those details cross the network/data boundary.
+                return ResolvedPlatformFiles.Error(invalidPlatformFileLengthResponse())
             }
-            val actualSizeBytes = stat.sizeBytes
+            val actualSizeBytes = stat.sizeBytes?.takeIf { it > 0L }
                 ?: return ResolvedPlatformFiles.Error(
-                    HomeNetworkResponse(
-                        code = 400,
-                        bodyText = null,
-                        errorBodyText =
-                            platformFileReadErrorBody(
-                                errorCode = "attachment_size_unavailable",
-                                message = "Attachment size unavailable"
-                            )
-                    )
+                    invalidPlatformFileLengthResponse()
                 )
             resolved +=
                 file.copy(
@@ -802,13 +1216,24 @@ private fun SlockRequestTimeoutException.toTimeoutAuthNetworkResponse(
     return AuthNetworkResponse(code = 0, bodyText = null, errorBodyText = errorBody)
 }
 
-private fun SlockHttpExecutorResponse.toHomeNetworkResponse(): HomeNetworkResponse =
+private fun SlockHttpExecutorResponse.toHomeNetworkResponse(
+    redactSensitive: Boolean = false
+): HomeNetworkResponse =
     HomeNetworkResponse(
         code = code,
-        bodyText = bodyText,
-        errorBodyText = errorBodyText,
-        transportDiagnostics = transportDiagnostics,
-        responseHeaders = responseHeaders
+        bodyText = if (redactSensitive) null else bodyText,
+        errorBodyText =
+            if (redactSensitive) {
+                when {
+                    code in 200..299 -> null
+                    code == 0 -> "attachment_presigned_upload_transport_failed"
+                    else -> "attachment_presigned_upload_http_$code"
+                }
+            } else {
+                errorBodyText
+            },
+        transportDiagnostics = transportDiagnostics?.let { text -> if (redactSensitive) text.redactPresignedUrlText() else text },
+        responseHeaders = if (redactSensitive) emptyMap() else responseHeaders
     )
 
 private fun SlockRequestTimeoutException.toTimeoutNetworkResponse(
@@ -817,10 +1242,11 @@ private fun SlockRequestTimeoutException.toTimeoutNetworkResponse(
     method: String,
     requestBytes: Long,
     durationMs: Long,
+    safeMessage: String = message.orEmpty(),
     warningLogger: (String) -> Unit
 ): HomeNetworkResponse {
     val errorBody =
-        """{"error":"network_timeout","message":"${message.orEmpty().jsonString()}"}"""
+        """{"error":"network_timeout","message":"${safeMessage.jsonString()}"}"""
     warningLogger(
         "endpoint category=$category path=$path method=$method " +
             "requestBytes=$requestBytes responseBytes=0 " +
@@ -855,6 +1281,20 @@ private fun fileRefUnsupportedResponse(): HomeNetworkResponse =
         code = 501,
         bodyText = null,
         errorBodyText = """{"error":"file_ref_upload_requires_app_scope_file_resolver"}"""
+    )
+
+private fun invalidPlatformFileLengthResponse(): HomeNetworkResponse =
+    HomeNetworkResponse(
+        code = 400,
+        bodyText = null,
+        errorBodyText = """{"error":"attachment_size_unavailable"}"""
+    )
+
+private fun invalidAttachmentUploadSessionIdResponse(): HomeNetworkResponse =
+    HomeNetworkResponse(
+        code = 400,
+        bodyText = null,
+        errorBodyText = """{"error":"attachment_upload_session_invalid_request"}"""
     )
 
 private sealed interface ResolvedPlatformFiles {

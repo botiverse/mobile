@@ -150,7 +150,11 @@ class RealInboxRepository(
         return executeInboxLike(
             emptyReason = EmptyReason.NoInboxItems,
             block = { networkClient.inbox(DataRequestPriority.Visible, filter, limit, offset, serverId) },
-            emptyWhen = { it.items.isEmpty() },
+            // A defensive attention-filter projection may remove every row in
+            // a malformed/lagging page while later pages still exist. Keep
+            // that page Content so the Activity store can advance the raw
+            // offset instead of terminating pagination early.
+            emptyWhen = { it.items.isEmpty() && !it.hasMore },
             errorTextDecoder = HomeNetworkResponse::inboxRouteErrorTextOrNull,
             source = "inbox",
             mapOnDefault = false,
@@ -172,8 +176,14 @@ class RealInboxRepository(
                     totalCount = parsed.totalCount,
                     totalUnreadCount = parsed.totalUnreadCount,
                     hasMore = parsed.hasMore,
-                    nextOffset = offset + parsed.items.size
-                )
+                    // Keep page advancement based on raw server rows. The
+                    // client may project every row out of an attention filter
+                    // when a lagging/older server includes an unfollowed
+                    // thread; advancing by projected size would repeat the
+                    // same page forever.
+                    nextOffset = offset + parsed.rawItemCount
+                ).projectActivityFilter(filter)
+                    .copy(nextOffset = offset + parsed.rawItemCount)
             }
         )
     }

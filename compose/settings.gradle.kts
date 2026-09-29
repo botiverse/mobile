@@ -1,4 +1,11 @@
 pluginManagement {
+    // D8 8.13.19 (bundled by AGP 8.13.2) truncates a high argument register
+    // in MembersAgentProfileTab. Keep AGP; use the last verified stable dexer.
+    buildscript {
+        repositories { google(); mavenCentral() }
+        dependencies { classpath("com.android.tools:r8:8.10.24") }
+    }
+
     fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftArtifactsKuiklyBase() {
         maven {
             name = "RaftArtifactsKuiklyBase"
@@ -89,6 +96,7 @@ dependencyResolutionManagement {
                 includeModule("com.tencent.kuiklybase", "resource-generator")
                 includeModuleByRegex("com\\.tencent\\.kuiklybase", "resource-core.*")
                 includeModuleByRegex("build\\.raft\\.kuiklybase", "datetime.*")
+                includeModuleByRegex("build\\.raft\\.mermaid", ".*")
             }
         }
     }

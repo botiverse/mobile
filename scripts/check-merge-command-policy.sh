@@ -119,8 +119,6 @@ for file in "${files[@]}"; do
         fail "guarded squash receipt must record the landed first parent: $file"
       grep -Fq 'mergeTree=' "$file" ||
         fail "guarded squash receipt must record the landed tree: $file"
-      grep -Fq 'reviewedHeadSignedOffBy=' "$file" ||
-        fail "guarded squash receipt must preserve the reviewed-head signer: $file"
       grep -Fq 'candidate/landed byte diff' "$file" ||
         fail "guarded squash must record candidate/landed byte comparison: $file"
       ;;

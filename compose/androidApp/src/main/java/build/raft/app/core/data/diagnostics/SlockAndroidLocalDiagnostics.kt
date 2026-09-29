@@ -180,6 +180,13 @@ object SlockAndroidLocalDiagnostics {
                 file.inputStream().buffered().use { input -> input.copyTo(zip) }
                 zip.closeEntry()
             }
+            AndroidHistoricalProcessExitDiagnostics.traceFiles(appContext).forEach { file ->
+                val entryName =
+                    uniqueDiagnosticsZipEntryName("process_exit_traces/${file.name}", seenNames)
+                zip.putNextEntry(ZipEntry(entryName))
+                file.inputStream().buffered().use { input -> input.copyTo(zip) }
+                zip.closeEntry()
+            }
         }
         recordLog(
             "info",

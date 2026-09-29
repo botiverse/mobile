@@ -12,6 +12,8 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 internal const val AuthAuthorityChangedMessage = "auth_authority_changed"
 
@@ -1090,11 +1092,15 @@ class SharedAuthDataSource(
         return SharedAuthResult.Success(updated)
     }
 
-    suspend fun selectServer(serverId: String): SharedAuthResult<StoredAuthSession> {
+    suspend fun selectServer(
+        serverId: String,
+        expectedSelectedServerId: String? = null,
+    ): SharedAuthResult<StoredAuthSession> {
         val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
         return selectStoredAuthServer(
             sessionStore = sessionStore,
             expectedSession = session,
+            expectedSelectedServerId = expectedSelectedServerId,
             serverId = serverId,
             serverSelectionMemory = serverSelectionMemory,
         )
@@ -1468,27 +1474,53 @@ class SharedAuthDataSource(
             )
         }
 
-    suspend fun logout(): SharedAuthResult<Unit> {
-        val session = sessionStore.readSession()
-        val avatarRetirement = captureAvatarOwnerRetirement(session)
-        if (session != null) {
-            runCatchingPreservingCancellation {
-                SlockPushRegistrationLifecycle.unbindBeforeLogout()
-            }.onFailure { throwable ->
-                diagnosticsLogger(
-                    "push_registration_unbind_result result=failure stage=logout " +
-                        "errorType=${throwable.safeDiagnosticsType()}"
-                )
+    suspend fun logout(): SharedAuthResult<Unit> =
+        withContext(NonCancellable) {
+            diagnosticsLogger("auth_logout_enter")
+            val session = sessionStore.readSession()
+            val avatarRetirement = captureAvatarOwnerRetirement(session)
+            var serverRevocation: String = "skipped_no_session"
+            if (session != null) {
+                runCatchingPreservingCancellation {
+                    SlockPushRegistrationLifecycle.unbindBeforeLogout()
+                }.onFailure { throwable ->
+                    diagnosticsLogger(
+                        "push_registration_unbind_result result=failure stage=logout " +
+                            "errorType=${throwable.safeDiagnosticsType()}"
+                    )
+                }
+                serverRevocation =
+                    when (
+                        val apiResult =
+                            runCatchingPreservingCancellation {
+                                api.logout(session.refreshToken)
+                            }.getOrElse { throwable ->
+                                diagnosticsLogger(
+                                    "auth_logout_api_result result=error " +
+                                        "errorType=${throwable.safeDiagnosticsType()}"
+                                )
+                                null
+                            }
+                    ) {
+                        is AuthApiResult.Success -> {
+                            diagnosticsLogger("auth_logout_api_result result=success")
+                            "success"
+                        }
+                        is AuthApiResult.Failure -> {
+                            diagnosticsLogger(
+                                "auth_logout_api_result result=failure code=${apiResult.code}"
+                            )
+                            "failure_code_${apiResult.code}"
+                        }
+                        null -> "failure_exception"
+                    }
+                session.rememberSelectedServer(serverSelectionMemory)
             }
-            runCatchingPreservingCancellation {
-                api.logout(session.refreshToken)
-            }
-            session.rememberSelectedServer(serverSelectionMemory)
+            sessionStore.clearSession(reason = "logout", source = "auth_data_source_logout")
+            retireCapturedAvatarOwners(avatarRetirement, source = "logout")
+            diagnosticsLogger("auth_logout_cleared serverRevocation=$serverRevocation")
+            SharedAuthResult.Success(Unit)
         }
-        sessionStore.clearSession(reason = "logout", source = "auth_data_source_logout")
-        retireCapturedAvatarOwners(avatarRetirement, source = "logout")
-        return SharedAuthResult.Success(Unit)
-    }
 
     private suspend fun clearSessionAndRetireAvatarOwners(reason: String, source: String) {
         val capture = captureAvatarOwnerRetirement(sessionStore.readSession())
@@ -1616,6 +1648,7 @@ class SharedAuthDataSource(
 internal suspend fun selectStoredAuthServer(
     sessionStore: SlockAuthSessionStore,
     expectedSession: StoredAuthSession,
+    expectedSelectedServerId: String? = null,
     serverId: String,
     serverSelectionMemory: SlockAuthServerSelectionMemory? = null,
 ): SharedAuthResult<StoredAuthSession> {
@@ -1630,6 +1663,7 @@ internal suspend fun selectStoredAuthServer(
             expectedAccountId = expectedSession.user.id,
             expectedAccessToken = expectedSession.accessToken,
             expectedRefreshToken = expectedSession.refreshToken,
+            expectedSelectedServerId = expectedSelectedServerId,
             serverId = serverId,
         ) ?: return SharedAuthResult.Unauthenticated
     updated.rememberSelectedServer(serverSelectionMemory)

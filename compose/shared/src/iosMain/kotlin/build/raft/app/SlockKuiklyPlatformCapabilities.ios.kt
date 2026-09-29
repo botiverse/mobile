@@ -59,7 +59,7 @@ internal actual fun slockPlatformSupportsPushPreviewPrivacySetting(): Boolean = 
 
 internal actual fun slockPlatformSupportsSaveImageToPhotos(): Boolean = true
 
-internal actual fun slockPlatformSupportsPublicAttachmentDownloadReadback(): Boolean = false
+internal actual fun slockPlatformSupportsPublicAttachmentDownloadReadback(): Boolean = true
 
 internal actual fun slockPlatformSupportsPrivateAttachmentExport(): Boolean = false
 
@@ -98,3 +98,7 @@ internal actual fun slockFirstComposedCharacterEnd(text: String): Int? {
 internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 50L * 1024L * 1024L
 
 internal actual fun slockSlugSlashCenteringOffsetDp(): Float = 0f
+
+// Interactive edge-back claims roughly the first 20-24pt from the left edge;
+// TabPager must not compete there (task #232, Jony's iOS boundary).
+internal actual fun slockPlatformTabPagerStartEdgeInsetDp(): Float = 24f

@@ -29,7 +29,7 @@ import com.tencent.kuikly.compose.ui.unit.sp
 
 /**
  * KMP-side invite-human dialog. Mirrors React
- * `third_party/slock-source/packages/web/src/components/member/InviteHumanDialog.tsx`
+ * external `<slock-source>/packages/web/src/components/member/InviteHumanDialog.tsx`
  * (task #43 spec).
  *
  * Flow:

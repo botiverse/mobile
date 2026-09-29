@@ -8,6 +8,7 @@ import build.raft.app.data.ActivityUpdateTrackingState
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
+import build.raft.app.data.withActivityFollowStateProjection
 import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
 import build.raft.app.data.PendingMentionAction
 import build.raft.app.data.SharedActivityState
@@ -15,6 +16,7 @@ import build.raft.app.data.ServerFeatureFlagSnapshot
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.mergedSharedConversationDirectoryState
+import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedActivitySenderProfile
 import build.raft.app.data.SharedActivityPresentationCheckpoint
@@ -42,6 +44,7 @@ import build.raft.app.model.threadIdentity
 import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
@@ -380,6 +383,43 @@ class SharedInboxPanelTest {
     fun activityPageDidAppearRefreshesOnlyAfterInitialAppearance() {
         assertEquals(false, activityPageDidAppearShouldRefresh(0))
         assertEquals(true, activityPageDidAppearShouldRefresh(1))
+    }
+
+    @Test
+    fun activityAppLifecycleResumeRefreshesOnlyOnVisibleWireEvents() {
+        // Android publishes "resume", iOS publishes "show" (task #383).
+        assertEquals(
+            true,
+            activityAppLifecycleResumeShouldRefresh(
+                action = SlockRealtimeNotifyContract.ActionAppLifecycle,
+                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleVisibleResume
+            )
+        )
+        assertEquals(
+            true,
+            activityAppLifecycleResumeShouldRefresh(
+                action = SlockRealtimeNotifyContract.ActionAppLifecycle,
+                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleVisibleShow
+            )
+        )
+        assertEquals(
+            false,
+            activityAppLifecycleResumeShouldRefresh(
+                action = SlockRealtimeNotifyContract.ActionAppLifecycle,
+                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleHidden
+            )
+        )
+        assertEquals(
+            false,
+            activityAppLifecycleResumeShouldRefresh(
+                action = "realtime",
+                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleVisibleResume
+            )
+        )
+        assertEquals(
+            false,
+            activityAppLifecycleResumeShouldRefresh(action = "", lifecycleEvent = "")
+        )
     }
 
     @Test
@@ -1420,6 +1460,85 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityDmParentThreadRendersPeerIdentityLines() {
+        // task #399 飞书 shape: a thread hosted in a DM shows the peer's
+        // @-identity in the channel tag and prefixes the root preview with
+        // "@peer:", while the second line stays "sender: latest reply".
+        val item =
+            InboxItem(
+                key = "thread:dm-thread-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("dm-thread-1"),
+                channelName = "thread-stream",
+                parentChannelId = ChannelId("dm-1"),
+                // channels.name is not a reliable peer projection for DMs;
+                // the hydrated Home DM list name wins.
+                parentChannelName = "raw-dm-name",
+                parentChannelKind = ConversationKind.DirectMessage,
+                parentMessageId = MessageId("message-1"),
+                parentMessagePreview = "DM root preview",
+                latestActivityPreview = "Latest reply",
+                latestActivitySenderName = "Artin",
+                replyCount = 2
+            )
+        val dmPeerNames = mapOf("dm-1" to "Jiacheng")
+
+        assertEquals("@Jiacheng", item.channelLabel(dmPeerNames))
+        assertEquals("@Jiacheng: DM root preview", item.primaryActivityPreviewText(dmPeerNames = dmPeerNames).fullText)
+        assertEquals("@Jiacheng", item.primaryActivityPreviewText(dmPeerNames = dmPeerNames).senderName)
+        assertEquals("Artin: Latest reply", item.secondaryActivityPreviewText()?.fullText)
+        assertEquals("Jiacheng", item.toConversationSummary(dmPeerNames).name)
+    }
+
+    @Test
+    fun activityDmParentThreadFallsBackToRawParentNameWithoutPeerMap() {
+        // Before the DM list hydrate lands (or when the DM is absent from the
+        // Home snapshot) the row still shows the @-identity shape; it only
+        // loses the peer-resolution quality, never the DM-vs-channel marker.
+        val item =
+            InboxItem(
+                key = "thread:dm-thread-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("dm-thread-1"),
+                channelName = "thread-stream",
+                parentChannelId = ChannelId("dm-1"),
+                parentChannelName = "raw-dm-name",
+                parentChannelKind = ConversationKind.DirectMessage,
+                parentMessageId = MessageId("message-1"),
+                parentMessagePreview = "DM root preview"
+            )
+
+        assertEquals("@raw-dm-name", item.channelLabel())
+        assertEquals("@raw-dm-name: DM root preview", item.primaryActivityPreviewText().fullText)
+        assertEquals("raw-dm-name", item.toConversationSummary().name)
+    }
+
+    @Test
+    fun activityChannelParentThreadKeepsHashTagAndBareRootPreview() {
+        val item =
+            InboxItem(
+                key = "thread:activity-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-channel-1"),
+                channelName = "thread-stream",
+                parentChannelId = ChannelId("channel-1"),
+                parentChannelName = "general",
+                parentChannelKind = ConversationKind.Channel,
+                parentMessageId = MessageId("message-1"),
+                parentMessagePreview = "Parent message preview",
+                latestActivityPreview = "Latest reply",
+                latestActivitySenderName = "Artin",
+                replyCount = 2
+            )
+        val dmPeerNames = mapOf("channel-1" to "wrong-peer")
+
+        assertEquals("#general", item.channelLabel(dmPeerNames))
+        assertEquals("Parent message preview", item.primaryActivityPreviewText(dmPeerNames = dmPeerNames).fullText)
+        assertEquals(null, item.primaryActivityPreviewText(dmPeerNames = dmPeerNames).senderName)
+        assertEquals("Artin: Latest reply", item.secondaryActivityPreviewText()?.fullText)
+    }
+
+    @Test
     fun activityFooterSlotsMatchReactOrderForThreadRows() {
         val item =
             InboxItem(
@@ -1443,6 +1562,49 @@ class SharedInboxPanelTest {
             ),
             item.activityFooterSlots()
         )
+    }
+
+    @Test
+    fun unfollowedThreadGetsExactlyOneStatusSlotAndNoOrdinaryAttentionSlots() {
+        val item =
+            InboxItem(
+                key = "thread:unfollowed",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-unfollowed"),
+                channelName = "thread-stream",
+                isFollowing = false,
+                replyCount = 4,
+                unreadCount = 9,
+                hasMention = true,
+                firstUnreadMessageId = MessageId("should-clear")
+            ).withActivityFollowStateProjection()
+
+        assertEquals(0, item.unreadCount)
+        assertFalse(item.hasMention)
+        assertEquals(null, item.firstUnreadMessageId)
+        assertEquals(listOf(SharedActivityFooterSlot.Replies, SharedActivityFooterSlot.Unfollowed), item.activityFooterSlots())
+        assertEquals(
+            SharedActivityFooterBadgeVisual(SlockBrutalTone.Stone, SlockLucideIconName.BellOff),
+            SharedActivityFooterSlot.Unfollowed.badgeVisual()
+        )
+        assertFalse(item.activityShowsDoneAction())
+        assertTrue(item.copy(isFollowing = true).activityShowsDoneAction())
+    }
+
+    @Test
+    fun activityContextMenuUsesOnlyFollowForUnfollowedAndOnlyUnfollowForFollowed() {
+        val followed =
+            InboxItem(
+                key = "thread:followed",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-followed"),
+                channelName = "thread",
+                isFollowing = true
+            )
+        val unfollowed = followed.copy(key = "thread:unfollowed", isFollowing = false)
+
+        assertEquals(listOf("toggle-read", "done", "unfollow-thread"), activityContextMenuActionIds(followed))
+        assertEquals(listOf("follow-thread"), activityContextMenuActionIds(unfollowed))
     }
 
     @Test
@@ -2049,9 +2211,14 @@ class SharedInboxPanelTest {
         assertEquals(KuiklyThreadSurfaceKind.Channel, request.conversationIdentity.thread?.parentSurfaceKind)
         assertEquals(null, request.anchorMessageId)
 
+        // task #304/#307 (cae1eb2e4): with no directory entry the parent kind is
+        // unknown, but the source tuple still opens the reply thread rather than
+        // parking it as Pending; the unknown kind stays null on the identity.
         val unresolved =
             item.toHomeMessageOpenRequest(serverId = "", conversationDirectory = SharedConversationDirectoryState())
-        assertTrue(unresolved is ConversationOpenResolution.Pending)
+        val opened = assertIs<ConversationOpenResolution.Resolved>(unresolved, unresolved.toString())
+        assertEquals(ConversationKind.Thread, opened.request.conversationIdentity.kind)
+        assertEquals(null, opened.request.conversationIdentity.thread?.parentSurfaceKind)
     }
 
     @Test
@@ -2133,6 +2300,50 @@ class SharedInboxPanelTest {
             )
         // Critical: parentMessageId must NOT appear in the anchor chain.
         assertEquals(null, noneButParent.resolveInboxAnchorMessageId())
+    }
+
+    @Test
+    fun projectActivityStateForFilterPageReturnsActiveStateWhenFilterMatches() {
+        val snapshot = InboxSnapshot(ServerSummary(ServerId("srv-1"), "Raft"), items = listOf(replyActivityItem("1")))
+        val state = SharedActivityState(selectedFilter = InboxFilter.All, snapshot = snapshot, loaded = true)
+        val result = projectActivityStateForFilterPage(state, InboxFilter.All)
+        assertEquals(state, result)
+        assertEquals(snapshot, result.snapshot)
+        assertEquals(true, result.loaded)
+    }
+
+    @Test
+    fun projectActivityStateForFilterPageProjectsCachedSnapshotWhenDifferentFilter() {
+        val allSnapshot = InboxSnapshot(ServerSummary(ServerId("srv-1"), "Raft"), items = listOf(replyActivityItem("1")))
+        val unreadSnapshot = InboxSnapshot(ServerSummary(ServerId("srv-1"), "Raft"), items = listOf(replyActivityItem("2")))
+        val state = SharedActivityState(
+            selectedFilter = InboxFilter.All,
+            snapshot = allSnapshot,
+            filterSnapshots = mapOf(
+                InboxFilter.All to allSnapshot,
+                InboxFilter.Unread to unreadSnapshot
+            )
+        )
+        val result = projectActivityStateForFilterPage(state, InboxFilter.Unread)
+        assertEquals(InboxFilter.Unread, result.selectedFilter)
+        assertEquals(unreadSnapshot, result.snapshot)
+        assertEquals(true, result.loaded)
+        assertEquals(false, result.loading)
+    }
+
+    @Test
+    fun projectActivityStateForFilterPageReturnsLoadingStateWhenNoCachedSnapshot() {
+        val allSnapshot = InboxSnapshot(ServerSummary(ServerId("srv-1"), "Raft"), items = listOf(replyActivityItem("1")))
+        val state = SharedActivityState(
+            selectedFilter = InboxFilter.All,
+            snapshot = allSnapshot,
+            filterSnapshots = mapOf(InboxFilter.All to allSnapshot)
+        )
+        val result = projectActivityStateForFilterPage(state, InboxFilter.Mentions)
+        assertEquals(InboxFilter.Mentions, result.selectedFilter)
+        assertEquals(null, result.snapshot)
+        assertEquals(false, result.loaded)
+        assertEquals(true, result.loading)
     }
 
     internal fun activityItem(

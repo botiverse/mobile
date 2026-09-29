@@ -248,6 +248,22 @@ internal class SlockAvatarMountedSession(
             snapshotForLocked(key)
         }
 
+    fun snapshotForSubject(
+        subject: SlockAvatarCacheSubject,
+        content: SlockAvatarContentIdentity
+    ): SlockAvatarMountedSnapshot? =
+        synchronized(lock) {
+            val entry = metadata.entries.firstOrNull {
+                it.key.subject == subject && it.value.key.content == content
+            }
+            val key = entry?.value?.key
+                ?: mounts.values.firstOrNull {
+                    it.token.key.subject == subject && it.token.key.content == content
+                }?.token?.key
+                ?: return@synchronized null
+            snapshotForLocked(key)
+        }
+
     /**
      * Seeds an exact durable commit after process restart. It may only initialize an untouched
      * current mount: an active flight or any in-memory commit wins and cannot be overwritten by a
@@ -279,6 +295,38 @@ internal class SlockAvatarMountedSession(
                             null
                         },
                     modelRevision = durable.modelRevision
+                )
+            true
+        }
+
+    /**
+     * task #343: cold-start prewarm. Seeds exact durable authority into a slot only when the slot
+     * is completely untouched in this process (no metadata, flight, or mount), atomically, so a
+     * concurrent live mount always wins and prewarm can never clear or displace it. Respects owner
+     * and subject terminal epochs the same way a fresh mount would.
+     */
+    fun seedIdle(
+        key: SlockAvatarCacheKey,
+        commitIdentity: SlockAvatarCommitIdentity,
+        validators: SlockAvatarValidators?,
+        modelRevision: Long
+    ): Boolean =
+        synchronized(lock) {
+            if (modelRevision <= 0L) return@synchronized false
+            val slot = key.mountedSlot()
+            if (
+                metadata.containsKey(slot) ||
+                    activeFlights.containsKey(slot) ||
+                    mounts.values.any { it.token.key.mountedSlot() == slot }
+            ) {
+                return@synchronized false
+            }
+            metadata[slot] =
+                SlockAvatarMountedMetadata(
+                    key = key,
+                    commitIdentity = commitIdentity,
+                    validators = validators,
+                    modelRevision = modelRevision
                 )
             true
         }
@@ -358,6 +406,22 @@ internal class SlockAvatarMountedSession(
                 active.participantMountIds.any { mountId ->
                     mounts[mountId]?.token?.let(::isCurrentLocked) == true
                 }
+        }
+
+    /**
+     * Removes a dead flight from the slot when it is still the registered one, so a later attempt
+     * starts a fresh request generation instead of joining a generation nobody will resolve. A
+     * flight whose transport was cancelled by its caller would otherwise stay parked in
+     * activeFlights forever (cancellation never reaches resolve), poisoning every later refresh:
+     * the next attempt would join the dead flight, complete, and be rejected as stale.
+     */
+    fun abandonFlight(flight: SlockAvatarMountedFlight): Boolean =
+        synchronized(lock) {
+            val slot = flight.key.mountedSlot()
+            val active = activeFlights[slot] ?: return@synchronized false
+            if (active.flight !== flight) return@synchronized false
+            activeFlights.remove(slot)
+            true
         }
 
     fun resolve(

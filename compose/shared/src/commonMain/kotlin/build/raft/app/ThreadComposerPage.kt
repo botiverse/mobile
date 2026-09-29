@@ -359,6 +359,8 @@ private val threadComposerContentPayloadKeys =
         "placeholder",
         "enabled",
         "attachmentActionsEnabled",
+        "originalImageOptionEnabled",
+        "originalImage",
         "showAsTaskToggle",
         "composerMode",
         "statusLabel",
@@ -385,6 +387,13 @@ internal data class KuiklyThreadComposerPayload(
     val placeholder: String = "Message",
     val enabled: Boolean = true,
     val attachmentActionsEnabled: Boolean = true,
+    /** Whether this host surface owns the image policy checkbox. */
+    val originalImageOptionEnabled: Boolean = true,
+    /**
+     * Session-only preference for image attachments.  The draft persistence slice deliberately
+     * does not serialize this value; a new composer starts with compressed images by default.
+     */
+    val originalImage: Boolean = false,
     val showAsTaskToggle: Boolean = true,
     val composerMode: String = "idle",
     val statusLabel: String? = null,
@@ -471,6 +480,8 @@ internal data class ThreadComposerUiState(
     val placeholder: String = "Message",
     val enabled: Boolean = true,
     val attachmentActionsEnabled: Boolean = true,
+    val originalImageOptionEnabled: Boolean = true,
+    val originalImage: Boolean = false,
     val composerMode: String = "idle",
     val statusLabel: String? = null,
     val pendingAttachments: List<KuiklyPendingAttachmentItem> = emptyList(),
@@ -1747,6 +1758,8 @@ internal fun KuiklyThreadComposerPayload.toThreadComposerUiState(): ThreadCompos
         placeholder = placeholder,
         enabled = enabled,
         attachmentActionsEnabled = attachmentActionsEnabled,
+        originalImageOptionEnabled = originalImageOptionEnabled,
+        originalImage = originalImage,
         composerMode = composerMode,
         statusLabel = statusLabel,
         pendingAttachments = pendingAttachments,
@@ -1936,7 +1949,12 @@ internal fun ThreadComposerContent(
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
-    initialMentionActionDetailsVisible: Boolean = false
+    initialMentionActionDetailsVisible: Boolean = false,
+    /**
+     * A4 adoption (task #18): lets the host page share the native-editing reader bound to this
+     * composer's editor so a migration can read the latest value without a second UIKit walk.
+     */
+    externalNativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
 ) {
     val editorOwner = remember(state.instanceId) {
         ThreadComposerControlledEditorOwner(state.seedText, state.seedAsTask)
@@ -1973,6 +1991,7 @@ internal fun ThreadComposerContent(
         onInsertMentionConsumed = onInsertMentionConsumed,
         onSuggestionDemandChanged = onSuggestionDemandChanged,
         initialMentionActionDetailsVisible = initialMentionActionDetailsVisible,
+        externalNativeEditingStateReader = externalNativeEditingStateReader,
     )
 }
 
@@ -2003,6 +2022,7 @@ internal fun ThreadComposerContentLeaf(
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
     initialMentionActionDetailsVisible: Boolean = false,
+    externalNativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
 ) {
     // #192 trace scope extension: wrap the full composer render. IME-lift / state
     // updates / suggestion list filtering are all under this; per-phase breakdown
@@ -2011,8 +2031,9 @@ internal fun ThreadComposerContentLeaf(
     val fieldValue = editorValue
     val text = fieldValue.text
     val asTask = editorAsTask
-    val nativeEditingStateReader =
+    val ownedNativeEditingStateReader =
         remember(state.instanceId, editorSessionId) { SlockTextFieldNativeEditingStateReader() }
+    val nativeEditingStateReader = externalNativeEditingStateReader ?: ownedNativeEditingStateReader
     val sendSnapshotGate =
         remember(state.instanceId, editorSessionId) { ThreadComposerSendSnapshotGate() }
     val submittedEchoFence = remember(state.instanceId) { ThreadComposerSubmittedEchoFence() }
@@ -2823,6 +2844,10 @@ internal fun ThreadComposerContentLeaf(
                             horizontalArrangement = Arrangement.spacedBy(ThreadComposerLeftActionGroupSpacing)
                         ) {
                             if (state.attachmentActionsEnabled) {
+                                // Gallery / camera / file, in that order (artin, task #1096). Camera
+                                // used to exist only as this button's long-press, which meant nobody
+                                // found it; the long-press stays so existing muscle memory keeps
+                                // working, and the dedicated button is what makes it discoverable.
                                 ComposerIconButton(
                                     icon = SlockLucideIconName.ImagePlus,
                                     enabled = composerEnabled,
@@ -2835,9 +2860,31 @@ internal fun ThreadComposerContentLeaf(
                                         onEvent(threadComposerImageAction(longPress = false), null, null, null)
                                     }
                                 )
-                                ComposerIconButton(SlockLucideIconName.Paperclip, composerEnabled) {
-                                    onEvent("attachFile", null, null, null)
-                                }
+                                ComposerIconButton(
+                                    icon = SlockLucideIconName.Camera,
+                                    enabled = composerEnabled,
+                                    contentDescription = stringResource(MR.strings.composer_take_photo),
+                                    onClick = {
+                                        // longPress = true is what makes this the camera: it emits
+                                        // captureImage, so capture keeps its existing confirm/cancel
+                                        // editor step and nothing reaches the pending tray until the
+                                        // user confirms. Flipping it to false silently turns this
+                                        // button into a second gallery entry.
+                                        //
+                                        // No test covers this call site. commonTest cannot drive
+                                        // Compose and the composer has no visual host, so nothing in
+                                        // the repo can reach ComposerIconButton. The helper's mapping
+                                        // is tested (ThreadPayloadTest), but the argument passed here
+                                        // is not -- do not read that test as guarding this line.
+                                        onEvent(threadComposerImageAction(longPress = true), null, null, null)
+                                    }
+                                )
+                                ComposerIconButton(
+                                    icon = SlockLucideIconName.Paperclip,
+                                    enabled = composerEnabled,
+                                    contentDescription = stringResource(MR.strings.composer_attach_file),
+                                    onClick = { onEvent("attachFile", null, null, null) }
+                                )
                             }
                         }
                         Row(

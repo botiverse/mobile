@@ -145,8 +145,11 @@ case "$cmd" in
               zh-CN) locale_json=',"appLocale":"zh-Hans","stringDescLocale":"zh-CN"' ;;
               ja) locale_json=',"appLocale":"ja","stringDescLocale":"ja"' ;;
             esac
-            printf '{"caseId":"%s","capturedAt":"%s"%s,"captureIdentity":{"attempt":%s,"generation":"%s","bootId":"11111111-2222-3333-4444-555555555555","capturedAtEpochMs":%s,"capturedAtMonotonicNs":%s},"diagnostics":{"targetPackage":"build.raft.app.connectedtest","processId":%s,"processUid":%s}}\n' \
-              "$case_id" "$captured_ms" "$locale_json" "$attempt" "$generation" "$captured_ms" "$captured_mono" "$pid" "$uid" \
+            ready_required="${FAKE_READY_TOKEN_REQUIRED:-false}"
+            ready_observed="${FAKE_READY_TOKEN_OBSERVED:-false}"
+            stable_frames="${FAKE_STABLE_FRAME_COUNT:-1}"
+            printf '{"caseId":"%s","capturedAt":"%s"%s,"capture":{"readyTokenRequired":%s,"readyTokenObserved":%s,"stableFrameCount":%s},"captureIdentity":{"attempt":%s,"generation":"%s","bootId":"11111111-2222-3333-4444-555555555555","capturedAtEpochMs":%s,"capturedAtMonotonicNs":%s},"diagnostics":{"targetPackage":"build.raft.app.connectedtest","processId":%s,"processUid":%s}}\n' \
+              "$case_id" "$captured_ms" "$locale_json" "$ready_required" "$ready_observed" "$stable_frames" "$attempt" "$generation" "$captured_ms" "$captured_mono" "$pid" "$uid" \
               > "$state/device-results/${case_id}.metadata.json"
           fi
           echo "OK (1 test)"
@@ -364,6 +367,25 @@ assert receipt["execution"]["started_count"] == 2, receipt
 assert receipt["execution"]["ended_count"] == 2, receipt
 assert receipt["execution"]["missing_artifact_cases"] == ["components.settings.appearance.page"], receipt
 assert "case_artifacts_incomplete" in receipt["failure_reasons"], receipt
+PY
+
+rm -rf "$FAKE_ADB_STATE"
+mkdir -p "$FAKE_ADB_STATE/device-results"
+env "${COMMON_ENV[@]}" \
+  FAKE_READY_TOKEN_REQUIRED=true \
+  FAKE_READY_TOKEN_OBSERVED=false \
+  FAKE_STABLE_FRAME_COUNT=1 \
+  "$ROOT/scripts/run_android_visual_capture.sh" \
+  --app-apk "$TMP/app.apk" \
+  --test-apk "$TMP/test.apk" \
+  --method-filter "$SINGLE_FILTER" \
+  --output-dir "$TMP/readiness-failure" \
+  --defer-verdict
+python3 - "$TMP/readiness-failure/android-visual-runner-receipt.json" <<'PY'
+import json, sys
+receipt = json.load(open(sys.argv[1], encoding="utf-8"))
+assert receipt["harness_status"] == "harness_incomplete", receipt
+assert "readiness_oracle_failed" in receipt["failure_reasons"], receipt
 PY
 
 rm -rf "$FAKE_ADB_STATE"

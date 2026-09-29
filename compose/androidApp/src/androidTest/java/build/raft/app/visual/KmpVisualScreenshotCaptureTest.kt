@@ -38,8 +38,8 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
+import org.junit.Assert.fail
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Assert.assertFalse
 import org.junit.Assume.assumeTrue
 import org.junit.BeforeClass
@@ -161,6 +161,7 @@ class KmpVisualScreenshotCaptureTest {
     private var lastCaptureMethod: String? = null
     private var lastStableFrameCount = 0
     private var lastReadyTokenObserved = false
+    private var lastReadyTokenRequired = false
 
 
     @Test
@@ -1214,7 +1215,6 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    @Ignore("Quarantined by task #228: the compact menu on the last row is bistable after #2146 (417078cecd) - either no menu renders or it paints over the Composer. Un-quarantine only when the #2146 author lands a fix.")
     @Test
     fun captureThreadNewMessageMenuDemo() {
         captureThreadNewMessageMenuCompactTarget(
@@ -1231,7 +1231,6 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    @Ignore("Quarantined by task #228: the compact menu on the last row is bistable after #2146 (417078cecd) - either no menu renders or it paints over the Composer. Un-quarantine only when the #2146 author lands a fix.")
     @Test
     fun captureThreadNewMessageMenuCompactLast() {
         captureThreadNewMessageMenuCompactTarget(
@@ -1255,6 +1254,18 @@ class KmpVisualScreenshotCaptureTest {
             assertFalse(preferenceStore.readNewMessageMenuEnabledSync())
             runBlocking { preferenceStore.saveNewMessageMenuEnabled(true) }
             assertTrue(preferenceStore.readNewMessageMenuEnabledSync())
+            // task #228: ask the fixture to report when its compact menu opens,
+            // instead of inferring it from pixels. The sibling preference-off
+            // case has gated on this token all along - the compact path just
+            // never passed one. A product-emitted state transition outranks any
+            // screenshot criterion, and this one carries the messageId, so the
+            // three cases cannot produce interchangeable observations.
+            //
+            // elapsedRealtimeNanos makes the token unique per launch, so a token
+            // left in logcat by an earlier case can never satisfy a later one.
+            val menuVisibleToken =
+                "thread_compact_menu_visible_${visualAttempt()}_" +
+                    "${SystemClock.elapsedRealtimeNanos()}"
             captureKmpComponentCase(
                 caseId = caseId,
                 pageName = "compose_thread_message_row_visual",
@@ -1263,6 +1274,7 @@ class KmpVisualScreenshotCaptureTest {
                         .put("instanceId", "visual-$caseId")
                         .put("visualFixture", "new_message_menu_demo")
                         .put("newMessageMenuComposerBoundaryVisible", composerBoundaryVisible)
+                        .put("longPressMenuVisibleToken", menuVisibleToken)
                         .put("singleTapOpensThreadEnabled", true),
                 crop = FULL_VIEWPORT_CROP,
                 suppressSoftKeyboard = false,
@@ -1282,15 +1294,132 @@ class KmpVisualScreenshotCaptureTest {
                         after = captureAfterLongPressRendered(
                             label = caseId,
                             before = before,
-                            longPress = { longPressDisplayDp(x = 300f, y = targetYDp) },
+                            longPress = {
+                                // task #228: hold well past the long-press threshold.
+                                // ViewConfiguration.getLongPressTimeout() is 500ms by
+                                // default and the shared default here is 700ms - a 200ms
+                                // margin. The long press fires from a delayed message
+                                // posted on ACTION_DOWN, so on a loaded CI emulator that
+                                // message can be scheduled late, ACTION_UP arrives first,
+                                // and the gesture degrades to a tap: no menu, and only a
+                                // small changedRatio. That matches the observed spread
+                                // (0.085 on a good run, 0.019 on a bad one, run
+                                // 32940998377). A longer hold removes the race without
+                                // relying on any measurement of how long the menu takes.
+                                longPressDisplayDp(
+                                    x = 300f,
+                                    y = targetYDp,
+                                    durationMs = COMPACT_MENU_LONG_PRESS_HOLD_MS,
+                                )
+                            },
                             rendered = { b, shot, changedRatio ->
-                                // Full render: the compact menu's black chrome,
-                                // which paints slightly after the first pixel
-                                // change. A changed-ratio-only gate can return
-                                // while the press ripple is still visible.
-                                changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO &&
-                                    shot.countNewNearBlackSamplesComparedWith(b) >=
-                                    THREAD_NEW_MESSAGE_MENU_MIN_ADDED_BLACK_SAMPLES
+                                // task #228 precondition, HARD failure not a warning:
+                                // this criterion works only because the fixture is
+                                // otherwise monochrome - whole-screen saturated pixels
+                                // measured 0.01% before the menu appears. A fixture with
+                                // a colour avatar or an inline image would raise that
+                                // floor until the signal drowned, and a noise-swamped
+                                // criterion fails QUIETLY: it reads exactly like "the
+                                // menu did not appear". So assert the premise, from the
+                                // SAME capture as the judgement, and trip before it can
+                                // mislead.
+                                //
+                                // Two independent measurements agree on the signal, which
+                                // is why the number is trusted: in-band 2.74% over a band
+                                // that is 6.3% of the screen ~= 0.17% whole-screen, versus
+                                // 0.15% measured whole-screen directly. Changing the
+                                // resolution or the band invalidates that reconciliation.
+                                // ⚠️ This assertion was previously written as
+                                // b.countNewSaturatedPixelsComparedWith(before = b) - a
+                                // frame diffed against ITSELF. Its predicate is
+                                // "saturated(after) && !saturated(before)", so with
+                                // after === before it reduces to saturated(p) &&
+                                // !saturated(p): identically zero for every possible
+                                // image. It did not measure that the baseline was clean;
+                                // it computed the constant 0 and asserted 0 == 0.
+                                //
+                                // An absolute count is the only form that can fail.
+                                //
+                                // Positive control, run here rather than as its own
+                                // @Test: instrumentation selects tests by name, so a
+                                // standalone guard can silently stop being executed,
+                                // while this one runs exactly when the instrument is
+                                // used. It answers "what would I see if the counter
+                                // were broken" - a counter stuck at 0 (the shape of
+                                // the bug this replaces) fails the second check.
+                                assertSaturatedCounterDiscriminates()
+                                val baselineSaturated = b.countSaturatedPixels(
+                                    topPx = 0,
+                                    bottomPx = b.height,
+                                )
+                                Log.i(
+                                    VISUAL_LOG_TAG,
+                                    "$caseId compact-menu baseline saturated=$baselineSaturated " +
+                                        "ceiling=$THREAD_NEW_MESSAGE_MENU_MAX_BASELINE_SATURATED_PX"
+                                )
+                                check(
+                                    baselineSaturated <=
+                                        THREAD_NEW_MESSAGE_MENU_MAX_BASELINE_SATURATED_PX
+                                ) {
+                                    "task #228 precondition broken: the pre-press frame " +
+                                        "already contains $baselineSaturated saturated " +
+                                        "pixels. This case detects the menu by its coloured " +
+                                        "reaction row, which requires a near-monochrome " +
+                                        "fixture; that much standing colour can reach the " +
+                                        "menu floor on its own."
+                                }
+                                // task #228: the discriminator is the menu's COLOURED
+                                // reaction row, not darkness or area. The panel is white
+                                // with a hairline border on a white background, so the
+                                // former criteria could not see it at all - they were
+                                // in fact reacting to the pressed-row grey highlight,
+                                // which made compact-first a false RED and compact-middle
+                                // a false GREEN under one and the same rule.
+                                //
+                                // changedRatio is retained only to exclude a completely
+                                // static screen; on its own it cannot distinguish a
+                                // ripple from a menu, which is what it was misused for.
+                                val saturatedRegion = shot.countNewSaturatedPixelsComparedWith(
+                                    before = b,
+                                    topPx = 0,
+                                    bottomPx = shot.height,
+                                )
+                                val addedSaturated = saturatedRegion.count
+                                // Log the deciding number. Without it a reader can only
+                                // infer WHY a case passed from the metric's definition,
+                                // which is how this investigation lost six rounds: the
+                                // old gate logged changedRatio but never the count that
+                                // actually decided the verdict.
+                                // Copy the fixture's own line into the visual log:
+                                // it carries the messageId, so the archive shows
+                                // WHICH message opened a menu, and three cases that
+                                // reported the same id would be visible after the
+                                // fact instead of being unrecoverable.
+                                val menuLine = logcatFindToken(menuVisibleToken)
+                                val menuReported = menuLine != null
+                                Log.i(
+                                    VISUAL_LOG_TAG,
+                                    "$caseId compact-menu reported " +
+                                        (menuLine?.substringAfter(menuVisibleToken)?.trim()
+                                            ?: "<no menu-visible token in logcat>")
+                                )
+                                Log.i(
+                                    VISUAL_LOG_TAG,
+                                    "$caseId compact-menu detect menuReported=$menuReported " +
+                                        "addedSaturated=$addedSaturated " +
+                                        "floor=$THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX " +
+                                        "yRange=${saturatedRegion.minY}..${saturatedRegion.maxY} " +
+                                        "centroidY=${saturatedRegion.centroidY} " +
+                                        "changedRatio=$changedRatio"
+                                )
+                                // changedRatio is NOT part of the criterion. It was shown
+                                // to have no discriminating power here (it reacts to the
+                                // pressed-row highlight, not to the menu), and as a
+                                // conjunct it can only turn a real menu RED: compact-middle
+                                // measured 0.0237 against a 0.02 floor, an 18% margin on a
+                                // quantity we do not trust. Logged for diagnosis only.
+                                menuReported &&
+                                    addedSaturated >= THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
                             },
                         )
                         val threadOpenAfter = after.countThreadNewMessageMenuOpenProbeSamples()
@@ -1305,9 +1434,51 @@ class KmpVisualScreenshotCaptureTest {
                             } else {
                                 0f
                             }
+                        // The fixture reports the menu's own state transition; the
+                        // saturated count independently confirms it was painted.
+                        // changedRatio is deliberately absent from both - see the
+                        // detect lambda above for why it cannot decide this.
+                        val menuReported = logcatContainsToken(menuVisibleToken)
+                        val addedSaturated = after.countNewSaturatedPixelsComparedWith(
+                            before = before,
+                            topPx = 0,
+                            bottomPx = after.height,
+                        ).count
+                        // The two are kept as separate evidence, not merged into one
+                        // verdict. @HuaTuo and @LiBai drew the line: the token is the
+                        // app's own account of itself, the pixels are the only
+                        // external evidence, and a menu that is composed but never
+                        // painted reports the token perfectly. Dropping either half
+                        // would stop this being a visual case at all.
+                        //
+                        // Their disagreement is therefore its own failure class, not
+                        // a strict-criterion red - otherwise the one defect this case
+                        // exists to catch gets read as "the threshold needs raising".
+                        if (menuReported &&
+                            addedSaturated < THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
+                        ) {
+                            fail(
+                                "task #228 RENDER FAILURE (app claims visible, screen " +
+                                    "does not show it): the fixture reported the compact " +
+                                    "menu open for its message, but the screen gained " +
+                                    "only $addedSaturated saturated pixels against a " +
+                                    "floor of " +
+                                    "$THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX. " +
+                                    "This is not the criterion being too strict - the " +
+                                    "menu was composed and not painted. See the " +
+                                    "'compact-menu reported' log line for which message."
+                            )
+                        }
                         assertTrue(
-                            "Long press must render the compact message menu; changedRatio=$changedRatio",
-                            changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
+                            "Long press must open the compact message menu; the fixture " +
+                                "never reported it opening. changedRatio=$changedRatio " +
+                                "addedSaturated=$addedSaturated",
+                            menuReported
+                        )
+                        assertTrue(
+                            "Long press must paint the compact menu's coloured reaction " +
+                                "row; addedSaturated=$addedSaturated",
+                            addedSaturated >= THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
                         )
                         assertTrue(
                             "Long press must render the compact menu chrome; addedNearBlack=$addedToolbarBlack",
@@ -1320,9 +1491,10 @@ class KmpVisualScreenshotCaptureTest {
                         )
                         if (composerBoundaryVisible) {
                             assertTrue(
-                                "Compact menu must not paint over the Composer boundary; " +
+                                "Compact menu must paint over the Composer boundary (by design; " +
+                                    "otherwise the Composer would cover the menu); " +
                                     "bottomBandChangedRatio=$composerChangedRatio",
-                                composerChangedRatio < THREAD_NEW_MESSAGE_MENU_COMPOSER_MAX_CHANGED_RATIO
+                                composerChangedRatio >= THREAD_NEW_MESSAGE_MENU_COMPOSER_MIN_CHANGED_RATIO
                             )
                         }
                         menuArtifact = after
@@ -1860,6 +2032,140 @@ class KmpVisualScreenshotCaptureTest {
         return samples
     }
 
+    /**
+     * task #228: counts pixels that became strongly saturated relative to [before].
+     *
+     * The compact menu is a WHITE panel with a hairline black outline drawn over a
+     * white background, so the two original criteria could not see it: changedRatio
+     * stayed at ~1.9% because white-on-white changes few pixels, and the near-black
+     * probe returned ~1 sample because the only dark pixels are a 1-2px border that
+     * a strided scan steps over. The menu rendered correctly in every failing run;
+     * the instrument was blind to it (run 32942109128).
+     *
+     * The menu's reaction row is the one strongly coloured element on an otherwise
+     * monochrome screen - measured 0.00% saturated before it appears, 2.74% after,
+     * with the whole screen at 0.01%. Colour also has AREA, unlike an outline, so
+     * it does not depend on sampling density.
+     *
+     * Deliberately scans every pixel: FORWARD_PROBE_PIXEL_STRIDE has 17 callers
+     * calibrated against it, so widening the scan globally would move unrelated
+     * thresholds. Full-scanning one bitmap is negligible here.
+     */
+    private fun Bitmap.countNewSaturatedPixelsComparedWith(
+        before: Bitmap,
+        topPx: Int,
+        bottomPx: Int,
+    ): SaturatedRegion {
+        require(width == before.width && height == before.height) {
+            "Bitmap size changed: ${width}x$height vs ${before.width}x${before.height}"
+        }
+        fun saturated(pixel: Int): Boolean {
+            val r = Color.red(pixel)
+            val g = Color.green(pixel)
+            val b = Color.blue(pixel)
+            val mx = maxOf(r, g, b)
+            val mn = minOf(r, g, b)
+            return mx > 90 && (mx - mn) * 100 / mx > 45
+        }
+        var count = 0
+        var minY = Int.MAX_VALUE
+        var maxY = Int.MIN_VALUE
+        var sumY = 0L
+        var y = topPx.coerceAtLeast(0)
+        val end = bottomPx.coerceAtMost(height)
+        while (y < end) {
+            var x = 0
+            while (x < width) {
+                if (saturated(getPixel(x, y)) && !saturated(before.getPixel(x, y))) {
+                    count++
+                    if (y < minY) minY = y
+                    if (y > maxY) maxY = y
+                    sumY += y
+                }
+                x++
+            }
+            y++
+        }
+        // task #228: the vertical extent is returned alongside the count because a
+        // count on its own cannot show that the measurement is live. The three cases
+        // anchor their menus at different y, so these values MUST differ between them
+        // if each is really computed from its own frame - whereas three identical
+        // counts are equally consistent with a cached or shared value.
+        return SaturatedRegion(
+            count = count,
+            minY = if (count == 0) -1 else minY,
+            maxY = if (count == 0) -1 else maxY,
+            centroidY = if (count == 0) -1 else (sumY / count).toInt(),
+        )
+    }
+
+    /**
+     * Proves [countSaturatedPixels] can return both answers.
+     *
+     * The precondition it feeds asserts an absence ("the baseline carries no
+     * meaningful colour"), and an absence assertion is only worth its ink if the
+     * instrument behind it is capable of saying otherwise. The version this
+     * replaced was not: it diffed a frame against itself and returned 0 for every
+     * possible image, so it "passed" on any fixture, including one that would have
+     * invalidated the whole criterion.
+     *
+     * White must count 0 and a saturated red must count every pixel. If either
+     * side stops holding, the counter is broken in exactly the direction that
+     * would make the precondition vacuous again.
+     */
+    private fun assertSaturatedCounterDiscriminates() {
+        val probe = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+        try {
+            probe.eraseColor(Color.WHITE)
+            val whiteCount = probe.countSaturatedPixels(topPx = 0, bottomPx = probe.height)
+            probe.eraseColor(Color.rgb(220, 40, 40))
+            val redCount = probe.countSaturatedPixels(topPx = 0, bottomPx = probe.height)
+            check(whiteCount == 0 && redCount == probe.width * probe.height) {
+                "task #228: the saturated counter no longer discriminates - " +
+                    "white=$whiteCount (expected 0), red=$redCount " +
+                    "(expected ${probe.width * probe.height}). Every conclusion " +
+                    "drawn from it, including the baseline precondition, is void."
+            }
+        } finally {
+            probe.recycle()
+        }
+    }
+
+    /**
+     * Absolute count of saturated pixels in one frame.
+     *
+     * Unlike [countNewSaturatedPixelsComparedWith] this takes a single frame, so
+     * it can actually come back non-zero - which is the whole point of using it
+     * as a precondition. Diffing a frame against itself cannot.
+     */
+    private fun Bitmap.countSaturatedPixels(topPx: Int, bottomPx: Int): Int {
+        var count = 0
+        var y = topPx.coerceAtLeast(0)
+        val end = bottomPx.coerceAtMost(height)
+        while (y < end) {
+            var x = 0
+            while (x < width) {
+                val pixel = getPixel(x, y)
+                val r = Color.red(pixel)
+                val g = Color.green(pixel)
+                val b = Color.blue(pixel)
+                val mx = maxOf(r, g, b)
+                val mn = minOf(r, g, b)
+                if (mx > 90 && (mx - mn) * 100 / mx > 45) count++
+                x++
+            }
+            y++
+        }
+        return count
+    }
+
+    private data class SaturatedRegion(
+        val count: Int,
+        val minY: Int,
+        val maxY: Int,
+        val centroidY: Int,
+    )
+
     private fun Bitmap.countNewNearBlackSamplesComparedWith(before: Bitmap): Int {
         require(width == before.width && height == before.height) {
             "Bitmap size changed: ${width}x$height vs ${before.width}x${before.height}"
@@ -2060,7 +2366,12 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-gfm-task-list-short")
                     .put("visualFixture", "gfm_task_list_short"),
-            crop = FULL_VIEWPORT_CROP
+            crop = FULL_VIEWPORT_CROP,
+            // This route is the regression consumer for task #211.  A native
+            // CALL_KOTLIN fallback can still produce a rich-looking PNG and
+            // therefore must not be admitted by the generic colour/stability
+            // checks alone.
+            readyToken = "thread_visual_ready fixtureKey=gfm_task_list_short"
         )
     }
 
@@ -2151,6 +2462,45 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-code-block")
                     .put("visualFixture", "md_code_block"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdMermaidFlowchart() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-mermaid-flowchart",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-mermaid-flowchart")
+                    .put("visualFixture", "md_mermaid_flowchart"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdMermaidSequence() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-mermaid-sequence",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-mermaid-sequence")
+                    .put("visualFixture", "md_mermaid_sequence"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdMermaidInvalidFallback() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-mermaid-invalid-fallback",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-mermaid-invalid-fallback")
+                    .put("visualFixture", "md_mermaid_invalid"),
             crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
         )
     }
@@ -3042,6 +3392,60 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    // task #535: Computer-row oracle states (web AgentDetailPanel.tsx blob
+    // c549c316acf5 :771-772 / :2053-2084). Expected: computer-offline = gray dot +
+    // Offline; computer-missing / no-computer = "No computer assigned", no dot.
+    // Android's rendering of these states is task #259; until it lands these
+    // captures record the current (wrong) behaviour as the before-frame.
+    @Test
+    fun captureMembersAgentDetailProfileComputerOfflineScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.profile.computer-offline",
+            tab = "profile",
+            memberId = "agent-computer-offline"
+        )
+    }
+
+    @Test
+    fun captureMembersAgentDetailProfileComputerMissingScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.profile.computer-missing",
+            tab = "profile",
+            memberId = "agent-computer-missing"
+        )
+    }
+
+    @Test
+    fun captureMembersAgentDetailProfileNoComputerScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.profile.no-computer",
+            tab = "profile",
+            memberId = "agent-no-computer"
+        )
+    }
+
+    // task #537: a machine name that cannot fit one 390dp line, so the wrap /
+    // silent-truncate / overflow outcome is observable at all.
+    @Test
+    fun captureMembersAgentDetailProfileLongMachineNameScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.profile.long-machine-name",
+            tab = "profile",
+            memberId = "agent-long-machine"
+        )
+    }
+
+    // task #259: a bare daemon (isComputer=false) with no computer version:
+    // web shows Connected · daemon vX, never a computer version.
+    @Test
+    fun captureMembersAgentDetailProfileDaemonOnlyScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.profile.daemon-only",
+            tab = "profile",
+            memberId = "agent-daemon-only"
+        )
+    }
+
     @Test
     fun captureMembersAgentDetailChatScreen() {
         captureMembersAgentDetailScreen(
@@ -3099,12 +3503,13 @@ class KmpVisualScreenshotCaptureTest {
 
     private fun captureMembersAgentDetailScreen(
         caseId: String,
-        tab: String
+        tab: String,
+        memberId: String = "agent-product-ux"
     ) {
         val pageData =
             memberDetailVisualPageData(
-                instanceId = "visual-members-agent-$tab",
-                memberId = "agent-product-ux",
+                instanceId = "visual-members-agent-$tab-$memberId",
+                memberId = memberId,
                 memberKind = "agent",
                 initialAgentTab = tab
             )
@@ -3680,6 +4085,16 @@ class KmpVisualScreenshotCaptureTest {
                 waitForIdleBounded()
             }
             lastReadyTokenObserved = readyToken?.let { awaitVisualReadyToken(caseId, it) } ?: false
+            lastReadyTokenRequired = readyToken != null
+            onActivityNoIdle { activity ->
+                val hostErrorShown = activity.javaClass
+                    .getDeclaredField("hostErrorSurfaceShown")
+                    .apply { isAccessible = true }
+                    .getBoolean(activity)
+                require(!hostErrorShown) {
+                    "$caseId host error surface was rendered; refusing to capture CALL_KOTLIN fallback"
+                }
+            }
             val effectiveCrop = cropOverride?.invoke() ?: crop
             val normalized =
                 if (capturedBitmapAfterBeforeScreenshot != null) {
@@ -4022,12 +4437,27 @@ class KmpVisualScreenshotCaptureTest {
                 }
                 return latest!!
             }
+            // task #228: only re-press when the screen has not responded at all.
+            // Re-pressing while a ripple (or menu) is already showing muddies the
+            // state and overwrites the poll=1 scene, so the render-fail evidence
+            // written afterwards shows an empty screen. That made "the gate did
+            // not recognise it" and "nothing happened" indistinguishable for five
+            // investigation rounds (run 32849366613 logcat).
+            val screenResponded = changedRatio >= LONG_PRESS_RETRY_SUPPRESS_CHANGED_RATIO
             if (!retried && elapsed >= retryAtMs) {
-                Log.i(
-                    VISUAL_LOG_TAG,
-                    "$label long-press retry poll=$poll elapsedMs=$elapsed"
-                )
-                longPress()
+                if (screenResponded) {
+                    Log.i(
+                        VISUAL_LOG_TAG,
+                        "$label long-press retry suppressed poll=$poll " +
+                            "elapsedMs=$elapsed changedRatio=$changedRatio"
+                    )
+                } else {
+                    Log.i(
+                        VISUAL_LOG_TAG,
+                        "$label long-press retry poll=$poll elapsedMs=$elapsed"
+                    )
+                    longPress()
+                }
                 retried = true
             }
         }
@@ -4663,6 +5093,34 @@ class KmpVisualScreenshotCaptureTest {
      * Any failure returns false so the caller falls through to its deadline
      * rather than throwing.
      */
+    /**
+     * The matching logcat line for [token], or null.
+     *
+     * [logcatContainsToken] answers only yes/no, and the fixture writes its token
+     * under a tag the archived logcat does not keep (it retains VisualCapture,
+     * TestRunner, System.out and Task139Reuse). So a criterion that reads the
+     * token live leaves NO trace in the evidence: the run says the menu opened
+     * and the artifact cannot show it. Returning the line lets the caller copy it
+     * into the visual log, where it is archived - which matters because this
+     * cannot be reconstructed after the run.
+     */
+    private fun logcatFindToken(token: String): String? {
+        var process: Process? = null
+        return try {
+            process = Runtime.getRuntime().exec(
+                arrayOf("logcat", "-d", "-s", REACTION_ATLAS_LOG_TAG)
+            )
+            process.inputStream.bufferedReader().useLines { lines ->
+                lines.firstOrNull { it.contains(token) }
+            }
+        } catch (t: Throwable) {
+            Log.w(VISUAL_LOG_TAG, "logcatFindToken failed: ${t.message}")
+            null
+        } finally {
+            process?.destroy()
+        }
+    }
+
     private fun logcatContainsToken(token: String): Boolean {
         var process: Process? = null
         return try {
@@ -5127,6 +5585,7 @@ class KmpVisualScreenshotCaptureTest {
                   "dominantRatio": ${stats.dominantRatio}
                 },
                 "readyTokenObserved": $lastReadyTokenObserved,
+                "readyTokenRequired": $lastReadyTokenRequired,
                 "stableFrameCount": $lastStableFrameCount
               },
               "diagnostics": $diagnostics,
@@ -6100,9 +6559,20 @@ class KmpVisualScreenshotCaptureTest {
         // Bounds for captureAfterLongPressRendered: wait for the long-press UI to
         // actually render instead of a fixed sleep. Timeout must comfortably
         // exceed a loaded-shard menu render; retry re-issues the press once.
-        private const val LONG_PRESS_RENDER_TIMEOUT_MS = 4_000L
+        // task #228: the first observation alone costs ~2-3s (700ms press + fixture
+        // readiness + capture), and the menu's black chrome paints after the press
+        // ripple. A 4s budget left only one or two polls, so whether the gate saw
+        // the finished menu came down to scheduling jitter. Poll to a generous
+        // deadline instead: polling early is free, polling late does not misjudge,
+        // and no constant has to encode "how long the menu takes" - a quantity we
+        // cannot measure reliably, since readings from different runs cannot be
+        // combined (per-run variance is the defect under investigation).
+        private const val LONG_PRESS_RENDER_TIMEOUT_MS = 12_000L
         private const val LONG_PRESS_RENDER_POLL_MS = 200L
-        private const val LONG_PRESS_RENDER_RETRY_AT_MS = 2_000L
+        // Kept only as a floor for the no-response case; the retry is suppressed
+        // once the screen has reacted (see LONG_PRESS_RETRY_SUPPRESS_CHANGED_RATIO),
+        // because re-pressing then disturbs the state the gate is waiting on.
+        private const val LONG_PRESS_RENDER_RETRY_AT_MS = 6_000L
         private const val LONG_PRESS_INPUT_READY_SETTLE_MS = 100L
         private const val THREAD_LEGACY_MENU_MIN_ADDED_BLACK_SAMPLES = 300
         private const val THREAD_NEW_MESSAGE_MENU_MIN_ADDED_BLACK_SAMPLES = 40
@@ -6110,7 +6580,134 @@ class KmpVisualScreenshotCaptureTest {
         // Matches the fixed host bounds in the compact-last visual fixture.
         // The sampled band therefore contains only the real Composer host.
         private const val THREAD_NEW_MESSAGE_MENU_COMPOSER_BOUNDARY_HEIGHT_DP = 150
-        private const val THREAD_NEW_MESSAGE_MENU_COMPOSER_MAX_CHANGED_RATIO = 0.005f
+        // task #228: above this the screen has demonstrably reacted, so re-pressing
+        // would disturb the state we are waiting on. Noise floor 2.7e-5; smallest
+        // genuine render seen 0.0257.
+        // task #228: 3x the 500ms default long-press timeout, so a late-scheduled
+        // delayed message on a loaded emulator cannot let ACTION_UP win the race.
+        private const val COMPACT_MENU_LONG_PRESS_HOLD_MS = 1_500L
+
+        // task #228: the menu's reaction row is the only strongly coloured element on
+        // this fixture, so it is what distinguishes a rendered menu from a press
+        // ripple or a pressed-row highlight.
+        //
+        // Measured directly on the CI frames from run 32942109128, counting pixels
+        // that BECOME saturated relative to the pre-press frame:
+        //   real menu present            4164
+        //   no menu (frame against self)    0
+        // The floor is set at 1500 - roughly a third of the signal and far above a
+        // measured noise of zero. An earlier draft of this constant used 4000, which
+        // left only a 4% margin on the positive sample and would have gone red on any
+        // small variation in emoji rendering.
+        //
+        // Colour has area, unlike the hairline outline the previous criterion tried to
+        // detect, so this does not depend on sampling density.
+        private const val THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX = 1_500
+
+        /**
+         * What the saturated-pixel criterion does and does NOT establish.
+         *
+         * It proves "at least [THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX]
+         * saturated pixels appeared", not "the menu opened". Those coincide only
+         * because this fixture is otherwise near-monochrome - a property of the
+         * FIXTURE, not of the criterion. Three consequences worth stating:
+         *
+         *  - The precondition below bounds the BASELINE only. A colour element
+         *    that arrives inside the observation window (a late-loading avatar
+         *    or inline image) passes the precondition and can still satisfy the
+         *    floor on its own. This fixture has no async images, so it does not
+         *    apply today; adding one would reopen it.
+         *  - The count includes saturated pixels OUTSIDE the menu. Measured at a
+         *    few dozen (they are what stretches the reported yRange well past
+         *    the menu itself). Its failure direction is FALSE GREEN, which is
+         *    the direction that does not announce itself.
+         *  - yRange/centroidY are diagnostics, never criteria.
+         *
+         * Since the fixture now reports the menu opening directly, this count is
+         * the corroborating half, not the deciding one.
+         *
+         * ⚠️ What this ceiling does NOT mean, since a wrong reason gets reused
+         * long after a wrong number gets adjusted:
+         *
+         * It is NOT "past this point standing colour could account for the menu's
+         * signal". That was the first explanation written here and it is wrong on
+         * mechanism (@HuaTuo and @LiBai). The criterion counts pixels that are
+         * saturated in AFTER and not saturated in BEFORE, so anything already
+         * coloured in the baseline is structurally excluded from the difference.
+         * A static colour element contributes exactly zero no matter how large it
+         * is - five thousand pixels of motionless avatar would not move the count.
+         *
+         * The baseline count is a DOUBLE PROXY: it stands in for "this fixture
+         * contains colour at all", which stands in for "colour might appear or
+         * move during the observation window". Only that last thing can produce a
+         * false green, and this number does not measure it. What is genuinely
+         * undefended is a colour element ARRIVING inside the window - a late image
+         * or an animation - which contributes in full even when the baseline is 0.
+         *
+         * Ceiling is therefore a conservative bound on the proxy, not a mechanism:
+         * floor/5 = 300 was the first draft and would have been arbitrary. An
+         * arbitrary precondition is a new source of FALSE RED in the nightly,
+         * which is the failure this investigation existed to remove
+         * (@Codex-Android-DevOPS).
+         *
+         * Measured baselines, same code and fixture:
+         *   run 32947725178:  212, 212, 216
+         *   run 32948862386:  216,   0, 593
+         *
+         * Two things to carry forward:
+         *  - It is not zero, and not stable. The assertion this replaced had been
+         *    "confirming" a baseline of 0 for as long as it existed.
+         *  - 300 would have passed the first run and FAILED the second on 593,
+         *    turning a green run red for a reason having nothing to do with a
+         *    menu. That is the false-red this ceiling is deliberately loose to
+         *    avoid.
+         *
+         * The 0..593 spread is itself the useful signal: colour presence here is
+         * time-dependent, so the undefended direction above is live rather than
+         * theoretical. It stays acceptable only because the largest baseline seen
+         * is far below the floor - if that gap closes, this needs a real mechanism
+         * rather than a wider bound.
+         *
+         * ⚠️ Separate the certain part of the above from the untested part.
+         *
+         * CERTAIN, by construction: a pixel already saturated in BEFORE cannot
+         * enter the difference, because the predicate requires !saturated(before).
+         * That is a property of the code, not an observation.
+         *
+         * NOT ESTABLISHED: the prediction people (myself included) drew from it -
+         * that colour either sits in the baseline or arrives in the window, so
+         * baseline + added should be roughly constant across the three cases. It
+         * is not. Within run 32948862386, paired inside that single run:
+         *
+         *   compact-first    baseline 216   added 4164   sum 4380
+         *   compact-middle   baseline   0   added 4768   sum 4768
+         *   compact-last     baseline 593   added 4164   sum 4757
+         *
+         * Two of three follow the expected direction (middle has the lowest
+         * baseline and the highest delta, last the reverse); compact-first does
+         * not, and the sums differ by 388. The likely confound is that the sum
+         * estimates the AFTER frame's total colour, which has no reason to match
+         * across cases since the three menus cover different content - but that is
+         * an untested explanation for an untested prediction, so treat the
+         * mechanism as UNDETERMINED rather than supported.
+         *
+         * What would settle it, cheaply: also log the AFTER frame's absolute
+         * saturated count. Then after_total - baseline must equal added exactly if
+         * no baseline pixel ever loses saturation, and any residual quantifies the
+         * gap directly instead of leaving it to argument.
+         */
+        private const val THREAD_NEW_MESSAGE_MENU_MAX_BASELINE_SATURATED_PX =
+            THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
+
+        private const val LONG_PRESS_RETRY_SUPPRESS_CHANGED_RATIO = 0.002f
+
+        // task #228: the LAST row's compact menu is *designed* to paint over the
+        // Composer. artin, 2026-08-25: "压住输入框 是对的，那要不然被输入框挡住啊"
+        // - if it did not overlap, the Composer would cover the menu instead. So
+        // this is a FLOOR, not a ceiling: too little change in the bottom band
+        // means the menu failed to reach the Composer. Correct reading observed
+        // 0.14443202; the no-gesture noise floor is 2.7e-5.
+        private const val THREAD_NEW_MESSAGE_MENU_COMPOSER_MIN_CHANGED_RATIO = 0.05f
         private const val THREAD_NEW_MESSAGE_MENU_OPEN_PROBE_TOLERANCE = 8
         private const val SEARCH_PIN_MENU_MIN_CHANGED_RATIO = 0.004f
         private const val THREAD_OPEN_PROBE_TOP_BAND_FRACTION = 0.15f

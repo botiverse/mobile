@@ -154,6 +154,43 @@ class ThreadTerminologyResourceTest {
             placeholderTokens(base.getValue(key)) != placeholderTokens(zh.getValue(key))
         }
 
+    // Android native catalog (compose/androidApp values-zh-rCN) thread keys; the native catalog
+    // is a SEPARATE copy from the shared MR catalog and carried 话题 residue of the merged
+    // thread-term batch (caught by the #267 review census).
+    private val nativeThreadKeys =
+        listOf(
+            "home_followed_threads",
+            "followed_threads_title",
+            "followed_threads_loading_title",
+            "followed_threads_loading_detail",
+            "followed_threads_empty_title",
+            "followed_threads_empty_detail",
+            "followed_threads_error_title",
+            "inbox_no_unread_detail",
+            "settings_mobile_push_body",
+            "notification_unread_channel_channel_description"
+        )
+
+    @Test
+    fun androidNativeCatalogHasNoThreadTopicTermResidue() {
+        val zh = readAndroidNativeStrings()
+        val residue = zh.filterValues { it.contains("话题") }
+        assertTrue(
+            residue.isEmpty(),
+            "androidApp zh-rCN must not contain 「话题」 for thread surfaces; found: ${residue.keys}"
+        )
+    }
+
+    @Test
+    fun androidNativeThreadKeysUseMessageListTerm() {
+        val zh = readAndroidNativeStrings()
+        nativeThreadKeys.forEach { key ->
+            val value = zh.getValue(key)
+            assertTrue(value.contains("消息列"), "androidApp zh-rCN $key must use 消息列, got: $value")
+            assertTrue(!value.contains("话题"), "androidApp zh-rCN $key must not contain 话题, got: $value")
+        }
+    }
+
     private fun placeholderTokens(value: String): List<String> =
         PLACEHOLDER.findAll(value).map { it.value }.toList()
 
@@ -161,6 +198,21 @@ class ThreadTerminologyResourceTest {
         STRING_ENTRY.findAll(
             String(Files.readAllBytes(resourcesRoot().resolve(locale).resolve("strings.xml")), Charsets.UTF_8)
         ).associate { it.groupValues[1] to it.groupValues[2] }
+
+    private fun readAndroidNativeStrings(): Map<String, String> {
+        val workingDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize()
+        val candidates =
+            listOf(
+                workingDirectory.resolve("../androidApp/src/main/res/values-zh-rCN/strings.xml"),
+                workingDirectory.resolve("androidApp/src/main/res/values-zh-rCN/strings.xml"),
+                workingDirectory.resolve("compose/androidApp/src/main/res/values-zh-rCN/strings.xml")
+            )
+        val path =
+            candidates.firstOrNull(Files::isRegularFile)
+                ?: error("Unable to locate androidApp values-zh-rCN/strings.xml from $workingDirectory")
+        return STRING_ENTRY.findAll(String(Files.readAllBytes(path), Charsets.UTF_8))
+            .associate { it.groupValues[1] to it.groupValues[2] }
+    }
 
     private fun resourcesRoot(): Path {
         val workingDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize()

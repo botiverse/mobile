@@ -38,7 +38,11 @@ internal data class ThreadTimelineSlice(
     val showTaskOpenActions: Boolean,
     val showTaskStatusActions: Boolean,
     val canConvertMessagesToTasks: Boolean,
-    val beginningReplyCountLabel: String?
+    val beginningReplyCountLabel: String?,
+    /** Task #232 arrival provenance projected from the payload; see [KuiklyThreadScreenPayload.gapRefillMessageIds]. */
+    val gapRefillMessageIds: Set<String> = emptySet(),
+    /** Task #1125: the frame is the offline durable stand-in (see [KuiklyThreadScreenPayload.durableLastKnown]). */
+    val durableLastKnown: Boolean = false
 )
 
 internal data class ThreadInlineSearchMatch(
@@ -71,6 +75,8 @@ internal fun KuiklyThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSl
                 emptyDetail
             },
         sourceThreadId = sourceThreadId,
+        gapRefillMessageIds = gapRefillMessageIds,
+        durableLastKnown = durableLastKnown,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
         showReplyActions = showReplyActions,
@@ -241,6 +247,29 @@ internal fun ThreadTimelineSlice.hasSendingLocalSendAnchor(anchorKey: String?): 
         message.id == messageId &&
             message.deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true) &&
             message.pendingSendContext != null
+    }
+}
+
+// task #232: viewport-aware variant. When the rendered visible tail is known,
+// the read marker must not advance past what the user actually sees; otherwise
+// live appends while off-bottom would zero the unread projection and the
+// "↓ x new" pill could never appear.
+internal fun ThreadTimelineSlice.visibleReadMarkerKey(
+    sourceThreadId: String?,
+    visibleTailIndex: Int?
+): String? {
+    val threadId = sourceThreadId?.takeIf { it.isNotBlank() } ?: return null
+    if (status != "content") return null
+    val latest =
+        visibleTailIndex?.takeIf { it in messages.indices }?.let { messages[it] }
+            ?: messages.lastOrNull()
+            ?: return null
+    return buildString {
+        append(threadId)
+        append(':')
+        append(latest.seq?.toString() ?: "no-seq")
+        append(':')
+        append(latest.id)
     }
 }
 

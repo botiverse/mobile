@@ -297,8 +297,8 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
 
     private fun overlayKeyIsolation(): CanonicalV2RedResult = runBlocking {
         val keyA = overlayKey()
-        val keyPrincipalB = keyA.copy(partition = DurablePartitionKey("server-a", "principal-b", keyA.partition.consumerId))
-        val keyConsumerV1 = keyA.copy(partition = DurablePartitionKey("server-a", "principal-a", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID))
+        val keyPrincipalB = keyA.copy(partition = DurablePartitionKey("server-a", "principal-b", keyA.partition.consumerId, "env-test"))
+        val keyConsumerV1 = keyA.copy(partition = DurablePartitionKey("server-a", "principal-a", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID, "env-test"))
         val keyOtherKind = keyA.copy(overlayKind = "other")
         val store = RecordingViewerOverlayStore()
         store.compareAndWrite(keyA, overlay(1, "a"))
@@ -339,7 +339,7 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
     }
 
     private fun v2NeverReadsV1(input: JsonObject): CanonicalV2RedResult {
-        val partition = DurablePartitionKey("server-a", "principal-a", input.string("consumer"))
+        val partition = DurablePartitionKey("server-a", "principal-a", input.string("consumer"), "env-test")
         val scope = SyncScopeKey(partition, "channel-a", "channel")
         requireV2Scope(scope)
         return CanonicalV2RedResult.State("v2-only", v1ReadCount = 0)
@@ -562,7 +562,7 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
         senderName = "Human",
     )
 
-    private fun v2Partition() = DurablePartitionKey("server-a", "principal-a", SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+    private fun v2Partition() = DurablePartitionKey("server-a", "principal-a", SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID, "env-test")
     private fun v2Scope() = SyncScopeKey(v2Partition(), "channel-a", "channel")
     private fun overlayKey() = ViewerOverlayKey(v2Partition(), "channel", "channel-a", "message", "message-a", "reactions")
     private fun overlay(version: Long, emoji: String) = VersionedViewerOverlayV1(

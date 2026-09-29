@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.SharedThreadFreshnessLedger
+import build.raft.app.FakeChannelRepository
 import build.raft.app.SharedActivityFooterSlot
 import build.raft.app.activityFooterSlots
 import build.raft.app.activityTaskBadgeText
@@ -202,7 +203,7 @@ class SharedActivityStoreTest {
 
         store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
         store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
-        ledger.advance(marker.key.serverId, marker.key.threadChannelId)
+        ledger.advanceAllOwners(marker.key.serverId, marker.key.threadChannelId)
         store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
 
         assertEquals(listOf(marker.key, marker.key), calls.map { it.key })
@@ -253,7 +254,7 @@ class SharedActivityStoreTest {
             )
 
         store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
-        ledger.advance(marker.key.serverId, marker.key.threadChannelId)
+        ledger.advanceAllOwners(marker.key.serverId, marker.key.threadChannelId)
         store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
         assertEquals(1, calls.size)
 
@@ -335,7 +336,7 @@ class SharedActivityStoreTest {
         secondStore.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
         assertTrue(firstCalls.single().contentGeneration === secondCalls.single().contentGeneration)
 
-        ledger.advance(marker.key.serverId, marker.key.threadChannelId)
+        ledger.advanceAllOwners(marker.key.serverId, marker.key.threadChannelId)
         firstStore.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
         secondStore.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
         assertTrue(firstCalls.last().contentGeneration === secondCalls.last().contentGeneration)
@@ -573,7 +574,7 @@ class SharedActivityStoreTest {
         assertEquals(1, calls.size)
 
         // Replan while A(v1) is still in-flight: A is re-versioned to v2 and B appears below it.
-        ledger.advance(storeMarkerKey.serverId, storeMarkerKey.threadChannelId)
+        ledger.advanceAllOwners(storeMarkerKey.serverId, storeMarkerKey.threadChannelId)
         store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(secondVersion, below)))
 
         // The superseded A(v1) is unwound; the tail then reschedules A(v2) and warms B, one at a
@@ -640,9 +641,9 @@ class SharedActivityStoreTest {
         assertEquals(listOf(firstVersion.key), calls.map { it.key })
 
         // Two rapid consecutive replans arrive while A(v1) is still SLOWLY draining.
-        ledger.advance(firstVersion.key.serverId, firstVersion.key.threadChannelId)
+        ledger.advanceAllOwners(firstVersion.key.serverId, firstVersion.key.threadChannelId)
         store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(secondVersion, secondBelow)))
-        ledger.advance(firstVersion.key.serverId, firstVersion.key.threadChannelId)
+        ledger.advanceAllOwners(firstVersion.key.serverId, firstVersion.key.threadChannelId)
         store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(thirdVersion, thirdBelow)))
 
         // The drain barrier holds every later generation: nothing new may start while A(v1) drains.
@@ -681,6 +682,26 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun setFilterRetainsCachedFilterSnapshotsForKeepAliveSwipe() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val allSnap = snapshot(listOf(activityItem("channel-all", unreadCount = 1)), totalUnreadCount = 1)
+        val unreadSnap = snapshot(listOf(activityItem("channel-unread", unreadCount = 1)), totalUnreadCount = 1)
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(allSnap, unreadSnap, allSnap))
+        val store = activityStore(scope, inbox)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        assertEquals(listOf("channel:channel-all"), store.state.value.items.map { it.key })
+        assertEquals(listOf("channel:channel-all"), store.state.value.filterSnapshots[InboxFilter.All]?.items?.map { it.key })
+
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
+        assertEquals(InboxFilter.Unread, store.state.value.selectedFilter)
+        assertEquals(listOf("channel:channel-unread"), store.state.value.items.map { it.key })
+        assertEquals(listOf("channel:channel-all"), store.state.value.filterSnapshots[InboxFilter.All]?.items?.map { it.key })
+        assertEquals(listOf("channel:channel-unread"), store.state.value.filterSnapshots[InboxFilter.Unread]?.items?.map { it.key })
+        scope.cancel()
+    }
+
+    @Test
     fun loadMoreMergesWithoutDuplicateRows() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox =
@@ -702,6 +723,415 @@ class SharedActivityStoreTest {
         assertEquals(listOf("channel:channel-1", "channel:channel-2", "channel:channel-3"), store.state.value.items.map { it.key })
         assertEquals(listOf(2), inbox.loadMoreOffsets)
         assertEquals(false, store.state.value.hasMore)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityFilterProjectionRetainsUnfollowedOnlyInAllAndNeverCountsItsAttention() {
+        val unfollowed =
+            threadItem("thread-unfollowed", unreadCount = 5).copy(
+                isFollowing = false,
+                hasMention = true
+            )
+        val followed =
+            threadItem("thread-followed", unreadCount = 2).copy(
+                isFollowing = true,
+                hasMention = true
+            )
+        val raw = snapshot(listOf(unfollowed, followed), totalCount = 2, totalUnreadCount = 7)
+
+        val all = raw.projectActivityFilter(InboxFilter.All)
+        assertEquals(listOf("thread:thread-unfollowed", "thread:thread-followed"), all.items.map(InboxItem::key))
+        assertEquals(0, all.items.first().unreadCount)
+        assertEquals(false, all.items.first().hasMention)
+        assertEquals(2, all.totalUnreadCount)
+        assertEquals(2, all.totalCount)
+
+        val unread = raw.projectActivityFilter(InboxFilter.Unread)
+        assertEquals(listOf("thread:thread-followed"), unread.items.map(InboxItem::key))
+        assertEquals(2, unread.totalUnreadCount)
+        assertEquals(1, unread.totalCount)
+
+        val mentions = raw.projectActivityFilter(InboxFilter.Mentions)
+        assertEquals(listOf("thread:thread-followed"), mentions.items.map(InboxItem::key))
+        assertEquals(2, mentions.totalUnreadCount)
+        assertEquals(1, mentions.totalCount)
+    }
+
+    @Test
+    fun unfollowedRowSurvivesPaginationRefreshAndPersistedReentryWithoutDuplicates() = runBlocking {
+        val persistStorage = InMemoryPersistStorage()
+        val persistSlice = createSharedActivityPersistSlice(persistStorage)
+        val unfollowed =
+            threadItem("thread-unfollowed", unreadCount = 4).copy(
+                isFollowing = false,
+                hasMention = true
+            )
+        val followed = threadItem("thread-followed").copy(isFollowing = true)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(
+                            listOf(unfollowed),
+                            hasMore = true,
+                            nextOffset = 1,
+                            totalCount = 2,
+                            totalUnreadCount = 4
+                        ),
+                        snapshot(
+                            listOf(unfollowed, followed),
+                            hasMore = false,
+                            nextOffset = 2,
+                            totalCount = 2,
+                            totalUnreadCount = 4
+                        )
+                    ),
+                moreSnapshots =
+                    listOf(
+                        snapshot(
+                            listOf(followed),
+                            hasMore = false,
+                            nextOffset = 2,
+                            totalCount = 2,
+                            totalUnreadCount = 0
+                        )
+                    )
+            )
+        val firstScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val firstStore =
+            activityStore(
+                scope = firstScope,
+                inboxRepository = inbox,
+                persistSlices = listOf(persistSlice)
+            )
+
+        firstStore.dispatch(SharedActivityIntent.LoadInitial)
+        firstStore.dispatch(SharedActivityIntent.LoadMore)
+        firstStore.dispatch(SharedActivityIntent.Refresh)
+
+        assertEquals(
+            listOf("thread:thread-unfollowed", "thread:thread-followed"),
+            firstStore.state.value.items.map(InboxItem::key)
+        )
+        val refreshedUnfollowed = firstStore.state.value.items.first()
+        assertEquals(false, refreshedUnfollowed.isFollowing)
+        assertEquals(0, refreshedUnfollowed.unreadCount)
+        assertEquals(false, refreshedUnfollowed.hasMention)
+        assertEquals(0, firstStore.state.value.totalUnreadCount)
+
+        val secondScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val pendingInbox = DeferredInboxRepository()
+        val reenteredStore =
+            activityStore(
+                scope = secondScope,
+                inboxRepository = pendingInbox,
+                persistSlices = listOf(persistSlice)
+            )
+
+        reenteredStore.dispatch(SharedActivityIntent.LoadInitial)
+
+        assertEquals(true, reenteredStore.state.value.refreshing)
+        assertEquals(
+            listOf("thread:thread-unfollowed", "thread:thread-followed"),
+            reenteredStore.state.value.items.map(InboxItem::key)
+        )
+        val hydratedUnfollowed = reenteredStore.state.value.items.first()
+        assertEquals(false, hydratedUnfollowed.isFollowing)
+        assertEquals(0, hydratedUnfollowed.unreadCount)
+        assertEquals(false, hydratedUnfollowed.hasMention)
+        firstScope.cancel()
+        secondScope.cancel()
+    }
+
+    @Test
+    fun unfollowedThreadRemainsInAllAndRealtimeRepliesStayAttentionless() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val unfollowed =
+            threadItem("thread-unfollowed", unreadCount = 0).copy(
+                isFollowing = false,
+                replyCount = 1,
+                hasMention = false
+            )
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository =
+                    FakeInboxRepository(
+                        initialSnapshots = listOf(snapshot(listOf(unfollowed), totalUnreadCount = 0))
+                    )
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("unfollowed-reply", channelId = "thread-unfollowed"))
+            )
+        )
+
+        val row = store.state.value.items.single()
+        assertEquals(false, row.isFollowing)
+        assertEquals(2, row.replyCount)
+        assertEquals(0, row.unreadCount)
+        assertEquals(false, row.hasMention)
+        assertEquals(null, row.firstUnreadMessageId)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun unfollowedThreadUpdatedEventCannotRestoreAttention() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val unfollowed =
+            threadItem("thread-unfollowed").copy(
+                isFollowing = false,
+                replyCount = 1
+            )
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(unfollowed))))
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                ThreadUpdated(
+                    parentMessageId = MessageId("parent-message"),
+                    threadChannelId = ChannelId("thread-unfollowed"),
+                    replyCount = 2,
+                    lastReplyAt = "2026-09-01T00:00:00Z",
+                    participantIds = emptyList(),
+                    unreadCount = 5,
+                    firstUnreadMessageId = MessageId("reply")
+                )
+            )
+        )
+
+        assertEquals(0, store.state.value.items.single().unreadCount)
+        assertEquals(null, store.state.value.items.single().firstUnreadMessageId)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityUnfollowKeepsRowAndClearsAttentionThroughSharedTransport() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val conversation = FakeConversationRepository().apply {
+            unfollowResult = DataResult.Content(ThreadActionResult(ChannelId("thread-followed"), changed = true))
+        }
+        val followed =
+            threadItem("thread-followed", unreadCount = 3).copy(
+                isFollowing = true,
+                hasMention = true
+            )
+        val store =
+            activityStore(
+                scope = scope,
+                conversationRepository = conversation,
+                inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(followed), totalUnreadCount = 3)))
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(SharedActivityIntent.UnfollowThread(followed))
+
+        val row = store.state.value.items.single()
+        assertEquals(false, row.isFollowing)
+        assertEquals(0, row.unreadCount)
+        assertEquals(false, row.hasMention)
+        assertEquals(null, row.firstUnreadMessageId)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        assertEquals(listOf(ChannelId("thread-followed")), conversation.unfollowedThreadChannelIds)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityUnfollowFailureRefreshesBackToTheServerFollowedRow() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val followed =
+            threadItem("thread-followed", unreadCount = 3).copy(
+                isFollowing = true,
+                hasMention = true
+            )
+        val conversation = FakeConversationRepository().apply {
+            unfollowResult = DataResult.Error(ScreenError("offline"))
+        }
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(listOf(followed), totalUnreadCount = 3),
+                        snapshot(listOf(followed), totalUnreadCount = 3)
+                    )
+            )
+        val store =
+            activityStore(
+                scope = scope,
+                conversationRepository = conversation,
+                inboxRepository = inbox
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(SharedActivityIntent.UnfollowThread(followed))
+
+        val row = store.state.value.items.single()
+        assertEquals(true, row.isFollowing)
+        assertEquals(3, row.unreadCount)
+        assertEquals(true, row.hasMention)
+        assertEquals(2, inbox.initialLoadCount)
+        assertEquals(listOf(ChannelId("thread-followed")), conversation.unfollowedThreadChannelIds)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityFollowRemovesChipStateWithoutFabricatingAttention() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val conversation = FakeConversationRepository().apply {
+            followResult = DataResult.Content(ThreadActionResult(ChannelId("thread-unfollowed"), changed = true))
+        }
+        val unfollowed =
+            threadItem("thread-unfollowed").copy(
+                isFollowing = false,
+                unreadCount = 0,
+                hasMention = false
+            )
+        val store =
+            activityStore(
+                scope = scope,
+                conversationRepository = conversation,
+                inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(unfollowed))))
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(SharedActivityIntent.FollowThread(unfollowed))
+
+        val row = store.state.value.items.single()
+        assertEquals(true, row.isFollowing)
+        assertEquals(0, row.unreadCount)
+        assertEquals(false, row.hasMention)
+        assertEquals(listOf(MessageId("parent-message")), conversation.followedParentMessageIds)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityFollowFailureLeavesServerProjectedUnfollowedRowAfterRefresh() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val conversation = FakeConversationRepository().apply {
+            followResult = DataResult.Error(ScreenError("offline"))
+        }
+        val unfollowed =
+            threadItem("thread-unfollowed").copy(
+                isFollowing = false,
+                unreadCount = 0,
+                hasMention = false
+            )
+        val store =
+            activityStore(
+                scope = scope,
+                conversationRepository = conversation,
+                inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(unfollowed))))
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(SharedActivityIntent.FollowThread(unfollowed))
+
+        val row = store.state.value.items.single()
+        assertEquals(false, row.isFollowing)
+        assertEquals(0, row.unreadCount)
+        assertEquals(false, row.hasMention)
+        assertEquals(listOf(MessageId("parent-message")), conversation.followedParentMessageIds)
+        scope.cancel()
+    }
+
+    @Test
+    fun directMentionReplyDoesNotGuessRefollowBeforeCanonicalStateArrives() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val unfollowed =
+            threadItem("thread-unfollowed").copy(
+                isFollowing = false,
+                unreadCount = 0,
+                hasMention = false
+            )
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(unfollowed))))
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message(
+                        id = "direct-mention-reply",
+                        channelId = "thread-unfollowed",
+                        body = "@user-1 mention",
+                        conversationContext =
+                            MessageConversationContext(
+                                channelKind = ConversationKind.Thread,
+                                parentMessageId = MessageId("parent-message"),
+                                parentChannelId = ChannelId("parent-channel"),
+                                parentChannelKind = ConversationKind.Channel
+                            )
+                    )
+                )
+            )
+        )
+
+        assertEquals(false, store.state.value.items.single().isFollowing)
+        assertEquals(0, store.state.value.items.single().unreadCount)
+        assertEquals(false, store.state.value.items.single().hasMention)
+        scope.cancel()
+    }
+
+    @Test
+    fun canonicalServerRefollowMakesChipDisappearAndRestoresOnlyServerAttention() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val unfollowed =
+            threadItem("thread-unfollowed").copy(
+                isFollowing = false,
+                replyCount = 1,
+                unreadCount = 0,
+                hasMention = false
+            )
+        val serverRefollowed =
+            unfollowed.copy(
+                isFollowing = true,
+                replyCount = 2,
+                latestActivityMessageId = MessageId("direct-mention-reply"),
+                unreadCount = 1,
+                hasMention = true,
+                firstUnreadMessageId = MessageId("direct-mention-reply")
+            )
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(listOf(unfollowed)),
+                        snapshot(listOf(serverRefollowed), totalUnreadCount = 1)
+                    )
+            )
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.acceptRealtime(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("direct-mention-reply", channelId = "thread-unfollowed"))
+            )
+        )
+
+        val row = store.state.value.items.single()
+        assertEquals(true, row.isFollowing)
+        assertEquals(1, row.unreadCount)
+        assertEquals(true, row.hasMention)
+        assertEquals(MessageId("direct-mention-reply"), row.firstUnreadMessageId)
+        assertEquals(1, store.state.value.totalUnreadCount)
+        assertEquals(2, inbox.initialLoadCount)
         scope.cancel()
     }
 
@@ -1952,7 +2382,7 @@ class SharedActivityStoreTest {
                 replyThreadFreshnessLedger = ledger
             )
         store.dispatch(SharedActivityIntent.LoadInitial)
-        val initial = ledger.capture("server-1", "thread-channel-1")
+        val initial = ledger.captureContent("server-1", "thread-channel-1")
         val accepted =
             ThreadUpdated(
                 parentMessageId = MessageId("parent-message"),
@@ -1963,18 +2393,18 @@ class SharedActivityStoreTest {
             )
 
         store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(accepted))
-        val advanced = ledger.capture("server-1", "thread-channel-1")
+        val advanced = ledger.captureContent("server-1", "thread-channel-1")
         assertTrue(initial !== advanced)
 
         store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(accepted))
-        assertTrue(advanced === ledger.capture("server-1", "thread-channel-1"))
+        assertTrue(advanced === ledger.captureContent("server-1", "thread-channel-1"))
 
         store.dispatch(
             SharedActivityIntent.ApplyRealtimeEvent(
                 accepted.copy(replyCount = 2, lastReplyAt = "2026-07-13T03:01:00Z")
             )
         )
-        assertTrue(advanced === ledger.capture("server-1", "thread-channel-1"))
+        assertTrue(advanced === ledger.captureContent("server-1", "thread-channel-1"))
         scope.cancel()
     }
 
@@ -1989,7 +2419,7 @@ class SharedActivityStoreTest {
                 replyThreadFreshnessLedger = ledger
             )
         store.dispatch(SharedActivityIntent.LoadInitial)
-        val initial = ledger.capture("server-1", "thread-channel-1")
+        val initial = ledger.captureContent("server-1", "thread-channel-1")
         val update =
             MessageUpdated(
                 message(
@@ -2000,11 +2430,11 @@ class SharedActivityStoreTest {
             )
 
         store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(update))
-        val advanced = ledger.capture("server-1", "thread-channel-1")
+        val advanced = ledger.captureContent("server-1", "thread-channel-1")
         assertTrue(initial !== advanced)
 
         store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(update))
-        assertTrue(advanced === ledger.capture("server-1", "thread-channel-1"))
+        assertTrue(advanced === ledger.captureContent("server-1", "thread-channel-1"))
         scope.cancel()
     }
 
@@ -2026,12 +2456,12 @@ class SharedActivityStoreTest {
             )
 
         store.dispatch(SharedActivityIntent.LoadInitial)
-        val initial = ledger.capture("server-1", "thread-channel-1")
+        val initial = ledger.captureContent("server-1", "thread-channel-1")
         store.dispatch(SharedActivityIntent.Refresh)
-        assertTrue(initial === ledger.capture("server-1", "thread-channel-1"))
+        assertTrue(initial === ledger.captureContent("server-1", "thread-channel-1"))
 
         store.dispatch(SharedActivityIntent.Refresh)
-        assertTrue(initial !== ledger.capture("server-1", "thread-channel-1"))
+        assertTrue(initial !== ledger.captureContent("server-1", "thread-channel-1"))
         scope.cancel()
     }
 
@@ -2061,12 +2491,12 @@ class SharedActivityStoreTest {
                 )
             )
         )
-        val realtimeGeneration = ledger.capture("server-1", "thread-channel-1")
+        val realtimeGeneration = ledger.captureContent("server-1", "thread-channel-1")
 
         store.dispatch(SharedActivityIntent.Refresh)
 
         assertEquals(3, store.state.value.items.single().replyCount)
-        assertTrue(realtimeGeneration === ledger.capture("server-1", "thread-channel-1"))
+        assertTrue(realtimeGeneration === ledger.captureContent("server-1", "thread-channel-1"))
         scope.cancel()
     }
 
@@ -2081,14 +2511,14 @@ class SharedActivityStoreTest {
                 replyThreadFreshnessLedger = ledger
             )
         store.dispatch(SharedActivityIntent.LoadInitial)
-        val initial = ledger.capture("server-1", "thread-channel-1")
+        val initial = ledger.captureContent("server-1", "thread-channel-1")
 
         store.dispatch(
             SharedActivityIntent.ApplyRealtimeEvent(
                 SyncResumeResponse(messages = emptyList(), currentSeq = 10L, hasMore = false)
             )
         )
-        val afterResume = ledger.capture("server-1", "thread-channel-1")
+        val afterResume = ledger.captureContent("server-1", "thread-channel-1")
         assertTrue(initial !== afterResume)
 
         store.dispatch(
@@ -2100,7 +2530,7 @@ class SharedActivityStoreTest {
                 )
             )
         )
-        assertTrue(afterResume !== ledger.capture("server-1", "thread-channel-1"))
+        assertTrue(afterResume !== ledger.captureContent("server-1", "thread-channel-1"))
         scope.cancel()
     }
 
@@ -3004,6 +3434,36 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun loadInitialAppliesResultWhenAccessTokenRotatedMidFlight() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val authStore = InMemorySlockAuthSessionStore(sampleSession())
+        val inbox = DeferredInboxRepository()
+        val diagnostics = mutableListOf<String>()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                authStore = authStore,
+                diagnosticsLogger = { diagnostics += it }
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        assertEquals(true, store.state.value.loading)
+        assertEquals(1, inbox.initialLoadCount)
+
+        // A 401 inside the request rotates the tokens; the retried request still
+        // returns fresh data for the same user + server and must be applied.
+        authStore.updateTokens("rotated-access", "rotated-refresh")
+        inbox.completeNext(activityItem("channel-1"))
+
+        assertEquals(false, store.state.value.loading)
+        assertEquals(listOf("channel:channel-1"), store.state.value.items.map { it.key })
+        assertTrue(diagnostics.none { it.contains("stale_session") })
+        scope.cancel()
+    }
+
+    @Test
     fun loadInitialDedupesHydratedActivityPersistRows() = runBlocking {
         val persistStorage = InMemoryPersistStorage()
         val persistSlice = createSharedActivityPersistSlice(persistStorage)
@@ -3735,6 +4195,7 @@ class SharedActivityStoreTest {
         conversationRepository: FakeConversationRepository = FakeConversationRepository(),
         memberRepository: MemberRepository? = null,
         serverMembersStore: SharedServerMembersStore? = null,
+        channelRepository: ChannelRepository? = null,
         persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = emptyList(),
         tasksDataStore: SharedTasksDataStore? = null,
         perReceiverStateVersionStore: PerReceiverStateVersionStore =
@@ -3763,6 +4224,7 @@ class SharedActivityStoreTest {
             conversationRepository = conversationRepository,
             memberRepository = memberRepository,
             serverMembersStore = serverMembersStore,
+            channelRepository = channelRepository,
             tasksDataStore = tasksDataStore,
             perReceiverStateVersionStore = perReceiverStateVersionStore,
             persistSlices = persistSlices,
@@ -4043,6 +4505,12 @@ class SharedActivityStoreTest {
 
     private class FakeConversationRepository : ConversationRepository {
         val doneThreadChannelIds = mutableListOf<ChannelId>()
+        val followedParentMessageIds = mutableListOf<MessageId>()
+        val unfollowedThreadChannelIds = mutableListOf<ChannelId>()
+        var followResult: DataResult<ThreadActionResult> =
+            DataResult.Content(ThreadActionResult(ChannelId("thread-channel"), changed = true))
+        var unfollowResult: DataResult<ThreadActionResult> =
+            DataResult.Content(ThreadActionResult(ChannelId("thread-channel"), changed = true))
 
         override suspend fun getThread(threadId: ThreadId, includeFollowedSummaries: Boolean, limit: Int): DataResult<ThreadSnapshot> =
             error("unused")
@@ -4071,11 +4539,15 @@ class SharedActivityStoreTest {
         override suspend fun createOrOpenThread(channelId: ChannelId, parentMessageId: MessageId): DataResult<ThreadActionResult> =
             error("unused")
 
-        override suspend fun followThread(parentMessageId: MessageId): DataResult<ThreadActionResult> =
-            error("unused")
+        override suspend fun followThread(parentMessageId: MessageId): DataResult<ThreadActionResult> {
+            followedParentMessageIds += parentMessageId
+            return followResult
+        }
 
-        override suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
-            error("unused")
+        override suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> {
+            unfollowedThreadChannelIds += threadChannelId
+            return unfollowResult
+        }
 
         override suspend fun markThreadDone(threadChannelId: ChannelId): DataResult<ThreadActionResult> {
             doneThreadChannelIds += threadChannelId
@@ -4102,6 +4574,170 @@ class SharedActivityStoreTest {
             randomId: String?
         ): DataResult<SendMessageResult> =
             error("unused")
+    }
+
+    @Test
+    fun dmParentThreadRowsHydratePeerNamesFromDirectMessages() = runBlocking {
+        // task #399: an inbox Thread row whose parent is a DM resolves the peer
+        // display name through the Home DM list (channels.name is not a
+        // reliable peer projection); channel-parent rows never trigger it.
+        val dmThread =
+            InboxItem(
+                key = "thread:dm-thread-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("dm-thread-1"),
+                channelName = "thread-stream",
+                parentChannelId = ChannelId("dm-1"),
+                parentChannelName = "raw-dm-name",
+                parentChannelKind = ConversationKind.DirectMessage,
+                parentMessageId = MessageId("message-1"),
+                parentMessagePreview = "DM root preview"
+            )
+        val channelThread =
+            InboxItem(
+                key = "thread:ch-thread-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("ch-thread-1"),
+                channelName = "thread-stream-2",
+                parentChannelId = ChannelId("channel-9"),
+                parentChannelName = "general",
+                parentChannelKind = ConversationKind.Channel,
+                parentMessageId = MessageId("message-2"),
+                parentMessagePreview = "Channel root preview"
+            )
+        val channelRepository =
+            FakeChannelRepository(
+                directMessagesResult = { serverId ->
+                    DataResult.Content(
+                        DirectMessageSnapshot(
+                            server = ServerSummary(id = serverId, name = "Slock"),
+                            directMessages =
+                                listOf(
+                                    HomeDirectMessageRow(
+                                        threadId = ThreadId("dm-1"),
+                                        channelId = ChannelId("dm-1"),
+                                        name = "Jiacheng"
+                                    )
+                                )
+                        )
+                    )
+                }
+            )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository =
+                    FakeInboxRepository(
+                        initialSnapshots = listOf(snapshot(listOf(dmThread, channelThread)))
+                    ),
+                channelRepository = channelRepository
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        withTimeout(5_000L) {
+            while (store.state.value.dmPeerNames["dm-1"] == null) {
+                delay(1L)
+            }
+        }
+        assertEquals(mapOf("dm-1" to "Jiacheng"), store.state.value.dmPeerNames)
+        scope.cancel()
+    }
+
+    @Test
+    fun dmPeerNameHydrationRetriesAfterFetchErrorAndParksTrueMisses() = runBlocking {
+        // task #399 review (Mahua #1): a failed getDirectMessages must NOT
+        // park the missing ids — the next load/patch trigger retries and
+        // hydration recovers. Only a successful fetch that returns no row
+        // parks the id, so later loads don't re-fetch for it.
+        val dmThread =
+            InboxItem(
+                key = "thread:dm-thread-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("dm-thread-1"),
+                channelName = "thread-stream",
+                parentChannelId = ChannelId("dm-1"),
+                parentChannelName = "raw-dm-name",
+                parentChannelKind = ConversationKind.DirectMessage,
+                parentMessageId = MessageId("message-1"),
+                parentMessagePreview = "DM root preview"
+            )
+        var failDirectMessages = true
+        val channelRepository =
+            FakeChannelRepository(
+                directMessagesResult = { serverId ->
+                    if (failDirectMessages) {
+                        DataResult.Error(ScreenError("dm_list_failed"))
+                    } else {
+                        DataResult.Content(
+                            DirectMessageSnapshot(
+                                server = ServerSummary(id = serverId, name = "Slock"),
+                                directMessages =
+                                    listOf(
+                                        HomeDirectMessageRow(
+                                            threadId = ThreadId("dm-1"),
+                                            channelId = ChannelId("dm-1"),
+                                            name = "Jiacheng"
+                                        )
+                                    )
+                            )
+                        )
+                    }
+                }
+            )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository =
+                    FakeInboxRepository(
+                        initialSnapshots = listOf(snapshot(listOf(dmThread)))
+                    ),
+                channelRepository = channelRepository
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        delay(50L)
+        // Error → nothing parked, nothing resolved.
+        assertEquals(1, channelRepository.directMessageCalls)
+        assertEquals(emptyMap(), store.state.value.dmPeerNames)
+
+        failDirectMessages = false
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        withTimeout(5_000L) {
+            while (store.state.value.dmPeerNames["dm-1"] == null) {
+                delay(1L)
+            }
+        }
+        assertEquals(2, channelRepository.directMessageCalls)
+        assertEquals(mapOf("dm-1" to "Jiacheng"), store.state.value.dmPeerNames)
+        scope.cancel()
+    }
+
+    @Test
+    fun channelOnlySnapshotsNeverFetchDirectMessages() = runBlocking {
+        val channelRepository =
+            FakeChannelRepository(
+                directMessagesResult = { error("unused") }
+            )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository =
+                    FakeInboxRepository(
+                        initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1"))))
+                    ),
+                channelRepository = channelRepository
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        delay(50L)
+
+        assertEquals(0, channelRepository.directMessageCalls)
+        assertEquals(emptyMap(), store.state.value.dmPeerNames)
+        scope.cancel()
     }
 
     private fun activityItem(

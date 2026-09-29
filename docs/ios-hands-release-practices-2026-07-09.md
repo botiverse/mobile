@@ -38,7 +38,7 @@ key must never leave the Hands service boundary.
 Use the same release input shape as Android:
 
 ```text
-versionCode = x * 1_000_000 + y * 10_000 + z * 100 + build
+versionCode = x * 10_000_000 + y * 100_000 + z * 1_000 + build
 versionName = x.y.z[-suffix]
 ```
 
@@ -56,7 +56,12 @@ stamps the processed `Info.plist` with the source commit under the
 `HandsBuildCommit` key (what the Hands iOS SDK reads) and, when the env vars are
 present, overrides `CFBundleShortVersionString` and `CFBundleVersion`. This
 prevents release artifacts from falling back to the project defaults
-`MARKETING_VERSION=1.0` / `CURRENT_PROJECT_VERSION=1`.
+`MARKETING_VERSION=1.0` / `CURRENT_PROJECT_VERSION=1`. Those project defaults
+are expected in frozen source. Preflight must not fail because the Xcode
+project still shows `1.0` / `1`; the version gate is dispatch injection plus
+artifact readback. Since 1.12.0 (artin, 2026-09-27) iOS uses the train
+semantic version as its marketing version (for example `1.12.0`, build 1 ⇒
+`CFBundleVersion` `11200001`); builds up to 1.11.0 shipped as `1.0.0`.
 
 ## GitHub Actions
 
@@ -76,7 +81,9 @@ Default dispatch behavior:
 Every dispatch uploads the signed IPA and dSYM to Hands and creates a draft.
 The helper fails fast if the installed CLI package does not expose
 `builds publish-ios`. CI never activates that draft; activation remains a
-separate owner-authorized operation after review.
+separate owner-authorized operation after review. If this dispatch starts the
+train, schedule the Raft 10-minute interval reminder on the release thread
+before walking away.
 
 Reviewed trilingual release notes live at
 `change-logs/<version>/ios/{zh-CN,en,ja}.md`. The workflow sends all three
@@ -140,6 +147,24 @@ CI always registers the signed IPA and dSYM in a Hands draft before any
 server-side submission. Hands remains the sole TestFlight delivery boundary
 after CI has uploaded those artifacts.
 
+When the release plan (or a standing owner directive for that train) says
+iOS drafts go to TestFlight internal, do this immediately after the Hands
+draft succeeds, without waiting for a per-build go:
+
+1. `POST /api/apps/:appId/builds/:buildId/testflight-upload`.
+2. Poll until the exact build is `processing_state=VALID`.
+3. `hands builds testflight-publish` with `--distribution internal` and the
+   named internal group id (Raft Mobile: Botiverse
+   `e10b6b3e-000d-4cbe-a160-2a9275f76977`). Write What to Test. Do **not**
+   pass `--notify-testers` (Hands returns `NOTIFY_EXTERNAL_ONLY` on
+   internal).
+4. Fresh-read `internal_build_state=IN_BETA_TESTING`. An internal
+   all-builds group may already list the build; still write What to Test
+   and record the readback.
+
+Insiders, external testers, App Store, and Hands activation stay out of
+this default.
+
 ## TestFlight Distribution And Tester Notification
 
 An ASC build being `VALID` is upload/processing success, not TestFlight
@@ -149,18 +174,30 @@ publication. After processing:
    `hands builds testflight-groups`.
 2. Publish the exact build to the owner-selected audience with localized What
    to Test. External publication uses `--distribution external`.
-3. When the owner says `publish iOS` or `publish to TestFlight` without a
-   narrower boundary, include `--notify-testers`. This is part of publication,
-   not an optional follow-up. Only `upload only`, `submit for review`,
-   `internal only`, or an explicit `do not notify` stops earlier.
-4. Use `--wait` when the expected Apple transition fits the bounded wait. If
-   review is asynchronous, return the current state, schedule a recheck, and
-   after approval invoke the same idempotent external publish with
-   `--notify-testers` again.
-5. Preserve the publish response. For an already-approved build it must report
-   `notification=sent` (or `already_sent` on an idempotent replay). Fresh-read
-   status and require `external_build_state=IN_BETA_TESTING` before reporting
-   `published`, `sent`, or `available in TestFlight`.
+3. Internal first: a bare `publish iOS` / `publish to TestFlight` means the
+   named internal group only; stop and report to artin. External
+   publication needs a separate explicit go from artin after he has tested
+   the exact build. Once external is authorized, include `--notify-testers`;
+   that is part of external publication, not an optional follow-up. Only
+   `upload only`, `submit for review`, or an explicit `do not notify` stops
+   earlier.
+4. Preserve the mutating publish response. For an already-approved build it
+   must report `notification=sent` (or `already_sent` on an idempotent replay).
+   Do not combine this receipt-producing call with `--wait`: the current CLI's
+   `--wait --json` output replaces the POST response with a later GET status,
+   which does not preserve `notification` or `operation_id`.
+5. Use the separate read-only `testflight-status` command for a bounded
+   recheck. Require `external_build_state=IN_BETA_TESTING` before reporting
+   `published`, `sent`, or `available in TestFlight`. If review is
+   asynchronous, schedule the recheck and, after approval, invoke the same
+   idempotent external publish with `--notify-testers` again.
+
+The `notification` values are exhaustive: `not_requested` and `scheduled` are
+not completion; `sent` and `already_sent` satisfy the operation-receipt half of
+the completion contract. When the first response is `scheduled`, wait for the
+exact build to reach `IN_BETA_TESTING`, then replay the same publish without
+`--wait` to preserve the expected `already_sent` receipt, and fresh-read the
+exact status again.
 
 Example for an already-approved external build:
 
@@ -171,9 +208,10 @@ hands builds testflight-publish raft-ios <hands-build-id> \
   --what-to-test-file en-US=./testflight.en.txt \
   --what-to-test-file zh-Hans=./testflight.zh.txt \
   --notify-testers \
-  --wait \
   --json
 
+# Repeat this read-only command with a bounded interval/timeout until the
+# exact build reaches IN_BETA_TESTING, or report notification unverified.
 hands builds testflight-status raft-ios <hands-build-id> \
   --distribution external \
   --json

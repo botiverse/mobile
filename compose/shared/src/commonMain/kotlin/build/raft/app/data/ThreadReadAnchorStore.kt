@@ -68,11 +68,15 @@ internal fun advanceThreadReadAnchorFrontier(
 internal fun projectThreadUnreadJump(
     anchor: ThreadReadAnchor?,
     messages: List<ThreadUnreadAnchorMessage>,
+    excludedMessageIds: Set<String> = emptySet(),
 ): ThreadUnreadJumpProjection {
     val validAnchor = anchor?.normalizedOrNull()
         ?: return ThreadUnreadJumpProjection(unreadCount = 0, targetMessageId = null)
     val canonical = messages.filter { message -> message.id.isNotBlank() && (message.seq ?: 0L) > 0L }
-    val unread = canonical.filter { message -> message.seq!! > validAnchor.seq }
+    val unread =
+        canonical.filter { message ->
+            message.seq!! > validAnchor.seq && message.id !in excludedMessageIds
+        }
     if (unread.isEmpty()) {
         return ThreadUnreadJumpProjection(unreadCount = 0, targetMessageId = null)
     }

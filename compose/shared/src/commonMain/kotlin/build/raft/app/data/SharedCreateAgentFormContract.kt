@@ -9,7 +9,9 @@ import kotlinx.serialization.Serializable
 
 internal const val CREATE_AGENT_FORM_PROTOCOL_VERSION = 1
 internal const val CREATE_AGENT_BUILTIN_RUNTIME_ID = "builtin"
-internal const val CREATE_AGENT_BUILTIN_PI_SCHEMA_VERSION = "builtin-pi.create.v2"
+internal const val CREATE_AGENT_BUILTIN_PI_SCHEMA_VERSION = "builtin-pi.create.v3"
+internal const val CREATE_AGENT_KIMI_SDK_RUNTIME_ID = "kimi-sdk"
+internal const val CREATE_AGENT_KIMI_SDK_SCHEMA_VERSION = "kimi-sdk.create.v1"
 
 @Serializable
 data class SharedRuntimeFormDefinitionRef(
@@ -25,6 +27,15 @@ data class SharedRuntimeFormDefinitionRef(
             protocolVersion == CREATE_AGENT_FORM_PROTOCOL_VERSION &&
                 runtimeId == CREATE_AGENT_BUILTIN_RUNTIME_ID &&
                 schemaVersion == CREATE_AGENT_BUILTIN_PI_SCHEMA_VERSION
+
+    val isSupportedKimiSdk: Boolean
+        get() =
+            protocolVersion == CREATE_AGENT_FORM_PROTOCOL_VERSION &&
+                runtimeId == CREATE_AGENT_KIMI_SDK_RUNTIME_ID &&
+                schemaVersion == CREATE_AGENT_KIMI_SDK_SCHEMA_VERSION
+
+    val isSupportedRuntimeForm: Boolean
+        get() = isSupportedBuiltInPi || isSupportedKimiSdk
 }
 
 internal data class SharedCreateAgentRuntimeCatalog(
@@ -188,6 +199,23 @@ internal fun SharedResolvedAgentCreateForm.hasConsistentBuiltInSources(): Boolea
     }
 }
 
+/**
+ * Kimi SDK form consistency. The kimi schema carries no provider fields; its
+ * single option source is the flat model `select`. Reasoning-effort authority
+ * deliberately stays with the live runtime-models catalog
+ * ([SharedCreateAgentRuntimeModelOption.supportedReasoningEfforts]), never with
+ * this form — the form only proves the server speaks the schema and supplies
+ * the exact ref to echo back.
+ */
+internal fun SharedResolvedAgentCreateForm.hasConsistentKimiSdkSources(): Boolean {
+    if (!definition.ref.isSupportedKimiSdk) return false
+    if (optionSources.keys != definition.optionSources.keys) return false
+    val modelSource = optionSources["model"] as? SharedAgentCreateFormOptionSource.Select ?: return false
+    return modelSource.options.isNotEmpty() &&
+        modelSource.options.map { it.value }.distinct().size == modelSource.options.size &&
+        modelSource.defaultValue in modelSource.options.map { it.value }
+}
+
 internal data class SharedBuiltInWriteOnlyIdentity(
     val environmentId: String = "",
     val accountId: String = "",
@@ -211,7 +239,8 @@ internal fun SharedResolvedAgentCreateForm.buildBuiltInRuntimeConfig(
     baseUrl: String,
     model: String,
     envVars: Map<String, String>?,
-    supportsImageInput: Boolean = false
+    supportsImageInput: Boolean = false,
+    loadLocalPlugins: Boolean = false
 ): RuntimeConfig? {
     if (!hasConsistentBuiltInSources()) return null
     val cleanProviderId = providerId.trim()
@@ -250,6 +279,7 @@ internal fun SharedResolvedAgentCreateForm.buildBuiltInRuntimeConfig(
         mode = RuntimeModeConfig.Default,
         reasoningEffort = null,
         envVars = envVars,
+        loadLocalPlugins = loadLocalPlugins,
         hostUserState = RuntimeHostUserState.Forbidden
     )
 }

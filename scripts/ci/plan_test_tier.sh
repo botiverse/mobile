@@ -36,7 +36,13 @@ mark_all_platforms() {
 # nightly iOS readback instead of recompiling iOS on every push. Unknown
 # changed paths stay fail-closed (classify already marked all platforms and
 # this function keeps them).
-main_push_keeps_ios() {
+# Task #26 (artin 2026-08-09, 2026-09-07): ordinary PR and main pushes keep the
+# expensive (macOS) iOS compile only when the change can plausibly affect iOS:
+# iOS-specific source or CI-control paths. Ordinary commonMain changes fall
+# back to nightly/release readbacks (or explicit full-ci PRs) instead of
+# recompiling iOS on every commit push. Unknown changed paths stay fail-closed
+# (classify already marked all platforms and this function keeps them).
+change_keeps_ios() {
   local changed_paths_file="$1"
   local path
   while IFS= read -r path || test -n "$path"; do
@@ -52,6 +58,10 @@ main_push_keeps_ios() {
     esac
   done < "$changed_paths_file"
   return 1
+}
+
+main_push_keeps_ios() {
+  change_keeps_ios "$@"
 }
 
 
@@ -181,6 +191,17 @@ emit_plan() {
         run_canonical_final=false
         attachment_api_levels="[31]"
         reason="pull-request-full-ci"
+      else
+        # Task #26 Agent-era CI downshift (artin 2026-09-07): ordinary PR
+        # pushes downshift the expensive (macOS) iOS compile. Ordinary commonMain
+        # PRs run Linux fast gates only; full iOS host build runs on explicit
+        # full-ci PRs, PRs with iOS-specific changes, or post-merge readbacks.
+        if test "$run_ios" = true && ! change_keeps_ios "$changed_paths_file"; then
+          run_ios=false
+          case "$reason" in
+            pull-request-paths:*) reason="pull-request-paths:$(platform_summary)" ;;
+          esac
+        fi
       fi
       ;;
     merge_group)
@@ -199,7 +220,7 @@ emit_plan() {
           # ordinary pushes rely on the nightly iOS readback. Fail-closed:
           # unknown paths were already marked all-platform by classify and are
           # kept here.
-          if test "$run_ios" = true && ! main_push_keeps_ios "$changed_paths_file"; then
+          if test "$run_ios" = true && ! change_keeps_ios "$changed_paths_file"; then
             run_ios=false
             case "$reason" in
               main-push-paths:*) reason="main-push-paths:$(platform_summary)" ;;
@@ -303,12 +324,19 @@ self_test() {
     pull_request false feature $'compose/ohosApp/entry/src/main/ets/Example.ets\n'
   assert_plan "$native"$'\nreason=pull-request-paths:ios,ohos' \
     pull_request false feature $'compose/shared/src/nativeMain/kotlin/Example.kt\n'
-  assert_plan "$all"$'\nreason=pull-request-paths:android,ios,ohos' \
+  # Task #26 Agent-era CI downshift: ordinary PR pushes (commonMain catch-all)
+  # no longer compile iOS; explicit full-ci PR or nightly readback covers them.
+  assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android,ohos' \
     pull_request false feature $'compose/shared/src/commonMain/kotlin/Example.kt\n'
-  assert_plan "$all"$'\nreason=pull-request-paths:android,ios,ohos' \
+  assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android,ohos' \
     pull_request false feature $'compose/gradle/libs.versions.toml\n'
-  assert_plan "$all"$'\nreason=pull-request-paths:android,ios,ohos' \
+  assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android,ohos' \
     pull_request false feature $'scripts/test_process_network_lifecycle_source_contract.mjs\n'
+  # PR pushes that touch iOS-specific paths keep the iOS compile.
+  assert_plan "$all"$'\nreason=pull-request-paths:android,ios,ohos' \
+    pull_request false feature $'compose/shared/src/commonMain/kotlin/Example.kt\ncompose/iosApp/iosApp/Example.swift\n'
+  assert_plan "$ios"$'\nreason=pull-request-paths:ios' \
+    pull_request false feature $'compose/shared/src/iosMain/kotlin/Example.kt\n'
   assert_plan "$all"$'\nreason=pull-request-ci-control' \
     pull_request false feature $'.github/workflows/test.yml\n'
   assert_plan "$all"$'\nreason=pull-request-diff-unavailable-fail-closed' \

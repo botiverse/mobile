@@ -6,14 +6,12 @@ on:
       - ".github/workflows/qa-acceptance.yml"
       - ".github/workflows/qa-acceptance-ios.yml"
       - ".github/workflows/android-alpha.yml"
-      - ".github/workflows/android-beta.yml"
       - ".github/workflows/qa-infra-test.yml"
       - "docs/qa-acceptance/case-schema.md"
       - "docs/qa-acceptance/cases/**"
       - "scripts/qa/**"
       - "scripts/sign_android_apk_with_rotation.sh"
       - "scripts/test_sign_android_apk_with_rotation.sh"
-      - "scripts/test_android_beta_workflow_contract.sh"
       - "scripts/test_hands_identifier_migration.sh"
       - "scripts/verify_android_apk_with_rotation.sh"
       - "scripts/visual_android_case_filter.py"
@@ -23,14 +21,12 @@ on:
       - ".github/workflows/qa-acceptance.yml"
       - ".github/workflows/qa-acceptance-ios.yml"
       - ".github/workflows/android-alpha.yml"
-      - ".github/workflows/android-beta.yml"
       - ".github/workflows/qa-infra-test.yml"
       - "docs/qa-acceptance/case-schema.md"
       - "docs/qa-acceptance/cases/**"
       - "scripts/qa/**"
       - "scripts/sign_android_apk_with_rotation.sh"
       - "scripts/test_sign_android_apk_with_rotation.sh"
-      - "scripts/test_android_beta_workflow_contract.sh"
       - "scripts/test_hands_identifier_migration.sh"
       - "scripts/verify_android_apk_with_rotation.sh"
       - "scripts/visual_android_case_filter.py"
@@ -63,11 +59,9 @@ jobs:
           python3 scripts/qa/check_release_acceptance_cases.py
           python3 scripts/qa/check_release_acceptance_cases.py --emit-plan > /tmp/release-acceptance-plan.json
       - name: Check shell syntax
-        run: bash -n scripts/qa/stamp_report.sh scripts/qa/prepare_pinned_ios_app.sh scripts/sign_android_apk_with_rotation.sh scripts/test_sign_android_apk_with_rotation.sh scripts/test_android_beta_workflow_contract.sh scripts/test_hands_identifier_migration.sh scripts/verify_android_apk_with_rotation.sh
+        run: bash -n scripts/qa/stamp_report.sh scripts/qa/prepare_pinned_ios_app.sh scripts/sign_android_apk_with_rotation.sh scripts/test_sign_android_apk_with_rotation.sh scripts/test_hands_identifier_migration.sh scripts/verify_android_apk_with_rotation.sh
       - name: Check rotated Android APK signing contract
         run: scripts/test_sign_android_apk_with_rotation.sh
-      - name: Check Android Beta workflow contract
-        run: scripts/test_android_beta_workflow_contract.sh
       - name: Check Hands identifier migration contract
         run: scripts/test_hands_identifier_migration.sh
       - name: Check Android visual case selection contract

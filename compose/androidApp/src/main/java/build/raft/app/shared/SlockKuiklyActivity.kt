@@ -18,6 +18,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.Typeface
@@ -27,6 +28,7 @@ import android.graphics.fonts.Font
 import android.graphics.fonts.FontFamily
 import android.graphics.fonts.FontStyle
 import android.net.Uri
+import android.media.ExifInterface
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -115,6 +117,7 @@ import build.raft.app.data.SlockAndroidSqlDatabaseContext
 import build.raft.app.data.SlockAvatarMountedRenderDescriptor
 import build.raft.app.data.parseSlockAvatarMountedRenderModel
 import build.raft.app.network.SharedBinaryDownloader
+import build.raft.app.network.SharedDownloadedBytes
 import build.raft.app.network.AttachmentDownloadObserver
 import build.raft.app.network.AttachmentDownloadProgress
 import build.raft.app.network.AttachmentDownloadResult
@@ -160,8 +163,10 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
+import java.io.FileOutputStream
 import java.net.URL
 import java.net.URLDecoder
+import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
@@ -172,11 +177,13 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -186,6 +193,268 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 internal const val THREAD_CAMERA_CAPTURE_CACHE_DIR_NAME = "slock-camera-captures"
+internal const val THREAD_ATTACHMENT_IMAGE_MAX_EDGE_PX = 2048
+internal const val THREAD_ATTACHMENT_IMAGE_JPEG_QUALITY = 82
+internal const val THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR = "attachment_image_compression_failed"
+private val THREAD_ATTACHMENT_IMAGE_EXTENSIONS =
+        setOf("avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "webp")
+private val THREAD_ATTACHMENT_VIDEO_EXTENSIONS =
+        setOf("3gp", "avi", "flv", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "webm", "wmv")
+
+private class ThreadAttachmentImageCompressionException(
+        message: String,
+        cause: Throwable? = null,
+) : IOException(message, cause)
+
+private class ThreadImageCompressionCancelledException : IOException("cancelled")
+
+private const val THREAD_IMAGE_COMPRESSION_CACHE_DIR_NAME = "slock-picked-thread-attachments"
+private const val THREAD_IMAGE_COMPRESSION_SOURCE = "composer_image_compressor"
+private const val THREAD_IMAGE_COMPRESSION_MAX_REQUEST_ID_LENGTH = 128
+private const val THREAD_IMAGE_COMPRESSION_MAX_FILE_NAME_LENGTH = 256
+
+private fun threadImageCompressionFailurePayload(): Map<String, Any> =
+        mapOf(
+                "code" to 400,
+                "errorCode" to THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR,
+                "errorBodyText" to "Unable to compress image attachment"
+        )
+
+private fun normalizedThreadImageMimeType(value: String): String =
+        value.substringBefore(';').trim().lowercase(Locale.US)
+
+private fun threadImageCompressionFileName(fileName: String): String {
+    val leaf = fileName.substringAfterLast('/').substringAfterLast('\\').ifBlank { "image" }
+    val stem = leaf.substringBeforeLast('.', leaf).ifBlank { "image" }
+    val safeStem =
+            stem.map { character ->
+                if (
+                        character.isLetterOrDigit() ||
+                                character == '.' ||
+                                character == '-' ||
+                                character == '_' ||
+                                character == ' '
+                ) {
+                    character
+                } else {
+                    '_'
+                }
+            }.joinToString("").trim().take(THREAD_IMAGE_COMPRESSION_MAX_FILE_NAME_LENGTH)
+    return "${safeStem.ifBlank { "image" }}.jpg"
+}
+
+private fun threadImageCompressionPathInside(root: File, candidate: File): Boolean {
+    val rootPath = root.canonicalPath.trimEnd(File.separatorChar) + File.separator
+    return candidate.canonicalPath.startsWith(rootPath)
+}
+
+private fun parseThreadImageCompressionSource(
+        fileRef: String,
+        roots: List<File>
+): File? {
+    val raw = fileRef.trim()
+    if (raw.isBlank() || raw.any(Char::isISOControl)) return null
+    val path =
+            if (raw.startsWith("/")) {
+                raw
+            } else {
+                val uri = runCatching { Uri.parse(raw) }.getOrNull() ?: return null
+                if (
+                        !uri.scheme.equals("file", ignoreCase = true) ||
+                                !uri.host.isNullOrBlank() ||
+                                uri.query != null ||
+                                uri.fragment != null
+                ) {
+                    return null
+                }
+                uri.path ?: return null
+            }
+    if (path.isBlank() || path.indexOf('\u0000') >= 0) return null
+    val candidate = runCatching { File(path).canonicalFile }.getOrNull() ?: return null
+    if (!candidate.isFile || candidate.length() <= 0L) return null
+    return candidate.takeIf { file -> roots.any { root -> threadImageCompressionPathInside(root, file) } }
+}
+
+private fun isThreadImageCompressionInput(
+        fileName: String,
+        mimeType: String,
+        sourceFile: File
+): Boolean {
+    val normalizedMime = normalizedThreadImageMimeType(mimeType)
+    if (!normalizedMime.startsWith("image/") || !sourceFile.isFile || sourceFile.length() <= 0L) {
+        return false
+    }
+    val extension =
+            fileName.substringAfterLast('.', "").trim().lowercase(Locale.US)
+    if (extension in THREAD_ATTACHMENT_VIDEO_EXTENSIONS) return false
+    // The provider-supplied display name is not authoritative.  A mismatched tuple can carry an
+    // image MIME/name while the admitted cache path is actually a movie; reject the source path
+    // extension before BitmapFactory gets a chance to interpret it as an image.
+    val sourceExtension = sourceFile.extension.trim().lowercase(Locale.US)
+    if (sourceExtension in THREAD_ATTACHMENT_VIDEO_EXTENSIONS) return false
+    if (extension.isNotBlank() && extension !in THREAD_ATTACHMENT_IMAGE_EXTENSIONS) {
+        // A renderer snapshot may carry a synthetic/unknown extension while still declaring a
+        // valid image MIME.  Known non-image extensions are rejected above; unknown ones are
+        // left to BitmapFactory's decode gate.
+        return true
+    }
+    return true
+}
+
+private fun compressThreadImageFile(
+        sourceFile: File,
+        outputFile: File,
+        isCancelled: () -> Boolean
+) {
+    fun checkCancelled() {
+        if (isCancelled()) throw ThreadImageCompressionCancelledException()
+    }
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(sourceFile.absolutePath, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+        throw ThreadAttachmentImageCompressionException("Unable to decode image attachment")
+    }
+    checkCancelled()
+    val orientation =
+            runCatching {
+                ExifInterface(sourceFile.absolutePath).getAttributeInt(
+                        ExifInterface.TAG_ORIENTATION,
+                        ExifInterface.ORIENTATION_NORMAL
+                )
+            }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+    var decoded: Bitmap? = null
+    var oriented: Bitmap? = null
+    var resized: Bitmap? = null
+    val partFile = File(outputFile.path + ".part")
+    var committed = false
+    try {
+        // A cancellation may race the worker before it opens the output.  The part suffix keeps
+        // that race from ever exposing a partially encoded JPEG at the final file name.
+        runCatching { partFile.delete() }
+        val sampleSize =
+                imageCompressionSampleSizeForThreadImage(bounds.outWidth, bounds.outHeight)
+        decoded =
+                BitmapFactory.decodeFile(
+                        sourceFile.absolutePath,
+                        BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                ) ?: throw ThreadAttachmentImageCompressionException("Unable to decode image attachment")
+        checkCancelled()
+        oriented = decoded
+        val decodedBitmap = requireNotNull(decoded)
+        val orientationMatrix = threadImageOrientationMatrix(orientation)
+        if (!orientationMatrix.isIdentity) {
+            oriented = Bitmap.createBitmap(
+                    decodedBitmap,
+                    0,
+                    0,
+                    decodedBitmap.width,
+                    decodedBitmap.height,
+                    orientationMatrix,
+                    true
+            )
+        }
+        checkCancelled()
+        val orientedBitmap = requireNotNull(oriented)
+        val longestEdge = max(orientedBitmap.width, orientedBitmap.height)
+        val scale = THREAD_ATTACHMENT_IMAGE_MAX_EDGE_PX.toFloat() /
+                longestEdge.coerceAtLeast(1).toFloat()
+        resized =
+                if (scale < 1f) {
+                    Bitmap.createScaledBitmap(
+                            orientedBitmap,
+                            (orientedBitmap.width * scale).roundToInt().coerceAtLeast(1),
+                            (orientedBitmap.height * scale).roundToInt().coerceAtLeast(1),
+                            true
+                    )
+                } else {
+                    orientedBitmap
+                }
+        checkCancelled()
+        val resizedBitmap = requireNotNull(resized)
+        val parent = outputFile.parentFile
+        if (parent == null || (!parent.exists() && !parent.mkdirs()) || !parent.isDirectory) {
+            throw ThreadAttachmentImageCompressionException("Attachment cache unavailable")
+        }
+        FileOutputStream(partFile).use { stream ->
+            if (!resizedBitmap.compress(
+                            Bitmap.CompressFormat.JPEG,
+                            THREAD_ATTACHMENT_IMAGE_JPEG_QUALITY,
+                            stream
+                    )
+            ) {
+                throw ThreadAttachmentImageCompressionException("Unable to encode image attachment")
+            }
+        }
+        checkCancelled()
+        if (!partFile.isFile || partFile.length() <= 0L) {
+            throw ThreadAttachmentImageCompressionException("Unable to encode image attachment")
+        }
+        checkCancelled()
+        if (!partFile.renameTo(outputFile)) {
+            throw ThreadAttachmentImageCompressionException("Unable to commit image attachment")
+        }
+        committed = true
+        checkCancelled()
+        if (!outputFile.isFile || outputFile.length() <= 0L) {
+            throw ThreadAttachmentImageCompressionException("Unable to encode image attachment")
+        }
+    } catch (throwable: Throwable) {
+        if (throwable is ThreadImageCompressionCancelledException ||
+                        throwable is ThreadAttachmentImageCompressionException
+        ) {
+            throw throwable
+        }
+        throw ThreadAttachmentImageCompressionException(
+                throwable.message ?: "Unable to compress image attachment",
+                throwable
+        )
+    } finally {
+        if (!committed || isCancelled()) {
+            runCatching { partFile.delete() }
+            runCatching { outputFile.delete() }
+        }
+        if (resized !== oriented) resized?.recycleIfNeededForThreadImage()
+        if (oriented !== decoded) oriented?.recycleIfNeededForThreadImage()
+        decoded?.recycleIfNeededForThreadImage()
+    }
+}
+
+private fun imageCompressionSampleSizeForThreadImage(sourceWidth: Int, sourceHeight: Int): Int {
+    var sampleSize = 1
+    val sampledEdge = max(sourceWidth, sourceHeight).toLong()
+    while (
+            sampleSize <= Int.MAX_VALUE / 2 &&
+                    sampledEdge / (sampleSize.toLong() * 2L) >= THREAD_ATTACHMENT_IMAGE_MAX_EDGE_PX
+    ) {
+        sampleSize *= 2
+    }
+    return sampleSize
+}
+
+private fun threadImageOrientationMatrix(orientation: Int): Matrix =
+        Matrix().apply {
+            when (orientation) {
+                ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> postScale(-1f, 1f)
+                ExifInterface.ORIENTATION_ROTATE_180 -> postRotate(180f)
+                ExifInterface.ORIENTATION_FLIP_VERTICAL -> postScale(1f, -1f)
+                ExifInterface.ORIENTATION_TRANSPOSE -> {
+                    postRotate(90f)
+                    postScale(-1f, 1f)
+                }
+                ExifInterface.ORIENTATION_ROTATE_90 -> postRotate(90f)
+                ExifInterface.ORIENTATION_TRANSVERSE -> {
+                    postRotate(-90f)
+                    postScale(-1f, 1f)
+                }
+                ExifInterface.ORIENTATION_ROTATE_270 -> postRotate(-90f)
+            }
+        }
+
+private fun Bitmap.recycleIfNeededForThreadImage() {
+    runCatching {
+        if (!isRecycled) recycle()
+    }
+}
 
 internal fun formatMergedSettingsDiagnosticsExportText(
         about: Map<String, Any>,
@@ -479,6 +748,8 @@ open class SlockKuiklyActivity :
     private var homeColdStartUsesNativeHold = false
     private var homeColdStartHoldView: View? = null
     private val homeColdStartTimeoutRunnable = Runnable { handleHomeColdStartTimeout() }
+    private val homeColdStartFallbackTimeoutRunnable =
+        Runnable { handleHomeColdStartFallbackTimeout() }
     private var homeColdStartFirstDrawListener: ViewTreeObserver.OnDrawListener? = null
     private var kuiklyHostAttached = false
     private var inputFontLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
@@ -688,7 +959,8 @@ open class SlockKuiklyActivity :
             homeColdStartSplashTimeoutLogged = true
             SlockAppLog.w(
                 "SlockBoot",
-                "home_content_splash_timeout timeoutMs=$HOME_COLD_START_SPLASH_TIMEOUT_MILLIS"
+                "home_content_splash_timeout timeoutMs=$HOME_COLD_START_SPLASH_TIMEOUT_MILLIS " +
+                    "action=brand_fallback"
             )
         }
         return keepOnScreen
@@ -709,11 +981,25 @@ open class SlockKuiklyActivity :
             scheduleHomeColdStartTimeout(gate)
             return
         }
-        removeHomeColdStartNativeHold(reason = "timeout")
+        val fallbackDelayMillis = gate.millisUntilFallbackTimeout(SystemClock.elapsedRealtime())
+        if (fallbackDelayMillis <= 0L) {
+            handleHomeColdStartFallbackTimeout()
+        } else {
+            window.decorView.postDelayed(homeColdStartFallbackTimeoutRunnable, fallbackDelayMillis)
+            SlockAppLog.d(
+                "SlockBoot",
+                "home_content_splash_fallback timeoutMs=$HOME_COLD_START_SPLASH_FALLBACK_TIMEOUT_MILLIS"
+            )
+        }
+    }
+
+    private fun handleHomeColdStartFallbackTimeout() {
+        removeHomeColdStartNativeHold(reason = "fallback_timeout")
     }
 
     private fun removeHomeColdStartNativeHold(reason: String) {
         window.decorView.removeCallbacks(homeColdStartTimeoutRunnable)
+        window.decorView.removeCallbacks(homeColdStartFallbackTimeoutRunnable)
         val holdView = homeColdStartHoldView ?: return
         (holdView.parent as? ViewGroup)?.removeView(holdView)
         homeColdStartHoldView = null
@@ -731,6 +1017,14 @@ open class SlockKuiklyActivity :
                 completedAtMillis = SystemClock.elapsedRealtime()
             )
         if (!isHomeAppShellChildPageData(pageDataText)) return
+        if (!isSucceed) {
+            SlockAppLog.w(
+                "SlockBoot",
+                "home_content_splash_child_load_failed page=$pageName " +
+                    "action=keep_brand_fallback"
+            )
+            return
+        }
         if (homeColdStartSplashGate?.release() != true) return
         removeHomeColdStartNativeHold(reason = "child_page_load")
         SlockAppLog.d(
@@ -1104,6 +1398,21 @@ open class SlockKuiklyActivity :
         executeMode: KuiklyRenderCoreExecuteModeBase
     ) {
         super.onUnhandledException(throwable, errorReason, executeMode)
+        // Keep the full local stack for the visual-fixture crash investigation. The previous
+        // diagnostics path retained only a sanitized summary, which made the deterministic
+        // wrapped+nested CALL_KOTLIN failure impossible to localize from logcat.
+        android.util.Log.e(
+            "SlockKuiklyCrash",
+            "unhandled page=${pageSpec?.pageName ?: pageName} reason=${errorReason.name} mode=${executeMode.mode}",
+            throwable
+        )
+        // Visual capture intentionally collects only a narrow tag allow-list. Mirror the
+        // throwable there so the wrapped CALL_KOTLIN cause survives the capture receipt.
+        android.util.Log.e(
+            "VisualCapture",
+            "kuikly_unhandled page=${pageSpec?.pageName ?: pageName} reason=${errorReason.name} mode=${executeMode.mode}",
+            throwable
+        )
         SlockAndroidLocalDiagnostics.reportCaughtException(
             name = "KuiklyUnhandledException",
             throwable = throwable,
@@ -1140,6 +1449,11 @@ open class SlockKuiklyActivity :
         if (hostErrorSurfaceShown || isFinishing || isDestroyed) return
         val container = findViewById<ViewGroup?>(R.id.slock_kuikly_container) ?: return
         hostErrorSurfaceShown = true
+        SlockAndroidLocalDiagnostics.recordLog(
+            "error",
+            "SlockKuikly",
+            "visual_host_error_surface reason=$reasonCode page=${pageSpec?.pageName ?: pageName}"
+        )
         val density = resources.displayMetrics.density
         fun dp(value: Int): Int = (value * density).toInt()
         val surface =
@@ -1432,6 +1746,7 @@ open class SlockKuiklyActivity :
             channelId: String,
             imageOnly: Boolean,
             capture: Boolean,
+            compressImages: Boolean = false,
             callback: KuiklyRenderCallback?
     ) {
         if (pendingThreadAttachmentUpload != null) {
@@ -1446,7 +1761,12 @@ open class SlockKuiklyActivity :
             return
         }
         pendingThreadAttachmentUpload =
-                PendingThreadAttachmentUpload(channelId = channelId, callback = callback)
+                PendingThreadAttachmentUpload(
+                        channelId = channelId,
+                        imageOnly = imageOnly,
+                        compressImages = compressImages,
+                        callback = callback
+                )
         runCatching {
                     if (capture) {
                         val cameraCapture = createPendingThreadCameraCapture()
@@ -1613,7 +1933,12 @@ open class SlockKuiklyActivity :
         lifecycleScope.launch(Dispatchers.IO) {
             val result =
                     try {
-                        readThreadPlatformPickedFiles(uris, source = source)
+                        readThreadPlatformPickedFiles(
+                                uris = uris,
+                                source = source,
+                                imageOnly = pending.imageOnly,
+                                compressImages = pending.compressImages
+                        )
                     } finally {
                         sourceFilesToDelete.forEach { file -> runCatching { file.delete() } }
                     }
@@ -1646,23 +1971,35 @@ open class SlockKuiklyActivity :
 
     private fun readThreadPlatformPickedFiles(
             uris: List<Uri>,
-            source: String = "platform_picker"
+            source: String = "platform_picker",
+            imageOnly: Boolean = false,
+            compressImages: Boolean = false,
     ): Map<String, Any> {
         cleanupPickedThreadAttachmentCache()
         val files = mutableListOf<PickedThreadAttachment>()
         val errorsJson = JSONArray()
         uris.forEachIndexed { index, uri ->
             runCatching {
-                        pickedThreadAttachmentRef(uri)
+                        pickedThreadAttachmentRef(
+                                uri,
+                                imageOnly = imageOnly,
+                                compressImages = compressImages
+                        )
                     }
                     .onSuccess { file ->
                         files += file
                     }
                     .onFailure { throwable ->
+                        val errorCode =
+                                if (throwable is ThreadAttachmentImageCompressionException) {
+                                    THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR
+                                } else {
+                                    "attachment_read_failed"
+                                }
                         errorsJson.put(
                                 JSONObject()
                                         .put("index", index)
-                                        .put("errorCode", "attachment_read_failed")
+                                        .put("errorCode", errorCode)
                                         .put("message", throwable.message ?: "Attachment read failed")
                         )
                         SlockAppLog.record(
@@ -1672,11 +2009,24 @@ open class SlockKuiklyActivity :
                     }
         }
         if (files.isEmpty()) {
+            val compressionFailed =
+                    (0 until errorsJson.length()).any { index ->
+                        errorsJson.optJSONObject(index)?.optString("errorCode") ==
+                                THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR
+                    }
             return mapOf(
                     "code" to 400,
                     "bodyText" to "",
-                    "errorCode" to "attachment_read_failed",
-                    "errorBodyText" to "No readable attachments"
+                    "errorCode" to if (compressionFailed) {
+                        THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR
+                    } else {
+                        "attachment_read_failed"
+                    },
+                    "errorBodyText" to if (compressionFailed) {
+                        "Unable to compress image attachment"
+                    } else {
+                        "No readable attachments"
+                    }
             )
         }
         val filesJson = JSONArray()
@@ -1697,6 +2047,11 @@ open class SlockKuiklyActivity :
                 "picker_files_ready fileCount=${files.size} bytes=${files.sumOf { it.sizeBytes ?: 0L }}"
         )
         val skippedCount = errorsJson.length()
+        val hasCompressionFailure =
+                (0 until errorsJson.length()).any { index ->
+                    errorsJson.optJSONObject(index)?.optString("errorCode") ==
+                            THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR
+                }
         val body =
                 JSONObject().put("files", filesJson).apply {
                     if (skippedCount > 0) {
@@ -1711,25 +2066,255 @@ open class SlockKuiklyActivity :
             if (skippedCount > 0) {
                 put("errors", errorsJson)
                 put("skippedCount", skippedCount)
-                put("errorCode", "attachment_read_partial")
+                put(
+                        "errorCode",
+                        if (hasCompressionFailure) {
+                            THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR
+                        } else {
+                            "attachment_read_partial"
+                        }
+                )
                 put("errorBodyText", "$skippedCount attachment(s) could not be read")
             }
         }
     }
 
-    private fun pickedThreadAttachmentRef(uri: Uri): PickedThreadAttachment {
+    private fun pickedThreadAttachmentRef(
+            uri: Uri,
+            imageOnly: Boolean = false,
+            compressImages: Boolean = false,
+    ): PickedThreadAttachment {
         val fileName = queryPickedFileName(uri) ?: uri.lastPathSegment ?: "attachment"
         val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
-        val cachedFile = cachePickedThreadAttachment(uri, fileName, mimeType)
+        val shouldCompress = compressImages && isImageAttachment(uri, fileName, mimeType, imageOnly)
+        val cachedFile =
+                if (shouldCompress) {
+                    cacheCompressedPickedImage(uri, fileName, mimeType)
+                } else {
+                    cachePickedThreadAttachment(uri, fileName, mimeType)
+                }
         val fileRef = Uri.fromFile(cachedFile).toString()
+        val resolvedMimeType =
+                if (shouldCompress) {
+                    "image/jpeg"
+                } else {
+                    mimeType
+                }
         val sizeBytes = cachedFile.length().takeIf { it > 0L } ?: queryPickedFileSize(uri)
         return PickedThreadAttachment(
                 fileRef = fileRef,
-                fileName = fileName,
-                mimeType = mimeType,
+                fileName = if (resolvedMimeType == "image/jpeg") {
+                    compressedPickedImageFileName(fileName)
+                } else {
+                    fileName
+                },
+                mimeType = resolvedMimeType,
                 previewUri = fileRef,
                 sizeBytes = sizeBytes
         )
+    }
+
+    private fun isImageAttachment(
+            uri: Uri,
+            fileName: String,
+            mimeType: String,
+            imageOnly: Boolean
+    ): Boolean {
+        // A provider can report image/jpeg while its display name or URI path still identifies a
+        // movie (for example, clip.mp4 + image/jpeg).  Extension/path evidence is authoritative
+        // for the picker admission and must be rejected before trusting the MIME type; otherwise
+        // generic attachFile would route the movie through the JPEG compressor.
+        val videoPathCandidates = sequenceOf(
+                fileName,
+                uri.path.orEmpty(),
+                uri.lastPathSegment.orEmpty()
+        )
+        if (videoPathCandidates.any { candidate ->
+                    val extension = candidate
+                            .substringBefore('?')
+                            .substringBefore('#')
+                            .substringAfterLast('/')
+                            .substringAfterLast('\\')
+                            .substringAfterLast('.', "")
+                            .lowercase(Locale.US)
+                    extension in THREAD_ATTACHMENT_VIDEO_EXTENSIONS
+                }
+        ) {
+            return false
+        }
+        val normalizedMimeType = mimeType.substringBefore(';').trim().lowercase(Locale.US)
+        if (normalizedMimeType.startsWith("video/")) return false
+        if (normalizedMimeType.startsWith("image/")) return true
+        val extension = fileName
+                .substringAfterLast('/')
+                .substringAfterLast('\\')
+                .substringAfterLast('.', "")
+                .lowercase(Locale.US)
+        // PickVisualMedia.ImageAndVideo can return a video even though the shared
+        // action was requested with imageOnly=true.  Check video extensions before
+        // the image-only/octet-stream fallback so an unavailable provider MIME type
+        // never sends an MP4/MOV through the image decoder.
+        if (extension in THREAD_ATTACHMENT_IMAGE_EXTENSIONS) return true
+        return imageOnly && normalizedMimeType == "application/octet-stream"
+    }
+
+    private fun compressedPickedImageFileName(fileName: String): String {
+        val leaf = fileName.substringAfterLast('/').substringAfterLast('\\').ifBlank { "image" }
+        val stem = leaf.substringBeforeLast('.', leaf).ifBlank { "image" }
+        return "$stem.jpg"
+    }
+
+    private fun cacheCompressedPickedImage(uri: Uri, fileName: String, mimeType: String): File {
+        val sourceFile = cachePickedThreadAttachment(uri, fileName, mimeType)
+        val outputFile =
+                File(
+                        pickedThreadAttachmentCacheDir(),
+                        safePickedThreadAttachmentFileName(
+                                compressedPickedImageFileName(fileName),
+                                "image/jpeg"
+                        )
+                )
+        return try {
+            compressPickedImageFile(sourceFile, outputFile)
+            outputFile
+        } catch (throwable: Throwable) {
+            runCatching { outputFile.delete() }
+            if (throwable is ThreadAttachmentImageCompressionException) {
+                throw throwable
+            }
+            throw ThreadAttachmentImageCompressionException(
+                    throwable.message ?: "Unable to compress image attachment",
+                    throwable
+            )
+        } finally {
+            runCatching { sourceFile.delete() }
+        }
+    }
+
+    private fun compressPickedImageFile(sourceFile: File, outputFile: File) {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(sourceFile.absolutePath, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            throw ThreadAttachmentImageCompressionException("Unable to decode image attachment")
+        }
+        val orientation =
+                runCatching {
+                    ExifInterface(sourceFile.absolutePath).getAttributeInt(
+                            ExifInterface.TAG_ORIENTATION,
+                            ExifInterface.ORIENTATION_NORMAL
+                    )
+                }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+        val sampleSize = imageCompressionSampleSize(bounds.outWidth, bounds.outHeight)
+        var decoded: Bitmap? = null
+        var oriented: Bitmap? = null
+        var resized: Bitmap? = null
+        try {
+            decoded =
+                    BitmapFactory.decodeFile(
+                            sourceFile.absolutePath,
+                            BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                    ) ?: throw ThreadAttachmentImageCompressionException("Unable to decode image attachment")
+            oriented = decoded
+            val decodedBitmap = requireNotNull(decoded)
+            val orientationMatrix = imageOrientationMatrix(orientation)
+            if (!orientationMatrix.isIdentity) {
+                oriented = Bitmap.createBitmap(
+                        decodedBitmap,
+                        0,
+                        0,
+                        decodedBitmap.width,
+                        decodedBitmap.height,
+                        orientationMatrix,
+                        true
+                )
+            }
+            val orientedBitmap = requireNotNull(oriented)
+            val longestEdge = max(orientedBitmap.width, orientedBitmap.height)
+            val scale =
+                    THREAD_ATTACHMENT_IMAGE_MAX_EDGE_PX.toFloat() /
+                            longestEdge.coerceAtLeast(1).toFloat()
+            resized =
+                    if (scale < 1f) {
+                        Bitmap.createScaledBitmap(
+                                orientedBitmap,
+                                (orientedBitmap.width * scale).roundToInt().coerceAtLeast(1),
+                                (orientedBitmap.height * scale).roundToInt().coerceAtLeast(1),
+                                true
+                        )
+                    } else {
+                        orientedBitmap
+                    }
+            val resizedBitmap = requireNotNull(resized)
+            if (!outputFile.parentFile?.exists().orFalse() &&
+                    outputFile.parentFile?.mkdirs() != true) {
+                throw ThreadAttachmentImageCompressionException("Attachment cache unavailable")
+            }
+            FileOutputStream(outputFile).use { stream ->
+                if (!resizedBitmap.compress(
+                                Bitmap.CompressFormat.JPEG,
+                                THREAD_ATTACHMENT_IMAGE_JPEG_QUALITY,
+                                stream
+                        )
+                ) {
+                    throw ThreadAttachmentImageCompressionException("Unable to encode image attachment")
+                }
+            }
+            if (!outputFile.isFile || outputFile.length() <= 0L) {
+                throw ThreadAttachmentImageCompressionException("Unable to encode image attachment")
+            }
+        } catch (throwable: Throwable) {
+            if (throwable is ThreadAttachmentImageCompressionException) throw throwable
+            throw ThreadAttachmentImageCompressionException(
+                    throwable.message ?: "Unable to compress image attachment",
+                    throwable
+            )
+        } finally {
+            // Every decoder/transform allocation is owned by this method.  Keep
+            // nullable references until the end so exceptions from createBitmap,
+            // createScaledBitmap, or the encoder cannot leak a native bitmap.
+            if (resized !== oriented) resized?.recycleIfNeeded()
+            if (oriented !== decoded) oriented?.recycleIfNeeded()
+            decoded?.recycleIfNeeded()
+        }
+    }
+
+    private fun imageCompressionSampleSize(sourceWidth: Int, sourceHeight: Int): Int {
+        var sampleSize = 1
+        val sampledEdge = max(sourceWidth, sourceHeight).toLong()
+        while (
+                sampleSize <= Int.MAX_VALUE / 2 &&
+                        sampledEdge / (sampleSize.toLong() * 2L) >= THREAD_ATTACHMENT_IMAGE_MAX_EDGE_PX
+        ) {
+            sampleSize *= 2
+        }
+        return sampleSize
+    }
+
+    private fun imageOrientationMatrix(orientation: Int): Matrix =
+            Matrix().apply {
+                when (orientation) {
+                    ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> postScale(-1f, 1f)
+                    ExifInterface.ORIENTATION_ROTATE_180 -> postRotate(180f)
+                    ExifInterface.ORIENTATION_FLIP_VERTICAL -> postScale(1f, -1f)
+                    ExifInterface.ORIENTATION_TRANSPOSE -> {
+                        postRotate(90f)
+                        postScale(-1f, 1f)
+                    }
+                    ExifInterface.ORIENTATION_ROTATE_90 -> postRotate(90f)
+                    ExifInterface.ORIENTATION_TRANSVERSE -> {
+                        postRotate(-90f)
+                        postScale(-1f, 1f)
+                    }
+                    ExifInterface.ORIENTATION_ROTATE_270 -> postRotate(-90f)
+                }
+            }
+
+    private fun Boolean?.orFalse(): Boolean = this == true
+
+    private fun Bitmap.recycleIfNeeded() {
+        runCatching {
+            if (!isRecycled) recycle()
+        }
     }
 
     private fun cachePickedThreadAttachment(uri: Uri, fileName: String, mimeType: String): File {
@@ -1742,19 +2327,23 @@ open class SlockKuiklyActivity :
                         cacheDir,
                         safePickedThreadAttachmentFileName(fileName, mimeType)
                 )
-        val bytesCopied =
-                contentResolver.openInputStream(uri)?.use { input ->
-                    targetFile.outputStream().use { output -> input.copyTo(output) }
-                } ?: throw IOException("Unable to read attachment")
-        if (bytesCopied <= 0L || !targetFile.isFile || targetFile.length() <= 0L) {
+        return try {
+            val bytesCopied =
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        targetFile.outputStream().use { output -> input.copyTo(output) }
+                    } ?: throw IOException("Unable to read attachment")
+            if (bytesCopied <= 0L || !targetFile.isFile || targetFile.length() <= 0L) {
+                throw IOException("Unable to read attachment")
+            }
+            SlockAppLog.record(
+                    "SlockKuiklyAttachment",
+                    "picker_cached_file uriScheme=${uri.scheme.orEmpty()} fileName=${fileName.take(80)} bytes=${targetFile.length()}"
+            )
+            targetFile
+        } catch (throwable: Throwable) {
             runCatching { targetFile.delete() }
-            throw IOException("Unable to read attachment")
+            throw throwable
         }
-        SlockAppLog.record(
-                "SlockKuiklyAttachment",
-                "picker_cached_file uriScheme=${uri.scheme.orEmpty()} fileName=${fileName.take(80)} bytes=${targetFile.length()}"
-        )
-        return targetFile
     }
 
     private fun pickedThreadAttachmentCacheDir(): File =
@@ -1857,11 +2446,32 @@ open class SlockKuiklyActivity :
                     JSONObject(text).apply {
                         put(KEY_HOST_EXCLUDES_NAVIGATION_BAR, androidHostExcludesNavigationBar())
                         put(KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA, true)
+                        put(KEY_STATUS_BAR_HIDDEN, !androidStatusBarVisible())
                     }
             )
 
     private fun androidHostExcludesNavigationBar(): Boolean =
             androidHostExcludesNavigationBarForMode(androidNavigationMode())
+
+    // When the status bar is hidden (immersive / FLAG_FULLSCREEN / legacy
+    // systemUiVisibility), pageData.statusBarHeight still reports the bar's
+    // nominal height and the shared layer would reserve a full strip of dead
+    // space at the top of every page. Flag it so the shared side can fall back
+    // to a small fixed padding instead. Undetectable => visible => flag off.
+    private fun androidStatusBarVisible(): Boolean {
+        val decorView = window?.decorView ?: return true
+        if (Build.VERSION.SDK_INT >= 30) {
+            val insets = decorView.rootWindowInsets
+            if (insets != null) {
+                return insets.isVisible(WindowInsets.Type.statusBars())
+            }
+        }
+        if (window?.attributes?.flags?.and(WindowManager.LayoutParams.FLAG_FULLSCREEN) != 0) {
+            return false
+        }
+        @Suppress("DEPRECATION")
+        return decorView.systemUiVisibility and View.SYSTEM_UI_FLAG_FULLSCREEN == 0
+    }
 
     private fun androidNavigationMode(): Int? {
         val fromSettings =
@@ -2118,6 +2728,7 @@ open class SlockKuiklyActivity :
         private const val KEY_HOST_EXCLUDES_NAVIGATION_BAR = "slockHostExcludesNavigationBar"
         private const val KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA =
                 "slockKeyboardInsetExcludesBottomSafeArea"
+        private const val KEY_STATUS_BAR_HIDDEN = "slockStatusBarHidden"
         private const val NAVIGATION_MODE_SETTING = "navigation_mode"
         private const val NAVIGATION_MODE_RESOURCE = "config_navBarInteractionMode"
         private const val NAVIGATION_MODE_GESTURAL = 2
@@ -2129,9 +2740,6 @@ open class SlockKuiklyActivity :
         internal const val KEY_APP_SHELL_INITIAL_TAB = "slockInitialTab"
         private const val KEY_APP_SHELL_INITIAL_SETTINGS_DESTINATION = "slockInitialSettingsDestination"
         private const val KEY_DIAGNOSTICS_DEEP_LINK_ID = "slockDiagnosticsDeepLinkId"
-        private const val KEY_DIAGNOSTICS_DEEP_LINK_ENABLE_PROFILER = "slockDiagnosticsDeepLinkEnableProfiler"
-        private const val KEY_DIAGNOSTICS_DEEP_LINK_RESET_SCENE = "slockDiagnosticsDeepLinkResetScene"
-        private const val KEY_DIAGNOSTICS_DEEP_LINK_EXPORT_REPORT = "slockDiagnosticsDeepLinkExportReport"
         private const val KEY_DIAGNOSTICS_DEEP_LINK_AUTO_CLOSE_MS = "slockDiagnosticsDeepLinkAutoCloseMs"
         private const val PICKED_THREAD_ATTACHMENT_CACHE_MAX_FILES = 40
         private const val PICKED_THREAD_ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
@@ -2216,14 +2824,14 @@ open class SlockKuiklyActivity :
 
         private fun resolvedPageName(intent: Intent?): String =
                 if (intent.isDiagnosticsDeepLinkIntent()) {
-                    PAGE_APP_SHELL
+                    intent?.getStringExtra(KEY_PAGE_NAME).takeUnless { it.isNullOrBlank() } ?: PAGE_APP_SHELL
                 } else {
-                    intent?.getStringExtra(KEY_PAGE_NAME).takeUnless { it.isNullOrBlank() } ?: PAGE_ROUTER
+                    intent?.getStringExtra(KEY_PAGE_NAME).takeUnless { it.isNullOrBlank() } ?: PAGE_APP_SHELL
                 }
 
         private fun resolvedPageData(intent: Intent?): SlockKuiklyPageData {
             val rawPageData =
-                    if (intent.isDiagnosticsDeepLinkIntent()) {
+                    if (intent.isDiagnosticsDeepLinkIntent() && intent?.getStringExtra(KEY_PAGE_NAME).isNullOrBlank()) {
                         diagnosticsDeepLinkPageData(intent)
                     } else {
                         JSONObject(SlockKuiklyPageData.fromText(intent?.getStringExtra(KEY_PAGE_DATA)).text)
@@ -2244,8 +2852,7 @@ open class SlockKuiklyActivity :
                     .suppressedForOverheadTest = suppressed
                 SlockAppLog.record(
                     "SlockDiagnostics",
-                    "md_node_sink_receipt mdNodeSink=${if (suppressed) "suppressed" else "enabled"} " +
-                        "profilerExtra=${intent.getBooleanExtra("enable_profiler", false)}"
+                    "md_node_sink_receipt mdNodeSink=${if (suppressed) "suppressed" else "enabled"}"
                 )
             }
             val pageData =
@@ -2255,27 +2862,12 @@ open class SlockKuiklyActivity :
                             .put(KEY_APP_SHELL_INITIAL_SETTINGS_DESTINATION, "diagnostics")
                             .put(KEY_DIAGNOSTICS_DEEP_LINK_ID, "android-diagnostics-${System.currentTimeMillis()}")
                             .put(
-                                    KEY_DIAGNOSTICS_DEEP_LINK_ENABLE_PROFILER,
-                                    intent?.getBooleanExtra("enable_profiler", false) == true
-                            )
-                            .put(
-                                    KEY_DIAGNOSTICS_DEEP_LINK_RESET_SCENE,
-                                    intent?.getBooleanExtra("reset_scene", false) == true
-                            )
-                            .put(
-                                    KEY_DIAGNOSTICS_DEEP_LINK_EXPORT_REPORT,
-                                    intent?.getBooleanExtra("export_report", false) == true
-                            )
-                            .put(
                                     KEY_DIAGNOSTICS_DEEP_LINK_AUTO_CLOSE_MS,
                                     intent?.getLongExtra("auto_close_ms", 0L)?.coerceAtLeast(0L) ?: 0L
                             )
             SlockAppLog.record(
                     "SlockDiagnostics",
                     "diagnostics_deeplink_received " +
-                            "enableProfiler=${pageData.optBoolean(KEY_DIAGNOSTICS_DEEP_LINK_ENABLE_PROFILER, false)} " +
-                            "resetScene=${pageData.optBoolean(KEY_DIAGNOSTICS_DEEP_LINK_RESET_SCENE, false)} " +
-                            "exportReport=${pageData.optBoolean(KEY_DIAGNOSTICS_DEEP_LINK_EXPORT_REPORT, false)} " +
                             "autoCloseMs=${pageData.optLong(KEY_DIAGNOSTICS_DEEP_LINK_AUTO_CLOSE_MS, 0L)}"
             )
             return pageData
@@ -2406,10 +2998,17 @@ internal object SlockKuiklyAdapters {
         installAndroidAppScopeSharedKeyValueStores(context)
         installAndroidAppScopePlatformFileResolver(context)
         installAndroidAppScopeEventBus(context)
+        installAndroidThreadComposerTemporaryFileRetirement(context)
         SlockAndroidSqlDatabaseContext.init(context)
         SlockAndroidAvatarCacheProcess.install(context.applicationContext)
         SharedBinaryDownloader.setDiagnosticsLogger { tag, message ->
-            SlockAppLog.record(tag, message)
+            // Transport failures must reach release-build feedback logs: avatar/image
+            // downloads otherwise fail silently in production (Hands 39eec0a3/d208b2f2).
+            if ("status=failed" in message || "status=canceled" in message) {
+                SlockAppLog.w(tag, message)
+            } else {
+                SlockAppLog.record(tag, message)
+            }
         }
         if (initialized) {
             return
@@ -2430,6 +3029,8 @@ internal object SlockKuiklyAdapters {
 
 private data class PendingThreadAttachmentUpload(
         val channelId: String,
+        val imageOnly: Boolean,
+        val compressImages: Boolean,
         val callback: KuiklyRenderCallback?
 )
 
@@ -2591,7 +3192,8 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
 
     private data class SlockFontSpec(
             val fontRes: Int,
-            val weight: Int
+            val weight: Int,
+            val useResourceTypeface: Boolean = false,
     )
 
     private var context: Context? = null
@@ -2608,6 +3210,16 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
         inputTypeface?.let { return it }
         return resolveTypeface("space_grotesk_regular", context)
                 ?.also { inputTypeface = it }
+    }
+
+    internal fun useResourceTypefaceFor(fontFamily: String?): Boolean {
+        val fontName = fontFamily?.substringBefore(",")?.trim().orEmpty()
+        return fontName in setOf(
+                "SpaceMono-Regular",
+                "space_mono_regular",
+                "SpaceMono-Bold",
+                "space_mono_bold"
+        )
     }
 
     fun updateHostDisplayMetrics(container: View) {
@@ -2659,8 +3271,18 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
             "SpaceGrotesk-Light", "space_grotesk_light" -> SlockFontSpec(R.font.space_grotesk_light, FontStyle.FONT_WEIGHT_LIGHT)
             "SpaceGrotesk-Variable", "space_grotesk_variable" -> SlockFontSpec(R.font.space_grotesk_variable, FontStyle.FONT_WEIGHT_NORMAL)
             "Space Grotesk", "space_grotesk" -> SlockFontSpec(R.font.space_grotesk, FontStyle.FONT_WEIGHT_NORMAL)
-            "SpaceMono-Regular", "space_mono_regular" -> SlockFontSpec(R.font.space_mono_regular, FontStyle.FONT_WEIGHT_NORMAL)
-            "SpaceMono-Bold", "space_mono_bold" -> SlockFontSpec(R.font.space_mono_bold, FontStyle.FONT_WEIGHT_BOLD)
+            // Keep Space Mono as one resource-backed face. CustomFallbackBuilder's per-glyph
+            // resolver is the path that turns U+0031 into a sans-serif glyph on affected hosts.
+            "SpaceMono-Regular", "space_mono_regular" -> SlockFontSpec(
+                    R.font.space_mono_regular,
+                    FontStyle.FONT_WEIGHT_NORMAL,
+                    useResourceTypeface = useResourceTypefaceFor(fontName)
+            )
+            "SpaceMono-Bold", "space_mono_bold" -> SlockFontSpec(
+                    R.font.space_mono_bold,
+                    FontStyle.FONT_WEIGHT_BOLD,
+                    useResourceTypeface = useResourceTypefaceFor(fontName)
+            )
             else -> null
         }
         return if (fontSpec != null) {
@@ -2679,7 +3301,9 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
             }
 
     private fun buildTypeface(context: Context, fontSpec: SlockFontSpec): Typeface? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        if (fontSpec.useResourceTypeface || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            // Space Mono must remain one resource-backed face: CustomFallbackBuilder's per-glyph
+            // resolver can select a sans-serif glyph for U+0031 on affected Android hosts.
             return ResourcesCompat.getFont(context, fontSpec.fontRes)
         }
         return try {
@@ -2782,6 +3406,8 @@ internal class SlockKuiklyImageAdapter(
     private companion object {
         private const val NETWORK_BITMAP_CACHE_BYTES = 12 * 1024 * 1024
         private const val MAX_SINGLE_NETWORK_BITMAP_BYTES = 2 * 1024 * 1024
+        private const val MOUNTED_AVATAR_BITMAP_CACHE_BYTES = 8 * 1024 * 1024
+        private const val MAX_SINGLE_MOUNTED_AVATAR_BITMAP_BYTES = 1024 * 1024
         private const val MAX_BITMAP_DECODE_EDGE_PX = 4096
 
         private val networkBitmapCache =
@@ -2790,8 +3416,20 @@ internal class SlockKuiklyImageAdapter(
                         return value.allocationByteCount.coerceAtLeast(value.byteCount)
                     }
                 }
+        private val mountedAvatarBitmapCache =
+                object : LruCache<SlockMountedAvatarRequestKey, Bitmap>(MOUNTED_AVATAR_BITMAP_CACHE_BYTES) {
+                    override fun sizeOf(key: SlockMountedAvatarRequestKey, value: Bitmap): Int {
+                        return value.allocationByteCount.coerceAtLeast(value.byteCount)
+                    }
+                }
         private val networkImageFlights =
                 SlockImageRequestSingleFlight<SlockNetworkImageRequestKey, Bitmap>()
+        private val mountedAvatarImageFlights =
+                SlockImageRequestSingleFlight<SlockMountedAvatarRequestKey, Bitmap>()
+        private val networkByteFlights =
+                SlockImageRequestSingleFlight<String, SharedDownloadedBytes>()
+        private val networkDownloadScope =
+                CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
 
     override fun fetchDrawable(
@@ -2840,39 +3478,106 @@ internal class SlockKuiklyImageAdapter(
             imageLoadOption: HRImageLoadOption,
             callback: (drawable: Drawable?) -> Unit
     ) {
-        SlockKuiklyThreadAdapter.executeOnSubThread {
-            val renderRead = SlockAndroidAvatarCacheProcess.currentOrNull()?.beginRender(descriptor)
-            if (renderRead == null) {
-                callback(null)
-                return@executeOnSubThread
-            }
-            withSlockAvatarRenderDeliveryLease(renderRead) { leasedRead ->
-                val drawable =
-                        try {
-                            val decoded =
-                                    drawableFromBytes(
-                                            bytes = leasedRead.bytes,
-                                            imageLoadOption = imageLoadOption,
-                                            contentType = leasedRead.contentType
-                                    )
-                            val registered =
-                                    decoded != null &&
-                                            leasedRead.registerDecoded(
-                                                    width = decoded.intrinsicWidth.coerceAtLeast(0),
-                                                    height = decoded.intrinsicHeight.coerceAtLeast(0),
-                                                    scaleIdentity =
-                                                            "${imageLoadOption.requestWidth}x${imageLoadOption.requestHeight}:" +
-                                                                    "${imageLoadOption.needResize}:${imageLoadOption.scaleType.name}"
-                                            )
-                            decoded.takeIf { registered }
-                        } catch (throwable: Throwable) {
-                            recordImageLoadFailure("managed_avatar", imageLoadOption, throwable)
-                            null
-                        }
-                callback(drawable)
-            }
+        val requestKey = imageLoadOption.mountedAvatarRequestKey(descriptor)
+        cachedMountedAvatarBitmap(requestKey)?.let { bitmap ->
+            SlockAppLog.record(
+                    "SlockImageLoad",
+                    "source=managed_avatar status=cache_hit bitmapWidth=${bitmap.width} " +
+                            "bitmapHeight=${bitmap.height} " +
+                            "requestWidth=${imageLoadOption.requestWidth} " +
+                            "requestHeight=${imageLoadOption.requestHeight} " +
+                            "managedModelHash=${imageLoadOption.src.hashCode().toString(16)}"
+            )
+            callback(bitmap.toBitmapDrawable())
+            return
+        }
+        val subscription =
+                mountedAvatarImageFlights.load(
+                        key = requestKey,
+                        start = { complete ->
+                            SlockKuiklyThreadAdapter.executeOnSubThread {
+                                val renderRead = SlockAndroidAvatarCacheProcess.currentOrNull()?.beginRender(descriptor)
+                                if (renderRead == null) {
+                                    complete(Result.failure(IllegalStateException("Avatar render read failed")))
+                                    return@executeOnSubThread
+                                }
+                                withSlockAvatarRenderDeliveryLease(renderRead) { leasedRead ->
+                                    val result =
+                                            runCatching {
+                                                cachedMountedAvatarBitmap(requestKey)?.let { return@runCatching it }
+                                                val decoded =
+                                                        bitmapFromMountedAvatarBytes(
+                                                                bytes = leasedRead.bytes,
+                                                                imageLoadOption = imageLoadOption,
+                                                                contentType = leasedRead.contentType
+                                                        ) ?: throw IllegalStateException("Failed to decode avatar")
+                                                val registered =
+                                                        leasedRead.registerDecoded(
+                                                                width = decoded.width.coerceAtLeast(0),
+                                                                height = decoded.height.coerceAtLeast(0),
+                                                                scaleIdentity =
+                                                                        "${imageLoadOption.requestWidth}x${imageLoadOption.requestHeight}:" +
+                                                                                "${imageLoadOption.needResize}:${imageLoadOption.scaleType.name}"
+                                                        )
+                                                if (!registered) throw IllegalStateException("Failed to register decoded avatar")
+                                                cacheMountedAvatarBitmap(requestKey, decoded)
+                                                decoded
+                                            }
+                                    result.exceptionOrNull()?.let { throwable ->
+                                        recordImageLoadFailure("managed_avatar", imageLoadOption, throwable)
+                                    }
+                                    complete(result)
+                                }
+                            }
+                        },
+                        callback = { result -> callback(result.getOrNull()?.toBitmapDrawable()) }
+                )
+        SlockAppLog.record(
+                "SlockImageLoad",
+                "source=managed_avatar status=${subscription.disposition.diagnosticsToken()} " +
+                        "requestKeyHash=${requestKey.hashCode().toString(16)} " +
+                        "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
+                        "managedModelHash=${imageLoadOption.src.hashCode().toString(16)}"
+        )
+    }
+
+    private fun bitmapFromMountedAvatarBytes(
+            bytes: ByteArray,
+            imageLoadOption: HRImageLoadOption,
+            contentType: String?
+    ): Bitmap? {
+        return if (bytes.looksLikeSvg(contentType)) {
+            (svgBitmapDrawable(bytes.toString(StandardCharsets.UTF_8), imageLoadOption) as? BitmapDrawable)?.bitmap
+        } else {
+            bitmapFromBytes(bytes, imageLoadOption)
         }
     }
+
+    private fun cachedMountedAvatarBitmap(requestKey: SlockMountedAvatarRequestKey): Bitmap? =
+            synchronized(mountedAvatarBitmapCache) {
+                mountedAvatarBitmapCache.get(requestKey)?.takeUnless { it.isRecycled }
+            }
+
+    private fun cacheMountedAvatarBitmap(requestKey: SlockMountedAvatarRequestKey, bitmap: Bitmap) {
+        val bitmapBytes = bitmap.allocationByteCount.coerceAtLeast(bitmap.byteCount)
+        if (bitmapBytes > MAX_SINGLE_MOUNTED_AVATAR_BITMAP_BYTES) {
+            return
+        }
+        synchronized(mountedAvatarBitmapCache) {
+            mountedAvatarBitmapCache.put(requestKey, bitmap)
+        }
+    }
+
+    private fun HRImageLoadOption.mountedAvatarRequestKey(
+            descriptor: SlockAvatarMountedRenderDescriptor
+    ): SlockMountedAvatarRequestKey =
+            SlockMountedAvatarRequestKey.create(
+                    descriptor = descriptor,
+                    requestWidth = requestWidth,
+                    requestHeight = requestHeight,
+                    needResize = needResize,
+                    scaleType = scaleType.name
+            )
 
     override fun getDrawableWidth(
             kuiklyRenderViewContext: KuiklyRenderViewContext,
@@ -2919,7 +3624,7 @@ internal class SlockKuiklyImageAdapter(
                         // Bundled asset paths carry no user data, so log the path itself:
                         // a missing/broken packaged asset is otherwise invisible (task #335
                         // reaction atlas debugging on artin's device hit exactly this).
-                        SlockAppLog.record(
+                        SlockAppLog.w(
                                 "SlockImageLoad",
                                 "source=assets status=failed type=${throwable::class.java.simpleName} " +
                                         "path=${imageLoadOption.src.removePrefix(HRImageLoadOption.SCHEME_ASSETS)} " +
@@ -2975,36 +3680,42 @@ internal class SlockKuiklyImageAdapter(
             callback: (drawable: Drawable?) -> Unit
     ) {
         val requestKey = imageLoadOption.networkRequestKey()
+        cachedNetworkBitmap(requestKey)?.let { bitmap ->
+            SlockAppLog.record(
+                    "SlockImageLoad",
+                    "source=network status=cache_hit bitmapWidth=${bitmap.width} " +
+                            "bitmapHeight=${bitmap.height} " +
+                            "requestWidth=${imageLoadOption.requestWidth} " +
+                            "requestHeight=${imageLoadOption.requestHeight} " +
+                            binaryDownloadUrlDiagnostics(imageLoadOption.src)
+            )
+            callback(bitmap.toBitmapDrawable())
+            return
+        }
         val subscription =
                 networkImageFlights.load(
                         key = requestKey,
                         start = { complete ->
-                            SlockKuiklyThreadAdapter.executeOnSubThread {
-                                val result =
-                                        runCatching {
-                                            cachedNetworkBitmap(requestKey)?.let { bitmap ->
-                                                SlockAppLog.record(
-                                                        "SlockImageLoad",
-                                                        "source=network status=cache_hit bitmapWidth=${bitmap.width} " +
-                                                                "bitmapHeight=${bitmap.height} " +
-                                                                "requestWidth=${imageLoadOption.requestWidth} " +
-                                                                "requestHeight=${imageLoadOption.requestHeight} " +
-                                                                binaryDownloadUrlDiagnostics(imageLoadOption.src)
-                                                )
-                                                return@runCatching bitmap
-                                            }
-                                            val response =
-                                                    runBlocking {
-                                                        SharedBinaryDownloader.fetchBytes(imageLoadOption.src)
-                                                    }
-                                            recordNetworkImageBytes(imageLoadOption, response.bytes.size, response.contentType)
-                                            bitmapFromNetworkBytes(response.bytes, imageLoadOption, response.contentType)
-                                                    ?: throw IllegalStateException("Image decode failed")
-                                        }
-                                result.exceptionOrNull()?.let { throwable ->
+                            fetchNetworkBytes(imageLoadOption.src) { byteResult ->
+                                byteResult.onFailure { throwable ->
                                     recordImageLoadFailure("network", imageLoadOption, throwable)
+                                    complete(Result.failure(throwable))
+                                    return@fetchNetworkBytes
                                 }
-                                complete(result)
+                                val response = byteResult.getOrThrow()
+                                SlockKuiklyThreadAdapter.executeOnSubThread {
+                                    val result =
+                                            runCatching {
+                                                cachedNetworkBitmap(requestKey)?.let { return@runCatching it }
+                                                recordNetworkImageBytes(imageLoadOption, response.bytes.size, response.contentType)
+                                                bitmapFromNetworkBytes(response.bytes, imageLoadOption, response.contentType)
+                                                        ?: throw IllegalStateException("Image decode failed")
+                                            }
+                                    result.exceptionOrNull()?.let { throwable ->
+                                        recordImageLoadFailure("network", imageLoadOption, throwable)
+                                    }
+                                    complete(result)
+                                }
                             }
                         },
                         callback = { result -> callback(result.getOrNull()?.toBitmapDrawable()) }
@@ -3015,6 +3726,26 @@ internal class SlockKuiklyImageAdapter(
                         "requestKeyHash=${requestKey.hashCode().toString(16)} " +
                         "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
                         binaryDownloadUrlDiagnostics(imageLoadOption.src)
+        )
+    }
+
+    private fun fetchNetworkBytes(
+            src: String,
+            onComplete: (Result<SharedDownloadedBytes>) -> Unit
+    ) {
+        val urlIdentity = src.slockNetworkImageUrlIdentity()
+        networkByteFlights.load(
+                key = urlIdentity,
+                start = { complete ->
+                    networkDownloadScope.launch {
+                        val fetchResult =
+                                runCatching {
+                                    SharedBinaryDownloader.fetchBytes(src)
+                                }
+                        complete(fetchResult)
+                    }
+                },
+                callback = onComplete
         )
     }
 
@@ -3171,7 +3902,7 @@ internal class SlockKuiklyImageAdapter(
             byteCount: Int,
             contentType: String?
     ) {
-        SlockAppLog.record(
+        SlockAppLog.w(
                 "SlockImageLoad",
                 "source=network status=decode_failed bytes=$byteCount contentType=${contentType ?: "unknown"} " +
                         "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
@@ -3180,7 +3911,7 @@ internal class SlockKuiklyImageAdapter(
     }
 
     private fun recordImageLoadFailure(sourceKind: String, imageLoadOption: HRImageLoadOption, throwable: Throwable) {
-        SlockAppLog.record(
+        SlockAppLog.w(
                 "SlockImageLoad",
                 "source=$sourceKind status=failed type=${throwable::class.java.simpleName} " +
                         "message=${throwable.safeImageLoadMessage()} " +
@@ -3320,9 +4051,24 @@ internal class SlockKuiklyImageAdapter(
     }
 }
 
+internal fun slockAndroidBridgeUrlEncode(value: String): String =
+        URLEncoder.encode(value, StandardCharsets.UTF_8.name())
+
+internal fun slockAndroidBridgeUrlDecode(value: String): String =
+        URLDecoder.decode(value, StandardCharsets.UTF_8.name())
+
 internal class SlockKuiklyBridgeModule(
         private val appContext: Context,
 ) : KuiklyRenderBaseModule() {
+    private val threadImageCompressionOperations = ConcurrentHashMap<String, ThreadImageCompressionOperation>()
+    private val threadImageCompressionMainHandler = Handler(Looper.getMainLooper())
+    /**
+     * Native callbacks can already be queued on the main handler when the renderer tears down
+     * this module.  Keep a separate lifecycle fence for those preflight failures (which do not
+     * have an operation entry to cancel) as well as for worker completions.
+     */
+    private val threadImageCompressionDestroyed = AtomicBoolean(false)
+
     internal suspend fun submitNativeFeedback(request: JSONObject): Map<String, Any> =
             submitFeedbackToHands(request)
 
@@ -3359,10 +4105,10 @@ internal class SlockKuiklyBridgeModule(
                 null
             }
             "retireFilePreviewTemporaryFiles" -> {
-                SlockKuiklyThreadAdapter.execute("file-preview-temp-retire") {
-                    retireFilePreviewTemporaryFiles(params)
-                }
-                null
+                // BridgeModule uses a synchronous native call here.  The shared ownership lock
+                // remains held until this method returns, therefore quarantine (rename) must be
+                // complete before returning; only tombstone deletion may be deferred.
+                retireFilePreviewTemporaryFiles(params)
             }
             "attachmentDownloadControl" -> {
                 callback?.invoke(attachmentDownloadControl(params))
@@ -3441,6 +4187,7 @@ internal class SlockKuiklyBridgeModule(
                         channelId = request.optString("channelId"),
                         imageOnly = request.optBoolean("imageOnly", false),
                         capture = request.optBoolean("capture", false),
+                        compressImages = request.optBoolean("compressImages", false),
                         callback = callback
                 ) ?: callback?.invoke(
                         mapOf(
@@ -3452,15 +4199,244 @@ internal class SlockKuiklyBridgeModule(
                 )
                 null
             }
+            "compressThreadImage" -> {
+                compressThreadImage(params, callback)
+                null
+            }
+            "cancelCompressThreadImage" -> {
+                cancelCompressThreadImage(params)
+                null
+            }
             "socialAuth" -> {
                 socialAuth(params, callback)
                 null
+            }
+            "urlEncode" -> {
+                val payload = JSONObject(params ?: "{}")
+                slockAndroidBridgeUrlEncode(payload.optString("string"))
+            }
+            "urlDecode" -> {
+                val payload = JSONObject(params ?: "{}")
+                slockAndroidBridgeUrlDecode(payload.optString("string"))
             }
             "currentTimestamp" -> System.currentTimeMillis().toString()
             else -> {
                 callback?.invoke(mapOf("code" to -1, "message" to "Method not implemented"))
                 null
             }
+        }
+    }
+
+    override fun onDestroy() {
+        threadImageCompressionDestroyed.set(true)
+        threadImageCompressionOperations.values.toList().forEach { operation ->
+            cancelThreadImageCompression(operation)
+            // A delivered operation may already have crossed the callback boundary and therefore
+            // refuse the normal ACTIVE/PENDING cancellation CAS.  Destruction still owns every
+            // generated cache object, including that terminal operation's .part sibling.
+            runCatching { operation.removeOutputs() }
+        }
+        threadImageCompressionOperations.clear()
+        super.onDestroy()
+    }
+
+    private fun compressThreadImage(params: String?, callback: KuiklyRenderCallback?) {
+        if (callback == null || threadImageCompressionDestroyed.get()) return
+        val request = runCatching { JSONObject(params ?: "{}") }.getOrNull()
+        val requestId = request?.optString("requestId")?.trim().orEmpty()
+        val fileName = request?.optString("fileName")?.trim().orEmpty()
+        val mimeType = normalizedThreadImageMimeType(request?.optString("mimeType").orEmpty())
+        val fileRef = request?.optString("fileRef")?.trim().orEmpty()
+        // Keep the bridge dispatch path free of filesystem probes.  In particular, canonicalPath,
+        // isFile and length can block on a provider-backed cache; perform all source admission on
+        // the worker after the request has been reserved in the operation map.
+        val validRequest =
+                request != null &&
+                        requestId.isNotBlank() &&
+                        requestId.length <= THREAD_IMAGE_COMPRESSION_MAX_REQUEST_ID_LENGTH &&
+                        requestId.none(Char::isISOControl) &&
+                        fileName.isNotBlank() &&
+                        fileName.length <= THREAD_IMAGE_COMPRESSION_MAX_FILE_NAME_LENGTH &&
+                        fileName.none { it == '/' || it == '\\' || it.isISOControl() } &&
+                        mimeType.isNotBlank() &&
+                        mimeType.startsWith("image/")
+        if (!validRequest) {
+            deliverThreadImageCompressionFailure(callback)
+            return
+        }
+        val outputRoot = File(appContext.cacheDir, THREAD_IMAGE_COMPRESSION_CACHE_DIR_NAME)
+        val outputFile =
+                File(outputRoot, "composer-image-${UUID.randomUUID()}.jpg")
+        val operation = ThreadImageCompressionOperation(requestId, callback, outputFile)
+        if (threadImageCompressionOperations.putIfAbsent(requestId, operation) != null) {
+            deliverThreadImageCompressionFailure(callback)
+            return
+        }
+        SlockKuiklyThreadAdapter.execute("thread-image-compress") {
+            var successful = false
+            try {
+                if (operation.isCancelled()) throw ThreadImageCompressionCancelledException()
+                val sourceRoots = listOfNotNull(appContext.cacheDir, appContext.externalCacheDir)
+                val sourceFile = parseThreadImageCompressionSource(fileRef, sourceRoots)
+                if (sourceFile == null || !isThreadImageCompressionInput(fileName, mimeType, sourceFile)) {
+                    throw ThreadAttachmentImageCompressionException("Unable to decode image attachment")
+                }
+                val canonicalRoot = outputRoot.canonicalFile
+                if (!canonicalRoot.exists() && !canonicalRoot.mkdirs()) {
+                    throw ThreadAttachmentImageCompressionException("Attachment cache unavailable")
+                }
+                if (!canonicalRoot.isDirectory || !threadImageCompressionPathInside(canonicalRoot, outputFile)) {
+                    throw ThreadAttachmentImageCompressionException("Attachment cache unavailable")
+                }
+                compressThreadImageFile(sourceFile, outputFile, operation::isCancelled)
+                if (operation.isCancelled()) throw ThreadImageCompressionCancelledException()
+                val outputRef = Uri.fromFile(outputFile).toString()
+                val file =
+                        JSONObject()
+                                .put("fileRef", outputRef)
+                                .put("fileName", threadImageCompressionFileName(fileName))
+                                .put("mimeType", "image/jpeg")
+                                .put("previewUri", outputRef)
+                                .put("sizeBytes", outputFile.length())
+                                .put("source", THREAD_IMAGE_COMPRESSION_SOURCE)
+                val bodyText = JSONObject().put("files", JSONArray().put(file)).toString()
+                successful = true
+                finishThreadImageCompression(operation, mapOf("code" to 200, "bodyText" to bodyText))
+            } catch (_: ThreadImageCompressionCancelledException) {
+                cancelThreadImageCompression(operation)
+            } catch (_: Throwable) {
+                finishThreadImageCompression(operation, threadImageCompressionFailurePayload())
+            } finally {
+                if (!successful || operation.isCancelled()) {
+                    runCatching { operation.removeOutputs() }
+                }
+                if (operation.isCancelled()) {
+                    threadImageCompressionOperations.remove(requestId, operation)
+                }
+            }
+        }
+    }
+
+    private fun cancelCompressThreadImage(params: String?) {
+        val requestId = runCatching { JSONObject(params ?: "{}").optString("requestId") }
+                .getOrNull()
+                ?.trim()
+                .orEmpty()
+        if (requestId.isBlank()) return
+        threadImageCompressionOperations[requestId]?.let(::cancelThreadImageCompression)
+    }
+
+    private fun cancelThreadImageCompression(operation: ThreadImageCompressionOperation) {
+        val cancelled = synchronized(operation) {
+            operation.state.compareAndSet(
+                    ThreadImageCompressionOperation.ACTIVE,
+                    ThreadImageCompressionOperation.CANCELLED
+            ) ||
+                    operation.state.compareAndSet(
+                            ThreadImageCompressionOperation.PENDING,
+                            ThreadImageCompressionOperation.CANCELLED
+                    )
+        }
+        if (cancelled) {
+            runCatching { operation.removeOutputs() }
+            threadImageCompressionOperations.remove(operation.requestId, operation)
+        }
+    }
+
+    private fun finishThreadImageCompression(
+            operation: ThreadImageCompressionOperation,
+            payload: Map<String, Any>
+    ) {
+        if (threadImageCompressionDestroyed.get() ||
+                        threadImageCompressionOperations[operation.requestId] !== operation
+        ) {
+            cancelThreadImageCompression(operation)
+            runCatching { operation.removeOutputs() }
+            return
+        }
+        val pending = synchronized(operation) {
+            operation.state.compareAndSet(
+                    ThreadImageCompressionOperation.ACTIVE,
+                    ThreadImageCompressionOperation.PENDING
+            )
+        }
+        if (!pending) {
+            runCatching { operation.outputFile.delete() }
+            return
+        }
+        if (!threadImageCompressionMainHandler.post {
+            var callbackFailed = false
+            var removeOutput = false
+            synchronized(operation) {
+                if (threadImageCompressionDestroyed.get() ||
+                                threadImageCompressionOperations[operation.requestId] !== operation ||
+                                !operation.state.compareAndSet(
+                                ThreadImageCompressionOperation.PENDING,
+                                ThreadImageCompressionOperation.DELIVERED
+                        )
+                ) {
+                    removeOutput = true
+                } else if (threadImageCompressionDestroyed.get()) {
+                    operation.state.compareAndSet(
+                            ThreadImageCompressionOperation.DELIVERED,
+                            ThreadImageCompressionOperation.CANCELLED
+                    )
+                    removeOutput = true
+                } else {
+                    // Hold the operation monitor across the final lifecycle check and callback.
+                    // cancel/onDestroy use the same monitor, so they cannot force-cancel between
+                    // this check and callback invocation and leave an unowned JPEG behind.
+                    try {
+                        operation.callback.invoke(payload)
+                    } catch (_: Throwable) {
+                        callbackFailed = true
+                        operation.state.compareAndSet(
+                                ThreadImageCompressionOperation.DELIVERED,
+                                ThreadImageCompressionOperation.CANCELLED
+                        )
+                        removeOutput = true
+                    }
+                }
+            }
+            if (removeOutput || callbackFailed) {
+                runCatching { operation.removeOutputs() }
+            }
+            threadImageCompressionOperations.remove(operation.requestId, operation)
+        }) {
+            cancelThreadImageCompression(operation)
+        }
+    }
+
+    private fun deliverThreadImageCompressionFailure(callback: KuiklyRenderCallback) {
+        if (threadImageCompressionDestroyed.get()) return
+        if (!threadImageCompressionMainHandler.post {
+            if (!threadImageCompressionDestroyed.get()) {
+                runCatching { callback.invoke(threadImageCompressionFailurePayload()) }
+            }
+        }) return
+    }
+
+    private data class ThreadImageCompressionOperation(
+            val requestId: String,
+            val callback: KuiklyRenderCallback,
+            val outputFile: File,
+            val state: AtomicInteger = AtomicInteger(ACTIVE)
+    ) {
+        val partFile: File
+            get() = File(outputFile.path + ".part")
+
+        fun removeOutputs() {
+            runCatching { partFile.delete() }
+            runCatching { outputFile.delete() }
+        }
+
+        fun isCancelled(): Boolean = state.get() == CANCELLED
+
+        companion object {
+            const val ACTIVE = 0
+            const val PENDING = 1
+            const val DELIVERED = 2
+            const val CANCELLED = 3
         }
     }
 
@@ -3711,6 +4687,10 @@ internal class SlockKuiklyBridgeModule(
                             recycleProbeBitmap()
                             return@secondFrame
                         }
+                        if (hostActivity.isFinishing || hostActivity.isDestroyed) {
+                            finish(mapOf("status" to "failed", "message" to "Thread view is not ready"))
+                            return@secondFrame
+                        }
                         runCatching {
                             PixelCopy.request(
                                     hostActivity.window,
@@ -3869,26 +4849,36 @@ internal class SlockKuiklyBridgeModule(
             // ordering guarantee.
             container.postOnAnimation {
                 container.postOnAnimation {
-                    PixelCopy.request(
-                            hostActivity.window,
-                            sourceRect,
-                            bitmap,
-                            { copyResult ->
-                                if (copyResult == PixelCopy.SUCCESS) {
-                                    onResult(saveThreadShareBitmap(bitmap, frame = request.optBoolean("frame", true)))
-                                } else {
-                                    bitmap.recycle()
-                                    onResult(
-                                            mapOf(
-                                                    "status" to "failed",
-                                                    "message" to "Unable to capture image",
-                                                    "pixelCopyResult" to copyResult
-                                            )
-                                    )
-                                }
-                            },
-                            Handler(Looper.getMainLooper())
-                    )
+                    if (hostActivity.isFinishing || hostActivity.isDestroyed) {
+                        bitmap.recycle()
+                        onResult(mapOf("status" to "failed", "message" to "Thread view is not ready"))
+                        return@postOnAnimation
+                    }
+                    runCatching {
+                        PixelCopy.request(
+                                hostActivity.window,
+                                sourceRect,
+                                bitmap,
+                                { copyResult ->
+                                    if (copyResult == PixelCopy.SUCCESS) {
+                                        onResult(saveThreadShareBitmap(bitmap, frame = request.optBoolean("frame", true)))
+                                    } else {
+                                        bitmap.recycle()
+                                        onResult(
+                                                mapOf(
+                                                        "status" to "failed",
+                                                        "message" to "Unable to capture image",
+                                                        "pixelCopyResult" to copyResult
+                                                )
+                                        )
+                                    }
+                                },
+                                Handler(Looper.getMainLooper())
+                        )
+                    }.onFailure {
+                        bitmap.recycle()
+                        onResult(mapOf("status" to "failed", "message" to "Unable to capture image"))
+                    }
                 }
             }
             return
@@ -4317,14 +5307,6 @@ internal class SlockKuiklyBridgeModule(
                         "apiEnvironmentChanged" -> onApiEnvironmentChanged(request)
                         "loadDiagnostics" -> loadSettingsDiagnostics()
                         "setDiagnosticFeatureFlagOverride" -> setDiagnosticFeatureFlagOverride(request)
-                        "setRecompositionProfilerEnabled" -> {
-                            val enabled = request.optBoolean("enabled", false)
-                            SlockAppLog.record(
-                                    "SlockDiagnostics",
-                                    "shared_recomposition_profiler_enabled=$enabled"
-                            )
-                            mapOf("status" to "ok", "enabled" to enabled)
-                        }
                         "copyDiagnostics" -> {
                             copyText("Raft diagnostics", buildMergedSettingsDiagnosticsExportText())
                             SlockAppLog.record("SlockDiagnostics", "shared_copy_diagnostics")
@@ -6120,15 +7102,13 @@ internal class SlockKuiklyBridgeModule(
         val mimeType = request.optString("mimeType").takeIf { it.isNotBlank() }
         val uri = Uri.parse(url)
         val viewIntent = externalUrlIntent(uri, mimeType)
-        if (viewIntent == null) {
-            Toast.makeText(appContext, appContext.getString(R.string.open_link_no_app_toast), Toast.LENGTH_SHORT)
-                    .show()
-            return null
-        }
         runCatching {
             appContext.startActivity(viewIntent)
         }.onFailure { throwable ->
             if (throwable is ActivityNotFoundException) {
+                if (openInAppBrowserFallback(url, mimeType)) {
+                    return@onFailure
+                }
                 Toast.makeText(appContext, appContext.getString(R.string.open_link_no_app_toast), Toast.LENGTH_SHORT)
                         .show()
             } else {
@@ -6139,10 +7119,31 @@ internal class SlockKuiklyBridgeModule(
     }
 
     /**
+     * When no external activity accepts a web URL, keep the link usable by opening the shared
+     * in-app browser page instead of dropping the tap on the floor.
+     */
+    private fun openInAppBrowserFallback(url: String, mimeType: String?): Boolean {
+        val isWebUrl = mimeType == null && Uri.parse(url).scheme?.lowercase() in setOf("http", "https")
+        if (!isWebUrl) return false
+        val pageData =
+                JSONObject()
+                        .put("pageName", SlockKuiklyPages.IN_APP_BROWSER)
+                        .put("url", url)
+        return runCatching {
+            SlockKuiklyActivity.start(activity ?: appContext, SlockKuiklyPages.IN_APP_BROWSER, pageData)
+        }.onFailure { throwable ->
+            SlockAppLog.record(
+                    "SlockOpenUrl",
+                    "inAppBrowserFallback=failed type=${throwable::class.java.simpleName}"
+            )
+        }.isSuccess
+    }
+
+    /**
      * HTTP(S) links must leave Raft even when Android App Links resolve the same URL back to this
      * application. Other schemes retain the platform's ordinary implicit-handler behavior.
      */
-    private fun externalUrlIntent(uri: Uri, mimeType: String?): Intent? {
+    private fun externalUrlIntent(uri: Uri, mimeType: String?): Intent {
         val isWebUrl = mimeType == null && uri.scheme?.lowercase() in setOf("http", "https")
         val implicit =
                 Intent(Intent.ACTION_VIEW).apply {
@@ -6159,11 +7160,21 @@ internal class SlockKuiklyBridgeModule(
         if (!isWebUrl) {
             return implicit
         }
-        val candidates =
+        // MATCH_DEFAULT_ONLY only lists apps the user picked as defaults; devices without a
+        // default browser (or that never show the disambiguation sheet) report an empty list.
+        // Retry without the flag before giving up on a target package.
+        var candidates =
                 appContext.packageManager.queryIntentActivities(
                         implicit,
                         PackageManager.MATCH_DEFAULT_ONLY
                 )
+        if (candidates.isEmpty()) {
+            candidates =
+                    appContext.packageManager.queryIntentActivities(
+                            implicit,
+                            PackageManager.MATCH_ALL
+                    )
+        }
         val defaultPackage =
                 appContext.packageManager
                         .resolveActivity(implicit, PackageManager.MATCH_DEFAULT_ONLY)
@@ -6174,7 +7185,7 @@ internal class SlockKuiklyBridgeModule(
                         ownPackage = appContext.packageName,
                         defaultPackage = defaultPackage,
                         candidatePackages = candidates.map { it.activityInfo.packageName }
-                ) ?: return null
+                ) ?: return implicit
         return implicit.setPackage(selectedPackage)
     }
 
@@ -6258,17 +7269,29 @@ internal class SlockKuiklyBridgeModule(
                                                 "message" to "Unable to prepare attachment storage"
                                         )
                                     }
-                                    val preparation =
-                                            prepareAttachment(
-                                                    request = request,
-                                                    operationId = request.optString("operationId"),
-                                                    progressCallback =
-                                                        if (trackProgress) {
-                                                            { progress -> callback?.invoke(progress) }
-                                                        } else {
-                                                            null
-                                                        }
-                                            )
+                                    val preparationAttempt =
+                                            runCatching {
+                                                        prepareAttachment(
+                                                                request = request,
+                                                                operationId = request.optString("operationId"),
+                                                                progressCallback =
+                                                                    if (trackProgress) {
+                                                                        { progress -> callback?.invoke(progress) }
+                                                                    } else {
+                                                                        null
+                                                                    }
+                                                        )
+                                                    }
+                                    if (preparationAttempt.isFailure) {
+                                        val throwable = preparationAttempt.exceptionOrNull()
+                                        val payload = attachmentSavePreparationFailurePayload(throwable)
+                                        SlockAppLog.record(
+                                                "SlockAttachmentExport",
+                                                "phase=download status=${payload["status"]} type=${throwable?.javaClass?.simpleName}"
+                                        )
+                                        return@withIdentityLock payload
+                                    }
+                                    val preparation = preparationAttempt.getOrThrow()
                                     when (preparation) {
                                         is AttachmentPreparationResult.Terminal -> preparation.payload
                                         is AttachmentPreparationResult.Ready -> {
@@ -6491,21 +7514,21 @@ internal class SlockKuiklyBridgeModule(
         val owner = request.attachmentOwnerLease()
                 ?: return mapOf("status" to "failed", "cached" to false, "message" to "Authentication required")
         if (!ProcessAndroidAttachmentOwners.admit(owner)) {
-            return mapOf("status" to "cancelled", "cached" to false, "message" to "Attachment scope retired")
+                return mapOf("status" to "cancelled", "cached" to false, "message" to "Attachment scope retired")
         }
         val identity = request.publicAttachmentIdentity(owner)
         val authority = ProcessAndroidAttachmentPublicDownloads.get(appContext)
+        val privateTarget =
+                attachmentCacheFile(request, owner.principalKey)
+        val privateCached = privateTarget.isUsableAttachmentCacheFile()
         return runCatching {
                     authority.withIdentityLock(identity) {
                         val committed = authority.resolve(identity)
-                        mapOf(
-                                "status" to "ok",
-                                "cached" to (committed != null),
-                                "active" to false,
-                                "attemptToken" to "",
-                                "recordVersion" to (committed?.generation ?: -1L),
-                                "sizeBytes" to (committed?.sizeBytes ?: 0L),
-                                "uri" to committed?.uri.orEmpty()
+                        attachmentCacheStatusPayload(
+                                committed = committed,
+                                privateCached = privateCached,
+                                privatePath =
+                                        if (privateCached) privateTarget.absolutePath else ""
                         )
                     }
                 }
@@ -6554,8 +7577,13 @@ internal class SlockKuiklyBridgeModule(
                 }
     }
 
-    private fun retireFilePreviewTemporaryFiles(params: String?) {
-        val request = runCatching { JSONObject(params ?: "{}") }.getOrNull() ?: return
+    private fun retireFilePreviewTemporaryFiles(params: String?): String {
+        val request = runCatching { JSONObject(params ?: "{}") }.getOrNull()
+                ?: return "{\"status\":\"invalid\"}"
+        val sessionId = request.optString("sessionId").trim()
+        if (sessionId.isBlank() || sessionId.length > 256 || sessionId.any(Char::isISOControl)) {
+            return "{\"status\":\"invalid\"}"
+        }
         val refsJson = request.optJSONArray("fileRefs")
         val refs =
             buildList {
@@ -6565,16 +7593,32 @@ internal class SlockKuiklyBridgeModule(
                     }
                 }
             }
-        val result =
-            retireFilePreviewTemporaryFiles(
+        val quarantine =
+            quarantineFilePreviewTemporaryFiles(
                 cacheRoots = listOfNotNull(appContext.cacheDir, appContext.externalCacheDir),
                 fileRefs = refs
             )
+        // The original pathname is vacant at this point.  Deleting only the returned tombstones
+        // asynchronously is safe even if a later draft recreates that pathname.
+        if (quarantine.quarantineFiles.isNotEmpty()) {
+            SlockKuiklyThreadAdapter.execute("file-preview-temp-tombstone-delete") {
+                quarantine.quarantineFiles.forEach { tombstone ->
+                    runCatching { tombstone.delete() }
+                }
+            }
+        }
         SlockAppLog.record(
             "SlockFilePreviewCleanup",
-            "requested=${result.requestedCount} admitted=${result.admittedCount} " +
-                "deleted=${result.deletedCount} rejected=${result.rejectedCount}"
+            "session=$sessionId requested=${quarantine.requestedCount} admitted=${quarantine.admittedCount} " +
+                "quarantined=${quarantine.quarantinedCount} rejected=${quarantine.rejectedCount}"
         )
+        return JSONObject()
+                .put("status", "quarantined")
+                .put("requested", quarantine.requestedCount)
+                .put("admitted", quarantine.admittedCount)
+                .put("quarantined", quarantine.quarantinedCount)
+                .put("rejected", quarantine.rejectedCount)
+                .toString()
     }
 
     private fun attachmentDownloadControl(params: String?): Map<String, Any> {
@@ -6670,6 +7714,10 @@ internal class SlockKuiklyBridgeModule(
                                         "message" to "Download stopped",
                                         "cached" to false
                                 )
+                        )
+                    } catch (failure: AttachmentDownloadFailedException) {
+                        return AttachmentPreparationResult.Terminal(
+                                attachmentDownloadFailurePayload(failure)
                         )
                     }
                 } else {
@@ -7288,7 +8336,10 @@ internal class SlockKuiklyBridgeModule(
             }
             else -> {
                 ownerOperation.cancelAndCleanup()
-                throw IllegalStateException(result.message ?: result.errorKind ?: "Attachment download failed")
+                throw AttachmentDownloadFailedException(
+                        errorKind = result.errorKind,
+                        message = result.message ?: result.errorKind ?: "Attachment download failed"
+                )
             }
         }
     }
@@ -7584,7 +8635,66 @@ internal class SlockKuiklyBridgeModule(
     }
 }
 
-private class AttachmentDownloadStoppedException : RuntimeException()
+internal class AttachmentDownloadStoppedException : RuntimeException()
+
+internal class AttachmentDownloadFailedException(
+        val errorKind: String?,
+        message: String
+) : RuntimeException(message)
+
+internal fun attachmentSavePreparationFailurePayload(
+        throwable: Throwable?
+): Map<String, Any> =
+        when (throwable) {
+            is AttachmentDownloadStoppedException ->
+                    mapOf(
+                            "status" to "cancelled",
+                            "cached" to false,
+                            "message" to (throwable.message ?: "Download stopped")
+                    )
+            is AttachmentDownloadFailedException -> attachmentDownloadFailurePayload(throwable)
+            else ->
+                    mapOf(
+                            "status" to "storage_failed",
+                            "cached" to false,
+                            "message" to "Unable to prepare attachment storage"
+                    )
+        }
+
+/**
+ * task #319: payload for `attachmentCacheStatus`. `cached` is strictly "public download
+ * committed" — it drives the Download-vs-Open-with UI choice and must NOT count the
+ * private staging copy. The private copy is reported separately on `privateCached` +
+ * `privatePath` so the open path can reuse it without re-fetching the signed URL.
+ */
+internal fun attachmentCacheStatusPayload(
+        committed: AndroidAttachmentPublicRecord?,
+        privateCached: Boolean,
+        privatePath: String
+): Map<String, Any> =
+        mapOf(
+                "status" to "ok",
+                "cached" to (committed != null),
+                "privateCached" to privateCached,
+                "privatePath" to privatePath,
+                "active" to false,
+                "attemptToken" to "",
+                "recordVersion" to (committed?.generation ?: -1L),
+                "sizeBytes" to (committed?.sizeBytes ?: 0L),
+                "uri" to committed?.uri.orEmpty()
+        )
+
+internal fun attachmentDownloadFailurePayload(
+        failure: AttachmentDownloadFailedException
+): Map<String, Any> {
+    val storageFailure =
+            failure.errorKind in setOf("storage_write", "storage_prepare", "storage_publish")
+    return mapOf(
+            "status" to if (storageFailure) "storage_failed" else "download_failed",
+            "cached" to false,
+            "message" to (failure.message ?: "Attachment download failed")
+    )
+}
 
 private data class DirectAttachmentDownloadCompletion(
         val contentType: String?,

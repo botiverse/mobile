@@ -46,3 +46,21 @@ fun parseSharedTaskActionPayload(
         ?: return null
     return envelope.task?.toTaskSummary(diagnostics)
 }
+
+/**
+ * Parses a paginated `GET /api/tasks/server` response (task #345). Absent JSON
+ * `next_cursor` is treated as end-of-pages (`null`). Unknown keys are ignored
+ * for forward compatibility, but the summary contract itself is locked by
+ * tests.
+ */
+fun parseSharedServerTasksPagePayload(
+    body: String,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): SharedServerTasksPage? {
+    val envelope = runCatching { taskParserJson.decodeFromString<TasksPageEnvelope>(body) }.getOrNull()
+        ?: return null
+    return SharedServerTasksPage(
+        tasks = envelope.tasks.mapNotNull { it.toTaskSummary(diagnostics) },
+        nextCursor = envelope.next_cursor?.takeIf { it.isNotBlank() },
+    )
+}

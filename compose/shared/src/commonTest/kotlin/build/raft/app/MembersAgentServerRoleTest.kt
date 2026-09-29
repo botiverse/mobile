@@ -2,6 +2,10 @@ package build.raft.app
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.ServerId
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SettingsServerActionResult
@@ -147,23 +151,61 @@ class MembersAgentServerRoleTest {
         assertNull(null.toMembersAgentServerRoleOrNull())
     }
 
+    // Replaces displayRoleDefaultsMissingAgentServerRoleToMember. Its name stated its premise
+    // -- "missing defaults to Member" -- and that premise is false: an absent serverRole means
+    // there is no server-membership row, not that the agent is a member whose role went
+    // unset. server_agent_members.role is NOT NULL with a default under a (serverId, agentId)
+    // primary key, so "member without a role" is unrepresentable, and the server counts the
+    // rowless case as an anomaly. Verified against slock-source@01d0064d9 (LiBai, task #261).
+    // Changing this assertion is part of the fix, not incidental churn.
     @Test
-    fun displayRoleDefaultsMissingAgentServerRoleToMember() {
-        assertEquals(MembersAgentServerRole.Member, membersAgentDisplayServerRole(null, null))
-        assertEquals(MembersAgentServerRole.Member, membersAgentDisplayServerRole("", " "))
+    fun displayRoleHidesTheChipWhenThereIsNoMembershipRow() {
+        assertEquals(MembersAgentServerRoleDisplay.Hidden, membersAgentDisplayServerRole(null, null))
+        assertEquals(MembersAgentServerRoleDisplay.Hidden, membersAgentDisplayServerRole("", " "))
+    }
+
+    // A deleted agent reaches this from a wholly ordinary state, and the "with a role" case is
+    // reachable in client state even though the wire never sends it: SharedServerMembersStore
+    // merges serverRole fill-only, so a role cached before deletion is never overwritten --
+    // not even by the authoritative path, which starts by calling that same merge. Without the
+    // deleted check such an agent still shows an Admin chip (LiBai, task #261).
+    //
+    // Both hide today, but they are asserted separately: if either ever gains its own wording,
+    // wording written for the anomaly would be wrong on a deleted agent.
+    @Test
+    fun displayRoleHidesTheChipForADeletedAgentEvenWithARole() {
+        assertEquals(
+            MembersAgentServerRoleDisplay.Hidden,
+            membersAgentDisplayServerRole("admin", null, deleted = true)
+        )
+        assertEquals(
+            MembersAgentServerRoleDisplay.Hidden,
+            membersAgentDisplayServerRole(null, null, deleted = true)
+        )
     }
 
     @Test
     fun displayRolePrefersMemberRoleOverSummaryRole() {
         assertEquals(
-            MembersAgentServerRole.Admin,
+            MembersAgentServerRoleDisplay.Known(MembersAgentServerRole.Admin),
             membersAgentDisplayServerRole("admin", "member")
         )
     }
 
+    // Was displayRoleRejectsUnknownNonBlankRole, which asserted null -> the chip read
+    // "No role" for a role the server had explicitly named. Denying a role we were told about
+    // is a false statement independent of any wire-semantics question, so this half of #261
+    // stood on its own. @artin: show the name that was sent.
     @Test
-    fun displayRoleRejectsUnknownNonBlankRole() {
-        assertNull(membersAgentDisplayServerRole("owner", null))
+    fun displayRoleSurfacesARoleNameItDoesNotRecognise() {
+        assertEquals(
+            MembersAgentServerRoleDisplay.Unrecognized("owner"),
+            membersAgentDisplayServerRole("owner", null)
+        )
+        assertEquals(
+            MembersAgentServerRoleDisplay.Unrecognized("moderator"),
+            membersAgentDisplayServerRole(null, "moderator")
+        )
     }
 
     @Test
@@ -174,6 +216,85 @@ class MembersAgentServerRoleTest {
         assertTrue(options.first { it.id == "member" }.selected)
         assertFalse(options.first { it.id == "admin" }.selected)
     }
+
+    @Test
+    fun agentRoleSaveRequiresReturnedRoleAndServerToMatchRequest() {
+        assertEquals(
+            MembersAgentServerRoleSaveOutcome.Success,
+            DataResult.Content(agentProfile(serverRole = "admin", serverId = "server-1"))
+                .membersAgentServerRoleSaveOutcome(
+                    MemberId("agent-1"),
+                    ServerId("server-1"),
+                    MembersAgentServerRole.Admin
+                )
+        )
+        assertEquals(
+            MembersAgentServerRoleSaveOutcome.MismatchedContent,
+            DataResult.Content(agentProfile(serverRole = "member", serverId = "server-1"))
+                .membersAgentServerRoleSaveOutcome(
+                    MemberId("agent-1"),
+                    ServerId("server-1"),
+                    MembersAgentServerRole.Admin
+                )
+        )
+        assertEquals(
+            MembersAgentServerRoleSaveOutcome.MismatchedContent,
+            DataResult.Content(agentProfile(serverRole = "admin", serverId = "server-2"))
+                .membersAgentServerRoleSaveOutcome(
+                    MemberId("agent-1"),
+                    ServerId("server-1"),
+                    MembersAgentServerRole.Admin
+                )
+        )
+        assertEquals(
+            MembersAgentServerRoleSaveOutcome.MismatchedContent,
+            DataResult.Content(agentProfile(serverRole = "admin", serverId = null))
+                .membersAgentServerRoleSaveOutcome(
+                    MemberId("agent-1"),
+                    ServerId("server-1"),
+                    MembersAgentServerRole.Admin
+                )
+        )
+        assertEquals(
+            MembersAgentServerRoleSaveOutcome.MismatchedContent,
+            DataResult.Content(agentProfile(serverRole = "admin", serverId = "server-1", id = "agent-2"))
+                .membersAgentServerRoleSaveOutcome(
+                    MemberId("agent-1"),
+                    ServerId("server-1"),
+                    MembersAgentServerRole.Admin
+                )
+        )
+    }
+
+    @Test
+    fun agentRoleSaveKeepsEmptyAndPermissionResultsAsFailures() {
+        assertEquals(
+            MembersAgentServerRoleSaveOutcome.Empty,
+            DataResult.Empty(EmptyReason.NoMembers).membersAgentServerRoleSaveOutcome(
+                MemberId("agent-1"),
+                ServerId("server-1"),
+                MembersAgentServerRole.Admin
+            )
+        )
+        assertEquals(
+            MembersAgentServerRoleSaveOutcome.NoPermission,
+            DataResult.NoPermission(PermissionBlocker("forbidden")).membersAgentServerRoleSaveOutcome(
+                MemberId("agent-1"),
+                ServerId("server-1"),
+                MembersAgentServerRole.Admin
+            )
+        )
+    }
+
+    private fun agentProfile(serverRole: String?, serverId: String?, id: String = "agent-1"): MemberProfile =
+        MemberProfile(
+            id = MemberId(id),
+            displayName = "Agent One",
+            handle = "agent-1",
+            kind = MemberKind.Agent,
+            serverId = serverId?.let(::ServerId),
+            serverRole = serverRole
+        )
 
     @Test
     fun humanRemoveActionFollowsReactServerRoleGate() {

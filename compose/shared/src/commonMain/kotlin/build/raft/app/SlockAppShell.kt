@@ -12,6 +12,8 @@ import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
@@ -24,6 +26,10 @@ import com.tencent.kuikly.compose.ui.input.pointer.PointerEventPass
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.input.pointer.positionChangedIgnoreConsumed
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.ExperimentalComposeUiApi
+import com.tencent.kuikly.compose.ui.semantics.clearAndSetSemantics
+import com.tencent.kuikly.compose.ui.semantics.invisibleToUser
+import build.raft.app.data.LargeScreenNavigationPreference
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.zIndex
@@ -62,6 +68,19 @@ internal data class SlockAppShellScope(
             bottomTabBarOverlaysContent -> bottomTabBarContentInset
             else -> SlockSpacing.Lg
         }
+
+    // Full-height embedded child pages (adaptive detail thread) host their own
+    // safe-area padding internally, so the slot only needs to lift their
+    // bottom edge above a floating tab dock. When the bar overlays content the
+    // child must clear the whole native band minus the safe area it already
+    // pads; otherwise the host reserves the band itself and the child needs
+    // nothing extra.
+    fun embeddedChildBottomInset(includeBottomTabBar: Boolean): Dp =
+        when {
+            !includeBottomTabBar -> 0.dp
+            bottomTabBarOverlaysContent -> (bottomTabBarContentInset - bottomSafeArea).coerceAtLeast(0.dp)
+            else -> 0.dp
+        }
 }
 
 @Composable
@@ -97,6 +116,7 @@ internal fun SlockAppShellRootBackHandler(
 }
 
 @Composable
+@OptIn(ExperimentalComposeUiApi::class)
 internal fun SlockAppShellSurface(
     shellScope: SlockAppShellScope,
     bottomTabs: List<SlockBottomTabItemPayload>,
@@ -104,7 +124,9 @@ internal fun SlockAppShellSurface(
     modifier: Modifier = Modifier,
     networkStatus: SlockAppShellNetworkStatus = SlockAppShellNetworkStatus.Online,
     showBottomTabs: Boolean = true,
+    interactionLocked: Boolean = false,
     modalHostState: SlockUnifiedDialogHostState? = null,
+    leadingNavigation: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     val ownedModalHostState = rememberSlockUnifiedDialogHostState()
@@ -141,10 +163,24 @@ internal fun SlockAppShellSurface(
                             .zIndex(SlockAppContentHostZIndex)
                             .fillMaxSize()
                             .padding(bottom = shellScope.bottomTabBarHostInset(showBottomTabs))
+                            .then(
+                                if (interactionLocked) {
+                                    Modifier.clearAndSetSemantics { invisibleToUser() }
+                                } else {
+                                    Modifier
+                                }
+                            )
                 ) {
                     Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                        CompositionLocalProvider(LocalSlockAppShellBodyTopBanner provides bodyTopBanner) {
-                            content()
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            leadingNavigation?.invoke()
+                            Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                                CompositionLocalProvider(
+                                    LocalSlockAppShellBodyTopBanner provides bodyTopBanner
+                                ) {
+                                    content()
+                                }
+                            }
                         }
                     }
                 }
@@ -159,6 +195,17 @@ internal fun SlockAppShellSurface(
                         bottomSafeArea = shellScope.bottomSafeArea
                     )
                 }
+                if (interactionLocked) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .zIndex(SlockAppShellInteractionBlockerZIndex)
+                                .slockNativeDispatchCapture()
+                                .slockDialogContentPointerBarrier()
+                                .clearAndSetSemantics { }
+                    )
+                }
                 SlockUnifiedDialogHost(
                     state = effectiveModalHostState,
                     modifier = Modifier.fillMaxSize(),
@@ -168,6 +215,21 @@ internal fun SlockAppShellSurface(
         }
     }
 }
+
+// task #23: the left navigation rail owns tab selection whenever the host flag
+// is on, the window is already in the dual-pane (flat, >=840dp) layout, and the
+// user's large-screen preference asks for a rail. Compact or floating-dock
+// preference keeps the bottom tab bar untouched.
+internal fun slockAdaptiveNavRailActive(
+    flagEnabled: Boolean,
+    navigationPreference: LargeScreenNavigationPreference,
+    paneState: SlockAdaptivePaneState
+): Boolean =
+    flagEnabled &&
+        navigationPreference == LargeScreenNavigationPreference.LeftRail &&
+        paneState.layout == SlockAdaptivePaneLayout.DualPane
+
+private const val SlockAppShellInteractionBlockerZIndex = SlockGlobalModalHostZIndex - 0.25f
 
 internal data class HomeServerDrawerOpenGestureAdmission(
     val homeSurfaceActive: Boolean = false,

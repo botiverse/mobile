@@ -1795,6 +1795,46 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun shellChooserCreateServerCommitsCreatedServerToShellAndProcessAuthorities() = runBlocking {
+        val initial =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                accessToken = "access-token",
+                refreshToken = "refresh-token",
+                selectedServerId = "server-1",
+                selectedServerSlug = "slock",
+                servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock"))
+            )
+        val processStore = InMemorySlockAuthSessionStore(initial)
+        val selectedServerStore =
+            SelectedServerStore(SlockShellStoreScope.create("chooser-shell", "server-1"))
+        val shellStore = SlockShellAuthSessionStore(processStore, selectedServerStore)
+        val api =
+            FakeAuthApi(
+                createServerResponse =
+                    AuthNetworkResponse(201, """{"id":"server-2","name":"Ops","slug":"ops"}"""),
+                serversResponse =
+                    AuthNetworkResponse(
+                        200,
+                        """[{"id":"server-1","name":"Slock","slug":"slock"},{"id":"server-2","name":"Ops","slug":"ops"}]"""
+                    )
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = shellStore)
+
+        assertEquals("server-1", shellStore.readSession()?.selectedServerId)
+
+        val result = source.createServer("Ops")
+
+        val ready = result as SharedAuthResult.Success
+        assertEquals("server-2", ready.data.selectedServerId)
+        assertEquals("ops", ready.data.selectedServerSlug)
+        assertEquals("server-2", selectedServerStore.selectedServerId.value)
+        assertEquals("server-2", shellStore.readSession()?.selectedServerId)
+        assertEquals("server-2", processStore.readSession()?.selectedServerId)
+        assertEquals(2, processStore.readSession()?.servers?.size)
+    }
+
+    @Test
     fun createServerRefreshesUnauthorizedAccessBeforeRetryingOnce() = runBlocking {
         val store =
             InMemorySlockAuthSessionStore(

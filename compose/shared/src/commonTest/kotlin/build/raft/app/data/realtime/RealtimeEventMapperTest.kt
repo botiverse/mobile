@@ -1456,6 +1456,39 @@ class RealtimeEventMapperTest {
     }
 
     @Test
+    fun agentSeenMapsToPresenceFactCarryingLastSeenAt() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.AgentSeen,
+                """{ "agentId": "agent-ext-1", "lastSeenAt": "2026-09-28T01:02:03.456Z" }"""
+            )
+
+        val seen = assertIs<MemberPresenceUpdated>(event)
+        assertEquals("agent-ext-1", seen.memberId.value)
+        assertEquals(MemberKind.Agent, seen.kind)
+        assertEquals(Presence.Active, seen.presence)
+        assertEquals("2026-09-28T01:02:03.456Z", seen.lastSeenAt)
+        assertNull(seen.serverSeq)
+        assertNull(seen.agentStatus)
+    }
+
+    @Test
+    fun agentSeenDropsMalformedPayloads() {
+        assertNull(
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.AgentSeen,
+                """{ "agentId": "agent-ext-1" }"""
+            )
+        )
+        assertNull(
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.AgentSeen,
+                """{ "agentId": "", "lastSeenAt": "2026-09-28T01:02:03.456Z" }"""
+            )
+        )
+    }
+
+    @Test
     fun notificationPushUnknownSenderTypeFallsBackWithoutUsingSenderId() {
         val logs = mutableListOf<String>()
         val event =

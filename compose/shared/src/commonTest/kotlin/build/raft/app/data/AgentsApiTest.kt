@@ -330,7 +330,7 @@ class AgentsApiTest {
                     model = RuntimeModelConfig.Preset("deepseek/deepseek-v4-pro"),
                     hostUserState = RuntimeHostUserState.Forbidden
                 ),
-                formDefinitionRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v2")
+                formDefinitionRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
             )
         )
         val json = Json.parseToJsonElement(body).jsonObject
@@ -344,7 +344,7 @@ class AgentsApiTest {
         val ref = json.getValue("formDefinitionRef").jsonObject
         assertEquals(1, ref.getValue("protocolVersion").jsonPrimitive.content.toInt())
         assertEquals("builtin", ref.getValue("runtimeId").jsonPrimitive.content)
-        assertEquals("builtin-pi.create.v2", ref.getValue("schemaVersion").jsonPrimitive.content)
+        assertEquals("builtin-pi.create.v3", ref.getValue("schemaVersion").jsonPrimitive.content)
     }
 
     @Test
@@ -364,7 +364,7 @@ class AgentsApiTest {
                     model = RuntimeModelConfig.Custom("vendor/model-v2"),
                     hostUserState = RuntimeHostUserState.Forbidden
                 ),
-                formDefinitionRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v2")
+                formDefinitionRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
             )
         )
         val runtimeConfig = Json.parseToJsonElement(body).jsonObject.getValue("runtimeConfig").jsonObject
@@ -465,7 +465,7 @@ class AgentsApiTest {
 
     private class RecordingAgentsApi(
         private val agentsBody: String = """[{"id":"agent-1","name":"Noel","status":"active"}]""",
-        private val agentBody: String = """{"id":"agent-1","name":"Agent One","displayName":"Noel Bot","role":"Admin","status":"active","model":"gpt-5","runtime":"codex","runtimeConfig":{"version":1,"runtime":"codex","model":{"kind":"preset","id":"gpt-5.6-sol"},"mode":{"kind":"default"}},"machineId":"machine-1","reasoningEffort":"medium","executionMode":"local","avatarUrl":"pixel:robot","creatorId":"user-1","creatorType":"human","creator":{"type":"human","id":"user-1","name":"artin","displayName":"Artin","avatarUrl":"pixel:user","gravatarHash":"hash-1"},"daemonVersion":"0.57.1","envVars":{"OPENAI_API_KEY":"configured","ANTHROPIC_API_KEY":"configured"},"createdAgents":[{"id":"agent-child","name":"helper","displayName":"Helper","runtime":"codex","status":"idle"}],"activity":"idle","activityDetail":"Ready","deletedAt":null}""",
+        private val agentBody: String = """{"id":"agent-1","name":"Agent One","displayName":"Noel Bot","serverRole":"Admin","status":"active","model":"gpt-5","runtime":"codex","runtimeConfig":{"version":1,"runtime":"codex","model":{"kind":"preset","id":"gpt-5.6-sol"},"mode":{"kind":"default"}},"machineId":"machine-1","reasoningEffort":"medium","executionMode":"local","avatarUrl":"pixel:robot","creatorId":"user-1","creatorType":"human","creator":{"type":"human","id":"user-1","name":"artin","displayName":"Artin","avatarUrl":"pixel:user","gravatarHash":"hash-1"},"daemonVersion":"0.57.1","envVars":{"OPENAI_API_KEY":"configured","ANTHROPIC_API_KEY":"configured"},"createdAgents":[{"id":"agent-child","name":"helper","displayName":"Helper","runtime":"codex","status":"idle"}],"activity":"idle","activityDetail":"Ready","deletedAt":null}""",
         private val createAgentBody: String = """{"id":"agent-2","name":"Noel","status":"active","avatarUrl":"pixel:tree"}""",
         private val createAgentCode: Int = 200,
         // Mirrors the production transport shape for non-2xx responses:
@@ -476,6 +476,9 @@ class AgentsApiTest {
         private val activityBody: String = """[{"id":"a1","type":"tool_start","timestamp":"2026-05-22T00:00:00.000Z"}]""",
         private val workspaceFilesBody: String = """{"files":[{"path":"/repo/README.md","name":"README.md"}]}""",
         private val workspaceFileReadBody: String = """{"path":"/repo/README.md","content":"Hello","binary":false,"size":5,"mimeType":"text/markdown","encoding":"utf-8","modifiedAt":"2026-05-22T00:00:00.000Z"}""",
+        private val externalStatusBody: String = """{"setupState":"waiting_for_login","credentialLastUsedAt":null,"lastActivityAt":null}""",
+        private val externalStatusCode: Int = 200,
+        private val externalStatusErrorBody: String? = null,
         private val skillsBody: String = """{"global":[{"name":"openai-docs"}],"workspace":[{"name":"android-regression"}]}""",
         private val scopesBody: String = """{"agentId":"agent-1","granted":["messages:read","messages:send"],"revision":7,"updatedAt":"2026-05-22T00:00:00.000Z"}""",
         private val bootstrapBody: String = """{"tokenId":"token-1","bootstrapToken":"sk_agent_secret","tokenPrefix":"sk_agent","ttlExpiresAt":"2026-05-22T01:00:00.000Z","scopes":["messages:read"],"agentId":"agent-1","agentName":"Noel","serverId":"server-1"}"""
@@ -556,6 +559,15 @@ class AgentsApiTest {
             return ok(skillsBody)
         }
 
+        override suspend fun agentExternalStatus(agentId: MemberId): HomeNetworkResponse {
+            calls += "GET agents/${agentId.value}/external-status"
+            return if (externalStatusCode in 200..299) {
+                ok(externalStatusBody)
+            } else {
+                HomeNetworkResponse(code = externalStatusCode, bodyText = null, errorBodyText = externalStatusErrorBody)
+            }
+        }
+
         override suspend fun agentScopes(agentId: MemberId): HomeNetworkResponse {
             calls += "GET agents/${agentId.value}/scopes"
             return ok(scopesBody)
@@ -578,5 +590,77 @@ class AgentsApiTest {
 
         private fun ok(body: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = body)
+    }
+
+    // task #1119 PR 2: GET /agents/:id/external-status (React fetchExternalAgentStatus parity).
+    @Test
+    fun agentExternalStatusParsesSetupStateAndTimestamps() = runPortableCoroutineTest {
+        val transport =
+            RecordingAgentsApi(
+                externalStatusBody =
+                    """{"setupState":"connected","credentialLastUsedAt":"2026-09-03T05:00:00.000Z","lastActivityAt":"2026-09-03T06:00:00.000Z"}"""
+            )
+        val client = SlockAgentsApiClient(transport)
+
+        val status = assertIs<DataResult.Content<ExternalAgentStatusSnapshot>>(client.agentExternalStatus(MemberId("agent-1"))).data
+
+        assertEquals(ExternalAgentSetupState.Connected, status.setupState)
+        assertEquals("2026-09-03T05:00:00.000Z", status.credentialLastUsedAt)
+        assertEquals("2026-09-03T06:00:00.000Z", status.lastActivityAt)
+        assertEquals(listOf("GET agents/agent-1/external-status"), transport.calls)
+    }
+
+    @Test
+    fun agentExternalStatusWaitingForLoginWithNullTimestamps() = runPortableCoroutineTest {
+        val client = SlockAgentsApiClient(RecordingAgentsApi())
+
+        val status = assertIs<DataResult.Content<ExternalAgentStatusSnapshot>>(client.agentExternalStatus(MemberId("agent-1"))).data
+
+        assertEquals(ExternalAgentSetupState.WaitingForLogin, status.setupState)
+        assertEquals(null, status.credentialLastUsedAt)
+        assertEquals(null, status.lastActivityAt)
+    }
+
+    // 403 = caller lacks editAgents/creator authority; must surface as NoPermission,
+    // never as a status (the UI treats it as "not provided", not "waiting for login").
+    @Test
+    fun agentExternalStatusForbiddenIsNoPermissionNotAStatus() = runPortableCoroutineTest {
+        val client =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(
+                    externalStatusCode = 403,
+                    externalStatusErrorBody = """{"error":"The `editAgents` capability or human creator authority is required to view external setup status"}"""
+                )
+            )
+
+        val result = client.agentExternalStatus(MemberId("agent-1"))
+        assertTrue(result is DataResult.NoPermission, "403 must map to NoPermission, got $result")
+    }
+
+    // 400 = agent is not external; also non-Content.
+    @Test
+    fun agentExternalStatusNonExternalIsError() = runPortableCoroutineTest {
+        val client =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(externalStatusCode = 400, externalStatusErrorBody = """{"error":"Agent is not external"}""")
+            )
+
+        val result = client.agentExternalStatus(MemberId("agent-1"))
+        assertTrue(result is DataResult.Error, "400 must map to Error, got $result")
+    }
+
+    @Test
+    fun agentSummaryCarriesExternalFromBooleanOrRuntime() = runPortableCoroutineTest {
+        val byBoolean =
+            SlockAgentsApiClient(RecordingAgentsApi(agentBody = """{"id":"agent-1","name":"bridge","status":"active","runtime":"claude","external":true}"""))
+        val byRuntime =
+            SlockAgentsApiClient(RecordingAgentsApi(agentBody = """{"id":"agent-1","name":"bridge","status":"active","runtime":"external"}"""))
+        val managed =
+            SlockAgentsApiClient(RecordingAgentsApi(agentBody = """{"id":"agent-1","name":"claude","status":"active","runtime":"claude"}"""))
+
+        assertEquals(true, assertIs<DataResult.Content<AgentSummary>>(byBoolean.agent(MemberId("agent-1"))).data.isExternal)
+        assertEquals(true, assertIs<DataResult.Content<AgentSummary>>(byRuntime.agent(MemberId("agent-1"))).data.isExternal)
+        assertEquals(false, assertIs<DataResult.Content<AgentSummary>>(managed.agent(MemberId("agent-1"))).data.isExternal)
+        assertEquals(true, assertIs<DataResult.Content<AgentSummary>>(byRuntime.agent(MemberId("agent-1"))).data.toAgentDetailSummary().isExternal)
     }
 }

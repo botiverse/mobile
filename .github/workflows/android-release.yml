@@ -129,7 +129,7 @@ on:
         type: string
         default: "0"
       version_build:
-        description: "versionCode build (x*1_000_000 + y*10_000 + z*100 + build)"
+        description: "versionCode build (x*10_000_000 + y*100_000 + z*1_000 + build, 0-999)"
         required: true
         type: string
         default: "0"
@@ -285,7 +285,7 @@ jobs:
       artifact_name: ${{ inputs.artifact_name }}
       artifact_id: ${{ steps.upload-apk.outputs.artifact-id }}
       apk_member: ${{ steps.verify.outputs.member }}
-      apk_path: ${{ steps.locate.outputs.apk_path }}
+      apk_path: ${{ steps.sign.outputs.apk_path }}
       apk_sha256: ${{ steps.verify.outputs.sha256 }}
       apk_size: ${{ steps.verify.outputs.size }}
       version_code: ${{ steps.resolve.outputs.version_code }}
@@ -349,6 +349,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Install Android SDK packages
         shell: bash
@@ -371,9 +373,9 @@ jobs:
           PATCH="${{ needs.resolve.outputs.version_patch }}"
           BUILD="${{ needs.resolve.outputs.version_build }}"
           SUFFIX="${{ needs.resolve.outputs.version_suffix }}"
-          # versionCode = X*1_000_000 + Y*10_000 + Z*100 + build (per
-          # docs/android-hands-release-practices-2026-07-02.md)
-          VERSION_CODE=$((MAJOR * 1000000 + MINOR * 10000 + PATCH * 100 + BUILD))
+          # versionCode = X*10_000_000 + Y*100_000 + Z*1_000 + build (0-999),
+          # via scripts/ci/version_code.sh (authoritative single formula).
+          VERSION_CODE="$(scripts/ci/version_code.sh "$MAJOR" "$MINOR" "$PATCH" "$BUILD")"
           if [ -n "$SUFFIX" ]; then
             VERSION_NAME="${MAJOR}.${MINOR}.${PATCH}-${SUFFIX}"
           else
@@ -396,6 +398,7 @@ jobs:
             "-PversionY=${{ needs.resolve.outputs.version_minor }}"
             "-PversionZ=${{ needs.resolve.outputs.version_patch }}"
             "-PversionBuild=${{ needs.resolve.outputs.version_build }}"
+            "-PversionCode=${{ steps.resolve.outputs.version_code }}"
           )
           case "${{ needs.resolve.outputs.dex_packaging }}" in
             current) ;;
@@ -433,6 +436,7 @@ jobs:
             "${{ steps.locate.outputs.apk_path }}"
 
       - name: Sign + align APK
+        id: sign
         # Lane-canonical approach: zipalign + apksigner (the release helper
         # scripts/publish_android_hands_release.sh does not sign; that's a
         # known gap for KMP's helper follow-up).
@@ -473,6 +477,7 @@ jobs:
           echo "${SIGNING_LINEAGE_B64}" | base64 -d > "${SLOCK_SIGNING_LINEAGE_FILE}"
           BT="${ANDROID_HOME}/build-tools/36.0.0"
           UNSIGNED="${{ steps.locate.outputs.apk_path }}"
+          TARGET_APK="compose/androidApp/build/outputs/apk/${{ needs.resolve.outputs.android_variant }}/androidApp-${{ needs.resolve.outputs.android_variant }}.apk"
           SIGNED="/tmp/androidApp-${{ needs.resolve.outputs.android_variant }}-signed.apk"
           cleanup() {
             rm -f \
@@ -487,9 +492,13 @@ jobs:
             --output "${SIGNED}" \
             --build-tools-dir "${BT}" \
             --verify-log apksigner-rotation-verify.log
-          # Replace the unsigned APK in the build outputs directory so the
-          # downstream job can pick it up via the apk_path output.
-          cp "${SIGNED}" "${UNSIGNED}"
+          # Place the signed APK at the canonical release path and remove
+          # the temporary unsigned artifact.
+          cp "${SIGNED}" "${TARGET_APK}"
+          if [ "${UNSIGNED}" != "${TARGET_APK}" ]; then
+            rm -f "${UNSIGNED}"
+          fi
+          echo "apk_path=${TARGET_APK}" >> "$GITHUB_OUTPUT"
 
       - name: Verify exact Hands native symbols
         id: native-symbols
@@ -502,7 +511,7 @@ jobs:
             exit 1
           fi
           scripts/verify_android_native_symbols.sh \
-            --apk "${{ steps.locate.outputs.apk_path }}" \
+            --apk "${{ steps.sign.outputs.apk_path }}" \
             --symbols "${ARCHIVE}"
           echo "archive=${ARCHIVE}" >> "$GITHUB_OUTPUT"
 
@@ -512,7 +521,7 @@ jobs:
         run: |
           set -euo pipefail
           BT="${ANDROID_HOME}/build-tools/36.0.0"
-          APK="${{ steps.locate.outputs.apk_path }}"
+          APK="${{ steps.sign.outputs.apk_path }}"
           scripts/verify_android_apk_with_rotation.sh \
             --apk "${APK}" \
             --build-tools-dir "${BT}" \
@@ -574,7 +583,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: ${{ inputs.artifact_name }}
-          path: ${{ steps.locate.outputs.apk_path }}
+          path: ${{ steps.sign.outputs.apk_path }}
           if-no-files-found: error
           retention-days: 14
 
@@ -606,7 +615,7 @@ jobs:
             echo "|---|---|"
             echo "| **versionCode** | \`${{ steps.resolve.outputs.version_code }}\` |"
             echo "| **versionName** | \`${{ steps.resolve.outputs.version_name }}\` |"
-            echo "| **APK** | \`${{ steps.locate.outputs.apk_path }}\` |"
+            echo "| **APK** | \`${{ steps.sign.outputs.apk_path }}\` |"
             echo "| **size (bytes)** | \`${{ steps.verify.outputs.size }}\` |"
             echo "| **sha256** | \`${{ steps.verify.outputs.sha256 }}\` |"
             echo "| **DEX packaging** | \`${{ needs.resolve.outputs.dex_packaging }}\` |"

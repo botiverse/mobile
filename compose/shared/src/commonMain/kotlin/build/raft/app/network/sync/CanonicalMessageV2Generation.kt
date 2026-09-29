@@ -85,6 +85,13 @@ interface CanonicalMessageV2Store {
     suspend fun clearScope(scope: SyncScopeKey): Set<SyncScopeKey>
     suspend fun clearPartition(partition: DurablePartitionKey)
     suspend fun knownPartitions(): List<DurablePartitionKey> = emptyList()
+
+    /**
+     * Scope kinds that hold a committed baseline cursor for `scopeId` inside `partition`, in
+     * deterministic order. The thread screen enters by channel id alone and needs this to name the
+     * [SyncScopeKey] it may restore. Empty means "no baseline", never "unknown".
+     */
+    suspend fun baselinedScopeKinds(partition: DurablePartitionKey, scopeId: SyncScopeId): List<String> = emptyList()
 }
 
 data class CanonicalMessageV2StoreWriteResult(
@@ -460,6 +467,18 @@ internal class SqlDelightCanonicalMessageV2Store(
                 consumerId = partition.consumerId,
             )
         }
+    }
+
+    override suspend fun baselinedScopeKinds(partition: DurablePartitionKey, scopeId: SyncScopeId): List<String> {
+        require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+        requireOpaqueDurableIdentity("scopeId", scopeId)
+        return database.queries.selectSyncCursorScopeKindsForScopeId(
+            environmentId = partition.environmentId,
+            serverId = partition.serverId,
+            principalId = partition.principalId,
+            consumerId = partition.consumerId,
+            scopeId = scopeId,
+        ).executeAsList()
     }
 
     override suspend fun knownPartitions(): List<DurablePartitionKey> =

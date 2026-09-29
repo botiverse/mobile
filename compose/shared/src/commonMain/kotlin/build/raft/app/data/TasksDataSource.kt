@@ -8,6 +8,7 @@ import build.raft.app.strictTaskStatusOrNull
 import build.raft.app.KuiklyThreadSurfaceKind
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageId
 import build.raft.app.model.Presence
@@ -21,6 +22,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlin.time.TimeSource
 
 private val tasksJson = Json {
@@ -46,6 +50,22 @@ class SharedTasksDataSource(
             throw cancellation
         } catch (_: Throwable) {
             DataResult.Error(ScreenError(code = "tasks_network", retryable = true))
+        }
+
+    /** Paginated summary page (task #345); see [TasksPageResult]. */
+    override suspend fun loadServerTasksPage(
+        serverId: ServerId,
+        limit: Int,
+        cursor: String?,
+        priority: DataRequestPriority,
+        status: String?
+    ): TasksPageResult =
+        try {
+            typedApi.serverTasksPage(serverId, priority, limit, cursor, status)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            TasksPageResult.Error(code = "tasks_page_network")
         }
 
     override suspend fun loadChannelTasks(
@@ -87,6 +107,20 @@ class SharedTasksDataSource(
             throw cancellation
         } catch (_: Throwable) {
             DataResult.Error(ScreenError(code = "tasks_status_network", retryable = true))
+        }
+
+    override suspend fun assignTask(
+        serverId: ServerId,
+        taskId: TaskId,
+        assignee: MemberProfile?,
+        expectedRevision: Long?
+    ): DataResult<TaskActionResult> =
+        try {
+            typedApi.assignTask(serverId, taskId, assignee, expectedRevision)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            DataResult.Error(ScreenError(code = "tasks_assign_network", retryable = true))
         }
 
     /**
@@ -227,6 +261,30 @@ private suspend fun SlockNetworkClient.serverTasks(
 ): HomeNetworkResponse =
     request(priority, "tasks/server", serverIdOverride = serverId)
 
+/**
+ * Paginated server Tasks read (task #345). `detail=summary&limit=<n>` plus an
+ * opaque `cursor` for subsequent pages. `cursor` is only sent alongside a
+ * `limit` (the server 400s a cursor without a page size).
+ */
+private suspend fun SlockNetworkClient.serverTasksPage(
+    priority: DataRequestPriority,
+    serverId: ServerId,
+    detail: String?,
+    limit: Int?,
+    cursor: String?,
+    status: String? = null,
+): HomeNetworkResponse {
+    val query = buildList {
+        detail?.let { add("detail" to it) }
+        // An optional status filter composes with limit/cursor server-side.
+        status?.takeIf { it.isNotBlank() }?.let { add("status" to it) }
+        limit?.let { add("limit" to it.toString()) }
+        // A cursor without a limit is invalid server-side; never send it alone.
+        cursor?.takeIf { it.isNotBlank() && limit != null }?.let { add("cursor" to it) }
+    }
+    return request(priority, "tasks/server", serverIdOverride = serverId, query = query)
+}
+
 private suspend fun SlockNetworkClient.channelTasks(
     priority: DataRequestPriority,
     channelId: ChannelId,
@@ -252,6 +310,16 @@ internal class NetworkSlockTasksApi(
 ) : SlockTasksApi {
     override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
         networkClient.request(priority, "tasks/server", serverIdOverride = serverId)
+
+    override suspend fun serverTasksPage(
+        serverId: ServerId,
+        priority: DataRequestPriority,
+        detail: String?,
+        limit: Int?,
+        cursor: String?,
+        status: String?,
+    ): HomeNetworkResponse =
+        networkClient.serverTasksPage(priority, serverId, detail, limit, cursor, status)
 
     override suspend fun channelTasks(channelId: ChannelId, priority: DataRequestPriority): HomeNetworkResponse =
         networkClient.request(priority, "tasks/channel/${channelId.value}")
@@ -354,6 +422,23 @@ internal class NetworkSlockTasksApi(
             buildSharedTaskStatusBody(status)
         )
 
+    override suspend fun assignTask(taskId: TaskId, bodyText: String): HomeNetworkResponse =
+        networkClient.request(
+            DataRequestPriority.Foreground,
+            "tasks/${taskId.value}/assignee",
+            method = "PATCH",
+            bodyText = bodyText
+        )
+
+    override suspend fun assignTask(serverId: ServerId, taskId: TaskId, bodyText: String): HomeNetworkResponse =
+        networkClient.request(
+            DataRequestPriority.Foreground,
+            "tasks/${taskId.value}/assignee",
+            method = "PATCH",
+            bodyText = bodyText,
+            serverIdOverride = serverId
+        )
+
     override suspend fun updateTaskStatus(
         serverId: ServerId,
         taskId: TaskId,
@@ -435,6 +520,19 @@ class RealTaskRepository(
  */
 interface SlockTasksApi {
     suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse
+    /**
+     * Paginated server Tasks read (task #345): `?detail=summary&limit=200`, then
+     * follow `cursor`. A default implementation keeps existing fakes compiling;
+     * real transports override it.
+     */
+    suspend fun serverTasksPage(
+        serverId: ServerId,
+        priority: DataRequestPriority,
+        detail: String?,
+        limit: Int?,
+        cursor: String?,
+        status: String? = null,
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun channelTasks(channelId: ChannelId, priority: DataRequestPriority): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun channelTasks(
@@ -472,6 +570,17 @@ interface SlockTasksApi {
         HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): HomeNetworkResponse
     suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+
+    /**
+     * `PATCH /api/tasks/:taskId/assignee` (server contract: body `{ assignee:
+     * {type:'user'|'agent', id} | null, expectedRevision? }`; explicit `null`
+     * unassigns; 409 + `currentRevision` on lost OCC race). Body is pre-built by
+     * [buildSharedTaskAssignBody].
+     */
+    suspend fun assignTask(taskId: TaskId, bodyText: String): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+    suspend fun assignTask(serverId: ServerId, taskId: TaskId, bodyText: String): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun deleteTask(taskId: TaskId): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
@@ -512,6 +621,60 @@ fun buildSharedTasksCreateBody(drafts: List<TaskCreateDraft>): String =
 fun buildSharedTaskConvertBody(messageId: MessageId): String =
     tasksJson.encodeToString(TaskConvertRequestBody(messageId.value))
 
+/** Wire value for [MemberKind] in the assignee PATCH body; System members are not assignable. */
+internal fun MemberProfile.taskAssigneeTypeValueOrNull(): String? =
+    when (kind) {
+        MemberKind.Human -> "user"
+        MemberKind.Agent -> "agent"
+        MemberKind.System -> null
+        // External projections are never task assignees.
+        MemberKind.External -> null
+    }
+
+/**
+ * `PATCH /api/tasks/:taskId/assignee` request body.
+ *
+ * Built manually instead of through [tasksJson] because `explicitNulls = false`
+ * would drop the `assignee` key entirely, while the server treats a missing key
+ * as a 400 ("assignee is required (use null to unassign)"). An explicit JSON
+ * `null` is the unassign sentinel and must survive serialization.
+ */
+fun buildSharedTaskAssignBody(assignee: MemberProfile?, expectedRevision: Long?): String {
+    val root = buildJsonObject {
+        if (assignee == null) {
+            put("assignee", JsonNull)
+        } else {
+            val type = assignee.taskAssigneeTypeValueOrNull()
+                ?: throw IllegalArgumentException(
+                    "MemberKind ${assignee.kind} is not a valid task assignee"
+                )
+            put(
+                "assignee",
+                buildJsonObject {
+                    put("type", type)
+                    put("id", assignee.id.value)
+                }
+            )
+        }
+        if (expectedRevision != null) {
+            put("expectedRevision", expectedRevision)
+        }
+    }
+    return root.toString()
+}
+
+/** Sentinel error code for a lost OCC race on the assignee write (server 409). */
+internal const val TASKS_ASSIGN_CONFLICT = "tasks_assign_conflict"
+
+internal fun taskAssignConflictErrorCode(payload: String?): Boolean {
+    val text = payload?.takeIf { it.isNotBlank() } ?: return false
+    val envelope =
+        runCatching {
+            tasksJson.decodeFromString(TaskAssignErrorEnvelope.serializer(), text)
+        }.getOrNull() ?: return false
+    return envelope.error?.trim()?.equals("task state changed concurrently", ignoreCase = true) == true
+}
+
 internal class SlockTasksApiClient(
     private val transport: SlockTasksApi,
     private val diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
@@ -526,6 +689,30 @@ internal class SlockTasksApiClient(
             source = "tasks_server",
             diagnosticsLogger = diagnosticsLogger
         )
+
+    /**
+     * Paginated, summary-detail server Tasks page (task #345). Returns the
+     * decoded page (items + opaque next cursor) or a typed error. A 400
+     * `Invalid cursor` is surfaced as [TasksPageResult.InvalidCursor] so the
+     * caller refreshes from the head instead of retrying.
+     */
+    suspend fun serverTasksPage(
+        serverId: ServerId,
+        priority: DataRequestPriority,
+        limit: Int,
+        cursor: String?,
+        status: String? = null
+    ): TasksPageResult =
+        // The optional status filter rides the SAME transport + the SAME parser
+        // (task #363): no second cursor/response codec for the per-status walk.
+        transport.serverTasksPage(
+            serverId = serverId,
+            priority = priority,
+            detail = "summary",
+            limit = limit,
+            cursor = cursor,
+            status = status
+        ).toTasksPageResult(source = "tasks_server_page", diagnosticsLogger = diagnosticsLogger)
 
     suspend fun channelTasks(
         channelId: ChannelId,
@@ -634,6 +821,20 @@ internal class SlockTasksApiClient(
             requestedStatus = status,
         )
 
+    suspend fun assignTask(
+        serverId: ServerId,
+        taskId: TaskId,
+        assignee: MemberProfile?,
+        expectedRevision: Long?
+    ): DataResult<TaskActionResult> =
+        transport
+            .assignTask(
+                serverId,
+                taskId,
+                buildSharedTaskAssignBody(assignee = assignee, expectedRevision = expectedRevision)
+            )
+            .toTaskAssignActionResult(diagnostics = diagnosticsLogger)
+
     suspend fun deleteTask(taskId: TaskId): DataResult<Unit> =
         transport.deleteTask(taskId).toTaskDeleteResult()
 
@@ -706,6 +907,45 @@ internal suspend fun HomeNetworkResponse.toTasksResultOffUi(
     return result
 }
 
+/** Result of a paginated server Tasks read (task #345). */
+sealed interface TasksPageResult {
+    /** A decoded page; [nextCursor] is null when the walk is exhausted. */
+    data class Page(val tasks: List<TaskSummary>, val nextCursor: String?) : TasksPageResult
+
+    /** The server rejected the cursor (400 `Invalid cursor`): refresh from head. */
+    data object InvalidCursor : TasksPageResult
+
+    /** Transient failure: keep what is loaded and allow a retry. */
+    data class Error(val code: String) : TasksPageResult
+}
+
+/**
+ * Maps a raw `GET /api/tasks/server` page response. A 400 with
+ * `error == "Invalid cursor"` is distinguished from other failures so the
+ * caller can drop the cursor and refresh the head (matches the Web consumer).
+ */
+internal fun HomeNetworkResponse.toTasksPageResult(
+    source: String = "tasks_server_page",
+    diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
+): TasksPageResult {
+    val responseBytes = bodyText?.encodeToByteArray()?.size ?: 0
+    diagnosticsLogger(
+        "tasks_page_body_received source=$source code=$code responseBytes=$responseBytes hasBody=${bodyText != null}"
+    )
+    if (!isSuccessful) {
+        val errorText = tasksServerErrorTextOrNull()
+        return if (code == 400 && errorText == "Invalid cursor") {
+            TasksPageResult.InvalidCursor
+        } else {
+            TasksPageResult.Error(code = errorText?.let { "tasks_page_$it" } ?: "tasks_page_http_$code")
+        }
+    }
+    val body = bodyText ?: return TasksPageResult.Error(code = "tasks_page_empty_body")
+    val page = parseSharedServerTasksPagePayload(body, diagnosticsLogger)
+        ?: return TasksPageResult.Error(code = "tasks_page_contract_mismatch")
+    return TasksPageResult.Page(tasks = page.tasks, nextCursor = page.nextCursor)
+}
+
 internal fun HomeNetworkResponse.toTaskActionResult(
     source: String = "tasks_action",
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
@@ -730,6 +970,40 @@ internal fun HomeNetworkResponse.toTaskActionResult(
         ?: return requestedStatus.taskStatusAppliedWithoutProjectionResult(source)
     val summary = task.toTaskSummary(diagnostics)
         ?: return requestedStatus.taskStatusAppliedWithoutProjectionResult(source)
+    return DataResult.Content(TaskActionResult(summary))
+}
+
+/**
+ * Mapper for `PATCH /tasks/:taskId/assignee`. Mirrors [toTaskActionResult] with one
+ * contract addition: a 409 whose body reports `task state changed concurrently` is
+ * the server's OCC-lost signal (`currentRevision` included when re-readable) and
+ * maps to [TASKS_ASSIGN_CONFLICT] so callers can re-read + retry instead of
+ * surfacing a generic failure.
+ */
+internal fun HomeNetworkResponse.toTaskAssignActionResult(
+    source: String = "tasks_assign",
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): DataResult<TaskActionResult> {
+    unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }
+    val serverMessage = if (isSuccessful) null else tasksServerErrorTextOrNull()
+    if (code == 401 || code == 403) {
+        return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code", serverMessage = serverMessage))
+    }
+    if (!isSuccessful) {
+        val conflictPayload = errorBodyText?.takeIf { it.isNotBlank() } ?: bodyText
+        if (code == 409 && taskAssignConflictErrorCode(conflictPayload)) {
+            return DataResult.Error(
+                ScreenError(code = TASKS_ASSIGN_CONFLICT, retryable = true, serverMessage = serverMessage)
+            )
+        }
+        return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true, serverMessage = serverMessage))
+    }
+    val body = bodyText
+        ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
+    val envelope = runCatching { tasksJson.decodeFromString<TaskEnvelope>(body) }.getOrNull()
+        ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
+    val summary = envelope.task?.toTaskSummary(diagnostics)
+        ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
     return DataResult.Content(TaskActionResult(summary))
 }
 
@@ -867,6 +1141,26 @@ private fun TaskFilter.withoutAssigneeFilter(): TaskFilter =
 @Serializable
 internal data class TasksListEnvelope(val tasks: List<TaskWireDto>)
 
+/**
+ * Envelope for the paginated `GET /api/tasks/server` read (task #345).
+ *
+ * `next_cursor` is the opaque server cursor; `null` (or absent) terminates the
+ * walk. It is only present on the paginated shape — the legacy no-param shape
+ * and the summary-without-limit shape carry no `next_cursor` key, which
+ * [parseServerTasksPagePayload] treats as "no more pages".
+ */
+@Serializable
+internal data class TasksPageEnvelope(
+    val tasks: List<TaskWireDto>,
+    val next_cursor: String? = null,
+)
+
+/** Decoded paginated page: items plus the opaque cursor for the next page. */
+data class SharedServerTasksPage(
+    val tasks: List<TaskSummary>,
+    val nextCursor: String?,
+)
+
 @Serializable
 internal data class TaskEnvelope(val task: TaskWireDto? = null)
 
@@ -877,6 +1171,13 @@ internal data class OkEnvelope(val ok: Boolean = false)
 private data class TaskActionErrorEnvelope(
     val error: String? = null,
     val code: String? = null,
+)
+
+/** Error payload of `PATCH /tasks/:id/assignee` (409 OCC carries `currentRevision`). */
+@Serializable
+internal data class TaskAssignErrorEnvelope(
+    val error: String? = null,
+    val currentRevision: Long? = null,
 )
 
 private fun HomeNetworkResponse.tasksServerErrorTextOrNull(): String? {
@@ -907,6 +1208,12 @@ internal data class TaskWireDto(
     val createdByType: String? = null,
     val createdById: String? = null,
     val createdByName: String? = null,
+    // `detail=summary` projection fields (task #345). `description` is absent on
+    // the summary shape; these two let the client decide whether to fetch the
+    // full card. Ignored by the full shape.
+    val hasDescription: Boolean? = null,
+    val descriptionBytes: Int? = null,
+    val source: String? = null,
     val claimedByType: String? = null,
     val claimedById: String? = null,
     val claimedByName: String? = null,

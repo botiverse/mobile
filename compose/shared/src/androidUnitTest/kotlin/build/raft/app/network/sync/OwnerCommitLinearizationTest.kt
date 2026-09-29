@@ -76,7 +76,7 @@ class OwnerCommitLinearizationTest {
     }
 
     private val scope = SyncScopeKey(
-        partition = DurablePartitionKey("s1", "p1", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID),
+        partition = DurablePartitionKey("s1", "p1", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID, "env-test"),
         scopeId = "c1",
         scopeKind = "channel",
     )

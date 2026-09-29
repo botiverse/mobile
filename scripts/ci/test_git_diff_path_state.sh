@@ -20,6 +20,7 @@ THREAD_PATHS=(
   compose/shared/src/commonMain/kotlin/build/raft/app/LazyViewportController.kt
   compose/shared/src/commonMain/kotlin/build/raft/app/ThreadNewerPagination.kt
   compose/androidApp/src/androidTest/java/build/raft/app/shared/SlockThreadNewerAutoPaginationConnectedTest.kt
+  compose/shared/src/visualFixtures/kotlin/build/raft/app/ThreadNewerAutoPaginationVisualFixture.kt
 )
 OHOS_PATHS=(
   .github/workflows/test.yml
@@ -39,9 +40,11 @@ git -C "$repo" config user.name ci-fixture
 git -C "$repo" config user.email ci-fixture@example.invalid
 mkdir -p \
   "$repo/compose/shared/src/commonMain/kotlin/build/raft/app" \
+  "$repo/compose/shared/src/visualFixtures/kotlin/build/raft/app" \
   "$repo/compose/ohosBridge" \
   "$repo/docs"
 printf 'thread base\n' > "$repo/${THREAD_PATHS[0]}"
+printf 'fixture base\n' > "$repo/${THREAD_PATHS[4]}"
 printf 'ohos base\n' > "$repo/compose/ohosBridge/bridge.txt"
 git -C "$repo" add .
 git -C "$repo" commit -qm base
@@ -56,6 +59,11 @@ printf 'thread changed\n' >> "$repo/${THREAD_PATHS[0]}"
 git -C "$repo" add "${THREAD_PATHS[0]}"
 git -C "$repo" commit -qm thread-changed
 thread_changed="$(git -C "$repo" rev-parse HEAD)"
+
+printf 'fixture changed\n' >> "$repo/${THREAD_PATHS[4]}"
+git -C "$repo" add "${THREAD_PATHS[4]}"
+git -C "$repo" commit -qm fixture-changed
+fixture_changed="$(git -C "$repo" rev-parse HEAD)"
 
 printf 'ohos changed\n' >> "$repo/compose/ohosBridge/bridge.txt"
 git -C "$repo" add compose/ohosBridge/bridge.txt
@@ -97,6 +105,7 @@ assert_error_rc() {
 
 assert_rc thread-unchanged 0 "$base" "$unrelated" "${THREAD_PATHS[@]}"
 assert_rc thread-changed 1 "$unrelated" "$thread_changed" "${THREAD_PATHS[@]}"
+assert_rc fixture-changed 1 "$unrelated" "$fixture_changed" "${THREAD_PATHS[@]}"
 assert_error_rc thread-diff-error definitely-not-a-commit "$ohos_changed" "${THREAD_PATHS[@]}"
 
 assert_rc ohos-unchanged 0 "$base" "$unrelated" "${OHOS_PATHS[@]}"
@@ -125,6 +134,7 @@ assert_outside_rc() {
 
 assert_outside_rc outside-repo-unchanged 0 "$base" "$unrelated" "${THREAD_PATHS[@]}"
 assert_outside_rc outside-repo-changed 1 "$unrelated" "$thread_changed" "${THREAD_PATHS[@]}"
+assert_outside_rc outside-repo-fixture-changed 1 "$unrelated" "$fixture_changed" "${THREAD_PATHS[@]}"
 
 capture_poisoned_env_rc() {
   local base_ref="$1"
@@ -158,6 +168,7 @@ assert_poisoned_env_rc() {
 
 assert_poisoned_env_rc poisoned-env-unchanged 0 "$base" "$unrelated" "${THREAD_PATHS[@]}"
 assert_poisoned_env_rc poisoned-env-changed 1 "$unrelated" "$thread_changed" "${THREAD_PATHS[@]}"
+assert_poisoned_env_rc poisoned-env-fixture-changed 1 "$unrelated" "$fixture_changed" "${THREAD_PATHS[@]}"
 
 HELPER="$HELPER" \
   ROOT="$ROOT" \
@@ -362,6 +373,7 @@ thread_paths = %w[
   compose/shared/src/commonMain/kotlin/build/raft/app/LazyViewportController.kt
   compose/shared/src/commonMain/kotlin/build/raft/app/ThreadNewerPagination.kt
   compose/androidApp/src/androidTest/java/build/raft/app/shared/SlockThreadNewerAutoPaginationConnectedTest.kt
+  compose/shared/src/visualFixtures/kotlin/build/raft/app/ThreadNewerAutoPaginationVisualFixture.kt
 ]
 ohos_paths = %w[
   .github/workflows/test.yml

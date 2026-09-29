@@ -50,10 +50,11 @@ class DurablePartitionStoreTest {
         serverId: String = "server-a",
         principalId: String = "principal-a",
         consumerId: String = SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID,
+        environmentId: String = "https://api.env-a.test",
         scopeId: String = "channel-a",
         scopeKind: String = "channel",
     ) = SyncScopeKey(
-        partition = DurablePartitionKey(serverId, principalId, consumerId),
+        partition = DurablePartitionKey(serverId, principalId, consumerId, environmentId),
         scopeId = scopeId,
         scopeKind = scopeKind,
     )
@@ -117,6 +118,27 @@ class DurablePartitionStoreTest {
         assertTrue(store(database).readFacts(second).isEmpty())
     }
 
+    /**
+     * Task #1109 (offline cache ②): the same principal + server + consumer reached through two API
+     * environments (staging vs production) are two partitions. Before the fix every write-path partition
+     * defaulted `environmentId` to one constant, so this read would have returned the other environment's row.
+     */
+    @Test
+    fun crossEnvironmentPartitionsCannotReadOrOverwriteEachOther() = runBlocking {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val database = freshDatabase(driver)
+        val staging = scope(environmentId = "https://api.staging.test")
+        val production = scope(environmentId = "https://api.production.test")
+
+        adapter(database).applyFrame(frame(staging, id = "staging-message", seq = 3L))
+        adapter(database).applyFrame(frame(production, id = "production-message", seq = 1L))
+
+        assertEquals(listOf("staging-message"), store(database).readFacts(staging).map { it.id })
+        assertEquals(listOf("production-message"), store(database).readFacts(production).map { it.id })
+        assertEquals(3L, store(database).readCursor(staging)?.latestSeq)
+        assertEquals(1L, store(database).readCursor(production)?.latestSeq)
+    }
+
     @Test
     fun crossConsumerPartitionsCannotReadOrOverwriteEachOther() = runBlocking {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
@@ -161,6 +183,7 @@ class DurablePartitionStoreTest {
             serverId = beforeReauth.serverId,
             principalId = beforeReauth.principalId,
             consumerId = beforeReauth.consumerId,
+            environmentId = beforeReauth.environmentId,
         ).let { partition -> SyncScopeKey(partition, beforeReauth.scopeId, beforeReauth.scopeKind) }
 
         adapter(database).applyFrame(frame(beforeReauth, id = "reauth-message", seq = 9L))

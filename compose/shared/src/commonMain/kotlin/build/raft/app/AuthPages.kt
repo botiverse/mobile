@@ -28,6 +28,7 @@ import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticsEntry
 import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
@@ -248,21 +249,12 @@ private fun LoginScreen() {
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val authDataSource = rememberCurrentEnvironmentAuthDataSource(bridge)
     val paramsSignature = pager.pageData.params.toString()
-    // Seed host capabilities synchronously, then observe the store so the signed-out
-    // diagnostics Apple toggle applies as soon as the user returns to this page.
+    // Seed host capabilities synchronously and observe subsequent host updates.
     rememberAuthRuntimeCapabilities(
         store = sharedStores.authRuntimeCapabilityStore,
         pageData = pager.pageData.params
     )
     val authRuntimeCapabilities by sharedStores.authRuntimeCapabilityStore.state.collectAsState()
-    // Probe the backend platform gate once per login composition; Apple stays hidden
-    // until this succeeds (fail-closed) unless the diagnostics override forces it.
-    LaunchedEffect(bridge) {
-        val probed = authDataSource.probeBackendSocialProviders("mobile")
-        if (probed != null) {
-            sharedStores.authRuntimeCapabilityStore.setBackendEnabledSocialProviders(probed)
-        }
-    }
     val linkNavigator =
         rememberSlockLinkNavigator(
             pager = pager,
@@ -1123,11 +1115,6 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                                     .toDiagnosticsScreenLoadState()
                         }
                     },
-                    onSetProfilerEnabled = { enabled ->
-                        bridgeCallScope.launch {
-                            diagnosticsState = settingsDataSource.setRecompositionProfilerEnabled(enabled).toDiagnosticsScreenLoadState()
-                        }
-                    },
                     onSetAppleSignInLocalOverride = { enabled ->
                         bridgeCallScope.launch {
                             diagnosticsState =
@@ -1136,31 +1123,6 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                         }
                     },
                     onCopyValue = { value -> settingsCapabilities.bridgeCopyToClipboard(value) },
-                    onStartProfiler = {
-                        bridgeCallScope.launch {
-                            diagnosticsState = settingsDataSource.startRecompositionProfiler().toDiagnosticsScreenLoadState()
-                        }
-                    },
-                    onStopProfiler = {
-                        bridgeCallScope.launch {
-                            diagnosticsState = settingsDataSource.stopRecompositionProfiler().toDiagnosticsScreenLoadState()
-                        }
-                    },
-                    onResetProfiler = {
-                        bridgeCallScope.launch {
-                            diagnosticsState = settingsDataSource.resetRecompositionProfiler().toDiagnosticsScreenLoadState()
-                        }
-                    },
-                    onRefreshProfilerReport = {
-                        bridgeCallScope.launch {
-                            diagnosticsState = settingsDataSource.refreshRecompositionProfilerReport().toDiagnosticsScreenLoadState()
-                        }
-                    },
-                    onExportProfilerReport = {
-                        bridgeCallScope.launch {
-                            diagnosticsState = settingsDataSource.exportRecompositionProfilerReport().toDiagnosticsScreenLoadState()
-                        }
-                    },
                     onSendFeedback = {
                         bridgeCallScope.launch {
                             val about = (aboutState as? ScreenLoadState.Content<SharedSettingsAboutSnapshot>)?.data
@@ -2066,7 +2028,15 @@ internal fun postAuthRouteDestination(session: StoredAuthSession? = null): AuthR
     } else {
         AuthRouteDestination(
             pageName = AUTH_CHOOSE_SERVER_PAGE,
-            pageData = authChooseServerPageData(replaceCurrent = true)
+            // The chooser is the first mounted shell-owned page after a fresh login. Keep its
+            // auth/selection authority on the same default shell scope that AppShell will mount
+            // after the user picks a server; presentation remains the signed-out/fresh-auth
+            // variant (so this intentionally does not set fromShell).
+            pageData =
+                authChooseServerPageData(
+                    replaceCurrent = true,
+                    storeScope = SlockShellStoreScope.Legacy
+                )
         )
     }
 
@@ -2175,15 +2145,10 @@ internal fun SharedAuthRuntimeCapabilities.socialAuthProviders(
             }
         }
         .toSet()
-    // Apple is an iOS-only host capability. The backend mobile rollout gate or
-    // signed-out diagnostics override may narrow/enable it on iOS, but neither
-    // can make the provider render on Android or OHOS.
-    val appleHostAdvertised = AuthProvider.Apple in hostProviders
-    val appleAllowed = applePlatformSupported &&
-        (localAppleSignInOverride ||
-            (appleHostAdvertised &&
-                backendEnabledSocialProviderIds?.contains(AuthProvider.Apple.providerId()) == true))
-    return if (appleAllowed) hostProviders + AuthProvider.Apple else hostProviders - AuthProvider.Apple
+    // Apple is always available on iOS, including the first cold-start composition.
+    // Neither a missing/stale provider probe nor legacy local overrides control it.
+    // Native authorization and server credential validation still run when selected.
+    return if (applePlatformSupported) hostProviders + AuthProvider.Apple else hostProviders - AuthProvider.Apple
 }
 
 private fun AuthProvider.providerId(): String =

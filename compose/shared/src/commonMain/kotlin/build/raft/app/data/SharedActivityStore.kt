@@ -1,9 +1,10 @@
 package build.raft.app.data
 
-import build.raft.app.SharedThreadFreshnessGeneration
+import build.raft.app.SharedThreadContentGeneration
 import build.raft.app.SharedThreadFreshnessLedger
 import build.raft.app.SharedThreadSummaryFact
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberProfile
@@ -69,7 +70,9 @@ data class ActivityReplyThreadPrewarmKey(
 
 data class ActivityReplyThreadPrewarmMarker(
     val key: ActivityReplyThreadPrewarmKey,
-    val contentGeneration: SharedThreadFreshnessGeneration? = null
+    // Owner-less content token: "did canonical content change since this marker was stamped".
+    // The marker never selects a cached payload, so it carries no payload-cache owner.
+    val contentGeneration: SharedThreadContentGeneration? = null
 )
 
 class SharedActivityStore internal constructor(
@@ -80,6 +83,9 @@ class SharedActivityStore internal constructor(
     private var memberRepository: MemberRepository? = null,
     private var serverMembersStore: SharedServerMembersStore? = null,
     private var tasksDataStore: SharedTasksDataStore? = null,
+    // task #399: optional; resolves DM-parent thread rows' peer name from the
+    // Home DM list (channels.name is not a reliable peer projection for DMs).
+    private var channelRepository: ChannelRepository? = null,
     private val perReceiverStateVersionStore: PerReceiverStateVersionStore,
     private var readReceiptCoordinator: ReadReceiptCoordinator? = null,
     private var readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
@@ -111,6 +117,12 @@ class SharedActivityStore internal constructor(
     private var onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = onSummaryInvalidated
     private var unreadClearOverrides: Map<String, ActivityUnreadClearOverride> = emptyMap()
     private var doneOverrides: Map<String, ActivityDoneOverride> = emptyMap()
+    /**
+     * Local duplicate-request fence for Activity Follow/Unfollow actions.
+     * The server remains the authority for the eventual boolean; this set only
+     * prevents two taps from dispatching the same mutation concurrently.
+     */
+    private var pendingThreadFollowMutations: Set<String> = emptySet()
     private var readPredictionRevisions: Map<ChannelId, Long> = emptyMap()
     private var readPredictionItemKeys: Map<ChannelId, Set<String>> = emptyMap()
     private val replyPrewarmSemaphore = Semaphore(SharedActivityReplyPrewarmConcurrency)
@@ -121,15 +133,19 @@ class SharedActivityStore internal constructor(
     private var visibleReplyPrewarmMarkers: Map<ActivityReplyThreadPrewarmKey, ActivityReplyThreadPrewarmMarker> = emptyMap()
     private var tailReplyPrewarmMarkers: Map<ActivityReplyThreadPrewarmKey, ActivityReplyThreadPrewarmMarker> = emptyMap()
     private val completedReplyPrewarmGenerations =
-        mutableMapOf<ActivityReplyThreadPrewarmKey, SharedThreadFreshnessGeneration>()
+        mutableMapOf<ActivityReplyThreadPrewarmKey, SharedThreadContentGeneration>()
     private val failedReplyPrewarmGenerations =
-        mutableMapOf<ActivityReplyThreadPrewarmKey, SharedThreadFreshnessGeneration>()
+        mutableMapOf<ActivityReplyThreadPrewarmKey, SharedThreadContentGeneration>()
     private val replyPrewarmJobs = mutableMapOf<ActivityReplyThreadPrewarmKey, Job>()
     private var tailPrewarmLoopJob: Job? = null
     private var tailInFlightJob: Job? = null
     private var tailDrainBarrier: Job? = null
     private var realtimeBackgroundReconcileJob: Job? = null
     private var realtimeBackgroundReconcileDirty = false
+    // task #399: DM-parent thread rows whose peer could not be resolved from the
+    // last DM list fetch; retried only when a NEW unresolved id appears.
+    private var unresolvedDmPeerChannelIds: Set<ChannelId> = emptySet()
+    private var dmPeerNamesFetchInFlight = false
     private val realtimeHighWater = mutableMapOf<String, ActivityRealtimeHighWater>()
     // One owner for live row patches, version-ledger changes, background reconcile scheduling,
     // and canonical load folds.
@@ -143,6 +159,7 @@ class SharedActivityStore internal constructor(
         memberRepository: MemberRepository? = this.memberRepository,
         serverMembersStore: SharedServerMembersStore? = this.serverMembersStore,
         tasksDataStore: SharedTasksDataStore? = this.tasksDataStore,
+        channelRepository: ChannelRepository? = this.channelRepository,
         prewarmReplyThread: (suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit>)? = null,
         replyThreadFreshnessLedger: SharedThreadFreshnessLedger? = null,
         persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = this.persistSlices,
@@ -161,6 +178,7 @@ class SharedActivityStore internal constructor(
         this.memberRepository = memberRepository
         this.serverMembersStore = serverMembersStore
         this.tasksDataStore = tasksDataStore
+        this.channelRepository = channelRepository
         if (prewarmReplyThread != null) {
             this.prewarmReplyThread = prewarmReplyThread
         }
@@ -195,6 +213,8 @@ class SharedActivityStore internal constructor(
             SharedActivityIntent.MarkAllRead -> markAllRead()
             is SharedActivityIntent.SetFilter -> setFilter(intent.filter)
             is SharedActivityIntent.MarkDone -> markDone(intent.item)
+            is SharedActivityIntent.UnfollowThread -> unfollowThread(intent.item)
+            is SharedActivityIntent.FollowThread -> followThread(intent.item)
             is SharedActivityIntent.MarkRead -> markRead(intent.item)
             is SharedActivityIntent.MarkUnread -> markUnread(intent.item)
             is SharedActivityIntent.ApplyReadReceiptPrediction -> applyReadReceiptPrediction(intent.prediction)
@@ -237,6 +257,7 @@ class SharedActivityStore internal constructor(
             realtimeBackgroundReconcileJob = null
             realtimeBackgroundReconcileDirty = false
             realtimeHighWater.clear()
+            pendingThreadFollowMutations = emptySet()
             owner
         }
         ownerServerId?.let(replyThreadFreshnessLedger::invalidateServer)
@@ -251,6 +272,12 @@ class SharedActivityStore internal constructor(
             doneOverrides = emptyMap()
             readPredictionRevisions = emptyMap()
             readPredictionItemKeys = emptyMap()
+            pendingThreadFollowMutations = emptySet()
+            // task #399 review: parked ids and the fetch flag belong to the
+            // old owner/server; a stale park would suppress hydration for the
+            // next session's DM rows.
+            unresolvedDmPeerChannelIds = emptySet()
+            dmPeerNamesFetchInFlight = false
             _state.value = SharedActivityState()
         }
     }
@@ -516,7 +543,7 @@ class SharedActivityStore internal constructor(
                     item.replyThreadSummaryFact()
                 )
             }
-        val generation = replyThreadFreshnessLedger.capture(marker.key.serverId, marker.key.threadChannelId)
+        val generation = replyThreadFreshnessLedger.captureContent(marker.key.serverId, marker.key.threadChannelId)
         return marker.copy(contentGeneration = generation)
     }
 
@@ -585,10 +612,18 @@ class SharedActivityStore internal constructor(
             synchronized(realtimeOwnerLock) {
                 if (_state.value.selectedFilter == filter) return@synchronized false
                 realtimeHighWater.clear()
+                val cachedSnapshot = _state.value.filterSnapshots[filter]
                 _state.value =
-                    SharedActivityState(
+                    _state.value.copy(
                         selectedFilter = filter,
-                        loading = true
+                        snapshot = cachedSnapshot,
+                        loaded = cachedSnapshot != null,
+                        loading = cachedSnapshot == null,
+                        refreshing = false,
+                        pullRefreshing = false,
+                        loadingMore = false,
+                        errorCode = null,
+                        loadMoreErrorCode = null
                     )
                 true
             }
@@ -601,7 +636,9 @@ class SharedActivityStore internal constructor(
             realtimeHighWater.clear()
             _state.value =
                 SharedActivityState(
-                    selectedFilter = _state.value.selectedFilter
+                    selectedFilter = _state.value.selectedFilter,
+                    ownerServerId = _state.value.ownerServerId,
+                    ownerUserId = _state.value.ownerUserId
                 )
         }
     }
@@ -617,6 +654,7 @@ class SharedActivityStore internal constructor(
     private fun applyRealtimeEventImmediately(intent: SharedActivityIntent.ApplyRealtimeEvent) {
         val reconcileJob = synchronized(realtimeOwnerLock) { applyRealtimeEventLocked(intent) }
         reconcileJob?.start()
+        ensureDmPeerNames()
     }
 
     private fun applyRealtimeEventLocked(intent: SharedActivityIntent.ApplyRealtimeEvent): Job? {
@@ -676,7 +714,9 @@ class SharedActivityStore internal constructor(
         val existing = snapshot.items[existingIndex]
         if (existing.lastMessageId == message.id || existing.latestActivityMessageId == message.id) return true
         val unreadIncrement =
-            if (message.author.id.value != current.ownerUserId) {
+            if (existing.isUnfollowedActivityThread) {
+                0
+            } else if (message.author.id.value != current.ownerUserId) {
                 1
             } else {
                 0
@@ -697,7 +737,7 @@ class SharedActivityStore internal constructor(
                 firstUnreadMessageId =
                     existing.firstUnreadMessageId
                         ?: message.id.takeIf { unreadIncrement > 0 }
-            )
+            ).withActivityFollowStateProjection()
         advanceReplyThreadContent(existing, patched)
         rememberRealtimeHighWater(patched)
         applyPatchedActivityItem(patched, existingIndex, current, snapshot, intent)
@@ -718,7 +758,12 @@ class SharedActivityStore internal constructor(
         if (existingIndex < 0) return false
         val existing = snapshot.items[existingIndex]
         if (event.replyCount < existing.replyCount) return true
-        val nextUnreadCount = event.unreadCount ?: existing.unreadCount
+        val nextUnreadCount =
+            if (existing.isUnfollowedActivityThread) {
+                0
+            } else {
+                event.unreadCount ?: existing.unreadCount
+            }
         val patched =
             existing.copy(
                 replyCount = event.replyCount,
@@ -735,7 +780,7 @@ class SharedActivityStore internal constructor(
                     } else {
                         null
                     }
-            )
+            ).withActivityFollowStateProjection()
         if (patched == existing) return true
         advanceReplyThreadContent(existing, patched)
         rememberRealtimeHighWater(patched)
@@ -751,14 +796,16 @@ class SharedActivityStore internal constructor(
         intent: SharedActivityIntent.ApplyRealtimeEvent
     ) {
         val previous = snapshot.items[existingIndex]
-        val items = listOf(patched) + snapshot.items.filterIndexed { index, _ -> index != existingIndex }
+        val projected = patched.withActivityFollowStateProjection()
+        val items = listOf(projected) + snapshot.items.filterIndexed { index, _ -> index != existingIndex }
         reduceState(
             intent,
             current.copy(
                 snapshot =
                     snapshot.copy(
                         items = items,
-                        totalUnreadCount = maxOf(0, snapshot.totalUnreadCount + patched.unreadCount - previous.unreadCount)
+                        totalUnreadCount =
+                            maxOf(0, snapshot.totalUnreadCount + projected.unreadCount - previous.unreadCount)
                     ),
                 errorCode = null
             )
@@ -1087,12 +1134,16 @@ class SharedActivityStore internal constructor(
                                     SharedActivityPageSize
                                 )
                             }
+                        // task #302: guard on identity (user + server), not the access
+                        // token. A 401 inside loadCanonicalDepth triggers a token
+                        // rotation and the retry already returns fresh data; comparing
+                        // tokens here discards that successful result as stale_session
+                        // and leaves the visible feed on the pre-refresh snapshot.
                         val currentSession = authStore.readSession()
                         val requestSessionStillCurrent =
                             currentSession != null &&
                                 currentSession.user.id == userId &&
-                                currentSession.currentServerId == serverId.value &&
-                                currentSession.accessToken == session.accessToken
+                                currentSession.currentServerId == serverId.value
                         if (!requestSessionStillCurrent) {
                             synchronized(realtimeOwnerLock) {
                                 if (generation == loadGeneration && !backgroundRefresh) {
@@ -1148,6 +1199,7 @@ class SharedActivityStore internal constructor(
                             )
                             return@launch
                         }
+                        ensureDmPeerNames()
                         logActivityLoad(
                             result = result.activityDiagnosticsResult(),
                             code = null,
@@ -1238,15 +1290,22 @@ class SharedActivityStore internal constructor(
                     val inferredNextOffset = offset.toLong() + page.data.items.size.toLong()
                     val nextOffset = page.data.nextOffset ?: inferredNextOffset.takeIf { it <= Int.MAX_VALUE }?.toInt()
                     val mergedItems = (combined.items + page.data.items).dedupeActivityItems()
+                    // A page can be empty after the repository projects an
+                    // unfollowed row out of an attention filter.  The raw
+                    // server cursor still advanced, so that page is real
+                    // pagination progress even though no visible item was
+                    // appended.
+                    val rawPageAdvancedWithNoVisibleRows =
+                        page.data.items.isEmpty() && nextOffset != null && nextOffset > offset
                     consecutiveNoProgressPages =
-                        if (mergedItems.size == combined.items.size) {
+                        if (mergedItems.size == combined.items.size && !rawPageAdvancedWithNoVisibleRows) {
                             consecutiveNoProgressPages + 1
                         } else {
                             0
                         }
                     val invalidNonTerminalPage =
                         page.data.hasMore &&
-                            (page.data.items.isEmpty() || nextOffset == null || nextOffset <= offset)
+                            (nextOffset == null || nextOffset <= offset)
                     val exhaustedNoProgressBudget =
                         page.data.hasMore &&
                             mergedItems.size < targetDepth &&
@@ -1339,11 +1398,15 @@ class SharedActivityStore internal constructor(
         backgroundRefresh: Boolean = false
     ) {
         val current = _state.value
+        val projectedContentData =
+            (result as? DataResult.Content)?.data?.projectActivityFilter(current.selectedFilter)
         val nextState =
             when (result) {
                 is DataResult.Content -> {
+                    val projectedData = projectedContentData
+                        ?: error("content projection missing")
                     val pageItems =
-                        result.data.items
+                        projectedData.items
                             .withActivityThreadTaskProjection(result.data.server.id.value, tasksDataStore)
                             .reconcileLocallyClearedUnreadItems(current.selectedFilter)
                             .reconcileLocallyDoneItems()
@@ -1363,7 +1426,7 @@ class SharedActivityStore internal constructor(
                     val adjustedCanonicalUnreadCount =
                         maxOf(
                             0,
-                            result.data.totalUnreadCount -
+                            projectedData.totalUnreadCount -
                                 pageItems.suppressedUnreadCount -
                                 pageItems.suppressedDoneUnreadCount
                         )
@@ -1380,9 +1443,9 @@ class SharedActivityStore internal constructor(
                                     items = items,
                                     totalCount =
                                         if (current.selectedFilter == InboxFilter.Unread) {
-                                            maxOf(0, result.data.totalCount - pageItems.removedUnreadRows - pageItems.removedDoneRows)
+                                            maxOf(0, projectedData.totalCount - pageItems.removedUnreadRows - pageItems.removedDoneRows)
                                         } else {
-                                            maxOf(0, result.data.totalCount - pageItems.removedDoneRows)
+                                            maxOf(0, projectedData.totalCount - pageItems.removedDoneRows)
                                         },
                                     totalUnreadCount =
                                         canonicalUnreadCount,
@@ -1493,7 +1556,8 @@ class SharedActivityStore internal constructor(
             summaryFactCounts =
                 if (!append && current.selectedFilter == InboxFilter.All) {
                     when (result) {
-                        is DataResult.Content -> result.data.totalUnreadCount to result.data.totalCount
+                        is DataResult.Content ->
+                            (projectedContentData ?: result.data).let { it.totalUnreadCount to it.totalCount }
                         is DataResult.Empty -> 0 to 0
                         is DataResult.Error,
                         is DataResult.NoPermission -> null
@@ -1606,13 +1670,13 @@ class SharedActivityStore internal constructor(
             replyCount = current.replyCount,
             unreadCount = current.unreadCount,
             firstUnreadMessageId = current.firstUnreadMessageId
-        )
+        ).withActivityFollowStateProjection()
 
     private fun InboxItem.withRealtimeUnreadProjection(current: InboxItem): InboxItem =
         copy(
             unreadCount = current.unreadCount,
             firstUnreadMessageId = current.firstUnreadMessageId
-        )
+        ).withActivityFollowStateProjection()
 
     private fun markAllRead() {
         val previous = _state.value
@@ -1665,6 +1729,7 @@ class SharedActivityStore internal constructor(
     }
 
     private fun markDone(item: InboxItem) {
+        if (item.isUnfollowedActivityThread) return
         val previous = _state.value
         if (previous.snapshot == null) return
         rememberDone(item)
@@ -1695,8 +1760,142 @@ class SharedActivityStore internal constructor(
         }
     }
 
+    /**
+     * Apply an Activity thread follow mutation through the existing shared
+     * thread transport.  The optimistic projection is intentionally limited
+     * to the server-owned boolean and attention clearing; it never invents
+     * unread/mention state when a row is followed again.
+     */
+    private fun unfollowThread(item: InboxItem) {
+        if (!item.isThreadActivityItem() || item.isUnfollowedActivityThread) return
+        val currentItem = _state.value.items.firstOrNull { it.key == item.key } ?: return
+        if (currentItem.isUnfollowedActivityThread) return
+        if (!beginThreadFollowMutation(item.key)) return
+        val previous = _state.value
+        updateThreadFollowProjection(item.key, following = false)
+        scope.launch {
+            val threadChannelId = currentItem.threadChannelId
+            val result = try {
+                if (threadChannelId == null) {
+                    DataResult.Error(ScreenError("activity_thread_channel_missing"))
+                } else {
+                    conversationRepository.unfollowThread(threadChannelId)
+                }
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                DataResult.Error(ScreenError("activity_unfollow_failed", serverMessage = error.message))
+            } finally {
+                // A cancelled request must release the duplicate-request fence;
+                // otherwise a transient scope cancellation disables the row's
+                // next explicit action until the store is reset.
+                finishThreadFollowMutation(item.key)
+            }
+            if (result.isAcceptedThreadFollowMutation()) {
+                onUnreadCountsChanged()
+                // The mutation response is the server acknowledgement for
+                // this explicit user action.  A later Activity refresh (or
+                // re-entry) remains the canonical reconciliation point; do
+                // not issue a second request here that could race the action
+                // and briefly resurrect a stale follow state.
+            } else {
+                refreshAfterFailure(previous, result.failureCodeOr("activity_unfollow_failed"))
+            }
+        }
+    }
+
+    private fun followThread(item: InboxItem) {
+        if (!item.isThreadActivityItem() || !item.isUnfollowedActivityThread) return
+        val currentItem = _state.value.items.firstOrNull { it.key == item.key } ?: return
+        if (!currentItem.isUnfollowedActivityThread) return
+        if (!beginThreadFollowMutation(item.key)) return
+        val previous = _state.value
+        updateThreadFollowProjection(item.key, following = true)
+        scope.launch {
+            val parentMessageId = currentItem.parentMessageId
+            val result = try {
+                if (parentMessageId == null) {
+                    DataResult.Error(ScreenError("activity_parent_message_missing"))
+                } else {
+                    conversationRepository.followThread(parentMessageId)
+                }
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                DataResult.Error(ScreenError("activity_follow_failed", serverMessage = error.message))
+            } finally {
+                finishThreadFollowMutation(item.key)
+            }
+            if (result.isAcceptedThreadFollowMutation()) {
+                onUnreadCountsChanged()
+            } else {
+                refreshAfterFailure(previous, result.failureCodeOr("activity_follow_failed"))
+            }
+        }
+    }
+
+    private fun DataResult<ThreadActionResult>.failureCodeOr(fallback: String): String =
+        when (this) {
+            is DataResult.Error -> error.code.ifBlank { fallback }
+            is DataResult.NoPermission -> blocker.code.ifBlank { fallback }
+            is DataResult.Content,
+            is DataResult.Empty -> fallback
+        }
+
+    /** A successful response with `ok=false` did not acknowledge the mutation. */
+    private fun DataResult<ThreadActionResult>.isAcceptedThreadFollowMutation(): Boolean =
+        when (this) {
+            is DataResult.Content -> data.changed
+            // Empty is the deployed legacy success shape for an idempotent
+            // action; retain the optimistic state until the next refresh.
+            is DataResult.Empty -> true
+            is DataResult.Error,
+            is DataResult.NoPermission -> false
+        }
+
+    private fun InboxItem.isThreadActivityItem(): Boolean =
+        kind == InboxItemKind.Thread
+
+    private fun beginThreadFollowMutation(key: String): Boolean =
+        synchronized(realtimeOwnerLock) {
+            if (key in pendingThreadFollowMutations) {
+                false
+            } else {
+                pendingThreadFollowMutations += key
+                true
+            }
+        }
+
+    private fun finishThreadFollowMutation(key: String) {
+        synchronized(realtimeOwnerLock) {
+            pendingThreadFollowMutations -= key
+        }
+    }
+
+    private fun updateThreadFollowProjection(key: String, following: Boolean) {
+        synchronized(realtimeOwnerLock) {
+            val current = _state.value
+            val snapshot = current.snapshot ?: return@synchronized
+            val updatedSnapshot =
+                snapshot.projectActivityFollowMutation(
+                    itemKey = key,
+                    following = following,
+                    filter = current.selectedFilter
+                )
+            reduceState(
+                if (following) {
+                    SharedActivityIntent.FollowThread(snapshot.items.firstOrNull { it.key == key } ?: return@synchronized)
+                } else {
+                    SharedActivityIntent.UnfollowThread(snapshot.items.firstOrNull { it.key == key } ?: return@synchronized)
+                },
+                current.copy(
+                    snapshot = updatedSnapshot,
+                    errorCode = null
+                )
+            )
+        }
+    }
+
     private fun markRead(item: InboxItem) {
-        if (item.unreadCount <= 0) return
+        if (item.isUnfollowedActivityThread || item.unreadCount <= 0) return
         val previous = _state.value
         val snapshot = previous.snapshot ?: return
         val targetChannelId = item.readReceiptChannelId()
@@ -1829,6 +2028,7 @@ class SharedActivityStore internal constructor(
     }
 
     private fun markUnread(item: InboxItem) {
+        if (item.isUnfollowedActivityThread) return
         val previous = _state.value
         val snapshot = previous.snapshot ?: return
         val targetChannelId = item.readReceiptChannelId()
@@ -1940,8 +2140,25 @@ class SharedActivityStore internal constructor(
         summarySource: String = "activity:${intent.activitySummarySource()}"
     ): Boolean {
         val previousState = _state.value
+        val stateWithFilterCache =
+            if (nextState.snapshot != null) {
+                val updatedMap = nextState.filterSnapshots.toMutableMap()
+                updatedMap[nextState.selectedFilter] = nextState.snapshot
+                if (intent is SharedActivityIntent.MarkRead ||
+                    intent is SharedActivityIntent.MarkDone ||
+                    intent is SharedActivityIntent.MarkAllRead ||
+                    intent is SharedActivityIntent.ApplyReadReceiptPrediction
+                ) {
+                    // Invalidate other filter caches when mutations occur so switching to them re-fetches fresh data
+                    val keysToRemove = updatedMap.keys.filter { it != nextState.selectedFilter }
+                    keysToRemove.forEach { updatedMap.remove(it) }
+                }
+                nextState.copy(filterSnapshots = updatedMap)
+            } else {
+                nextState
+            }
         val finalState =
-            persistSlices.fold(nextState) { state, slice ->
+            persistSlices.fold(stateWithFilterCache) { state, slice ->
                 slice.reduce(previous = previousState, intent = intent, reduced = state)
             }
         if (finalState == previousState) return false
@@ -2062,6 +2279,90 @@ class SharedActivityStore internal constructor(
                 displayName = profile.displayName.ifBlank { profile.handle.ifBlank { profile.id.value } }
             )
         }
+
+    /**
+     * task #399: hydrate peer display names for DM-parent thread rows. The
+     * inbox row's `parentChannelName` is the raw channel name, which is not a
+     * reliable peer projection for DMs — the Home `directMessages` snapshot is
+     * the authority (web `itemFilterChannelLabel` joins the same way).
+     * Runs after each canonical load and safe realtime patch; a channel that
+     * stays missing after a fetch is parked so a flood of DM rows cannot
+     * refetch the DM list per row.
+     */
+    private fun ensureDmPeerNames() {
+        val repository = channelRepository ?: return
+        val missing: Set<ChannelId> =
+            synchronized(realtimeOwnerLock) {
+                if (dmPeerNamesFetchInFlight) return
+                val state = _state.value
+                val alreadyResolved = state.dmPeerNames
+                val unresolved =
+                    dmParentThreadChannelIds(state)
+                        .filter {
+                            alreadyResolved[it.value].isNullOrBlank() && it !in unresolvedDmPeerChannelIds
+                        }
+                        .toSet()
+                if (unresolved.isEmpty()) return
+                dmPeerNamesFetchInFlight = true
+                unresolved
+            }
+        scope.launch {
+            // true only when the DM list actually came back; a failed fetch
+            // must NOT park ids (Mahua review: one network blip would
+            // otherwise disable hydration for those rows for the store's
+            // lifetime) and must not tail-retry (that would hot-loop against
+            // an unreachable server — the next load/patch trigger retries).
+            var fetchSucceeded = false
+            try {
+                val serverId = currentServerId() ?: return@launch
+                val resolved: Map<String, String>? =
+                    when (val result = repository.getDirectMessages(serverId)) {
+                        is DataResult.Content ->
+                            result.data.directMessages.associate { row ->
+                                row.channelId.value to row.name
+                            }
+                        else -> null
+                    }
+                if (resolved != null) {
+                    fetchSucceeded = true
+                    synchronized(realtimeOwnerLock) {
+                        val current = _state.value
+                        val merged = current.dmPeerNames + resolved
+                        // Park only the ids a successful fetch could not
+                        // resolve; ids that arrived while the fetch was in
+                        // flight stay eligible for the tail-call ensure below.
+                        unresolvedDmPeerChannelIds =
+                            unresolvedDmPeerChannelIds +
+                                missing.filter { merged[it.value].isNullOrBlank() }
+                        if (merged != current.dmPeerNames) {
+                            _state.value = current.copy(dmPeerNames = merged)
+                        }
+                    }
+                }
+            } finally {
+                synchronized(realtimeOwnerLock) {
+                    dmPeerNamesFetchInFlight = false
+                }
+            }
+            if (fetchSucceeded) {
+                ensureDmPeerNames()
+            }
+        }
+    }
+
+    private fun dmParentThreadChannelIds(state: SharedActivityState): Set<ChannelId> =
+        buildSet {
+            state.snapshot?.items?.let(::addAll)
+            state.filterSnapshots.values.forEach { addAll(it.items) }
+        }
+            .asSequence()
+            .filter {
+                it.kind == InboxItemKind.Thread &&
+                    it.parentChannelKind == ConversationKind.DirectMessage &&
+                    it.parentChannelId != null
+            }
+            .mapNotNull { it.parentChannelId }
+            .toSet()
 
     private fun rememberUnreadCleared(items: List<InboxItem>) {
         val unreadItems = items.filter { it.unreadCount > 0 }
@@ -2221,7 +2522,11 @@ internal fun List<InboxItem>.dedupeActivityItems(): List<InboxItem> =
 data class SharedActivityState(
     val selectedFilter: InboxFilter = InboxFilter.All,
     val snapshot: InboxSnapshot? = null,
+    val filterSnapshots: Map<InboxFilter, InboxSnapshot> = emptyMap(),
     val senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap(),
+    /** task #399: DM channel id → peer display name, hydrated from the Home DM
+     * list for `parentChannelKind == DirectMessage` thread rows. */
+    val dmPeerNames: Map<String, String> = emptyMap(),
     val ownerServerId: String? = null,
     val ownerUserId: String? = null,
     val loaded: Boolean = false,
@@ -2256,6 +2561,8 @@ sealed interface SharedActivityIntent {
     data object MarkAllRead : SharedActivityIntent
     data class SetFilter(val filter: InboxFilter) : SharedActivityIntent
     data class MarkDone(val item: InboxItem) : SharedActivityIntent
+    data class UnfollowThread(val item: InboxItem) : SharedActivityIntent
+    data class FollowThread(val item: InboxItem) : SharedActivityIntent
     data class MarkRead(val item: InboxItem) : SharedActivityIntent
     data class MarkUnread(val item: InboxItem) : SharedActivityIntent
     data class ApplyReadReceiptPrediction(val prediction: ReadReceiptPrediction) : SharedActivityIntent
@@ -2287,6 +2594,8 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         SharedActivityIntent.MarkAllRead -> "mark_all_read"
         is SharedActivityIntent.SetFilter -> "set_filter:${filter.wireValue}"
         is SharedActivityIntent.MarkDone -> "mark_done"
+        is SharedActivityIntent.UnfollowThread -> "unfollow_thread"
+        is SharedActivityIntent.FollowThread -> "follow_thread"
         is SharedActivityIntent.MarkRead -> "mark_read"
         is SharedActivityIntent.MarkUnread -> "mark_unread"
         is SharedActivityIntent.ApplyReadReceiptPrediction -> "read_prediction"
@@ -2302,6 +2611,8 @@ private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
     when (this) {
         SharedActivityIntent.MarkAllRead,
         is SharedActivityIntent.MarkDone,
+        is SharedActivityIntent.UnfollowThread,
+        is SharedActivityIntent.FollowThread,
         is SharedActivityIntent.MarkRead,
         is SharedActivityIntent.MarkUnread,
         is SharedActivityIntent.ApplyReadReceiptPrediction,
@@ -2447,7 +2758,14 @@ private fun RealtimeEvent.activitySummaryUnreadIncrement(
                 .sumOf { message -> snapshot.unreadIncrementForMessage(message, activeConversationId, currentUserId) }
         is ThreadUpdated ->
             unreadCount
-                ?.takeIf { it > 0 && !isActiveActivityConversation(threadChannelId.value, activeConversationId, snapshot) }
+                ?.takeIf {
+                    it > 0 &&
+                        !isActiveActivityConversation(threadChannelId.value, activeConversationId, snapshot) &&
+                        snapshot.items.none {
+                            it.isUnfollowedActivityThread &&
+                                (it.threadChannelId == threadChannelId || it.channelId == threadChannelId)
+                        }
+                }
                 ?: 0
         else -> 0
     }
@@ -2460,6 +2778,10 @@ private fun InboxSnapshot.unreadIncrementForMessage(
     val channelId = message.channelId ?: message.threadChannelId ?: return 0
     if (message.author.id.value == currentUserId) return 0
     if (isActiveActivityConversation(channelId.value, activeConversationId, this)) return 0
+    if (items.any { item ->
+            item.isUnfollowedActivityThread &&
+                (item.threadChannelId == channelId || item.channelId == channelId)
+        }) return 0
     if (items.any { item -> item.latestActivityMessageId == message.id || item.lastMessageId == message.id }) return 0
     return 1
 }

@@ -1,9 +1,9 @@
 name: QA Acceptance iOS (agent-in-CI)
 
 # iOS leg of the acceptance executor (#proj-quality): same goal-in/verdict-out
-# contract as qa-acceptance.yml, driven through the QaAcceptanceLoopTests
-# XCUITest harness (ONE test invocation keeps the app alive for the whole run;
-# actions flow over a cmd/res file protocol) plus `simctl io screenshot`.
+# contract as qa-acceptance.yml. Inspect/act defaults to agent-device; screenshots
+# stay on `simctl io screenshot`. IOS_QA_DRIVER=qa-loop keeps the
+# QaAcceptanceLoopTests file protocol. Product-log verdicts stay outside the driver.
 # Build/boot recipe is the proven visual-testing ios-capture one.
 
 on:
@@ -39,9 +39,17 @@ on:
       # drive (ios_deterministic_repro.mjs) for precise crash-repro where agent
       # navigation keeps getting lost.
       mode:
-        description: "Execution mode: agent (M3) or deterministic (scripted, no model)"
+        description: "Execution mode: agent (M3) | deterministic (#1096) | tabpager-probe (#232/#233)"
         required: false
         default: "agent"
+      fixture_page:
+        description: "Launch this @Page route directly instead of logging in (e.g. compose_tab_pager_probe)"
+        required: false
+        default: ""
+      probe_groups:
+        description: "Which gesture groups to run for tabpager-probe (e.g. 1,2)"
+        required: false
+        default: "1,2"
       app_run_id:
         description: "Download ios-simulator-app-<run> and replace the app product after building the UITest runner"
         required: false
@@ -77,7 +85,9 @@ env:
   # login smoke (iOS first-run PoC): mirrors the Android case-01 path.
   DEFAULT_GOAL: >-
     Log into the app with the provided test account: if a login/welcome screen shows,
-    enter the email and password and submit. If a server picker appears choose 'Raft Android'.
+    enter the email and password and submit. If a server picker appears choose 'OranixSlockTest'.
+    If 'OranixSlockTest' is not present, fail and report it; never
+    substitute the closest-looking name.
     Declare pass once the home channel list is visible with at least one channel row,
     fail otherwise. Do not open any channel.
 
@@ -89,6 +99,8 @@ jobs:
     env:
       # iPhone 14: 390x844pt @3x — same geometry as the android/react baselines.
       SIM_DEVICE: iPhone 14
+      # Default inspect/act path. qa-loop keeps QaAcceptanceLoopTests.
+      IOS_QA_DRIVER: agent-device
     steps:
       # Blacksmith macOS starts its local Actions-results proxy with the job.
       # Give it a bounded readiness window before any action can use artifact
@@ -199,6 +211,120 @@ jobs:
           fi
           exit "$status"
 
+      # task #239: publish the simulator .app this run just built.
+      #
+      # Until now nothing in the repo uploaded an installable iOS app — this job built one and
+      # installed it straight into the simulator, never exporting it — which left the
+      # `app_run_id` input below a dangling consumer: it downloads `ios-simulator-app-<run>`,
+      # a name no workflow produced. Publishing it here closes that loop, so a later run can
+      # pin an exact carrier, and a reviewer with a Simulator seat can install these bits.
+      #
+      # The emitted metadata.json is NOT a free-form record: it is the exact shape
+      # scripts/qa/prepare_pinned_ios_app.sh validates on the consuming side (platform
+      # "ios-simulator", artifact_sha256/artifact_size of the zip, 40-hex source_commit,
+      # github_run_id, bundle_id, version, version_code). Producer and consumer must move
+      # together or the pin fails closed.
+      - name: Export simulator .app as an installable artifact
+        if: ${{ inputs.app_run_id == '' }}
+        run: |
+          set -euo pipefail
+          products=compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator
+          app=$(find "$products" -maxdepth 1 -name '*.app' ! -name '*Runner*' | head -1)
+          test -n "$app"
+          # A device build cannot be installed on a Simulator seat, and the two are
+          # indistinguishable by filename — only DTPlatformName separates them. Refuse rather
+          # than publish an artifact whose consumer can only discover the mismatch at install.
+          platform=$(/usr/libexec/PlistBuddy -c 'Print DTPlatformName' "$app/Info.plist" 2>/dev/null || echo "")
+          if [ "$platform" != "iphonesimulator" ]; then
+            echo "refusing to publish a non-simulator slice: DTPlatformName=${platform:-<absent>}" >&2
+            exit 2
+          fi
+          mkdir -p ios-app-export
+          zip=ios-app-export/raft-ios-simulator.app.zip
+          # ditto, not `zip -r`: a .app is a bundle with symlinks and resource forks that
+          # plain zip flattens, producing an archive that unpacks into an uninstallable app.
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$zip"
+          sha=$(shasum -a 256 "$zip" | awk '{print $1}')
+          size=$(stat -f '%z' "$zip")
+          bundle_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")
+          version=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Info.plist")
+          code=$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$app/Info.plist")
+          binary=$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$app/Info.plist")
+          binsha=$(shasum -a 256 "$app/$binary" | awk '{print $1}')
+          # ⚠️ This reads the BUILD PRODUCT ("$app" is the DerivedData Products dir),
+          # not an installed bundle — this export step runs before any install exists.
+          # It is a build-time self-claim, NOT a read-back and NOT "bound to the
+          # artifact". The previous comment here asserted the opposite; it was cited
+          # downstream as proof of installed identity, which it cannot support.
+          # A genuine read-back must read a path that only resolves after install
+          # (xcrun simctl get_app_container), with a same-path positive control.
+          hands=$(/usr/libexec/PlistBuddy -c 'Print :HandsBuildCommit' "$app/Info.plist" 2>/dev/null || echo "")
+          # Fail closed, same tier as DTPlatformName (@LiBai review, task #240). HandsBuildCommit
+          # is stamped by an UNCONDITIONAL Xcode build phase, so an empty value does not mean
+          # "this build has no commit" — it means the stamping phase did not run. Publishing it
+          # empty is worse than refusing: this field is the carrier's stamped self-claim, it is NOT
+          # in the set prepare_pinned_ios_app.sh validates, so nothing downstream would catch it,
+          # and an empty string reads to a consumer as a normal value rather than a gap.
+          # Two ways the stamp can be absent, and only one of them looks absent.
+          # compose/iosApp/scripts/stamp_hands_build_metadata.sh:
+          #   - if the processed Info.plist isn't found it warns and `exit 0` — the build stays
+          #     green and no key is written  => PlistBuddy Print fails => hands is empty;
+          #   - if no commit can be resolved it writes the literal string "unknown"
+          #     => NON-EMPTY, so a bare -z test passes it and we would publish a carrier that
+          #        claims an identity it does not have.
+          # The sentinel is the more dangerous of the two precisely because it survives an
+          # emptiness check, so reject both. Anything downstream comparing this against an exact
+          # would otherwise be comparing against a placeholder.
+          # Allowlist, not blacklist (@LiBai review). Enumerating known-bad values fails OPEN: the
+          # sentinel today is "unknown", but if the stamping script ever emits "none", "N/A", or a
+          # literal variable name, a blacklist waves it through while it still reads as a bound
+          # identity. Asserting the required SHAPE fails CLOSED — an unanticipated bad value is
+          # refused, and the worst case is one visible false rejection instead of a silent bad one.
+          # Deliberate: a short SHA is REJECTED. Pinning a carrier is a full-SHA operation, so this
+          # is a stated policy, not a regex written too narrowly — do not "fix" it by loosening.
+          case "$hands" in
+            *[!0-9a-f]* | "") hands_ok=no ;;
+            ????????????????????????????????????????) hands_ok=yes ;;
+            *) hands_ok=no ;;
+          esac
+          if [ "$hands_ok" != "yes" ]; then
+            echo "refusing to publish a carrier without a real HandsBuildCommit (got: '${hands:-<empty>}')" >&2
+            echo "expected a full 40-character lowercase hex commit" >&2
+            echo "empty => the stamping build phase did not run; 'unknown' => it ran but could not resolve a commit; short SHA => rejected by policy" >&2
+            exit 2
+          fi
+          printf '{\n  "platform": "ios-simulator",\n  "artifact_sha256": "%s",\n  "artifact_size": %s,\n  "source_commit": "%s",\n  "github_run_id": "%s",\n  "bundle_id": "%s",\n  "version": "%s",\n  "version_code": "%s",\n  "hands_build_commit": "%s",\n  "binary_sha256": "%s",\n  "dt_platform_name": "%s"\n}\n' \
+            "$sha" "$size" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$bundle_id" "$version" "$code" \
+            "$hands" "$binsha" "$platform" > ios-app-export/metadata.json
+          # The metadata is hand-rendered with printf, so a format-string slip yields a file that
+          # looks fine here and only explodes inside the consumer's JSON.parse one run later.
+          # Parse it now, next to its cause.
+          python3 -c 'import json,sys; json.load(open(sys.argv[1]))' ios-app-export/metadata.json
+          cat ios-app-export/metadata.json
+          {
+            echo "## Installable iOS Simulator carrier"
+            echo '```json'
+            cat ios-app-export/metadata.json
+            echo '```'
+            echo "Pin it in a later run with: app_run_id=${GITHUB_RUN_ID} artifact_sha256=${sha}"
+            echo ""
+            echo "Verifying this carrier: compare artifact_sha256/artifact_size against the EXTRACTED"
+            echo "raft-ios-simulator.app.zip file itself. Do NOT compare them against the size GitHub"
+            echo "shows for the artifact - that is GitHub's own outer archive (this zip plus"
+            echo "metadata.json, re-packed), so it legitimately differs and comparing it would reject"
+            echo "a sound carrier. Measured example: outer 42,541,517 vs inner 43,545,457."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload installable simulator app
+        if: ${{ inputs.app_run_id == '' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-simulator-app-${{ github.run_id }}
+          path: ios-app-export
+          # error, not warn: an empty carrier artifact is worse than a failed step, because
+          # the consumer's download succeeds and the mismatch surfaces far from its cause.
+          if-no-files-found: error
+
       - name: Download frozen iOS Simulator app
         if: ${{ inputs.app_run_id != '' }}
         uses: actions/download-artifact@v7
@@ -226,6 +352,14 @@ jobs:
             "$EXPECTED_SHA256" "$EXPECTED_SOURCE_COMMIT" "$EXPECTED_PACKAGE_ID" \
             "$EXPECTED_VERSION" "$EXPECTED_VERSION_CODE"
 
+      - name: Set agent-device state dir
+        if: ${{ env.IOS_QA_DRIVER == 'agent-device' }}
+        run: echo "AGENT_DEVICE_STATE_DIR=$RUNNER_TEMP/agent-device" >> "$GITHUB_ENV"
+
+      - name: Install agent-device
+        if: ${{ env.IOS_QA_DRIVER == 'agent-device' }}
+        run: npm install -g agent-device@0.20.10
+
       - name: Install app
         run: |
           app=$(find compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' ! -name '*Runner*' | head -1)
@@ -246,6 +380,13 @@ jobs:
           printf '{\n "platform": "ios",\n "source_commit": "%s",\n "branch": "%s",\n "build_run_id": "%s",\n "app_version": "%s",\n "version_code": "%s",\n "artifact_sha256": "%s",\n "binary_sha256": "%s",\n "bundle_id": "%s"\n}\n' \
             "$source_commit" "$GITHUB_REF_NAME" "$build_run_id" "$version" "$buildnum" "$artifact_hash" "$binhash" "$bundle_id" > "$GITHUB_WORKSPACE/build-info-ios.json"
           cat "$GITHUB_WORKSPACE/build-info-ios.json"
+
+      - name: Prepare agent-device iOS runner
+        if: ${{ env.IOS_QA_DRIVER == 'agent-device' }}
+        run: |
+          mkdir -p "$AGENT_DEVICE_STATE_DIR"
+          agent-device --version
+          agent-device prepare ios-runner --platform ios --udid "$UDID" --timeout 180000
 
       - name: Install M3 SDK (pi-ai)
         working-directory: ${{ runner.temp }}
@@ -289,6 +430,69 @@ jobs:
                   out.write(f"{name}<<{delimiter}\n{value}\n{delimiter}\n")
           PY
 
+      - name: Preflight — QA account must not see the production server
+        # Layer 2 of three, wired here because this is the first point where the QA
+        # credentials exist (the step above puts them in the environment) and the last point
+        # before anything drives the app. Same `if:` as that step on purpose: without it this
+        # would run credential-less on the bootstrap path, exit 2 every time, and quietly
+        # become a step that never actually checks anything.
+        #
+        # rc semantics are deliberate and are the reviewable decision in this PR:
+        #   1  judged, and the judgement FAILED  -> block. Production reachable by the QA
+        #      account is out of bounds (artin, 2026-08-31); no run should proceed on it.
+        #   2  could not be judged at all (429, network, shape change) -> ALSO block.
+        #      Ruled by @Argus, overriding the warn-only form I first proposed. rc=2 means the
+        #      visibility reading is unavailable, which returns the run to "we believe it but
+        #      are not testing it" — the exact state this probe exists to end. Under warn-only,
+        #      the probe's infrastructure breaking would silently downgrade the pipeline back
+        #      to the pre-probe world while staying green: no reading read as a good reading.
+        #      A broken guard has to behave like a broken guard, not like a pass.
+        #      Accepted cost, stated: this probe depends on an external surface, so blocking on
+        #      rc=2 adds a new flaky-red source. The remedy is fix-or-rerun, never downgrade.
+        #      An explicit per-run waiver channel is deliberately NOT pre-built.
+        #
+        # rc=2 therefore carries a REASON (@HuaTuo, adopted by @Argus). Without one, "fix or
+        # rerun" decays into "always rerun" — and the class where a rerun most easily goes green
+        # by accident (the endpoint moved, or the probe broke) is exactly the one where a green
+        # rerun means nothing. credential -> rerun cannot help. infra -> rerun is reasonable.
+        # contract -> a passing rerun does NOT mean fixed. A missing reason is treated as
+        # contract, because the unknown case must not default to the cheap one.
+        if: ${{ inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true' }}
+        env:
+          QA_TEST_EMAIL: ${{ env.QA_TEST_EMAIL }}
+          QA_TEST_PASSWORD: ${{ env.QA_TEST_PASSWORD }}
+        run: |
+          mkdir -p qa-evidence
+          set +e
+          # 2>&1 so the reason code reaches the receipt: the probe writes `reason=` on
+          # STDERR, and `| tee` alone captures only stdout (@LiBai). Without this the grep
+          # below found nothing every time, `reason` fell back to unknown, and the
+          # credential/ratelimit/infra arms were UNREACHABLE — the reason codes existed in
+          # form while every failure reported as contract. PIPESTATUS[0] is still node's.
+          node scripts/qa/visible_servers_probe.mjs 2>&1 | tee qa-evidence/visible-servers-probe.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "rc=$rc" >> qa-evidence/visible-servers-probe.txt
+          if [ "$rc" = "1" ]; then
+            echo "::error::QA account can see the production server - refusing to run"
+            exit 1
+          fi
+          if [ "$rc" != "0" ]; then
+            reason="$(grep -oE '^reason=[a-z]+' qa-evidence/visible-servers-probe.txt | tail -1 | cut -d= -f2)"
+            reason="${reason:-unknown}"
+            echo "reason=$reason" >> qa-evidence/visible-servers-probe.txt
+            echo "PROBE NOT RUN - this run carries no evidence about production visibility" >> qa-evidence/visible-servers-probe.txt
+            case "$reason" in
+              credential) echo "::error::visible-servers probe: credentials rejected - rerunning will NOT help, fix the QA credential" ;;
+              ratelimit)  echo "::error::visible-servers probe: rate-limited (429) - rerun is right but NOT immediately; an instant retry is what caused this" ;;
+              infra)      echo "::error::visible-servers probe: transport failure - a rerun is reasonable" ;;
+              contract)   echo "::error::visible-servers probe: endpoint or response contract changed - A PASSING RERUN DOES NOT MEAN FIXED; check the probe against the live endpoint"
+                          echo "rerun-does-not-mean-fixed" >> qa-evidence/visible-servers-probe.txt ;;
+              *)          echo "::error::visible-servers probe unjudgeable with no reason code (rc=$rc) - treat as contract until diagnosed" ;;
+            esac
+            exit 1
+          fi
+
       - name: Freeze legacy credential identity receipt
         if: ${{ inputs.stamp_run_case_id != '' && steps.stamp-claim.outputs.bootstrap_required != 'true' }}
         env:
@@ -298,15 +502,28 @@ jobs:
           QA_TEST_EMAIL: ${{ env.QA_TEST_EMAIL }}
         run: bash scripts/qa/stamp_report.sh credential-receipt
 
-      - name: Start loop harness (background)
-        working-directory: compose/iosApp
+      - name: Prepare iOS driver I/O dir
         run: |
           mkdir -p "$RUNNER_TEMP/qa-loop"
           echo "QA_LOOP_IO_DIR=$RUNNER_TEMP/qa-loop" >> "$GITHUB_ENV"
+          echo "QA_LOOP_FIXTURE_PAGE=${{ inputs.fixture_page }}" >> "$GITHUB_ENV"
+
+      - name: Start loop harness (background)
+        if: ${{ env.IOS_QA_DRIVER == 'qa-loop' }}
+        working-directory: compose/iosApp
+        run: |
           # TEST_RUNNER_* env vars are forwarded into the XCUITest runner.
+          # ⚠️ The env has to be set HERE, on the xcodebuild that starts the runner.
+          # Run 33155331720 failed because I set QA_LOOP_FIXTURE_PAGE on the probe
+          # step instead — that step runs AFTER this background harness has already
+          # launched the app, so the variable arrived too late and the app came up on
+          # the normal login screen. Same process-boundary mistake I had just fixed
+          # one layer down (SIMCTL_CHILD_* not reaching the app), made again on the
+          # step boundary. TEST_RUNNER_* is the only channel into the XCUITest runner.
           TEST_RUNNER_QA_LOOP_IO_DIR="$RUNNER_TEMP/qa-loop" \
           TEST_RUNNER_QA_LOOP_BUNDLE="$BUNDLE_ID" \
           TEST_RUNNER_QA_LOOP_IDLE_TIMEOUT="300" \
+          TEST_RUNNER_QA_LOOP_FIXTURE_PAGE="${{ inputs.fixture_page }}" \
             xcodebuild \
               -workspace iosApp.xcworkspace \
               -scheme iosAppUITests \
@@ -319,7 +536,7 @@ jobs:
           echo "loop harness started (pid $!)"
 
       - name: Run acceptance agent
-        if: ${{ inputs.mode != 'deterministic' }}
+        if: ${{ inputs.mode == 'agent' || inputs.mode == '' }}
         env:
           PI_API_KEY: ${{ secrets.PI_API_KEY }}
           SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
@@ -353,6 +570,36 @@ jobs:
       - name: Test deterministic navigation matcher
         if: ${{ inputs.mode == 'deterministic' }}
         run: node --test scripts/qa/ios_navigation_matcher.test.mjs
+
+      # task #232/#233 — TabPager probe. Launches the @Page route DIRECTLY via
+      # QA_LOOP_FIXTURE_PAGE (QaAcceptanceLoopTests forwards it into the app's
+      # launchEnvironment), so it never touches login and is unaffected by the
+      # auth-restore blocker in task #1101.
+      - name: Run TabPager probe (task #232/#233)
+        if: ${{ inputs.mode == 'tabpager-probe' }}
+        run: |
+          mkdir -p qa-evidence
+          cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true
+          date -u +"%Y-%m-%d %H:%M:%S" > qa-evidence/run-start.txt
+          node --check scripts/qa/ios_tabpager_probe.mjs
+          # Record the whole sequence. @Jony asked for simctl recordVideo; it runs in
+          # the background and is stopped with SIGINT so the .mp4 is finalised —
+          # SIGKILL leaves an unplayable file.
+          xcrun simctl io "$UDID" recordVideo --codec h264 --force qa-evidence/tabpager-probe.mp4 &
+          REC_PID=$!
+          echo "recording pid=$REC_PID"
+          set +e
+          node scripts/qa/ios_tabpager_probe.mjs \
+            --ios-io-dir "$QA_LOOP_IO_DIR" --ios-udid "$UDID" --package "$BUNDLE_ID" \
+            --out qa-evidence --groups "${{ inputs.probe_groups }}"
+          rc=$?
+          set -e
+          sleep 2
+          kill -INT "$REC_PID" 2>/dev/null || true
+          wait "$REC_PID" 2>/dev/null || true
+          ls -la qa-evidence/tabpager-probe.mp4 2>/dev/null || echo "::warning::no video file produced"
+          echo "$rc" > qa-evidence/agent-rc.txt
+          echo "tabpager probe exit code $rc"
 
       - name: Run deterministic repro
         if: ${{ inputs.mode == 'deterministic' }}

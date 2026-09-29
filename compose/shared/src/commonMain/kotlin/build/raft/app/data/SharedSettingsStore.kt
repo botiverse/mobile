@@ -260,7 +260,6 @@ internal fun sharedSettingsDefaultApiEnvironmentOptions(): List<SharedSettingsAp
 data class SharedSettingsDiagnosticsSnapshot(
     val about: SharedSettingsAboutSnapshot? = null,
     val entries: List<SharedSettingsDiagnosticsEntry> = emptyList(),
-    val profiler: SharedSettingsRecompositionProfilerSnapshot = SharedSettingsRecompositionProfilerSnapshot(),
     val readStateV1: SharedSettingsReadStateV1DiagnosticSnapshot = SharedSettingsReadStateV1DiagnosticSnapshot(),
     val featureFlagOverrides: List<SharedSettingsDiagnosticFeatureFlagSnapshot> = emptyList(),
     /** Signed-out diagnostics toggle; see [SharedAuthRuntimeCapabilityStore]. */
@@ -268,6 +267,12 @@ data class SharedSettingsDiagnosticsSnapshot(
     val appleSignInLocalOverrideAvailable: Boolean = false,
     val loadErrorMessage: String? = null,
     val loadErrors: List<SharedSettingsDiagnosticsLoadError> = emptyList()
+)
+
+data class SharedSettingsDiagnosticsHostSnapshot(
+    val entries: List<SharedSettingsDiagnosticsEntry> = emptyList(),
+    val readStateV1: SharedSettingsReadStateV1DiagnosticSnapshot = SharedSettingsReadStateV1DiagnosticSnapshot(),
+    val featureFlagOverrides: List<SharedSettingsDiagnosticFeatureFlagSnapshot> = emptyList(),
 )
 
 data class SharedSettingsDiagnosticsLoadError(
@@ -317,57 +322,6 @@ data class SharedSettingsDiagnosticsEntry(
     val timestampLabel: String,
     val tag: String,
     val message: String
-)
-
-data class SharedSettingsRecompositionProfilerSnapshot(
-    val supported: Boolean = false,
-    val enabled: Boolean = false,
-    val gateLabel: String = "Unavailable",
-    val statusLabel: String = "Unavailable",
-    val detail: String = "Recomposition profiler is unavailable on this host.",
-    val actionFeedback: String? = null,
-    val defaults: SharedSettingsRecompositionProfilerDefaults = SharedSettingsRecompositionProfilerDefaults(),
-    val report: SharedSettingsRecompositionProfilerReport = SharedSettingsRecompositionProfilerReport(),
-    val files: SharedSettingsRecompositionProfilerFiles = SharedSettingsRecompositionProfilerFiles(),
-    val analyzerHint: String = "",
-    val extensionNote: String = ""
-)
-
-data class SharedSettingsRecompositionProfilerDefaults(
-    val enableFile: Boolean = false,
-    val enableLog: Boolean = false,
-    val enableOverlay: Boolean = false,
-    val sampleRateLabel: String = "",
-    val hotspotThreshold: Int = 0,
-    val maxEventBufferSize: Int = 0,
-    val overlayGuide: String = "",
-    val filterStrategy: String = "",
-    val resetStrategy: String = ""
-)
-
-data class SharedSettingsRecompositionProfilerReport(
-    val sessionId: String = "",
-    val durationLabel: String = "",
-    val totalFrames: Long = 0L,
-    val totalRecompositions: Int = 0,
-    val hotspotCount: Int = 0,
-    val stateChangeCount: Int = 0,
-    val generatedLabel: String = "",
-    val reportAvailable: Boolean = false,
-    val topHotspots: List<SharedSettingsRecompositionProfilerHotspot> = emptyList()
-)
-
-data class SharedSettingsRecompositionProfilerHotspot(
-    val name: String,
-    val sourceLocation: String? = null,
-    val recompositionCount: Int = 0,
-    val avgDurationLabel: String = ""
-)
-
-data class SharedSettingsRecompositionProfilerFiles(
-    val reportFileName: String = "",
-    val framesFileName: String = "",
-    val locationHint: String = ""
 )
 
 data class SharedSettingsActionState(
@@ -516,12 +470,6 @@ sealed interface SharedSettingsIntent {
     data object ShareDiagnostics : SharedSettingsIntent
     data object ClearDiagnostics : SharedSettingsIntent
     data class SetDiagnosticFeatureFlagOverride(val key: String, val mode: String) : SharedSettingsIntent
-    data class SetRecompositionProfilerEnabled(val enabled: Boolean) : SharedSettingsIntent
-    data object StartRecompositionProfiler : SharedSettingsIntent
-    data object StopRecompositionProfiler : SharedSettingsIntent
-    data object ResetRecompositionProfiler : SharedSettingsIntent
-    data object RefreshRecompositionProfilerReport : SharedSettingsIntent
-    data object ExportRecompositionProfilerReport : SharedSettingsIntent
     data object SendFeedback : SharedSettingsIntent
     data object ConsumeEffect : SharedSettingsIntent
 }
@@ -610,9 +558,6 @@ interface SharedSettingsPlatformCapabilities {
     suspend fun setDiagnosticFeatureFlagOverride(key: String, mode: String): DataResult<Unit> =
         DataResult.Error(ScreenError("diagnostic_feature_flag_override_unavailable", retryable = false))
 
-    suspend fun setRecompositionProfilerEnabled(enabled: Boolean): DataResult<Unit> =
-        DataResult.Content(Unit)
-
     suspend fun loadSystemNotificationPermission(): SettingsMobileActionSnapshot? = null
 }
 
@@ -629,12 +574,9 @@ class SharedSettingsDataSource(
     private val notificationPreferenceRepository: NotificationPreferenceRepository? = null,
     private val localeRepository: LocaleRepository? = null,
     private val chatLayoutPreferenceRepository: ChatLayoutPreferenceRepository? = null,
-    private val recompositionProfilerPreferenceRepository: RecompositionProfilerPreferenceRepository? = null,
     private val apiEnvironmentStore: SharedApiEnvironmentStore? = null,
     private val platformCapabilities: SharedSettingsPlatformCapabilities = object : SharedSettingsPlatformCapabilities {},
     private val diagnosticsLogger: ((String) -> Unit)? = null,
-    private val recompositionProfilerController: SharedSettingsRecompositionProfilerController =
-        SharedSettingsRecompositionProfilerController(),
     private val linkOpenPreferenceRepository: LinkOpenPreferenceRepository? = null,
     private val authRuntimeCapabilityStore: SharedAuthRuntimeCapabilityStore? = null
 ) {
@@ -1468,7 +1410,7 @@ class SharedSettingsDataSource(
         mode: String,
     ): DataResult<SharedSettingsDiagnosticsSnapshot> {
         return when (val result = platformCapabilities.setDiagnosticFeatureFlagOverride(key, mode)) {
-            is DataResult.Content -> loadDiagnosticsSnapshot(feedback = "Diagnostic feature-flag override updated.")
+            is DataResult.Content -> loadDiagnosticsSnapshot()
             is DataResult.Empty -> DataResult.Empty(result.reason)
             is DataResult.Error -> DataResult.Error(result.error)
             is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
@@ -1487,53 +1429,6 @@ class SharedSettingsDataSource(
         diagnosticsLogger?.invoke("apple_signin_local_override enabled=$enabled")
         return loadDiagnosticsSnapshot()
     }
-
-    suspend fun setRecompositionProfilerEnabled(enabled: Boolean): DataResult<SharedSettingsDiagnosticsSnapshot> {
-        val hostResult = platformCapabilities.setRecompositionProfilerEnabled(enabled)
-        when (hostResult) {
-            is DataResult.Content -> Unit
-            is DataResult.Empty ->
-                return DataResult.Error(ScreenError("settings_profiler_bridge_unavailable", retryable = false))
-            is DataResult.Error ->
-                return DataResult.Error(hostResult.error)
-            is DataResult.NoPermission ->
-                return DataResult.NoPermission(hostResult.blocker)
-        }
-        val result =
-            if (enabled) {
-                recompositionProfilerController.start()
-            } else {
-                recompositionProfilerController.stop()
-            }
-        // The persisted switch describes a future auto-start request, not the live engine state.
-        // Clear it even when stop has already disabled the engine but its native file commit fails.
-        recompositionProfilerPreferenceRepository?.setEnabled(false)
-        result.errorCode?.let { code ->
-            return DataResult.Error(ScreenError(code, retryable = false))
-        }
-        return loadDiagnosticsSnapshot(feedback = result.feedback)
-    }
-
-    suspend fun startRecompositionProfiler(): DataResult<SharedSettingsDiagnosticsSnapshot> =
-        setRecompositionProfilerEnabled(true)
-
-    suspend fun stopRecompositionProfiler(): DataResult<SharedSettingsDiagnosticsSnapshot> =
-        setRecompositionProfilerEnabled(false)
-
-    suspend fun resetRecompositionProfiler(): DataResult<SharedSettingsDiagnosticsSnapshot> =
-        performProfilerAction {
-            recompositionProfilerController.reset()
-        }
-
-    suspend fun refreshRecompositionProfilerReport(): DataResult<SharedSettingsDiagnosticsSnapshot> =
-        performProfilerAction {
-            recompositionProfilerController.refreshReport()
-        }
-
-    suspend fun exportRecompositionProfilerReport(): DataResult<SharedSettingsDiagnosticsSnapshot> =
-        performProfilerAction {
-            recompositionProfilerController.exportReport()
-        }
 
     private suspend fun SettingsMobileSnapshot.withLocalMobilePreferences(): SettingsMobileSnapshot {
         val notificationPreference = notificationPreferenceRepository?.getNotificationPreference()
@@ -1740,9 +1635,7 @@ class SharedSettingsDataSource(
             sendTestEnabled = false
         )
 
-    private suspend fun loadDiagnosticsSnapshot(
-        feedback: String? = null
-    ): DataResult<SharedSettingsDiagnosticsSnapshot> {
+    private suspend fun loadDiagnosticsSnapshot(): DataResult<SharedSettingsDiagnosticsSnapshot> {
         val aboutResult = loadAbout()
         val hostResult = platformCapabilities.loadDiagnosticsHost()
         val about =
@@ -1764,40 +1657,20 @@ class SharedSettingsDataSource(
                 aboutResult.settingsDiagnosticsLoadError("about"),
                 hostResult.settingsDiagnosticsLoadError("logs")
             )
-        val persistedProfilerEnabled = recompositionProfilerPreferenceRepository?.getPreference()?.enabled == true
-        val profilerEnabled =
-            if (recompositionProfilerController.isRunning) {
-                true
-            } else {
-                if (persistedProfilerEnabled) {
-                    recompositionProfilerPreferenceRepository.setEnabled(false)
-                }
-                false
-            }
         return DataResult.Content(
             SharedSettingsDiagnosticsSnapshot(
                 about = about,
                 entries = entries,
-                profiler = recompositionProfilerController.buildSnapshot(enabled = profilerEnabled, feedback = feedback),
                 readStateV1 = (hostResult as? DataResult.Content)?.data?.readStateV1
                     ?: SharedSettingsReadStateV1DiagnosticSnapshot(),
                 featureFlagOverrides =
                     (hostResult as? DataResult.Content)?.data?.featureFlagOverrides.orEmpty(),
                 appleSignInLocalOverride = authRuntimeCapabilityStore?.current()?.localAppleSignInOverride == true,
-                appleSignInLocalOverrideAvailable = authRuntimeCapabilityStore != null,
+                // Apple is always offered on iOS; the old local test toggle has no effect.
+                appleSignInLocalOverrideAvailable = false,
                 loadErrors = loadErrors
             )
         )
-    }
-
-    private suspend fun performProfilerAction(
-        action: suspend () -> SharedSettingsRecompositionProfilerActionResult
-    ): DataResult<SharedSettingsDiagnosticsSnapshot> {
-        val actionResult = action()
-        actionResult.errorCode?.let { code ->
-            return DataResult.Error(ScreenError(code, retryable = false))
-        }
-        return loadDiagnosticsSnapshot(feedback = actionResult.feedback)
     }
 
     private fun <T> DataResult<T>.settingsDiagnosticsLoadError(
@@ -2605,49 +2478,6 @@ class SharedSettingsStore(
                     )
                 dataSource.setDiagnosticFeatureFlagOverride(intent.key, intent.mode)
                     .applyDiagnosticsActionResult("diagnosticFeatureFlagOverride:${intent.key}")
-            }
-            is SharedSettingsIntent.SetRecompositionProfilerEnabled -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState(DIAGNOSTICS_ACTION_PROFILER_ENABLED, inProgress = true)
-                    )
-                dataSource.setRecompositionProfilerEnabled(intent.enabled)
-                    .applyDiagnosticsActionResult(DIAGNOSTICS_ACTION_PROFILER_ENABLED)
-            }
-            SharedSettingsIntent.StartRecompositionProfiler -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState(DIAGNOSTICS_ACTION_PROFILER_START, inProgress = true)
-                    )
-                dataSource.startRecompositionProfiler().applyDiagnosticsActionResult(DIAGNOSTICS_ACTION_PROFILER_START)
-            }
-            SharedSettingsIntent.StopRecompositionProfiler -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState(DIAGNOSTICS_ACTION_PROFILER_STOP, inProgress = true)
-                    )
-                dataSource.stopRecompositionProfiler().applyDiagnosticsActionResult(DIAGNOSTICS_ACTION_PROFILER_STOP)
-            }
-            SharedSettingsIntent.ResetRecompositionProfiler -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState(DIAGNOSTICS_ACTION_PROFILER_RESET, inProgress = true)
-                    )
-                dataSource.resetRecompositionProfiler().applyDiagnosticsActionResult(DIAGNOSTICS_ACTION_PROFILER_RESET)
-            }
-            SharedSettingsIntent.RefreshRecompositionProfilerReport -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState(DIAGNOSTICS_ACTION_PROFILER_REPORT, inProgress = true)
-                    )
-                dataSource.refreshRecompositionProfilerReport().applyDiagnosticsActionResult(DIAGNOSTICS_ACTION_PROFILER_REPORT)
-            }
-            SharedSettingsIntent.ExportRecompositionProfilerReport -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState(DIAGNOSTICS_ACTION_PROFILER_EXPORT, inProgress = true)
-                    )
-                dataSource.exportRecompositionProfilerReport().applyDiagnosticsActionResult(DIAGNOSTICS_ACTION_PROFILER_EXPORT)
             }
             SharedSettingsIntent.SendFeedback ->
                 _state.value = _state.value.copy(effect = SharedSettingsEffect.SendFeedback)
@@ -3727,12 +3557,6 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             SharedSettingsIntent.ShareDiagnostics,
             SharedSettingsIntent.ClearDiagnostics,
             is SharedSettingsIntent.SetDiagnosticFeatureFlagOverride,
-            is SharedSettingsIntent.SetRecompositionProfilerEnabled,
-            SharedSettingsIntent.StartRecompositionProfiler,
-            SharedSettingsIntent.StopRecompositionProfiler,
-            SharedSettingsIntent.ResetRecompositionProfiler,
-            SharedSettingsIntent.RefreshRecompositionProfilerReport,
-            SharedSettingsIntent.ExportRecompositionProfilerReport,
             SharedSettingsIntent.SendFeedback,
             is SharedSettingsIntent.ScanComputerWorkspaces,
             is SharedSettingsIntent.RenameComputer,
@@ -3967,12 +3791,6 @@ internal const val SERVER_ACTION_DELETE = "serverDelete"
 internal const val SERVER_ACTION_CONFIRM = "serverConfirm"
 internal const val SERVER_ACTION_SYSTEM_CHANNEL_HIDE = "serverSystemChannelHide"
 internal const val SERVER_ACTION_SYSTEM_CHANNEL_RESTORE = "serverSystemChannelRestore"
-internal const val DIAGNOSTICS_ACTION_PROFILER_START = "diagnosticsProfilerStart"
-internal const val DIAGNOSTICS_ACTION_PROFILER_STOP = "diagnosticsProfilerStop"
-internal const val DIAGNOSTICS_ACTION_PROFILER_ENABLED = "diagnosticsProfilerEnabled"
-internal const val DIAGNOSTICS_ACTION_PROFILER_RESET = "diagnosticsProfilerReset"
-internal const val DIAGNOSTICS_ACTION_PROFILER_REPORT = "diagnosticsProfilerReport"
-internal const val DIAGNOSTICS_ACTION_PROFILER_EXPORT = "diagnosticsProfilerExport"
 internal const val DIAGNOSTICS_ACTION_APPLE_SIGNIN_LOCAL_OVERRIDE = "diagnosticsAppleSignInLocalOverride"
 
 private fun SettingsLanguageRegionPreferenceUpdateRequest.toLanguageRegionAction(): String =

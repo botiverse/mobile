@@ -9,7 +9,14 @@ name: Source constraints lint
 on:
   pull_request:
     paths:
+      # check_label_facing_resolver_has_no_production_callers scans every .kt under
+      # commonMain, so the trigger has to match that scope. An enumerated file list here
+      # reintroduces exactly the hole it was written to close: SettingsHomePage.kt held a
+      # live task #256 defect and was absent from this list, so a PR touching only that
+      # file would not have run the check at all.
+      - "compose/shared/src/commonMain/kotlin/**/*.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt"
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/BasicWidget.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/SlockMarkdown.kt"
@@ -23,8 +30,13 @@ on:
       - "compose/shared/src/commonMain/resources/MR/base/strings.xml"
       - "compose/shared/src/commonMain/resources/MR/zh-rCN/strings.xml"
       - "compose/shared/src/commonMain/resources/MR/ja/strings.xml"
+      # Same glob as check_string_edge_spaces.py: a fourth locale must trigger
+      # this job on its own PR, not only after it lands (LiBai, #2327 review).
+      - "compose/shared/src/commonMain/resources/MR/*/strings.xml"
       - "third_party/kuikly-compose-markdown/**"
       - "scripts/ci/check_source_constraints.py"
+      - "scripts/ci/check_string_edge_spaces.py"
+      - "scripts/ci/verify_no_production_visual_pages.py"
       - ".github/workflows/source-constraints-lint.yml"
   push:
     branches:
@@ -56,3 +68,19 @@ jobs:
 
       - name: Enforce visual fixture split census
         run: python3 scripts/ci/visual_fixture_split_census.py
+
+      # task #536 (S8): aapt trims unquoted edge whitespace in <string>, so
+      # `prefix + bold(name) + suffix` rendered "deleteVisual Serverand" on
+      # Android while iOS kept the spaces. Resources must use &#160; at edges.
+      - name: Self-test string edge-space check
+        run: python3 scripts/ci/check_string_edge_spaces.py --self-test
+
+      - name: Enforce string edge-space check
+        run: python3 scripts/ci/check_string_edge_spaces.py
+
+      # task #194: verifyNoProductionVisualPages as a required CI gate.
+      - name: Self-test verify no production visual pages
+        run: python3 scripts/ci/verify_no_production_visual_pages.py --self-test
+
+      - name: Enforce no production visual pages
+        run: python3 scripts/ci/verify_no_production_visual_pages.py

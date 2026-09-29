@@ -65,9 +65,6 @@ class SettingsNativeDetailPageTest {
                     storeScope = storeScope,
                     launchIntent =
                         SettingsNativeDetailLaunchIntent(
-                            enableProfiler = true,
-                            resetScene = true,
-                            exportReport = true,
                             autoCloseMs = 2_500L,
                         ),
                 )
@@ -77,9 +74,6 @@ class SettingsNativeDetailPageTest {
         assertEquals("diagnostics", pageData.optString(SETTINGS_NATIVE_DETAIL_PAGE_KEY))
         assertEquals("shell-settings-detail", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
         assertEquals("server-settings-detail", pageData.optString(SLOCK_SHELL_SERVER_ID))
-        assertTrue(pageData.optBoolean(SETTINGS_NATIVE_DETAIL_ENABLE_PROFILER, false))
-        assertTrue(pageData.optBoolean(SETTINGS_NATIVE_DETAIL_RESET_SCENE, false))
-        assertTrue(pageData.optBoolean(SETTINGS_NATIVE_DETAIL_EXPORT_REPORT, false))
         assertEquals(2_500L, pageData.optLong(SETTINGS_NATIVE_DETAIL_AUTO_CLOSE_MS, 0L))
         listOf("session", "account", "profile", "state", "snapshot", "payload", "callback")
             .forEach { forbidden -> assertFalse(pageData.has(forbidden), forbidden) }
@@ -153,17 +147,11 @@ class SettingsNativeDetailPageTest {
                     storeScope = storeScope,
                     launchIntent =
                         SettingsNativeDetailLaunchIntent(
-                            enableProfiler = true,
-                            resetScene = true,
-                            exportReport = true,
                             autoCloseMs = 2_500L,
                         ),
                 )
             )
 
-        assertFalse(pageData.has(SETTINGS_NATIVE_DETAIL_ENABLE_PROFILER))
-        assertFalse(pageData.has(SETTINGS_NATIVE_DETAIL_RESET_SCENE))
-        assertFalse(pageData.has(SETTINGS_NATIVE_DETAIL_EXPORT_REPORT))
         assertFalse(pageData.has(SETTINGS_NATIVE_DETAIL_AUTO_CLOSE_MS))
     }
 
@@ -177,16 +165,13 @@ class SettingsNativeDetailPageTest {
     }
 
     @Test
-    fun diagnosticsAutoCloseWaitsForLoadAndEveryRequestedAction() = runBlocking {
+    fun diagnosticsAutoCloseWaitsForLoad() = runBlocking {
         val route =
             assertNotNull(
                 SettingsNativeDetailRoute.create(
                     page = SettingsNativeDetailPage.Diagnostics,
                     launchIntent =
                         SettingsNativeDetailLaunchIntent(
-                            enableProfiler = true,
-                            resetScene = true,
-                            exportReport = true,
                             autoCloseMs = 2_500L,
                         ),
                 )
@@ -205,9 +190,6 @@ class SettingsNativeDetailPageTest {
                         releaseLoad.await()
                         events += "load-complete"
                     },
-                    enableProfiler = { events += "enable" },
-                    resetProfiler = { events += "reset" },
-                    exportProfilerReport = { events += "export" },
                     waitForAutoClose = { events += "wait:$it" },
                     closePage = { events += "close" },
                 )
@@ -219,7 +201,7 @@ class SettingsNativeDetailPageTest {
         job.join()
 
         assertEquals(
-            listOf("load-start", "load-complete", "enable", "reset", "export", "wait:2500", "close"),
+            listOf("load-start", "load-complete", "wait:2500", "close"),
             events,
         )
     }

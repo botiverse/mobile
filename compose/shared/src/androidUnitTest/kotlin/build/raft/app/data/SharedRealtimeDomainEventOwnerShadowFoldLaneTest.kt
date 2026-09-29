@@ -43,7 +43,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     private val serverId = "server-1"
     private val channelId = "channel-1"
     private val scopeKey = SyncScopeKey(
-        partition = DurablePartitionKey(serverId, "principal-1", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID),
+        partition = DurablePartitionKey(serverId, "principal-1", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID, "env-test"),
         scopeId = channelId,
         scopeKind = "channel",
     )
@@ -470,6 +470,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     private fun testGrant() = RealtimeGrantRecord(
         slotKey = RealtimeSlotKey(scopeLeaseId = "scope-1", serverId = serverId),
         principalId = "principal-1",
+        environmentId = "env-test",
         authGeneration = 1L,
         connectionFamilyId = "family-1",
         connectionEpochId = "epoch-1",

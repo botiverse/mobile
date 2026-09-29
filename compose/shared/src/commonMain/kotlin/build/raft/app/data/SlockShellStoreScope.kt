@@ -13,6 +13,10 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 internal class SlockShellStoreScope private constructor(
     val shellInstanceId: String,
@@ -101,11 +105,90 @@ internal data class SelectedServerSelectionUpdate(
     val changed: Boolean,
 )
 
+internal data class SelectedServerSelectionCommit(
+    val processSession: StoredAuthSession,
+    val update: SelectedServerSelectionUpdate,
+)
+
 internal data class SelectedServerAuthoritySnapshot(
     val ownerUserId: String,
     val selection: SelectedServerSelection,
     val generation: Long,
+    /** Restart-stable epoch used by durable identity-bound projections. */
+    val selectionEpoch: Long = generation,
 )
+
+@Serializable
+internal data class SelectedServerSelectionEpochRecord(
+    val epoch: Long,
+    val serverId: String?,
+    /** Latest process-auth revision observed for this principal. */
+    val authGeneration: Long = 0L,
+)
+
+internal interface SelectedServerSelectionEpochStore {
+    fun read(
+        environmentId: String,
+        shellInstanceId: String,
+        principalId: String,
+    ): SelectedServerSelectionEpochRecord?
+
+    fun write(
+        environmentId: String,
+        shellInstanceId: String,
+        principalId: String,
+        epoch: Long,
+        serverId: String?,
+        authGeneration: Long,
+    )
+}
+
+internal class KeyValueSelectedServerSelectionEpochStore(
+    private val store: SlockKeyValueStore,
+    private val json: Json = Json { ignoreUnknownKeys = true; encodeDefaults = true },
+) : SelectedServerSelectionEpochStore {
+    override fun read(
+        environmentId: String,
+        shellInstanceId: String,
+        principalId: String,
+    ): SelectedServerSelectionEpochRecord? =
+        store.getString(key(environmentId, shellInstanceId, principalId))
+            ?.let { encoded ->
+                runCatching {
+                    json.decodeFromString<SelectedServerSelectionEpochRecord>(encoded)
+                }.getOrNull()?.let { record ->
+                    record.copy(
+                        epoch = record.epoch.coerceAtLeast(0L),
+                        authGeneration = record.authGeneration.coerceAtLeast(0L),
+                    )
+                }
+            }
+
+    override fun write(
+        environmentId: String,
+        shellInstanceId: String,
+        principalId: String,
+        epoch: Long,
+        serverId: String?,
+        authGeneration: Long,
+    ) {
+        store.putString(
+            key(environmentId, shellInstanceId, principalId),
+            json.encodeToString(
+                SelectedServerSelectionEpochRecord(
+                    epoch = epoch.coerceAtLeast(0L),
+                    serverId = serverId?.trim()?.takeIf { it.isNotBlank() },
+                    authGeneration = authGeneration.coerceAtLeast(0L),
+                )
+            )
+        )
+    }
+
+    private fun key(environmentId: String, shellInstanceId: String, principalId: String): String =
+        listOf(environmentId, shellInstanceId, principalId)
+            .joinToString("|") { value -> value.trim().let { normalized -> "${normalized.length}:$normalized" } }
+            .let { "slock:thread-selection-epoch:v1:$it" }
+}
 
 internal data class ThreadReplyCacheIdentitySnapshot(
     val session: StoredAuthSession,
@@ -114,6 +197,11 @@ internal data class ThreadReplyCacheIdentitySnapshot(
     val serverId: String,
     val authGeneration: Long,
     val selectionGeneration: Long,
+    /**
+     * Stable process-auth binding generation. Token rotation keeps this value;
+     * logout, account, or environment replacement advances it.
+     */
+    val bindingGeneration: Long = 0L,
 )
 
 internal data class ThreadReplyCacheIdentityTransitionAnchor(
@@ -126,7 +214,9 @@ internal data class ThreadReplyCacheIdentityTransitionAnchor(
 internal class SelectedServerStore internal constructor(
     val scope: SlockShellStoreScope,
     private val mutex: Mutex = Mutex(),
-    private val onSelectionChanged: (String?) -> Unit = {}
+    private val onSelectionChanged: (String?) -> Unit = {},
+    private val selectionEpochStore: SelectedServerSelectionEpochStore? = null,
+    private val environmentIdProvider: () -> String = { "" },
 ) {
     private var mutationRevision: Long = 0L
     private val requestedInitialServerId = scope.initialServerId
@@ -134,6 +224,10 @@ internal class SelectedServerStore internal constructor(
     private var selectedServerSlug: String? = null
     private var selectionInitialized: Boolean = requestedInitialServerId != null
     private var authorityGeneration: Long = 0L
+    private var durableSelectionEpoch: Long = 0L
+    private var durableSelectionPrincipal: String? = null
+    private var durableSelectionEnvironment: String? = null
+    private var durableSelectionAuthGeneration: Long? = null
     private val _selectedServerId = MutableStateFlow(requestedInitialServerId)
     val selectedServerId: StateFlow<String?> = _selectedServerId.asStateFlow()
 
@@ -161,6 +255,26 @@ internal class SelectedServerStore internal constructor(
             setSelectedServerId(normalizedServerId)
             selectedServerSlug = serverSlug?.trim()?.takeIf { it.isNotBlank() }
             advanceAuthorityIfChanged(before)
+            syncDurableSelectionEpochAfterMutationLocked()
+            selection()
+        }
+
+    internal suspend fun commitSelection(
+        serverId: String?,
+        serverSlug: String?,
+        commitProcessSelection: suspend () -> Unit,
+    ): SelectedServerSelection =
+        mutex.withLock {
+            // Publish the process next-launch default before the shell value while holding the
+            // shell authority lock. Concurrent readSession().reconcile() therefore sees either
+            // the complete old pair or the complete new pair, never a shell-only intermediate.
+            commitProcessSelection()
+            val before = authorityState()
+            mutationRevision += 1L
+            selectionInitialized = true
+            setSelectedServerId(serverId?.trim()?.takeIf { it.isNotBlank() })
+            selectedServerSlug = serverSlug?.trim()?.takeIf { it.isNotBlank() }
+            advanceAuthorityIfChanged(before)
             selection()
         }
 
@@ -182,6 +296,7 @@ internal class SelectedServerStore internal constructor(
             setSelectedServerId(normalizedServerId)
             selectedServerSlug = serverSlug?.trim()?.takeIf { it.isNotBlank() }
             advanceAuthorityIfChanged(before)
+            syncDurableSelectionEpochAfterMutationLocked()
             val updated = selection()
             SelectedServerSelectionUpdate(
                 selection = updated,
@@ -189,10 +304,47 @@ internal class SelectedServerStore internal constructor(
             )
         }
 
+    internal suspend fun selectIfAccountAndSourceMatch(
+        expectedAccountId: String,
+        expectedServerId: String?,
+        serverId: String,
+        commitProcessSelection: suspend () -> StoredAuthSession?,
+    ): SelectedServerSelectionCommit? =
+        mutex.withLock {
+            // Keep the source comparison and process/shell commit under this shell's one
+            // canonical selection lock. A check before entering this block would leave an A→C
+            // switch window where a stale A→B intent could overwrite C.
+            if (_disposed.value) return@withLock null
+            if (ownerUserId != null && ownerUserId != expectedAccountId) return@withLock null
+            if (expectedServerId != null && selectedServerId.value != expectedServerId) return@withLock null
+            val processSession = commitProcessSelection() ?: return@withLock null
+            val target = processSession.servers.firstOrNull { it.id == serverId } ?: return@withLock null
+            val before = authorityState()
+            val previous = selection()
+            mutationRevision += 1L
+            ownerUserId = expectedAccountId
+            selectionInitialized = true
+            setSelectedServerId(target.id)
+            selectedServerSlug = target.slug
+            advanceAuthorityIfChanged(before)
+            SelectedServerSelectionCommit(
+                processSession = processSession,
+                update = SelectedServerSelectionUpdate(
+                    selection = selection(),
+                    changed = selection() != previous,
+                ),
+            )
+        }
+
     internal suspend fun reconcile(session: StoredAuthSession): SelectedServerSelection =
         mutex.withLock {
             mutationRevision += 1L
-            reconcileLocked(session)
+            reconcileLocked(session).also {
+                // Reconciliation may clear a server that disappeared from the same principal's
+                // membership.  Once an authenticated durable authority has been captured, that
+                // is a real selection boundary and must survive process death immediately.
+                syncDurableSelectionEpochAfterMutationLocked()
+            }
         }
 
     /**
@@ -203,6 +355,7 @@ internal class SelectedServerStore internal constructor(
     internal suspend fun convergeReplyCacheAuthorityTransition(
         expectedPreviousOwner: String,
         session: StoredAuthSession,
+        authGeneration: Long,
     ): SelectedServerSelection? =
         mutex.withLock {
             if (_disposed.value) return@withLock null
@@ -215,7 +368,16 @@ internal class SelectedServerStore internal constructor(
                 return@withLock null
             }
             mutationRevision += 1L
-            reconcileLocked(session)
+            reconcileLocked(session).also {
+                // Account-transition convergence can change the selected server after the
+                // previous principal's producer has been retired. Persist that boundary before
+                // the waiter allows a new route capture; otherwise a process death in the
+                // transition window could reuse the prior restart-stable selection epoch.
+                syncDurableSelectionEpochLocked(
+                    principalId = session.user.id,
+                    authGeneration = authGeneration,
+                )
+            }
         }
 
     /**
@@ -225,6 +387,7 @@ internal class SelectedServerStore internal constructor(
      */
     internal suspend fun captureReplyCacheAuthority(
         session: StoredAuthSession,
+        authGeneration: Long,
     ): SelectedServerAuthoritySnapshot? =
         mutex.withLock {
             if (_disposed.value) return@withLock null
@@ -250,10 +413,15 @@ internal class SelectedServerStore internal constructor(
                 selectedServerSlug = session.servers.firstOrNull { it.id == serverId }?.slug
             }
             advanceAuthorityAndMutationIfChanged(before)
+            syncDurableSelectionEpochLocked(
+                principalId = principalId,
+                authGeneration = authGeneration,
+            )
             SelectedServerAuthoritySnapshot(
                 ownerUserId = principalId,
                 selection = selection(),
                 generation = authorityGeneration,
+                selectionEpoch = durableSelectionEpoch,
             )
         }
 
@@ -269,6 +437,8 @@ internal class SelectedServerStore internal constructor(
 
     internal suspend fun clearSelection() {
         mutex.withLock {
+            val durablePrincipal = durableSelectionPrincipal
+            val durableAuthGeneration = durableSelectionAuthGeneration
             val before = authorityState()
             mutationRevision += 1L
             ownerUserId = null
@@ -276,11 +446,24 @@ internal class SelectedServerStore internal constructor(
             selectedServerSlug = null
             selectionInitialized = requestedInitialServerId != null
             advanceAuthorityIfChanged(before)
+            if (durablePrincipal != null && durableAuthGeneration != null) {
+                // `requestedInitialServerId` is only a route bootstrap hint.  It may still be
+                // present after logout, but must never be written back as the retired principal's
+                // durable selection.  Persist an explicit null boundary and advance the epoch so
+                // a process death between session clear and the next auth revision cannot revive
+                // pending rows under the old server fence.
+                advanceDurableSelectionEpochLocked(
+                    principalId = durablePrincipal,
+                    authGeneration = durableAuthGeneration,
+                )
+            }
         }
     }
 
     internal suspend fun clearActiveSelection() {
         mutex.withLock {
+            val durablePrincipal = durableSelectionPrincipal
+            val durableAuthGeneration = durableSelectionAuthGeneration
             val before = authorityState()
             mutationRevision += 1L
             ownerUserId = null
@@ -288,6 +471,9 @@ internal class SelectedServerStore internal constructor(
             selectedServerSlug = null
             selectionInitialized = false
             advanceAuthorityIfChanged(before)
+            if (durablePrincipal != null && durableAuthGeneration != null) {
+                syncDurableSelectionEpochLocked(durablePrincipal, durableAuthGeneration)
+            }
         }
     }
 
@@ -321,6 +507,8 @@ internal class SelectedServerStore internal constructor(
     internal suspend fun clearActiveSelectionIfRevision(expectedRevision: Long): Boolean =
         mutex.withLock {
             if (mutationRevision != expectedRevision) return@withLock false
+            val durablePrincipal = durableSelectionPrincipal
+            val durableAuthGeneration = durableSelectionAuthGeneration
             val before = authorityState()
             mutationRevision += 1L
             ownerUserId = null
@@ -328,6 +516,9 @@ internal class SelectedServerStore internal constructor(
             selectedServerSlug = null
             selectionInitialized = false
             advanceAuthorityIfChanged(before)
+            if (durablePrincipal != null && durableAuthGeneration != null) {
+                syncDurableSelectionEpochLocked(durablePrincipal, durableAuthGeneration)
+            }
             true
         }
 
@@ -365,6 +556,138 @@ internal class SelectedServerStore internal constructor(
         return selection()
     }
 
+    /**
+     * Restores the selection epoch from durable app-scope storage.  The
+     * in-memory authority generation remains a process fence; only an actual
+     * selected-server change advances the restart-stable epoch.
+     */
+    private fun syncDurableSelectionEpochLocked(
+        principalId: String,
+        authGeneration: Long,
+    ) {
+        val normalizedPrincipal = principalId.trim().takeIf { it.isNotBlank() } ?: return
+        val store = selectionEpochStore
+        if (store == null) {
+            durableSelectionPrincipal = normalizedPrincipal
+            durableSelectionEpoch = authorityGeneration
+            durableSelectionEnvironment = environmentIdProvider().trim().trimEnd('/')
+            durableSelectionAuthGeneration = authGeneration
+            return
+        }
+        val environmentId = environmentIdProvider().trim().trimEnd('/')
+        val selectedServerId = selectedServerId.value?.trim()?.takeIf { it.isNotBlank() }
+        val record = store.read(environmentId, scope.shellInstanceId, normalizedPrincipal)
+        if (
+            durableSelectionPrincipal != normalizedPrincipal ||
+                durableSelectionEnvironment != environmentId
+        ) {
+            durableSelectionPrincipal = normalizedPrincipal
+            durableSelectionEpoch = record?.epoch ?: 0L
+            durableSelectionEnvironment = environmentId
+            durableSelectionAuthGeneration = null
+        }
+        when {
+            record == null -> {
+                durableSelectionAuthGeneration = authGeneration
+                store.write(
+                    environmentId,
+                    scope.shellInstanceId,
+                    normalizedPrincipal,
+                    durableSelectionEpoch,
+                    selectedServerId,
+                    authGeneration,
+                )
+            }
+            authGeneration < record.authGeneration -> {
+                // A delayed capture from a retired auth revision cannot mutate the current
+                // durable selection authority or regress the in-memory revision used by a
+                // subsequent legitimate server switch.  The caller will fail its final
+                // auth-context revalidation; keep the latest epoch and prior revision intact.
+                durableSelectionEpoch = record.epoch
+            }
+            record.serverId != selectedServerId -> {
+                durableSelectionAuthGeneration = authGeneration
+                durableSelectionEpoch = nextSelectionEpoch(record.epoch)
+                store.write(
+                    environmentId,
+                    scope.shellInstanceId,
+                    normalizedPrincipal,
+                    durableSelectionEpoch,
+                    selectedServerId,
+                    authGeneration,
+                )
+            }
+            else -> {
+                durableSelectionAuthGeneration = authGeneration
+                durableSelectionEpoch = record.epoch
+                if (authGeneration > record.authGeneration) {
+                    store.write(
+                        environmentId,
+                        scope.shellInstanceId,
+                        normalizedPrincipal,
+                        durableSelectionEpoch,
+                        selectedServerId,
+                        authGeneration,
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * A server switch is itself a durable identity boundary.  Once this store has captured an
+     * authenticated authority, persist the new selection immediately instead of waiting for a
+     * later route capture; otherwise a process death in the small switch→capture window could
+     * resurrect a pending send under the previous server/epoch.
+     */
+    private fun syncDurableSelectionEpochAfterMutationLocked() {
+        val principal = durableSelectionPrincipal ?: return
+        // A logout/account transition may leave the previous durable principal cached until the
+        // next verified capture.  Never attribute a new owner's selection to that old key.
+        if (ownerUserId != principal) return
+        val authGeneration = durableSelectionAuthGeneration ?: return
+        syncDurableSelectionEpochLocked(principal, authGeneration)
+    }
+
+    /**
+     * Retires the currently captured principal's selection without consulting the route's
+     * bootstrap server.  Logout/clear is a semantic boundary even when the bootstrap value happens
+     * to equal the last selected server, so the restart-stable epoch is always advanced.
+     */
+    private fun advanceDurableSelectionEpochLocked(
+        principalId: String,
+        authGeneration: Long,
+    ) {
+        val normalizedPrincipal = principalId.trim().takeIf { it.isNotBlank() } ?: return
+        val store = selectionEpochStore
+        val environmentId = environmentIdProvider().trim().trimEnd('/')
+        if (store == null) {
+            durableSelectionPrincipal = normalizedPrincipal
+            durableSelectionEnvironment = environmentId
+            durableSelectionAuthGeneration = authGeneration
+            durableSelectionEpoch = (durableSelectionEpoch + 1L).coerceAtLeast(0L)
+            return
+        }
+        val record = store.read(environmentId, scope.shellInstanceId, normalizedPrincipal)
+        val baseEpoch = maxOf(durableSelectionEpoch, record?.epoch ?: 0L)
+        val nextEpoch = nextSelectionEpoch(baseEpoch)
+        durableSelectionPrincipal = normalizedPrincipal
+        durableSelectionEnvironment = environmentId
+        durableSelectionAuthGeneration = authGeneration
+        durableSelectionEpoch = nextEpoch
+        store.write(
+            environmentId = environmentId,
+            shellInstanceId = scope.shellInstanceId,
+            principalId = normalizedPrincipal,
+            epoch = nextEpoch,
+            serverId = null,
+            authGeneration = authGeneration,
+        )
+    }
+
+    private fun nextSelectionEpoch(epoch: Long): Long =
+        if (epoch == Long.MAX_VALUE) Long.MAX_VALUE else (epoch + 1L).coerceAtLeast(0L)
+
     private fun setSelectedServerId(serverId: String?) {
         val normalizedServerId = serverId?.trim()?.takeIf { it.isNotBlank() }
         if (_selectedServerId.value == normalizedServerId) return
@@ -396,7 +719,11 @@ internal class ThreadReplyCacheIdentityAuthority(
         val session = sessionStore.readSession() ?: return null
         val principalId = session.user.id.trim()
         if (principalId.isBlank() || principalId != authContext.accountId) return null
-        val selection = selectedServerStore.captureReplyCacheAuthority(session) ?: return null
+        val selection =
+            selectedServerStore.captureReplyCacheAuthority(
+                session = session,
+                authGeneration = authContext.authorityGeneration,
+            ) ?: return null
         val serverId = selection.selection.serverId?.trim()?.takeIf { it.isNotBlank() } ?: return null
 
         val confirmedContext = authContextProvider()
@@ -420,7 +747,8 @@ internal class ThreadReplyCacheIdentityAuthority(
             principalId = principalId,
             serverId = serverId,
             authGeneration = authContext.authorityGeneration,
-            selectionGeneration = selection.generation,
+            selectionGeneration = selection.selectionEpoch,
+            bindingGeneration = authContext.writeGeneration,
         )
     }
 }
@@ -484,14 +812,11 @@ internal class SlockShellAuthSessionStore(
     }
 
     override suspend fun readSession(): StoredAuthSession? {
-        val session = delegate.readSession() ?: return null
-        val selection = selectedServerStore.reconcile(session)
-        return session.copy(
-            selectedServerId = selection.serverId,
-            selectedServerSlug = selection.serverSlug,
-            allowImplicitServerFallback = false
-        )
+        return selectionMutationMutex.withLock { readSessionLocked() }
     }
+
+    private suspend fun readSessionLocked(): StoredAuthSession? =
+        delegate.readSession()?.withShellSelection()
 
     override suspend fun readOrCreateAuthInstallationId(candidate: String): String =
         delegate.readOrCreateAuthInstallationId(candidate)
@@ -504,18 +829,22 @@ internal class SlockShellAuthSessionStore(
     }
 
     override suspend fun updateTokens(accessToken: String, refreshToken: String) {
-        val current = delegate.readSession() ?: return
-        delegate.rotateTokensIfMatch(
-            expectedAccessToken = current.accessToken,
-            expectedRefreshToken = current.refreshToken,
-            newAccessToken = accessToken,
-            newRefreshToken = refreshToken
-        )
+        selectionMutationMutex.withLock {
+            val current = delegate.readSession() ?: return@withLock
+            delegate.rotateTokensIfMatch(
+                expectedAccessToken = current.accessToken,
+                expectedRefreshToken = current.refreshToken,
+                newAccessToken = accessToken,
+                newRefreshToken = refreshToken
+            )
+        }
     }
 
     override suspend fun replaceAuthenticatedSession(session: StoredAuthSession) {
-        selectedServerStore.reconcile(session)
-        delegate.replaceAuthenticatedSessionPreservingSelection(session)
+        selectionMutationMutex.withLock {
+            selectedServerStore.reconcile(session)
+            delegate.replaceAuthenticatedSessionPreservingSelection(session)
+        }
     }
 
     override suspend fun rotateTokensIfMatch(
@@ -524,12 +853,14 @@ internal class SlockShellAuthSessionStore(
         newAccessToken: String,
         newRefreshToken: String
     ): StoredAuthSession? =
-        delegate.rotateTokensIfMatch(
-            expectedAccessToken = expectedAccessToken,
-            expectedRefreshToken = expectedRefreshToken,
-            newAccessToken = newAccessToken,
-            newRefreshToken = newRefreshToken
-        )?.withShellSelection()
+        selectionMutationMutex.withLock {
+            delegate.rotateTokensIfMatch(
+                expectedAccessToken = expectedAccessToken,
+                expectedRefreshToken = expectedRefreshToken,
+                newAccessToken = newAccessToken,
+                newRefreshToken = newRefreshToken
+            )?.withShellSelection()
+        }
 
     override suspend fun prepareRefreshAttemptIfMatch(
         expectedAccountId: String,
@@ -552,57 +883,64 @@ internal class SlockShellAuthSessionStore(
         newAccessToken: String,
         newRefreshToken: String,
     ): StoredAuthSession? =
-        delegate.rotateTokensAndClearRefreshAttemptIfMatch(
-            expectedAccountId = expectedAccountId,
-            expectedAccessToken = expectedAccessToken,
-            expectedRefreshToken = expectedRefreshToken,
-            expectedAttemptId = expectedAttemptId,
-            newAccessToken = newAccessToken,
-            newRefreshToken = newRefreshToken,
-        )?.withShellSelection()
+        selectionMutationMutex.withLock {
+            delegate.rotateTokensAndClearRefreshAttemptIfMatch(
+                expectedAccountId = expectedAccountId,
+                expectedAccessToken = expectedAccessToken,
+                expectedRefreshToken = expectedRefreshToken,
+                expectedAttemptId = expectedAttemptId,
+                newAccessToken = newAccessToken,
+                newRefreshToken = newRefreshToken,
+            )?.withShellSelection()
+        }
 
     override suspend fun updateMetadata(
         expectedAccountId: String?,
         transform: (StoredAuthSession) -> StoredAuthSession
     ) {
-        val shellSession = readSession() ?: return
-        delegate.updateMetadata(expectedAccountId) { processSession ->
-            val transformed =
-                transform(
-                    processSession.copy(
-                        selectedServerId = shellSession.selectedServerId,
-                        selectedServerSlug = shellSession.selectedServerSlug
+        selectionMutationMutex.withLock {
+            val shellSession = readSessionLocked() ?: return@withLock
+            delegate.updateMetadata(expectedAccountId) { processSession ->
+                val transformed =
+                    transform(
+                        processSession.copy(
+                            selectedServerId = shellSession.selectedServerId,
+                            selectedServerSlug = shellSession.selectedServerSlug
+                        )
                     )
+                transformed.copy(
+                    selectedServerId = processSession.selectedServerId,
+                    selectedServerSlug = processSession.selectedServerSlug
                 )
-            transformed.copy(
-                selectedServerId = processSession.selectedServerId,
-                selectedServerSlug = processSession.selectedServerSlug
-            )
+            }
+            delegate.readSession()?.let { selectedServerStore.reconcile(it) }
         }
-        delegate.readSession()?.let { selectedServerStore.reconcile(it) }
     }
 
     override suspend fun selectServerIfSessionMatches(
         expectedAccountId: String,
         expectedAccessToken: String,
         expectedRefreshToken: String,
+        expectedSelectedServerId: String?,
         serverId: String,
     ): StoredAuthSession? =
         selectionMutationMutex.withLock {
-            val processSession =
-                delegate.selectServerIfSessionMatches(
+            val committed =
+                selectedServerStore.selectIfAccountAndSourceMatch(
                     expectedAccountId = expectedAccountId,
-                    expectedAccessToken = expectedAccessToken,
-                    expectedRefreshToken = expectedRefreshToken,
+                    expectedServerId = expectedSelectedServerId,
                     serverId = serverId,
-                ) ?: return@withLock null
+                ) {
+                    delegate.selectServerIfSessionMatches(
+                        expectedAccountId = expectedAccountId,
+                        expectedAccessToken = expectedAccessToken,
+                        expectedRefreshToken = expectedRefreshToken,
+                        serverId = serverId,
+                    )
+                } ?: return@withLock null
+            val processSession = committed.processSession
+            val update = committed.update
             val target = processSession.servers.firstOrNull { it.id == serverId } ?: return@withLock null
-            val update =
-                selectedServerStore.selectIfAccountMatches(
-                    expectedAccountId = expectedAccountId,
-                    serverId = target.id,
-                    serverSlug = target.slug,
-                ) ?: return@withLock null
             (delegate as? SlockAuthServerSelectionMemory)?.saveRememberedServerSelection(
                 processSession.user,
                 StoredAuthServerSelection(serverId = target.id, serverSlug = target.slug),
@@ -627,15 +965,21 @@ internal class SlockShellAuthSessionStore(
     }
 
     override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) {
-        val selection = selectedServerStore.select(serverId, serverSlug)
-        emitAuthSessionEvent { generation -> AuthSessionEvent.BindingMetadataChanged(generation) }
-        // The process-level value is intentionally only the next-launch default.
-        delegate.updateSelectedServer(selection.serverId, selection.serverSlug)
+        selectionMutationMutex.withLock {
+            val selection =
+                selectedServerStore.commitSelection(serverId, serverSlug) {
+                    // The process-level value is intentionally only the next-launch default.
+                    delegate.updateSelectedServer(serverId, serverSlug)
+                }
+            emitAuthSessionEvent { generation -> AuthSessionEvent.BindingMetadataChanged(generation) }
+        }
     }
 
     override suspend fun clearSession(reason: String, source: String) {
-        selectedServerStore.clearSelection()
-        delegate.clearSession(reason, source)
+        selectionMutationMutex.withLock {
+            selectedServerStore.clearSelection()
+            delegate.clearSession(reason, source)
+        }
         onProcessSessionCleared()
     }
 
@@ -646,18 +990,16 @@ internal class SlockShellAuthSessionStore(
         reason: String,
         source: String,
     ): Boolean {
-        val cleared =
+        val cleared = selectionMutationMutex.withLock {
             delegate.clearSessionIfMatches(
                 expectedAccountId = expectedAccountId,
                 expectedAccessToken = expectedAccessToken,
                 expectedRefreshToken = expectedRefreshToken,
                 reason = reason,
                 source = source,
-            )
-        if (cleared) {
-            selectedServerStore.clearSelection()
-            onProcessSessionCleared()
+            ).also { if (it) selectedServerStore.clearSelection() }
         }
+        if (cleared) onProcessSessionCleared()
         return cleared
     }
 
@@ -668,18 +1010,16 @@ internal class SlockShellAuthSessionStore(
         reason: String,
         source: String,
     ): AuthSessionClearOutcome {
-        val outcome =
+        val outcome = selectionMutationMutex.withLock {
             delegate.clearSessionIfMatchesOutcome(
                 expectedAccountId = expectedAccountId,
                 expectedAccessToken = expectedAccessToken,
                 expectedRefreshToken = expectedRefreshToken,
                 reason = reason,
                 source = source,
-            )
-        if (outcome == AuthSessionClearOutcome.Cleared) {
-            selectedServerStore.clearSelection()
-            onProcessSessionCleared()
+            ).also { if (it == AuthSessionClearOutcome.Cleared) selectedServerStore.clearSelection() }
         }
+        if (outcome == AuthSessionClearOutcome.Cleared) onProcessSessionCleared()
         return outcome
     }
 

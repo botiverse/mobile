@@ -40,7 +40,7 @@ function resolveVisualTestingCli(root) {
     [
       "Cannot find the Slock visual-testing CLI.",
       "Set SLOCK_SOURCE_REPO or SLOCK_VISUAL_TESTING_CLI to an external React/source checkout.",
-      "Do not create third_party/slock-source inside the Android repo; it will show up as untracked local state.",
+      "Do not create a retired in-repo Slock source directory inside the Android repo; it will show up as untracked local state.",
     ].join("\n"),
   );
 }

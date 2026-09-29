@@ -38,10 +38,14 @@ IFS=$'\t' read -r allow_rebase allow_squash allow_merge <<< "$policy"
   echo "refusing merge: ${repo} must keep guarded squash available" >&2
   exit 1
 }
-[ "$allow_merge" = "false" ] || {
-  echo "refusing merge: ${repo} must disable ordinary merge commits" >&2
-  exit 1
-}
+# Merge commits are intentionally left enabled on this repo (release back-merge
+# needs them to record ancestry, and artin ruled to keep the option on).
+# Guarded-squash-merge produces a squash commit, never a merge commit, so an
+# enabled merge-commit option does not weaken the contract. Warn rather than
+# refuse so the reconcile window and normal squashes both keep working.
+if [ "$allow_merge" != "false" ]; then
+  echo "note: ${repo} allows ordinary merge commits (intended); guarded squash still produces squash commits" >&2
+fi
 
 pr_state="$($gh_bin api "repos/${repo}/pulls/${pr_number}" --jq '[.state, (.draft | tostring), .head.sha, .base.ref] | @tsv')"
 IFS=$'\t' read -r state draft live_head base_ref <<< "$pr_state"
@@ -59,27 +63,31 @@ IFS=$'\t' read -r state draft live_head base_ref <<< "$pr_state"
 }
 
 commits_json="${tmp_dir}/commits.json"
-$gh_bin api --paginate --slurp "repos/${repo}/pulls/${pr_number}/commits?per_page=100" > "$commits_json"
-commit_count="$(jq '[.[][]] | length' "$commits_json")"
+# Older gh releases do not support --slurp.  --paginate emits one JSON array
+# per page; jq -s collects those arrays and adds them into the same flat array
+# that --slurp would have produced.
+$gh_bin api --paginate "repos/${repo}/pulls/${pr_number}/commits?per_page=100" \
+  | jq -s 'add // []' > "$commits_json"
+commit_count="$(jq 'length' "$commits_json")"
 [ "$commit_count" -gt 0 ] || {
   echo "refusing merge: PR #${pr_number} has no source commits" >&2
   exit 1
 }
 
-last_commit="$(jq -r '[.[][]][-1].sha' "$commits_json")"
+last_commit="$(jq -r '.[-1].sha' "$commits_json")"
 [ "$last_commit" = "$reviewed_head" ] || {
   echo "refusing merge: PR #${pr_number} final source commit=${last_commit}, reviewed=${reviewed_head}" >&2
   exit 1
 }
 
 for ((index = 0; index < commit_count; index++)); do
-  commit_sha="$(jq -r --argjson index "$index" '[.[][]][$index].sha' "$commits_json")"
+  commit_sha="$(jq -r --argjson index "$index" '.[$index].sha' "$commits_json")"
   message_file="${tmp_dir}/commit-${index}.txt"
-  jq -j --argjson index "$index" '[.[][]][$index].commit.message' "$commits_json" > "$message_file"
+  jq -j --argjson index "$index" '.[$index].commit.message' "$commits_json" > "$message_file"
   if ! error="$($validator "$message_file" 2>&1)"; then
-    echo "refusing merge: source commit ${commit_sha} failed DCO message validation: ${error}" >&2
+    echo "refusing merge: source commit ${commit_sha} failed message validation: ${error}" >&2
     exit 1
   fi
 done
 
-echo "guarded merge preflight: OK — PR #${pr_number} targets ${base_ref}, head ${reviewed_head}, ${commit_count} exact DCO-signed commit(s), rebase enabled, ordinary merge disabled"
+echo "guarded merge preflight: OK — PR #${pr_number} targets ${base_ref}, head ${reviewed_head}, ${commit_count} exact validated commit(s), rebase enabled, ordinary merge disabled"

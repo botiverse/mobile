@@ -52,6 +52,14 @@ private object SharedHomeIdentityPersistSpec :
     ): SharedHomeState {
         val session = reduced.content.homeSessionOrNull() ?: previous.content.homeSessionOrNull() ?: return reduced
         if (reduced.content is SharedHomeContentState.Content) return reduced
+        val serverId =
+            reduced.content.homeServerIdOrNull()
+                ?: previous.content.homeServerIdOrNull()
+                ?: session.currentServerId?.let(::ServerId)
+                ?: return reduced
+        if (!snapshot.matchesPersistedHomeIdentity(session = session, expectedServerId = serverId)) {
+            return reduced
+        }
         val pruned = snapshot.pruneForHomeIdentityPersist()
         return reduced.copy(
             content =
@@ -59,7 +67,8 @@ private object SharedHomeIdentityPersistSpec :
                     snapshot = pruned,
                     session = session,
                     contentRefreshing = true,
-                    baseSnapshot = pruned
+                    baseSnapshot = pruned,
+                    isDurableIdentityCache = true
                 )
         )
     }
@@ -91,6 +100,14 @@ private object SharedHomeIdentityPersistSpec :
             ?.baseSnapshot
             ?.pruneForHomeIdentityPersist()
 }
+
+internal fun HomeSnapshot.matchesPersistedHomeIdentity(
+    session: StoredAuthSession,
+    expectedServerId: ServerId
+): Boolean =
+    server.id == expectedServerId &&
+        currentMember.id.value == session.user.id &&
+        session.servers.any { it.id == expectedServerId.value }
 
 internal fun HomeSnapshot.pruneForHomeIdentityPersist(): HomeSnapshot =
     copy(

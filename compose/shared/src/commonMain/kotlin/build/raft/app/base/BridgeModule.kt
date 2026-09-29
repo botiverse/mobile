@@ -1,6 +1,7 @@
 package build.raft.app.base
 
 import build.raft.app.AttachmentOwnerLease
+import build.raft.app.ThreadComposerTemporaryFileRetirement
 import build.raft.app.data.SLOCK_SOCKET_BASE_URL
 import build.raft.app.network.AttachmentDownloadCoordinator
 import build.raft.app.slockLogDebug
@@ -42,6 +43,11 @@ internal enum class BridgeLogLevel(
 internal fun BridgeLogLevel.mirrorsToConsole(): Boolean = this != BridgeLogLevel.Debug
 
 private val bridgeAttachmentExportOperationSequence = atomic(0L)
+
+private val bridgeThreadImageCompressionOperationSequence = atomic(0L)
+
+private fun nextBridgeThreadImageCompressionRequestId(): String =
+    "thread-image-compress-${bridgeThreadImageCompressionOperationSequence.incrementAndGet()}"
 
 internal fun nextBridgeAttachmentExportOperationId(owner: AttachmentOwnerLease): String =
     "${owner.principalKey.value}:${owner.scopeId}:${owner.generation}:" +
@@ -388,6 +394,101 @@ internal class BridgeModule : Module() {
             }
         }
 
+    /**
+     * Adaptive detail migration (task #18): invokes the native `adaptiveNavigation` transaction
+     * API — `prepare` returns a one-shot token + controller identities for a later commit,
+     * `commit` performs the guarded top-pop (result arrives as the slockAdaptiveNativeCommitResult
+     * event on the target shell, not here), `cancel` releases a prepared transaction. Returns the
+     * native reply payload, or null when the bridge method is absent on this platform.
+     */
+    suspend fun adaptiveNavigation(
+        action: String,
+        requestId: String,
+        token: String? = null,
+        /**
+         * Reply sink used when the CALLER is cancelled while a native reply is in flight.
+         * Dropping the callback would orphan a nonce the native side already accepted —
+         * iOS tracks it as request_in_progress until a matching cancel/commit retires it,
+         * so a late reply must still reach an owner that can clean it up.
+         */
+        onLateReply: ((JSONObject) -> Unit)? = null,
+        /**
+         * Commit-time editor fence inputs (task #27 contract): the Kuikly nativeRef of the
+         * resolved AutoHeightTextAreaView and the text confirmed persisted at capture time.
+         * Native prepare binds them to the nonce and re-verifies at commit; prepare calls
+         * without a valid pair are rejected natively.
+         */
+        expectedEditorRefTag: Int? = null,
+        expectedEditorText: String? = null,
+    ): JSONObject? =
+        suspendCancellableCoroutine { continuation ->
+            val methodArgs =
+                buildSlockAdaptiveNavigationMethodArgs(
+                    action = action,
+                    requestId = requestId,
+                    token = token,
+                    expectedEditorRefTag = expectedEditorRefTag,
+                    expectedEditorText = expectedEditorText,
+                )
+            var callbackRef: CallbackRef? = null
+            var completed = false
+            val result =
+                toNative(
+                    keepCallbackAlive = false,
+                    methodName = "adaptiveNavigation",
+                    param = methodArgs.toString(),
+                    callback = { payload ->
+                        if (completed) {
+                            return@toNative
+                        }
+                        completed = true
+                        callbackRef?.let { removeCallback(it) }
+                        if (continuation.isActive) {
+                            continuation.resume(payload)
+                        } else {
+                            // Caller was cancelled mid-flight: hand the reply to the
+                            // registered owner so an accepted nonce is retired (cancel),
+                            // never silently lost.
+                            payload?.let { onLateReply?.invoke(it) }
+                        }
+                    },
+                    syncCall = false,
+                )
+            callbackRef = result.callbackRef
+            continuation.invokeOnCancellation {
+                // Keep the callback registered: a late reply must reach onLateReply so the
+                // accepted transaction can be cancelled instead of leaking its nonce.
+            }
+        }
+
+    /**
+     * Fire-and-forget adaptive navigation dispatch (cancel). Shares the no-callback contract
+     * with [dispatchAdaptiveCommit]: safe to invoke under NonCancellable during cleanup.
+     */
+    fun dispatchAdaptiveCancel(requestId: String, token: String?) {
+        val methodArgs =
+            JSONObject()
+                .put("action", "cancel")
+                .put("requestId", requestId)
+        if (token != null) methodArgs.put("token", token)
+        callNativeMethod("adaptiveNavigation", methodArgs, null)
+    }
+
+    /**
+     * Fire-and-forget commit dispatch for the adaptive detail migration (task #18). iOS
+     * deliberately never invokes a source callback for `commit` — the renderer may be torn
+     * down mid-pop — so this must NOT suspend on `adaptiveNavigation`. The authoritative
+     * result is the `slockAdaptiveNativeCommitResult` event on the target shell.
+     */
+    fun dispatchAdaptiveCommit(requestId: String, token: String?) {
+        val methodArgs =
+            JSONObject()
+                .put("action", "commit")
+                .put("requestId", requestId)
+        if (token != null) methodArgs.put("token", token)
+        callNativeMethod("adaptiveNavigation", methodArgs, null)
+    }
+
     suspend fun openAttachment(
         url: String,
         attachmentId: String,
@@ -642,24 +743,46 @@ internal class BridgeModule : Module() {
         )
 
     /**
-     * Best-effort retirement for cache files owned by an ephemeral File Preview session.
-     * Hosts must independently fence every ref to their app-owned cache roots before deletion.
+     * Linearizes retirement of cache files owned by an ephemeral File Preview session.
+     *
+     * The native side must synchronously quarantine each admitted ref (an atomic same-directory
+     * rename) before this call returns.  Only the tombstone deletion may be asynchronous.  Keeping
+     * the call synchronous is important because shared draft persistence invokes it while holding
+     * the process-wide ownership lock; an asynchronous dispatch would re-open a post-dispatch ABA
+     * window in which a new draft can adopt the old pathname.
      */
     fun retireFilePreviewTemporaryFiles(
         sessionId: String,
         fileRefs: List<String>
-    ) {
+    ): String {
         val cleanSessionId = sessionId.trim()
         val cleanRefs = fileRefs.map(String::trim).filter(String::isNotBlank).distinct()
-        if (cleanRefs.isEmpty()) return
-        callNativeMethod(
-            RETIRE_FILE_PREVIEW_TEMPORARY_FILES,
-            JSONObject().apply {
-                put("sessionId", cleanSessionId)
-                put("fileRefs", JSONArray().apply { cleanRefs.forEach(::put) })
-            },
-            null
-        )
+        if (cleanRefs.isEmpty()) return ""
+        // Retirement is a shared ownership transition, not a renderer operation.  Calling the
+        // Kuikly sync bridge here is unsafe: persistence can invoke this method from its delayed
+        // coroutine worker, while the renderer only accepts synchronous calls on its context
+        // thread.  The app-scope registry provides a bridge-free, synchronous quarantine seam;
+        // platform handlers atomically rename each admitted file to a sibling tombstone before
+        // returning and may delete only those tombstones asynchronously.
+        val result = ThreadComposerTemporaryFileRetirement.retire(cleanSessionId, cleanRefs.toSet())
+        if (!result.succeeded) {
+            slockLogWarn(
+                BRIDGE_LOG_TAG,
+                "thread_composer_temp_retire_fail sessionId=$cleanSessionId " +
+                    "requested=${result.requestedCount} quarantined=${result.quarantinedCount} " +
+                    "failed=${result.failedCount} rejected=${result.rejectedCount} " +
+                    "errorCode=${result.errorCode.orEmpty()}"
+            )
+        }
+        return JSONObject().apply {
+            put("status", if (result.succeeded) "quarantined" else "failed")
+            put("requested", result.requestedCount)
+            put("admitted", result.admittedCount)
+            put("quarantined", result.quarantinedCount)
+            put("rejected", result.rejectedCount)
+            put("failed", result.failedCount)
+            result.errorCode?.let { put("errorCode", it) }
+        }.toString()
     }
 
     suspend fun exportDownloadedAttachment(
@@ -829,14 +952,66 @@ internal class BridgeModule : Module() {
         channelId: String,
         imageOnly: Boolean,
         capture: Boolean = false,
+        compressImages: Boolean = false,
     ): JSONObject? =
         suspendCoroutine { continuation ->
             val methodArgs = JSONObject()
             methodArgs.put("channelId", channelId)
             methodArgs.put("imageOnly", imageOnly)
             methodArgs.put("capture", capture)
+            methodArgs.put("compressImages", compressImages)
             callNativeMethod("threadAttachmentUpload", methodArgs) {
                 continuation.resume(it)
+            }
+        }
+
+    /**
+     * Compresses one app-owned editor output on the host and returns the new temporary file
+     * metadata.  The request id is part of the native cancellation/late-callback fence; it is
+     * intentionally generated in shared code rather than inferred from a file path.
+     */
+    suspend fun compressThreadImage(
+        fileRef: String,
+        fileName: String,
+        mimeType: String,
+        requestId: String = nextBridgeThreadImageCompressionRequestId()
+    ): JSONObject? =
+        suspendCancellableCoroutine { continuation ->
+            val cleanRequestId = requestId.trim().ifBlank { nextBridgeThreadImageCompressionRequestId() }
+            val methodArgs = JSONObject().apply {
+                put("requestId", cleanRequestId)
+                put("fileRef", fileRef)
+                put("fileName", fileName)
+                put("mimeType", mimeType)
+            }
+            var callbackRef: CallbackRef? = null
+            val terminal = atomic(false)
+            fun finish(payload: JSONObject?) {
+                if (!terminal.compareAndSet(false, true)) return
+                callbackRef?.let { removeCallback(it) }
+                if (continuation.isActive) continuation.resume(payload)
+            }
+            val result =
+                toNative(
+                    keepCallbackAlive = false,
+                    methodName = COMPRESS_THREAD_IMAGE,
+                    param = methodArgs.toString(),
+                    callback = { payload -> finish(payload) },
+                    syncCall = false
+                )
+            callbackRef = result.callbackRef
+            // A synchronous native rejection can complete before toNative returns.  Do not leave
+            // that callback registered in the renderer in that race.
+            if (terminal.value) callbackRef?.let { removeCallback(it) }
+            continuation.invokeOnCancellation {
+                if (terminal.compareAndSet(false, true)) {
+                    callNativeMethod(
+                        CANCEL_COMPRESS_THREAD_IMAGE,
+                        JSONObject().apply { put("requestId", cleanRequestId) },
+                        null
+                    )
+                }
+                callbackRef?.let { removeCallback(it) }
             }
         }
 
@@ -1241,6 +1416,8 @@ internal class BridgeModule : Module() {
         const val REMOTE_CONFIG = "loadRemoteConfig"
         const val SIGN_ALERT = "signAlert"
         const val CLOSE_KEYBOARD = "closeKeyboard"
+        const val COMPRESS_THREAD_IMAGE = "compressThreadImage"
+        const val CANCEL_COMPRESS_THREAD_IMAGE = "cancelCompressThreadImage"
         const val URL_ENCODE = "urlEncode"
         const val URL_DECODE = "urlDecode"
         const val SHOW_PHOTO_BROWSER = "showPhotoBrowser"
@@ -1327,3 +1504,37 @@ internal fun reduceAttachmentDownloadProgress(
         percent = incomingPercent ?: currentPercent?.takeIf { incoming.downloadedBytes > 0L }
     )
 }
+
+/**
+ * Serialized args for the `adaptiveNavigation` bridge call. Kept as a pure function so the
+ * JSON wire shape is unit-testable without a native runtime — in particular `refTag` must
+ * stay a JSON number: iOS `slockAdaptiveEditorWithRefTag:` binds only a finite non-negative
+ * NSNumber, so a stringly ref can never resolve an editor instance (task #18).
+ */
+internal fun buildSlockAdaptiveNavigationMethodArgs(
+    action: String,
+    requestId: String,
+    token: String? = null,
+    expectedEditorRefTag: Int? = null,
+    expectedEditorText: String? = null,
+): JSONObject {
+    val methodArgs =
+        JSONObject()
+            .put("action", action)
+            .put("requestId", requestId)
+    if (token != null) methodArgs.put("token", token)
+    if (expectedEditorRefTag != null || expectedEditorText != null) {
+        methodArgs.put(
+            "expectedEditor",
+            JSONObject().apply {
+                // Explicit branch: omit refTag entirely when absent — JSONObject.NULL is an
+                // org.json-ism not portable across the fork's JSON impls, and a null literal
+                // would break iOS's NSNumber check the same way a string did.
+                if (expectedEditorRefTag != null) put("refTag", expectedEditorRefTag)
+                put("text", expectedEditorText ?: "")
+            },
+        )
+    }
+    return methodArgs
+}
+

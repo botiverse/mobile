@@ -18,11 +18,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlin.time.TimeSource
 
 private const val HomeSavedPageSize = 100
 private const val HomeSearchPageSize = 30
 private const val SearchDebounceMillis = 250L
+private const val SearchPersonalizationPrewarmTimeoutMillis = 250L
 
 internal class SharedHomeSearchSavedStore(
     private val authStore: SlockAuthSessionStore,
@@ -55,6 +58,7 @@ internal class SharedHomeSearchSavedStore(
     private var personalizationRequestToken: Long = 0L
     private var senderFiltersOwner: SenderFiltersOwner? = null
     private var personalizationOwner: SearchPersonalizationOwner? = null
+    private var personalizationPrewarmedOwner: SearchPersonalizationOwner? = null
     private var readPredictionRevisions: Map<ChannelId, Long> = emptyMap()
     private var savedOwner: SavedStateOwner? = null
     private val pendingSavedUnsaves = mutableMapOf<MessageId, PendingSavedUnsave>()
@@ -84,6 +88,7 @@ internal class SharedHomeSearchSavedStore(
                     }
                 }
             }
+            prewarmSearchPersonalization()
         }
     }
 
@@ -268,6 +273,7 @@ internal class SharedHomeSearchSavedStore(
         personalizationRequestToken++
         senderFiltersOwner = null
         personalizationOwner = null
+        personalizationPrewarmedOwner = null
         pendingSavedUnsaves.clear()
         clearSavedOrderRanks()
         savedOwner = null
@@ -611,28 +617,65 @@ internal class SharedHomeSearchSavedStore(
             )
     }
 
+    /**
+     * Loads persisted search personalization synchronously so the first visible
+     * Search frame already projects history and frequent rows instead of
+     * flashing an empty state until the async refresh lands. Both reads are
+     * local (MMKV-backed on Android) and fast; the async refresh triggered by
+     * [SharedHomeSearchSavedIntent.OpenSearch] still reconciles afterwards and
+     * must not clear the prewarmed rows.
+     */
+    private fun prewarmSearchPersonalization() {
+        val repository = personalizationRepository ?: return
+        runCatching {
+            runBlocking {
+                val owner = currentSearchPersonalizationOwner() ?: return@runBlocking
+                val snapshot =
+                    withTimeout(SearchPersonalizationPrewarmTimeoutMillis) {
+                        repository.read(owner, nowMillis())
+                    }
+                personalizationOwner = owner
+                personalizationPrewarmedOwner = owner
+                applySearchPersonalizationSnapshot(snapshot)
+            }
+        }
+    }
+
     private fun refreshSearchPersonalization() {
         val repository = personalizationRepository ?: return
         personalizationJob?.cancel()
         val requestToken = ++personalizationRequestToken
-        personalizationOwner = null
-        _state.value =
-            _state.value.copy(
-                search =
-                    _state.value.search.copy(
-                        personalizationLoaded = false,
-                        history = emptyList(),
-                        frequentEntityRanks = emptyMap(),
-                    )
-            )
+        if (personalizationPrewarmedOwner == null) {
+            // No synchronously restored rows yet: keep the historical behavior of
+            // showing a clean loading state until the async read completes.
+            personalizationOwner = null
+            _state.value =
+                _state.value.copy(
+                    search =
+                        _state.value.search.copy(
+                            personalizationLoaded = false,
+                            history = emptyList(),
+                            frequentEntityRanks = emptyMap(),
+                        )
+                )
+        }
         personalizationJob =
             scope.launch {
                 val owner = currentSearchPersonalizationOwner()
                 if (owner == null) {
                     if (requestToken == personalizationRequestToken) {
+                        // Session is gone: drop any prewarmed rows so a signed-out
+                        // surface never keeps the previous account's history.
+                        personalizationOwner = null
+                        personalizationPrewarmedOwner = null
                         _state.value =
                             _state.value.copy(
-                                search = _state.value.search.copy(personalizationLoaded = true)
+                                search =
+                                    _state.value.search.copy(
+                                        personalizationLoaded = true,
+                                        history = emptyList(),
+                                        frequentEntityRanks = emptyMap(),
+                                    )
                             )
                     }
                     return@launch
@@ -695,6 +738,7 @@ internal class SharedHomeSearchSavedStore(
         if (currentOwner == owner) return true
         personalizationRequestToken++
         personalizationOwner = null
+        personalizationPrewarmedOwner = null
         _state.value =
             _state.value.copy(
                 search =

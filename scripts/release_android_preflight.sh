@@ -60,7 +60,7 @@ version_code() {
   [[ "${major}" =~ ^[0-9]+$ && "${minor}" =~ ^[0-9]+$ && "${patch}" =~ ^[0-9]+$ ]] ||
     die "--version must be x.y.z"
   [[ "${VERSION_BUILD}" =~ ^[0-9]+$ ]] || die "--build must be a non-negative integer"
-  printf '%s\n' "$((major * 1000000 + minor * 10000 + patch * 100 + VERSION_BUILD))"
+  scripts/ci/version_code.sh "${major}" "${minor}" "${patch}" "${VERSION_BUILD}"
 }
 
 json_field() {
@@ -169,25 +169,7 @@ HANDS_DEPENDENCY_SHA256="$(json_field "${HANDS_DEPENDENCY_METADATA}" artifact_sh
 [ -n "${HANDS_DEPENDENCY_VERSION}" ] || die "Hands dependency has no version"
 [ -n "${HANDS_DEPENDENCY_SHA256}" ] || die "Hands dependency has no verified artifact digest"
 
-WORKFLOW_JSON="$(mktemp)"
-trap 'rm -f "${HANDS_DEPENDENCY_METADATA}" "${WORKFLOW_JSON}" "${HANDS_RESPONSE:-}"' EXIT
-gh run list --repo botiverse/mobile --branch "${RELEASE_BRANCH}" --limit 100 \
-  --json name,headSha,status,conclusion,url >"${WORKFLOW_JSON}"
-python3 - "${WORKFLOW_JSON}" "${HEAD_SHA}" <<'PY'
-import json
-import sys
-
-path, head = sys.argv[1:]
-with open(path, encoding="utf-8") as source:
-    runs = json.load(source)
-required = ("Commit Sign-off",)
-missing = []
-for name in required:
-    if not any(run.get("name") == name and run.get("headSha") == head and run.get("conclusion") == "success" for run in runs):
-        missing.append(name)
-if missing:
-    raise SystemExit("missing successful required workflow(s) for release head: " + ", ".join(missing))
-PY
+trap 'rm -f "${HANDS_DEPENDENCY_METADATA}" "${HANDS_RESPONSE:-}"' EXIT
 
 for pr in "${REQUIRED_PRS[@]}"; do
   [[ "${pr}" =~ ^[0-9]+$ ]] || die "invalid PR number: ${pr}"
@@ -254,7 +236,7 @@ if [ -n "${REPORT_PATH}" ]; then
     printf -- '- OHOS Hands dependency: `%s@%s` via `%s`; source `%s`; verified artifact SHA-256 `%s`\n' \
       "${HANDS_DEPENDENCY_NAME}" "${HANDS_DEPENDENCY_VERSION}" "${HANDS_DEPENDENCY_MODE}" \
       "${HANDS_DEPENDENCY_SOURCE}" "${HANDS_DEPENDENCY_SHA256}"
-    printf -- '- Required CI: `Commit Sign-off` succeeded for this head; Android Release is the candidate build/test gate\n'
+    printf -- '- Required CI: Android Release is the candidate build/test gate\n'
     if [ "${#REQUIRED_PRS[@]}" -gt 0 ]; then
       echo "- Included PRs: $(printf '#%s ' "${REQUIRED_PRS[@]}")"
     else

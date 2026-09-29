@@ -143,14 +143,26 @@ class ThreadSendEchoAbsorptionTest {
     }
 
     @Test
-    fun failedShadowIsRetainedForRetry() {
-        // A failed local send must stay visible/retryable even when a canonical
-        // message with identical content arrives.
+    fun failedShadowWithExactRandomIdIsConsumedByCanonicalEcho() {
+        // A definite local failure is retryable only until canonical proof for
+        // the same idempotency key arrives.  The canonical row then wins and
+        // the stale failed shadow must not remain beside it.
         val failed = pendingShadow(deliveryState = ThreadMessageDeliveryFailed)
 
         val absorbed = listOf(failed).absorbingCanonicalSendEchoes(listOf(canonicalEcho()))
 
-        assertEquals(listOf(failed), absorbed)
+        assertEquals(emptyList(), absorbed)
+    }
+
+    @Test
+    fun failedShadowWithoutRandomIdIsRetainedForRetry() {
+        val failed = pendingShadow(deliveryState = ThreadMessageDeliveryFailed)
+        val legacyEcho = canonicalEcho(randomId = null)
+
+        assertEquals(
+            listOf(failed),
+            listOf(failed).absorbingCanonicalSendEchoes(listOf(legacyEcho))
+        )
     }
 
     @Test

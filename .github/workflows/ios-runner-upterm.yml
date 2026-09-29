@@ -1,0 +1,201 @@
+name: One-time iOS runner Xcode inspection
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type task15-readonly-upterm"
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: ios-upterm-mac-mini-1
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Require the authorized one-time dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Reject any dispatch outside the reviewed window
+        env:
+          DISPATCH_REF: ${{ github.ref }}
+          DISPATCH_ACTOR: ${{ github.actor }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          [ "$DISPATCH_REF" = "refs/heads/main" ] || {
+            echo '::error::The inspection must be dispatched from main'
+            exit 1
+          }
+          [ "$DISPATCH_ACTOR" = "yezizp2012" ] || {
+            echo '::error::Only the reviewed operator may dispatch this one-time workflow'
+            exit 1
+          }
+          [ "$CONFIRM" = "task15-readonly-upterm" ] || {
+            echo '::error::The one-time confirmation phrase does not match'
+            exit 1
+          }
+          deadline=1790344800 # 2026-09-25T14:00:00Z
+          now=$(date -u +%s)
+          [ "$now" -lt "$deadline" ] || {
+            echo '::error::The one-time inspection window has expired'
+            exit 1
+          }
+
+  inspect:
+    name: Read-only Xcode inspection on mac-mini-1
+    needs: preflight
+    if: >-
+      ${{ github.ref == 'refs/heads/main' &&
+          github.actor == 'yezizp2012' &&
+          inputs.confirm == 'task15-readonly-upterm' }}
+    runs-on:
+      group: jacky-macmini
+      labels: [self-hosted, macOS, ARM64, mac-mini-1]
+    timeout-minutes: 15
+    env:
+      UPTERM_DIR_NAME: task15-upterm-${{ github.run_id }}
+      UPTERM_NAME: task15-xcode-${{ github.run_id }}
+      UPTERM_RUNTIME: /tmp/task15-upterm-runtime-${{ github.run_id }}
+    steps:
+      - name: Install a checksum-pinned ephemeral Upterm binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          UPTERM_ROOT="$RUNNER_TEMP/$UPTERM_DIR_NAME"
+          export UPTERM_ROOT
+          case "$UPTERM_ROOT" in
+            "$RUNNER_TEMP"/"$UPTERM_DIR_NAME") ;;
+            *) echo '::error::Unexpected Upterm root' >&2; exit 1 ;;
+          esac
+          case "$UPTERM_RUNTIME" in
+            /tmp/task15-upterm-runtime-"$GITHUB_RUN_ID") ;;
+            *) echo '::error::Unexpected Upterm runtime root' >&2; exit 1 ;;
+          esac
+          mkdir -p "$UPTERM_ROOT/home" "$UPTERM_ROOT/state" "$UPTERM_RUNTIME"
+          chmod 700 "$UPTERM_RUNTIME"
+          curl --proto '=https' --tlsv1.2 -fsSL \
+            -o "$UPTERM_ROOT/upterm.tar.gz" \
+            https://github.com/owenthereal/upterm/releases/download/v0.31.0/upterm_darwin_arm64.tar.gz
+          printf '%s  %s\n' \
+            ce20d99c1ab41ba20ee3241db60773c766514b90e1a71bae11e279791516a85b \
+            "$UPTERM_ROOT/upterm.tar.gz" | shasum -a 256 -c -
+          tar -xzf "$UPTERM_ROOT/upterm.tar.gz" -C "$UPTERM_ROOT" upterm
+          chmod 700 "$UPTERM_ROOT/upterm"
+          ssh-keygen -q -t ed25519 -N '' -f "$UPTERM_ROOT/host_key"
+          cat > "$UPTERM_ROOT/known_hosts" <<'KNOWN_HOSTS'
+          @cert-authority uptermd.upterm.dev ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICiecex8Dq718eSe1CCLgLvDmI7AagvCtax7brPFWkh4
+          KNOWN_HOSTS
+          cat > "$UPTERM_ROOT/diagnose_xcode.sh" <<'DIAGNOSE'
+          #!/bin/bash
+          set -u
+          for iteration in $(seq 1 48); do
+            echo "=== task15 Xcode inspection ${iteration}/48 ==="
+            /usr/bin/date -u '+%Y-%m-%dT%H:%M:%SZ'
+            /usr/bin/uname -m
+            /usr/bin/sw_vers -productVersion
+            echo 'xcode-select:'
+            /usr/bin/xcode-select -p 2>&1 || true
+            found=0
+            for app in /Applications/Xcode*.app; do
+              [ -e "$app" ] || continue
+              found=$((found + 1))
+              physical=$(cd "$app" 2>/dev/null && /bin/pwd -P) || physical='<unreadable>'
+              echo "candidate=$app physical=$physical"
+              binary="$app/Contents/Developer/usr/bin/xcodebuild"
+              if [ -x "$binary" ]; then
+                DEVELOPER_DIR="$app/Contents/Developer" "$binary" -version 2>&1 || true
+              else
+                echo 'xcodebuild=missing-or-not-executable'
+              fi
+            done
+            echo "candidate_count=$found"
+            /bin/sleep 15
+          done
+          DIAGNOSE
+          chmod 700 "$UPTERM_ROOT/diagnose_xcode.sh"
+
+      - name: Start the read-only Upterm session
+        id: upterm
+        shell: bash
+        run: |
+          set -euo pipefail
+          UPTERM_ROOT="$RUNNER_TEMP/$UPTERM_DIR_NAME"
+          export UPTERM_ROOT
+          export HOME="$UPTERM_ROOT/home"
+          export XDG_CONFIG_HOME="$UPTERM_ROOT/home/.config"
+          export XDG_STATE_HOME="$UPTERM_ROOT/state"
+          export XDG_RUNTIME_DIR="$UPTERM_RUNTIME"
+          "$UPTERM_ROOT/upterm" host \
+            --detach \
+            --accept \
+            --read-only \
+            --no-sftp \
+            --join-timeout 5m \
+            --server ssh://uptermd.upterm.dev:22 \
+            --known-hosts "$UPTERM_ROOT/known_hosts" \
+            --private-key "$UPTERM_ROOT/host_key" \
+            --authorized-user github:yezizp2012 \
+            --name "$UPTERM_NAME" \
+            --output json \
+            -- "$UPTERM_ROOT/diagnose_xcode.sh" > "$UPTERM_ROOT/session.json"
+
+      - name: Publish the actor-key-protected connection receipt
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: task15-upterm-connection-${{ github.run_id }}
+          path: ${{ runner.temp }}/${{ env.UPTERM_DIR_NAME }}/session.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Wait for the bounded diagnostic session
+        shell: bash
+        run: |
+          set -euo pipefail
+          UPTERM_ROOT="$RUNNER_TEMP/$UPTERM_DIR_NAME"
+          export UPTERM_ROOT
+          export HOME="$UPTERM_ROOT/home"
+          export XDG_CONFIG_HOME="$UPTERM_ROOT/home/.config"
+          export XDG_STATE_HOME="$UPTERM_ROOT/state"
+          export XDG_RUNTIME_DIR="$UPTERM_RUNTIME"
+          "$UPTERM_ROOT/upterm" session wait "$UPTERM_NAME"
+
+      - name: Stop the session and remove ephemeral material
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          UPTERM_ROOT="$RUNNER_TEMP/$UPTERM_DIR_NAME"
+          export UPTERM_ROOT
+          case "$UPTERM_ROOT" in
+            "$RUNNER_TEMP"/"$UPTERM_DIR_NAME") ;;
+            *) echo '::error::Unexpected Upterm root' >&2; exit 1 ;;
+          esac
+          case "$UPTERM_RUNTIME" in
+            /tmp/task15-upterm-runtime-"$GITHUB_RUN_ID") ;;
+            *) echo '::error::Unexpected Upterm runtime root' >&2; exit 1 ;;
+          esac
+          stop_status=0
+          if [ -x "$UPTERM_ROOT/upterm" ]; then
+            if HOME="$UPTERM_ROOT/home" \
+                XDG_CONFIG_HOME="$UPTERM_ROOT/home/.config" \
+                XDG_STATE_HOME="$UPTERM_ROOT/state" \
+                XDG_RUNTIME_DIR="$UPTERM_RUNTIME" \
+                "$UPTERM_ROOT/upterm" session stop "$UPTERM_NAME"; then
+              stop_status=0
+            else
+              stop_status=$?
+            fi
+          fi
+          if [ "$stop_status" -ne 0 ]; then
+            echo "::error::Upterm stop failed with status $stop_status; preserving diagnostics"
+            echo "root=$UPTERM_ROOT"
+            echo "runtime=$UPTERM_RUNTIME"
+            exit "$stop_status"
+          fi
+          rm -rf -- "$UPTERM_ROOT" "$UPTERM_RUNTIME"

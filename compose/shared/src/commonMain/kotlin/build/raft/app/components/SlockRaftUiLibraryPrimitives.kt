@@ -16,6 +16,7 @@ import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -33,6 +34,7 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.alpha
+import com.tencent.kuikly.compose.ui.semantics.Role
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.RectangleShape
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
@@ -276,6 +278,41 @@ internal fun SlockRaftUiBanner(
         }
         action?.invoke()
     }
+}
+
+@Composable
+internal fun SlockRaftUiSuccessBanner(
+    description: String,
+    actionLabel: String,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier,
+    size: SlockRaftUiBannerSize = SlockRaftUiBannerSize.Small
+) {
+    SlockRaftUiBanner(
+        status = SlockRaftUiBannerStatus.Success,
+        description = description,
+        modifier = modifier,
+        size = size,
+        action = {
+            Row(
+                modifier = Modifier.clickable(role = Role.Button, onClick = onAction),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = actionLabel,
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1
+                )
+                SlockLucideIcon(
+                    SlockLucideIconName.ChevronRight,
+                    modifier = Modifier.size(16.dp),
+                    color = SlockColor.TextBlackArgb
+                )
+            }
+        }
+    )
 }
 
 @Composable

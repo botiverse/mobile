@@ -4,11 +4,16 @@ import build.raft.app.network.SharedBinaryConditionalDownloadResult
 import build.raft.app.network.SharedBinaryConditionalHttpException
 import build.raft.app.network.SharedBinaryConditionalValidators
 import build.raft.app.network.SharedBinaryDownloader
+import build.raft.app.slockAvatarDiagnosticsHash
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -19,6 +24,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.time.TimeSource
 
 private const val SLOCK_AVATAR_MOUNTED_MODEL_PREFIX = "slock-avatar-render-v1:"
 private val SlockAvatarOpaqueKeyPattern = Regex("[0-9a-f]{64}")
@@ -249,10 +255,14 @@ internal class SlockAvatarMountedBinding(
     private val nativeProvider: () -> SlockAvatarMountedNativeProvider =
         SlockAvatarMountedNativeProviderRegistry::current,
     private val downloader: SlockAvatarConditionalDownloader = DefaultSlockAvatarConditionalDownloader,
-    private val session: SlockAvatarMountedSession = SlockAvatarMountedSession()
+    private val diagnostics: (String) -> Unit = {},
+    private val session: SlockAvatarMountedSession = SlockAvatarMountedSession(),
+    private val flightScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 ) {
     private val handlesLock = SynchronizedObject()
     private val handles = mutableMapOf<Long, SlockAvatarMountedHandle>()
+    private val lastKnownOwners = mutableMapOf<String?, SlockAvatarCacheOwner>()
+    private val prewarmedOwners = mutableSetOf<SlockAvatarCacheOwner>()
     private val flightsMutex = Mutex()
     private val runningFlights = mutableMapOf<String, CompletableDeferred<Unit>>()
 
@@ -263,13 +273,39 @@ internal class SlockAvatarMountedBinding(
     ): SlockAvatarMountedHandle {
         val normalizedUrl = remoteUrl.trim()
         val owner = runCatchingPreservingCancellation { currentOwner(serverId) }.getOrNull()
+        if (owner != null) {
+            synchronized(handlesLock) {
+                lastKnownOwners[serverId] = owner
+            }
+        }
         val key = owner?.let { runCatching { SlockAvatarCacheKey(it, subject, slockAvatarContentIdentity(normalizedUrl)) }.getOrNull() }
         val provider = nativeProvider()
-        if (key == null) return legacyHandle(normalizedUrl)
+        if (key == null) {
+            diagnostics(
+                "avatar_mount result=legacy reason=${if (owner == null) "owner_null" else "key_null"} " +
+                    "serverHash=${serverId.slockAvatarDiagnosticsHash()} " +
+                    "subjectHash=${subject.diagnosticsHash()}"
+            )
+            return legacyHandle(normalizedUrl)
+        }
         val slot = key.nativeSlot()
         val inspection = runCatchingPreservingCancellation { provider.inspect(slot) }.getOrNull()
-            ?: return legacyHandle(normalizedUrl)
-        if (!inspection.supported) return legacyHandle(normalizedUrl)
+            ?: run {
+                diagnostics(
+                    "avatar_mount result=legacy reason=inspect_fail " +
+                        "serverHash=${serverId.slockAvatarDiagnosticsHash()} " +
+                        "subjectHash=${subject.diagnosticsHash()}"
+                )
+                return legacyHandle(normalizedUrl)
+            }
+        if (!inspection.supported) {
+            diagnostics(
+                "avatar_mount result=legacy reason=inspect_unsupported " +
+                    "serverHash=${serverId.slockAvatarDiagnosticsHash()} " +
+                    "subjectHash=${subject.diagnosticsHash()}"
+            )
+            return legacyHandle(normalizedUrl)
+        }
         session.snapshotFor(key.owner, key.subject)?.key?.takeIf { it != key }?.let { displaced ->
             publish(session.retireSubject(key.owner, key.subject))
             runCatchingPreservingCancellation { provider.retireSubject(displaced.nativeSlot()) }
@@ -281,6 +317,11 @@ internal class SlockAvatarMountedBinding(
                 coordinator.prepareRead(key, inspection.bytesAvailable, inspection.bytesDecodable)
             }.getOrElse {
                 session.dispose(token)
+                diagnostics(
+                    "avatar_mount result=legacy reason=prepare_fail " +
+                        "serverHash=${serverId.slockAvatarDiagnosticsHash()} " +
+                        "subjectHash=${subject.diagnosticsHash()}"
+                )
                 return legacyHandle(normalizedUrl)
             }
         session.seedPrepared(
@@ -314,6 +355,84 @@ internal class SlockAvatarMountedBinding(
         return handle
     }
 
+    /**
+     * task #343: cold-start prewarm. On a fresh process the mounted session is empty, so
+     * [peekInitialManagedModel] misses and the first frame cannot paint durable avatars. Once the
+     * owner for [serverId] resolves, seed the session from the owner's exact committed rows whose
+     * native bytes are present and decodable, so first-frame peeks hit.
+     *
+     * Safety: runs only after the owner resolves (retire/epoch chains stay authoritative); seeds via
+     * [SlockAvatarMountedSession.seedIdle], which only fills slots untouched in this process, so a
+     * live mount, flight, or in-memory commit always wins; rows suppressed by an unexpired failure or
+     * without an exact commit identity are excluded by the store; validators are carried only when
+     * the native bytes can back a 304 (task #289).
+     *
+     * @return the number of slots seeded.
+     */
+    suspend fun prewarmOwner(serverId: String?, limit: Long = PrewarmOwnerLimit): Int {
+        val provider = nativeProvider()
+        // Before marking the owner: a platform provider registered later must still get a prewarm.
+        if (provider === UnsupportedSlockAvatarMountedNativeProvider) return 0
+        val owner = runCatchingPreservingCancellation { currentOwner(serverId) }.getOrNull() ?: return 0
+        val firstForOwner =
+            synchronized(handlesLock) {
+                // Same keying as mount: only the requested serverId. Writing the null key here
+                // would pin it to the first owner across server switches.
+                lastKnownOwners[serverId] = owner
+                prewarmedOwners.add(owner)
+            }
+        // Auth metadata events fire often; one prewarm per owner per process is enough. Retirement
+        // below re-arms it, since that clears the owner's session slots.
+        if (!firstForOwner) return 0
+        val rows =
+            runCatchingPreservingCancellation { coordinator.committedForOwner(owner, limit) }
+                .getOrElse {
+                    diagnostics("avatar_prewarm result=read_fail serverHash=${serverId.slockAvatarDiagnosticsHash()}")
+                    return 0
+                }
+        var seeded = 0
+        for (row in rows) {
+            val key = row.key
+            if (key.owner != owner || !row.hasExactCommitIdentity) continue
+            val identity = row.commitIdentity ?: continue
+            // Cheap pre-check; seedIdle re-checks atomically, so a live mount always wins.
+            if (session.snapshotFor(owner, key.subject) != null) continue
+            val inspection =
+                runCatchingPreservingCancellation { provider.inspect(key.nativeSlot()) }.getOrNull() ?: continue
+            if (!inspection.supported || !inspection.bytesAvailable || !inspection.bytesDecodable) continue
+            val validators =
+                runCatching { SlockAvatarValidators(eTag = row.eTag, lastModified = row.lastModified) }.getOrNull()
+            if (session.seedIdle(key, identity, validators, row.modelRevision)) seeded += 1
+        }
+        diagnostics(
+            "avatar_prewarm result=ok rows=${rows.size} seeded=$seeded " +
+                "serverHash=${serverId.slockAvatarDiagnosticsHash()}"
+        )
+        return seeded
+    }
+
+    fun peekInitialManagedModel(
+        subject: SlockAvatarCacheSubject,
+        remoteUrl: String,
+        serverId: String? = null
+    ): String? {
+        val normalizedUrl = remoteUrl.trim()
+        val content = runCatching { slockAvatarContentIdentity(normalizedUrl) }.getOrNull() ?: return null
+        val owner = synchronized(handlesLock) { lastKnownOwners[serverId] }
+        if (owner != null) {
+            val key = SlockAvatarCacheKey(owner, subject, content)
+            val snapshot = session.snapshotFor(owner, subject)
+            if (snapshot?.key == key && snapshot.commitIdentity != null) {
+                return snapshot.managedImageModel()
+            }
+        }
+        val fallbackSnapshot = session.snapshotForSubject(subject, content)
+        if (fallbackSnapshot?.commitIdentity != null) {
+            return fallbackSnapshot.managedImageModel()
+        }
+        return null
+    }
+
     fun dispose(handle: SlockAvatarMountedHandle): Boolean {
         val token = handle.token ?: return false
         synchronized(handlesLock) { handles.remove(token.mountId) }
@@ -338,15 +457,34 @@ internal class SlockAvatarMountedBinding(
                     continue
                 }
             }
+            // The transport runs in flightScope, not this coroutine: composable churn cancels the
+            // awaiting effect while the download and its session/native commit keep running, so a
+            // cancelled refresh can no longer strand a live flight or leave durable failure rows
+            // for a request that actually succeeded.
+            val transport =
+                flightScope.async {
+                    try {
+                        refreshOnce(handle.remoteUrl, flight)
+                    } catch (cancellation: CancellationException) {
+                        // A cancelled transport never resolved its generation: retire the flight
+                        // so a later refresh starts a new one instead of joining a dead generation.
+                        // No durable failure is written; a cancelled download is not evidence of a
+                        // transport problem.
+                        session.abandonFlight(flight)
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        resolveTemporary(flight)
+                    }
+                }
             try {
-                refreshOnce(handle.remoteUrl, flight)
+                transport.await()
                 deferred.complete(Unit)
                 return
             } catch (cancellation: CancellationException) {
-                deferred.completeExceptionally(cancellation)
-                throw cancellation
-            } catch (_: Throwable) {
-                resolveTemporary(flight)
+                // The awaiting effect was cancelled, or the transport cancelled itself. Wait for
+                // the detached transport to settle (non-cancellable: this coroutine may already be
+                // cancelled) before handing the flight slot back.
+                withContext(NonCancellable) { runCatching { transport.await() } }
                 deferred.complete(Unit)
                 return
             } finally {
@@ -366,6 +504,7 @@ internal class SlockAvatarMountedBinding(
     }
 
     suspend fun retireOwner(owner: SlockAvatarCacheOwner): Boolean {
+        synchronized(handlesLock) { prewarmedOwners.remove(owner) }
         publish(session.retireOwner(owner))
         val provider = nativeProvider()
         if (provider === UnsupportedSlockAvatarMountedNativeProvider) return true
@@ -374,6 +513,7 @@ internal class SlockAvatarMountedBinding(
     }
 
     suspend fun clearAll(): Boolean {
+        synchronized(handlesLock) { prewarmedOwners.clear() }
         publish(session.clearAll())
         val provider = nativeProvider()
         if (provider === UnsupportedSlockAvatarMountedNativeProvider) return true
@@ -394,6 +534,7 @@ internal class SlockAvatarMountedBinding(
             (runCatching { provider.beginStage(fence) }.getOrNull() as? SlockAvatarNativeStageOpen.Opened)?.sink
                 ?: return resolveTemporary(flight)
         var writeFailed = false
+        val startedAt = TimeSource.Monotonic.markNow()
         val response =
             try {
                 downloader.download(
@@ -418,6 +559,12 @@ internal class SlockAvatarMountedBinding(
             } catch (failure: Throwable) {
                 runCatching { sink.abort() }
                 if (failure is CancellationException) throw failure
+                diagnostics(
+                    "avatar_refresh_failure ${failure.diagnosticsKind(writeFailed)} " +
+                        "ms=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                        "serverHash=${flight.key.owner.serverId.slockAvatarDiagnosticsHash()} " +
+                        "subjectHash=${flight.key.subject.diagnosticsHash()}"
+                )
                 when {
                     failure === SlockAvatarStaleFlightException -> Unit
                     writeFailed || failure === SlockAvatarStageWriteException -> {
@@ -668,6 +815,21 @@ internal class SlockAvatarMountedBinding(
         }
 }
 
+private fun SlockAvatarCacheSubject.diagnosticsHash(): String =
+    "$subjectKind:$subjectId".slockAvatarDiagnosticsHash()
+
+/**
+ * Bucketed failure kind for avatar refresh diagnostics. Never emits raw error text; the HTTP
+ * status is the only transport detail surfaced (Argus: failure=timeout|http_<code>|other).
+ */
+private fun Throwable.diagnosticsKind(writeFailed: Boolean): String =
+    when {
+        this === SlockAvatarStaleFlightException -> "failure=stale_flight"
+        writeFailed || this === SlockAvatarStageWriteException -> "failure=stage_write"
+        this is SharedBinaryConditionalHttpException -> "failure=http_$statusCode"
+        else -> "failure=transport"
+    }
+
 private object SlockAvatarStaleFlightException : IllegalStateException("stale avatar flight")
 private object SlockAvatarStageWriteException : IllegalStateException("avatar stage write failed")
 
@@ -695,7 +857,7 @@ private fun nextMountedAvatarModelRevision(current: Long): Long {
 }
 
 @OptIn(ExperimentalEncodingApi::class)
-private fun SlockAvatarMountedSnapshot.managedImageModel(): String? {
+internal fun SlockAvatarMountedSnapshot.managedImageModel(): String? {
     val identity = commitIdentity ?: return null
     val json =
         JSONObject()
@@ -737,3 +899,6 @@ fun parseSlockAvatarMountedRenderModel(model: String): SlockAvatarMountedRenderD
         )
     }.getOrNull()
 }
+
+/** task #343: bounds cold-start prewarm (one native inspect per row). */
+internal const val PrewarmOwnerLimit: Long = 300L

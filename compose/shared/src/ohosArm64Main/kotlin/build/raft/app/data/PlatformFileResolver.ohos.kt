@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import com.tencent.tmm.knoi.annotation.ServiceConsumer
 import com.tencent.tmm.knoi.service.KNOI
+import kotlinx.coroutines.CancellationException
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
@@ -81,9 +82,16 @@ private class SlockOhosKnoiPlatformFileResolver : SlockPlatformFileResolver {
     private fun callReader(
         block: (SlockOhosPlatformFileReader) -> Map<String, Any?>
     ): Map<String, Any?>? =
-        runCatching {
+        try {
             block(KNOI.get<SlockOhosPlatformFileReader>(SlockOhosPlatformFileReaderService))
-        }.getOrNull()
+        } catch (cancellation: CancellationException) {
+            // A canceled stat/read belongs to the caller's coroutine lifecycle.  Do not turn it
+            // into an "unavailable" result, otherwise the direct-upload coordinator cannot
+            // propagate cancellation into its NonCancellable compensation path.
+            throw cancellation
+        } catch (_: Throwable) {
+            null
+        }
 
     private fun unavailable(): SlockPlatformFileStatResult =
         SlockPlatformFileStatResult(

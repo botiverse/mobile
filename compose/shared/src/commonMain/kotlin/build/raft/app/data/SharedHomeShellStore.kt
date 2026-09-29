@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.SlockSlackNavTabs
 import build.raft.app.model.Message
 import build.raft.app.model.MessageNew
 import build.raft.app.model.PerReceiverReadStateChanged
@@ -20,11 +21,15 @@ data class SharedHomeShellState(
     val activity: SharedActivityState = SharedActivityState(),
     val searchSaved: SharedHomeSearchSavedState = SharedHomeSearchSavedState(),
     val destination: String? = null,
+    val selectedTab: String? = null,
     val selectedConversationId: String? = null,
     val primarySurfaceVisible: Boolean = false
 ) {
     val notifications: List<SharedHomeNotification>
         get() = home.notifications
+
+    val isActivityVisible: Boolean
+        get() = destination == SharedHomeShellDestinationActivity || selectedTab == SlockSlackNavTabs.Activity
 }
 
 sealed interface SharedHomeShellIntent {
@@ -35,6 +40,7 @@ sealed interface SharedHomeShellIntent {
     data object OpenSaved : SharedHomeShellIntent
     data object OpenSearch : SharedHomeShellIntent
     data object CloseSecondaryDestination : SharedHomeShellIntent
+    data class SetSelectedTab(val tab: String) : SharedHomeShellIntent
     data class SetSelectedConversation(val conversationId: String?) : SharedHomeShellIntent
     data class SelectTopAction(val action: SharedHomeTopAction) : SharedHomeShellIntent
     data class DismissNotification(val id: String) : SharedHomeShellIntent
@@ -141,8 +147,18 @@ class SharedHomeShellStore(
             SharedHomeShellIntent.OpenSearch -> openDestination(SharedHomeShellDestinationSearch)
             SharedHomeShellIntent.CloseSecondaryDestination ->
                 _state.value = _state.value.copy(destination = null)
-            is SharedHomeShellIntent.SetSelectedConversation ->
+            is SharedHomeShellIntent.SetSelectedTab -> setSelectedTab(intent.tab)
+            is SharedHomeShellIntent.SetSelectedConversation -> {
                 _state.value = _state.value.copy(selectedConversationId = intent.conversationId)
+                // task #299: the home store keeps its own selectedConversationId
+                // which the realtime merge uses to suppress unread increments for
+                // the "active" conversation. Leaving a conversation only clears
+                // the shell field, so forward the clear or the last opened
+                // conversation would never accrue unread again.
+                if (intent.conversationId == null) {
+                    dispatchHome(SharedHomeIntent.ClearSelectedConversation)
+                }
+            }
             is SharedHomeShellIntent.SelectTopAction ->
                 dispatchHome(SharedHomeIntent.SelectTopAction(intent.action))
             is SharedHomeShellIntent.DismissNotification ->
@@ -161,6 +177,7 @@ class SharedHomeShellStore(
         _state.value =
             _state.value.copy(
                 destination = null,
+                selectedTab = null,
                 selectedConversationId = null,
                 primarySurfaceVisible = false
             )
@@ -169,7 +186,7 @@ class SharedHomeShellStore(
     suspend fun acceptRealtimeEvent(serverId: String, event: RealtimeEvent) {
         acceptHome(SharedHomeIntent.ApplyRealtimeEvent(serverId, event))
         val current = _state.value
-        if (current.destination == SharedHomeShellDestinationActivity) {
+        if (current.isActivityVisible) {
             acceptActivityRealtime(
                 SharedActivityIntent.ApplyRealtimeEvent(
                     event = event,
@@ -194,6 +211,14 @@ class SharedHomeShellStore(
         jobs.forEach(Job::cancel)
     }
 
+    private fun setSelectedTab(tab: String) {
+        val previousTab = _state.value.selectedTab
+        _state.value = _state.value.copy(selectedTab = tab)
+        if (tab == SlockSlackNavTabs.Activity && previousTab != SlockSlackNavTabs.Activity) {
+            dispatchActivity(SharedActivityIntent.Refresh)
+        }
+    }
+
     private fun setSurfaceVisible(visible: Boolean) {
         _state.value = _state.value.copy(primarySurfaceVisible = visible)
         diagnosticsLogger("home_shell_forward_home intent=SetSurfaceVisible:$visible source=surface_visible")
@@ -201,11 +226,15 @@ class SharedHomeShellStore(
     }
 
     private fun openDestination(destination: String) {
+        val hadSelection = _state.value.selectedConversationId != null
         _state.value =
             _state.value.copy(
                 destination = destination,
                 selectedConversationId = null
             )
+        if (hadSelection) {
+            dispatchHome(SharedHomeIntent.ClearSelectedConversation)
+        }
         when (destination) {
             SharedHomeShellDestinationActivity -> dispatchActivity(SharedActivityIntent.Refresh)
             SharedHomeShellDestinationSaved -> dispatchSearchSaved(SharedHomeSearchSavedIntent.OpenSaved)
@@ -214,21 +243,28 @@ class SharedHomeShellStore(
     }
 
     private fun refreshVisibleHomeDestination() {
-        when (_state.value.destination) {
-            null -> {
-                dispatchHome(SharedHomeIntent.ForegroundRefresh)
-                refreshSavedSummary()
-            }
+        when (val destination = _state.value.destination) {
             SharedHomeShellDestinationActivity -> dispatchActivity(SharedActivityIntent.Refresh)
             SharedHomeShellDestinationSaved -> dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSaved)
             SharedHomeShellDestinationSearch -> dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSearch)
+            null ->
+                if (_state.value.selectedTab == SlockSlackNavTabs.Activity) {
+                    dispatchActivity(SharedActivityIntent.Refresh)
+                } else {
+                    dispatchHome(SharedHomeIntent.ForegroundRefresh)
+                    refreshSavedSummary()
+                }
+            else -> {
+                dispatchHome(SharedHomeIntent.ForegroundRefresh)
+                refreshSavedSummary()
+            }
         }
     }
 
     private fun applyRealtimeEvent(serverId: String, event: RealtimeEvent) {
         dispatchHome(SharedHomeIntent.ApplyRealtimeEvent(serverId, event))
         val current = _state.value
-        if (current.destination == SharedHomeShellDestinationActivity) {
+        if (current.isActivityVisible) {
             dispatchActivity(
                 SharedActivityIntent.ApplyRealtimeEvent(
                     event = event,
@@ -280,6 +316,7 @@ private fun SharedHomeShellIntent.shouldLogHomeShellDispatch(): Boolean =
         SharedHomeShellIntent.OpenSaved,
         SharedHomeShellIntent.OpenSearch,
         SharedHomeShellIntent.CloseSecondaryDestination,
+        is SharedHomeShellIntent.SetSelectedTab,
         is SharedHomeShellIntent.SetSelectedConversation,
         is SharedHomeShellIntent.SelectTopAction,
         is SharedHomeShellIntent.DismissNotification -> true
@@ -323,6 +360,7 @@ private fun SharedHomeShellIntent.toSharedHomeShellIntentDiagnosticsLabel(): Str
         SharedHomeShellIntent.OpenSaved -> "OpenSaved"
         SharedHomeShellIntent.OpenSearch -> "OpenSearch"
         SharedHomeShellIntent.CloseSecondaryDestination -> "CloseSecondaryDestination"
+        is SharedHomeShellIntent.SetSelectedTab -> "SetSelectedTab:$tab"
         is SharedHomeShellIntent.SetSelectedConversation -> "SetSelectedConversation:${conversationId ?: "_"}"
         is SharedHomeShellIntent.SelectTopAction -> "SelectTopAction:$action"
         is SharedHomeShellIntent.DismissNotification -> "DismissNotification:$id"
@@ -343,6 +381,7 @@ private fun SharedHomeIntent.toSharedHomeShellHomeIntentDiagnosticsLabel(): Stri
         is SharedHomeIntent.ToggleServerDrawerSection -> "patch:server-drawer-toggle:${serverId.value}"
         is SharedHomeIntent.RetryServerDrawerSection -> "hydrate:server-drawer-retry:${serverId.value}"
         is SharedHomeIntent.SelectConversation -> "patch:select:$threadId"
+        SharedHomeIntent.ClearSelectedConversation -> "patch:select:_"
         is SharedHomeIntent.SelectTopAction -> "patch:top-action:$action"
         is SharedHomeIntent.SelectServer -> "hydrate:server:$serverId"
         is SharedHomeIntent.ApplyRealtimeEvent -> "patch:realtime:$serverId"
@@ -369,6 +408,7 @@ private fun SharedHomeIntent.toSharedHomeShellHomeIntentDiagnosticsLabel(): Stri
         is SharedHomeIntent.ApplyPerReceiverPinned -> "pinned:${update.serverId.value}:${update.version}"
         is SharedHomeIntent.ApplyReadReceiptPrediction -> "read_prediction:${prediction.channelId.value}:${prediction.revision}"
         is SharedHomeIntent.ApplyReadReceiptFailure -> "read_failure:${request.channelId.value}:${request.revision}"
+        is SharedHomeIntent.HydrateDirectMessagePreview -> "hydrate_dm_preview:${channelId.value}"
     }
 
 private fun SharedHomeState.toSharedHomeShellHomeSummary(): String =

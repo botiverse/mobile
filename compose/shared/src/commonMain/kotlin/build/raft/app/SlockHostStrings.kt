@@ -79,6 +79,8 @@ object SlockHostStrings {
 
     fun ok(): String = resolve(MR.strings.common_ok)
 
+    fun shareOpenFailed(): String = resolve(MR.strings.share_open_failed)
+
     private fun resolve(resource: StringResource): String {
         return resolve(StringDesc.Resource(resource))
     }

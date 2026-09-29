@@ -868,6 +868,19 @@ while IFS= read -r case_id; do
   [[ -n "$case_id" ]] || continue
   if [[ ! -s "$OUTPUT_DIR/android/${case_id}.png" || ! -s "$OUTPUT_DIR/android/${case_id}.metadata.json" ]]; then
     missing_artifact_cases+=("$case_id")
+  else
+    if ! python3 - "$OUTPUT_DIR/android/${case_id}.metadata.json" <<'PY'
+import json, sys
+metadata = json.loads(open(sys.argv[1], encoding="utf-8").read())
+capture = metadata.get("capture", {})
+if capture.get("readyTokenRequired") is True and (
+    capture.get("readyTokenObserved") is not True or capture.get("stableFrameCount", 0) < 2
+):
+    raise SystemExit("required ready token/stable-frame oracle was not proven")
+PY
+    then
+      add_failure_reason "readiness_oracle_failed"
+    fi
   fi
 done < "$ACTUAL_CASES_FILE"
 MISSING_ARTIFACT_CASES="${missing_artifact_cases[*]-}"

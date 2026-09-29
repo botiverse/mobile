@@ -709,7 +709,7 @@ internal class ComposeCreateAgentBuiltInDialogVisualPage : BasePager() {
 }
 
 private fun createAgentBuiltInVisualForm(): SharedResolvedAgentCreateForm {
-    val ref = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v2")
+    val ref = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
     val providerRef = SharedAgentCreateFormOptionSourceRef.Select(ref, "provider", "/providerId")
     val modelRef = SharedAgentCreateFormOptionSourceRef.DependentSelect(ref, "model", "/model", "/providerId")
     return SharedResolvedAgentCreateForm(
@@ -723,12 +723,13 @@ private fun createAgentBuiltInVisualForm(): SharedResolvedAgentCreateForm {
                     "baseUrl" to SharedAgentCreateFieldSchema.StringField("Base URL", 1, "uri", false),
                     "supportsImageInput" to SharedAgentCreateFieldSchema.BooleanField("Image input"),
                     "model" to SharedAgentCreateFieldSchema.StringField("Model", 1, null, false),
+                    "loadLocalPlugins" to SharedAgentCreateFieldSchema.BooleanField("Load local Pi plugins"),
                     "envVars" to SharedAgentCreateFieldSchema.StringMapField("Environment Variables")
                 )
             ),
             uiSchema = SharedAgentCreateUiSchema(
-                order = listOf("providerId", "apiKey", "baseUrl", "supportsImageInput", "model", "envVars"),
-                advancedPointers = setOf("/envVars"),
+                order = listOf("providerId", "apiKey", "baseUrl", "supportsImageInput", "model", "loadLocalPlugins", "envVars"),
+                advancedPointers = setOf("/loadLocalPlugins", "/envVars"),
                 visibility = listOf(
                     SharedAgentCreateVisibilityRule("/baseUrl", "/providerId", setOf("openai-compatible", "anthropic-compatible")),
                     SharedAgentCreateVisibilityRule("/supportsImageInput", "/providerId", setOf("openai-compatible", "anthropic-compatible"))
@@ -743,6 +744,11 @@ private fun createAgentBuiltInVisualForm(): SharedResolvedAgentCreateForm {
                         null
                     ),
                     "model" to SharedAgentCreateFieldCopy("Model", null, "Model ID"),
+                    "loadLocalPlugins" to SharedAgentCreateFieldCopy(
+                        "Load local Pi plugins",
+                        "Load enabled Pi extensions installed on the computer running this agent. Applying changes restarts a running agent.",
+                        null
+                    ),
                     "envVars" to SharedAgentCreateFieldCopy("Environment Variables", "Injected into the runtime environment.", null)
                 )
             ),

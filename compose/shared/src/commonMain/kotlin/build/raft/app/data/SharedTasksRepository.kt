@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
@@ -30,7 +31,31 @@ interface SharedTasksRepository {
         priority: DataRequestPriority = DataRequestPriority.Visible
     ): DataResult<TaskSnapshot>
 
+    /**
+     * One page of server Tasks (task #345): summary detail, [limit] items after
+     * [cursor] (null = first page). Returns the page + opaque next cursor.
+     */
+    suspend fun loadServerTasksPage(
+        serverId: ServerId,
+        limit: Int,
+        cursor: String?,
+        priority: DataRequestPriority = DataRequestPriority.Visible,
+        status: String? = null
+    ): TasksPageResult = TasksPageResult.Error(code = "tasks_page_unsupported")
+
     suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult>
+
+    /**
+     * Assign/unassign a task. `assignee == null` unassigns. `expectedRevision`
+     * is the OCC token from the projected task (omitted when the projection has
+     * no revision yet, mirroring the web client).
+     */
+    suspend fun assignTask(
+        serverId: ServerId,
+        taskId: TaskId,
+        assignee: MemberProfile?,
+        expectedRevision: Long?
+    ): DataResult<TaskActionResult>
 
     suspend fun createTasks(serverId: ServerId, channelId: ChannelId, titles: List<String>): DataResult<TaskSnapshot>
 }
@@ -68,12 +93,33 @@ class SharedTasksDataRepository(
         return remoteResult
     }
 
+    override suspend fun loadServerTasksPage(
+        serverId: ServerId,
+        limit: Int,
+        cursor: String?,
+        priority: DataRequestPriority,
+        status: String?
+    ): TasksPageResult = remoteDataSource.loadServerTasksPage(serverId, limit, cursor, priority, status)
+
     override suspend fun updateTaskStatus(
         serverId: ServerId,
         taskId: TaskId,
         status: TaskStatus
     ): DataResult<TaskActionResult> {
         val result = remoteDataSource.updateTaskStatus(serverId, taskId, status)
+        if (result is DataResult.Content) {
+            localDataSource.upsertTask(serverId, result.data.task)
+        }
+        return result
+    }
+
+    override suspend fun assignTask(
+        serverId: ServerId,
+        taskId: TaskId,
+        assignee: MemberProfile?,
+        expectedRevision: Long?
+    ): DataResult<TaskActionResult> {
+        val result = remoteDataSource.assignTask(serverId, taskId, assignee, expectedRevision)
         if (result is DataResult.Content) {
             localDataSource.upsertTask(serverId, result.data.task)
         }
@@ -116,6 +162,15 @@ interface SharedTasksRemoteDataSource {
         priority: DataRequestPriority = DataRequestPriority.Visible
     ): DataResult<TaskSnapshot>
 
+    /** See [SharedTasksRepository.loadServerTasksPage]. */
+    suspend fun loadServerTasksPage(
+        serverId: ServerId,
+        limit: Int,
+        cursor: String?,
+        priority: DataRequestPriority = DataRequestPriority.Visible,
+        status: String? = null
+    ): TasksPageResult = TasksPageResult.Error(code = "tasks_page_unsupported")
+
     suspend fun loadChannelTasks(
         serverId: ServerId,
         channelId: ChannelId,
@@ -124,6 +179,14 @@ interface SharedTasksRemoteDataSource {
     ): DataResult<TaskSnapshot>
 
     suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult>
+
+    /** See [SharedTasksRepository.assignTask]. */
+    suspend fun assignTask(
+        serverId: ServerId,
+        taskId: TaskId,
+        assignee: MemberProfile?,
+        expectedRevision: Long?
+    ): DataResult<TaskActionResult>
 
     suspend fun createTasks(serverId: ServerId, channelId: ChannelId, titles: List<String>): DataResult<TaskSnapshot>
 }

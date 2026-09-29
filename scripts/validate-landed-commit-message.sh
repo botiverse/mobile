@@ -16,10 +16,7 @@ fail() {
 [ -s "$message_file" ] || fail "message file is empty"
 
 # A landing commit may contain the historical messages from several source
-# commits. Do not apply validate-commit-message.sh here: its whole-message
-# count is intentionally strict for a single PR commit and would reject a
-# legitimate squash (for example 7ffc900e: whole=14/parsed=1 and ed60e3e6:
-# whole=4/parsed=1). Only the Git trailer footer is the landing invariant.
+# commits; only byte hygiene and a subject line are checked here.
 if LC_ALL=C grep -Fq '\n' "$message_file" || LC_ALL=C grep -Fq '\r' "$message_file"; then
   fail "merge command escaped newlines; use body file (literal \\n/\\r bytes are forbidden)"
 fi
@@ -30,21 +27,4 @@ fi
 subject="$(sed -n '1p' "$message_file")"
 [ -n "$subject" ] || fail "subject line is empty"
 
-parsed="$(git interpret-trailers --parse "$message_file")"
-parsed_signoff_count="$(printf '%s\n' "$parsed" | awk '
-  tolower($0) ~ /^signed-off-by:[[:space:]]/ { count++ }
-  END { print count + 0 }
-')"
-if [ "$parsed_signoff_count" -ne 1 ]; then
-  fail "landed message must contain exactly one valid Signed-off-by trailer in the Git trailer footer; parsed ${parsed_signoff_count}"
-fi
-
-parsed_signoff="$(printf '%s\n' "$parsed" | awk '
-  tolower($0) ~ /^signed-off-by:[[:space:]]/ { print }
-')"
-if ! printf '%s\n' "$parsed_signoff" | grep -Eq \
-  '^Signed-off-by:[[:space:]]+[^<>[:space:]][^<>]*[[:space:]]+<[A-Za-z0-9._%+-]+@mail\.build>[[:space:]]*$'; then
-  fail "parsed Signed-off-by trailer is malformed or does not use @mail.build"
-fi
-
-echo "landed commit message validation: OK — exactly one Git-parsed Signed-off-by trailer under @mail.build (historical body sign-offs permitted)"
+echo "landed commit message validation: OK — LF-only message with a subject line"

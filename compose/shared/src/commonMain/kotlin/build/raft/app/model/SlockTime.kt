@@ -1,9 +1,9 @@
 package build.raft.app.model
 
-private const val MillisPerSecond = 1_000L
-private const val MillisPerMinute = 60_000L
-private const val MillisPerHour = 3_600_000L
-private const val MillisPerDay = 86_400_000L
+internal const val MillisPerSecond = 1_000L
+internal const val MillisPerMinute = 60_000L
+internal const val MillisPerHour = 3_600_000L
+internal const val MillisPerDay = 86_400_000L
 
 internal enum class SlockRelativeTimeUnit {
     Minute,
@@ -228,7 +228,7 @@ private val SlockTimestampRegex =
 private val SlockDisplayClockRegex =
     Regex("""^\d{1,2}:\d{2}(?::\d{2})?(?:\s[AP]M)?$""", RegexOption.IGNORE_CASE)
 
-private data class SlockCivilDate(
+internal data class SlockCivilDate(
     val year: Int,
     val month: Int,
     val day: Int
@@ -269,7 +269,7 @@ private fun String.toOffsetMinutesOrNull(): Int? {
     return sign * (hours * 60 + minutes)
 }
 
-private fun formatSlockClock(
+internal fun formatSlockClock(
     hour: Int,
     minute: Int,
     second: Int?,
@@ -334,7 +334,7 @@ private fun daysSinceUnixEpoch(year: Int, month: Int, day: Int): Long {
     return era * 146_097L + dayOfEra - 719_468L
 }
 
-private fun civilDateFromEpochDay(epochDay: Long): SlockCivilDate {
+internal fun civilDateFromEpochDay(epochDay: Long): SlockCivilDate {
     val zeroDay = epochDay + 719_468L
     val era = floorDiv(zeroDay, 146_097L)
     val dayOfEra = zeroDay - era * 146_097L
@@ -349,19 +349,19 @@ private fun civilDateFromEpochDay(epochDay: Long): SlockCivilDate {
     return SlockCivilDate(adjustedYear.toInt(), month.toInt(), day.toInt())
 }
 
-private fun floorDiv(value: Int, divisor: Int): Int {
+internal fun floorDiv(value: Int, divisor: Int): Int {
     val quotient = value / divisor
     val remainder = value % divisor
     return if (remainder != 0 && (value xor divisor) < 0) quotient - 1 else quotient
 }
 
-private fun floorDiv(value: Long, divisor: Long): Long {
+internal fun floorDiv(value: Long, divisor: Long): Long {
     val quotient = value / divisor
     val remainder = value % divisor
     return if (remainder != 0L && (value xor divisor) < 0L) quotient - 1 else quotient
 }
 
-private fun floorMod(value: Long, divisor: Long): Long =
+internal fun floorMod(value: Long, divisor: Long): Long =
     value - floorDiv(value, divisor) * divisor
 
 private fun formatEpochMillisAsUtcIso(epochMillis: Long): String {
@@ -390,5 +390,5 @@ private fun formatEpochMillisAsUtcIso(epochMillis: Long): String {
     }
 }
 
-private fun Int.twoDigits(): String =
+internal fun Int.twoDigits(): String =
     if (this < 10) "0$this" else toString()

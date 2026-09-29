@@ -1,6 +1,8 @@
 package build.raft.app.data
 
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
+import build.raft.app.model.TaskId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 
@@ -30,6 +32,18 @@ class SharedTasksUseCase(
     suspend fun currentServerId(): ServerId? =
         selectedServerIdOrError()
 
+    /** One page of server Tasks (task #345); null server → typed error. */
+    suspend fun loadServerTasksPage(
+        limit: Int,
+        cursor: String?,
+        priority: DataRequestPriority = DataRequestPriority.Visible,
+        status: String? = null
+    ): TasksPageResult {
+        val serverId = selectedServerIdOrError()
+            ?: return TasksPageResult.Error(code = "selected_server_missing")
+        return repository.loadServerTasksPage(serverId, limit, cursor, priority, status)
+    }
+
     suspend fun updateTaskStatus(request: TasksStatusUpdateRequest): DataResult<TaskActionResult> {
         val serverId = selectedServerIdOrError() ?: return selectedServerMissing()
         return updateTaskStatus(serverId, request)
@@ -40,6 +54,19 @@ class SharedTasksUseCase(
         request: TasksStatusUpdateRequest
     ): DataResult<TaskActionResult> =
         repository.updateTaskStatus(serverId, request.taskId, request.status)
+
+    /**
+     * Assign/unassign a task. `assignee == null` unassigns. `expectedRevision`
+     * is the projected task's revision when known (OCC token; omitted when the
+     * projection has none, mirroring the web client).
+     */
+    suspend fun assignTask(
+        serverId: ServerId,
+        taskId: TaskId,
+        assignee: MemberProfile?,
+        expectedRevision: Long?
+    ): DataResult<TaskActionResult> =
+        repository.assignTask(serverId, taskId, assignee, expectedRevision)
 
     suspend fun createTasks(request: TasksCreateRequest): DataResult<TaskSnapshot> {
         val serverId = selectedServerIdOrError() ?: return selectedServerMissing()

@@ -231,7 +231,7 @@ class RealtimeAuthorityRegistryV12Test {
         val registry = registry(store, process = "process-provider")
         registry.initialize()
 
-        val p1 = RealtimeAuthoritySession(principalId = "p1", serverIds = listOf("a", "b"))
+        val p1 = RealtimeAuthoritySession(principalId = "p1", serverIds = listOf("a", "b"), environmentId = "env-test")
         assertEquals(RealtimeAuthAdvanceResult.Advanced, registry.advanceAuthFromCurrentSession(p1, force = false))
         assertEquals(1L, registry.snapshot.value.authRevision.generation)
         assertEquals(RealtimeAuthAdvanceResult.Duplicate, registry.advanceAuthFromCurrentSession(p1, force = false))
@@ -242,6 +242,112 @@ class RealtimeAuthorityRegistryV12Test {
         assertEquals(3L, registry.snapshot.value.authRevision.generation)
         assertNull(registry.snapshot.value.authRevision.session)
         assertEquals(RealtimeAuthAdvanceResult.Duplicate, registry.advanceAuthFromCurrentSession(null, force = false))
+    }
+
+    // ---- task #1109: environment is an identity dimension of the auth revision and every grant ----
+
+    @Test
+    fun grantsCarryTheSessionEnvironmentAndDeriveTheDurablePartitionFromIt() = runBlocking {
+        val registry = registry(InMemorySlockKeyValueStore(), process = "process-env")
+        registry.initialize()
+        assertTrue(
+            registry.advanceAuth(
+                RealtimeAuthRevision(
+                    generation = 1,
+                    session =
+                        RealtimeAuthoritySession(
+                            principalId = "p1",
+                            serverIds = listOf("a"),
+                            environmentId = "https://api.staging.test",
+                        ),
+                ),
+            ),
+        )
+        val lease = registry.register("shell-a")
+        val grant = registry.snapshot.value.grantsFor(lease.id).single()
+
+        assertEquals("https://api.staging.test", grant.environmentId)
+        assertEquals(
+            build.raft.app.network.sync.DurablePartitionKey(
+                serverId = "a",
+                principalId = "p1",
+                consumerId = "consumer-x",
+                environmentId = "https://api.staging.test",
+            ),
+            grant.durablePartition("consumer-x"),
+        )
+    }
+
+    @Test
+    fun samePrincipalInAnotherEnvironmentIsADifferentSessionIdentity() = runBlocking {
+        val registry = registry(InMemorySlockKeyValueStore(), process = "process-env-switch")
+        registry.initialize()
+        val staging = RealtimeAuthoritySession("p1", listOf("a"), environmentId = "https://api.staging.test")
+        val production = RealtimeAuthoritySession("p1", listOf("a"), environmentId = "https://api.production.test")
+
+        assertEquals(RealtimeAuthAdvanceResult.Advanced, registry.advanceAuthFromCurrentSession(staging, force = false))
+        assertEquals(RealtimeAuthAdvanceResult.Duplicate, registry.advanceAuthFromCurrentSession(staging, force = false))
+        assertEquals(RealtimeAuthAdvanceResult.Advanced, registry.advanceAuthFromCurrentSession(production, force = false))
+        assertEquals(2L, registry.snapshot.value.authRevision.generation)
+    }
+
+    @Test
+    fun environmentIdRoundTripsThroughTheDurableStoreAndNormalizesLikeOtherSegments() = runBlocking {
+        val store = InMemorySlockKeyValueStore()
+        val registry = registry(store, process = "process-env-durable")
+        registry.initialize()
+        assertTrue(
+            registry.advanceAuth(
+                RealtimeAuthRevision(
+                    generation = 1,
+                    session = RealtimeAuthoritySession(" p1 ", listOf(" a "), environmentId = " https://api.staging.test "),
+                ),
+            ),
+        )
+        assertEquals(
+            RealtimeAuthRevision(
+                generation = 1,
+                session = RealtimeAuthoritySession("p1", listOf("a"), environmentId = "https://api.staging.test"),
+            ),
+            KeyValueRealtimeAuthRevisionStore(store).read(),
+        )
+    }
+
+    @Test
+    fun blankEnvironmentIsNotAnIdentity() {
+        assertFailsWith<IllegalArgumentException> {
+            RealtimeAuthoritySession(principalId = "p1", serverIds = listOf("a"), environmentId = "   ")
+        }
+    }
+
+    /**
+     * Durable revisions written before the environment dimension existed have no `environmentId`. They
+     * must decode as "generation kept, no authority": grants cannot be minted from them (nothing can be
+     * written under an environment-less partition), and the next reconcile continues the generation
+     * counter instead of restarting at 1 and colliding with generation-keyed rows.
+     */
+    @Test
+    fun preEnvironmentDurableRevisionKeepsItsGenerationButMintsNoGrants() = runBlocking {
+        val store = InMemorySlockKeyValueStore()
+        store.putString(
+            "realtimeAuthority:authRevision:v1",
+            """{"generation":7,"session":{"principalId":"p1","serverIds":["a","b"]}}""",
+        )
+        val registry = registry(store, process = "process-upgrade")
+        registry.initialize()
+
+        assertEquals(7L, registry.snapshot.value.authRevision.generation)
+        assertNull(registry.snapshot.value.authRevision.session)
+        val lease = registry.register("shell-a")
+        assertTrue(registry.snapshot.value.grantsFor(lease.id).isEmpty())
+
+        val current = RealtimeAuthoritySession("p1", listOf("a", "b"), environmentId = "https://api.staging.test")
+        assertEquals(RealtimeAuthAdvanceResult.Advanced, registry.advanceAuthFromCurrentSession(current, force = false))
+        assertEquals(8L, registry.snapshot.value.authRevision.generation)
+        assertEquals(
+            listOf("https://api.staging.test", "https://api.staging.test"),
+            registry.snapshot.value.grantsFor(lease.id).map { it.environmentId },
+        )
     }
 
     @Test
@@ -263,6 +369,6 @@ class RealtimeAuthorityRegistryV12Test {
     private fun revision(generation: Long, principal: String, servers: List<String>) =
         RealtimeAuthRevision(
             generation = generation,
-            session = RealtimeAuthoritySession(principalId = principal, serverIds = servers),
+            session = RealtimeAuthoritySession(principalId = principal, serverIds = servers, environmentId = "env-test"),
         )
 }

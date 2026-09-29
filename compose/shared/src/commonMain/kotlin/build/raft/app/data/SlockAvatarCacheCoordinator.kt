@@ -45,12 +45,19 @@ internal class SlockAvatarCacheCoordinator(
                     nowMs = nowMillis()
                 ),
             validators =
-                metadata?.let {
-                    SlockAvatarCacheValidators(
-                        eTag = it.eTag,
-                        lastModified = it.lastModified
-                    )
-                }?.takeIf { it.eTag != null || it.lastModified != null },
+                metadata
+                    // task #289: only offer revalidation validators when the local bytes can
+                    // actually back a 304. After a cache purge the metadata row can outlive the
+                    // file; sending If-None-Match then earns a 304 that re-points the renderer
+                    // at a descriptor whose bytes are gone, and the avatar can never recover.
+                    ?.takeIf { bytesAvailable && bytesDecodable }
+                    ?.let {
+                        SlockAvatarCacheValidators(
+                            eTag = it.eTag,
+                            lastModified = it.lastModified
+                        )
+                    }
+                    ?.takeIf { it.eTag != null || it.lastModified != null },
             commitIdentity = metadata?.commitIdentity,
             modelRevision = metadata?.modelRevision ?: 0L
         )
@@ -65,6 +72,13 @@ internal class SlockAvatarCacheCoordinator(
 
     suspend fun storedState(key: SlockAvatarCacheKey): SlockAvatarCacheStoredState =
         store.read(key)
+
+    /** task #343: committed, unsuppressed rows for [owner], newest first (prewarm only). */
+    suspend fun committedForOwner(
+        owner: SlockAvatarCacheOwner,
+        limit: Long
+    ): List<SlockAvatarCacheMetadata> =
+        store.readCommittedForOwner(owner, nowMillis(), limit)
 
     suspend fun reportSuccessfulBytes(
         key: SlockAvatarCacheKey,

@@ -17,6 +17,7 @@ import build.raft.app.data.TasksUiState
 import build.raft.app.data.TasksUnassignedAssigneeFilterId
 import build.raft.app.data.TasksVisibleContent
 import build.raft.app.data.TasksViewMode
+import build.raft.app.data.hasCompletedTasksSnapshot
 import build.raft.app.data.boardColumns
 import build.raft.app.data.isCreatingTasksFor
 import build.raft.app.data.reduce
@@ -28,6 +29,7 @@ import build.raft.app.data.tasksIdentityFilterId
 import build.raft.app.data.tasksSourceLabel
 import build.raft.app.data.visibleContent
 import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.TaskStatus
@@ -41,6 +43,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -85,6 +88,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.core.pager.Pager
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 private const val TasksListMaxBeyondBoundsItemCount = 4
 
@@ -501,6 +505,9 @@ private fun SharedTasksLoadedBodyContent(
     // moves the menu away from the chip and can leave the menu under the touch barrier.
     var statusMenuTask by remember { mutableStateOf<TaskSummary?>(null) }
     var statusMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var assigneeMenuTask by remember { mutableStateOf<TaskSummary?>(null) }
+    var assigneeMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var assigneeMenuSearch by remember { mutableStateOf("") }
     val listModeListState =
         rememberLazyListState(
             initialFirstVisibleItemIndex = initialListPosition.firstVisibleItemIndex,
@@ -518,6 +525,28 @@ private fun SharedTasksLoadedBodyContent(
     val latestOnListPositionSnapshot by rememberUpdatedState(onListPositionSnapshot)
     DisposableEffect(listModeListState) {
         onDispose { latestOnListPositionSnapshot(listModeListState.toAppShellLazyListPosition()) }
+    }
+
+    // Pagination sentinel (task #345): when the list-mode viewport scrolls near
+    // the end and another page is available, ask the host for it. Keyed on the
+    // list state and the current page's total/loading flags so it re-arms after
+    // each page lands; `shouldRequestNextTasksPage` is pure and unit-tested.
+    LaunchedEffect(listModeListState, listColumns, state.hasMore, state.loadingMore) {
+        val totalItems = listColumns.sumOf { if (it.status in collapsedStatuses) 0 else it.tasks.size }
+        snapshotFlow { listModeListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+            .distinctUntilChanged()
+            .collect { lastVisibleIndex ->
+                if (
+                    shouldRequestNextTasksPage(
+                        totalItems = totalItems,
+                        lastVisibleIndex = lastVisibleIndex,
+                        hasMore = state.hasMore,
+                        loadingMore = state.loadingMore
+                    )
+                ) {
+                    onIntent(SharedTasksRouteIntent.LoadMore)
+                }
+            }
     }
 
     // Filter popover anchors. Resolved from each chip's live coordinates when opened.
@@ -595,12 +624,16 @@ private fun SharedTasksLoadedBodyContent(
         tasksAssigneeFilterOptions(visibleContent.assigneeOptions, unassignedAssigneeLabel)
     }
     SlockBackHandler(
-        enabled = createDialogOpen || statusMenuTask != null || presentationState.openFilterId != null
+        enabled = createDialogOpen || statusMenuTask != null || assigneeMenuTask != null || presentationState.openFilterId != null
     ) {
         when {
             createDialogOpen && !createLoading -> createDialogOpen = false
             createDialogOpen -> Unit
             statusMenuTask != null -> statusMenuTask = null
+            assigneeMenuTask != null -> {
+                assigneeMenuTask = null
+                assigneeMenuSearch = ""
+            }
             presentationState.openFilterId != null ->
                 presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null))
         }
@@ -675,6 +708,17 @@ private fun SharedTasksLoadedBodyContent(
                         createDialogOpen = true
                     }
                 )
+                // Task #363: the per-status Board seeds each column's first page
+                // (its rows AND cursor) once it becomes the active view. List mode
+                // never dispatches this, so the global walk issues no extra
+                // requests and the #345 path stays byte-identical.
+                LaunchedEffect(presentationState.selectedMode, state.hasCompletedTasksSnapshot()) {
+                    if (presentationState.selectedMode == TasksViewMode.Board &&
+                        state.hasCompletedTasksSnapshot()
+                    ) {
+                        onIntent(SharedTasksRouteIntent.EnterBoard)
+                    }
+                }
                 when (presentationState.selectedMode) {
                     TasksViewMode.Board -> {
                         // Horizontal board: each TaskStatus is a fixed-width column the user can
@@ -703,9 +747,29 @@ private fun SharedTasksLoadedBodyContent(
                                         statusMenuTask = task
                                         statusMenuAnchor = anchor
                                     },
+                                    onAssigneeBadgeClick = { task, anchor ->
+                                        assigneeMenuTask = task
+                                        assigneeMenuAnchor = anchor
+                                    },
                                     onLongPressTask = { task, anchor ->
                                         statusMenuTask = task
                                         statusMenuAnchor = anchor
+                                    },
+                                    onReachedEnd = { columnStatus ->
+                                        // task #363: per-status pagination is the
+                                        // ONLY walk for a Board column. A column
+                                        // advances its own cursor (single-flight
+                                        // per status); an exhausted column is a
+                                        // no-op. It never falls back to the global
+                                        // cursor — that would consume another
+                                        // column's page (@LoveArk). Every column
+                                        // is seeded, including empty ones, so a
+                                        // missing entry means "not seeded yet"
+                                        // (no-op), never "use the global walk".
+                                        val page = state.statusPages[columnStatus]
+                                        if (page != null && page.hasMore && !page.loadingMore) {
+                                            onIntent(SharedTasksRouteIntent.LoadMoreStatus(columnStatus))
+                                        }
                                     },
                                     bottomContentPadding = bottomContentPadding,
                                     draftProjection = draftProjection,
@@ -770,6 +834,10 @@ private fun SharedTasksLoadedBodyContent(
                                                     statusMenuTask = task
                                                     statusMenuAnchor = anchor
                                                 },
+                                                onAssigneeBadgeClick = { anchor ->
+                                                    assigneeMenuTask = task
+                                                    assigneeMenuAnchor = anchor
+                                                },
                                                 onLongPress = { anchor ->
                                                     statusMenuTask = task
                                                     statusMenuAnchor = anchor
@@ -831,23 +899,80 @@ private fun SharedTasksLoadedBodyContent(
         }
 
         statusMenuTask?.let { task ->
+            val updating = state.statusUpdatingTaskId == task.id.value
             val resolvedStatusAnchor =
                 statusMenuAnchor?.takeIf { it.belongsTo(tasksStatusMenuOwnerIdentity(task.id.value)) }
                     ?: return@let
+            // artin msg=2736fb22: task-tab status click keeps the OLD anchored
+            // menu interaction (Todo / In progress / …) — no modal.
             SlockTaskStatusMenuOverlay(
                 anchor = resolvedStatusAnchor,
-                items = TaskStatus.values().map { next ->
-                    SlockBaseMenuItem(id = next.name, label = next.localizedLabel())
+                items = TaskStatus.values().map { status ->
+                    SlockBaseMenuItem(id = status.name, label = status.localizedLabel())
                 },
                 selectedId = task.status.name,
                 onDismiss = { statusMenuTask = null },
-                onSelect = { id ->
-                    val next = TaskStatus.values().firstOrNull { it.name == id }
+                onSelect = { selectedId ->
                     statusMenuTask = null
-                    if (next != null && next != task.status) {
+                    val next = TaskStatus.values().firstOrNull { it.name == selectedId }
+                    if (!updating && next != null && next != task.status) {
                         onIntent(SharedTasksRouteIntent.UpdateStatus(task, next))
                     }
                 }
+            )
+        }
+
+        // Assignee editor (task v2 port, task #244). Per the web ruling the assignee
+        // picker reuses the searchable filter popover (stdrc msg=4c357cb1) — humans
+        // first, then agents, "unassigned" sentinel always first and never filtered
+        // away. Matching is on the visible display name, mirroring TaskProperties.tsx.
+        assigneeMenuTask?.let { task ->
+            val resolvedAssigneeAnchor =
+                assigneeMenuAnchor?.takeIf { it.belongsTo(tasksStatusMenuOwnerIdentity(task.id.value)) }
+                    ?: return@let
+            val unassignedLabel = stringResource(MR.strings.tasks_assignee_unassigned)
+            val needle = assigneeMenuSearch.trim().lowercase()
+            val people =
+                visibleContent.assigneeOptions
+                    .filter { it.kind != MemberKind.System }
+                    .filter { needle.isEmpty() || it.displayName.lowercase().contains(needle) }
+                    .sortedWith(compareByDescending<MemberProfile> { it.kind == MemberKind.Human }.thenBy { it.displayName.lowercase() })
+            val selectedId = task.assignee?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
+            SlockFilterPopover(
+                anchor = resolvedAssigneeAnchor,
+                title = stringResource(MR.strings.tasks_filter_assignee),
+                searchPlaceholder = stringResource(MR.strings.tasks_search_assignees),
+                searchText = assigneeMenuSearch,
+                onSearchChange = { assigneeMenuSearch = it },
+                options =
+                    listOf(
+                        SlockFilterOption(
+                            id = TasksUnassignedAssigneeFilterId,
+                            label = unassignedLabel
+                        )
+                    ) +
+                        people.map { member ->
+                            SlockFilterOption(
+                                id = member.tasksIdentityFilterId(),
+                                label = member.displayName
+                            )
+                        },
+                selectedIds = setOf(selectedId),
+                onToggle = { id ->
+                    assigneeMenuTask = null
+                    assigneeMenuSearch = ""
+                    if (id != selectedId) {
+                        val member = people.firstOrNull { it.tasksIdentityFilterId() == id }
+                        onIntent(SharedTasksRouteIntent.AssignTask(task, member))
+                    }
+                },
+                onClear = { assigneeMenuSearch = "" },
+                onDismiss = {
+                    assigneeMenuTask = null
+                    assigneeMenuSearch = ""
+                },
+                multiSelect = false,
+                showClearWhenSelected = false
             )
         }
 
@@ -911,6 +1036,30 @@ internal fun sharedTasksLazyItemCount(
 
 internal fun sharedTasksBeyondBoundsItemCount(itemCount: Int): Int =
     itemCount.coerceAtLeast(0).coerceAtMost(TasksListMaxBeyondBoundsItemCount)
+
+/**
+ * How close (in items) to the end the list must scroll before the next page is
+ * requested (task #345). Small enough to feel seamless, large enough that a
+ * fast flick still triggers before the user hits the bottom.
+ */
+internal const val SharedTasksLoadMoreThreshold = 5
+
+/**
+ * Whether scrolling to [lastVisibleIndex] over [totalItems] items should request
+ * the next page. Pure so it can be unit-tested: requests when a page is
+ * available, not already loading, and the visible window has reached the
+ * threshold. A single-item/short list always qualifies (index 0 over <threshold
+ * items).
+ */
+internal fun shouldRequestNextTasksPage(
+    totalItems: Int,
+    lastVisibleIndex: Int,
+    hasMore: Boolean,
+    loadingMore: Boolean,
+): Boolean {
+    if (!hasMore || loadingMore || totalItems <= 0) return false
+    return totalItems - 1 - lastVisibleIndex < SharedTasksLoadMoreThreshold
+}
 
 private fun defaultTasksViewMode(maxWidth: Dp): TasksViewMode =
     if (maxWidth < 768.dp) TasksViewMode.List else TasksViewMode.Board
@@ -1100,10 +1249,12 @@ private fun SharedTasksBoardColumn(
     onOpenTask: ((TaskSummary) -> Unit)?,
     timeContext: SlockTimeContext?,
     onStatusBadgeClick: (TaskSummary, SlockPopoverAnchor) -> Unit,
+    onAssigneeBadgeClick: (TaskSummary, SlockPopoverAnchor) -> Unit,
     onLongPressTask: (TaskSummary, SlockPopoverAnchor) -> Unit,
     bottomContentPadding: Dp,
     draftProjection: SharedThreadComposerDraftProjection,
     scrollToTopRequest: Int,
+    onReachedEnd: (TaskStatus) -> Unit,
 ) {
     val columnListState = rememberLazyListState()
     val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
@@ -1111,6 +1262,20 @@ private fun SharedTasksBoardColumn(
         if (scrollToTopRequestFence.consume(scrollToTopRequest) && !collapsed) {
             columnListState.animateScrollToTopExpressive()
         }
+    }
+    // Board pagination sentinel (#345): the board has no single list state, so
+    // each column reports when its own viewport reaches the end. The host
+    // guards with the shared single-flight predicate, so only one request is in
+    // flight regardless of how many columns fire.
+    LaunchedEffect(columnListState, tasks.size, collapsed) {
+        if (collapsed) return@LaunchedEffect
+        snapshotFlow { columnListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+            .distinctUntilChanged()
+            .collect { lastVisibleIndex ->
+                if (lastVisibleIndex >= 0 && lastVisibleIndex >= tasks.lastIndex - SharedTasksLoadMoreThreshold) {
+                    onReachedEnd(status)
+                }
+            }
     }
     // fillMaxHeight pins each board column to the LazyRow's height, giving the inner
     // LazyColumn a bounded constraint to scroll within. Without this, the inner list
@@ -1157,6 +1322,7 @@ private fun SharedTasksBoardColumn(
                             timeContext = timeContext,
                             onClick = { onOpenTask?.invoke(task) },
                             onStatusBadgeClick = { anchor -> onStatusBadgeClick(task, anchor) },
+                            onAssigneeBadgeClick = { anchor -> onAssigneeBadgeClick(task, anchor) },
                             onLongPress = { anchor -> onLongPressTask(task, anchor) }
                         )
                     }
@@ -1215,6 +1381,7 @@ private fun SharedTaskCard(
     timeContext: SlockTimeContext? = null,
     onClick: () -> Unit,
     onStatusBadgeClick: (SlockPopoverAnchor) -> Unit,
+    onAssigneeBadgeClick: (SlockPopoverAnchor) -> Unit = {},
     onLongPress: (SlockPopoverAnchor) -> Unit
 ) {
     // Keep a live card coordinate so long-press conversion remains correct after scrolling.
@@ -1338,20 +1505,37 @@ private fun SharedTaskCard(
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                // Task #251 (artin msg=c06b26d3): right-align the badge row so the
+                // shrink-wrapped assignee + status pills pack against the card's
+                // trailing edge instead of hugging the title.
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, alignment = Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val assigneeDisplayName = task.tasksAssigneeDisplayName()
-                Text(
-                    text = assigneeDisplayName?.let { "@$it" }
+                // Assignee pill with trailing pencil mirrors React's card assignee
+                // InlineBadgeEditor (searchable popover reuse per stdrc msg=4c357cb1;
+                // uppercase=false like the @assignee label). Same anchored Button model
+                // as the status chip so the tap wins over the parent card gesture.
+                // Task #251: the pill must shrink-wrap its label like Web's
+                // InlineBadgeEditor does — never stretch to the leftover card width
+                // (artin 2026-08-27 verify-session screenshot). Long display names are
+                // capped and ellipsized so the status pill keeps its slot.
+                SlockAnchoredMetaChip(
+                    label = assigneeDisplayName?.let { "@$it" }
                         ?: stringResource(MR.strings.tasks_assignee_unassigned),
-                    style = SlockType.Caption
-                        .withSlockFontWeight(FontWeight.Bold)
-                        .copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.7f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                    iconName = null,
+                    color = SlockColor.SurfaceWhite,
+                    onClick = onAssigneeBadgeClick,
+                    clickIdentity = tasksAssigneeChipClickIdentity(task.id.value),
+                    anchorOwnerIdentity = tasksStatusMenuOwnerIdentity(task.id.value),
+                    modifier = Modifier.widthIn(max = SharedTaskCardAssigneeChipMaxWidth),
+                    trailingIconName = SlockLucideIconName.Pencil,
+                    minHeight = 24.dp,
+                    horizontalPadding = 8.dp,
+                    labelFontSize = 12.sp,
+                    labelLineHeight = 16.sp,
+                    borderWidth = SlockStroke.Default,
+                    anchorPlacement = SlockAnchorPlacement.BottomEnd
                 )
                 // Use the same anchored Button(onClick2) model as thread meta chips so the
                 // status pill reliably wins the tap instead of the parent card gesture.
@@ -1389,6 +1573,9 @@ private data class SharedTaskCardGestureCallbacks(
 
 internal fun tasksStatusChipClickIdentity(taskId: String, status: TaskStatus): String =
     "tasks-status:$taskId:${status.name}"
+
+internal fun tasksAssigneeChipClickIdentity(taskId: String): String =
+    "tasks-assignee:$taskId"
 
 internal fun tasksStatusMenuOwnerIdentity(taskId: String): String = "task:$taskId"
 
@@ -1551,6 +1738,7 @@ private val TaskStatus.color: com.tencent.kuikly.compose.ui.graphics.Color
         }
 
 private val SharedTaskCardStatusChipMinWidth = 78.dp
+private val SharedTaskCardAssigneeChipMaxWidth = 160.dp
 
 private val TaskStatus.iconName: SlockLucideIconName
     get() =
@@ -1572,7 +1760,7 @@ private fun TaskStatus.nextStatus(): TaskStatus =
         TaskStatus.Closed -> TaskStatus.Todo
     }
 
-private fun TaskSummary.tasksMeaningfulDisplayTitle(): String {
+internal fun TaskSummary.tasksMeaningfulDisplayTitle(): String {
     val raw = tasksDisplayTitle()
     val numberLabel = taskNumber?.let { "#$it" } ?: return raw
     return raw.removePrefix(numberLabel).trim().takeIf { it.isNotBlank() } ?: raw
@@ -1616,6 +1804,52 @@ private fun String.toTaskSortValue(): Long {
     return Long.MIN_VALUE
 }
 
+
+@Composable
+private fun TasksStatusDialog(
+    task: TaskSummary,
+    updating: Boolean,
+    errorCode: String?,
+    onDismiss: () -> Unit,
+    onSelect: (TaskStatus) -> Unit
+) {
+    SlockUnifiedDialog(
+        title = stringResource(MR.strings.tasks_label_status),
+        onDismiss = onDismiss,
+        dismissEnabled = !updating,
+        contentSpacing = SlockSpacing.Sm
+    ) {
+        Text(
+            text = task.tasksMeaningfulDisplayTitle(),
+            style = SlockType.ButtonBold,
+            color = SlockColor.TextBlack,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = stringResource(MR.strings.tasks_current_status, task.status.localizedLabel()),
+            style = SlockType.Caption,
+            color = SlockColor.TextBlack.copy(alpha = 0.65f)
+        )
+        TaskStatus.values().forEach { status ->
+            val selected = status == task.status
+            SlockModalFullWidthActionButton(
+                label = status.localizedLabel(),
+                icon = if (selected) SlockLucideIconName.Check else SlockLucideIconName.Circle,
+                color = if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite,
+                enabled = !updating && !selected,
+                onClick = { onSelect(status) }
+            )
+        }
+        errorCode?.takeIf { it.isNotBlank() }?.let { code ->
+            Text(
+                text = "${stringResource(MR.strings.tasks_error_update_status)}: $code",
+                style = SlockType.Caption,
+                color = SlockColor.AccentRed
+            )
+        }
+    }
+}
 
 @Composable
 private fun TasksCreateDialog(

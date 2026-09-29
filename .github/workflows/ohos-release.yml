@@ -29,7 +29,7 @@ on:
         type: string
         default: "0"
       version_build:
-        description: "versionCode build (0-99)"
+        description: "versionCode build (0-999)"
         required: true
         type: string
         default: "0"
@@ -88,6 +88,11 @@ jobs:
       version_name: ${{ steps.parameters.outputs.version_name }}
       version_code: ${{ steps.parameters.outputs.version_code }}
     steps:
+      - name: Checkout version formula
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts/ci
+          sparse-checkout-cone-mode: false
       - name: Validate and resolve version
         id: parameters
         shell: bash
@@ -102,13 +107,12 @@ jobs:
           for value in "$MAJOR" "$MINOR" "$PATCH" "$BUILD"; do
             [[ "$value" =~ ^[0-9]+$ ]] || { echo "::error::Version components must be non-negative integers"; exit 1; }
           done
-          (( BUILD <= 99 )) || { echo "::error::version_build must be between 0 and 99"; exit 1; }
           [[ -z "$SUFFIX" || "$SUFFIX" =~ ^[0-9A-Za-z.-]+$ ]] || {
             echo "::error::version_suffix may contain only letters, digits, dots, and hyphens"
             exit 1
           }
 
-          VERSION_CODE=$((10#$MAJOR * 1000000 + 10#$MINOR * 10000 + 10#$PATCH * 100 + 10#$BUILD))
+          VERSION_CODE="$(scripts/ci/version_code.sh "$MAJOR" "$MINOR" "$PATCH" "$BUILD")"
           (( VERSION_CODE > 0 && VERSION_CODE <= 2147483647 )) || {
             echo "::error::Computed versionCode is outside the supported 32-bit positive range"
             exit 1

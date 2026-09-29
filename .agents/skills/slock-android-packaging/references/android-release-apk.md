@@ -33,13 +33,22 @@ Prefer a focused submodule update over a blind recursive update when local fork
 mappings make recursion fail:
 
 ```bash
-git submodule update --init third_party/kuikly-ui
-git submodule update --init third_party/slock-source
+git submodule update --init third_party/stately third_party/sqliter third_party/sqldelight
 git submodule status
 ```
 
 If another submodule is required by the build, initialize it explicitly and note
 that in the report.
+
+The Slock TypeScript server/React source is **not** a Mobile submodule. If a
+packaging-side visual or contract check needs it, use an external checkout:
+
+```bash
+export SLOCK_SOURCE_REPO=/path/to/botiverse/slock
+test -d "$SLOCK_SOURCE_REPO/packages/server"
+test -d "$SLOCK_SOURCE_REPO/packages/shared"
+git -C "$SLOCK_SOURCE_REPO" rev-parse HEAD  # record this SHA with evidence
+```
 
 ## Build
 

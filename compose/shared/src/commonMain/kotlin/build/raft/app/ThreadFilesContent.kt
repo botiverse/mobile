@@ -4,6 +4,7 @@ import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.data.formatAttachmentSizeLabel
+import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -78,6 +79,7 @@ internal data class KuiklyThreadFilesPayload(
     val loadingMore: Boolean = false,
     val nextCursor: String? = null,
     val errorCode: String? = null,
+    val errorServerMessage: String? = null,
     val emptyTitle: String = "No files yet",
     val emptyDetail: String = "Files shared in this thread will show up here."
 )
@@ -168,6 +170,7 @@ internal fun ThreadAttachmentOpenUiState?.threadAttachmentTerminalStatusResource
         "missing" -> MR.strings.file_preview_error_download_attachment
         "no_app" -> MR.strings.file_preview_error_no_app
         "storage_failed" -> MR.strings.file_preview_error_storage_unavailable
+        "download_failed" -> MR.strings.file_preview_download_failed
         "failed" -> MR.strings.file_preview_error_open_attachment
         else -> null
     }
@@ -186,7 +189,18 @@ internal fun ThreadFilesContent(
         when (payload.status) {
             "loading" -> ThreadFilesStateMessage(stringResource(MR.strings.thread_files_loading), null)
             "error" -> ThreadFilesError(payload.errorCode ?: "unknown_error") { onEvent("retry", null) }
-            "no_permission" -> ThreadFilesStateMessage(stringResource(MR.strings.thread_files_no_permission), payload.errorCode ?: "missing capability")
+            "no_permission" ->
+                if (payload.errorServerMessage.isEdgeBlockedMarker()) {
+                    ThreadFilesStateMessage(
+                        stringResource(MR.strings.thread_state_edge_blocked),
+                        stringResource(MR.strings.error_edge_blocked)
+                    )
+                } else {
+                    ThreadFilesStateMessage(
+                        stringResource(MR.strings.thread_files_no_permission),
+                        payload.errorCode ?: "missing capability"
+                    )
+                }
             "empty" -> ThreadFilesStateMessage(stringResource(MR.strings.thread_files_empty_title), stringResource(MR.strings.thread_files_empty_detail))
             else -> ThreadFilesList(payload, attachmentOpenStates, autoLoadRouteListKey, onEvent)
         }

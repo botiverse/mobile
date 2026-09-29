@@ -57,7 +57,7 @@ Do not paste SSH private keys, GitHub tokens, `NPM_TOKEN`,
 | --- | --- | --- |
 | Raft Mobile / KMP app | `/Users/artin/AndroidStudioProjects/Slock` | `origin = git@github.com:botiverse/mobile.git` |
 | Mobile worktrees | `/Users/artin/AndroidStudioProjects/Slock-worktrees` | Local worktrees based on the mobile repo |
-| React / server source reference | `/Users/artin/0Workspace/github.com/botiverse/slock` | `github.com/botiverse/slock` |
+| React / server source reference | External checkout via `SLOCK_SOURCE_REPO` | `github.com/botiverse/slock` (default branch `staging`) |
 | Kuikly release consumed by mobile | `compose/gradle/kuikly-release-closure.json` | Immutable Raft Maven release manifest |
 | Upstream Kuikly reference | `.agents/skills/kuikly-ui-framework/references/KuiklyUI` | `github.com/Tencent-TDS/KuiklyUI` |
 
@@ -68,19 +68,20 @@ The mobile repo also has OHOS/KMP fork submodules:
 - `third_party/stately`
 
 When API payloads or Socket.IO events are in question, use the TypeScript
-server source as the contract oracle. In this checkout that usually means
-reading `third_party/slock-source/packages/server/` and
-`third_party/slock-source/packages/shared/` if the submodule is available, or
-the sibling checkout at `/Users/artin/0Workspace/github.com/botiverse/slock`.
+server source as the contract oracle. Mobile no longer vendors that repository
+as a submodule. Use an external `botiverse/slock` checkout (default branch
+`staging`) and set `SLOCK_SOURCE_REPO` to its path; `SLOCK_REACT_REPO_DIR` is an
+accepted compatibility alias. Read `<slock-source>/packages/server/` and
+`<slock-source>/packages/shared/`, and pin an exact upstream commit whenever
+the result is used as review, migration, or fixture evidence. Record the
+resolved SHA with that evidence; a moving `staging` checkout is not an exact
+contract snapshot. Do not create a `third_party/slock-source` directory in the
+Mobile repository.
 
 ## Git Sign-off
 
-Every new mobile commit must have a `Signed-off-by:` trailer with a
-`@mail.build` identity. Install the local hook once per checkout/worktree:
-
-```bash
-scripts/install_git_hooks.sh
-```
+Agent commits should carry a `Signed-off-by:` trailer with a `@mail.build`
+identity. No CI check or git hook enforces it any more.
 
 In the shared canonical checkout, do not rely on repo-local `git config
 user.name` or `user.email`; another agent may have changed it. Pass identity per
@@ -109,12 +110,6 @@ git \
   -c user.name="<YourName>" \
   -c user.email="raft-mobile-<your-name>@mail.build" \
   commit --amend -s --no-edit
-```
-
-Before reporting completion, verify the relevant range:
-
-```bash
-scripts/check-commit-signoff.sh HEAD^ HEAD
 ```
 
 ## Branch, Worktree, and Push Rules

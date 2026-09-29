@@ -1,5 +1,9 @@
 package build.raft.app.shared
 
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -215,6 +219,90 @@ class SlockImageRequestSingleFlightTest {
         assertEquals(2, singleFlight.activeFlightCount())
         completions.forEach { it(Result.success("done")) }
         assertEquals(0, singleFlight.activeFlightCount())
+    }
+
+    @Test
+    fun urlByteSingleFlightDeduplicatesAcrossDifferentDecodeDimensions() {
+        val byteFlights = SlockImageRequestSingleFlight<String, ByteArray>()
+        val url = "https://cdn.example.com/image.png"
+        var byteFetchCount = 0
+        lateinit var completeBytes: (Result<ByteArray>) -> Unit
+
+        val results = mutableListOf<ByteArray>()
+
+        // Simulate 2 decode requests with different dimensions sharing the byte flight
+        val key1 = requestKey(url = url, requestWidth = -1, requestHeight = -1)
+        val key2 = requestKey(url = url, requestWidth = 606, requestHeight = 1151)
+
+        assertEquals(key1.urlIdentity, key2.urlIdentity)
+
+        byteFlights.load(
+            key = key1.urlIdentity,
+            start = { finish ->
+                byteFetchCount++
+                completeBytes = finish
+            },
+            callback = { results += it.getOrThrow() }
+        )
+
+        byteFlights.load(
+            key = key2.urlIdentity,
+            start = { error("second decode request must join in-flight byte download") },
+            callback = { results += it.getOrThrow() }
+        )
+
+        assertEquals(1, byteFetchCount)
+        val fakeBytes = byteArrayOf(1, 2, 3)
+        completeBytes(Result.success(fakeBytes))
+
+        assertEquals(2, results.size)
+        assertSame(fakeBytes, results[0])
+        assertSame(fakeBytes, results[1])
+        assertEquals(0, byteFlights.activeFlightCount())
+    }
+
+    @Test
+    fun nestedAsyncFanoutDoesNotStarveFixedThreadPool() {
+        val executor = Executors.newFixedThreadPool(4)
+        val byteFlights = SlockImageRequestSingleFlight<String, ByteArray>()
+        val imageFlights = SlockImageRequestSingleFlight<SlockNetworkImageRequestKey, String>()
+        val url = "https://cdn.example.com/avatar.png"
+        val count = 8
+        val completedResults = CopyOnWriteArrayList<String>()
+        val allDoneLatch = CountDownLatch(count)
+
+        for (i in 0 until count) {
+            val key = requestKey(url = url, requestWidth = 100 + i, requestHeight = 100 + i)
+            imageFlights.load(
+                key = key,
+                start = { completeImage ->
+                    byteFlights.load(
+                        key = key.urlIdentity,
+                        start = { completeBytes ->
+                            Thread {
+                                Thread.sleep(20)
+                                completeBytes(Result.success(byteArrayOf(1, 2, 3)))
+                            }.start()
+                        },
+                        callback = { byteResult ->
+                            executor.execute {
+                                val bytes = byteResult.getOrThrow()
+                                val decoded = "bitmap-${bytes.size}-${key.requestWidth}"
+                                completeImage(Result.success(decoded))
+                            }
+                        }
+                    )
+                },
+                callback = { result ->
+                    completedResults += result.getOrThrow()
+                    allDoneLatch.countDown()
+                }
+            )
+        }
+
+        assertTrue("All requests must complete within 3 seconds without deadlock", allDoneLatch.await(3, TimeUnit.SECONDS))
+        assertEquals(count, completedResults.size)
+        executor.shutdown()
     }
 
     private fun requestKey(

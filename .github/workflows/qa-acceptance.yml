@@ -93,7 +93,10 @@ env:
   # Login smoke: the default goal for pushes / empty dispatch inputs.
   DEFAULT_GOAL: >-
     Log into the app with the provided test account: if a login/welcome screen shows,
-    enter the email and password and submit. Then verify BOTH: (1) the home screen loads
+    enter the email and password and submit. If a server picker appears choose
+    'OranixSlockTest'. If 'OranixSlockTest' is not present,
+    fail and report it; never substitute the closest-looking name.
+    Then verify BOTH: (1) the home screen loads
     showing a channel list (rows with # channel names), and (2) tapping one channel opens
     it and a message list renders. Declare pass only after both are visually confirmed.
 
@@ -122,6 +125,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Apply Gradle cache policy
         uses: ./.github/actions/gradle-cache-policy
@@ -214,6 +219,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Download APK
         if: ${{ inputs.apk_run_id == '' && inputs.apk_url == '' }}
@@ -411,6 +418,69 @@ jobs:
                   delimiter = f"SLOCK_{uuid.uuid4().hex}"
                   out.write(f"{name}<<{delimiter}\n{value}\n{delimiter}\n")
           PY
+
+      - name: Preflight — QA account must not see the production server
+        # Layer 2 of three, wired here because this is the first point where the QA
+        # credentials exist (the step above puts them in the environment) and the last point
+        # before anything drives the app. Same `if:` as that step on purpose: without it this
+        # would run credential-less on the bootstrap path, exit 2 every time, and quietly
+        # become a step that never actually checks anything.
+        #
+        # rc semantics are deliberate and are the reviewable decision in this PR:
+        #   1  judged, and the judgement FAILED  -> block. Production reachable by the QA
+        #      account is out of bounds (artin, 2026-08-31); no run should proceed on it.
+        #   2  could not be judged at all (429, network, shape change) -> ALSO block.
+        #      Ruled by @Argus, overriding the warn-only form I first proposed. rc=2 means the
+        #      visibility reading is unavailable, which returns the run to "we believe it but
+        #      are not testing it" — the exact state this probe exists to end. Under warn-only,
+        #      the probe's infrastructure breaking would silently downgrade the pipeline back
+        #      to the pre-probe world while staying green: no reading read as a good reading.
+        #      A broken guard has to behave like a broken guard, not like a pass.
+        #      Accepted cost, stated: this probe depends on an external surface, so blocking on
+        #      rc=2 adds a new flaky-red source. The remedy is fix-or-rerun, never downgrade.
+        #      An explicit per-run waiver channel is deliberately NOT pre-built.
+        #
+        # rc=2 therefore carries a REASON (@HuaTuo, adopted by @Argus). Without one, "fix or
+        # rerun" decays into "always rerun" — and the class where a rerun most easily goes green
+        # by accident (the endpoint moved, or the probe broke) is exactly the one where a green
+        # rerun means nothing. credential -> rerun cannot help. infra -> rerun is reasonable.
+        # contract -> a passing rerun does NOT mean fixed. A missing reason is treated as
+        # contract, because the unknown case must not default to the cheap one.
+        if: ${{ inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true' }}
+        env:
+          QA_TEST_EMAIL: ${{ env.QA_TEST_EMAIL }}
+          QA_TEST_PASSWORD: ${{ env.QA_TEST_PASSWORD }}
+        run: |
+          mkdir -p qa-evidence
+          set +e
+          # 2>&1 so the reason code reaches the receipt: the probe writes `reason=` on
+          # STDERR, and `| tee` alone captures only stdout (@LiBai). Without this the grep
+          # below found nothing every time, `reason` fell back to unknown, and the
+          # credential/ratelimit/infra arms were UNREACHABLE — the reason codes existed in
+          # form while every failure reported as contract. PIPESTATUS[0] is still node's.
+          node scripts/qa/visible_servers_probe.mjs 2>&1 | tee qa-evidence/visible-servers-probe.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "rc=$rc" >> qa-evidence/visible-servers-probe.txt
+          if [ "$rc" = "1" ]; then
+            echo "::error::QA account can see the production server - refusing to run"
+            exit 1
+          fi
+          if [ "$rc" != "0" ]; then
+            reason="$(grep -oE '^reason=[a-z]+' qa-evidence/visible-servers-probe.txt | tail -1 | cut -d= -f2)"
+            reason="${reason:-unknown}"
+            echo "reason=$reason" >> qa-evidence/visible-servers-probe.txt
+            echo "PROBE NOT RUN - this run carries no evidence about production visibility" >> qa-evidence/visible-servers-probe.txt
+            case "$reason" in
+              credential) echo "::error::visible-servers probe: credentials rejected - rerunning will NOT help, fix the QA credential" ;;
+              ratelimit)  echo "::error::visible-servers probe: rate-limited (429) - rerun is right but NOT immediately; an instant retry is what caused this" ;;
+              infra)      echo "::error::visible-servers probe: transport failure - a rerun is reasonable" ;;
+              contract)   echo "::error::visible-servers probe: endpoint or response contract changed - A PASSING RERUN DOES NOT MEAN FIXED; check the probe against the live endpoint"
+                          echo "rerun-does-not-mean-fixed" >> qa-evidence/visible-servers-probe.txt ;;
+              *)          echo "::error::visible-servers probe unjudgeable with no reason code (rc=$rc) - treat as contract until diagnosed" ;;
+            esac
+            exit 1
+          fi
 
       - name: Freeze legacy credential identity receipt
         if: ${{ inputs.stamp_run_case_id != '' && steps.stamp-claim.outputs.bootstrap_required != 'true' }}

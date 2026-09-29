@@ -22,7 +22,7 @@ internal fun List<KuiklyThreadMessageItem>.absorbingCanonicalSendEchoes(
     if (canonicalMessages.isEmpty()) return this
     val retained =
         filterNot { localMessage ->
-            localMessage.isTransientLocalSendingMessage() &&
+            localMessage.isPendingLocalSendShadow() &&
                 canonicalMessages.any { canonicalMessage ->
                     localMessage.matchesCanonicalSendEcho(canonicalMessage, matchPolicy)
                 }
@@ -41,19 +41,38 @@ internal fun KuiklyThreadMessageItem.isTransientLocalSendingMessage(): Boolean =
     id.startsWith(ThreadTransientLocalSendIdPrefix) &&
         deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true)
 
+/**
+ * A canonical random-id echo also retires a locally failed shadow.  The
+ * failed state is still retryable while no canonical proof exists, but once
+ * the server echoes the same idempotency key it is no longer an unresolved
+ * failure and must not remain beside the canonical bubble.
+ */
+private fun KuiklyThreadMessageItem.isPendingLocalSendShadow(): Boolean =
+    id.startsWith(ThreadTransientLocalSendIdPrefix) &&
+        pendingSendContext != null &&
+        (
+            deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true) ||
+                deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true)
+        )
+
 private fun KuiklyThreadMessageItem.matchesCanonicalSendEcho(
     canonicalMessage: KuiklyThreadMessageItem,
     matchPolicy: ThreadSendEchoMatchPolicy
 ): Boolean {
     val context = pendingSendContext ?: return false
-    if (!isTransientLocalSendingMessage()) return false
+    if (!isPendingLocalSendShadow()) return false
     if (canonicalMessage.id == id || canonicalMessage.isTransientLocalSendingMessage()) return false
     if (canonicalMessage.pendingSendContext != null) return false
     if (!canonicalMessage.isOwn) return false
     val localRandomId = context.randomId?.takeIf { it.isNotBlank() }
     val canonicalRandomId = canonicalMessage.randomId?.takeIf { it.isNotBlank() }
     if (canonicalRandomId != null) return localRandomId == canonicalRandomId
-    if (matchPolicy == ThreadSendEchoMatchPolicy.ExactRandomId) return false
+    // A failed shadow may only be retired by exact random-id proof.  The
+    // legacy content fallback predates durable failure state and could turn a
+    // retryable error into a false success.
+    if (matchPolicy == ThreadSendEchoMatchPolicy.ExactRandomId ||
+        deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true)
+    ) return false
     if (authorId.isNotBlank() && canonicalMessage.authorId.isNotBlank() && authorId != canonicalMessage.authorId) {
         return false
     }

@@ -8,24 +8,62 @@
   changes, enable visible touches/pointer overlay and follow
   `docs/android-review-recording.md` before attaching evidence to a task thread.
 
-## Upstream Slock Source
+## Slock server/source contract
 
-- The upstream TypeScript Slock source is checked out as a git submodule at
-  `third_party/slock-source/` (`github.com/botiverse/slock`).
+- The TypeScript server and React source are maintained in the separate private
+  repository `botiverse/slock` (default branch `staging`); Mobile does **not**
+  vendor it as `third_party/slock-source` and `.gitmodules` has no entry for
+  that path. Do not create that path or restore a source submodule.
 - For any wire-contract / API question (HTTP routes, Socket.IO events, payload
-  shapes, field names), read the source directly under
-  `third_party/slock-source/packages/server/` (HTTP + Socket handlers) and
-  `third_party/slock-source/packages/shared/` (shared TypeScript types) rather
-  than guessing field aliases or inferring shapes from Android call sites.
-- Do not re-introduce bundled web JS artifacts. There used to be a
-  `artifacts/web-current/` directory with a minified bundle; it has been
-  removed in favor of reading the source.
-- To fetch the submodule for the first time:
+  shapes, field names), use an external checkout of `botiverse/slock` and read
+  `<slock-source>/packages/server/` (HTTP + Socket handlers) and
+  `<slock-source>/packages/shared/` (shared TypeScript types). Never infer
+  aliases or field names from Android call sites.
+- Point tools and local checks at that checkout with `SLOCK_SOURCE_REPO`; the
+  existing compatibility alias `SLOCK_REACT_REPO_DIR` is also accepted. In CI,
+  the relevant workflow jobs check out `botiverse/slock` into a temporary
+  `slock-source` directory; jobs that invoke the Mobile wrapper set the same
+  variable. For example:
 
 ```bash
-cd /Users/artin/AndroidStudioProjects/Slock
-git submodule update --init --recursive third_party/slock-source
+export SLOCK_SOURCE_REPO=/path/to/your/botiverse/slock
+test -d "$SLOCK_SOURCE_REPO/packages/server"
+test -d "$SLOCK_SOURCE_REPO/packages/shared"
 ```
+
+- For review, migration, or fixture evidence, pin the external checkout to an
+  exact `botiverse/slock` commit and record that SHA; do not treat a moving
+  `staging` checkout as an exact contract snapshot.
+  A repeatable evidence preflight is:
+
+  ```bash
+  git -C "$SLOCK_SOURCE_REPO" rev-parse --is-inside-work-tree >/dev/null
+  UPSTREAM_SHA="$(git -C "$SLOCK_SOURCE_REPO" rev-parse HEAD)"
+  printf 'botiverse/slock upstream SHA: %s\n' "$UPSTREAM_SHA"
+  ```
+
+  Keep that SHA beside the review, migration, or fixture result.
+- `docs/` files whose names contain a date (for example,
+  `*-2026-06-23.md`) are dated audit/spec snapshots. A
+  `third_party/slock-source` path in one of those files records the checkout
+  that existed when the snapshot was written; it is historical provenance,
+  not a current checkout instruction. Current instructions belong in this
+  section and must use the external checkout contract above.
+- Before sending a docs/code change to review, run the explicit source-path
+  checker. New files are governed by default; only the currently audited
+  historical snapshots are allowlisted, so a date in a filename is not an
+  exemption:
+
+  ```bash
+  scripts/check_slock_source_path_contract.sh
+  ```
+
+  The command must exit successfully. To preserve an additional dated
+  snapshot, add it to the script's explicit historical list in the same
+  change; do not broaden the checker with a filename pattern.
+- Do not re-introduce bundled web JS artifacts. There used to be an
+  `artifacts/web-current/` directory with a minified bundle; it has been
+  removed in favor of reading the external source checkout.
 
 ## Shared DTO API Contract Rule
 
@@ -34,11 +72,10 @@ git submodule update --init --recursive third_party/slock-source
   Do not add new app-side Gson/JsonObject response mappers for API payloads in
   `compose/androidApp/src/main/java/.../network/`.
 - For any new or changed API endpoint, first verify the canonical field names
-  in `third_party/slock-source/packages/server/` and
-  `third_party/slock-source/packages/shared/`, then model that exact camelCase
-  shape as a `@Serializable` DTO in shared. No snake_case aliases, no
-  `firstObject(...)` envelope sniffing, and no `string("a", "b", "c")` field
-  guessing.
+  in `<slock-source>/packages/server/` and `<slock-source>/packages/shared/`,
+  then model that exact camelCase shape as a `@Serializable` DTO in shared. No
+  snake_case aliases, no `firstObject(...)` envelope sniffing, and no
+  `string("a", "b", "c")` field guessing.
 - App repositories should wire responses by calling public shared parser
   functions such as `parseSharedXxx(...)` and should keep only UI composition,
   fallback context, and repository orchestration locally.
@@ -288,15 +325,10 @@ filtering, include it; otherwise omit.
 
 ### Signed-off commits are required (2026-07-02)
 
-Every new commit must include a `Signed-off-by:` trailer with a `@mail.build`
-identity. Agents should use the Raft Mobile prefix, for example
-`raft-mobile-cindy@mail.build`.
-
-Install the hook once per checkout or worktree:
-
-```bash
-scripts/install_git_hooks.sh
-```
+Agent commits should carry a `Signed-off-by:` trailer with a `@mail.build`
+identity (Raft Mobile prefix, for example `raft-mobile-cindy@mail.build`).
+Nothing enforces it any more: no CI check, no git hook, and the guarded merge
+wrappers no longer inspect the signer.
 
 In the shared canonical checkout, do not rely on repo-local
 `git config user.name/user.email`; it can be overwritten by another agent. Pass
@@ -331,8 +363,9 @@ without expanding it.
 ### DTO mocks must be verified against upstream fixtures, not invented
 
 When writing test fixtures for typed API DTOs, **do not invent a "looks
-reasonable" payload**. The Iron Rule says verify field names against
-`third_party/slock-source/`; that rule also applies to test mocks.
+reasonable" payload**. The Iron Rule says verify field names against the
+external `botiverse/slock` checkout (`<slock-source>/`); that rule also applies
+to test mocks.
 
 A mock whose only purpose is to make a happy-path test pass is a contract drift
 waiting to happen: the real server returns a different shape, and the field
@@ -346,8 +379,8 @@ When adding DTOs:
 
 - If the field shape is verified, write a regression test that uses the
   canonical upstream payload (either copy-pasted from
-  `third_party/slock-source/packages/server/...` or loaded from a JSON fixture
-  that was round-trip-verified).
+  `<slock-source>/packages/server/...` or loaded from a JSON fixture that was
+  round-trip-verified).
 - If a real upstream fixture is not available, mark the DTO as "pending
   contract verification" in the test name and the source comment, and follow
   up before the task goes to In Review.
@@ -363,20 +396,68 @@ The canonical flow is:
 
 1. Create a topic branch or worktree from current `origin/main`.
 2. Commit with `Signed-off-by:` and the correct `@mail.build` identity.
-3. Run focused validation and `scripts/check-commit-signoff.sh` for the PR
-   range.
+3. Run focused validation.
 4. Push the topic branch and open a GitHub PR to `main`.
 5. After required checks pass and at least one reviewer who is not the PR author
    gives a clear GO bound to the exact PR head, the PR creator performs the
    merge with
-   `scripts/guarded-squash-merge.sh <owner/repo> <pr> <reviewed-full-sha>`.
+   `scripts/guarded-squash-merge.sh <owner/repo> <pr> <reviewed-full-sha> <message-file|->`.
+   The fourth argument is required: a file holding the squash commit message,
+   or `-` to read it from stdin.
    The GO may be recorded in Raft or a PR comment; a formal GitHub approving
-   review is not required. Require owner/product acceptance only when the current
-   task explicitly names it as a gate or a current live hold assigns that
-   decision to the owner. Any head change voids the review and requires a fresh
-   GO on the new exact head.
-   Do not use the GitHub Merge button or `gh pr merge --merge`; ordinary merge
-   commits do not preserve source sign-off trailers and make main-push DCO red.
+   review is not required.
+
+   Owner/product acceptance is **not** a merge gate by default, and neither is
+   any further authorisation from the person who requested the work. Require it
+   only when the current task explicitly names it as a gate, or a current live
+   hold assigns that decision to the owner or another accountable seat.
+
+   For an ordinary PR carrying no other task-declared gate and no other current
+   in-scope live hold, the two conditions above are the whole gate set and the
+   creator may merge. That default waives nothing else: any other current
+   in-scope live hold — runtime, release, security, or one assigned to a
+   different accountable seat — still applies on its own terms and is not
+   displaced by this paragraph.
+
+   A creator who prefers to wait anyway may do so, but should say plainly that
+   it is their own choice and name what they are waiting for — otherwise a
+   finished PR stalls with everyone assuming someone else will move it.
+   Do not use the GitHub Merge button or `gh pr merge --merge`; the guarded
+   wrappers are what produce the merge receipt and the reviewed-head anchor.
+
+   When the head changes after a GO, revalidate as follows. A GO always names
+   the exact head it was given on; these rules only decide whether it carries
+   to a new one.
+
+   a. The GO carries automatically, with no reviewer action, when a command
+      proves the change itself is unaltered. Run the check and record the two
+      values in the PR:
+
+      - Rebase onto a newer base only:
+        `git diff <old-base> <old-head> | git patch-id --stable` equals
+        `git diff <new-base> <new-head> | git patch-id --stable`.
+        Compute both on the same machine with the same git; patch-id values
+        are not comparable across git versions.
+      - Commit message or `Signed-off-by` edits only:
+        `git rev-parse <old-head>^{tree}` equals
+        `git rev-parse <new-head>^{tree}`.
+      - Documentation only:
+        `git diff --name-only <old-head> <new-head>` lists only `*.md` paths.
+
+   b. For any other change, the GO does not lapse on its own. The reviewer who
+      gave it decides whether it carries, and says so on the new head. This is
+      an explicit confirmation, not a silent carry-over, but it does not
+      require a fresh line-by-line review — the common case is a reviewer
+      confirming their own requested change was applied as asked.
+
+   c. If that reviewer is unavailable, or declines to carry the GO, a fresh GO
+      on the new exact head is required, from any reviewer who is not the PR
+      author.
+
+   Under (b) the binding between the reviewed head and the merged head rests on
+   the reviewer's judgement rather than on a command. That is a deliberate
+   trade, made to remove the re-review round that a reviewer's own requested
+   change used to trigger.
 6. After the PR is merged, sync local checkouts by fetching and resetting or
    fast-forwarding clean local branches as appropriate. Do not reset a dirty
    shared checkout; identify/move the dirty work first.
@@ -436,8 +517,9 @@ or helper scripts as a workaround for branch protection.
 - Workspace-level Kuikly guidance lives under `.agents/`:
   - `.agents/skills/kuikly-*` contains the vendored skills from
     `Tencent-TDS/KuiklyUI-AI`.
-  - `.agents/skills/slock-dto-migration/SKILL.md` contains Slock-specific DTO
-    migration workflow guidance.
+  - `.agents/skills/slock-*` contains Slock-specific workflow guidance
+    (currently `slock-android-adb-audit`, `slock-android-packaging`,
+    `slock-launch-contract`).
   - `.agents/rules/kuiklyComposeDSL.mdc` and `.agents/rules/kuiklyDSL.mdc` contain
     the Kuikly Compose / Kuikly DSL rules.
   - `.agents/kuikly-ui-ai-source.txt` records the upstream source and commit.

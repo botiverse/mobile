@@ -249,15 +249,14 @@ class ThreadMessageLongPressSurfaceTest {
                 refreshVisibleConversation = true,
                 rejoinVisibleRooms = true
             ),
-            threadVisibleResumePlan(lifecycleSeen = true, routeActive = true)
+            threadVisibleResumePlan(routeActive = true)
         )
-        assertNull(threadVisibleResumePlan(lifecycleSeen = false, routeActive = true))
-        assertNull(threadVisibleResumePlan(lifecycleSeen = true, routeActive = false))
+        assertNull(threadVisibleResumePlan(routeActive = false))
     }
 
     @Test
     fun hiddenThreadSkipsAppShellResumeThenRefreshesExactlyOnceAfterAppearing() {
-        val gate = ThreadVisibleResumeGate(lifecycleSeen = true)
+        val gate = ThreadVisibleResumeGate()
         var conversationRefreshes = 0
         var roomRejoins = 0
 
@@ -274,15 +273,36 @@ class ThreadMessageLongPressSurfaceTest {
 
     @Test
     fun threadAppearanceWithoutPendingResumeDoesNotRefresh() {
-        val gate = ThreadVisibleResumeGate(lifecycleSeen = true)
+        val gate = ThreadVisibleResumeGate()
 
         assertNull(gate.onRouteBecameVisible())
         assertNull(gate.onRouteBecameVisible())
     }
 
     @Test
-    fun visibleLifecycleResumeDoesNotLeaveWorkForAppearance() {
-        val gate = ThreadVisibleResumeGate(lifecycleSeen = true)
+    fun pendingResumeLatchedWhileHiddenStaysObservableUntilDrained() {
+        val gate = ThreadVisibleResumeGate()
+
+        assertFalse(gate.pendingVisibleResume)
+        // The lifecycle listener can latch pending from a stale routeActive
+        // snapshot after the route already became active; the drain effect
+        // keys on this flag so the pending write alone re-triggers it.
+        assertNull(gate.onLifecycleVisibleResume(routeActive = false))
+        assertTrue(gate.pendingVisibleResume)
+
+        assertEquals(
+            ThreadVisibleResumePlan(
+                refreshVisibleConversation = true,
+                rejoinVisibleRooms = true
+            ),
+            gate.onRouteBecameVisible()
+        )
+        assertFalse(gate.pendingVisibleResume)
+    }
+
+    @Test
+    fun firstVisibleLifecycleResumeRefreshesWithoutWaitingForScrollOrAppearance() {
+        val gate = ThreadVisibleResumeGate()
 
         assertEquals(
             ThreadVisibleResumePlan(
@@ -291,6 +311,7 @@ class ThreadMessageLongPressSurfaceTest {
             ),
             gate.onLifecycleVisibleResume(routeActive = true)
         )
+        assertFalse(gate.pendingVisibleResume)
         assertNull(gate.onRouteBecameVisible())
     }
 }

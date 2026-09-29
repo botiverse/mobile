@@ -29,6 +29,7 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.RowScope
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
@@ -55,6 +56,7 @@ import com.tencent.kuikly.compose.ui.zIndex
 import com.tencent.kuikly.core.views.KeyboardParams
 import kotlin.math.ceil
 import kotlin.math.floor
+import kotlinx.coroutines.Job
 
 private val SlockUnifiedDialogShadowOffset = 4.dp
 
@@ -189,6 +191,34 @@ internal data class SlockUnifiedDialogListScrollPosition(
 }
 
 /**
+ * Owns one focused-editor scroll intent. Cancellation avoids redundant work; the generation
+ * check keeps a late completion from mutating a superseded or disposed list.
+ */
+internal class SlockFocusedEditorScrollRequestCoordinator {
+    private var generation = 0L
+    private var job: Job? = null
+
+    fun begin(): Long {
+        generation += 1L
+        job?.cancel()
+        job = null
+        return generation
+    }
+
+    fun attach(job: Job) {
+        this.job = job
+    }
+
+    fun isCurrent(requestGeneration: Long): Boolean = generation == requestGeneration
+
+    fun invalidate() {
+        generation += 1L
+        job?.cancel()
+        job = null
+    }
+}
+
+/**
  * Waits for the keyboard-driven relayout, then samples the current focused editor and viewport.
  * Geometry is deliberately read after both frames so focus changes and dialog disposal cannot
  * replay the bounds captured by an earlier keyboard callback.
@@ -199,11 +229,15 @@ internal suspend fun slockUnifiedDialogKeepFocusedEditorVisible(
     focusedBounds: () -> Rect?,
     viewportBounds: () -> Rect?,
     currentScrollPosition: () -> SlockUnifiedDialogListScrollPosition,
-    scrollToItem: suspend (index: Int, scrollOffset: Int) -> Unit
+    scrollToItem: suspend (index: Int, scrollOffset: Int) -> Unit,
+    isScrollInProgress: () -> Boolean,
+    isRequestCurrent: () -> Boolean
 ) {
-    if (keyboardHeight <= 0f) return
+    if (keyboardHeight <= 0f || !isRequestCurrent() || isScrollInProgress()) return
     awaitRelayoutFrame()
+    if (!isRequestCurrent() || isScrollInProgress()) return
     awaitRelayoutFrame()
+    if (!isRequestCurrent() || isScrollInProgress()) return
 
     val focused = focusedBounds() ?: return
     val viewport = viewportBounds() ?: return
@@ -214,7 +248,7 @@ internal suspend fun slockUnifiedDialogKeepFocusedEditorVisible(
             viewportTop = viewport.top,
             viewportBottom = viewport.bottom
         )
-    if (delta == 0f) return
+    if (delta == 0f || !isRequestCurrent() || isScrollInProgress()) return
 
     // Root bounds and LazyList offsets are pixels. Round away from zero so a fractional edge
     // overlap cannot leave the editor one sub-pixel outside the reduced viewport.
@@ -227,6 +261,7 @@ internal suspend fun slockUnifiedDialogKeepFocusedEditorVisible(
     val current = currentScrollPosition()
     val targetOffset = (current.scrollOffset + pixelDelta).coerceAtLeast(0)
     if (targetOffset == current.scrollOffset) return
+    if (!isRequestCurrent() || isScrollInProgress()) return
     scrollToItem(current.index, targetOffset)
 }
 
@@ -293,6 +328,10 @@ internal fun SlockModalLayer(
 internal fun SlockUnifiedDialog(
     title: String,
     onDismiss: () -> Unit,
+    // Task #258 successor (artin msg=a493a371/7cfc6fb7): small muted identifier
+    // line rendered above the title (e.g. "#all · 任务 #5") so the channel/task
+    // label never renders as the oversized title. Null/blank = no overline.
+    overline: String? = null,
     modifier: Modifier = Modifier,
     dismissEnabled: Boolean = true,
     overlayAlpha: Float = 0.60f,
@@ -322,6 +361,7 @@ internal fun SlockUnifiedDialog(
         Modal(onWillDismiss = { if (dismissEnabled) onDismiss() }) {
             SlockUnifiedDialogSurface(
                 title = title,
+                overline = overline,
                 onDismiss = onDismiss,
                 modifier = modifier,
                 dismissEnabled = dismissEnabled,
@@ -355,6 +395,7 @@ internal fun SlockUnifiedDialog(
             Modal(onWillDismiss = { if (dismissEnabled) onDismiss() }) {
                 SlockUnifiedDialogSurface(
                     title = title,
+                    overline = overline,
                     onDismiss = onDismiss,
                     modifier = modifier,
                     dismissEnabled = dismissEnabled,
@@ -390,6 +431,7 @@ internal fun SlockUnifiedDialog(
 @Composable
 private fun SlockUnifiedDialogSurface(
     title: String,
+    overline: String?,
     onDismiss: () -> Unit,
     modifier: Modifier,
     dismissEnabled: Boolean,
@@ -481,19 +523,35 @@ private fun SlockUnifiedDialogSurface(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = title,
-                        style =
-                            SlockType.PageTitle.copy(
-                                fontSize = titleFontSize.sp,
-                                lineHeight = titleLineHeight.sp,
-                                color = SlockColor.TextBlack
-                            ),
-                        color = SlockColor.TextBlack,
-                        modifier = Modifier.weight(1f),
-                        maxLines = titleMaxLines,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        overline?.takeIf { it.isNotBlank() }?.let { overlineText ->
+                            Text(
+                                text = overlineText,
+                                style = SlockType.Caption.copy(
+                                    fontSize = 11.sp,
+                                    lineHeight = 14.sp,
+                                    letterSpacing = 0.6.sp
+                                ),
+                                color = SlockColor.TextMutedGray,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(bottom = 4.dp).fillMaxWidth()
+                            )
+                        }
+                        Text(
+                            text = title,
+                            style =
+                                SlockType.PageTitle.copy(
+                                    fontSize = titleFontSize.sp,
+                                    lineHeight = titleLineHeight.sp,
+                                    color = SlockColor.TextBlack
+                                ),
+                            color = SlockColor.TextBlack,
+                            modifier = Modifier.fillMaxWidth(),
+                            maxLines = titleMaxLines,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     SlockBrutalIconButton(
                         enabled = dismissEnabled,
                         iconName = SlockLucideIconName.X,
@@ -703,8 +761,54 @@ internal fun SlockModalCompactMemberRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SlockAvatarWithStatus(
+        // Task #258 (artin msg=ed597ee6): the same member-row visuals are reused by
+        // the task detail assignee popover (inside a native Button for dispatch).
+        SlockModalCompactMemberRowContent(
+            title = title,
+            subtitle = subtitle,
+            avatarWireValue = avatarWireValue,
+            avatarLabel = avatarLabel,
             statusColor = statusColor,
+            statusPulsing = statusPulsing,
+            avatarSize = avatarSize,
+            sourceBadgeLabel = sourceBadgeLabel,
+            enabled = enabled,
+            selected = selected,
+            trailingText = trailingText,
+            trailingIcon = trailingIcon,
+            onTrailingClick = onTrailingClick,
+            cacheSubject = cacheSubject,
+            cacheServerId = cacheServerId
+        )
+    }
+}
+
+/**
+ * Row children of SlockModalCompactMemberRow (avatar + texts + trailing) so the
+ * exact channel add-member visuals can be embedded in other row shells (e.g. a
+ * native Button for the task detail assignee popover, where plain-`clickable`
+ * rows lose to the outer dismiss barrier).
+ */
+@Composable
+internal fun RowScope.SlockModalCompactMemberRowContent(
+    title: String,
+    subtitle: String,
+    avatarWireValue: String?,
+    avatarLabel: String,
+    statusColor: Color?,
+    statusPulsing: Boolean,
+    avatarSize: Dp,
+    sourceBadgeLabel: String?,
+    enabled: Boolean,
+    selected: Boolean,
+    trailingText: String,
+    trailingIcon: SlockLucideIconName?,
+    onTrailingClick: (() -> Unit)?,
+    cacheSubject: build.raft.app.data.SlockAvatarCacheSubject?,
+    cacheServerId: String?
+) {
+    SlockAvatarWithStatus(
+        statusColor = statusColor,
             avatarSize = avatarSize,
             statusSize = if (avatarSize >= 40.dp) 10.dp else 8.dp,
             statusPulsing = statusPulsing
@@ -782,7 +886,6 @@ internal fun SlockModalCompactMemberRow(
             else -> Spacer(modifier = Modifier.size(0.dp))
         }
     }
-}
 
 @Composable
 private fun SlockModalMemberRemoveButton(

@@ -140,19 +140,10 @@ class AndroidDevice:
         *,
         component: str = DEFAULT_DIAGNOSTICS_COMPONENT,
         action: str = DEFAULT_DIAGNOSTICS_ACTION,
-        enable_profiler: bool = False,
-        reset_scene: bool = False,
-        export_report: bool = False,
         auto_close_ms: int = 0,
         wait: bool = True,
     ) -> CommandResult:
         extras: list[tuple[str, str, str]] = []
-        if enable_profiler:
-            extras.append(("--ez", "enable_profiler", "true"))
-        if reset_scene:
-            extras.append(("--ez", "reset_scene", "true"))
-        if export_report:
-            extras.append(("--ez", "export_report", "true"))
         if auto_close_ms > 0:
             extras.append(("--el", "auto_close_ms", str(auto_close_ms)))
         return self.start_intent(action=action, component=component, extras=extras, wait=wait)
@@ -229,28 +220,6 @@ class AndroidDevice:
             payload["filtered_path"] = str(filtered_path)
             payload["filtered_lines"] = len(filtered.splitlines()) if filtered else 0
         return payload
-
-    def pull_profiler(self, *, out: Path, package: str | None = None, allow_missing: bool = False) -> dict[str, Any]:
-        out.mkdir(parents=True, exist_ok=True)
-        target_package = package or self.config.package
-        pulled: list[dict[str, str]] = []
-        missing: list[str] = []
-        for remote, local_name in (
-            ("cache/KuiklyProfiler/profiler_report.json", "profiler_report.json"),
-            ("cache/KuiklyProfiler/profiler_frames.jsonl", "profiler_frames.jsonl"),
-            ("files/KuiklyProfiler/profiler_report.json", "files_profiler_report.json"),
-            ("files/KuiklyProfiler/profiler_frames.jsonl", "files_profiler_frames.jsonl"),
-        ):
-            result = self.adb(["shell", "run-as", target_package, "cat", remote], check=False, binary=True)
-            if result.returncode == 0 and result.stdout_bytes:
-                dest = out / local_name
-                dest.write_bytes(result.stdout_bytes)
-                pulled.append({"remote": remote, "path": str(dest)})
-            else:
-                missing.append(remote)
-        if not pulled and not allow_missing:
-            raise AndroidUseError(f"no profiler files found for {target_package}; missing={missing}")
-        return {"device": self.ensure_device(), "package": target_package, "out_dir": str(out), "pulled": pulled, "missing": missing}
 
 
 def direction_to_swipe(direction: str, width: int = 1080, height: int = 2400) -> tuple[int, int, int, int]:

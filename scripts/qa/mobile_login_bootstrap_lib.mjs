@@ -11,7 +11,7 @@ function quotePosixShellWord(value) {
 }
 
 export function adbRunAsShellArgs(direction, applicationId, script) {
-  if (direction !== "exec-in" && direction !== "exec-out") {
+  if (direction !== "exec-in" && direction !== "exec-out" && direction !== "shell") {
     throw new Error("ADB run-as direction is invalid");
   }
   if (!/^[A-Za-z][A-Za-z0-9_.]*$/.test(applicationId)) {
@@ -20,13 +20,15 @@ export function adbRunAsShellArgs(direction, applicationId, script) {
   if (typeof script !== "string" || !script) {
     throw new Error("ADB run-as script is invalid");
   }
-  // exec-in/exec-out flattens the remote command to a shell string. Keep the
+  // exec-in/exec-out/shell flatten the remote command to a shell string. Keep the
   // complete sh -c program in one quoted remote argument; otherwise commands
   // after the first semicolon can run as the shell user outside run-as.
-  return [
-    direction,
-    `run-as ${quotePosixShellWord(applicationId)} sh -c ${quotePosixShellWord(script)}`,
-  ];
+  const remote = `run-as ${quotePosixShellWord(applicationId)} sh -c ${quotePosixShellWord(script)}`;
+  // `shell` is the shell-v2 channel (adb >= 24, device >= API 24): stdin EOF
+  // travels as a CLOSE_STDIN packet instead of tearing the connection down,
+  // and stdout plus the remote exit status come back on the same channel.
+  // `-T` pins no-pty so stdin bytes are never line-processed or CRLF-rewritten.
+  return direction === "shell" ? [direction, "-T", remote] : [direction, remote];
 }
 
 function requireAndroidDeviceSdk(deviceSdk) {

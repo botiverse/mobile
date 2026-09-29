@@ -4,6 +4,7 @@ import build.raft.app.data.SlockShellStoreScope
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -110,6 +111,17 @@ class SettingsStandaloneWebViewHostTest {
             SettingsWebViewPresentation.Content,
             settingsWebViewPresentation(contentVisible = true, hasLoadError = false),
         )
+    }
+
+    @Test
+    fun fullScreenFrameAtRootAttachesWhileInvalidOrUnmeasuredFramesStayCovered() {
+        assertTrue(settingsWebViewFrameIsReady(positionY = 0f, width = 1080, height = 2400))
+        assertTrue(settingsWebViewFrameIsReady(positionY = 64f, width = 1080, height = 2200))
+
+        assertFalse(settingsWebViewFrameIsReady(positionY = -1f, width = 1080, height = 2400))
+        assertFalse(settingsWebViewFrameIsReady(positionY = Float.NaN, width = 1080, height = 2400))
+        assertFalse(settingsWebViewFrameIsReady(positionY = 0f, width = 0, height = 2400))
+        assertFalse(settingsWebViewFrameIsReady(positionY = 0f, width = 1080, height = 0))
     }
 
     @Test

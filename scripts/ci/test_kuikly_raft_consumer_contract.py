@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-RELEASE = "2.24.0-raft.1"
+RELEASE = "2.24.0-raft.8"
 NORMAL = f"{RELEASE}-2.1.21"
 OHOS = f"{RELEASE}-2.0.21-ohos"
 
@@ -98,7 +98,6 @@ require(
 
 workflows = (
     ".github/workflows/android-alpha.yml",
-    ".github/workflows/android-beta.yml",
     ".github/workflows/android-release.yml",
     ".github/workflows/android-testbox.yml",
     ".github/workflows/ios-release.yml",

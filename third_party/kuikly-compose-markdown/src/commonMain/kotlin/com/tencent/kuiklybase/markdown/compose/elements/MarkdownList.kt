@@ -58,9 +58,14 @@ fun MarkdownListItems(
     val listItemBottom = LocalMarkdownPadding.current.listItemBottom
     val markdownComponents = LocalMarkdownComponents.current
     val markdownTypography = LocalMarkdownTypography.current
+    // Nested lists live inside the parent item's weighted column. Applying
+    // fillMaxWidth at every depth creates an unconstrained placement cycle in
+    // Kuikly's wrapped+nested layout path (StackOverflowError during place).
+    // Keep the root list full-width, but let nested lists resolve naturally in
+    // the already-constrained parent column.
     Column(
         modifier = Modifier
-            .fillMaxWidth()
+            .then(if (depth == 0) Modifier.fillMaxWidth() else Modifier)
             .padding(
                 start = (indentListDp) * (depth + 1),
                 top = listDp,
@@ -79,7 +84,12 @@ fun MarkdownListItems(
                         else -> null
                     }
 
-                    Row(modifier = Modifier.fillMaxWidth().padding(bottom = listItemBottom)) {
+                    Row(
+                        modifier =
+                            Modifier
+                                .then(if (depth == 0) Modifier.fillMaxWidth() else Modifier)
+                                .padding(bottom = listItemBottom)
+                    ) {
                         Box(modifier = markerModifier()) {
                             if (checkboxNode != null) {
                                 val model = MarkdownComponentModel(
@@ -122,7 +132,7 @@ fun MarkdownListItems(
                                         MarkdownParagraph(
                                             content = content,
                                             node = nestedChild,
-                                            modifier = Modifier.fillMaxWidth(),
+                                            modifier = if (depth == 0) Modifier.fillMaxWidth() else Modifier,
                                         )
                                     }
 

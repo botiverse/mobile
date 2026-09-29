@@ -107,14 +107,14 @@ The remaining risk to verify/fix is end-to-end retention: thread REST, realtime 
 
 ## Source References
 
-- Web grouping: `third_party/slock-source/packages/web/src/components/message/systemMessageGrouping.ts`
-- Web channel rendering: `third_party/slock-source/packages/web/src/components/message/ChatPanel.tsx`
-- Web thread rendering and realtime merge: `third_party/slock-source/packages/web/src/components/message/ThreadPanel.tsx`
-- Web system row UI: `third_party/slock-source/packages/web/src/components/message/MessageItem.tsx`
-- Server system-message creation/broadcast: `third_party/slock-source/packages/server/src/services/messageService.ts`
-- Server task lifecycle-to-thread contract: `third_party/slock-source/packages/server/src/routes/tasks.ts`
-- Server thread inbox Done endpoint: `third_party/slock-source/packages/server/src/routes/channels.ts`
-- Server thread follow Done state: `third_party/slock-source/packages/server/src/services/channelService.ts`
+- Web grouping: `<slock-source>/packages/web/src/components/message/systemMessageGrouping.ts`
+- Web channel rendering: `<slock-source>/packages/web/src/components/message/ChatPanel.tsx`
+- Web thread rendering and realtime merge: `<slock-source>/packages/web/src/components/message/ThreadPanel.tsx`
+- Web system row UI: `<slock-source>/packages/web/src/components/message/MessageItem.tsx`
+- Server system-message creation/broadcast: `<slock-source>/packages/server/src/services/messageService.ts`
+- Server task lifecycle-to-thread contract: `<slock-source>/packages/server/src/routes/tasks.ts`
+- Server thread inbox Done endpoint: `<slock-source>/packages/server/src/routes/channels.ts`
+- Server thread follow Done state: `<slock-source>/packages/server/src/services/channelService.ts`
 - KMP thread parser/render notes: `compose/shared/src/commonMain/kotlin/build/raft/app/data/ThreadMessagesParser.kt`, `compose/shared/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt`, `compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt`
 
 ## Non-Goals
@@ -122,4 +122,5 @@ The remaining risk to verify/fix is end-to-end retention: thread REST, realtime 
 - Do not invent a local-only system message for personal thread inbox Done.
 - Do not change server task lifecycle placement in this spec.
 - Do not render system rows in the task board as a substitute for the thread timeline.
-- Do not modify `third_party/slock-source`; it is read-only reference for this Android repo.
+- Do not modify the external `botiverse/slock` checkout from this Android repo;
+  pin and record its SHA when using it as evidence.

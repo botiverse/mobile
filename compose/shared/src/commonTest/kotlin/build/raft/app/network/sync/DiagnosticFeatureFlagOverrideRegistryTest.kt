@@ -1,6 +1,8 @@
 package build.raft.app.network.sync
 
 import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
+import build.raft.app.data.MOBILE_SLACK_NAV_FEATURE_FLAG_KEY
+import build.raft.app.data.SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY
 import build.raft.app.data.SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
 import kotlin.test.Test
@@ -23,10 +25,16 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
         assertEquals(
             listOf(
                 MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY,
+                MOBILE_SLACK_NAV_FEATURE_FLAG_KEY,
+                SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
                 SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY,
                 THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
             ).sorted(),
             registry.supportedKeys,
+        )
+        assertEquals(
+            DiagnosticFeatureFlagScopeKind.ServerExact,
+            registry.snapshot(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY).scopeKind,
         )
         assertEquals(
             DiagnosticFeatureFlagScopeKind.ChannelExact,
@@ -40,6 +48,46 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
             DiagnosticFeatureFlagScopeKind.ServerExact,
             registry.snapshot(THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY).scopeKind,
         )
+        assertEquals(
+            DiagnosticFeatureFlagScopeKind.ServerExact,
+            registry.snapshot(MOBILE_SLACK_NAV_FEATURE_FLAG_KEY).scopeKind,
+        )
+    }
+
+    @Test
+    fun `sync core messages override is bidirectional and entitlement gated`() {
+        // Not entitled (release): mutation rejected, decision follows the server value.
+        assertIs<DiagnosticFeatureFlagOverrideMutationResult.Rejected>(
+            registry.setMode(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
+        )
+        assertFalse(registry.decide(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, false, serverScope).finalEffective)
+
+        registry.configureEntitlement(true)
+        assertIs<DiagnosticFeatureFlagOverrideMutationResult.Applied>(
+            registry.setMode(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
+        )
+        val forcedOn = registry.decide(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, false, serverScope)
+        assertTrue(forcedOn.finalEffective)
+        assertFalse(forcedOn.serverEffective) // the server value stays visible next to the override
+        assertEquals("diagnostic_override_force_on", forcedOn.precedence)
+
+        assertIs<DiagnosticFeatureFlagOverrideMutationResult.Applied>(
+            registry.setMode(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOff)
+        )
+        val forcedOff = registry.decide(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, true, serverScope)
+        assertFalse(forcedOff.finalEffective)
+        assertTrue(forcedOff.serverEffective)
+
+        assertIs<DiagnosticFeatureFlagOverrideMutationResult.Applied>(
+            registry.setMode(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.Server)
+        )
+        assertTrue(registry.decide(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, true, serverScope).finalEffective)
+        assertFalse(registry.decide(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, false, serverScope).finalEffective)
+
+        // Process-wide gates (fold lane / shadow observers) decide without a server id: the override still applies.
+        registry.setMode(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
+        val processWide = DiagnosticFeatureFlagScope("https://api.example", "account-a", "")
+        assertTrue(registry.decide(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, false, processWide).finalEffective)
     }
 
     @Test

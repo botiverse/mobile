@@ -75,6 +75,9 @@ jobs:
       - name: Validate OHOS attachment-open diagnostic production wiring
         run: node compose/ohosApp/scripts/test_attachment_open_diagnostics_source_contract.mjs
 
+      - name: Validate attachment save failure mapping across native bridges
+        run: python3 scripts/ci/test_attachment_save_mapping_contract.py
+
       - name: Validate Kuikly immutable-Raft consumer contract
         run: python3 scripts/ci/test_kuikly_raft_consumer_contract.py
 
@@ -95,6 +98,15 @@ jobs:
         run: |
           python3 scripts/ci/check_commontest_crossplatform_deps.py --self-test
           python3 scripts/ci/check_commontest_crossplatform_deps.py
+
+      # Task #373 / PR #2497: mermaid consumer confinement. Three platform
+      # actuals must stay source-byte-identical; mermaid types stay out of
+      # commonMain/commonTest; OHOS mermaid GAVs stay on ohosArm64* with -ohos.
+      # Source identity, not KBA vs 2.1.21 ABI identity.
+      - name: Validate mermaid plane confinement contract
+        run: |
+          python3 scripts/ci/check_mermaid_plane_confinement.py --self-test
+          python3 scripts/ci/check_mermaid_plane_confinement.py
 
       # Task #34: Kuikly release completion-manifest gate (contract v0.3).
       # Self-test only until the release set lands; the production gate runs
@@ -743,6 +755,7 @@ jobs:
           scripts/ci/test_assert_instrumentation_ok.sh
           scripts/ci/test_instrumentation_retry_classification.sh
           scripts/ci/test_prepare_android_emulator_ime.sh
+          scripts/ci/test_run_first_character_emulator_suite.sh
 
       - name: Select Thread newer-pagination gate
         shell: bash
@@ -761,6 +774,7 @@ jobs:
               compose/shared/src/commonMain/kotlin/build/raft/app/LazyViewportController.kt \
               compose/shared/src/commonMain/kotlin/build/raft/app/ThreadNewerPagination.kt \
               compose/androidApp/src/androidTest/java/build/raft/app/shared/SlockThreadNewerAutoPaginationConnectedTest.kt \
+              compose/shared/src/visualFixtures/kotlin/build/raft/app/ThreadNewerAutoPaginationVisualFixture.kt \
               || diff_rc=$?
             case "$diff_rc" in
               0) run_gate=false ;;
@@ -776,6 +790,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Download connected-test APKs
         uses: actions/download-artifact@v7
@@ -807,8 +823,22 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: Validate first-character baseline regression script
+        shell: bash
+        run: |
+          bash -n \
+            scripts/ci/run-first-character-emulator-suite.sh \
+            scripts/ci/test_run_first_character_emulator_suite.sh
+          scripts/ci/test_run_first_character_emulator_suite.sh
+
       - name: Run first-character baseline regression
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          SOURCE_EXACT: ${{ github.event.pull_request.head.sha || github.sha }}
+          ANDROID_EMULATOR_SYSTEM_IMAGE_PACKAGE: system-images;android-34;google_apis;x86_64
+          RUNNER_LABEL: blacksmith-4vcpu-ubuntu-2404
+          THREAD_NEWER_PAGINATION_GATE_REQUIRED: ${{ env.THREAD_NEWER_PAGINATION_GATE_REQUIRED }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         with:
           api-level: 34
           arch: x86_64
@@ -819,74 +849,7 @@ jobs:
           emulator-boot-timeout: 1200
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
-          script: |
-            adb wait-for-device
-            # Keep the display awake for the whole job. Several screenshot-based
-            # connected tests below (first-character baseline, child-page
-            # visibility, pager scroll, thread align-right) poll for rendered
-            # colors and would read all-black frames if the emulator sleeps
-            # mid-test (stay_on_while_plugged_in=0 + a finite screen_off_timeout,
-            # confirmed to reproduce redRatio=0/blueRatio=0). An effectively
-            # infinite timeout prevents that sleep deterministically.
-            adb shell settings put system screen_off_timeout 2147483647
-            SOURCE_EXACT='${{ github.event.pull_request.head.sha || github.sha }}' ANDROID_EMULATOR_SYSTEM_IMAGE_PACKAGE='system-images;android-34;google_apis;x86_64' RUNNER_LABEL='blacksmith-4vcpu-ubuntu-2404' scripts/ci/prepare_android_emulator_ime.sh android-ime-environment.txt
-            adb install -r "$(find android-connected-test-apks -type f -name '*connectedTest.apk' -not -name '*androidTest*' | head -n 1)"
-            adb install -r "$(find android-connected-test-apks -type f -name '*androidTest.apk' | head -n 1)"
-            scripts/ci/run-instrumentation-with-retry.sh first-character-baseline-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockComposerFirstCharacterBaselineTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
-            # Keep this single-request capability probe unprimed. An earlier
-            # focus/IME probe can warm the emulator and invalidate this reading.
-            adb logcat -c
-            scripts/ci/run-instrumentation-with-retry.sh ime-visibility-probe-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.AndroidImeVisibilityProbeConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner; RC=$?; adb shell dumpsys input_method > ime-visibility-probe-input-method.txt; adb shell dumpsys window > ime-visibility-probe-window.txt; adb shell dumpsys activity activities > ime-visibility-probe-activity.txt; adb shell dumpsys power > ime-visibility-probe-power.txt; adb shell dumpsys window policy > ime-visibility-probe-policy.txt; adb logcat -d -v threadtime > ime-visibility-probe-logcat.txt; exit $RC
-            grep -Fq 'ANDROID_IME_VISIBILITY_PROBE_PASS' ime-visibility-probe-instrumentation.txt
-            adb logcat -c
-            scripts/ci/run-instrumentation-with-retry.sh composer-session-retirement-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockThreadImePaintConnectedTest#sendRetiresEditorSessionWithoutLosingFocusImeOrFirstComposition build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner; RC=$?; adb shell dumpsys input_method > composer-session-retirement-input-method.txt; adb shell dumpsys window > composer-session-retirement-window.txt; adb shell dumpsys activity activities > composer-session-retirement-activity.txt; adb shell dumpsys power > composer-session-retirement-power.txt; adb shell dumpsys window policy > composer-session-retirement-policy.txt; adb logcat -d -v threadtime > composer-session-retirement-logcat.txt; exit $RC
-            grep -Fq 'SLOCK_COMPOSER_SESSION_RETIREMENT_PASS replacementFocused=true firstComposition=true firstSelection=true requestCount=1 imeSetupFailureDiagnostics=true' composer-session-retirement-instrumentation.txt
-            scripts/ci/run-instrumentation-with-retry.sh thread-composer-suggestion-interaction-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.ThreadComposerSuggestionPopoverConnectedTest#openSuggestionsKeepTheEditorAndImageActionInteractive build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner; RC=$?; for evidence in root.png screen.png hierarchy.xml window.txt activity.txt logcat.txt failure.txt; do adb exec-out run-as build.raft.app.connectedtest cat "files/thread-composer-suggestion-interaction-failure-$evidence" > "thread-composer-suggestion-interaction-failure-$evidence" || rm -f "thread-composer-suggestion-interaction-failure-$evidence"; done; adb exec-out screencap -p > thread-composer-suggestion-interaction-terminal-screen.png; adb shell uiautomator dump /sdcard/thread-composer-suggestion-interaction-terminal-hierarchy.xml >/dev/null 2>&1 || true; adb pull /sdcard/thread-composer-suggestion-interaction-terminal-hierarchy.xml thread-composer-suggestion-interaction-terminal-hierarchy.xml >/dev/null 2>&1 || rm -f thread-composer-suggestion-interaction-terminal-hierarchy.xml; adb shell dumpsys window > thread-composer-suggestion-interaction-terminal-window.txt; adb shell dumpsys activity activities > thread-composer-suggestion-interaction-terminal-activity.txt; adb logcat -d -v threadtime > thread-composer-suggestion-interaction-terminal-logcat.txt; exit $RC
-            grep -Fq 'THREAD_COMPOSER_SUGGESTION_INTERACTION_PASS editorFocusedAfterTap=true text=#d imageAction=true outsideDismissed=true' thread-composer-suggestion-interaction-instrumentation.txt
-            scripts/ci/run-instrumentation-with-retry.sh multiline-text-field-value-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockMultilineTextFieldValueConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
-            scripts/ci/run-instrumentation-with-retry.sh kuikly-profiler-runtime-smoke-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.KuiklyProfilerRuntimeSmokeTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
-            adb logcat -c
-            scripts/ci/run-instrumentation-with-retry.sh attachment-private-file-provider-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.AndroidAttachmentPrivateFileProviderConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner; RC=$?; adb logcat -d -v threadtime 'AndroidRuntime:E' 'ActivityTaskManager:I' 'TestRunner:E' '*:S' > attachment-private-file-provider-logcat.txt; exit $RC
-            adb install -r "$(find android-shared-atomic-sink-test-apk -type f -name '*.apk' | head -n 1)"
-            adb shell pm list instrumentation | tee attachment-atomic-sink-receipt.txt
-            grep -Fq 'instrumentation:build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner' attachment-atomic-sink-receipt.txt
-            scripts/ci/run-instrumentation-with-retry.sh attachment-atomic-sink-instrumentation.txt 2 -- adb shell am instrument -w -r -e class build.raft.app.network.AndroidAttachmentDownloadAtomicSinkTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner
-            scripts/ci/run-instrumentation-with-retry.sh attachment-download-runtime-instrumentation.txt 6 -- adb shell am instrument -w -r -e class build.raft.app.network.AndroidAttachmentDownloadCoordinatorRuntimeTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner
-            grep -Fq 'TASK2_RUNTIME scenario=slow_complete' attachment-download-runtime-instrumentation.txt
-            grep -Fq 'TASK2_RUNTIME scenario=cancel_paths' attachment-download-runtime-instrumentation.txt
-            grep -Fq 'TASK2_RUNTIME scenario=pause_resume' attachment-download-runtime-instrumentation.txt
-            grep -Fq 'TASK2_RUNTIME scenario=whole_timeout' attachment-download-runtime-instrumentation.txt
-            grep -Fq 'TASK2_RUNTIME scenario=publishing_replacement' attachment-download-runtime-instrumentation.txt
-            grep -Fq 'TASK2_RUNTIME scenario=generation_safety' attachment-download-runtime-instrumentation.txt
-            scripts/ci/run-instrumentation-with-retry.sh performance-trace-feedback-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.core.data.diagnostics.PerformanceTraceFeedbackArchiveConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
-            # Promoted from never-run to gating by the task #19 triage: deterministic
-            # invariants that regressed repeatedly or guard fork/data-integrity paths.
-            # (AndroidShellTaskReuseConnectedTest is NOT promoted: its first CI run
-            # showed its normalization expectation predates #1152's multi-shell
-            # gating — pending the shell lane's behavior decision, see
-            # docs/instrumented-manual-harnesses.md.)
-            adb logcat -c
-            # The accepted frame does not exist on readiness failure. Keep its extraction best-effort so terminal evidence and the real instrumentation assertion still run. The retry wrapper runs am instrument + assert first (bounded-retrying infra-abort only); its exit is deferred through RC so terminal evidence is still captured on a real failure before the line exits non-zero.
-            scripts/ci/run-instrumentation-with-retry.sh child-page-visibility-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockChildPageVisibilityConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner; RC=$?; adb exec-out run-as build.raft.app.connectedtest cat files/child-page-visibility-accepted.png > child-page-visibility-accepted.png || rm -f child-page-visibility-accepted.png; adb exec-out screencap -p > child-page-visibility-terminal.png; adb logcat -d -v threadtime > child-page-visibility-logcat.txt; exit $RC
-            scripts/ci/run-instrumentation-with-retry.sh pager-scroll-probe-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockPagerScrollProbeConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
-            scripts/ci/run-instrumentation-with-retry.sh release-notes-section-gap-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockReleaseNotesSectionGapConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
-            scripts/ci/run-instrumentation-with-retry.sh thread-align-right-bounds-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockThreadAlignRightBoundsConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
-            # task #800: the five measured geometry lines are the auditable
-            # rendering evidence — a green test without them is not evidence.
-            # Single line: this runner executes each script line as its own
-            # `sh -c`, so a multi-line for-loop is a syntax error.
-            for band in long sent sending failed retry; do grep -Fq "ALIGN_RIGHT_GEOMETRY_${band}" thread-align-right-bounds-instrumentation.txt; done
-            scripts/ci/run-instrumentation-with-retry.sh diagnostics-caller-pipeline-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.core.data.diagnostics.DiagnosticsCallerPipelineConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner
-            scripts/ci/run-instrumentation-with-retry.sh durable-partition-migration-instrumentation.txt 2 -- adb shell am instrument -w -r -e class build.raft.app.data.DurablePartitionAndroidDriverMigrationTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner
-            # Run the slow gesture gate on main/nightly and on PRs that touch its
-            # Thread viewport or pagination boundary.
-            if [ "${THREAD_NEWER_PAGINATION_GATE_REQUIRED}" = "true" ]; then scripts/ci/run-instrumentation-with-retry.sh thread-newer-auto-pagination-instrumentation.txt 1 -- adb shell am instrument -w -r -e class build.raft.app.shared.SlockThreadNewerAutoPaginationConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner; fi
-            # Thread-open budget TELEMETRY (Raft task #20 t2): harvest the frozen-v3
-            # perf markers the pagination run just produced. Baseline collection
-            # only — currently 3/3 runs fail the 100ms draw budget, so this must
-            # NOT gate until the budget or the render path is fixed. `|| true`
-            # keeps collection failures from failing the nightly job.
-            if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then adb logcat -d -v threadtime | grep -E "thread_first_content_budget|kuikly_perf_snapshot|thread_payload_ready_gate|thread_host_traversal|thread_first_content_ready|thread_content_compose_start|thread_refresh_result|thread_markdown_body_recompose" > thread-open-budget-telemetry.txt || true; fi
+          script: bash scripts/ci/run-first-character-emulator-suite.sh
 
       - name: Upload instrumentation output
         if: always()
@@ -894,6 +857,7 @@ jobs:
         with:
           name: first-character-baseline-instrumentation
           path: |
+            first-character-baseline-suite-summary.txt
             first-character-baseline-instrumentation.txt
             android-ime-environment.txt
             ime-visibility-probe-instrumentation.txt
@@ -912,13 +876,13 @@ jobs:
             composer-session-retirement-logcat.txt
             thread-composer-suggestion-interaction-*
             multiline-text-field-value-instrumentation.txt
-            kuikly-profiler-runtime-smoke-instrumentation.txt
             attachment-private-file-provider-instrumentation.txt
             attachment-private-file-provider-logcat.txt
             attachment-atomic-sink-instrumentation.txt
             attachment-atomic-sink-receipt.txt
             attachment-download-runtime-instrumentation.txt
             performance-trace-feedback-instrumentation.txt
+            inactive-host-rendering-instrumentation.txt
             child-page-visibility-instrumentation.txt
             child-page-visibility-accepted.png
             child-page-visibility-terminal.png
@@ -961,6 +925,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Download connected-test APKs
         uses: actions/download-artifact@v7
@@ -1037,6 +1003,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Download connected-test APKs
         uses: actions/download-artifact@v7
@@ -1116,9 +1084,10 @@ jobs:
 
   ios:
     name: iOS compile
-    # Path scoping runs this for iOS/shared inputs and skips Android/OHOS-only
-    # changes. Merge queue, full-ci, release, nightly and manual plans still
-    # select every platform.
+    # Path scoping downshifts the expensive (macOS) iOS compile on ordinary PR
+    # pushes: changes touching commonMain run Linux fast gates only; the full iOS
+    # host build runs when iOS-specific code is changed, on explicit full-ci PRs,
+    # or on nightly/release readbacks.
     needs: [plan, kuikly-artifacts]
     if: ${{ needs.plan.outputs.run_ios == 'true' }}
     runs-on: blacksmith-6vcpu-macos-15
@@ -1150,6 +1119,15 @@ jobs:
             --console=plain \
             --stacktrace
 
+      - name: Test adaptive navigation transaction fences
+        run: bash compose/iosApp/scripts/test_adaptive_navigation_session.sh
+
+      - name: Test iOS interactive pop gesture admission
+        run: bash compose/iosApp/scripts/test_interactive_pop_gesture_admission.sh
+
+      - name: Test iOS conversation forward gesture admission
+        run: bash compose/iosApp/scripts/test_conversation_forward_gesture_admission.sh
+
       - name: Validate iOS avatar-cache durable provider
         run: node compose/iosApp/scripts/test_avatar_cache_provider_source_contract.mjs
 
@@ -1163,18 +1141,104 @@ jobs:
         working-directory: compose/iosApp
         run: pod install
 
-      - name: Build iOS host app and UI-test harness (simulator)
+      # Sync the K/N framework as its own step so Gradle gets proper caching
+      # and failure diagnostics, instead of running nested inside xcodebuild's
+      # [CP-User] Build shared script phase (which is also where tail-truncated
+      # logs used to swallow the real linker error). xcodebuild then skips the
+      # podspec script via OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES.
+      - name: Sync shared framework (simulator arm64)
+        working-directory: compose
+        run: |
+          ./gradlew :shared:syncFramework \
+            -Pkotlin.native.cocoapods.platform=iphonesimulator \
+            -Pkotlin.native.cocoapods.archs=arm64 \
+            -Pkotlin.native.cocoapods.configuration=Debug \
+            --no-daemon \
+            --console=plain \
+            --stacktrace
+
+      - name: Build iOS host app (simulator)
         working-directory: compose/iosApp
         run: |
           set -o pipefail
+          log="$GITHUB_WORKSPACE/xcodebuild-ios.log"
+          xcodebuild \
+            -workspace iosApp.xcworkspace \
+            -scheme iosApp \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/ios-build" \
+            ARCHS=arm64 \
+            CODE_SIGNING_ALLOWED=NO \
+            OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
+            build > "$log" 2>&1
+          status=$?
+          tail -200 "$log"
+          if [ "$status" -ne 0 ]; then
+            echo "===== iOS build FAILED (status=$status) — extracted errors ====="
+            grep -nE "(^|[[:space:]])e: |: error:|error: |Unresolved|FAILURE:|Execution failed|BUILD FAILED|following build commands failed|PhaseScriptExecution" "$log" \
+              | grep -v "Using response file" | tail -100 || true
+          fi
+          exit "$status"
+
+      - name: Test adaptive editor snapshots (UIKit)
+        working-directory: compose/iosApp
+        run: |
+          set -o pipefail
+          device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k,vs in sorted(d.items(), reverse=True) if "iOS" in k for v in vs if "iPhone" in v["name"]))')
+          log="$GITHUB_WORKSPACE/xcodebuild-adaptive-editor-tests.log"
+          xcodebuild \
+            -workspace iosApp.xcworkspace \
+            -scheme AdaptiveEditorTests \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$device_id" \
+            -derivedDataPath "$RUNNER_TEMP/ios-build" \
+            -only-testing:AdaptiveEditorTests/SlockAdaptiveEditorSnapshotTests \
+            -parallel-testing-enabled NO \
+            ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
+            OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
+            test > "$log" 2>&1 || { tail -200 "$log"; exit 1; }
+          tail -60 "$log"
+
+      # The UI-test bundle is only compiled here; no UI case is ever executed in
+      # this workflow, and qa-acceptance-ios.yml does its own build-for-testing
+      # before test-without-building. So on pull requests we build just the host
+      # app -- which is what actually proves shared/iOS integration still
+      # compiles -- and leave the harness compile to non-PR runs.
+      - name: Build iOS UI-test harness (simulator)
+        if: ${{ github.event_name != 'pull_request' }}
+        working-directory: compose/iosApp
+        run: |
+          set -o pipefail
+          log="$GITHUB_WORKSPACE/xcodebuild-ios.log"
           xcodebuild \
             -workspace iosApp.xcworkspace \
             -scheme iosAppUITests \
             -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/ios-build" \
+            ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO \
-            build-for-testing | tail -200
+            build-for-testing > "$log" 2>&1
+          status=$?
+          tail -200 "$log"
+          if [ "$status" -ne 0 ]; then
+            echo "===== iOS build FAILED (status=$status) — extracted errors ====="
+            grep -nE "(^|[[:space:]])e: |: error:|error: |Unresolved|FAILURE:|Execution failed|BUILD FAILED|following build commands failed|PhaseScriptExecution" "$log" \
+              | grep -v "Using response file" | tail -100 || true
+          fi
+          exit "$status"
+
+      - name: Upload xcodebuild log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-compile-xcodebuild-log-${{ github.run_id }}
+          path: |
+            xcodebuild-ios.log
+            xcodebuild-adaptive-editor-tests.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Gradle failure diagnostics
         if: failure()
@@ -1576,6 +1640,16 @@ jobs:
     steps:
       - name: Checkout aggregate verifier
         uses: actions/checkout@v5
+
+      # Runs in the SAME job as the gate on purpose. The verifier carries a selfTest behind
+      # `--self-test`, and nothing invoked it — so the expectation table could drift from
+      # test.yml and no CI job would go red. That is exactly how the kuikly-artifacts/iOS
+      # mismatch survived 18 days (#2294). Every other scripts/ci self-test in this repo is
+      # called by CI; this one was the sole omission (@LiBai). Putting it beside the gate,
+      # rather than in a paths-filtered lint workflow, means it cannot fall out of coverage
+      # when someone edits the verifier without touching whatever paths that lint watches.
+      - name: Self-test the tier verifier
+        run: node scripts/ci/verify_test_tier_results.mjs --self-test
 
       - name: Verify exact selected tier results
         env:

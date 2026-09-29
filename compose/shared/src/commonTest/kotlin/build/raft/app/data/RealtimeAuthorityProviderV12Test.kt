@@ -32,6 +32,7 @@ class RealtimeAuthorityProviderV12Test {
                 registry = registry,
                 authStore = auth,
                 authEvents = auth,
+                currentEnvironmentId = { "env-test" },
             )
         provider.start(lifecycleScope)
 
@@ -91,7 +92,7 @@ class RealtimeAuthorityProviderV12Test {
                 processInstanceId = "provider-reread",
             )
         val lifecycleScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val provider = RealtimeAuthorityProvider(registry, auth, auth)
+        val provider = RealtimeAuthorityProvider(registry, auth, auth, { "env-test" })
         provider.start(lifecycleScope)
         provider.registerScope("shell")
 
@@ -123,7 +124,7 @@ class RealtimeAuthorityProviderV12Test {
                 processInstanceId = "provider-registration-aba",
             )
         val lifecycleScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val provider = RealtimeAuthorityProvider(registry, auth, auth)
+        val provider = RealtimeAuthorityProvider(registry, auth, auth, { "env-test" })
         provider.start(lifecycleScope)
         auth.replace(session(token = "token"), AuthSessionEvent.Authenticated(generation = 1))
 
@@ -150,7 +151,7 @@ class RealtimeAuthorityProviderV12Test {
                 processInstanceId = "provider-invalid-principal",
             )
         val lifecycleScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val provider = RealtimeAuthorityProvider(registry, auth, auth)
+        val provider = RealtimeAuthorityProvider(registry, auth, auth, { "env-test" })
         provider.start(lifecycleScope)
         provider.registerScope("shell")
 

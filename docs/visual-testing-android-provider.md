@@ -8,8 +8,9 @@ React/source checkout:
 <slock-source>/packages/visual-testing/
 ```
 
-Do not create `third_party/slock-source` inside this Android repo. That path is
-not tracked by the mobile checkout and will show up as untracked local state.
+Do not create a retired in-repo Slock source directory inside this Android
+repo. The source repo is external and an in-repo directory would show up as
+untracked local state.
 Point the shim at an external checkout with `SLOCK_SOURCE_REPO` or directly at
 the CLI with `SLOCK_VISUAL_TESTING_CLI`.
 
@@ -22,6 +23,7 @@ Use the Android compatibility shim from the Android repo root:
 
 ```bash
 export SLOCK_SOURCE_REPO=/path/to/slock-source
+git -C "$SLOCK_SOURCE_REPO" rev-parse HEAD  # record this SHA with evidence
 node scripts/slock-visual-testing.mjs scan
 node scripts/slock-visual-testing.mjs validate --manifest shared
 node scripts/slock-visual-testing.mjs token-audit

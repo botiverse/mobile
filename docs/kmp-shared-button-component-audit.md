@@ -91,7 +91,9 @@ The audit scanned shared Compose files for three patterns:
 - direct `Button(` usage;
 - clickable surfaces with border/background chrome.
 
-The scan is limited to Android/KMP app source. `third_party/slock-source` is read-only React reference material and must not be modified as part of this migration.
+The scan is limited to Android/KMP app source. React reference material comes
+from an external `botiverse/slock` checkout (`SLOCK_SOURCE_REPO`) and must not
+be modified as part of this migration.
 
 High-priority manual chrome found in product surfaces:
 

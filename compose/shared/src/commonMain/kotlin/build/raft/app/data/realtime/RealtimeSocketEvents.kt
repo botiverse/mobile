@@ -23,6 +23,7 @@ object RealtimeSocketEvents {
     const val MessageNew = GeneratedRealtimeContract.SocketEvent.MessageNew
     const val MessageUpdated = GeneratedRealtimeContract.SocketEvent.MessageUpdated
     const val DirectMessageNew = GeneratedRealtimeContract.SocketEvent.DirectMessageNew
+    const val ThreadFollowersUpdated = "thread:followers-updated"
     const val ThreadUpdated = GeneratedRealtimeContract.SocketEvent.ThreadUpdated
     const val ChannelUpdated = GeneratedRealtimeContract.SocketEvent.ChannelUpdated
     const val ChannelMembersUpdated = GeneratedRealtimeContract.SocketEvent.ChannelMembersUpdated
@@ -30,6 +31,7 @@ object RealtimeSocketEvents {
     const val TaskUpdated = GeneratedRealtimeContract.SocketEvent.TaskUpdated
     const val TaskDeleted = GeneratedRealtimeContract.SocketEvent.TaskDeleted
     const val AgentActivity = GeneratedRealtimeContract.SocketEvent.AgentActivity
+    const val AgentSeen = GeneratedRealtimeContract.SocketEvent.AgentSeen
     const val AgentSession = GeneratedRealtimeContract.SocketEvent.AgentSession
     const val AgentCreated = GeneratedRealtimeContract.SocketEvent.AgentCreated
     const val AgentDeleted = GeneratedRealtimeContract.SocketEvent.AgentDeleted
@@ -68,6 +70,7 @@ object RealtimeSocketEvents {
 
     val ServerWireEvents: List<String> =
         GeneratedRealtimeContract.SocketEvent.ServerWireEvents + listOf(
+            ThreadFollowersUpdated,
             ReadStateUpdated,
             ReadStateUpdatedBulk,
             NotificationPrefsUpdated,

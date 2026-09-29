@@ -26,7 +26,34 @@ data class ScreenError(
      * real reason instead of a bare code. Humane localized special-cases
      * remain overlays on top of this fallback, never a replacement for it.
      */
-    val serverMessage: String? = null
+    val serverMessage: String? = null,
+    /**
+     * Structured recovery identifiers which a domain operation discovered while rejecting a
+     * malformed response.  These are deliberately kept out of [serverMessage]: callers can use
+     * them for compensating cleanup without leaking opaque/session identifiers into user-facing
+     * copy or ordinary diagnostics.  The field is currently used by direct attachment-session
+     * create, where a response may be malformed after the server has already reserved a session.
+     */
+    val recoverySessionIds: Set<String> = emptySet(),
+    /**
+     * Structured cleanup evidence retained when a multi-step operation fails after creating
+     * server-side reservations.  This is diagnostic/domain data, never user-facing copy: the
+     * primary [code] remains the original upload/projection failure even when compensation is
+     * incomplete or uncertain.
+     */
+    val cleanupEvidence: String? = null,
+    /**
+     * The server's machine-readable error code, when one was present in the response envelope.
+     * Keeping it separate from [code] lets presentation retain the stable local key while direct
+     * upload retry policy can classify an explicit transient/terminal code without guessing from
+     * HTTP status or human text.
+     */
+    val serverCode: String? = null,
+    /**
+     * Runtime form v2: the fields a 4xx response's issues point at (`/formValues/<field>`),
+     * so the form can mark them. Empty for every other error.
+     */
+    val formFieldKeys: List<String> = emptyList()
 )
 
 data class PermissionBlocker(
@@ -40,7 +67,9 @@ data class PermissionBlocker(
      * reason wins (401 always uses localized session copy; a non-blank 403
      * reason wins over the generic localized permission sentence).
      */
-    val serverMessage: String? = null
+    val serverMessage: String? = null,
+    /** Structured cleanup facts retained when a multi-step operation cannot retract all work. */
+    val cleanupEvidence: String? = null,
 )
 
 /** Stable, locale-independent keys emitted by the data/domain layer. */
@@ -52,6 +81,7 @@ enum class ErrorPresentationKey {
     ServerUnavailable,
     ItemNotFound,
     PermissionDenied,
+    EdgeBlocked,
     AttachmentTooLarge,
     TooManyAttempts,
     ResponseUnreadable,
@@ -89,7 +119,24 @@ fun ScreenError.isAuthSessionError(): Boolean =
 fun String?.isAuthSessionErrorCode(): Boolean =
     this == "auth_required" || this == "auth_session" || this == "unauthenticated"
 
+/**
+ * Machine-readable marker the network executor substitutes for edge/CDN
+ * intercepts (CloudFront-style 403s whose body is HTML rather than the API
+ * envelope). Localized network copy must always win over this opaque marker.
+ */
+internal fun String?.isEdgeBlockedMarker(): Boolean =
+    this?.trim()?.lowercase() == "edge_blocked"
+
 internal fun ScreenError.errorPresentation(): ErrorPresentation {
+    if (serverMessage.isEdgeBlockedMarker()) {
+        // The marker is an internal wire fact, not human-readable copy; the
+        // localized network-blocked sentence always wins.
+        return ErrorPresentation(
+            key = ErrorPresentationKey.EdgeBlocked,
+            rawServerMessage = serverMessage,
+            rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst
+        )
+    }
     val key = code.errorPresentationKeyOrNull()
     return ErrorPresentation(
         key = key ?: ErrorPresentationKey.Generic,
@@ -104,7 +151,13 @@ internal fun ScreenError.errorPresentation(): ErrorPresentation {
 }
 
 internal fun PermissionBlocker.errorPresentation(): ErrorPresentation =
-    if (isAuthSessionBlocker() || code.isHttpStatusPresentationCode(401)) {
+    if (serverMessage.isEdgeBlockedMarker()) {
+        ErrorPresentation(
+            key = ErrorPresentationKey.EdgeBlocked,
+            rawServerMessage = serverMessage,
+            rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst
+        )
+    } else if (isAuthSessionBlocker() || code.isHttpStatusPresentationCode(401)) {
         ErrorPresentation(
             key = ErrorPresentationKey.SessionExpired,
             rawServerMessage = serverMessage,
@@ -153,6 +206,7 @@ internal fun String?.errorPresentationKeyOrNull(): ErrorPresentationKey? {
     if (!normalized.looksLikeErrorCode()) return null
     val lower = normalized.lowercase()
     return when {
+        "edge_blocked" in lower -> ErrorPresentationKey.EdgeBlocked
         lower.isAuthSessionErrorCode() || lower.isHttpStatusPresentationCode(401) ||
             "auth" in lower || "unauthenticated" in lower -> ErrorPresentationKey.SessionExpired
         "dns" in lower || "host" in lower || "unreachable" in lower ->

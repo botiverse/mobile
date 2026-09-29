@@ -95,7 +95,7 @@ class SharedThreadJumpToLatestTest {
     }
 
     private fun dataSource(api: SharedThreadNetworkApi): SharedThreadDataSource =
-        SharedThreadDataSource(
+        testSharedThreadDataSource(
             networkApi = api,
             sessionStore =
                 InMemorySlockAuthSessionStore(
@@ -105,7 +105,8 @@ class SharedThreadJumpToLatestTest {
                         refreshToken = "refresh",
                         selectedServerId = "server-1"
                     )
-                )
+                ),
+            cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
         )
 
     private fun message(id: String, seq: Long, body: String): KuiklyThreadMessageItem =

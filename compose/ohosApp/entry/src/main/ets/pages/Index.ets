@@ -40,16 +40,38 @@ struct Index {
   @State exceptionReportState: string = SLOCK_EXCEPTION_REPORT_IDLE;
   @State exceptionReportMessage: string = '';
 
+  visualIngressPageName(): string {
+    const raw = AppStorage.get<string>('slock.visual.pageName');
+    return typeof raw === 'string' ? raw : '';
+  }
+
   aboutToAppear() {
     AppStorage.setOrCreate<UIContext>("context", this.getUIContext());
 
     const params = router.getParams() as Record<string, Object>;
     this.pageData = params?.pageData as KRRecord;
     const paramsPageName = this.stringValue(params?.pageName);
+    // Debug-only visual-fixture ingress fallback (task #10): when the ability
+    // was launched with slockVisualPage want parameters (debug builds only,
+    // written by EntryAbility.captureVisualFixtureWant), route to that page
+    // with the fixture pageData. Router params always take precedence.
+    const visualPageName = this.visualIngressPageName();
     const pageDataPageName = this.stringValue(this.pageData?.['pageName']);
     const resolvedPageName =
       paramsPageName.length > 0 ? paramsPageName :
-        pageDataPageName.length > 0 ? pageDataPageName : DEFAULT_PAGE_NAME;
+        pageDataPageName.length > 0 ? pageDataPageName :
+          visualPageName.length > 0 ? visualPageName : DEFAULT_PAGE_NAME;
+    if (paramsPageName.length === 0 && pageDataPageName.length === 0 && visualPageName.length > 0) {
+      const fixture = AppStorage.get<string>('slock.visual.fixture') ?? '';
+      const visualInstanceId = AppStorage.get<string>('slock.visual.instanceId') ?? '';
+      this.pageData = {
+        instanceId: visualInstanceId,
+        visualFixture: fixture,
+        // Match the Android visual-capture framing so cross-platform images
+        // share the same safe-area treatment (SlockSafeArea zeroes it when set).
+        slockVisualZeroSafeArea: true
+      } as KRRecord;
+    }
     this.pageName = resolvedPageName;
     const payloadBytes = this.stringValue(this.pageData?.['payload']).length;
     const instanceId = this.stringValue(this.pageData?.['instanceId']);

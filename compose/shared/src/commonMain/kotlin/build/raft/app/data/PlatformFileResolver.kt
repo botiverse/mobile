@@ -13,6 +13,21 @@ interface SlockPlatformFileResolver {
     suspend fun openFileStream(fileRef: String, expectedSizeBytes: Long): SlockPlatformFileChunkSource
 }
 
+/**
+ * Result of the authority-bound, pre-create file admission used by direct attachment sessions.
+ * The server create request must carry the length observed by the platform resolver; callers are
+ * not allowed to substitute a picker hint or a partially materialized byte array for a
+ * file-reference length.
+ */
+sealed interface SlockPlatformFilePreparationResult {
+    data class Ready(val sizeBytes: Long) : SlockPlatformFilePreparationResult
+
+    data class Rejected(
+        val code: String,
+        val retryable: Boolean = false,
+    ) : SlockPlatformFilePreparationResult
+}
+
 data class SlockPlatformFileReadResult(
     val code: Int,
     val bytes: ByteArray,

@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.data.AppLocale
-import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.StoredAuthSession
 import com.tencent.kuikly.core.pager.Pager
 
@@ -18,7 +17,6 @@ internal fun Pager.openSettingsAdministrationPage(storeScope: build.raft.app.dat
 internal val settingsAdministrationWebViewSpec =
     StandaloneSettingsWebViewSpec(
         surface = SettingsWebViewSurface.Administration,
-        destination = SharedSettingsDestination.Administration,
         includeLocaleQuery = true,
         buildWebUrl = ::settingsAdministrationWebViewUrl,
     )

@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalPanel
+import build.raft.app.components.SlockExternalBridgeBadge
+import build.raft.app.components.externalBridgeBadgeVisible
 import build.raft.app.components.SlockSkeleton
 import build.raft.app.components.SlockSkeletonVariant
 import build.raft.app.data.ChannelRepository
@@ -335,16 +337,21 @@ data class SlockHomeConversationItem(
     val channelType: String? = null,
     val unreadCount: Int = 0,
     val lastMessageAt: String? = null,
+    val lastMessagePreview: String? = null,
+    val lastMessageSenderName: String? = null,
     val createdAt: String? = null,
     val description: String? = null,
     val avatarLabel: String = name.take(2).uppercase(),
+    val avatarWireValue: String? = null,
     val peerType: String? = null,
     val presenceMemberId: String? = null,
     val hasDraft: Boolean = false,
     val joined: Boolean = true,
     val archived: Boolean = false,
     val activityMuted: Boolean = false,
-    val activityMuteSupported: Boolean = false
+    val activityMuteSupported: Boolean = false,
+    // task #396: external bridge provider ("slack") from `channel.bridge.provider`.
+    val bridgeProvider: String? = null
 )
 
 data class SlockHomeServerDrawerSection(
@@ -610,7 +617,8 @@ private data class ChannelRowContent(
     val badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud,
     val hasDraft: Boolean = false,
     val muted: Boolean = false,
-    val joined: Boolean = true
+    val joined: Boolean = true,
+    val bridgeProvider: String? = null
 ) {
     fun defaultInteractionIdentity(): String = "channel:$symbol:$name"
 }
@@ -901,6 +909,7 @@ internal suspend fun ChannelRepository.openPinnedMemberDirectMessage(
         MemberKind.Agent -> openAgentDirectMessage(identity.memberId)
         MemberKind.Human -> openUserDirectMessage(identity.memberId)
         MemberKind.System -> DataResult.Empty(EmptyReason.NoChannels)
+        MemberKind.External -> DataResult.Empty(EmptyReason.NoChannels)
     }
 
 internal class HomeConversationOpenBarrier(
@@ -1373,6 +1382,101 @@ private data class HomePayloadParseTrace(
     val result: String
 )
 
+/**
+ * task #336: state payload of [SlockStructuralHomeShell]. Grouping the shell's data parameters
+ * keeps the composable's register frame small so Android 16's dex verifier accepts the
+ * un-minified debug build (the 79-parameter flat signature was rejected with a register-type
+ * conflict: "register v327 has type Reference ... but expected Boolean").
+ */
+internal data class SlockStructuralHomeShellData(
+    val currentServerName: String = "Raft Android",
+    val currentServerId: String = "slock-android",
+    val servers: List<SlockServerSwitcherItem> = emptyList(),
+    val channels: List<SlockHomeConversationItem> = emptyList(),
+    val directMessages: List<SlockHomeConversationItem> = emptyList(),
+    val selectedChannelId: String? = null,
+    val selectedConversationSection: SlockHomeConversationSection? = null,
+    val inboxUnreadCount: Int = 0,
+    val inboxTotalCount: Int = 0,
+    val savedCount: Int = 0,
+    val notifications: List<SlockHomeNotificationItem> = emptyList(),
+    val inlineError: SlockHomeInlineError? = null,
+    val contentRefreshing: Boolean = false,
+    val contentRefreshEnabled: Boolean = true,
+    val serverSwitcherExpanded: Boolean = false,
+    val serverDrawerEnabled: Boolean = false,
+    val homeServerAvatarEnabled: Boolean = false,
+    val serverDrawerSections: List<SlockHomeServerDrawerSection> = emptyList(),
+    val pendingServerId: String? = null,
+    val prefersChineseCommunity: Boolean = false,
+    val applyTopSafeArea: Boolean = true,
+    val topSafeAreaOverride: Dp? = null,
+    val activitySelected: Boolean = false,
+    val searchSelected: Boolean = false,
+    val savedSelected: Boolean = false,
+    val channelOrder: List<String> = emptyList(),
+    val channelSortMode: String = "manual",
+    val dmOrder: List<String> = emptyList(),
+    val dmSortMode: String = "manual",
+    val pinnedChannelIds: List<String> = emptyList(),
+    val pinnedAgentIds: List<String> = emptyList(),
+    val pinnedOrder: List<String> = emptyList(),
+    val pinnedItems: List<SettingsServerSidebarPinnedItem> = emptyList(),
+    val pinnedSortMode: String = "manual",
+    val hiddenDmIds: List<String> = emptyList(),
+    val canArchiveChannels: Boolean = false,
+    val showLoadingSkeletons: Boolean = false,
+    val selectedTabKey: String = "home",
+    val showBottomBar: Boolean = true,
+    val externalFocusLossDismissEpoch: Int = 0,
+    val outerPadding: Dp = SlockSpacing.Md,
+    val labels: SlockHomeShellLabels = SlockHomeShellLabels(),
+    val scrollToTopRequest: Int = 0,
+    val initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
+)
+
+/**
+ * task #336: callback payload of [SlockStructuralHomeShell]. See [SlockStructuralHomeShellData]
+ * for why the flat parameter list had to be grouped.
+ */
+internal class SlockStructuralHomeShellCallbacks(
+    val onServerBadgeClick: () -> Unit = {},
+    val onServerSwitcherDismiss: () -> Unit = {},
+    val onServerDrawerSectionToggle: (String) -> Unit = {},
+    val onServerDrawerRetry: (String) -> Unit = {},
+    val onServerSelected: (String) -> Unit = {},
+    val onServerOrderChange: (List<String>) -> Unit = {},
+    val onCreateServerClick: () -> Unit = {},
+    val onCreateChannelClick: () -> Unit = {},
+    val onTabSelected: (String) -> Unit = {},
+    val onInboxClick: () -> Unit = {},
+    val onFollowedThreadsClick: () -> Unit = {},
+    val onSavedClick: () -> Unit = {},
+    val onSearchClick: () -> Unit = {},
+    val onNotificationView: (SlockHomeNotificationItem) -> Unit = {},
+    val onNotificationDismiss: (SlockHomeNotificationItem) -> Unit = {},
+    val onInlineErrorAction: () -> Unit = {},
+    val onRefresh: () -> Unit = {},
+    val onChannelSortModeChange: (SlockSidebarSortMode) -> Unit = {},
+    val onSidebarOrderChange: (target: SlockSidebarSortTarget, order: List<String>) -> Unit = { _, _ -> },
+    val onDmSortModeChange: (SlockSidebarSortMode) -> Unit = {},
+    val onPinnedSortModeChange: (SlockSidebarSortMode) -> Unit = {},
+    val onChannelClick: (String) -> Unit = {},
+    val onPinnedMemberClick: (MemberDetailIdentity) -> Unit = {},
+    val onChannelLongPress: (String, SlockPopoverAnchor) -> Unit = { _, _ -> },
+    val onPinToggle: (String) -> Unit = {},
+    val onReadToggle: (conversationId: String, markUnread: Boolean) -> Unit = { _, _ -> },
+    val onChannelActivityMuteToggle: (conversationId: String, muted: Boolean) -> Unit = { _, _ -> },
+    val onCloseDirectMessage: (String) -> Unit = {},
+    val onArchiveChannel: (String) -> Unit = {},
+    val agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    val memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    val pinnedMemberProfileResolver: (String) -> SlockHomePinnedMemberItem? = { null },
+    val diagnosticsLogger: (String) -> Unit = {},
+    val onPinMenuDismiss: () -> Unit = {},
+    val onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> },
+)
+
 @Composable
 internal fun SlockStructuralHomeShell(
     modifier: Modifier = Modifier,
@@ -1461,6 +1565,188 @@ internal fun SlockStructuralHomeShell(
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> }
 ) {
+    // task #336: thin delegation to the payload-based implementation keeps every call site
+    // (named arguments) unchanged while the verifier-relevant frame lives on the small
+    // SlockStructuralHomeShellContent signature below.
+    SlockStructuralHomeShellContent(
+        modifier = modifier,
+        data =
+            SlockStructuralHomeShellData(
+                currentServerName = currentServerName,
+                currentServerId = currentServerId,
+                servers = servers,
+                channels = channels,
+                directMessages = directMessages,
+                selectedChannelId = selectedChannelId,
+                selectedConversationSection = selectedConversationSection,
+                inboxUnreadCount = inboxUnreadCount,
+                inboxTotalCount = inboxTotalCount,
+                savedCount = savedCount,
+                notifications = notifications,
+                inlineError = inlineError,
+                contentRefreshing = contentRefreshing,
+                contentRefreshEnabled = contentRefreshEnabled,
+                serverSwitcherExpanded = serverSwitcherExpanded,
+                serverDrawerEnabled = serverDrawerEnabled,
+                homeServerAvatarEnabled = homeServerAvatarEnabled,
+                serverDrawerSections = serverDrawerSections,
+                pendingServerId = pendingServerId,
+                prefersChineseCommunity = prefersChineseCommunity,
+                applyTopSafeArea = applyTopSafeArea,
+                topSafeAreaOverride = topSafeAreaOverride,
+                activitySelected = activitySelected,
+                searchSelected = searchSelected,
+                savedSelected = savedSelected,
+                channelOrder = channelOrder,
+                channelSortMode = channelSortMode,
+                dmOrder = dmOrder,
+                dmSortMode = dmSortMode,
+                pinnedChannelIds = pinnedChannelIds,
+                pinnedAgentIds = pinnedAgentIds,
+                pinnedOrder = pinnedOrder,
+                pinnedItems = pinnedItems,
+                pinnedSortMode = pinnedSortMode,
+                hiddenDmIds = hiddenDmIds,
+                canArchiveChannels = canArchiveChannels,
+                showLoadingSkeletons = showLoadingSkeletons,
+                selectedTabKey = selectedTabKey,
+                showBottomBar = showBottomBar,
+                externalFocusLossDismissEpoch = externalFocusLossDismissEpoch,
+                outerPadding = outerPadding,
+                labels = labels,
+                scrollToTopRequest = scrollToTopRequest,
+                initialListPosition = initialListPosition,
+            ),
+        callbacks =
+            SlockStructuralHomeShellCallbacks(
+                onServerBadgeClick = onServerBadgeClick,
+                onServerSwitcherDismiss = onServerSwitcherDismiss,
+                onServerDrawerSectionToggle = onServerDrawerSectionToggle,
+                onServerDrawerRetry = onServerDrawerRetry,
+                onServerSelected = onServerSelected,
+                onServerOrderChange = onServerOrderChange,
+                onCreateServerClick = onCreateServerClick,
+                onCreateChannelClick = onCreateChannelClick,
+                onTabSelected = onTabSelected,
+                onInboxClick = onInboxClick,
+                onFollowedThreadsClick = onFollowedThreadsClick,
+                onSavedClick = onSavedClick,
+                onSearchClick = onSearchClick,
+                onNotificationView = onNotificationView,
+                onNotificationDismiss = onNotificationDismiss,
+                onInlineErrorAction = onInlineErrorAction,
+                onRefresh = onRefresh,
+                onChannelSortModeChange = onChannelSortModeChange,
+                onSidebarOrderChange = onSidebarOrderChange,
+                onDmSortModeChange = onDmSortModeChange,
+                onPinnedSortModeChange = onPinnedSortModeChange,
+                onChannelClick = onChannelClick,
+                onPinnedMemberClick = onPinnedMemberClick,
+                onChannelLongPress = onChannelLongPress,
+                onPinToggle = onPinToggle,
+                onReadToggle = onReadToggle,
+                onChannelActivityMuteToggle = onChannelActivityMuteToggle,
+                onCloseDirectMessage = onCloseDirectMessage,
+                onArchiveChannel = onArchiveChannel,
+                agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver,
+                pinnedMemberProfileResolver = pinnedMemberProfileResolver,
+                diagnosticsLogger = diagnosticsLogger,
+                onPinMenuDismiss = onPinMenuDismiss,
+                onListPositionSnapshot = onListPositionSnapshot,
+            ),
+        bottomContentPadding = bottomContentPadding,
+        listPositionServerId = listPositionServerId,
+    )
+}
+
+@Composable
+private fun SlockStructuralHomeShellContent(
+    modifier: Modifier,
+    data: SlockStructuralHomeShellData,
+    callbacks: SlockStructuralHomeShellCallbacks,
+    bottomContentPadding: Dp,
+    listPositionServerId: String,
+) {
+    val currentServerName = data.currentServerName
+    val currentServerId = data.currentServerId
+    val servers = data.servers
+    val channels = data.channels
+    val directMessages = data.directMessages
+    val selectedChannelId = data.selectedChannelId
+    val selectedConversationSection = data.selectedConversationSection
+    val inboxUnreadCount = data.inboxUnreadCount
+    val inboxTotalCount = data.inboxTotalCount
+    val savedCount = data.savedCount
+    val notifications = data.notifications
+    val inlineError = data.inlineError
+    val contentRefreshing = data.contentRefreshing
+    val contentRefreshEnabled = data.contentRefreshEnabled
+    val serverSwitcherExpanded = data.serverSwitcherExpanded
+    val serverDrawerEnabled = data.serverDrawerEnabled
+    val homeServerAvatarEnabled = data.homeServerAvatarEnabled
+    val serverDrawerSections = data.serverDrawerSections
+    val pendingServerId = data.pendingServerId
+    val prefersChineseCommunity = data.prefersChineseCommunity
+    val applyTopSafeArea = data.applyTopSafeArea
+    val topSafeAreaOverride = data.topSafeAreaOverride
+    val activitySelected = data.activitySelected
+    val searchSelected = data.searchSelected
+    val savedSelected = data.savedSelected
+    val channelOrder = data.channelOrder
+    val channelSortMode = data.channelSortMode
+    val dmOrder = data.dmOrder
+    val dmSortMode = data.dmSortMode
+    val pinnedChannelIds = data.pinnedChannelIds
+    val pinnedAgentIds = data.pinnedAgentIds
+    val pinnedOrder = data.pinnedOrder
+    val pinnedItems = data.pinnedItems
+    val pinnedSortMode = data.pinnedSortMode
+    val hiddenDmIds = data.hiddenDmIds
+    val canArchiveChannels = data.canArchiveChannels
+    val showLoadingSkeletons = data.showLoadingSkeletons
+    val selectedTabKey = data.selectedTabKey
+    val showBottomBar = data.showBottomBar
+    val externalFocusLossDismissEpoch = data.externalFocusLossDismissEpoch
+    val outerPadding = data.outerPadding
+    val labels = data.labels
+    val scrollToTopRequest = data.scrollToTopRequest
+    val initialListPosition = data.initialListPosition
+    val onServerBadgeClick = callbacks.onServerBadgeClick
+    val onServerSwitcherDismiss = callbacks.onServerSwitcherDismiss
+    val onServerDrawerSectionToggle = callbacks.onServerDrawerSectionToggle
+    val onServerDrawerRetry = callbacks.onServerDrawerRetry
+    val onServerSelected = callbacks.onServerSelected
+    val onServerOrderChange = callbacks.onServerOrderChange
+    val onCreateServerClick = callbacks.onCreateServerClick
+    val onCreateChannelClick = callbacks.onCreateChannelClick
+    val onTabSelected = callbacks.onTabSelected
+    val onInboxClick = callbacks.onInboxClick
+    val onFollowedThreadsClick = callbacks.onFollowedThreadsClick
+    val onSavedClick = callbacks.onSavedClick
+    val onSearchClick = callbacks.onSearchClick
+    val onNotificationView = callbacks.onNotificationView
+    val onNotificationDismiss = callbacks.onNotificationDismiss
+    val onInlineErrorAction = callbacks.onInlineErrorAction
+    val onRefresh = callbacks.onRefresh
+    val onChannelSortModeChange = callbacks.onChannelSortModeChange
+    val onSidebarOrderChange = callbacks.onSidebarOrderChange
+    val onDmSortModeChange = callbacks.onDmSortModeChange
+    val onPinnedSortModeChange = callbacks.onPinnedSortModeChange
+    val onChannelClick = callbacks.onChannelClick
+    val onPinnedMemberClick = callbacks.onPinnedMemberClick
+    val onChannelLongPress = callbacks.onChannelLongPress
+    val onPinToggle = callbacks.onPinToggle
+    val onReadToggle = callbacks.onReadToggle
+    val onChannelActivityMuteToggle = callbacks.onChannelActivityMuteToggle
+    val onCloseDirectMessage = callbacks.onCloseDirectMessage
+    val onArchiveChannel = callbacks.onArchiveChannel
+    val agentStatusResolver = callbacks.agentStatusResolver
+    val memberAvatarResolver = callbacks.memberAvatarResolver
+    val pinnedMemberProfileResolver = callbacks.pinnedMemberProfileResolver
+    val diagnosticsLogger = callbacks.diagnosticsLogger
+    val onPinMenuDismiss = callbacks.onPinMenuDismiss
+    val onListPositionSnapshot = callbacks.onListPositionSnapshot
     var channelsExpanded by remember { mutableStateOf(true) }
     var jointChannelsExpanded by remember { mutableStateOf(true) }
     var directMessagesExpanded by remember { mutableStateOf(true) }
@@ -2083,6 +2369,7 @@ internal fun SlockStructuralHomeShell(
                                                         joined = pinned.joined,
                                                         hasDraft = pinned.hasDraft,
                                                         muted = pinned.activityMuted,
+                                                        bridgeProvider = pinned.bridgeProvider,
                                                         badge = badgeProjection.label,
                                                         badgeTone = badgeProjection.tone
                                                     ),
@@ -2133,6 +2420,7 @@ internal fun SlockStructuralHomeShell(
                                                         joined = channel.joined,
                                                         hasDraft = channel.hasDraft,
                                                         muted = channel.activityMuted,
+                                                        bridgeProvider = channel.bridgeProvider,
                                                         badge = badgeProjection.label,
                                                         badgeTone = badgeProjection.tone
                                                     ),
@@ -2197,6 +2485,7 @@ internal fun SlockStructuralHomeShell(
                                                         joined = channel.joined,
                                                         hasDraft = channel.hasDraft,
                                                         muted = channel.activityMuted,
+                                                        bridgeProvider = channel.bridgeProvider,
                                                         badge = badgeProjection.label,
                                                         badgeTone = badgeProjection.tone
                                                     ),
@@ -4558,6 +4847,7 @@ private fun HomeServerDrawerConversationRow(
                     joined = item.joined,
                     hasDraft = item.hasDraft,
                     muted = item.activityMuted,
+                    bridgeProvider = item.bridgeProvider,
                     badge = badgeProjection.label,
                     badgeTone = badgeProjection.tone
                 ),
@@ -4922,7 +5212,7 @@ private fun ServerSwitcherUnreadIndicator(server: SlockServerSwitcherItem) {
 }
 
 @Composable
-private fun ServerSwitcherAvatarTile(server: SlockServerSwitcherItem) {
+internal fun ServerSwitcherAvatarTile(server: SlockServerSwitcherItem) {
     val presentation = server.toServerSwitcherAvatarPresentation()
     Box(
         modifier =
@@ -4932,19 +5222,21 @@ private fun ServerSwitcherAvatarTile(server: SlockServerSwitcherItem) {
                 .border(SlockStroke.Default, SlockColor.BorderBlack),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            presentation.fallbackLabel,
-            style =
-                SlockType.Button.copy(
-                    fontFamily = slockMonoFamilyForWeight(FontWeight.Bold),
-                    fontSize = 17.sp,
-                    lineHeight = 20.sp,
-                    fontWeight = FontWeight.Normal
-                ),
-            color = SlockColor.BrandYellow,
-            maxLines = 1,
-            textAlign = TextAlign.Center
-        )
+        if (presentation.avatarWireValue == null) {
+            Text(
+                presentation.fallbackLabel,
+                style =
+                    SlockType.Button.copy(
+                        fontFamily = slockMonoFamilyForWeight(FontWeight.Bold),
+                        fontSize = 17.sp,
+                        lineHeight = 20.sp,
+                        fontWeight = FontWeight.Normal
+                    ),
+                color = SlockColor.BrandYellow,
+                maxLines = 1,
+                textAlign = TextAlign.Center
+            )
+        }
         presentation.avatarWireValue?.let { source ->
             if (source.toPixelAvatarSpec() != null) {
                 // Visual-fixture pixel avatars use the same renderer as the compact header so
@@ -5483,6 +5775,10 @@ private fun ChannelRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (externalBridgeBadgeVisible(content.bridgeProvider)) {
+                    Spacer(Modifier.width(ChannelRowMutedIconGap))
+                    SlockExternalBridgeBadge(content.bridgeProvider)
+                }
                 if (mutedIndicatorIcon != null) {
                     Spacer(Modifier.width(ChannelRowMutedIconGap))
                     SlockLucideIcon(
@@ -6023,10 +6319,14 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             }
             if (isAgent) {
                 memberId?.takeIf { it.isNotBlank() }?.let {
-                    val status =
-                        rememberSlockAgentStatusIndicatorState(agentStatusResolver, it)
-                            ?: slockAgentStatusIndicatorState(status = null, presence = Presence.Offline)
-                    DirectMessageStatusDot(status)
+                    // A missing resolver value means presence is still Unknown/not ready.
+                    // Do not manufacture Offline: that falsely renders a gray dot while the
+                    // authoritative member/presence projection is loading or recovering.
+                    projectHomeAgentStatusIndicatorState(
+                        showPresence = true,
+                        memberId = it,
+                        canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, it)
+                    )?.let { state -> DirectMessageStatusDot(state) }
                 }
             }
             if (hasDraft) {
@@ -6117,8 +6417,11 @@ internal fun SlockAvatar(
     // Thread — that's a lot of recompositions on scroll, so we want to know whether
     // it's the identify / http-fetch / render / fallback-default that's hot.
     val displayAvatarWireValue = avatarWireValue?.appAvatarWireValueOrNull()
-    val httpAvatarSource = remember(displayAvatarWireValue) {
+    val gravatarHttpSource = remember(displayAvatarWireValue) {
         displayAvatarWireValue?.gravatarAvatarHttpUrlOrNull()
+    }
+    val httpAvatarSource = remember(displayAvatarWireValue, gravatarHttpSource) {
+        gravatarHttpSource
             ?: displayAvatarWireValue?.takeIf {
                 it.startsWith("http://") || it.startsWith("https://")
             }
@@ -6139,13 +6442,19 @@ internal fun SlockAvatar(
                 .border(borderWidth, SlockColor.BorderBlack),
             contentAlignment = Alignment.Center
         ) {
-            DefaultUserAvatarIcon(avatarSize)
+            // task #343: an uploaded avatar must not flash the generic icon while its cached
+            // bytes are still being resolved (cold start reads them from SQLite + native). Keep
+            // the neutral background until the load settles; draw the icon only on a definitive
+            // failure. Gravatar keeps the immediate icon: it is often unreachable (CN) and the
+            // icon is its expected fallback.
+            if (gravatarHttpSource != null) DefaultUserAvatarIcon(avatarSize)
             SlockAvatarHttpImage(
                 source = httpAvatarSource,
                 modifier = Modifier.fillMaxSize(),
                 diagnostics = diagnostics,
                 cacheSubject = cacheSubject,
-                cacheServerId = cacheServerId
+                cacheServerId = cacheServerId,
+                fallback = { if (gravatarHttpSource == null) DefaultUserAvatarIcon(avatarSize) }
             )
         }
         else -> traceMarkdownSection(SlockAvatarTraceNames.FALLBACK_DEFAULT, displayAvatarWireValue?.length ?: 0) {
@@ -6155,12 +6464,13 @@ internal fun SlockAvatar(
 }
 
 @Composable
-private fun SlockAvatarHttpImage(
+internal fun SlockAvatarHttpImage(
     source: String,
     modifier: Modifier = Modifier,
     diagnostics: SlockAvatarRowDiagnostics? = null,
     cacheSubject: SlockAvatarCacheSubject? = null,
-    cacheServerId: String? = null
+    cacheServerId: String? = null,
+    fallback: @Composable () -> Unit = {}
 ) {
     val apiBaseUrl =
         SlockSharedStoreRegistry.currentOrNull()
@@ -6187,9 +6497,22 @@ private fun SlockAvatarHttpImage(
         }
     val loadStateFlow = remember(loadKey) { slockAvatarHttpLoadCoordinator.stateFlow(loadKey) }
     val loadState by loadStateFlow.collectAsState()
+    if (slockAvatarHttpShowsFallback(loadState)) fallback()
     var lease by remember(loadKey) { mutableStateOf<SlockAvatarHttpLoadLease?>(null) }
     val activeSource = loadKey.sourceFor(loadState.endpoint) ?: return
     val avatarMountedBinding = SlockSharedStoreRegistry.currentOrNull()?.avatarMountedBinding
+    val initialManagedModel =
+        remember(activeSource, cacheSubject, cacheServerId, avatarMountedBinding) {
+            if (avatarMountedBinding == null || cacheSubject == null) {
+                null
+            } else {
+                avatarMountedBinding.peekInitialManagedModel(
+                    subject = cacheSubject,
+                    remoteUrl = activeSource,
+                    serverId = cacheServerId
+                )
+            }
+        }
     var mountedHandle by
         remember(activeSource, cacheSubject, cacheServerId, avatarMountedBinding) {
             mutableStateOf<SlockAvatarMountedHandle?>(null)
@@ -6251,34 +6574,47 @@ private fun SlockAvatarHttpImage(
         }
     }
 
-    LaunchedEffect(loadKey, loadState.cache, loadState.retryAtMillis, loadState.generation) {
+    // ownerToken is part of the key so that an owner departing (ownerToken -> null while the
+    // flight stays InFlight) re-fires this effect and lets a surviving/new row adopt the orphan.
+    LaunchedEffect(loadKey, loadState.cache, loadState.ownerToken, loadState.retryAtMillis, loadState.generation) {
         val retryDelayMillis = slockAvatarHttpLoadCoordinator.retryDelayMillis(loadState)
         if (retryDelayMillis > 0L) delay(retryDelayMillis)
         if (
             loadState.cache == SlockAvatarHttpCacheState.Idle ||
-            loadState.cache == SlockAvatarHttpCacheState.Cooldown
+            loadState.cache == SlockAvatarHttpCacheState.Cooldown ||
+            // A flight whose owner left the viewport while other observers remain is orphaned
+            // (InFlight with a null ownerToken). Reachable here so a surviving/new row can adopt
+            // the in-flight generation instead of never re-acquiring the lease.
+            (loadState.cache == SlockAvatarHttpCacheState.InFlight && loadState.ownerToken == null)
         ) {
             lease = slockAvatarHttpLoadCoordinator.tryAcquire(loadKey)
         }
-    }
-
-    LaunchedEffect(diagnostics, loadKey, loadState, lease?.ownerToken) {
-        val row = diagnostics ?: return@LaunchedEffect
-        row.logger(
-            "thread_avatar_painter messageHash=${row.messageHash} authorHash=${row.authorHash} " +
-                "source=${loadKey.diagnosticsSource} activeEndpoint=${loadState.endpoint.diagnosticsName()} " +
-                "painter=${loadState.painter.diagnosticsName()} " +
-                "cache=${loadState.diagnosticsCacheState(lease?.ownerToken)}"
-        )
     }
 
     val candidateImageModel =
         if (avatarMountedBinding == null || cacheSubject == null) {
             activeSource
         } else {
-            val handle = mountedHandle ?: return
-            handle.imageModel.collectAsState().value ?: return
+            // Cold cache: the durable bytes haven't landed yet, so imageModel is still null. Fall
+            // back to an already-committed managed model from this session, or the ordinary HTTP source
+            // so the painter isn't starved while the mounted download is still in flight; once bytes
+            // commit, imageModel takes over rendering.
+            val handle = mountedHandle
+            handle?.imageModel?.collectAsState()?.value
+                ?: initialManagedModel
+                ?: activeSource
         }
+    LaunchedEffect(diagnostics, loadKey, loadState, lease?.ownerToken, candidateImageModel) {
+        val row = diagnostics ?: return@LaunchedEffect
+        row.logger(
+            "thread_avatar_painter messageHash=${row.messageHash} authorHash=${row.authorHash} " +
+                "source=${loadKey.diagnosticsSource} ${activeSource.slockAvatarDiagnosticsUrlShape(apiBaseUrl)} " +
+                "activeEndpoint=${loadState.endpoint.diagnosticsName()} " +
+                "model=${if (parseSlockAvatarMountedRenderModel(candidateImageModel) != null) "managed" else "url"} " +
+                "painter=${loadState.painter.diagnosticsName()} " +
+                "cache=${loadState.diagnosticsCacheState(lease?.ownerToken)}"
+        )
+    }
     val imageModel =
         slockAvatarHttpAdmittedImageModel(
             candidateImageModel = candidateImageModel,
@@ -6304,6 +6640,17 @@ private fun SlockAvatarHttpImage(
         contentScale = ContentScale.FillBounds
     )
 }
+
+/**
+ * task #343: the generic avatar icon is a failure affordance, not a loading placeholder. It is
+ * shown only once the HTTP load has settled on failure (cooldown), or a ready generation failed to
+ * render. Idle / in-flight loads keep the neutral background so a cold start goes straight from
+ * blank to the real avatar instead of flashing the default icon first.
+ */
+internal fun slockAvatarHttpShowsFallback(loadState: SlockAvatarHttpLoadSnapshot): Boolean =
+    loadState.cache == SlockAvatarHttpCacheState.Cooldown ||
+        (loadState.cache == SlockAvatarHttpCacheState.Ready &&
+            loadState.painter == SlockAvatarHttpPainterPhase.Error)
 
 /**
  * A committed mounted descriptor is already fenced by environment/account/server/subject/content

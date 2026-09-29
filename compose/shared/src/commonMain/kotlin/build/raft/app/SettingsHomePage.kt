@@ -1,8 +1,9 @@
 package build.raft.app
 
 import build.raft.app.data.NetworkSlockThreadApi
-
 import build.raft.app.base.Utils
+import build.raft.app.network.slockNetworkKmmRecoveryEnvironmentId
+import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockBrutalIconButton
@@ -36,6 +37,7 @@ import build.raft.app.data.NetworkSlockHomeApi
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.BridgeSlockAvatarNativeCache
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
+import build.raft.app.data.MOBILE_SLACK_NAV_FEATURE_FLAG_KEY
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.KuiklyHostNetworkEvents
 import build.raft.app.data.KuiklyAppUpdateEvents
@@ -59,7 +61,6 @@ import build.raft.app.data.MOBILE_ACTION_LINK_OPEN_MODE
 import build.raft.app.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
 import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
 import build.raft.app.data.MOBILE_ACTION_SERVER_DRAWER
-import build.raft.app.data.MOBILE_ACTION_NEW_DESIGN_SETTINGS
 import build.raft.app.data.MOBILE_ACTION_HOME_SERVER_AVATAR
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
 import build.raft.app.data.MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS
@@ -81,6 +82,7 @@ import build.raft.app.data.LANGUAGE_REGION_ACTION_SERVER_TRANSLATION
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIME_FORMAT
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIMEZONE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY
+import build.raft.app.data.LargeScreenNavigationPreference
 import build.raft.app.data.MyMessageAlignmentPreference
 import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.CONNECTED_APPS_ACTION_DELETE
@@ -138,9 +140,11 @@ import build.raft.app.data.InMemorySlockAuthSessionStore
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthErrorCode
 import build.raft.app.data.SharedAuthGateIntent
+import build.raft.app.data.SharedAuthReadyPhase
 import build.raft.app.data.SharedAuthGateState
 import build.raft.app.data.SharedAuthGateViewModel
 import build.raft.app.data.SharedAuthResult
+import build.raft.app.data.isColdStartCachedReadyEligible
 import build.raft.app.data.SlockAuthSessionTerminalSource
 import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersPickerSlice
@@ -204,7 +208,6 @@ import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsNavItem
 import build.raft.app.data.SharedSettingsOpenSourceLicenseItem
 import build.raft.app.data.SharedSettingsOpenSourceLicensesSnapshot
-import build.raft.app.data.SharedSettingsRecompositionProfilerSnapshot
 import build.raft.app.data.SharedSettingsRoute
 import build.raft.app.data.SharedSettingsState
 import build.raft.app.data.SharedSettingsStorageRow
@@ -225,13 +228,8 @@ import build.raft.app.data.attemptSlockDatabaseLaunch
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.toSharedHomeAppUpdateNotification
 import build.raft.app.data.DIAGNOSTICS_ACTION_APPLE_SIGNIN_LOCAL_OVERRIDE
-import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_EXPORT
-import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_ENABLED
-import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_REPORT
-import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_RESET
-import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_START
-import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_STOP
 import build.raft.app.data.isAuthSessionError
+import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.data.isSubmittableChannelName
 import build.raft.app.data.KuiklyAuthSessionEvents
 import build.raft.app.data.isRefreshing
@@ -288,6 +286,7 @@ import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedConversationIdentityProvider
 import build.raft.app.data.SharedConversationIdentitySupplementSource
+import build.raft.app.data.SharedDirectMessagePreviewPrefetchCoordinator
 import build.raft.app.data.SharedHomeStore
 import build.raft.app.data.mergedSharedConversationDirectoryState
 import build.raft.app.data.toSharedConversationDirectoryState
@@ -420,6 +419,7 @@ import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadConversation
+import build.raft.app.model.ThreadFollowersUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.threadIdentity
 import build.raft.app.model.TaskStatus
@@ -534,7 +534,14 @@ import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.tmm.kmmresource.resource.format
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
@@ -545,6 +552,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -556,6 +565,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlin.time.TimeSource
+import build.raft.app.model.isExternalAgent
 
 const val SETTINGS_HOME_PAGE = "compose_settings_home"
 const val SETTINGS_ROUTE_VISUAL_PAGE = "compose_settings_route_visual"
@@ -624,9 +634,6 @@ internal val SettingsRouteVisualPageDataFields =
 private const val SettingsDeveloperUnlockTapCount = 7
 private const val AppShellInitialTabKey = "slockInitialTab"
 private const val DiagnosticsDeepLinkIdKey = "slockDiagnosticsDeepLinkId"
-private const val DiagnosticsDeepLinkEnableProfilerKey = "slockDiagnosticsDeepLinkEnableProfiler"
-private const val DiagnosticsDeepLinkResetSceneKey = "slockDiagnosticsDeepLinkResetScene"
-private const val DiagnosticsDeepLinkExportReportKey = "slockDiagnosticsDeepLinkExportReport"
 private const val DiagnosticsDeepLinkAutoCloseMsKey = "slockDiagnosticsDeepLinkAutoCloseMs"
 private const val SharedSettingsDefaultWebBaseUrl = "https://app.raft.build"
 private const val AppUpdateNotificationRefreshIntervalMs = 30L * 60L * 1000L
@@ -684,22 +691,28 @@ internal class AppShellChildTabEntry(
     initialRenderer: AppShellChildTabRenderer = { _, _ ->
         SlockCenteredLoading()
     },
+    initialTabKeys: List<String> = AppShellChildPageTabKeys,
     initialModalHostState: SlockUnifiedDialogHostState? = null
 ) {
     var selectedTab by mutableStateOf(initialSelectedTab)
     var parentVisible by mutableStateOf(initialParentVisible)
     var retainedTabs by mutableStateOf(initialRetainedTabs)
     private val renderSlots =
-        AppShellChildPageTabKeys.associateWith {
+        initialTabKeys.associateWith {
             AppShellChildTabRenderSlot(initialRenderer)
         }
+    // task #94: when the Slack-nav gate flips, the entry is re-registered with a different tab
+    // key set while retained native child pages may still briefly compose against the previous
+    // entry. Render slots therefore fail closed to the shell renderer (which itself falls back
+    // to home content for unknown keys) instead of throwing on getValue.
+    private val fallbackRenderer: AppShellChildTabRenderer = initialRenderer
     var modalHostState: SlockUnifiedDialogHostState? by mutableStateOf(initialModalHostState)
 
     fun rendererFor(tab: String): AppShellChildTabRenderer =
-        renderSlots.getValue(tab).renderer
+        renderSlots[tab]?.renderer ?: fallbackRenderer
 
     fun updateRenderer(tab: String, renderer: AppShellChildTabRenderer) {
-        renderSlots.getValue(tab).renderer = renderer
+        renderSlots[tab]?.let { slot -> slot.renderer = renderer }
     }
 
     fun updateSelection(
@@ -789,7 +802,11 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                         .border(SlockStroke.Thin, SlockColor.BorderBlack),
                 contentAlignment = Alignment.Center
             ) {
-                SlockLucideIcon(SlockLucideIconName.Hash, color = "#FF000000", modifier = Modifier.size(15.dp))
+                SlockLucideIcon(
+                    result.homeSearchEntityLeadingIconName() ?: SlockLucideIconName.Hash,
+                    color = "#FF000000",
+                    modifier = Modifier.size(15.dp)
+                )
             }
 
         SearchEntityType.Computer ->
@@ -810,15 +827,20 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                     result.memberId
                         ?.takeIf { it.isNotBlank() }
                         ?.let { rememberSlockMemberAvatarWireValue(memberAvatarResolver, it) }
-                val status =
-                    if (result.showPresence) {
-                        result.memberId
-                            ?.takeIf { it.isNotBlank() }
-                            ?.let { rememberSlockAgentStatusIndicatorState(agentStatusResolver, it) }
-                            ?: slockAgentStatusIndicatorState(status = null, presence = Presence.Offline)
-                    } else {
-                        null
-                    }
+                    val status =
+                        if (result.showPresence) {
+                            result.memberId
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let {
+                                    projectHomeAgentStatusIndicatorState(
+                                        showPresence = true,
+                                        memberId = it,
+                                        canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, it)
+                                    )
+                                }
+                        } else {
+                            null
+                        }
 
                 SlockAvatarWithStatus(
                     statusColor = status?.color,
@@ -1130,6 +1152,10 @@ private val bottomTabBarSmokeItems = listOf(
     SlockBottomTabItemPayload("settings", "SETTINGS", SlockLucideIconName.Settings)
 )
 
+/** Rail-only inline destination key (task #13 three-pane): Search renders in the AppShell
+ *  middle pane under the wide LeftRail; it is not a persisted tab key. */
+internal const val AppShellRailSearchKey = "rail_search"
+
 internal fun appShellBottomTabs(
     selectedKey: String,
     homeLabel: String,
@@ -1137,17 +1163,102 @@ internal fun appShellBottomTabs(
     membersLabel: String,
     settingsLabel: String
 ): List<SlockBottomTabItemPayload> =
-    listOf(
-        SlockBottomTabItemPayload("home", homeLabel, SlockLucideIconName.House, selected = selectedKey == "home"),
-        SlockBottomTabItemPayload("tasks", tasksLabel, SlockLucideIconName.SquareCheckBig, selected = selectedKey == "tasks"),
-        SlockBottomTabItemPayload("members", membersLabel, SlockLucideIconName.Users, selected = selectedKey == "members"),
-        SlockBottomTabItemPayload("settings", settingsLabel, SlockLucideIconName.Settings, selected = selectedKey == "settings")
+    appShellBottomTabs(
+        selectedKey = selectedKey,
+        orderedTabKeys = AppShellChildPageTabKeys,
+        labelFor = { key ->
+            when (key) {
+                "home" -> homeLabel
+                "tasks" -> tasksLabel
+                "members" -> membersLabel
+                "settings" -> settingsLabel
+                else -> key.uppercase()
+            }
+        }
     )
 
-private val retainedAppShellTabKeys = listOf("home", "tasks", "members", "settings")
+/**
+ * task #94: builds bottom-tab payloads from the resolved ordered tab keys (legacy or
+ * Slack-aligned) with per-key labels and icons. Icons follow the Slack-aligned preview:
+ * Home=house, DMs=message circle, Activity=bell, More=ellipsis.
+ */
+internal fun appShellBottomTabs(
+    selectedKey: String,
+    orderedTabKeys: List<String>,
+    labelFor: (String) -> String
+): List<SlockBottomTabItemPayload> =
+    orderedTabKeys.map { key ->
+        SlockBottomTabItemPayload(
+            key = key,
+            label = labelFor(key),
+            iconName = appShellSlackNavTabIcon(key),
+            selected = selectedKey == key
+        )
+    }
+
+// task #94: valid app-shell tab keys = legacy set plus the Slack-aligned set. Slack keys only
+// enter live tab state while the Slack-nav gate is on (or a persisted order exists), so the
+// union keeps legacy clamping behavior unchanged while making the Slack keys first-class for
+// child-page lookup, tap normalization and retained-tab bookkeeping.
+private val retainedAppShellTabKeys =
+    listOf("home", "tasks", "members", "settings") + SlockSlackNavTabs.DefaultOrder
 
 internal fun retainedAppShellSelectedTab(selectedTab: String): String =
     selectedTab.takeIf { it in retainedAppShellTabKeys } ?: "home"
+
+/**
+ * task #13: the shared adaptive detail slot lives inside adaptiveSplitListDetail, which is
+ * hosted by the Home surface (no pushed secondary page), the Activity rail tab, or an inline
+ * rail secondary destination (Search). Any other destination — or a backgrounded host —
+ * suspends the detail (ParentVisibilityChanged).
+ */
+internal fun appShellSharedDetailSurfaceVisible(
+    pageVisible: Boolean,
+    selectedTab: String,
+    selectedHomeDestination: String?,
+    railInlineSecondaryDestination: String?,
+): Boolean =
+    pageVisible &&
+        (
+            (retainedAppShellSelectedTab(selectedTab) == "home" && selectedHomeDestination == null) ||
+                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity ||
+                railInlineSecondaryDestination != null
+        )
+
+/**
+ * task #13 two-step Back contract: while a rail surface (Activity tab or an inline secondary
+ * destination like Search) is showing a shared detail selection, the first Back/close must
+ * dismiss the detail; only a detail-free surface exits the destination or falls back to Home.
+ */
+internal fun appShellRailSurfaceBackDismissesDetailFirst(
+    selectedTab: String,
+    railInlineSecondaryDestination: String?,
+    selectionPresent: Boolean,
+): Boolean =
+    selectionPresent &&
+        (
+            railInlineSecondaryDestination != null ||
+                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity
+        )
+
+/**
+ * task #13 destination preservation: once the wide rail (or an inline rail destination like
+ * Search) has let the user reach Activity — a rail-only key absent from the legacy ordered
+ * tab set — narrowing back to compact must not silently evict that live selection to Home.
+ * The Activity key stays allowed for the rest of the shell session once reachable; unrelated
+ * keys still clamp to Home exactly as before.
+ */
+internal fun appShellAllowedTabKeys(
+    tabKeys: List<String>,
+    railActive: Boolean,
+    railInlineSecondaryDestination: String?,
+    activityReachedThisSession: Boolean,
+): List<String> =
+    if (railActive || railInlineSecondaryDestination != null || activityReachedThisSession) {
+        if (SlockSlackNavTabs.Activity in tabKeys) tabKeys else tabKeys + SlockSlackNavTabs.Activity
+    } else {
+        tabKeys
+    }
 
 internal fun shouldHandleAppShellTabSelection(currentTab: String, nextTab: String): Boolean =
     retainedAppShellSelectedTab(currentTab) != retainedAppShellSelectedTab(nextTab)
@@ -1162,9 +1273,6 @@ internal data class AppShellLaunchSelection(
 
 internal data class DiagnosticsDeepLinkRequest(
     val id: String,
-    val enableProfiler: Boolean = false,
-    val resetScene: Boolean = false,
-    val exportReport: Boolean = false,
     val autoCloseMs: Long = 0L
 )
 
@@ -1177,25 +1285,30 @@ internal fun JSONObject.diagnosticsDeepLinkRequest(): DiagnosticsDeepLinkRequest
     val id = optString(DiagnosticsDeepLinkIdKey).takeIf { it.isNotBlank() } ?: return null
     return DiagnosticsDeepLinkRequest(
         id = id,
-        enableProfiler = optBoolean(DiagnosticsDeepLinkEnableProfilerKey, false),
-        resetScene = optBoolean(DiagnosticsDeepLinkResetSceneKey, false),
-        exportReport = optBoolean(DiagnosticsDeepLinkExportReportKey, false),
         autoCloseMs = optLong(DiagnosticsDeepLinkAutoCloseMsKey, 0L).coerceAtLeast(0L)
     )
 }
 
-internal fun appShellActiveChildPagerTab(selectedTab: String): String? =
-    retainedAppShellSelectedTab(selectedTab).takeIf { it in AppShellChildPageTabKeys }
+internal fun appShellActiveChildPagerTab(
+    selectedTab: String,
+    childPageTabKeys: List<String> = AppShellChildPageTabKeys
+): String? =
+    retainedAppShellSelectedTab(selectedTab).takeIf { it in childPageTabKeys }
 
 // V2 keepalive stack: the ordered set of child tabs to keep composed (alive) at once.
 // Empty when there is no active child tab (non-child surfaces render directly). The
 // active tab is always included even if [mountedTabs] is momentarily stale, so it can
-// never fail to render.
-internal fun appShellRetainedChildTabs(activeChildTab: String?, mountedTabs: Set<String>): List<String> =
+// never fail to render. [childPageTabKeys] is the active ordered key set (legacy while the
+// Slack-nav gate is off, Slack-aligned otherwise).
+internal fun appShellRetainedChildTabs(
+    activeChildTab: String?,
+    mountedTabs: Set<String>,
+    childPageTabKeys: List<String> = AppShellChildPageTabKeys
+): List<String> =
     if (activeChildTab == null) {
         emptyList()
     } else {
-        (AppShellChildPageTabKeys.filter { it in mountedTabs } + activeChildTab).distinct()
+        (childPageTabKeys.filter { it in mountedTabs } + activeChildTab).distinct()
     }
 
 internal fun appShellChildPagePrewarmOrder(
@@ -1229,8 +1342,12 @@ private fun isRetainedAppShellTab(tab: String): Boolean =
 internal fun retainedHomeSecondaryDestination(destination: String?): String? =
     destination?.takeIf { it in homeSecondaryDestinationKeys }
 
+// task #383: the Activity destination does not self-refresh on app foreground
+// (its "own lifecycle effects" only fire on Kuikly push/pop), so the shell
+// resume path must route a ForegroundRefresh to it. Saved/Search keep the old
+// contract (their surfaces still own their resume refresh).
 internal fun homeDestinationRefreshesOnLifecycleResume(destination: String?): Boolean =
-    retainedHomeSecondaryDestination(destination) == null
+    retainedHomeSecondaryDestination(destination).let { it == null || it == HomeDestinationActivity }
 
 internal fun appShellAppearanceGeneration(
     pageVisibleTick: Int,
@@ -1276,14 +1393,23 @@ internal fun appShellForegroundResumePlan(
     if (!pageVisible) return null
     return when (retainedAppShellSelectedTab(selectedTab)) {
         "home" ->
-            if (selectedHomeDestination.isNullOrBlank()) {
-                AppShellForegroundResumePlan(
-                    refreshVisibleRoute = true,
-                    refreshActivityUnreadSummary = true,
-                    refreshServerMembers = true
-                )
-            } else {
-                null
+            when {
+                selectedHomeDestination.isNullOrBlank() ->
+                    AppShellForegroundResumePlan(
+                        refreshVisibleRoute = true,
+                        refreshActivityUnreadSummary = true,
+                        refreshServerMembers = true
+                    )
+                // task #383: Activity destination joins the visible-route
+                // refresh; unread summary and members stay scoped to Home.
+                retainedHomeSecondaryDestination(selectedHomeDestination) == HomeDestinationActivity ->
+                    AppShellForegroundResumePlan(
+                        refreshVisibleRoute = true,
+                        refreshActivityUnreadSummary = false,
+                        refreshServerMembers = false
+                    )
+                else ->
+                    null
             }
         else ->
             AppShellForegroundResumePlan(
@@ -1293,9 +1419,6 @@ internal fun appShellForegroundResumePlan(
             )
     }
 }
-
-internal fun appShellDefersReadyGraph(authGateState: SharedAuthGateState): Boolean =
-    authGateState == SharedAuthGateState.Restoring
 
 internal enum class AppShellVisibleRefreshSignal {
     Lifecycle,
@@ -1444,6 +1567,9 @@ internal fun appShellBottomTabPerformanceRoute(tab: String): String =
         "tasks" -> "kuikly_tasks"
         "members" -> "kuikly_members"
         "settings" -> "kuikly_settings"
+        SlockSlackNavTabs.Dms -> "kuikly_dms"
+        SlockSlackNavTabs.Activity -> "kuikly_activity"
+        SlockSlackNavTabs.More -> "kuikly_more"
         else -> "kuikly_home"
     }
 
@@ -1464,20 +1590,95 @@ internal fun appShellBottomTabsVisible(
     }
 
 internal fun sharedHomeShouldStartOnActive(active: Boolean, sessionReady: Boolean, state: SharedHomeState): Boolean =
-    active && sessionReady && (state.content !is SharedHomeContentState.Content || state.homeRealtimeDirty)
+    active &&
+        sessionReady &&
+        (
+            state.content !is SharedHomeContentState.Content ||
+                state.homeRealtimeDirty ||
+                (state.content as? SharedHomeContentState.Content)?.needsNetworkRefresh == true
+        )
 
 internal fun appShellParentShouldStartHome(
     selectedTab: String,
     selectedHomeDestination: String?,
     readyServerId: String?,
     state: SharedHomeState,
-    pageVisible: Boolean = true
+    pageVisible: Boolean = true,
+    readyAccountId: String? = null,
+    homeLikeTabs: Set<String> = emptySet()
 ): Boolean =
     pageVisible &&
-        retainedAppShellSelectedTab(selectedTab) == "home" &&
+        retainedAppShellSelectedTab(selectedTab).let { tab ->
+            tab == "home" || tab in homeLikeTabs
+        } &&
         selectedHomeDestination == null &&
         !readyServerId.isNullOrBlank() &&
-        sharedHomeShouldStartOnActive(active = true, sessionReady = true, state = state)
+        (
+            state.content.let { content ->
+                content is SharedHomeContentState.Content &&
+                    (
+                        content.snapshot.server.id.value != readyServerId ||
+                            (
+                                readyAccountId != null &&
+                                    content.snapshot.currentMember.id.value != readyAccountId
+                            )
+                    )
+            } ||
+                sharedHomeShouldStartOnActive(active = true, sessionReady = true, state = state)
+        )
+
+internal fun appShellAuthoritativeHomeStartAllowed(
+    authGateState: SharedAuthGateState,
+    setupAdmissionAllowsHome: Boolean
+): Boolean {
+    val ready = authGateState as? SharedAuthGateState.Ready ?: return false
+    return setupAdmissionAllowsHome && ready.phase != SharedAuthReadyPhase.CachedRestorePending
+}
+
+internal fun appShellCanRenderCachedHomePreview(
+    readySession: StoredAuthSession?,
+    readyPhase: SharedAuthReadyPhase?,
+    featureDecision: ServerSetupFeatureDecision,
+    setupAdmissionAllowsHome: Boolean,
+    setupAdmissionState: ServerSetupAdmissionState? = null,
+    readyServerId: String?,
+    selectedTab: String = "home",
+    selectedHomeDestination: String? = null,
+    pageVisible: Boolean = true,
+    state: SharedHomeState
+): Boolean {
+    if (!pageVisible || retainedAppShellSelectedTab(selectedTab) != "home" || selectedHomeDestination != null) {
+        return false
+    }
+    val session = readySession ?: return false
+    val phase = readyPhase ?: return false
+    if (phase == SharedAuthReadyPhase.Confirmed) return false
+    if (
+        phase == SharedAuthReadyPhase.CachedRestoreCompleted &&
+        featureDecision != ServerSetupFeatureDecision.Checking
+    ) {
+        return false
+    }
+    if (setupAdmissionState is ServerSetupAdmissionState.Blocked || setupAdmissionState is ServerSetupAdmissionState.Failed) {
+        return false
+    }
+    if (
+        !setupAdmissionAllowsHome &&
+        featureDecision != ServerSetupFeatureDecision.Checking &&
+        featureDecision != ServerSetupFeatureDecision.Bypassed
+    ) {
+        return false
+    }
+    val serverId = readyServerId?.trim()?.takeIf { it.isNotBlank() } ?: return false
+    val content = state.content as? SharedHomeContentState.Content ?: return false
+    return content.isDurableIdentityCache &&
+        content.needsNetworkRefresh &&
+        content.snapshot.server.id.value == serverId &&
+        content.snapshot.currentMember.id.value == session.user.id &&
+        content.session.user.id == session.user.id &&
+        content.session.currentServerId == serverId &&
+        session.servers.any { it.id == serverId }
+}
 
 internal fun appShellNavigationServerId(
     selectedServerId: String?,
@@ -1575,10 +1776,14 @@ internal fun sharedHomeSearchErrorDisplay(
     )
 
 @Composable
-private fun localizedSharedHomeErrorDisplay(code: String): SlockHomeInlineError =
+private fun localizedSharedHomeErrorDisplay(
+    code: String,
+    serverMessage: String? = null
+): SlockHomeInlineError =
     SlockHomeInlineError(
         title =
             when {
+                serverMessage.isEdgeBlockedMarker() -> stringResource(MR.strings.home_error_unavailable)
                 ScreenError(code, retryable = false).isAuthSessionError() -> stringResource(MR.strings.home_error_session_expired)
                 code.contains("permission", ignoreCase = true) -> stringResource(MR.strings.home_error_unavailable)
                 code.contains("timeout", ignoreCase = true) -> stringResource(MR.strings.home_error_timeout)
@@ -1588,6 +1793,7 @@ private fun localizedSharedHomeErrorDisplay(code: String): SlockHomeInlineError 
             },
         detail =
             when {
+                serverMessage.isEdgeBlockedMarker() -> stringResource(MR.strings.error_edge_blocked)
                 ScreenError(code, retryable = false).isAuthSessionError() -> stringResource(MR.strings.home_error_session_detail)
                 code.contains("permission", ignoreCase = true) -> stringResource(MR.strings.home_error_unavailable_detail)
                 code.contains("timeout", ignoreCase = true) -> stringResource(MR.strings.home_error_timeout_detail)
@@ -1635,20 +1841,26 @@ private fun AppShellTabs(
     childHostShellId: String,
     mountedTabs: Set<String>,
     childTabSwitchEpoch: Int,
+    childPageTabKeys: List<String> = AppShellChildPageTabKeys,
     log: (String) -> Unit = {},
     content: @Composable (tab: String, active: Boolean) -> Unit
 ) {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
-    val activeChildTab = appShellActiveChildPagerTab(activeTab)
+    val activeChildTab = appShellActiveChildPagerTab(activeTab, childPageTabKeys)
     // Keepalive stack (V2): render every retained child tab, not just the active one,
     // so Home/Tasks/Members/Settings stay alive and switching back is instant with
-    // full state. Only the active child is visible; the rest are hard-hidden via the
+    // full state. Only the selected child is visible; the rest are hard-hidden via the
     // native `active` guard (visibility=INVISIBLE), so an inactive child's late render
-    // can never reach the visible layer. Visibility is driven purely by selectedTab —
-    // there is no HorizontalPager/scrollToPage, so none of the pager scroll races
-    // (overlay / blank / stale native page) can occur. The active tab is always in the
-    // list even if mountedTabs is momentarily stale.
-    val retainedChildTabs = appShellRetainedChildTabs(activeChildTab, mountedTabs)
+    // can never reach the visible layer. Pixel visibility follows the selected tab
+    // even while this shell page is covered (`pageVisible` false). Hiding the
+    // selected tab on disappear leaves a frame with no active child when a channel
+    // page is removed before the shell's appear event, and the clear container
+    // flashes white. Lifecycle still follows the pager appear events. There is no
+    // HorizontalPager/scrollToPage, so none of the pager scroll races (overlay /
+    // blank / stale native page) can occur. The active tab is always in the list
+    // even if mountedTabs is momentarily stale.
+    val retainedChildTabs =
+        appShellRetainedChildTabs(activeChildTab, mountedTabs, childPageTabKeys)
     LaunchedEffect(activeChildTab, childTabSwitchEpoch, retainedChildTabs) {
         log(
             "app_shell_keepalive_stack active=$activeChildTab epoch=$childTabSwitchEpoch " +
@@ -1662,7 +1874,7 @@ private fun AppShellTabs(
                     SlockAppShellChildTabHost(
                         shellId = childHostShellId,
                         tab = tab,
-                        active = pageVisible && tab == activeChildTab
+                        active = tab == activeChildTab
                     )
                 }
             }
@@ -1810,6 +2022,9 @@ private fun SlockAppShellReadyContent(
     val adaptiveHomeWorkspaceEnabled = remember(pager.pageData.params.toString()) {
         pager.pageData.params.optBoolean(SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED, false)
     }
+    val adaptiveNavRailEnabled = remember(pager.pageData.params.toString()) {
+        pager.pageData.params.optBoolean(SLOCK_ADAPTIVE_NAV_RAIL_ENABLED, false)
+    }
     val authGateInstanceId = remember(pager.pageData.params.toString()) {
         pager.pageData.params.optString(APP_SHELL_AUTH_GATE_INSTANCE_ID)
     }
@@ -1832,6 +2047,18 @@ private fun SlockAppShellReadyContent(
     var adaptiveDefaultLandingServerId by remember { mutableStateOf<String?>(null) }
     var tabScrollToTopRequests by remember { mutableStateOf(AppShellTabScrollToTopRequests()) }
     val bottomTabTapTracker = remember { AppShellBottomTabTapTracker() }
+    // task #401: Slack-nav More tab = action menu, not a hub page. The chosen destination is
+    // hoisted so every More tap reopens the menu instead of re-landing on a sticky sub-page.
+    var slackNavMoreDestination by remember { mutableStateOf(SlockSlackNavMoreDestination.Settings) }
+    var slackNavMoreMenuVisible by remember { mutableStateOf(false) }
+    // task #13 (three-pane contract): while the wide LeftRail is active, Search is a rail
+    // destination rendered INLINE in the AppShell middle pane — never a pushed secondary page
+    // (the rail must stay). Narrow or flag-off keeps the legacy push path unchanged.
+    var railInlineSecondaryDestination by remember { mutableStateOf<String?>(null) }
+    // task #13: once a rail surface exposes Activity (rail active or an inline destination is
+    // covering the middle pane) the live tab must survive width transitions — narrowing must
+    // not clamp a user-reached Activity selection back to Home.
+    var railActivityReached by remember { mutableStateOf(false) }
     val bottomTabTapClock = remember { TimeSource.Monotonic.markNow() }
     var hostNetworkStatus by remember { mutableStateOf(SlockAppShellNetworkStatus.Online) }
     val childTabShellId = remember(pager.pagerId) { "app-shell-child-tabs-${pager.pagerId}" }
@@ -1989,6 +2216,17 @@ private fun SlockAppShellReadyContent(
     LaunchedEffect(authGateViewModel) {
         authGateViewModel.state.collect { nextState ->
             authGateState = nextState
+        }
+    }
+    var cachedRestoreSession by remember { mutableStateOf<StoredAuthSession?>(null) }
+    LaunchedEffect(shellAuthStore, authGateState) {
+        if (authGateState == SharedAuthGateState.Restoring) {
+            cachedRestoreSession =
+                runCatchingPreservingCancellation { shellAuthStore.readSession() }
+                    .getOrNull()
+                    ?.takeIf { it.isColdStartCachedReadyEligible() }
+        } else if (authGateState is SharedAuthGateState.AuthRequired) {
+            cachedRestoreSession = null
         }
     }
     var consumedInitialAuthRestoreTick by remember { mutableStateOf(0) }
@@ -2242,7 +2480,10 @@ private fun SlockAppShellReadyContent(
             authGateViewModel.dispatch(authDecision.intent)
         }
     }
-    if (appShellDefersReadyGraph(authGateState)) {
+    // Preserve the cheap bootstrap-only path for signed-out/unknown sessions. A valid local
+    // session is discovered by the effect above; once present, the Home graph is allowed to
+    // materialize so its identity-bound durable snapshot can paint before remote auth settles.
+    if (authGateState == SharedAuthGateState.Restoring && cachedRestoreSession == null) {
         if (suppressRestoreLanding) {
             AppShellSilentRestoreContent()
         } else {
@@ -2250,6 +2491,7 @@ private fun SlockAppShellReadyContent(
         }
         return
     }
+    val shellScope = rememberSlockAppShellScope(adaptivePane)
     val appShellNetworkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
     val copiedMessage = stringResource(MR.strings.common_copied)
@@ -2444,6 +2686,14 @@ private fun SlockAppShellReadyContent(
                 pinUpdateFailureCallback = { message -> bridge.toast(message) },
             )
         }
+    val dmPreviewPrefetchCoordinator =
+        remember(conversationRepository, homeStore) {
+            SharedDirectMessagePreviewPrefetchCoordinator(
+                conversationRepository = conversationRepository,
+                dispatchHome = { intent -> homeStore.dispatch(intent) },
+                diagnostics = slockLogger("SlockDmPreviewPrefetch", "dm_preview_prefetch", SlockLogLevel.Debug),
+            )
+        }
     val homeActivityReplyThreadPrewarmDataSource =
         remember(
             shellAuthStore,
@@ -2451,15 +2701,20 @@ private fun SlockAppShellReadyContent(
             conversationRepository,
             sharedStores.threadMessageStore,
             sharedStores.threadPayloadStore,
+            sharedStores.threadPendingSendJournal,
             sharedStores.apiEnvironmentStore
         ) {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(appShellNetworkClient),
                 sessionStore = shellAuthStore,
+                pendingSendJournal = sharedStores.threadPendingSendJournal,
                 selectedServerStore = selectedServerStore,
                 conversationRepository = conversationRepository,
                 messageStore = sharedStores.threadMessageStore,
                 cacheEnvironmentIdProvider = {
+                    sharedStores.apiEnvironmentStore.current().apiBaseUrl
+                },
+                apiEnvironmentIdProvider = {
                     sharedStores.apiEnvironmentStore.current().apiBaseUrl
                 },
                 replyCacheIdentityAuthority = {
@@ -2469,6 +2724,8 @@ private fun SlockAppShellReadyContent(
                     sharedStores.awaitThreadReplyCacheIdentityTransition(storeScope, transitionAnchor)
                 },
                 payloadStore = sharedStores.threadPayloadStore,
+                durableLastKnownReader = sharedStores.threadDurableLastKnownReader,
+                enteredScopeSnapshotLoader = sharedStores.threadEnteredScopeSnapshotLoader,
                 readReceiptCoordinator = sharedStores.processReadReceiptCoordinator(),
                 readReceiptOwnerFactory = sharedStores::readReceiptOwner,
                 threadPageSizeProvider = { serverId ->
@@ -2486,6 +2743,7 @@ private fun SlockAppShellReadyContent(
             conversationRepository,
             memberRepository,
             appShellServerMembersStore,
+            channelRepository,
             homeStore,
             homeActivityReplyThreadPrewarmDataSource
         ) {
@@ -2495,6 +2753,7 @@ private fun SlockAppShellReadyContent(
                 readReceiptRepository = homeReadReceiptRepository,
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
+                channelRepository = channelRepository,
                 prewarmReplyThread = homeActivityReplyThreadPrewarmDataSource::prewarmReplyThread,
                 onUnreadCountsChanged = { homeStore.dispatch(SharedHomeIntent.ForegroundRefresh) },
                 // task #436: shared store — both call sites must use one identity.
@@ -2522,6 +2781,9 @@ private fun SlockAppShellReadyContent(
             )
         }
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
+    var largeScreenNavigation by remember {
+        mutableStateOf(LargeScreenNavigationPreference.Default)
+    }
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
     var foregroundMessageBannersEnabled by remember { mutableStateOf(false) }
     var activityTaskStatusBadgesEnabled by remember { mutableStateOf(false) }
@@ -2641,6 +2903,9 @@ private fun SlockAppShellReadyContent(
     DisposableEffect(homeShellStore) {
         onDispose { homeShellStore.clear() }
     }
+    LaunchedEffect(homeShellStore, selectedTab) {
+        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedTab(selectedTab))
+    }
     val homeShellRenderState =
         remember(homeShellStore, serverDrawerEnabled) {
             if (serverDrawerEnabled) {
@@ -2677,14 +2942,203 @@ private fun SlockAppShellReadyContent(
     val tasksState by tasksViewModel.state.collectAsState()
     var tasksFirstRenderLoggedKey by remember { mutableStateOf<String?>(null) }
     var consumedDiagnosticsDeepLinkId by remember { mutableStateOf<String?>(null) }
-    val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
-    val readyServerId = selectedServerId
+    val readyGate = authGateState as? SharedAuthGateState.Ready
+    val readySession = readyGate?.session
+    val homePreviewSession =
+        readySession
+            ?: cachedRestoreSession.takeIf { authGateState == SharedAuthGateState.Restoring }
+    val readyAuthPhase =
+        readyGate?.phase
+            ?: cachedRestoreSession
+                ?.takeIf { authGateState == SharedAuthGateState.Restoring }
+                ?.let { SharedAuthReadyPhase.CachedRestorePending }
+    val readyServerId = selectedServerId?.trim()?.takeIf(String::isNotBlank) ?: readySession?.currentServerId
+    // task #94: Slack-aligned bottom nav resolution. The gate (server flag + diagnostics
+    // Local Feature Overrides) seeds the default; a persisted tab order always wins (artin's
+    // locked rule). The resolved ordered keys are the single source for the bottom bar,
+    // child-page slots, retained-tab bookkeeping and tab content dispatch.
+    val chatLayoutPreferenceStore =
+        remember(sharedStores) {
+            KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+        }
+    val slackNavOverrideRevision by
+        ProcessDiagnosticFeatureFlagOverrides.registry
+            .revisionFor(MOBILE_SLACK_NAV_FEATURE_FLAG_KEY)
+            .collectAsState()
+    val slackNavEnabled =
+        remember(readyServerId, readySession?.user?.id, slackNavOverrideRevision, sharedStores) {
+            val serverId = readyServerId?.trim()?.takeIf { it.isNotBlank() }
+            val serverEffective =
+                sharedStores.serverFeatureFlags.isEnabled(
+                    serverId?.let(::ServerId),
+                    MOBILE_SLACK_NAV_FEATURE_FLAG_KEY
+                )
+            resolveSlackNavEnabled(
+                registry = ProcessDiagnosticFeatureFlagOverrides.registry,
+                serverEffective = serverEffective,
+                environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+                accountId = readySession?.user?.id.orEmpty(),
+                serverId = serverId.orEmpty()
+            )
+        }
+    val slackNavTabKeys =
+        remember(chatLayoutPreferenceStore, slackNavEnabled, slackNavOverrideRevision) {
+            SlockSlackNavTabs.resolveAppShellTabKeys(
+                slackNavEnabled = slackNavEnabled,
+                persistedRawOrder = chatLayoutPreferenceStore.readSlackNavTabOrderSync()
+            )
+        }
+    val slackNavMode = slackNavTabKeys != SlockSlackNavTabs.LegacyOrder
+    // Clamp a deep link / stale selection onto the active ordered key set: with the gate off
+    // the Slack keys are not child pages, and with the gate on the legacy hidden keys (tasks/
+    // members) are not first-class tabs anymore. Home is the safe anchor in both cases.
+    // Mirrors selectAppShellTab but avoids the local-function ordering constraint.
+    LaunchedEffect(
+        slackNavTabKeys,
+        selectedTab,
+        largeScreenNavigation,
+        shellScope.adaptivePane,
+        railInlineSecondaryDestination,
+    ) {
+        // task #13: while the wide rail is active, Activity is a first-class rail
+        // destination even under the legacy tab order — the clamp must not evict it.
+        // navRailActive is declared later in this composable, so inline the same
+        // predicate here (rail = flag && LeftRail pref && DualPane).
+        val railActive =
+            slockAdaptiveNavRailActive(
+                flagEnabled = adaptiveNavRailEnabled,
+                navigationPreference = largeScreenNavigation,
+                paneState = shellScope.adaptivePane
+            )
+        if (
+            retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity &&
+            (railActive || railInlineSecondaryDestination != null)
+        ) {
+            railActivityReached = true
+        }
+        val allowedKeys =
+            appShellAllowedTabKeys(
+                tabKeys = slackNavTabKeys,
+                railActive = railActive,
+                railInlineSecondaryDestination = railInlineSecondaryDestination,
+                activityReachedThisSession = railActivityReached,
+            )
+        // While an inline secondary destination (Search) covers the middle pane, the
+        // underlying rail tab is the host the cover returns to — clamping it now would
+        // strand the exit path (e.g. Activity + Search -> Home after close).
+        if (railInlineSecondaryDestination != null) return@LaunchedEffect
+        if (retainedAppShellSelectedTab(selectedTab) !in allowedKeys) {
+            bridge.log(
+                "app_shell_slack_nav_tab_clamp selectedTab=$selectedTab keys=${slackNavTabKeys.joinToString(",")}"
+            )
+            childTabSwitchEpoch =
+                appShellNextChildTabSwitchEpoch(selectedTab, "home", childTabSwitchEpoch)
+            selectedTab = "home"
+            retainedAppShellTabs = retainedAppShellTabs + "home"
+        }
+    }
+    val homePreviewServerId =
+        selectedServerId?.trim()?.takeIf(String::isNotBlank) ?: homePreviewSession?.currentServerId
     val createChannelAgentStatusResolver =
         remember(appShellServerMembersStore, readyServerId) {
             slockScopedAgentStatusResolver(appShellServerMembersStore, readyServerId)
         }
+    val appShellEnvironment = sharedStores.apiEnvironmentStore.current()
+    val setupAdmissionHost =
+        if (readySession != null && !readyServerId.isNullOrBlank()) {
+            rememberServerSetupAdmissionHost(
+                session = requireNotNull(readySession),
+                serverId = readyServerId,
+                environmentId =
+                    appShellEnvironment.let { environment ->
+                        slockNetworkKmmRecoveryEnvironmentId(
+                            environmentKey = environment.key,
+                            apiBaseUrl = environment.apiBaseUrl,
+                        )
+                    },
+                webBaseUrl = appShellEnvironment.webUrl,
+                networkClient = appShellNetworkClient,
+                shellAuthStore = shellAuthStore,
+                authEvents = sharedStores.authStore,
+                featureFlags = sharedStores.serverFeatureFlags,
+                authDataSource = authDataSource,
+                bridge = bridge,
+                openExternalUrl = linkNavigator::open,
+                refreshSignal = pageVisibleTick,
+            )
+        } else {
+            null
+        }
+    val setupAdmissionAllowsHome = setupAdmissionHost?.allowsHome == true
+    val setupAdmissionFeatureDecision =
+        setupAdmissionHost?.featureDecision
+            ?: homePreviewServerId
+                ?.takeIf { it.isNotBlank() }
+                ?.let { serverId ->
+                    serverSetupFeatureDecision(
+                        sharedStores.serverFeatureFlags.snapshotFor(ServerId(serverId))
+                    )
+                }
+            ?: ServerSetupFeatureDecision.Checking
+    val authoritativeHomeStartAllowed =
+        appShellAuthoritativeHomeStartAllowed(
+            authGateState = authGateState,
+            setupAdmissionAllowsHome = setupAdmissionAllowsHome
+        )
+    LaunchedEffect(homeStore, homePreviewSession?.user?.id, homePreviewServerId, readyAuthPhase) {
+        val serverId = homePreviewServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        if (
+            readyAuthPhase == SharedAuthReadyPhase.CachedRestorePending ||
+            readyAuthPhase == SharedAuthReadyPhase.CachedRestoreCompleted
+        ) {
+            val hydrated = homeStore.hydrateCachedHome(ServerId(serverId))
+            bridge.log(
+                "app_shell_cached_home_hydrate serverId=$serverId hydrated=$hydrated " +
+                    "authPhase=${readyAuthPhase.name}"
+            )
+        }
+    }
+    val cachedHomePreview =
+        appShellCanRenderCachedHomePreview(
+            readySession = homePreviewSession,
+            readyPhase = readyAuthPhase,
+            featureDecision = setupAdmissionFeatureDecision,
+            setupAdmissionAllowsHome = setupAdmissionAllowsHome,
+            setupAdmissionState = setupAdmissionHost?.state,
+            readyServerId = homePreviewServerId,
+            selectedTab = selectedTab,
+            selectedHomeDestination = selectedHomeDestination,
+            pageVisible = pageVisible,
+            state = homeState
+        )
     val adaptiveRoomLeaseRegistry =
         remember(sharedStores, storeScope) { sharedStores.realtimeRoomLeaseRegistry(storeScope) }
+    fun rejectPendingAdaptiveDetailOpens(
+        dropped: Map<String, build.raft.app.data.PendingAdaptiveDetailOpen>,
+        reason: String,
+    ) {
+        val anchorStore = sharedStores.adaptiveScrollAnchorStore(storeScope)
+        dropped.forEach { (requestId, pending) ->
+            anchorStore.discard(
+                shellInstanceId = storeScope.shellInstanceId,
+                identity = pending.identity,
+                requestId = requestId,
+            )
+            sharedStores.eventBus.post(
+                eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+                eventData =
+                    SlockAdaptiveDetailOpenAck(
+                        shellInstanceId = storeScope.shellInstanceId,
+                        requestId = requestId,
+                        accepted = false,
+                        reason = reason,
+                    ).toJson(),
+                crossProcess = true,
+                source = "adaptive_detail_open_dropped",
+            )
+        }
+    }
+
     fun releaseAdaptiveHandoffLease(expectedGeneration: Long? = null) {
         val owner = adaptiveWorkspaceStore.snapshot().handoffRoomLeaseOwner ?: return
         if (expectedGeneration != null && owner.generation != expectedGeneration) return
@@ -2730,9 +3184,17 @@ private fun SlockAppShellReadyContent(
         pageVisible,
         selectedTab,
         selectedHomeDestination,
+        authoritativeHomeStartAllowed,
+        railInlineSecondaryDestination,
     ) {
+        if (!authoritativeHomeStartAllowed) {
+            releaseAdaptiveHandoffLease()
+            adaptiveDefaultLandingServerId = null
+            return@LaunchedEffect
+        }
         val serverId = readyServerId?.trim()?.takeIf(String::isNotBlank)
         if (!adaptiveHomeWorkspaceEnabled || serverId == null) {
+            val droppedOpens = adaptiveWorkspaceStore.snapshot().pendingDetailOpens
             adaptiveWorkspaceStore.update { current ->
                 current.copy(
                     workspace =
@@ -2740,44 +3202,309 @@ private fun SlockAppShellReadyContent(
                             reduceSlockAdaptiveWorkspace(state, SlockAdaptiveWorkspaceIntent.TerminalReset)
                         },
                     launchPayload = null,
+                    pendingDetailOpens = emptyMap(),
                 )
             }
+            rejectPendingAdaptiveDetailOpens(droppedOpens, "workspace_reset")
             releaseAdaptiveHandoffLease()
             adaptiveDefaultLandingServerId = null
             return@LaunchedEffect
         }
-        var next =
-            adaptiveWorkspaceState
-                ?: SlockAdaptiveWorkspaceState(
-                    shellInstanceId = storeScope.shellInstanceId,
-                    serverId = serverId,
-                )
-        if (next.serverId != serverId) {
+        // Reduce window/visibility on the store's CURRENT workspace inside the atomic
+        // update — seeding from the compose snapshot (`adaptiveWorkspaceState`) here is a
+        // lost-update race: a concurrently-written selection (e.g. a rail Search/Activity
+        // open landing between snapshot read and update) would be silently overwritten.
+        val parentVisible =
+            appShellSharedDetailSurfaceVisible(
+                pageVisible = pageVisible,
+                selectedTab = selectedTab,
+                selectedHomeDestination = selectedHomeDestination,
+                railInlineSecondaryDestination = railInlineSecondaryDestination,
+            )
+        // Capture the dropped pending opens BEFORE the update so the reject/nack path
+        // can still see them (they are cleared inside the update for the authority change).
+        val droppedOpens = adaptiveWorkspaceStore.snapshot().pendingDetailOpens
+        var authorityChanged = false
+        adaptiveWorkspaceStore.update { current ->
+            var next =
+                current.workspace
+                    ?: SlockAdaptiveWorkspaceState(
+                        shellInstanceId = storeScope.shellInstanceId,
+                        serverId = serverId,
+                    )
+            val changed = next.serverId != serverId
+            if (changed) {
+                next =
+                    reduceSlockAdaptiveWorkspace(
+                        next,
+                        SlockAdaptiveWorkspaceIntent.AuthorityChanged(serverId),
+                    )
+                authorityChanged = true
+            }
             next =
                 reduceSlockAdaptiveWorkspace(
                     next,
-                    SlockAdaptiveWorkspaceIntent.AuthorityChanged(serverId),
+                    SlockAdaptiveWorkspaceIntent.WindowChanged(adaptivePane),
                 )
-            adaptiveWorkspaceStore.update { current -> current.copy(launchPayload = null) }
+            next =
+                reduceSlockAdaptiveWorkspace(
+                    next,
+                    SlockAdaptiveWorkspaceIntent.ParentVisibilityChanged(parentVisible),
+                )
+            current.copy(
+                workspace = next,
+                launchPayload = if (changed) null else current.launchPayload,
+                pendingDetailOpens =
+                    if (changed) emptyMap() else current.pendingDetailOpens,
+            )
+        }
+        if (authorityChanged) {
+            rejectPendingAdaptiveDetailOpens(droppedOpens, "authority_changed")
             releaseAdaptiveHandoffLease()
             adaptiveDefaultLandingServerId = null
         }
-        next =
-            reduceSlockAdaptiveWorkspace(
-                next,
-                SlockAdaptiveWorkspaceIntent.WindowChanged(adaptivePane),
-            )
-        next =
-            reduceSlockAdaptiveWorkspace(
-                next,
-                SlockAdaptiveWorkspaceIntent.ParentVisibilityChanged(
-                    pageVisible && retainedAppShellSelectedTab(selectedTab) == "home" && selectedHomeDestination == null
-                ),
-            )
-        adaptiveWorkspaceStore.update { current -> current.copy(workspace = next) }
+    }
+    fun postShellAdaptiveTrace(
+        hop: String,
+        identityKey: String,
+        generation: Long,
+        requestId: String? = null,
+        extra: JSONObject.() -> Unit = {},
+    ) {
+        bridge.log(
+            formatAdaptiveTraceLine(
+                side = "shell",
+                hop = hop,
+                identityKey = identityKey,
+                generation = generation,
+                requestId = requestId,
+            ),
+        )
+        sharedStores.eventBus.postAdaptiveTrace(
+            side = "shell",
+            hop = hop,
+            identityKey = identityKey,
+            generation = generation,
+            requestId = requestId,
+            extra = extra,
+        )
     }
     DisposableEffect(sharedStores, storeScope.shellInstanceId) {
-        val subscription =
+        val openSubscription =
+            sharedStores.eventBus.observe(
+                eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_EVENT,
+                crossProcess = true,
+            ) { eventData ->
+                val request = eventData?.toSlockAdaptiveDetailOpenRequestOrNull()
+                    ?: return@observe
+                if (request.shellInstanceId != storeScope.shellInstanceId) return@observe
+                postShellAdaptiveTrace(
+                    hop = "open_received",
+                    identityKey = request.identity.key,
+                    generation = 0L,
+                    requestId = request.requestId,
+                )
+                val session = adaptiveWorkspaceStore.snapshot()
+                val (nextSession, decision) =
+                    evaluateSlockAdaptiveDetailOpen(
+                        request = request,
+                        workspaceEnabled = adaptiveHomeWorkspaceEnabled,
+                        session = session,
+                        // Hard off until the native route-token-verified commit action lands
+                        // (task #18, Jony follow-up); keeps the merged protocol inert.
+                        nativeGuardedCommitAvailable = false,
+                    )
+                if (nextSession != session) {
+                    adaptiveWorkspaceStore.update { nextSession }
+                }
+                when (decision) {
+                    is SlockAdaptiveDetailOpenDecision.Rejected -> {
+                        postShellAdaptiveTrace(
+                            hop = "open_rejected_ack",
+                            identityKey = request.identity.key,
+                            generation = 0L,
+                            requestId = request.requestId,
+                        ) { put("reason", decision.reason) }
+                        sharedStores.eventBus.post(
+                            eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+                            eventData =
+                                SlockAdaptiveDetailOpenAck(
+                                    shellInstanceId = storeScope.shellInstanceId,
+                                    requestId = request.requestId,
+                                    accepted = false,
+                                    reason = decision.reason,
+                                ).toJson(),
+                            crossProcess = true,
+                            source = "adaptive_detail_open_rejected",
+                        )
+                        sharedStores
+                            .adaptiveScrollAnchorStore(storeScope)
+                            .discard(
+                                shellInstanceId = storeScope.shellInstanceId,
+                                identity = request.identity,
+                                requestId = request.requestId,
+                            )
+                    }
+                    is SlockAdaptiveDetailOpenDecision.Accepted -> {
+                        // Ack is held until the destination pane child reports READY (mount +
+                        // draft/viewport restore), not merely received. See the
+                        // SLOCK_ADAPTIVE_DETAIL_READY_EVENT subscription below.
+                        postShellAdaptiveTrace(
+                            hop = "open_accepted",
+                            identityKey = request.identity.key,
+                            generation = decision.generation,
+                            requestId = request.requestId,
+                        )
+                    }
+                }
+            }
+        val readySubscription =
+            sharedStores.eventBus.observe(
+                eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+                crossProcess = true,
+            ) { eventData ->
+                val shellId = eventData?.optString(SLOCK_ADAPTIVE_DETAIL_SHELL_ID)?.trim()
+                    ?: return@observe
+                if (shellId != storeScope.shellInstanceId) return@observe
+                val identityKey = eventData.optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY).trim()
+                val generation =
+                    eventData.optDouble(SLOCK_ADAPTIVE_DETAIL_GENERATION, 0.0).toLong()
+                if (identityKey.isBlank() || generation <= 0L) return@observe
+                postShellAdaptiveTrace(
+                    hop = "ready_received",
+                    identityKey = identityKey,
+                    generation = generation,
+                )
+                val session = adaptiveWorkspaceStore.snapshot()
+                val (nextSession, pending) =
+                    completeSlockAdaptiveDetailOpen(
+                        identityKey = identityKey,
+                        generation = generation,
+                        session = session,
+                    )
+                if (pending == null) {
+                    postShellAdaptiveTrace(
+                        hop = "ready_no_pending",
+                        identityKey = identityKey,
+                        generation = generation,
+                    )
+                    return@observe
+                }
+                adaptiveWorkspaceStore.update { nextSession }
+                // READY means the destination restored and mounted; ack authorizes the source to
+                // attempt the native commit. The staged anchor is NOT consumed here — it is
+                // consumed only on the native commit receipt (see the commit-result subscription
+                // below), so a rejected or failed commit keeps the recovery record.
+                if (pending.acknowledged) return@observe
+                postShellAdaptiveTrace(
+                    hop = "ack_sent",
+                    identityKey = pending.identity.key,
+                    generation = generation,
+                    requestId = pending.requestId,
+                )
+                sharedStores.eventBus.post(
+                    eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+                    eventData =
+                        SlockAdaptiveDetailOpenAck(
+                            shellInstanceId = storeScope.shellInstanceId,
+                            requestId = pending.requestId,
+                            accepted = true,
+                            generation = generation,
+                        ).toJson(),
+                    crossProcess = true,
+                    source = "adaptive_detail_open_ready",
+                )
+            }
+        // Source-side cancel notice (task #18 hardening): drops exactly the named pending request
+        // and its staged anchor so a READY arriving after the source gave up resolves to
+        // ready_no_pending instead of a stray accepted ACK. The drop applies to acknowledged
+        // pendings too: a cancel event only exists when the source never dispatched commit
+        // (dispatchAdaptiveCommit sets commitDispatched before any later cancel can run), so no
+        // commit receipt can ever arrive to settle this entry — retaining it would leak the
+        // pending while the transaction is already dead on the source side.
+        val cancelSubscription =
+            sharedStores.eventBus.observe(
+                eventName = SLOCK_ADAPTIVE_DETAIL_CANCEL_EVENT,
+                crossProcess = true,
+            ) { eventData ->
+                val cancel = eventData?.toSlockAdaptiveDetailCancelOrNull()
+                    ?: return@observe
+                if (cancel.shellInstanceId != storeScope.shellInstanceId) return@observe
+                val session = adaptiveWorkspaceStore.snapshot()
+                val pending = session.pendingDetailOpens[cancel.requestId] ?: return@observe
+                adaptiveWorkspaceStore.update { current ->
+                    dropSlockAdaptiveDetailOpen(cancel.requestId, current)
+                }
+                sharedStores
+                    .adaptiveScrollAnchorStore(storeScope)
+                    .discard(
+                        shellInstanceId = storeScope.shellInstanceId,
+                        identity = pending.identity,
+                        requestId = cancel.requestId,
+                    )
+                postShellAdaptiveTrace(
+                    hop = "open_cancelled",
+                    identityKey = pending.identity.key,
+                    generation = cancel.generation,
+                    requestId = cancel.requestId,
+                ) { put("reason", cancel.reason) }
+            }
+        // The source reports its prepared controller identities after native prepare; bind them
+        // to the pending request so a stray commit receipt cannot settle it.
+        val preparedSubscription =
+            sharedStores.eventBus.observe(
+                eventName = SLOCK_ADAPTIVE_DETAIL_PREPARED_EVENT,
+                crossProcess = true,
+            ) { eventData ->
+                val prepared = eventData?.toSlockAdaptiveDetailPreparedOrNull()
+                    ?: return@observe
+                if (prepared.shellInstanceId != storeScope.shellInstanceId) return@observe
+                adaptiveWorkspaceStore.update { current ->
+                    markSlockAdaptiveDetailOpenPrepared(
+                        requestId = prepared.requestId,
+                        sourceControllerToken = prepared.sourceControllerToken,
+                        targetControllerToken = prepared.targetControllerToken,
+                        session = current,
+                    )
+                }
+            }
+        // The authoritative end of an adoption is the native commit receipt, not the ack.
+        // commit=true → consume the staged anchor exactly once under the request fence and
+        // settle the pending entry; failure → discard the anchor, drop pending, and clear the
+        // staged detail selection so the destination does not stay mounted while the source
+        // page is still alive.
+        val commitSubscription =
+            sharedStores.eventBus.observe(
+                eventName = SLOCK_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT,
+                crossProcess = true,
+            ) { eventData ->
+                val result = eventData?.toSlockAdaptiveNativeCommitResultOrNull()
+                    ?: return@observe
+                val session = adaptiveWorkspaceStore.snapshot()
+                val (nextSession, pending) =
+                    settleSlockAdaptiveDetailOpen(
+                        result = result,
+                        session = session,
+                    )
+                if (pending == null) return@observe
+                val anchorStore = sharedStores.adaptiveScrollAnchorStore(storeScope)
+                if (result.committed) {
+                    adaptiveWorkspaceStore.update { nextSession }
+                    anchorStore.consume(
+                        shellInstanceId = storeScope.shellInstanceId,
+                        identity = pending.identity,
+                        requestId = pending.requestId,
+                    )
+                } else {
+                    // Keep the pending entry and the staged anchor: a rejected/timed-out commit
+                    // may mean the native pop already happened but the stack readback failed —
+                    // discarding the recovery record here would lose the viewport anchor while
+                    // both pages are gone (source popped, destination still mounted). Retention
+                    // is what keeps an explicit retry or user navigation able to recover; the
+                    // TerminalReset/AuthorityChanged paths still drop+nack as before.
+                }
+            }
+        val closeSubscription =
             sharedStores.eventBus.observe(
                 eventName = SLOCK_ADAPTIVE_DETAIL_CLOSE_EVENT,
                 crossProcess = true,
@@ -2810,7 +3537,14 @@ private fun SlockAppShellReadyContent(
                     )
                 }
             }
-        onDispose { subscription.close() }
+        onDispose {
+            openSubscription.close()
+            readySubscription.close()
+            cancelSubscription.close()
+            preparedSubscription.close()
+            commitSubscription.close()
+            closeSubscription.close()
+        }
     }
     val tasksServerMembersEntry by remember(appShellServerMembersStore, readyServerId) {
         val serverId = readyServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
@@ -2870,25 +3604,31 @@ private fun SlockAppShellReadyContent(
             }
     // Forward the process-owned selected-server Activity projection to the host badge. Source is
     // diagnostics-only; hosts display count and must not branch on provenance.
-    LaunchedEffect(homeState.appBadgeCount, activityUnreadSummary) {
+    LaunchedEffect(homeState.appBadgeCount, activityUnreadSummary, authoritativeHomeStartAllowed) {
         val fallback = homeState.appBadgeCount
+        val useActivityProjection = authoritativeHomeStartAllowed && readySession != null
         bridge.appBadge(
-            count = if (activityUnreadSummary.hasValue) activityUnreadSummary.totalUnreadCount else fallback.count,
+            count = if (useActivityProjection && activityUnreadSummary.hasValue) {
+                activityUnreadSummary.totalUnreadCount
+            } else {
+                fallback.count
+            },
             source =
-                if (activityUnreadSummary.hasValue) {
+                if (useActivityProjection && activityUnreadSummary.hasValue) {
                     build.raft.app.data.AppBadgeSource.ACTIVITY_UNREAD_SUMMARY.wire
                 } else {
                     fallback.source.wire
                 },
             isStale =
-                if (activityUnreadSummary.hasValue) {
+                if (useActivityProjection && activityUnreadSummary.hasValue) {
                     activityUnreadSummary.freshness != build.raft.app.data.ActivityUnreadSummaryFreshness.Fresh
                 } else {
                     fallback.isStale
                 }
         )
     }
-    LaunchedEffect(sharedStores.activityUnreadSummaryStore, readyServerId) {
+    LaunchedEffect(sharedStores.activityUnreadSummaryStore, readyServerId, authoritativeHomeStartAllowed) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         val serverId = readyServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         sharedStores.activityUnreadSummaryStore.ensure(ServerId(serverId), reason = "app_shell_server_ready")
     }
@@ -2912,6 +3652,7 @@ private fun SlockAppShellReadyContent(
             )
         }
     val latestReadySession by rememberUpdatedState(readySession)
+    val latestAuthoritativeHomeStartAllowed by rememberUpdatedState(authoritativeHomeStartAllowed)
     LaunchedEffect(renderedHomeServerId, pendingHomeServerSwitchId) {
         val targetServerId = pendingHomeServerSwitchId ?: return@LaunchedEffect
         if (renderedHomeServerId != targetServerId) return@LaunchedEffect
@@ -2934,8 +3675,8 @@ private fun SlockAppShellReadyContent(
     }
     // task #226: fetch the latest active announcement once the session is ready
     // (keyed by server so switching servers re-pulls that server's announcement).
-    LaunchedEffect(announcementsClient, readyServerId) {
-        if (readySession == null) {
+    LaunchedEffect(announcementsClient, readyServerId, authoritativeHomeStartAllowed) {
+        if (readySession == null || !authoritativeHomeStartAllowed) {
             activeAnnouncement = null
             return@LaunchedEffect
         }
@@ -2957,9 +3698,11 @@ private fun SlockAppShellReadyContent(
         }
     val homeConversationDirectory by homeConversationDirectoryFlow.collectAsState(SharedConversationDirectoryState())
     val appShellConversationDirectory =
-        remember(homeConversationDirectory, homeActivityState.snapshot) {
+        remember(homeConversationDirectory, homeActivityState.snapshot, homeActivityState.dmPeerNames) {
             val activityDirectory =
-                homeActivityState.snapshot?.toSharedConversationDirectoryState()
+                homeActivityState.snapshot?.toSharedConversationDirectoryState(
+                    dmPeerNames = homeActivityState.dmPeerNames
+                )
                     ?: SharedConversationDirectoryState()
             listOf(homeConversationDirectory, activityDirectory)
                 .mergedSharedConversationDirectoryState()
@@ -2971,7 +3714,13 @@ private fun SlockAppShellReadyContent(
             homeStoreSelectedConversationId = homeState.selectedConversationId
         )
     )
-    LaunchedEffect(appShellServerMembersStore, readyServerId, foregroundMessageBannersEnabled) {
+    LaunchedEffect(
+        appShellServerMembersStore,
+        readyServerId,
+        foregroundMessageBannersEnabled,
+        authoritativeHomeStartAllowed
+    ) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         if (!foregroundMessageBannersEnabled) return@LaunchedEffect
         appShellServerMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
@@ -2989,12 +3738,17 @@ private fun SlockAppShellReadyContent(
             selectedTab == "home" &&
             selectedHomeDestination == null
     val parentShouldStartHome =
+        authoritativeHomeStartAllowed &&
         appShellParentShouldStartHome(
             pageVisible = pageVisible,
             selectedTab = selectedTab,
             selectedHomeDestination = selectedHomeDestination,
             readyServerId = readyServerId,
-            state = homeState
+            readyAccountId = readySession?.user?.id,
+            state = homeState,
+            // task #94: the DMs tab renders the same home store; starting the parent home
+            // store must not be gated on the literal "home" tab while Slack nav is active.
+            homeLikeTabs = if (slackNavMode) setOf(SlockSlackNavTabs.Dms) else emptySet()
         )
     LaunchedEffect(parentShouldStartHome, readyServerId, homeState.content, homeState.homeRealtimeDirty) {
         bridge.log(
@@ -3011,23 +3765,41 @@ private fun SlockAppShellReadyContent(
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Start))
         }
     }
-    LaunchedEffect(homeSurfaceVisible, readyServerId) {
+    LaunchedEffect(
+        homeSurfaceVisible,
+        readyServerId,
+        authoritativeHomeStartAllowed,
+        setupAdmissionAllowsHome,
+        cachedHomePreview
+    ) {
         val delayMs = homeSurfaceVisibilityDispatchDelayMs(homeSurfaceVisible)
+        val surfaceWaitMark = TimeSource.Monotonic.markNow()
         if (delayMs > 0L) {
             delay(delayMs)
         }
-        homeShellStore.dispatch(SharedHomeShellIntent.SetSurfaceVisible(homeSurfaceVisible && readyServerId != null))
+        homeShellStore.dispatch(
+            SharedHomeShellIntent.SetSurfaceVisible(
+                homeSurfaceVisible &&
+                    (readyServerId ?: homePreviewServerId) != null &&
+                    (setupAdmissionAllowsHome || cachedHomePreview)
+            )
+        )
+        slockLogInfo(
+            "SlockForegroundPerf",
+            "surface_visible_wait plannedMs=$delayMs actualMs=${surfaceWaitMark.elapsedNow().inWholeMilliseconds} visible=$homeSurfaceVisible"
+        )
     }
-    LaunchedEffect(readyServerId, readySession?.accessToken) {
-        if (readyServerId.isNullOrBlank()) return@LaunchedEffect
+    LaunchedEffect(readyServerId, readySession?.accessToken, authoritativeHomeStartAllowed) {
+        if (readyServerId.isNullOrBlank() || !authoritativeHomeStartAllowed) return@LaunchedEffect
         while (true) {
             delay(AppUpdateNotificationRefreshIntervalMs)
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.RefreshNotifications))
         }
     }
-    DisposableEffect(appUpdateEvents) {
+    DisposableEffect(appUpdateEvents, latestAuthoritativeHomeStartAllowed) {
         val callbackRef =
             appUpdateEvents.addStatusListener {
+                if (!latestAuthoritativeHomeStartAllowed) return@addStatusListener
                 appShellCoroutineScope.launch {
                     homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.RefreshNotifications))
                 }
@@ -3052,7 +3824,7 @@ private fun SlockAppShellReadyContent(
         prewarmAdmissionGate.invalidate("tab_select:$nextTab")
         val retainedTab = retainedAppShellSelectedTab(nextTab)
         val nextEpoch = appShellNextChildTabSwitchEpoch(selectedTab, retainedTab, childTabSwitchEpoch)
-        val direct = directChildSwitch && retainedTab in AppShellChildPageTabKeys
+        val direct = directChildSwitch && retainedTab in slackNavTabKeys
         bridge.log(
             "app_shell_select_tab next=$nextTab retained=$retainedTab from=$selectedTab " +
                 "epoch=$childTabSwitchEpoch->$nextEpoch direct=$direct mode=single_child"
@@ -3060,7 +3832,8 @@ private fun SlockAppShellReadyContent(
         childTabSwitchEpoch = nextEpoch
         selectedTab = retainedTab
     }
-    LaunchedEffect(diagnosticsDeepLinkRequest?.id, readyServerId) {
+    LaunchedEffect(diagnosticsDeepLinkRequest?.id, readyServerId, authoritativeHomeStartAllowed) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         val request = diagnosticsDeepLinkRequest ?: return@LaunchedEffect
         if (readyServerId == null || consumedDiagnosticsDeepLinkId == request.id) {
             return@LaunchedEffect
@@ -3069,9 +3842,7 @@ private fun SlockAppShellReadyContent(
         selectAppShellTab("settings")
         retainedAppShellTabs = retainedAppShellTabs + "settings"
         bridge.log(
-            "diagnostics_deeplink_start id=${request.id} " +
-                "enableProfiler=${request.enableProfiler} resetScene=${request.resetScene} " +
-                "exportReport=${request.exportReport} autoCloseMs=${request.autoCloseMs}"
+            "diagnostics_deeplink_start id=${request.id} autoCloseMs=${request.autoCloseMs}"
         )
         val opened =
             pager.openSettingsNativeDetailPage(
@@ -3079,9 +3850,6 @@ private fun SlockAppShellReadyContent(
                 storeScope = navigationStoreScope,
                 launchIntent =
                     SettingsNativeDetailLaunchIntent(
-                        enableProfiler = request.enableProfiler,
-                        resetScene = request.resetScene,
-                        exportReport = request.exportReport,
                         autoCloseMs = request.autoCloseMs,
                     ),
             )
@@ -3090,7 +3858,6 @@ private fun SlockAppShellReadyContent(
         }
         bridge.log("diagnostics_deeplink_complete id=${request.id} opened=$opened")
     }
-    val shellScope = rememberSlockAppShellScope(adaptivePane)
     val appShellModalHostState = rememberSlockUnifiedDialogHostState()
     val realtimeEventMapper =
         remember(sharedStores) {
@@ -3118,7 +3885,7 @@ private fun SlockAppShellReadyContent(
         appearanceGeneration: Int,
         foregroundEpoch: Long? = null
     ): Boolean {
-        if (latestReadySession == null) return false
+        if (latestReadySession == null || !latestAuthoritativeHomeStartAllowed) return false
         val refreshTarget =
             "${retainedAppShellSelectedTab(latestSelectedTab)}:${latestSelectedHomeDestination.orEmpty()}"
         if (
@@ -3148,6 +3915,11 @@ private fun SlockAppShellReadyContent(
                             homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
                     }
                 }
+            // task #94: DMs renders the same home store; Activity forwards foreground refresh
+            // to ActivityStore, and More is the settings surface.
+            SlockSlackNavTabs.Dms -> homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+            SlockSlackNavTabs.Activity -> homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+            SlockSlackNavTabs.More -> Unit
             "tasks" -> tasksViewModel.dispatch(SharedTasksRouteIntent.Refresh)
             "members" -> {
                 membersListRefreshKey += 1
@@ -3215,6 +3987,10 @@ private fun SlockAppShellReadyContent(
         observedHomeServerSwitchId = null
         tasksListPosition = AppShellLazyListPosition()
         membersListState = AppShellMembersListState()
+        // Retire all in-memory Home rows on an auth/session reset. Durable identity snapshots are
+        // intentionally retained and will be rehydrated only under the successor account/server
+        // key; keeping the old rows here would create an A-account/B-account preview window.
+        homeStore.reset()
         homeShellStore.reset()
     }
     LaunchedEffect(authSessionResetGeneration) {
@@ -3267,6 +4043,7 @@ private fun SlockAppShellReadyContent(
         remember(foregroundBannerStore) {
             ChatLayoutPreferenceSnapshotRuntimeAuthority { chatLayout ->
                 myMessageAlignment = chatLayout.myMessageAlignment
+                largeScreenNavigation = chatLayout.largeScreenNavigation
                 compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
                 foregroundMessageBannersEnabled = chatLayout.foregroundMessageBannersEnabled
                 if (!chatLayout.foregroundMessageBannersEnabled) {
@@ -3307,10 +4084,11 @@ private fun SlockAppShellReadyContent(
             chatLayout.conversationForwardGestureEnabled
         )
     }
-    LaunchedEffect(conversationForwardGestureEnabled) {
+    LaunchedEffect(conversationForwardGestureEnabled, authoritativeHomeStartAllowed) {
         conversationForwardHistory.setEnabled(conversationForwardGestureEnabled)
         bridge.setConversationForwardGestureEnabled(
             conversationForwardGestureEnabled &&
+                authoritativeHomeStartAllowed &&
                 homeSurfaceVisible &&
                 homeState.content is SharedHomeContentState.Content &&
                 conversationForwardHistory.canForward
@@ -3319,10 +4097,19 @@ private fun SlockAppShellReadyContent(
     val latestForegroundMessageBannersEnabled by rememberUpdatedState(foregroundMessageBannersEnabled)
     when (val gate = authGateState) {
         SharedAuthGateState.Restoring -> {
-            if (suppressRestoreLanding) {
-                AppShellSilentRestoreContent()
+            if (cachedHomePreview) {
+                AppShellCachedHomePreviewContent(
+                    bridge = bridge,
+                    shellScope = shellScope,
+                    state = homeState
+                )
             } else {
-                AppShellRestoreSplashContent()
+                if (suppressRestoreLanding) {
+                    AppShellSilentRestoreContent()
+                } else {
+                    AppShellRestoreSplashContent()
+                }
+                return
             }
             return
         }
@@ -3392,7 +4179,13 @@ private fun SlockAppShellReadyContent(
         is SharedAuthGateState.Ready -> Unit
     }
 
-    LaunchedEffect(readyServerId, authGateState) {
+    if (setupAdmissionHost != null && !setupAdmissionHost.allowsHome && !cachedHomePreview) {
+        setupAdmissionHost.content()
+        return
+    }
+
+    LaunchedEffect(readyServerId, authGateState, authoritativeHomeStartAllowed) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         when (
             val request =
@@ -3444,6 +4237,13 @@ private fun SlockAppShellReadyContent(
         recordForwardHistory: Boolean = true,
         originFallback: ThreadLaunchOriginFallback? = null
     ) {
+        if (!latestAuthoritativeHomeStartAllowed) {
+            bridge.logWarn(
+                "home_open_conversation_drop reason=home_authority_pending " +
+                    "threadId=${conversation.threadId.value} source=$source"
+            )
+            return
+        }
         bridge.log(
             "home_open_conversation threadId=${conversation.threadId.value} " +
                 "kind=${conversation.kind.name} source=$source anchorMessageId=${anchorMessageId.orEmpty()}"
@@ -3538,7 +4338,9 @@ private fun SlockAppShellReadyContent(
         readyServerId,
         selectedHomeConversationId,
         homeState.content,
+        authoritativeHomeStartAllowed,
     ) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         val workspace = adaptiveWorkspaceState ?: return@LaunchedEffect
         val serverId = readyServerId?.trim()?.takeIf(String::isNotBlank) ?: return@LaunchedEffect
         if (
@@ -3575,7 +4377,11 @@ private fun SlockAppShellReadyContent(
         }
     }
 
-    LaunchedEffect(pageVisibleTick) {
+    LaunchedEffect(pageVisibleTick, authoritativeHomeStartAllowed) {
+        if (!authoritativeHomeStartAllowed) {
+            bridge.setConversationForwardGestureEnabled(false)
+            return@LaunchedEffect
+        }
         if (pageVisibleTick > handledConversationForwardHomeVisibleTick) {
             handledConversationForwardHomeVisibleTick = pageVisibleTick
             conversationForwardHistory.recordHomeVisible()
@@ -3596,8 +4402,13 @@ private fun SlockAppShellReadyContent(
         homeSurfaceVisible,
         readyServerId,
         renderedHomeServerId,
-        conversationForwardRequestTick
+        conversationForwardRequestTick,
+        authoritativeHomeStartAllowed,
     ) {
+        if (!authoritativeHomeStartAllowed) {
+            bridge.setConversationForwardGestureEnabled(false)
+            return@LaunchedEffect
+        }
         if (conversationForwardRequestTick <= handledConversationForwardRequestTick) {
             bridge.setConversationForwardGestureEnabled(
                 conversationForwardGestureEnabled &&
@@ -3662,8 +4473,10 @@ private fun SlockAppShellReadyContent(
         homeState.content,
         appShellConversationDirectory,
         threadTimeContext,
-        myMessageAlignment
+        myMessageAlignment,
+        authoritativeHomeStartAllowed
     ) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         notificationWindowNavigationIntent?.let(windowNavigationCoordinator::enqueue)
         val content = homeState.content as? SharedHomeContentState.Content
         val readiness =
@@ -3745,7 +4558,9 @@ private fun SlockAppShellReadyContent(
         // must re-reconcile (disconnect old, connect new). Without this key the
         // effect only re-ran on auth-family/token/tick changes.
         canonicalFinalSelectedServerId,
+        authoritativeHomeStartAllowed,
     ) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         val environment = sharedStores.apiEnvironmentStore.current()
         val desired =
             realtimeProcessDesiredSession(
@@ -3788,6 +4603,29 @@ private fun SlockAppShellReadyContent(
         }
     }
 
+    fun dismissAdaptiveDetailSelection() {
+        val current = adaptiveWorkspaceStore.snapshot().workspace
+        bridge.log(
+            "adaptive_detail_dismiss selection=${current?.selection?.identity?.key.orEmpty()} " +
+                "presentation=${current?.presentation}"
+        )
+        if (current == null) return
+        val selection = current.selection ?: return
+        val next =
+            reduceSlockAdaptiveWorkspace(
+                current,
+                SlockAdaptiveWorkspaceIntent.DismissDetail,
+            )
+        releaseAdaptiveHandoffLease(selection.generation)
+        adaptiveWorkspaceStore.update { session ->
+            session.copy(
+                workspace = next,
+                launchPayload = null,
+            )
+        }
+        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
+    }
+
     fun popMainRoute(): Boolean {
         if (createChannelDialogOpen) {
             createChannelDialogOpen = false
@@ -3799,6 +4637,20 @@ private fun SlockAppShellReadyContent(
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
             return true
         }
+        if (
+            appShellRailSurfaceBackDismissesDetailFirst(
+                selectedTab = selectedTab,
+                railInlineSecondaryDestination = railInlineSecondaryDestination,
+                selectionPresent = adaptiveWorkspaceStore.snapshot().workspace?.selection != null,
+            )
+        ) {
+            dismissAdaptiveDetailSelection()
+            return true
+        }
+        if (railInlineSecondaryDestination != null) {
+            railInlineSecondaryDestination = null
+            return true
+        }
         if (selectedTab == "home" && selectedHomeDestination != null) {
             homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
             return true
@@ -3806,6 +4658,10 @@ private fun SlockAppShellReadyContent(
         if (selectedTab != "home") {
             selectAppShellTab("home")
             homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
+            return true
+        }
+        if (adaptiveWorkspaceState?.presentation == SlockAdaptiveWorkspacePresentation.DetailOnly) {
+            dismissAdaptiveDetailSelection()
             return true
         }
         return false
@@ -3842,8 +4698,8 @@ private fun SlockAppShellReadyContent(
         }
     ) { handleAppShellBack() }
 
-    LaunchedEffect(selectedTab) {
-        if (selectedTab == "tasks") {
+    LaunchedEffect(selectedTab, authoritativeHomeStartAllowed) {
+        if (selectedTab == "tasks" && authoritativeHomeStartAllowed) {
             val hasSnapshot = tasksState.hasCompletedTasksSnapshot()
             bridge.performanceMarker(
                 phase = "tasks_screen_enter",
@@ -3859,7 +4715,8 @@ private fun SlockAppShellReadyContent(
             tasksViewModel.dispatch(SharedTasksRouteIntent.Start)
         }
     }
-    LaunchedEffect(selectedTab, readyServerId, appShellServerMembersStore) {
+    LaunchedEffect(selectedTab, readyServerId, appShellServerMembersStore, authoritativeHomeStartAllowed) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         val serverId = readyServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
             ?: return@LaunchedEffect
         if (selectedTab == "tasks") {
@@ -4078,6 +4935,19 @@ private fun SlockAppShellReadyContent(
                             )
                         }
                     }
+                    // Server-membership/profile mutations must invalidate the in-session
+                    // roster cache; otherwise updated fields (e.g. avatarUrl) stay stale
+                    // until process restart. Agents/Machines scopes already refresh through
+                    // their own projections, so only ServerMembers pays for a roster refetch.
+                    if (event.scope == build.raft.app.model.RealtimeRefreshScope.ServerMembers) {
+                        appShellCoroutineScope.launch {
+                            appShellServerMembersStore.refreshMembers(
+                                serverId = build.raft.app.model.ServerId(serverId),
+                                priority = DataRequestPriority.Background,
+                                reason = "realtime_${event.reason}"
+                            )
+                        }
+                    }
                 },
                 applyAgentActivity = { event ->
                     // task #136: members-store applyPresence moved to the
@@ -4139,8 +5009,11 @@ private fun SlockAppShellReadyContent(
         homeStore,
         realtimeEventMapper,
         realtimeCallbackGate,
+        authoritativeHomeStartAllowed,
     ) {
+        var suppressedVisibleRefreshCount = 0
         val onRealtimeEvent: (JSONObject) -> Unit = onRealtimeEvent@{ rawEventData ->
+            if (!latestAuthoritativeHomeStartAllowed) return@onRealtimeEvent
             if (
                 rawEventData.optString(SlockRealtimeNotifyContract.KeyAction) ==
                     SlockRealtimeNotifyContract.ActionPresenceTransportConnected
@@ -4233,12 +5106,14 @@ private fun SlockAppShellReadyContent(
                                     "cause=page_not_visible tab=$latestSelectedTab " +
                                     "homeDestination=${latestSelectedHomeDestination.orEmpty()}"
                             )
+                            suppressedVisibleRefreshCount++
                             return@launch
                         }
                         if (
                             appShellLifecycleCanRefreshVisibleRoute(latestPageVisible, event) &&
                             latestReadySession != null
                         ) {
+                            val fgResumeMark = TimeSource.Monotonic.markNow()
                             val plan =
                                 appShellForegroundResumePlan(
                                     pageVisible = latestPageVisible,
@@ -4272,6 +5147,11 @@ private fun SlockAppShellReadyContent(
                             if (refreshedVisibleRoute && plan?.refreshServerMembers == true) {
                                 sharedStores.foregroundReconciler.onForeground("app_shell_$event")
                             }
+                            slockLogInfo(
+                                "SlockForegroundPerf",
+                                "fg_resume event=$event serverId=${eventData.optString(SlockRealtimeNotifyContract.KeyServerId)} epoch=${foregroundEpoch ?: 0L} routeRefreshed=$refreshedVisibleRoute suppressedVisibleRefresh=$suppressedVisibleRefreshCount elapsedMs=${fgResumeMark.elapsedNow().inWholeMilliseconds}"
+                            )
+                            suppressedVisibleRefreshCount = 0
                         }
                         return@launch
                     }
@@ -4469,37 +5349,62 @@ private fun SlockAppShellReadyContent(
         }
     }
 
+    val navRailActive =
+        slockAdaptiveNavRailActive(
+            flagEnabled = adaptiveNavRailEnabled,
+            navigationPreference = largeScreenNavigation,
+            paneState = shellScope.adaptivePane
+        )
     val showAppShellBottomTabs =
         appShellBottomTabsVisible(
             selectedTab = selectedTab,
             selectedHomeDestination = selectedHomeDestination,
-        )
+        ) && !navRailActive
     val homeTabLabel = stringResource(MR.strings.tab_home)
     val tasksTabLabel = stringResource(MR.strings.tab_tasks)
     val membersTabLabel = stringResource(MR.strings.tab_members)
     val settingsTabLabel = stringResource(MR.strings.tab_settings)
+    val dmsTabLabel = stringResource(MR.strings.tab_dms)
+    val activityTabLabel = stringResource(MR.strings.tab_activity)
+    val searchTabLabel = stringResource(MR.strings.home_nav_search)
+    val moreTabLabel = stringResource(MR.strings.tab_more)
     val appShellBottomTabItems = remember(
         selectedTab,
         homeTabLabel,
         tasksTabLabel,
         membersTabLabel,
-        settingsTabLabel
+        settingsTabLabel,
+        dmsTabLabel,
+        activityTabLabel,
+        moreTabLabel,
+        slackNavTabKeys
     ) {
         appShellBottomTabs(
             selectedKey = selectedTab,
-            homeLabel = homeTabLabel,
-            tasksLabel = tasksTabLabel,
-            membersLabel = membersTabLabel,
-            settingsLabel = settingsTabLabel
+            orderedTabKeys = slackNavTabKeys,
+            labelFor = { key ->
+                when (key) {
+                    "home" -> homeTabLabel
+                    "tasks" -> tasksTabLabel
+                    "members" -> membersTabLabel
+                    "settings" -> settingsTabLabel
+                    SlockSlackNavTabs.Dms -> dmsTabLabel
+                    SlockSlackNavTabs.Activity -> activityTabLabel
+                    SlockSlackNavTabs.More -> moreTabLabel
+                    else -> key.uppercase()
+                }
+            }
         )
     }
     val appShellBottomContentInset = shellScope.contentBottomInset(showAppShellBottomTabs)
     val homeReadyForChildPagePrewarm =
-        readyServerId != null && homeState.content is SharedHomeContentState.Content
+        authoritativeHomeStartAllowed &&
+            readyServerId != null &&
+            homeState.content is SharedHomeContentState.Content
     val computersPrewarmServerId =
         appShellComputersPrewarmServerId(
             readyServerId = readyServerId,
-            sessionReady = readySession != null,
+            sessionReady = readySession != null && authoritativeHomeStartAllowed,
             homeContentReady = homeState.content is SharedHomeContentState.Content
         )
     LaunchedEffect(
@@ -4511,14 +5416,26 @@ private fun SlockAppShellReadyContent(
     ) {
         prewarmAdmissionGate.invalidate("foreground_shell_state")
     }
-    LaunchedEffect(homeReadyForChildPagePrewarm, childTabShellId, childPagePrewarmPolicy) {
+    LaunchedEffect(
+        homeReadyForChildPagePrewarm,
+        childTabShellId,
+        childPagePrewarmPolicy,
+        authoritativeHomeStartAllowed,
+        slackNavTabKeys,
+    ) {
         if (!homeReadyForChildPagePrewarm || childPagePrewarmPolicy.maxControllers <= 0) {
+            return@LaunchedEffect
+        }
+        // task #94: legacy prewarm targets (settings/tasks/members) are not child pages in
+        // Slack-nav mode; prewarming them would mount native child hosts for tabs that have
+        // no render slot. Slack-mode prewarm ordering is a follow-up.
+        if (slackNavMode) {
             return@LaunchedEffect
         }
         while (prewarmedAppShellTabs.size < childPagePrewarmPolicy.maxControllers) {
             val tab =
                 appShellChildPagePrewarmOrder(
-                    activeChildTab = appShellActiveChildPagerTab(selectedTab),
+                    activeChildTab = appShellActiveChildPagerTab(selectedTab, slackNavTabKeys),
                     retainedTabs = retainedAppShellTabs,
                     prewarmedTabs = prewarmedAppShellTabs
                 ).firstOrNull() ?: return@LaunchedEffect
@@ -4530,7 +5447,7 @@ private fun SlockAppShellReadyContent(
                     ?: return@withKuiklyIdleContext
                 try {
                     if (
-                        tab != appShellActiveChildPagerTab(selectedTab) &&
+                        tab != appShellActiveChildPagerTab(selectedTab, slackNavTabKeys) &&
                         tab !in retainedAppShellTabs &&
                         tab !in prewarmedAppShellTabs
                     ) {
@@ -4556,8 +5473,10 @@ private fun SlockAppShellReadyContent(
         computersPrewarmServerId,
         readySession?.user?.id,
         readySession?.accessToken,
-        appShellComputersStore
+        appShellComputersStore,
+        authoritativeHomeStartAllowed,
     ) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         appShellComputersStore.reconcileOwner()
         val serverId = computersPrewarmServerId ?: return@LaunchedEffect
         while (true) {
@@ -4748,13 +5667,15 @@ private fun SlockAppShellReadyContent(
         return true
     }
 
-    val mainRouteSurface: @Composable () -> Unit = {
-        SlockAppShellSurface(
-            shellScope = shellScope,
-            bottomTabs = appShellBottomTabItems,
-            onBottomTabSelected = onBottomTabSelected@{
+    val onAppShellTabSelected: (String) -> Unit = onBottomTabSelected@{
                 prewarmAdmissionGate.invalidate("bottom_tab_tap:$it")
                 val nextTab = retainedAppShellSelectedTab(it)
+                if (slockSlackNavMoreTapOpensMenu(slackNavMode, nextTab)) {
+                    // Every More tap (also when More is already selected) reopens the menu;
+                    // the tab only switches once a destination is picked.
+                    slackNavMoreMenuVisible = true
+                    return@onBottomTabSelected
+                }
                 when (
                     bottomTabTapTracker.onTap(
                         selectedTab = selectedTab,
@@ -4770,6 +5691,9 @@ private fun SlockAppShellReadyContent(
                     AppShellBottomTabTapAction.Select -> Unit
                 }
                 if (!shouldHandleAppShellTabSelection(selectedTab, nextTab)) return@onBottomTabSelected
+                // Selecting a real rail tab dismisses an inline secondary destination
+                // (Search) — its middle-pane slot goes back to the tab's own content.
+                railInlineSecondaryDestination = null
                 val visitedBefore = nextTab in retainedAppShellTabs
                 bridge.performanceMarker(
                     phase = appShellBottomTabPerformancePhase(nextTab),
@@ -4797,11 +5721,222 @@ private fun SlockAppShellReadyContent(
                 if (nextTab == "home") {
                     homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
                 }
-            },
+            }
+
+    val mainRouteSurface: @Composable () -> Unit = {
+        SlockAppShellSurface(
+            shellScope = shellScope,
+            bottomTabs = appShellBottomTabItems,
+            onBottomTabSelected = onAppShellTabSelected,
             networkStatus = hostNetworkStatus,
             showBottomTabs = showAppShellBottomTabs,
-            modalHostState = appShellModalHostState
+            interactionLocked = cachedHomePreview,
+            modalHostState = appShellModalHostState,
+            leadingNavigation =
+                if (navRailActive) {
+                    // task #31: Web LeftRail parity — yellow 64dp column, server header wired to
+                    // the real switcher, icon-only tabs, settings pinned to the bottom. The
+                    // settings entry must map to a real destination in both nav modes: legacy
+                    // keeps a first-class "settings" tab; Slack-nav routes through More.
+                    val railBottomItems =
+                        remember(slackNavMode, settingsTabLabel, selectedTab) {
+                            val settingsTab =
+                                if (slackNavMode) SlockSlackNavTabs.More else "settings"
+                            listOf(
+                                SlockBottomTabItemPayload(
+                                    key = settingsTab,
+                                    label = settingsTabLabel,
+                                    iconName = SlockLucideIconName.Settings,
+                                    selected =
+                                        retainedAppShellSelectedTab(selectedTab) == "settings" ||
+                                            (
+                                                slackNavMode &&
+                                                    retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.More &&
+                                                    slackNavMoreDestination == SlockSlackNavMoreDestination.Settings
+                                            ),
+                                )
+                            )
+                        }
+                    val railServers =
+                        (homeState.content as? SharedHomeContentState.Content)?.let { content ->
+                            val servers =
+                                sharedHomeSwitcherItems(
+                                    session = content.session,
+                                    selectedServer = content.snapshot.server,
+                                    serverUnreadCounts = homeState.serverUnreadCounts,
+                                    activityExpectedOwner = serverActivityExpectedOwner,
+                                    activityProjection = homeState.serverActivityUnread,
+                                )
+                            servers to
+                                homeHeaderServerIdentity(
+                                    currentServerId = content.snapshot.server.id.value,
+                                    currentServerName = content.snapshot.server.name,
+                                    servers = servers
+                                )
+                        }
+                    val railServerItem = railServers?.second
+                    val railServerUnread =
+                        railServers?.let { (servers, current) ->
+                            homeServerSwitcherHasOtherUnread(
+                                currentServerId = current.id,
+                                servers = servers
+                            )
+                        } ?: false
+                    {
+                        // task #13 (three-pane): Search and (in legacy nav mode) Activity
+                        // rail entries sit alongside the resolved tabs only while the wide
+                        // rail is active. Search is an inline middle-pane destination (no
+                        // page push), so it lives outside slackNavTabKeys and never
+                        // participates in retained-tab state.
+                        val railSearchItem =
+                            remember(searchTabLabel, railInlineSecondaryDestination) {
+                                SlockBottomTabItemPayload(
+                                    key = AppShellRailSearchKey,
+                                    label = searchTabLabel,
+                                    iconName = SlockLucideIconName.Search,
+                                    selected = railInlineSecondaryDestination == AppShellRailSearchKey,
+                                )
+                            }
+                        val railItems =
+                            appShellBottomTabItems
+                                .filter { it.key != "settings" }
+                                .toMutableList()
+                                .apply {
+                                    // Legacy nav has no Activity tab; the rail must still
+                                    // expose it so wide screens can reach the three-pane
+                                    // surface directly.
+                                    if (none { it.key == SlockSlackNavTabs.Activity }) {
+                                        add(
+                                            SlockBottomTabItemPayload(
+                                                key = SlockSlackNavTabs.Activity,
+                                                label = activityTabLabel,
+                                                iconName = SlockLucideIconName.Bell,
+                                                selected =
+                                                    railInlineSecondaryDestination == null &&
+                                                        retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity,
+                                            )
+                                        )
+                                    }
+                                    val activityIndex = indexOfFirst { it.key == SlockSlackNavTabs.Activity }
+                                    if (activityIndex >= 0) {
+                                        add(activityIndex + 1, railSearchItem)
+                                    } else {
+                                        add(railSearchItem)
+                                    }
+                                }
+                                .toList()
+                        SlockNavigationRailTabBar(
+                            items = railItems,
+                            onSelect = { key ->
+                                if (key == AppShellRailSearchKey) {
+                                    railInlineSecondaryDestination = AppShellRailSearchKey
+                                    bridge.log("app_shell_rail_secondary_open destination=search")
+                                } else {
+                                    // Tapping a real rail item dismisses the inline
+                                    // secondary destination even when the underlying
+                                    // tab is already selected (Activity -> Search ->
+                                    // Activity must land back on Activity).
+                                    railInlineSecondaryDestination = null
+                                    onAppShellTabSelected(key)
+                                }
+                            },
+                            modifier = Modifier.fillMaxHeight(),
+                            header =
+                                railServerItem?.let { server ->
+                                    SlockNavigationRailHeader(
+                                        key = "server:${server.id}",
+                                        label = server.name,
+                                        unread = railServerUnread
+                                    )
+                                },
+                            headerContent =
+                                railServerItem?.let { server ->
+                                    {
+                                        Box(
+                                            modifier =
+                                                Modifier
+                                                    .size(40.dp)
+                                                    .clickable {
+                                                        if (retainedAppShellSelectedTab(selectedTab) != "home") {
+                                                            onAppShellTabSelected("home")
+                                                        }
+                                                        homeShellStore.dispatch(
+                                                            SharedHomeShellIntent.Home(
+                                                                SharedHomeIntent.ToggleServerSwitcher
+                                                            )
+                                                        )
+                                                    },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            ServerSwitcherAvatarTile(server)
+                                        }
+                                    }
+                                },
+                            bottomItems = railBottomItems,
+                            onBottomItemSelect = { key ->
+                                if (slackNavMode && key == SlockSlackNavTabs.More) {
+                                    // The rail's settings gear must land on the real Settings
+                                    // destination — bypass the More tap→menu interception the
+                                    // bottom bar path performs.
+                                    slackNavMoreDestination = SlockSlackNavMoreDestination.Settings
+                                    if (shouldHandleAppShellTabSelection(selectedTab, key)) {
+                                        if (
+                                            shouldDismissHomeNotificationCenterForAppShellTabSelection(
+                                                selectedTab,
+                                                key
+                                            )
+                                        ) {
+                                            homeFocusLossDismissEpoch += 1
+                                            serverDrawerProgrammaticCloseFence?.invoke("bottom_tab")
+                                            homeShellStore.dispatch(
+                                                SharedHomeShellIntent.Home(
+                                                    SharedHomeIntent.DismissServerSwitcher
+                                                )
+                                            )
+                                        }
+                                        selectAppShellTab(key, directChildSwitch = true)
+                                        retainedAppShellTabs = retainedAppShellTabs + key
+                                    }
+                                } else {
+                                    onAppShellTabSelected(key)
+                                }
+                            },
+                            topSafeArea = shellScope.topSafeArea,
+                            bottomSafeArea = shellScope.bottomSafeArea
+                        )
+                    }
+                } else {
+                    null
+                }
         ) {
+                    if (slackNavMode && slackNavMoreMenuVisible) {
+                        SlockSlackNavMoreMenu(
+                            selected =
+                                slackNavMoreDestination.takeIf {
+                                    retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.More
+                                },
+                            bottomInset = shellScope.globalDialogBottomInset(showAppShellBottomTabs),
+                            onDismiss = { slackNavMoreMenuVisible = false },
+                            onSelect = { destination ->
+                                slackNavMoreMenuVisible = false
+                                prewarmAdmissionGate.invalidate("more_menu_select:${destination.name}")
+                                bridge.log("app_shell_more_menu_select destination=${destination.name} from=$selectedTab")
+                                slackNavMoreDestination = destination
+                                val moreTab = SlockSlackNavTabs.More
+                                if (shouldHandleAppShellTabSelection(selectedTab, moreTab)) {
+                                    if (shouldDismissHomeNotificationCenterForAppShellTabSelection(selectedTab, moreTab)) {
+                                        homeFocusLossDismissEpoch += 1
+                                        serverDrawerProgrammaticCloseFence?.invoke("bottom_tab")
+                                        homeShellStore.dispatch(
+                                            SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher)
+                                        )
+                                    }
+                                    selectAppShellTab(moreTab, directChildSwitch = true)
+                                    retainedAppShellTabs = retainedAppShellTabs + moreTab
+                                }
+                            }
+                        )
+                    }
                     val tasksTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         PerformanceSceneEffect(bridge, "kuikly_tasks", active = active)
                         SharedTasksScreen(
@@ -4834,7 +5969,122 @@ private fun SlockAppShellReadyContent(
                             }
                         )
                     }
-                    val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                    // task #13: shared list-detail host — the Activity tab renders the same
+                    // split (360dp list + workspace detail) the Home tab uses, driven by the
+                    // shell-wide adaptiveWorkspaceStore. The detail host lives in this stable
+                    // slot across wide/compact transitions so the native child controller,
+                    // draft and scroll state are retained rather than remounted by branch
+                    // movement; task #22 lifts only the detail slot above the floating dock.
+                    val adaptiveSplitListDetail:
+                        @Composable
+                        (
+                            enabled: Boolean,
+                            active: Boolean,
+                            listPane: @Composable (Boolean) -> Unit,
+                        ) -> Unit = { enabled, active, listPane ->
+                        val workspace = adaptiveWorkspaceState
+                        val selection = workspace?.selection
+                        val detailPayload = adaptiveDetailLaunchPayload
+                        val childActive =
+                            active && workspace?.presentation != SlockAdaptiveWorkspacePresentation.Inactive
+                        val adaptiveEmptyLabel = stringResource(MR.strings.home_adaptive_select_conversation)
+                        val detailPageData =
+                            remember(
+                                detailPayload,
+                                selection,
+                                navigationStoreScope.shellInstanceId,
+                                navigationStoreScope.initialServerId,
+                            ) {
+                                if (detailPayload == null || selection == null) {
+                                    null
+                                } else {
+                                    threadLaunchPageData(detailPayload)
+                                        .withSlockShellStoreScope(navigationStoreScope)
+                                        .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, workspace.shellInstanceId)
+                                        .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, selection.identity.key)
+                                        .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, selection.generation)
+                                }
+                            }
+                        val detailPane: @Composable (Modifier) -> Unit = { modifier ->
+                            if (detailPageData == null) {
+                                Box(
+                                    modifier = modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = adaptiveEmptyLabel,
+                                        color = SlockColor.TextMutedGray,
+                                        fontSize = 15.sp,
+                                    )
+                                }
+                            } else {
+                                SlockKuiklyChildPage(
+                                    pageName = THREAD_PAGE,
+                                    pageData = detailPageData,
+                                    modifier = modifier.fillMaxSize(),
+                                    active = childActive,
+                                    onLoadSuccess = {
+                                        selection?.generation?.let(::releaseAdaptiveHandoffLease)
+                                    },
+                                    onLoadFailure = {
+                                        selection?.generation?.let(::releaseAdaptiveHandoffLease)
+                                    },
+                                )
+                            }
+                        }
+                        if (enabled) {
+                            val dualPane = workspace?.pane?.layout == SlockAdaptivePaneLayout.DualPane
+                            Row(modifier = Modifier.fillMaxSize()) {
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .width(if (dualPane) 360.dp else 0.dp)
+                                            .fillMaxHeight(),
+                                ) {
+                                    if (dualPane) listPane(active)
+                                }
+                                Spacer(
+                                    modifier =
+                                        Modifier
+                                            .width(if (dualPane) 1.dp else 0.dp)
+                                            .fillMaxHeight()
+                                            .background(Color.Black),
+                                )
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                ) {
+                                    if (selection != null || dualPane) {
+                                        detailPane(
+                                            Modifier
+                                                .fillMaxSize()
+                                                .padding(
+                                                    bottom =
+                                                        shellScope.embeddedChildBottomInset(
+                                                            showAppShellBottomTabs
+                                                        )
+                                                )
+                                        )
+                                    } else {
+                                        listPane(active)
+                                    }
+                                }
+                            }
+                        } else {
+                            listPane(active)
+                        }
+                    }
+                    val homeTabContentBase:
+                        @Composable
+                        (
+                            active: Boolean,
+                            kindFilter: ConversationKind?,
+                            scrollRequest: Int,
+                            positions: AppShellServerLazyListPositions,
+                            onPositionsSnapshot: (AppShellServerLazyListPositions) -> Unit
+                        ) -> Unit = { active, kindFilter, scrollRequest, positions, onPositionsSnapshot ->
                         val homeListServerId =
                             appShellHomeListServerId(
                                 renderedServerId = renderedHomeServerId,
@@ -4843,7 +6093,6 @@ private fun SlockAppShellReadyContent(
                         val homeListPositionServerId = readyServerId ?: homeListServerId
                         val prefersChineseCommunity =
                             localePreferenceStore.readLocaleSync() == AppLocale.SimplifiedChinese
-                        val adaptiveEmptyLabel = stringResource(MR.strings.home_adaptive_select_conversation)
                         PerformanceSceneEffect(bridge, "kuikly_home", active = active)
                         val workspace = adaptiveWorkspaceState
                         val selection = workspace?.selection
@@ -4852,8 +6101,11 @@ private fun SlockAppShellReadyContent(
                                 bridge = bridge,
                                 state = homeState,
                                 active = listActive,
-                                scrollToTopRequest = tabScrollToTopRequests.home,
-                                sessionReady = readyServerId?.isNotBlank() == true,
+                                scrollToTopRequest = scrollRequest,
+                                conversationKindFilter = kindFilter,
+                                sessionReady =
+                                    authoritativeHomeStartAllowed &&
+                                        readyServerId?.isNotBlank() == true,
                                 draftPersistSlice = composerDraftPersistSlice,
                                 conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope),
                                 activityUnreadCount = activityUnreadSummary.totalUnreadCount,
@@ -4951,11 +6203,11 @@ private fun SlockAppShellReadyContent(
                                 initialListPosition =
                                     appShellLazyListPositionForServer(
                                         currentServerId = homeListPositionServerId,
-                                        savedPositions = homeListPositions
+                                        savedPositions = positions
                                     ),
                                 onListPositionSnapshot = { serverId, position ->
                                     prewarmAdmissionGate.invalidate("home_scroll")
-                                    homeListPositions = homeListPositions.withPosition(serverId, position)
+                                    onPositionsSnapshot(positions.withPosition(serverId, position))
                                 },
                                 onContentComposeCommitted = { serverId ->
                                     if (
@@ -4974,85 +6226,110 @@ private fun SlockAppShellReadyContent(
                                 }
                             )
                         }
-                        val detailPayload = adaptiveDetailLaunchPayload
-                        val childActive =
-                            active && workspace?.presentation != SlockAdaptiveWorkspacePresentation.Inactive
-                        val detailPageData =
-                            remember(
-                                detailPayload,
-                                selection,
-                                navigationStoreScope.shellInstanceId,
-                                navigationStoreScope.initialServerId,
-                            ) {
-                                if (detailPayload == null || selection == null) {
-                                    null
-                                } else {
-                                    threadLaunchPageData(detailPayload)
-                                        .withSlockShellStoreScope(navigationStoreScope)
-                                        .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, workspace.shellInstanceId)
-                                        .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, selection.identity.key)
-                                        .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, selection.generation)
-                                }
-                            }
-                        val detailPane: @Composable (Modifier) -> Unit = { modifier ->
-                            if (detailPageData == null) {
-                                Box(
-                                    modifier = modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        text = adaptiveEmptyLabel,
-                                        color = SlockColor.TextMutedGray,
-                                        fontSize = 15.sp,
-                                    )
-                                }
-                            } else {
-                                SlockKuiklyChildPage(
-                                    pageName = THREAD_PAGE,
-                                    pageData = detailPageData,
-                                    modifier = modifier.fillMaxSize(),
-                                    active = childActive,
-                                    onLoadSuccess = {
-                                        selection?.generation?.let(::releaseAdaptiveHandoffLease)
-                                    },
-                                    onLoadFailure = {
-                                        selection?.generation?.let(::releaseAdaptiveHandoffLease)
-                                    },
-                                )
-                            }
+                        adaptiveSplitListDetail(
+                            adaptiveHomeWorkspaceEnabled,
+                            active,
+                            homeListPane,
+                        )
+                    }
+                    val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        homeTabContentBase(
+                            active,
+                            // task #94: in Slack-nav mode the Home tab is channels-only; the DMs
+                            // tab owns direct messages. Legacy mode keeps the merged list.
+                            if (slackNavMode) ConversationKind.Channel else null,
+                            tabScrollToTopRequests.home,
+                            homeListPositions,
+                            { homeListPositions = it }
+                        )
+                    }
+                    // task #337: DMs tab = SharedDmsScreen (WeChat-style rows, task #332) fed by
+                    // the same projection chain the home shell uses. Replaces the PR2 placeholder
+                    // (home store filtered to ConversationKind.DirectMessage).
+                    val dmsTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        PerformanceSceneEffect(bridge, "kuikly_dms", active = active)
+                        val projectedDirectMessages =
+                            rememberProjectedDirectMessageItems(
+                                state = homeState,
+                                conversationIdentityProvider =
+                                    sharedStores.conversationIdentityProvider(storeScope),
+                                draftPersistSlice = composerDraftPersistSlice
+                            )
+
+                        val dmsContentSnapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot
+                        LaunchedEffect(active, readyServerId, dmsContentSnapshot != null) {
+                            if (!active || readyServerId.isNullOrBlank() || dmsContentSnapshot == null) return@LaunchedEffect
+                            val accountId = readySession?.user?.id
+                                ?: dmsContentSnapshot.currentMember.id.value.takeIf { it.isNotBlank() }
+                                ?: return@LaunchedEffect
+                            dmPreviewPrefetchCoordinator.enqueue(
+                                serverId = ServerId(readyServerId),
+                                accountId = accountId,
+                                directMessages = dmsContentSnapshot.directMessages,
+                                scope = this,
+                            )
                         }
-                        if (adaptiveHomeWorkspaceEnabled) {
-                            val dualPane = workspace?.pane?.layout == SlockAdaptivePaneLayout.DualPane
-                            Row(modifier = Modifier.fillMaxSize()) {
-                                Box(
-                                    modifier =
-                                        Modifier
-                                            .width(if (dualPane) 360.dp else 0.dp)
-                                            .fillMaxHeight(),
-                                ) {
-                                    if (dualPane) homeListPane(active)
-                                }
-                                Spacer(
-                                    modifier =
-                                        Modifier
-                                            .width(if (dualPane) 1.dp else 0.dp)
-                                            .fillMaxHeight()
-                                            .background(Color.Black),
-                                )
-                                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                                    if (selection != null || dualPane) {
-                                        // The detail host stays in this stable slot across wide/compact
-                                        // transitions so the native child controller, draft and scroll
-                                        // state are retained rather than remounted by branch movement.
-                                        detailPane(Modifier.fillMaxSize())
-                                    } else {
-                                        homeListPane(active)
-                                    }
-                                }
+
+                        val dmsMemberAvatarResolver =
+                            remember(appShellServerMembersStore, readyServerId) {
+                                slockMemberAvatarResolver(appShellServerMembersStore, readyServerId)
                             }
-                        } else {
-                            homeListPane(active)
-                        }
+                        val liveDmsTimeContext =
+                            hostThreadTimeContextProvider.current?.withTimeFormat(sessionTimeFormat) ?: threadTimeContext
+                        SharedDmsScreen(
+                            active = active,
+                            directMessages = projectedDirectMessages,
+                            onOpenConversation = { identity ->
+                                openHomeConversation(identity, "dms")
+                            },
+                            showHeader = true,
+                            scrollToTopRequest = tabScrollToTopRequests.dms,
+                            bottomContentPadding = appShellBottomContentInset,
+                            currentServerId = readyServerId,
+                            agentStatusResolver = createChannelAgentStatusResolver,
+                            memberAvatarResolver = dmsMemberAvatarResolver,
+                            timeContext = liveDmsTimeContext,
+                            refreshing = sharedHomeHeaderRefreshing(homeState),
+                            onRefresh = {
+                                homeShellStore.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+                            }
+                        )
+                    }
+                    // task #94: Activity tab hosts the shared activity inbox surface directly —
+                    // the same screen the home secondary Activity destination renders.
+                    // task #13: on DualPane the inbox stays as the 360dp left list and the
+                    // opened thread renders in the shared workspace detail slot at right —
+                    // same canonical-identity OpenDetail path the Home tab uses, so compact
+                    // keeps the standalone push behavior unchanged.
+                    val activityListPane: @Composable (Boolean) -> Unit = { listActive ->
+                        SharedHomeActivityScreen(
+                            bridge = bridge,
+                            authStore = shellAuthStore,
+                            routeVisibleTick = pageVisibleTick,
+                            active = listActive,
+                            onOpenMessage = { request ->
+                                openHomeMessageRequest(
+                                    request = request,
+                                    source = "activity_tab"
+                                )
+                            },
+                            onClose = null,
+                            bottomContentPadding = appShellBottomContentInset,
+                            includeTopSafeArea = true,
+                            timeContext = threadTimeContext,
+                            shellScope = shellScope,
+                            storeScope = navigationStoreScope,
+                            activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                            activitySenderAvatarsEnabled = activitySenderAvatarsEnabled
+                        )
+                    }
+                    val activityTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        PerformanceSceneEffect(bridge, "kuikly_activity", active = active)
+                        adaptiveSplitListDetail(
+                            adaptiveHomeWorkspaceEnabled,
+                            active,
+                            activityListPane,
+                        )
                     }
                     val membersTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         SharedMembersScreen(
@@ -5084,6 +6361,7 @@ private fun SlockAppShellReadyContent(
                                 prewarmAdmissionGate.invalidate("members_scroll")
                                 membersListState = it
                             },
+                            paneLayout = shellScope.adaptivePane.layout,
                             onForegroundActivity = { reason ->
                                 prewarmAdmissionGate.invalidate("members_$reason")
                             }
@@ -5126,6 +6404,15 @@ private fun SlockAppShellReadyContent(
                         )
                     }
                     val currentChildTab = retainedAppShellSelectedTab(selectedTab)
+                    // task #401: the Slack-nav More tab renders the destination picked from the
+                    // More menu directly (no intermediate hub page, no sub-page back bar).
+                    val moreTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        when (slackNavMoreDestination) {
+                            SlockSlackNavMoreDestination.Tasks -> tasksTabContent(active)
+                            SlockSlackNavMoreDestination.Members -> membersTabContent(active)
+                            SlockSlackNavMoreDestination.Settings -> settingsTabContent(active)
+                        }
+                    }
                     val childTabRenderer: AppShellChildTabRenderer = { tab, active ->
                         val homeSummary = sharedHomeContentRenderSummary(homeState.content)
                         LaunchedEffect(tab, active, currentChildTab, readyServerId, homeSummary, homeState.homeRealtimeDirty) {
@@ -5137,15 +6424,19 @@ private fun SlockAppShellReadyContent(
                         }
                         CompositionLocalProvider(LocalSlockTimeContextProvider provides hostThreadTimeContextProvider) {
                             when (tab) {
+                                "home" -> homeTabContent(active)
                                 "tasks" -> tasksTabContent(active)
                                 "members" -> membersTabContent(active)
                                 "settings" -> settingsTabContent(active)
+                                SlockSlackNavTabs.Dms -> dmsTabContent(active)
+                                SlockSlackNavTabs.Activity -> activityTabContent(active)
+                                SlockSlackNavTabs.More -> moreTabContent(active)
                                 else -> homeTabContent(active)
                             }
                         }
                     }
                     val childTabRegistration =
-                        remember(childTabShellId) {
+                        remember(childTabShellId, slackNavTabKeys) {
                             val entry = AppShellChildTabEntry(
                                 debugId = AppShellChildTabRegistry.createEntryId(),
                                 timestampDisplayState = timestampDisplayState,
@@ -5153,6 +6444,9 @@ private fun SlockAppShellReadyContent(
                                 initialParentVisible = pageVisible,
                                 initialRetainedTabs = retainedAppShellTabs,
                                 initialRenderer = childTabRenderer,
+                                // task #94: the render-slot map follows the resolved ordered
+                                // keys; a gate flip re-registers the entry with the new set.
+                                initialTabKeys = slackNavTabKeys,
                                 initialModalHostState = appShellModalHostState
                             )
                             val replaced = AppShellChildTabRegistry.register(childTabShellId, entry)
@@ -5184,12 +6478,77 @@ private fun SlockAppShellReadyContent(
                             )
                         }
                     }
+                    // task #13 three-pane: a rail secondary destination (Search) replaces the
+                    // tab host's middle area with its own list pane; the shared workspace
+                    // detail slot to its right keeps working via adaptiveSplitListDetail.
+                    // Narrow or flag-off never reaches here — the push path handles those.
+                    if (railInlineSecondaryDestination == AppShellRailSearchKey) {
+                        val searchListPane: @Composable (Boolean) -> Unit = { listActive ->
+                            HomeSecondaryRouterContent(
+                                destination = HomeDestinationSearch,
+                                routeVisibleTick = pageVisibleTick,
+                                initialSearchFocusInput = false,
+                                adaptivePane = shellScope.adaptivePane,
+                                inlineOpenRequest = { request, source ->
+                                    openHomeMessageRequest(request, source)
+                                },
+                                inlineOnClose = {
+                                    // Same ordering as popMainRoute: a mounted detail
+                                    // closes before the inline Search destination exits.
+                                    // Read the store snapshot, not the compose state: the
+                                    // remember-keyed environment may hold this lambda across
+                                    // recompositions, so only the store has the live truth.
+                                    val liveSelection =
+                                        adaptiveWorkspaceStore.snapshot().workspace?.selection
+                                    val dismissFirst =
+                                        appShellRailSurfaceBackDismissesDetailFirst(
+                                            selectedTab = selectedTab,
+                                            railInlineSecondaryDestination = railInlineSecondaryDestination,
+                                            selectionPresent = liveSelection != null,
+                                        )
+                                    bridge.log(
+                                        "rail_inline_secondary_close destination=$railInlineSecondaryDestination " +
+                                            "selectedTab=$selectedTab dismissFirst=$dismissFirst " +
+                                            "selection=${liveSelection?.identity?.key.orEmpty()}"
+                                    )
+                                    if (dismissFirst) {
+                                        dismissAdaptiveDetailSelection()
+                                    } else {
+                                        railInlineSecondaryDestination = null
+                                    }
+                                },
+                                inlineOpenEntity = { entity ->
+                                    when (entity.destinationOrNull()) {
+                                        is HomeSearchEntityDestination.Conversation -> {
+                                            // Conversation entities open in the shared detail
+                                            // pane; everything else still needs a full page.
+                                            val destination =
+                                                entity.destinationOrNull()
+                                                    as HomeSearchEntityDestination.Conversation
+                                            openHomeConversation(
+                                                conversation = destination.identity,
+                                                source = "home_search_entity",
+                                            )
+                                            true
+                                        }
+                                        else -> false
+                                    }
+                                },
+                            )
+                        }
+                        adaptiveSplitListDetail(
+                            adaptiveHomeWorkspaceEnabled,
+                            pageVisible,
+                            searchListPane,
+                        )
+                    } else {
                     AppShellTabs(
                         selectedTab = selectedTab,
                         pageVisible = pageVisible,
                         childHostShellId = childTabShellId,
                         mountedTabs = retainedAppShellTabs + prewarmedAppShellTabs,
                         childTabSwitchEpoch = childTabSwitchEpoch,
+                        childPageTabKeys = slackNavTabKeys,
                         log = { bridge.log(it) }
                     ) { tab, active ->
                         CompositionLocalProvider(LocalSlockTimeContextProvider provides hostThreadTimeContextProvider) {
@@ -5198,6 +6557,7 @@ private fun SlockAppShellReadyContent(
                                 else -> childTabRenderer(tab, active)
                             }
                         }
+                    }
                     }
             Box(modifier = Modifier.fillMaxSize()) {
                 if (createChannelDialogOpen) {
@@ -5688,15 +7048,6 @@ internal fun SettingsNativeDetailScreen() {
             loadPageContent = {
                 settingsViewModel.accept(SharedSettingsIntent.LoadPageContent(route.page.storeDestination))
             },
-            enableProfiler = {
-                settingsViewModel.accept(SharedSettingsIntent.SetRecompositionProfilerEnabled(true))
-            },
-            resetProfiler = {
-                settingsViewModel.accept(SharedSettingsIntent.ResetRecompositionProfiler)
-            },
-            exportProfilerReport = {
-                settingsViewModel.accept(SharedSettingsIntent.ExportRecompositionProfilerReport)
-            },
             waitForAutoClose = { delay(it) },
             closePage = closePage,
         )
@@ -6186,9 +7537,6 @@ private fun SettingsNativeDetailPageContent(
                         onSettingsIntent(SharedSettingsIntent.SetServerDrawerEnabled(enabled))
                         onServerDrawerSelected(enabled)
                     },
-                    onNewDesignSettingsChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetNewDesignSettingsEnabled(enabled))
-                    },
                     onHomeServerAvatarChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetHomeServerAvatarEnabled(enabled))
                         onHomeServerAvatarSelected(enabled)
@@ -6258,14 +7606,6 @@ private fun SettingsNativeDetailPageContent(
                             onOpenLocalFeatureOverridesPage()
                         }
                     },
-                    onSetProfilerEnabled = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetRecompositionProfilerEnabled(enabled))
-                    },
-                    onStartProfiler = { onSettingsIntent(SharedSettingsIntent.StartRecompositionProfiler) },
-                    onStopProfiler = { onSettingsIntent(SharedSettingsIntent.StopRecompositionProfiler) },
-                    onResetProfiler = { onSettingsIntent(SharedSettingsIntent.ResetRecompositionProfiler) },
-                    onRefreshProfilerReport = { onSettingsIntent(SharedSettingsIntent.RefreshRecompositionProfilerReport) },
-                    onExportProfilerReport = { onSettingsIntent(SharedSettingsIntent.ExportRecompositionProfilerReport) },
                     onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) }
                 )
             SettingsNativeDetailPage.LocalFeatureOverrides ->
@@ -6458,8 +7798,69 @@ private fun SharedSettingsServerContent(
     }
 }
 
-@Composable
-private fun SettingsConnectedAppsContent(
+/**
+ * task #346: state payload of [SettingsConnectedAppsContent]. See SlockStructuralHomeShellData for why
+ * the flat parameter list had to be grouped (Android dex verifier rejects the
+ * un-minified giant composable frame on API 34/36 builds).
+ */
+private data class SettingsConnectedAppsContentData(
+    val state: ScreenLoadState<SettingsConnectedAppsSnapshot>,
+    val selectedTab: String,
+    val editingId: String,
+    val name: String,
+    val clientId: String,
+    val description: TextFieldValue,
+    val homepageUrl: String,
+    val returnUrl: String,
+    val manifestUrl: String,
+    val publishCategory: String,
+    val publishDataAccess: TextFieldValue,
+    val marketplaceSearch: String,
+    val marketplaceCategory: String,
+    val selectedMarketplaceId: String?,
+    val selectedBuiltInId: String?,
+    val confirmTarget: SettingsConnectedAppsConfirmTarget?,
+    val actionState: SharedSettingsActionState?,
+    val bottomContentPadding: Dp,
+)
+
+/** task #346: callback payload of [SettingsConnectedAppsContent]. See SettingsConnectedAppsContentData. */
+private class SettingsConnectedAppsContentCallbacks(
+    val onSelectedTabChange: (String) -> Unit,
+    val onNameChange: (String) -> Unit,
+    val onClientIdChange: (String) -> Unit,
+    val onDescriptionChange: (TextFieldValue) -> Unit,
+    val onHomepageUrlChange: (String) -> Unit,
+    val onReturnUrlChange: (String) -> Unit,
+    val onManifestUrlChange: (String) -> Unit,
+    val onPublishCategoryChange: (String) -> Unit,
+    val onPublishDataAccessChange: (TextFieldValue) -> Unit,
+    val onMarketplaceSearchChange: (String) -> Unit,
+    val onMarketplaceCategoryChange: (String) -> Unit,
+    val onOpenMarketplaceDetail: (String) -> Unit,
+    val onDismissMarketplaceDetail: () -> Unit,
+    val onOpenBuiltInDetail: (String) -> Unit,
+    val onDismissBuiltInDetail: () -> Unit,
+    val onStartEdit: (SettingsConnectedAppClientSnapshot) -> Unit,
+    val onCancelEdit: () -> Unit,
+    val onRegister: (SettingsConnectedAppRegisterRequest) -> Unit,
+    val onUpdate: (SettingsConnectedAppUpdateRequest) -> Unit,
+    val onUploadLogo: (String) -> Unit,
+    val onClearLogo: (String) -> Unit,
+    val onRequestDelete: (String) -> Unit,
+    val onConfirmDelete: (String) -> Unit,
+    val onPublish: (SettingsConnectedAppPublishRequest) -> Unit,
+    val onInstall: (String) -> Unit,
+    val onRequestUninstall: (String) -> Unit,
+    val onConfirmUninstall: (String) -> Unit,
+    val onDismissConfirm: () -> Unit,
+    val onCopySecret: (String) -> Unit,
+    val onOpenUrl: (String) -> Unit,
+    val onRefresh: () -> Unit,
+)
+
+private @Composable
+fun SettingsConnectedAppsContent(
     state: ScreenLoadState<SettingsConnectedAppsSnapshot>,
     selectedTab: String,
     onSelectedTabChange: (String) -> Unit,
@@ -6509,7 +7910,123 @@ private fun SettingsConnectedAppsContent(
     onCopySecret: (String) -> Unit,
     onOpenUrl: (String) -> Unit,
     onRefresh: () -> Unit
+)
+ {
+    SettingsConnectedAppsContentContent(
+        modifier = Modifier,
+        data =
+            SettingsConnectedAppsContentData(
+                state = state,
+                selectedTab = selectedTab,
+                editingId = editingId,
+                name = name,
+                clientId = clientId,
+                description = description,
+                homepageUrl = homepageUrl,
+                returnUrl = returnUrl,
+                manifestUrl = manifestUrl,
+                publishCategory = publishCategory,
+                publishDataAccess = publishDataAccess,
+                marketplaceSearch = marketplaceSearch,
+                marketplaceCategory = marketplaceCategory,
+                selectedMarketplaceId = selectedMarketplaceId,
+                selectedBuiltInId = selectedBuiltInId,
+                confirmTarget = confirmTarget,
+                actionState = actionState,
+                bottomContentPadding = bottomContentPadding,
+            ),
+        callbacks =
+            SettingsConnectedAppsContentCallbacks(
+                onSelectedTabChange = onSelectedTabChange,
+                onNameChange = onNameChange,
+                onClientIdChange = onClientIdChange,
+                onDescriptionChange = onDescriptionChange,
+                onHomepageUrlChange = onHomepageUrlChange,
+                onReturnUrlChange = onReturnUrlChange,
+                onManifestUrlChange = onManifestUrlChange,
+                onPublishCategoryChange = onPublishCategoryChange,
+                onPublishDataAccessChange = onPublishDataAccessChange,
+                onMarketplaceSearchChange = onMarketplaceSearchChange,
+                onMarketplaceCategoryChange = onMarketplaceCategoryChange,
+                onOpenMarketplaceDetail = onOpenMarketplaceDetail,
+                onDismissMarketplaceDetail = onDismissMarketplaceDetail,
+                onOpenBuiltInDetail = onOpenBuiltInDetail,
+                onDismissBuiltInDetail = onDismissBuiltInDetail,
+                onStartEdit = onStartEdit,
+                onCancelEdit = onCancelEdit,
+                onRegister = onRegister,
+                onUpdate = onUpdate,
+                onUploadLogo = onUploadLogo,
+                onClearLogo = onClearLogo,
+                onRequestDelete = onRequestDelete,
+                onConfirmDelete = onConfirmDelete,
+                onPublish = onPublish,
+                onInstall = onInstall,
+                onRequestUninstall = onRequestUninstall,
+                onConfirmUninstall = onConfirmUninstall,
+                onDismissConfirm = onDismissConfirm,
+                onCopySecret = onCopySecret,
+                onOpenUrl = onOpenUrl,
+                onRefresh = onRefresh,
+            ),
+    )
+}
+
+@Composable
+private fun SettingsConnectedAppsContentContent(
+    modifier: Modifier = Modifier,
+    data: SettingsConnectedAppsContentData,
+    callbacks: SettingsConnectedAppsContentCallbacks,
 ) {
+    val state = data.state
+    val selectedTab = data.selectedTab
+    val onSelectedTabChange = callbacks.onSelectedTabChange
+    val editingId = data.editingId
+    val name = data.name
+    val clientId = data.clientId
+    val description = data.description
+    val homepageUrl = data.homepageUrl
+    val returnUrl = data.returnUrl
+    val manifestUrl = data.manifestUrl
+    val publishCategory = data.publishCategory
+    val publishDataAccess = data.publishDataAccess
+    val marketplaceSearch = data.marketplaceSearch
+    val marketplaceCategory = data.marketplaceCategory
+    val selectedMarketplaceId = data.selectedMarketplaceId
+    val selectedBuiltInId = data.selectedBuiltInId
+    val confirmTarget = data.confirmTarget
+    val actionState = data.actionState
+    val bottomContentPadding = data.bottomContentPadding
+    val onNameChange = callbacks.onNameChange
+    val onClientIdChange = callbacks.onClientIdChange
+    val onDescriptionChange = callbacks.onDescriptionChange
+    val onHomepageUrlChange = callbacks.onHomepageUrlChange
+    val onReturnUrlChange = callbacks.onReturnUrlChange
+    val onManifestUrlChange = callbacks.onManifestUrlChange
+    val onPublishCategoryChange = callbacks.onPublishCategoryChange
+    val onPublishDataAccessChange = callbacks.onPublishDataAccessChange
+    val onMarketplaceSearchChange = callbacks.onMarketplaceSearchChange
+    val onMarketplaceCategoryChange = callbacks.onMarketplaceCategoryChange
+    val onOpenMarketplaceDetail = callbacks.onOpenMarketplaceDetail
+    val onDismissMarketplaceDetail = callbacks.onDismissMarketplaceDetail
+    val onOpenBuiltInDetail = callbacks.onOpenBuiltInDetail
+    val onDismissBuiltInDetail = callbacks.onDismissBuiltInDetail
+    val onStartEdit = callbacks.onStartEdit
+    val onCancelEdit = callbacks.onCancelEdit
+    val onRegister = callbacks.onRegister
+    val onUpdate = callbacks.onUpdate
+    val onUploadLogo = callbacks.onUploadLogo
+    val onClearLogo = callbacks.onClearLogo
+    val onRequestDelete = callbacks.onRequestDelete
+    val onConfirmDelete = callbacks.onConfirmDelete
+    val onPublish = callbacks.onPublish
+    val onInstall = callbacks.onInstall
+    val onRequestUninstall = callbacks.onRequestUninstall
+    val onConfirmUninstall = callbacks.onConfirmUninstall
+    val onDismissConfirm = callbacks.onDismissConfirm
+    val onCopySecret = callbacks.onCopySecret
+    val onOpenUrl = callbacks.onOpenUrl
+    val onRefresh = callbacks.onRefresh
     val snapshot = state.currentContent()
     val selectedMarketplace = snapshot?.marketplace?.firstOrNull { it.id == selectedMarketplaceId }
     val selectedBuiltIn = snapshot?.builtIn?.firstOrNull { it.id == selectedBuiltInId }
@@ -7299,7 +8816,6 @@ private fun SettingsMobileContent(
     onComposerSendKeyChange: (Boolean) -> Unit,
     onMultiShellHostChange: (Boolean) -> Unit,
     onServerDrawerChange: (Boolean) -> Unit,
-    onNewDesignSettingsChange: (Boolean) -> Unit,
     onHomeServerAvatarChange: (Boolean) -> Unit,
 ) {
     val snapshot =
@@ -7398,13 +8914,6 @@ private fun SettingsMobileContent(
                     snapshot = snapshot,
                     actionState = actionState,
                     onServerDrawerChange = onServerDrawerChange
-                )
-            }
-            item {
-                SettingsNewDesignSettingsCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onNewDesignSettingsChange = onNewDesignSettingsChange
                 )
             }
             item {
@@ -7510,54 +9019,6 @@ private fun SettingsServerDrawerCard(
             SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_SERVER_DRAWER && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState)
-        }
-    }
-}
-
-@Composable
-private fun SettingsNewDesignSettingsCard(
-    snapshot: SettingsMobileSnapshot,
-    actionState: SharedSettingsActionState?,
-    onNewDesignSettingsChange: (Boolean) -> Unit
-) {
-    val busy = actionState?.action == MOBILE_ACTION_NEW_DESIGN_SETTINGS && actionState.inProgress
-    val preference = snapshot.newDesignSettings
-    SettingsFormSectionCard(
-        iconName = SlockLucideIconName.Settings,
-        title = stringResource(MR.strings.settings_mobile_new_design_settings)
-    ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
-                        onNewDesignSettingsChange(!preference.enabled)
-                    }
-                    .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_badge_beta), SlockColor.BrandYellow)
-                    Text(
-                        preference.localizedToggleStatus(),
-                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray
-                    )
-                }
-                Text(
-                    stringResource(MR.strings.settings_mobile_new_design_settings_detail),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
-        }
-        if (actionState?.action == MOBILE_ACTION_NEW_DESIGN_SETTINGS && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
         }
     }
@@ -11063,12 +12524,6 @@ internal fun SharedSettingsDiagnosticsContent(
     onOpenLocalFeatureOverrides: (() -> Unit)? = null,
     onSetAppleSignInLocalOverride: ((Boolean) -> Unit)? = null,
     onCopyValue: ((String) -> Unit)? = null,
-    onSetProfilerEnabled: (Boolean) -> Unit,
-    onStartProfiler: () -> Unit,
-    onStopProfiler: () -> Unit,
-    onResetProfiler: () -> Unit,
-    onRefreshProfilerReport: () -> Unit,
-    onExportProfilerReport: () -> Unit,
     onSendFeedback: () -> Unit
 ) {
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data
@@ -11091,12 +12546,6 @@ internal fun SharedSettingsDiagnosticsContent(
             "copyLogs" -> onCopyLogs()
             "shareLogs" -> onShareLogs()
             DIAGNOSTICS_ACTION_APPLE_SIGNIN_LOCAL_OVERRIDE -> onSetAppleSignInLocalOverride?.invoke(value == "true")
-            DIAGNOSTICS_ACTION_PROFILER_ENABLED -> onSetProfilerEnabled(value == "true")
-            "startProfiler" -> onStartProfiler()
-            "stopProfiler" -> onStopProfiler()
-            "resetProfiler" -> onResetProfiler()
-            "refreshProfilerReport" -> onRefreshProfilerReport()
-            "exportProfilerReport" -> onExportProfilerReport()
             "feedback" -> onSendFeedback()
             LOCAL_FEATURE_OVERRIDES_OPEN_ACTION -> onOpenLocalFeatureOverrides?.invoke()
             else ->
@@ -11200,6 +12649,14 @@ internal fun SharedHandsFeedbackContent(
     val copy = settingsHandsFeedbackCopy(attachmentMaxLabel)
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val scope = rememberCoroutineScope()
+    // Keep editor callbacks on the Kuikly dispatcher while detaching their Job from composition
+    // cancellation. Disposal closes admission, waits for these jobs, then sweeps ownership.
+    val imageEditEventScope = remember(eventBus, accountId, pager.pagerId) {
+        CoroutineScope(scope.coroutineContext.minusKey(Job) + SupervisorJob())
+    }
+    // The process send scope is used only for the NonCancellable disposal handoff.
+    val stableCleanupScope =
+        SlockSharedStoreRegistry.currentOrNull()?.threadSendScope ?: imageEditEventScope
     val listState = rememberLazyListState()
     val chatLayoutPreferenceStore =
         remember {
@@ -11245,6 +12702,13 @@ internal fun SharedHandsFeedbackContent(
         remember(accountId, feedbackPageGeneration) {
             SettingsHandsFeedbackImageEditCommitGate()
         }
+    val imageEditSessionTracker = remember(eventBus, accountId, feedbackPageGeneration) {
+        SettingsHandsFeedbackImageEditSessionTracker()
+    }
+    val imageEditEventJobs = remember(eventBus, accountId, feedbackPageGeneration) {
+        SettingsHandsFeedbackImageEditEventJobTracker()
+    }
+    val latestPendingImageEditSession by rememberUpdatedState(pendingImageEditSession)
     val latestFeedbackAccountId by rememberUpdatedState(accountId)
     val latestFeedbackPageGeneration by rememberUpdatedState(feedbackPageGeneration)
     val feedbackDraftResetGenerationState =
@@ -11272,12 +12736,39 @@ internal fun SharedHandsFeedbackContent(
     }
     var allowBottomAnchor by remember(accountId) { mutableStateOf(true) }
     val feedbackEntryIds = remember(entries) { entries.map(SettingsHandsFeedbackEntry::id) }
-    // task #92 close-out: server + Hands SDKs support 9 files with presigned
-    // large-file upload; the per-file byte cap is platform-dependent (OHOS SDK
-    // still caps at 50MB).
-    val attachmentLimit = 9
+    // Native Hands SDK caps feedback submissions at maxAttachments=3 (one slot is
+    // reserved for the attached log bundle); keep UI copy and merge in lockstep.
+    val attachmentLimit = 3
     val remainingSlots = attachmentLimit - attachments.size
     val normalizedMessage = message.trim()
+
+    fun abortOwnedImageEditSessions(sessionIds: Collection<String>) {
+        abortSettingsHandsFeedbackImageEditSessions(
+            sessionIds = sessionIds,
+            retire = { sessionId, fileRefs ->
+                bridge.retireFilePreviewTemporaryFiles(
+                    sessionId = sessionId,
+                    fileRefs = fileRefs.toList()
+                )
+            }
+        )
+    }
+
+    fun abortAllOwnedImageEditSessions() {
+        // Revoke partial witnesses atomically before touching the process registry.  Otherwise an
+        // event which already passed `owns()` could mark its session in-flight while this function
+        // was retiring the same temporary refs, deleting a file that the uploader is about to read.
+        val partialSessionIds = imageEditSessionTracker.takePartialSessionIds()
+        val pendingSessionId = pendingImageEditSession?.previewSessionId.orEmpty()
+        val sessionIds =
+            partialSessionIds +
+                pendingSessionId.takeIf {
+                    it.isNotBlank() && !imageEditSessionTracker.isHandoffStarted(it)
+                }.orEmpty()
+        if (sessionIds.isEmpty()) return
+        abortOwnedImageEditSessions(sessionIds)
+        sessionIds.forEach(imageEditSessionTracker::release)
+    }
 
     LaunchedEffect(feedbackDraftStore, accountId, draftTextForPersistence, attachments) {
         delay(250L)
@@ -11358,6 +12849,10 @@ internal fun SharedHandsFeedbackContent(
         }
         busy = true
         error = null
+        // A replacement picker supersedes any promotion already in flight. Keep its native
+        // handoff alive until its finally cleanup, but make its draft commit stale immediately.
+        feedbackDraftResetGeneration += 1L
+        abortAllOwnedImageEditSessions()
         pendingImageEditSession = null
         scope.launch {
             when (val result = settingsCapabilities.pickFeedbackAttachment(imageOnly)) {
@@ -11367,54 +12862,20 @@ internal fun SharedHandsFeedbackContent(
                             files = result.data,
                             imageOnly = imageOnly
                         )
-                    val attachmentAction =
-                        resolveThreadPickedAttachmentComposerAction(
-                            action = if (imageOnly) "attachImage" else "attachFile",
-                            fileCount = pickedFiles.size,
-                            allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(pickedFiles)
+                    // Feedback attachments mount straight into the form, identical to the
+                    // file path: no chat-style annotation detour for images.
+                    val merge =
+                        settingsHandsFeedbackMergedAttachments(
+                            existing = attachmentsState.value,
+                            picked = pickedFiles,
+                            attachmentMaxBytes = attachmentMaxBytes,
+                            attachmentLimit = attachmentLimit
                         )
-                    if (attachmentAction == ThreadPickedAttachmentComposerAction.OpenImageAnnotation) {
-                        val request =
-                            settingsHandsFeedbackImageEditRequest(
-                                accountId = accountId,
-                                pageGeneration = feedbackPageGeneration,
-                                files = pickedFiles,
-                                sourceStoreScope = sourceStoreScope
-                            )
-                        if (request == null) {
-                            error = copy.attachmentPickerFailed
-                        } else {
-                            pendingImageEditSession = request.session
-                            if (
-                                !pager.openSlockFilePreviewPage(
-                                    request.previewPayload,
-                                    sourceStoreScope = request.sourceStoreScope
-                                )
-                            ) {
-                                pendingImageEditSession = null
-                                error = copy.attachmentPickerFailed
-                            }
-                        }
-                    } else {
-                        val accepted =
-                            pickedFiles.filter { file ->
-                                (file.sizeBytes ?: 0L) <= attachmentMaxBytes
-                            }
-                        val rejectedCount = pickedFiles.size - accepted.size
-                        val currentAttachments = attachmentsState.value
-                        val currentRemainingSlots =
-                            (attachmentLimit - currentAttachments.size).coerceAtLeast(0)
-                        val merged =
-                            (currentAttachments + accepted)
-                                .distinctBy { it.fileRef ?: it.id }
-                                .take(attachmentLimit)
-                        attachments = merged
-                        error = when {
-                            rejectedCount > 0 -> copy.attachmentTooLarge(attachmentMaxLabel)
-                            accepted.size > currentRemainingSlots ->
-                                copy.attachmentLimitTrimmed(attachmentLimit)
-                            else -> null
-                        }
+                    attachments = merge.attachments
+                    error = when {
+                        merge.rejectedCount > 0 -> copy.attachmentTooLarge(attachmentMaxLabel)
+                        merge.limitTrimmed -> copy.attachmentLimitTrimmed(attachmentLimit)
+                        else -> null
                     }
                 }
                 is DataResult.Empty -> Unit
@@ -11426,28 +12887,92 @@ internal fun SharedHandsFeedbackContent(
     }
 
     fun previewAttachment(attachmentId: String) {
-        attachmentsState.value
-            .firstOrNull { file -> file.feedbackComposerAttachmentId() == attachmentId }
-            ?.toSettingsHandsFeedbackAttachmentPreviewPayload(copy.attachment)
-            ?.let { payload ->
-                pager.openSlockFilePreviewPage(payload, sourceStoreScope = sourceStoreScope)
+        val file =
+            attachmentsState.value
+                .firstOrNull { it.feedbackComposerAttachmentId() == attachmentId }
+                ?: return
+        // task #286: image previews reopen the shared editor so tapping a mounted image can
+        // edit it in place; non-image previews stay read-only.
+        val editRequest =
+            if (
+                slockFilePreviewIsImageAttachment(
+                    file.fileName.ifBlank { copy.attachment },
+                    file.mimeType.orEmpty()
+                )
+            ) {
+                settingsHandsFeedbackImageEditPreviewRequest(
+                    accountId = accountId,
+                    pageGeneration = feedbackPageGeneration,
+                    file = file,
+                    sourceStoreScope = sourceStoreScope
+                )
+            } else {
+                null
             }
+        if (editRequest == null) {
+            file.toSettingsHandsFeedbackAttachmentPreviewPayload(copy.attachment)
+                ?.let { payload ->
+                    pager.openSlockFilePreviewPage(payload, sourceStoreScope = sourceStoreScope)
+                }
+            return
+        }
+        // A new edit preview supersedes any session still pending; retire it first so its
+        // admission cannot consume events meant for the replacement.
+        abortAllOwnedImageEditSessions()
+        pendingImageEditSession = null
+        var previewSessionId = ""
+        if (
+            !pager.openSlockFilePreviewPage(
+                editRequest.previewPayload,
+                sourceStoreScope = editRequest.sourceStoreScope,
+                onEphemeralSessionRegistered = { registeredId ->
+                    previewSessionId = registeredId
+                    imageEditSessionTracker.track(registeredId).also { tracked ->
+                        if (tracked) {
+                            pendingImageEditSession =
+                                editRequest.session.copy(previewSessionId = registeredId)
+                        }
+                    }
+                }
+            ) || previewSessionId.isBlank()
+        ) {
+            imageEditSessionTracker.release(previewSessionId)
+            pendingImageEditSession = null
+            error = copy.attachmentPickerFailed
+            return
+        }
+        if (
+            !imageEditSessionTracker.owns(previewSessionId) &&
+                !imageEditSessionTracker.isHandoffStarted(previewSessionId)
+        ) {
+            abortOwnedImageEditSessions(listOf(previewSessionId))
+            pendingImageEditSession = null
+            error = copy.attachmentPickerFailed
+        }
     }
 
     DisposableEffect(eventBus, accountId, feedbackPageGeneration) {
+        // Native editor callbacks can arrive on separate event-bus turns. Serialize the fold and
+        // terminal registry transition so two members of one N/N group cannot both read the same
+        // stale Compose session and overwrite each other's index.
+        val imageEditEventMutex = Mutex()
         val subscription =
             eventBus.observe(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
                 val eventDataSnapshot = data?.toString() ?: return@observe
-                scope.launch {
-                    val eventData =
-                        runCatching { JSONObject(eventDataSnapshot) }.getOrNull()
-                            ?: return@launch
-                    val session = pendingImageEditSession
+                imageEditEventJobs.launch(imageEditEventScope) {
+                    imageEditEventMutex.withLock {
+                        val eventData =
+                            runCatching { JSONObject(eventDataSnapshot) }.getOrNull()
+                                ?: return@withLock
+                    val session = latestPendingImageEditSession
                     val eventSessionId = eventData.optString("previewSessionId").trim()
                     val eventThreadKey = eventData.optString("threadKey").trim()
-                    if (
-                        (session != null && eventThreadKey != session.threadKey) ||
-                        (session == null && !eventThreadKey.startsWith("feedback-"))
+                    if (!settingsHandsFeedbackImageEditEventMatchesSession(
+                            session = session,
+                            tracker = imageEditSessionTracker,
+                            eventSessionId = eventSessionId,
+                            eventThreadKey = eventThreadKey
+                        )
                     ) {
                         return@launch
                     }
@@ -11461,6 +12986,7 @@ internal fun SharedHandsFeedbackContent(
                                 fileRefs = cleanupRefs.toList()
                             )
                         }
+                        imageEditSessionTracker.release(eventSessionId)
                         if (session != null) {
                             pendingImageEditSession = null
                             error = copy.attachmentPickerFailed
@@ -11479,23 +13005,45 @@ internal fun SharedHandsFeedbackContent(
                                 fileRefs = admission.orphanedTemporaryFileRefs.toList()
                             )
                         }
+                        if (settingsHandsFeedbackRejectedAdmissionIsTerminal(admission)) {
+                            imageEditSessionTracker.release(admission.sessionId)
+                        }
                         return@launch
                     }
                     admission as SlockFilePreviewComposerImageEventAdmission.Accepted
+                    fun eventSessionStillOwned(sessionId: String): Boolean {
+                        val normalized = sessionId.trim()
+                        return normalized.isNotBlank() &&
+                            imageEditSessionTracker.owns(normalized) &&
+                            latestPendingImageEditSession?.previewSessionId?.trim() == normalized
+                    }
                     fun finishEventSession(transferred: Boolean) {
-                        val cleanupRefs =
-                            slockFilePreviewFinishComposerImageEventSession(
-                                sessionId = admission.sessionId,
-                                transferred = transferred
-                            )
-                        if (cleanupRefs.isNotEmpty()) {
-                            bridge.retireFilePreviewTemporaryFiles(
-                                sessionId = admission.sessionId,
-                                fileRefs = cleanupRefs.toList()
-                            )
+                        try {
+                            val cleanupRefs =
+                                slockFilePreviewFinishComposerImageEventSession(
+                                    sessionId = admission.sessionId,
+                                    transferred = transferred
+                                )
+                            if (cleanupRefs.isNotEmpty()) {
+                                bridge.retireFilePreviewTemporaryFiles(
+                                    sessionId = admission.sessionId,
+                                    fileRefs = cleanupRefs.toList()
+                                )
+                            }
+                        } finally {
+                            // A bridge/retirement failure must not leave the page-local witness
+                            // alive forever; the persistent cleanup ledger remains the fallback.
+                            imageEditSessionTracker.release(admission.sessionId)
                         }
                     }
                     if (session == null) {
+                        finishEventSession(transferred = false)
+                        return@launch
+                    }
+                    // Replacement/disposal can revoke the page witness while this callback is
+                    // waiting behind another event. Do not fold or mutate Compose state after the
+                    // session has lost ownership, even if the process registry accepted the row.
+                    if (!eventSessionStillOwned(admission.sessionId)) {
                         finishEventSession(transferred = false)
                         return@launch
                     }
@@ -11509,35 +13057,63 @@ internal fun SharedHandsFeedbackContent(
                             )
                     ) {
                         is SettingsHandsFeedbackImageEditFoldResult.Ignored -> {
-                            pendingImageEditSession = null
+                            if (eventSessionStillOwned(admission.sessionId)) {
+                                pendingImageEditSession = null
+                            }
                             finishEventSession(transferred = false)
                         }
                         is SettingsHandsFeedbackImageEditFoldResult.Pending -> {
                             if (admission.sessionComplete) {
-                                pendingImageEditSession = null
+                                val stillOwned = eventSessionStillOwned(admission.sessionId)
+                                if (stillOwned) {
+                                    pendingImageEditSession = null
+                                }
                                 finishEventSession(transferred = false)
-                                error = copy.attachmentPickerFailed
+                                if (stillOwned) {
+                                    error = copy.attachmentPickerFailed
+                                }
                             } else {
-                                pendingImageEditSession = result.session
+                                if (eventSessionStillOwned(admission.sessionId)) {
+                                    pendingImageEditSession = result.session
+                                } else {
+                                    finishEventSession(transferred = false)
+                                }
                             }
                         }
                         is SettingsHandsFeedbackImageEditFoldResult.Failed -> {
-                            pendingImageEditSession = null
+                            val stillOwned = eventSessionStillOwned(admission.sessionId)
+                            if (stillOwned) {
+                                pendingImageEditSession = null
+                            }
                             finishEventSession(transferred = false)
-                            error = copy.attachmentPickerFailed
+                            if (stillOwned) {
+                                error = copy.attachmentPickerFailed
+                            }
                         }
                         is SettingsHandsFeedbackImageEditFoldResult.Complete -> {
                             if (!admission.sessionComplete) {
-                                pendingImageEditSession = null
+                                val stillOwned = eventSessionStillOwned(admission.sessionId)
+                                if (stillOwned) {
+                                    pendingImageEditSession = null
+                                }
                                 finishEventSession(transferred = false)
-                                error = copy.attachmentPickerFailed
+                                if (stillOwned) {
+                                    error = copy.attachmentPickerFailed
+                                }
                                 return@launch
                             }
                             if (!imageEditCommitGate.tryClaim(session)) {
                                 finishEventSession(transferred = false)
                                 return@launch
                             }
-                            pendingImageEditSession = null
+                            if (!imageEditSessionTracker.markHandoffStarted(admission.sessionId)) {
+                                imageEditCommitGate.release(session)
+                                finishEventSession(transferred = false)
+                                return@launch
+                            }
+                            if (pendingImageEditSession?.previewSessionId?.trim() == admission.sessionId.trim()) {
+                                pendingImageEditSession = null
+                            }
                             val initialDraftResetGeneration = feedbackDraftResetGenerationState.value
                             var transferred = false
                             try {
@@ -11548,12 +13124,15 @@ internal fun SharedHandsFeedbackContent(
                                             edited = result.files,
                                             attachmentMaxBytes = attachmentMaxBytes,
                                             attachmentLimit = attachmentLimit,
+                                            replaceAttachmentId = result.replaceAttachmentId,
                                             isCurrent = {
-                                                imageEditCommitGate.isCurrent(
+                                                !imageEditSessionTracker.isDisposed() &&
+                                                    imageEditSessionTracker.owns(session.previewSessionId) &&
+                                                    imageEditCommitGate.isCurrent(
                                                     session = session,
                                                     currentAccountId = latestFeedbackAccountId,
                                                     currentPageGeneration = latestFeedbackPageGeneration
-                                                )
+                                                    )
                                             },
                                             currentExisting = { attachmentsState.value },
                                             initialDraftResetGeneration = initialDraftResetGeneration,
@@ -11569,17 +13148,34 @@ internal fun SharedHandsFeedbackContent(
                                                 )
                                             },
                                             persist = { promotedAttachments ->
-                                                val currentDraftText = draftTextForPersistenceState.value
-                                                feedbackDraftStore.save(
-                                                    accountId = accountId,
-                                                    text = currentDraftText,
-                                                    attachments = promotedAttachments
-                                                )
-                                                lastPersistedDraft =
-                                                    SettingsHandsFeedbackDraftSnapshot(
-                                                        text = currentDraftText,
-                                                        attachments = promotedAttachments
-                                                    )
+                                                check(
+                                                    imageEditSessionTracker.runIfOwned(session.previewSessionId) {
+                                                        check(
+                                                            feedbackDraftResetGenerationState.value ==
+                                                                initialDraftResetGeneration &&
+                                                                imageEditCommitGate.isCurrent(
+                                                                    session = session,
+                                                                    currentAccountId = latestFeedbackAccountId,
+                                                                    currentPageGeneration = latestFeedbackPageGeneration
+                                                                )
+                                                        ) {
+                                                            "settings feedback image edit session changed before persistence"
+                                                        }
+                                                        val currentDraftText = draftTextForPersistenceState.value
+                                                        feedbackDraftStore.save(
+                                                            accountId = accountId,
+                                                            text = currentDraftText,
+                                                            attachments = promotedAttachments
+                                                        )
+                                                        lastPersistedDraft =
+                                                            SettingsHandsFeedbackDraftSnapshot(
+                                                                text = currentDraftText,
+                                                                attachments = promotedAttachments
+                                                            )
+                                                    }
+                                                ) {
+                                                    "settings feedback image edit session disposed before persistence"
+                                                }
                                             },
                                             discard = { promotedAttachments ->
                                                 settingsCapabilities.discardFeedbackDraftAttachments(
@@ -11591,14 +13187,21 @@ internal fun SharedHandsFeedbackContent(
                                 ) {
                                     is SettingsHandsFeedbackEditedGroupCommitResult.Committed -> {
                                         val promotion = commit.promotion
-                                        attachments = promotion.attachments
-                                        transferred = true
-                                        error =
-                                            if (promotion.trimmedByLimit) {
-                                                copy.attachmentLimitTrimmed(attachmentLimit)
-                                            } else {
-                                                null
-                                            }
+                                        val published = imageEditSessionTracker.runIfOwned(
+                                            session.previewSessionId
+                                        ) {
+                                            attachments = promotion.attachments
+                                            transferred = true
+                                            error =
+                                                if (promotion.trimmedByLimit) {
+                                                    copy.attachmentLimitTrimmed(attachmentLimit)
+                                                } else {
+                                                    null
+                                                }
+                                        }
+                                        if (!published) {
+                                            error = null
+                                        }
                                     }
                                     is SettingsHandsFeedbackEditedGroupCommitResult.Failed -> {
                                         if ("session_stale" !in commit.code) {
@@ -11619,10 +13222,45 @@ internal fun SharedHandsFeedbackContent(
                             }
                         }
                     }
+                    }
                 }
             }
         onDispose {
             subscription.close()
+            val eventJobs = imageEditEventJobs.closeAndSnapshot()
+            val closeResult = imageEditSessionTracker.closeAndSnapshot()
+            val pendingSessionId = latestPendingImageEditSession?.previewSessionId.orEmpty()
+            val immediateSessionIds =
+                closeResult.abortSessionIds +
+                    pendingSessionId.takeIf { it.isNotBlank() && it !in closeResult.inFlightSessionIds }.orEmpty()
+            abortOwnedImageEditSessions(immediateSessionIds)
+            imageEditCommitGate.clear()
+            // Stop admitting callbacks before joining jobs which may still hold a claimed
+            // session. The commit body has its own NonCancellable finally path; partial work is
+            // swept below after the jobs have stopped.
+            eventJobs.forEach { job -> job.cancel() }
+            val deferredSessionIds = closeResult.allSessionIds
+            if (deferredSessionIds.isNotEmpty() || eventJobs.isNotEmpty()) {
+                stableCleanupScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                    withContext(NonCancellable) {
+                        eventJobs.forEach { job ->
+                            try {
+                                job.cancelAndJoin()
+                            } catch (_: CancellationException) {
+                                // The surrounding NonCancellable handoff remains authoritative.
+                            } catch (_: Throwable) {
+                                // Always perform the final registry/ledger sweep below.
+                            }
+                        }
+                        abortOwnedImageEditSessions(
+                            deferredSessionIds + pendingSessionId.takeIf(String::isNotBlank).orEmpty()
+                        )
+                        imageEditEventScope.cancel()
+                    }
+                }
+            } else {
+                imageEditEventScope.cancel()
+            }
         }
     }
 
@@ -11649,8 +13287,9 @@ internal fun SharedHandsFeedbackContent(
             error = copy.messageRequired
             return
         }
-        pendingImageEditSession = null
         feedbackDraftResetGeneration += 1L
+        abortAllOwnedImageEditSessions()
+        pendingImageEditSession = null
         settingsCapabilities.log("settings_hands_feedback_submit_enter")
         busy = true
         error = null
@@ -11851,6 +13490,10 @@ internal fun SharedHandsFeedbackContent(
                         placeholder = copy.placeholder,
                         enabled = !busy,
                         attachmentActionsEnabled = remainingSlots > 0,
+                        // Settings feedback accepts images and files as evidence, but it has no
+                        // thread-composer image policy. Do not expose a checkbox whose event this
+                        // surface cannot own or persist.
+                        originalImageOptionEnabled = false,
                         composerMode = if (busy) "sending" else if (!error.isNullOrBlank()) "failed" else "idle",
                         statusLabel = error?.takeIf { it.isNotBlank() },
                         suggestionsEnabled = false,
@@ -11894,6 +13537,11 @@ internal fun SharedHandsFeedbackContent(
                                         file.feedbackComposerAttachmentId() == id
                                     }
                                 if (removed.isNotEmpty()) {
+                                    // Removing any attachment supersedes an editor promotion that
+                                    // may be finishing concurrently. Its native handoff remains
+                                    // alive for terminal cleanup, but its draft generation is no
+                                    // longer allowed to publish into this edited list.
+                                    feedbackDraftResetGeneration += 1L
                                     val remaining = attachments - removed.toSet()
                                     val nextDraft =
                                         SettingsHandsFeedbackDraftSnapshot(
@@ -11909,8 +13557,8 @@ internal fun SharedHandsFeedbackContent(
                                         lastPersistedDraft = nextDraft
                                         attachments = remaining
                                         if (remaining.isEmpty()) {
+                                            abortAllOwnedImageEditSessions()
                                             pendingImageEditSession = null
-                                            feedbackDraftResetGeneration += 1L
                                         }
                                         scope.launch {
                                             try {
@@ -11934,7 +13582,7 @@ internal fun SharedHandsFeedbackContent(
                             }
                         "previewAttachment" ->
                             attachmentId?.takeIf { it.isNotBlank() }?.let(::previewAttachment)
-                        "retryAttachments", "blur", "toggleAsTask" -> Unit
+                        "retryAttachments", "blur", "toggleAsTask", "toggleOriginalImage" -> Unit
                     }
                 },
                 contentPaddingTop = 10.dp,
@@ -12200,7 +13848,33 @@ private fun List<PlatformFile>.toFeedbackComposerAttachmentItems(
         )
     }
 
-private fun PlatformFile.feedbackComposerAttachmentId(): String =
+internal data class SettingsHandsFeedbackAttachmentMerge(
+    val attachments: List<PlatformFile>,
+    val rejectedCount: Int,
+    val limitTrimmed: Boolean
+)
+
+internal fun settingsHandsFeedbackMergedAttachments(
+    existing: List<PlatformFile>,
+    picked: List<PlatformFile>,
+    attachmentMaxBytes: Long,
+    attachmentLimit: Int
+): SettingsHandsFeedbackAttachmentMerge {
+    val accepted = picked.filter { file -> (file.sizeBytes ?: 0L) <= attachmentMaxBytes }
+    val rejectedCount = picked.size - accepted.size
+    val remainingSlots = (attachmentLimit - existing.size).coerceAtLeast(0)
+    val merged =
+        (existing + accepted)
+            .distinctBy { it.fileRef ?: it.id }
+            .take(attachmentLimit)
+    return SettingsHandsFeedbackAttachmentMerge(
+        attachments = merged,
+        rejectedCount = rejectedCount,
+        limitTrimmed = accepted.size > remainingSlots
+    )
+}
+
+internal fun PlatformFile.feedbackComposerAttachmentId(): String =
     fileRef?.takeIf { it.isNotBlank() } ?: id
 
 internal fun PlatformFile.toSettingsHandsFeedbackAttachmentPreviewPayload(
@@ -13909,16 +15583,6 @@ private fun build.raft.app.data.SharedSettingsActionState?.isDiagnosticsActionLo
 private fun <T> ScreenLoadState<T>.currentContent(): T? =
     (this as? ScreenLoadState.Content<T>)?.data
 
-private val profilerActionKeys =
-    setOf(
-        DIAGNOSTICS_ACTION_PROFILER_ENABLED,
-        DIAGNOSTICS_ACTION_PROFILER_START,
-        DIAGNOSTICS_ACTION_PROFILER_STOP,
-        DIAGNOSTICS_ACTION_PROFILER_RESET,
-        DIAGNOSTICS_ACTION_PROFILER_REPORT,
-        DIAGNOSTICS_ACTION_PROFILER_EXPORT
-    )
-
 internal data class SettingsAboutPayloadCopy(
     val title: String = "About",
     val detail: String = "Version, build, and source",
@@ -13991,7 +15655,7 @@ internal data class SettingsDeveloperPayloadCopy(
     val current: String = "Current",
     val realtime: String = "Realtime",
     val diagnostics: String = "Diagnostics",
-    val diagnosticsDetail: String = "Open auth, sanitized logs, profiler, and feedback tools.",
+    val diagnosticsDetail: String = "Open auth, sanitized logs, and feedback tools.",
     val routeLauncher: String = "Route launcher",
     val routeLauncherDetail: String = "Open Kuikly route launcher and icon compare."
 )
@@ -14021,35 +15685,18 @@ private fun settingsDeveloperPayloadCopy(): SettingsDeveloperPayloadCopy =
 
 internal data class SettingsDiagnosticsPayloadCopy(
     val title: String = "Diagnostics",
-    val detailProfiler: String = "Auth, sanitized app diagnostics, and Kuikly recomposition profiler",
-    val detailStatus: String = "Auth, sanitized app diagnostics, and Kuikly profiler status",
     val detailBasic: String = "Auth and sanitized app diagnostics",
     val environment: String = "Environment",
     val loadStatus: String = "Load status",
     val actions: String = "Actions",
     val partialDiagnostics: String = "Partial diagnostics",
     val partial: String = "Partial",
-    val profiler: String = "Recomposition profiler",
-    val profilerStatus: String = "Shared profiler status",
-    val profilerDetail: String = "Persist this debug switch locally. When enabled, shared settings asks the host bridge to acknowledge profiler mode, applies the default Kuikly profile, and starts collecting recompositions.",
-    val resetProfiler: String = "Reset scene window",
-    val resetProfilerDetail: String = "Clear the current in-memory counters right before opening the target page or replaying the target interaction.",
-    val refreshProfiler: String = "Refresh report",
-    val refreshProfilerDetail: String = "Call getReport(saveToFile=false) to refresh the current summary without rewriting files.",
-    val exportProfiler: String = "Export report",
-    val exportProfilerDetail: String = "Call getReport(saveToFile=true) and keep profiler_frames.jsonl beside profiler_report.json for analyzer input.",
     val appleSignInOverride: String = "Apple sign-in (local test)",
     val appleSignInOverrideDetail: String = "Locally show the Apple button on the login page for testing. The backend platform=mobile gate still decides whether an Apple sign-in start succeeds.",
     val loading: String = "Loading",
     val on: String = "On",
-    val pending: String = "Pending",
     val off: String = "Off",
-    val reset: String = "Reset",
-    val wait: String = "Wait",
-    val refresh: String = "Refresh",
-    val pull: String = "Pull",
     val export: String = "Export",
-    val write: String = "Write",
     val disabled: String = "Disabled",
     val send: String = "Send",
     val exportLogs: String = "Export logs",
@@ -14083,35 +15730,18 @@ internal data class SettingsDiagnosticsPayloadCopy(
 private fun settingsDiagnosticsPayloadCopy(): SettingsDiagnosticsPayloadCopy =
     SettingsDiagnosticsPayloadCopy(
         title = stringResource(MR.strings.settings_diagnostics_title),
-        detailProfiler = stringResource(MR.strings.settings_diagnostics_detail_profiler),
-        detailStatus = stringResource(MR.strings.settings_diagnostics_detail),
         detailBasic = stringResource(MR.strings.settings_diagnostics_detail_basic),
         environment = stringResource(MR.strings.settings_diagnostics_section_environment),
         loadStatus = stringResource(MR.strings.settings_diagnostics_section_load_status),
         actions = stringResource(MR.strings.settings_diagnostics_section_actions),
         partialDiagnostics = stringResource(MR.strings.settings_diagnostics_partial),
         partial = stringResource(MR.strings.settings_diagnostics_state_partial),
-        profiler = stringResource(MR.strings.settings_diagnostics_profiler_title),
-        profilerStatus = stringResource(MR.strings.settings_diagnostics_profiler_status),
-        profilerDetail = stringResource(MR.strings.settings_diagnostics_profiler_detail),
-        resetProfiler = stringResource(MR.strings.settings_diagnostics_profiler_reset),
-        resetProfilerDetail = stringResource(MR.strings.settings_diagnostics_profiler_reset_detail),
-        refreshProfiler = stringResource(MR.strings.settings_diagnostics_profiler_refresh),
-        refreshProfilerDetail = stringResource(MR.strings.settings_diagnostics_profiler_refresh_detail),
-        exportProfiler = stringResource(MR.strings.settings_diagnostics_profiler_export),
-        exportProfilerDetail = stringResource(MR.strings.settings_diagnostics_profiler_export_detail),
         appleSignInOverride = stringResource(MR.strings.settings_diagnostics_apple_signin_override),
         appleSignInOverrideDetail = stringResource(MR.strings.settings_diagnostics_apple_signin_override_detail),
         loading = stringResource(MR.strings.settings_state_loading),
         on = stringResource(MR.strings.settings_state_on),
-        pending = stringResource(MR.strings.settings_state_pending),
         off = stringResource(MR.strings.settings_state_off),
-        reset = stringResource(MR.strings.settings_state_reset),
-        wait = stringResource(MR.strings.settings_state_wait),
-        refresh = stringResource(MR.strings.settings_state_refresh),
-        pull = stringResource(MR.strings.settings_state_pull),
         export = stringResource(MR.strings.settings_state_export),
-        write = stringResource(MR.strings.settings_state_write),
         disabled = stringResource(MR.strings.settings_state_disabled),
         send = stringResource(MR.strings.settings_state_send),
         exportLogs = stringResource(MR.strings.settings_diagnostics_action_export_logs),
@@ -14482,10 +16112,6 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
 ): KuiklySharedSettingsPayload {
     val diagnosticsExportAvailable = state is ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data
-    val profiler = snapshot?.profiler
-        ?: SharedSettingsRecompositionProfilerSnapshot()
-    val profilerRunning = profiler.statusLabel == "Running"
-    val profilerBusy = actionState?.action in profilerActionKeys && actionState?.inProgress == true
     val environmentRows =
         snapshot?.about?.toDiagnosticsEnvironmentRows(copy).orEmpty()
     val structuredLoadErrorMessage =
@@ -14512,96 +16138,6 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                 )
             }
             .orEmpty()
-    val profilerControlSection =
-        KuiklySharedSettingsSection(
-            title = copy.profiler,
-            rows =
-                if (profiler.supported) {
-                    listOf(
-                            KuiklySharedSettingsRow(
-                                "profilerStatus",
-                                SlockLucideIconName.Activity,
-                                copy.profilerStatus,
-                                profiler.detail,
-                                status = profiler.statusLabel
-                            ),
-                            KuiklySharedSettingsRow(
-                                DIAGNOSTICS_ACTION_PROFILER_ENABLED,
-                                SlockLucideIconName.Activity,
-                                copy.profiler,
-                                copy.profilerDetail,
-                                value = (!profiler.enabled).toString(),
-                                status =
-                                    when {
-                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_ENABLED) -> copy.loading
-                                        profiler.enabled && profilerRunning -> copy.on
-                                        profiler.enabled -> copy.pending
-                                        else -> copy.off
-                                    },
-                                enabled = !profilerBusy,
-                                toggleValue = profiler.enabled
-                            ),
-                            KuiklySharedSettingsRow(
-                                "resetProfiler",
-                                SlockLucideIconName.RotateCcw,
-                                copy.resetProfiler,
-                                copy.resetProfilerDetail,
-                                status =
-                                    when {
-                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_RESET) -> copy.loading
-                                        profilerRunning -> copy.reset
-                                        else -> copy.wait
-                                    },
-                                enabled = profilerRunning && !profilerBusy
-                            ),
-                            KuiklySharedSettingsRow(
-                                "refreshProfilerReport",
-                                SlockLucideIconName.RefreshCw,
-                                copy.refreshProfiler,
-                                copy.refreshProfilerDetail,
-                                status =
-                                    when {
-                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_REPORT) -> copy.loading
-                                        profiler.report.reportAvailable -> copy.refresh
-                                        else -> copy.pull
-                                    },
-                                enabled = !profilerBusy
-                            ),
-                            KuiklySharedSettingsRow(
-                                "exportProfilerReport",
-                                SlockLucideIconName.FileCode,
-                                copy.exportProfiler,
-                                copy.exportProfilerDetail,
-                                status =
-                                    when {
-                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_EXPORT) -> copy.loading
-                                        profiler.report.reportAvailable -> copy.export
-                                        else -> copy.write
-                                    },
-                                enabled = !profilerBusy
-                            )
-                        )
-                } else {
-                    listOf(
-                        KuiklySharedSettingsRow(
-                            "profilerStatus",
-                            SlockLucideIconName.Activity,
-                            copy.profilerStatus,
-                            profiler.detail,
-                            status = profiler.gateLabel
-                        ),
-                        KuiklySharedSettingsRow(
-                            DIAGNOSTICS_ACTION_PROFILER_ENABLED,
-                            SlockLucideIconName.Activity,
-                            copy.profiler,
-                            profiler.detail,
-                            status = profiler.gateLabel,
-                            enabled = false,
-                            toggleValue = false
-                        )
-                    )
-                }
-        )
     val appleSignInOverrideSection =
         appleSignInLocalOverride?.let { enabled ->
             KuiklySharedSettingsSection(
@@ -14648,15 +16184,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-diagnostics",
         title = copy.title,
-        detail =
-            profiler.actionFeedback
-                ?: if (profiler.supported) {
-                    copy.detailProfiler
-                } else if (profiler.detail.isNotBlank()) {
-                    copy.detailStatus
-                } else {
-                    copy.detailBasic
-                },
+        detail = copy.detailBasic,
         heroIconName = SlockLucideIconName.ClipboardList,
         heroLabel = copy.title,
         sections =
@@ -14667,7 +16195,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                 loadStatusRows.takeIf { it.isNotEmpty() }?.let {
                     KuiklySharedSettingsSection(title = copy.loadStatus, rows = it)
                 }
-            ) + listOfNotNull(localFeatureOverridesSection) + listOfNotNull(appleSignInOverrideSection) + listOf(profilerControlSection) + listOf(
+            ) + listOfNotNull(localFeatureOverridesSection) + listOfNotNull(appleSignInOverrideSection) + listOf(
                 KuiklySharedSettingsSection(
                     title = copy.actions,
                     rows =
@@ -15057,6 +16585,10 @@ internal fun authChooseServerPageData(
                 put(SLOCK_DOCUMENT_SHELL, documentShell)
             }
         }
+
+internal fun authChooseServerUsesScopedStore(pageData: JSONObject): Boolean =
+    pageData.optBoolean(AUTH_CHOOSE_SERVER_FROM_SHELL, false) ||
+        pageData.slockShellStoreScopeOrNull() != null
 
 internal fun appShellPageDataForServerSelection(
     sourceStoreScope: SlockShellStoreScope,
@@ -15682,6 +17214,7 @@ private fun SharedMembersScreen(
     scrollToTopRequest: Int = 0,
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
+    paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
     onForegroundActivity: (String) -> Unit = {}
 ) {
     val errorStrings = localizedErrorPresentationStrings()
@@ -15992,9 +17525,17 @@ private fun SharedMembersScreen(
                     is DataResult.NoPermission -> result
                 }
             }
+            // Task #409: persist per-machine agent-group collapse for the
+            // shared members page under the session user id.
+            val membersAgentGroupCollapseStore = remember {
+                build.raft.app.data.KeyValueMembersAgentMachineGroupCollapseStore(
+                    build.raft.app.data.slockSharedPreferenceStore()
+                )
+            }
             MembersRouteContent(
                 payload = renderMembersPayload,
                 refreshing = refreshing,
+                paneLayout = paneLayout,
                 onAddHuman = {
                     onForegroundActivity("add_human")
                     loadInviteJoinLink()
@@ -16053,35 +17594,42 @@ private fun SharedMembersScreen(
                     }
                 },
                 canCreateAgents = membersPayload.canCreateAgents,
-                createAgentSubmit = createAgentSubmit,
-                createAgentMachines = computersSlice.machines,
-                createAgentMachinesLoading = computersSlice.initialLoadInFlight,
-                createAgentMachinesErrorMessage = computersSlice.initialLoadError?.userFacingMessage(errorStrings),
-                createAgentCurrentAgentCount = current.members.count { it.kind == MemberKind.Agent },
-                createAgentLoadMachines = loadMachines,
-                createAgentRetryMachines = retryMachines,
-                createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
-                createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
-                createAgentLoadRuntimeModels = loadRuntimeModels,
-                createAgentFormStore = createAgentFormStore,
-                createAgentServerId = serverId,
-                inviteHumanSubmit = inviteHumanSubmit,
-                inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
-                inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
-                inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
-                inviteHumanJoinLinkCopy = { url ->
-                    onForegroundActivity("copy_invite_link")
-                    bridge.copyToPasteboard(url)
-                    inviteJoinLinkCopied = true
-                },
-                inviteHumanLoadJoinLink = {
-                    onForegroundActivity("load_invite_link")
-                    loadInviteJoinLink()
-                },
+                createAgent = MembersCreateAgentInputs(
+                    createAgentSubmit = createAgentSubmit,
+                    createAgentMachines = computersSlice.machines,
+                    createAgentMachinesLoading = computersSlice.initialLoadInFlight,
+                    createAgentMachinesErrorMessage = computersSlice.initialLoadError?.userFacingMessage(errorStrings),
+                    createAgentCurrentAgentCount = current.members.count { it.kind == MemberKind.Agent },
+                    createAgentLoadMachines = loadMachines,
+                    createAgentRetryMachines = retryMachines,
+                    createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
+                    createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
+                    createAgentLoadRuntimeModels = loadRuntimeModels,
+                    createAgentFormStore = createAgentFormStore,
+                    createAgentServerId = serverId
+                ),
+                inviteHuman = MembersInviteHumanInputs(
+                    inviteHumanSubmit = inviteHumanSubmit,
+                    inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
+                    inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
+                    inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
+                    inviteHumanJoinLinkCopy = { url ->
+                        onForegroundActivity("copy_invite_link")
+                        bridge.copyToPasteboard(url)
+                        inviteJoinLinkCopied = true
+                    },
+                    inviteHumanLoadJoinLink = {
+                        onForegroundActivity("load_invite_link")
+                        loadInviteJoinLink()
+                    }
+                ),
                 bottomContentPadding = bottomContentPadding,
                 scrollToTopRequest = scrollToTopRequest,
                 initialListState = initialListState,
                 onListStateSnapshot = onListStateSnapshot,
+                // Task #409: persist per-machine collapse under the session user id.
+                currentUserId = current.currentUserId,
+                agentGroupCollapseStore = membersAgentGroupCollapseStore,
                 onRefresh = {
                     onForegroundActivity("refresh")
                     onRetry()
@@ -16216,6 +17764,11 @@ private fun JsonObject.toSharedMemberProfile(defaultKind: MemberKind? = null): M
         avatarLabel = displayName.take(1).uppercase(),
         presence = (profile.string("presence", "availability") ?: string("presence", "availability")).toSharedPresence(),
         agentStatus = agentStatus,
+        isExternal =
+            isExternalAgent(
+                external = profile.boolean("external") ?: boolean("external"),
+                runtime = profile.string("runtime") ?: string("runtime")
+            ),
         permissionBadges = profile.stringArray("permissionBadges") ?: stringArray("permissionBadges") ?: emptyList()
     )
 }
@@ -16268,6 +17821,59 @@ private fun JsonObject.avatarWireValue(): String? =
         "pictureUrl"
     )
 
+/**
+ * task #337: projects the shared home snapshot's direct messages into [SlockHomeConversationItem]
+ * for the Slack-nav DMs tab, reusing the exact projection chain SharedHomeScreen uses
+ * (directory identity + draft projections). Null-safe: empty until home content is ready.
+ */
+@Composable
+private fun rememberProjectedDirectMessageItems(
+    state: SharedHomeState,
+    conversationIdentityProvider: SharedConversationIdentityProvider?,
+    draftPersistSlice: SharedThreadComposerDraftPersistSlice?,
+): List<SlockHomeConversationItem> {
+    val snapshot = (state.content as? SharedHomeContentState.Content)?.snapshot
+    val activeDraftRecords by (draftPersistSlice?.activeDraftRecordsState ?: EmptyComposerDraftRecordsFlow)
+        .collectAsState(emptySet())
+    val draftProjection =
+        remember(activeDraftRecords, draftPersistSlice) {
+            if (draftPersistSlice != null) {
+                activeDraftRecords.toSharedThreadComposerDraftProjection()
+            } else {
+                SharedThreadComposerDraftProjection.Empty
+            }
+        }
+    val conversationDirectoryIds =
+        remember(snapshot?.channels, snapshot?.directMessages) {
+            val channels = snapshot?.channels.orEmpty()
+            val directMessages = snapshot?.directMessages.orEmpty()
+            (channels + directMessages).map { it.threadId.value }
+        }
+    val conversationDirectoryFlow =
+        remember(conversationIdentityProvider, snapshot?.server?.id, conversationDirectoryIds) {
+            val serverId = snapshot?.server?.id
+            if (conversationIdentityProvider == null || serverId == null) {
+                EmptyConversationDirectoryProjectionFlow
+            } else {
+                conversationIdentityProvider.projectionFlow(serverId, conversationDirectoryIds)
+            }
+        }
+    val conversationDirectoryProjections by conversationDirectoryFlow.collectAsState(emptyMap())
+    val conversationRowProjector =
+        remember(conversationDirectoryProjections, draftProjection) {
+            SharedHomeConversationRowProjector(
+                directoryProjections = conversationDirectoryProjections,
+                draftProjection = draftProjection
+            )
+        }
+    return remember(snapshot?.directMessages, conversationRowProjector) {
+        snapshot
+            ?.directMessages
+            ?.map { conversation -> conversationRowProjector.project(conversation) }
+            .orEmpty()
+    }
+}
+
 @Composable
 private fun SharedHomeScreen(
     bridge: build.raft.app.base.BridgeModule,
@@ -16275,6 +17881,7 @@ private fun SharedHomeScreen(
     active: Boolean,
     scrollToTopRequest: Int = 0,
     sessionReady: Boolean = true,
+    conversationKindFilter: ConversationKind? = null,
     draftPersistSlice: SharedThreadComposerDraftPersistSlice? = null,
     conversationIdentityProvider: SharedConversationIdentityProvider? = null,
     activityUnreadCount: Int = 0,
@@ -16307,6 +17914,11 @@ private fun SharedHomeScreen(
     onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> },
     onContentComposeCommitted: (String) -> Unit = {}
 ) {
+    // keepItemAlive keeps hidden pages composed: a DisposableEffect
+    // (onDispose) downstream can still fire a stale snapshot while the page is
+    // off-screen. Gate through rememberUpdatedState so the check reads the
+    // current `active` flag, not the one captured at callback creation.
+    val latestActive = rememberUpdatedState(active)
     val conversationUnavailableMessage = stringResource(MR.strings.home_error_conversation_unavailable)
     val directMessageUnavailableMessage = stringResource(MR.strings.home_error_direct_message_unavailable)
     val openDirectMessageFailedMessage = stringResource(MR.strings.home_error_open_direct_message)
@@ -16446,7 +18058,8 @@ private fun SharedHomeScreen(
                     prefersChineseCommunity = prefersChineseCommunity,
                     topSafeAreaOverride = topSafeAreaOverride,
                     bottomContentPadding = bottomContentPadding,
-                    inlineError = localizedSharedHomeErrorDisplay(current.code),
+                    inlineError =
+                        localizedSharedHomeErrorDisplay(current.code, serverMessage = current.serverMessage),
                     onInlineErrorAction = { onIntent(SharedHomeIntent.Refresh) },
                     onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                     onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
@@ -16467,7 +18080,8 @@ private fun SharedHomeScreen(
                     onCreateChannelClick = onCreateChannel
                 )
             } else {
-                val error = localizedSharedHomeErrorDisplay(current.code)
+                val error =
+                    localizedSharedHomeErrorDisplay(current.code, serverMessage = current.serverMessage)
                 PageErrorContent(
                     title = "Home",
                     subtitle = "Workspace",
@@ -16480,7 +18094,9 @@ private fun SharedHomeScreen(
         is SharedHomeContentState.Content -> {
             val snapshot = current.snapshot
             SideEffect {
-                onContentComposeCommitted(snapshot.server.id.value)
+                if (active) {
+                    onContentComposeCommitted(snapshot.server.id.value)
+                }
             }
             val agentStatusResolver =
                 remember(serverMembersStore, snapshot.server.id.value) {
@@ -16506,8 +18122,8 @@ private fun SharedHomeScreen(
                         "memberStore=${serverMembersStore != null} resolver=member_ssot"
                 )
             }
-            LaunchedEffect(serverMembersStore, snapshot.server.id, current.contentRefreshing) {
-                if (!current.contentRefreshing) {
+            LaunchedEffect(serverMembersStore, snapshot.server.id, current.contentRefreshing, active) {
+                if (active && !current.contentRefreshing) {
                     serverMembersStore?.refreshMembers(snapshot.server.id, DataRequestPriority.Background)
                 }
             }
@@ -16597,8 +18213,20 @@ private fun SharedHomeScreen(
                 currentServerName = snapshot.server.name,
                 currentServerId = snapshot.server.id.value,
                 servers = servers,
-                channels = channelItems,
-                directMessages = directMessageItems,
+                // task #94: the Slack-aligned Home tab is channels-only and the DMs tab is
+                // direct-message-only; null keeps the legacy merged list.
+                channels =
+                    if (conversationKindFilter == ConversationKind.DirectMessage) {
+                        emptyList()
+                    } else {
+                        channelItems
+                    },
+                directMessages =
+                    if (conversationKindFilter == ConversationKind.Channel) {
+                        emptyList()
+                    } else {
+                        directMessageItems
+                    },
                 selectedChannelId = selectedConversationId,
                 inboxUnreadCount = homeActivityUnreadCount,
                 inboxTotalCount = homeActivitySidebarTotalCount(
@@ -16750,7 +18378,11 @@ private fun SharedHomeScreen(
                 scrollToTopRequest = scrollToTopRequest,
                 listPositionServerId = listPositionServerId ?: snapshot.server.id.value,
                 initialListPosition = initialListPosition,
-                onListPositionSnapshot = onListPositionSnapshot
+                onListPositionSnapshot = { serverId, position ->
+                    if (latestActive.value) {
+                        onListPositionSnapshot(serverId, position)
+                    }
+                }
             )
         }
     }
@@ -17087,14 +18719,23 @@ private fun SharedCreateChannelMemberRow(
     onClick: () -> Unit
 ) {
     val avatarWireValue = member.avatarWireValueForAvatarSlot()
+    // Dot-facing resolution: must be the OrNull variant. The label-facing
+    // resolveMembersAgentStatusIndicatorState substitutes a placeholder whose presence is
+    // Offline, so its colour is StatusNeutralGray -- pixel-identical to a real Offline dot
+    // for an agent whose status is merely not known yet. SlockAvatarWithStatus omits the dot
+    // entirely on a null colour, which is the behaviour task #253 chose: show nothing rather
+    // than something wrong. Same defect as task #256 fixed in MembersPage; this call site
+    // survived because that sweep, and the lint written alongside it, only looked at
+    // MembersPage.kt.
     val statusIndicatorState =
         if (member.kind == MemberKind.Agent) {
-            resolveMembersAgentStatusIndicatorState(
+            resolveMembersAgentStatusIndicatorStateOrNull(
                 canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.id.value),
                 fixtureFallback =
                     slockAgentStatusIndicatorState(
                         status = member.agentStatus,
-                        presence = member.presence
+                        presence = member.presence,
+                        external = member.isExternal
                     ),
                 fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
             )
@@ -19811,7 +21452,7 @@ private fun SharedHomePanelButton(
     }
 }
 
-private data class SearchChannelFilterItem(
+internal data class SearchChannelFilterItem(
     val id: String,
     val label: String,
     val icon: SlockLucideIconName
@@ -19820,7 +21461,7 @@ private data class SearchChannelFilterItem(
 private val SearchChannelFilterItem.iconName: SlockLucideIconName
     get() = icon
 
-private fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChannelFilterItem> {
+internal fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChannelFilterItem> {
     val snapshot = (state.content as? SharedHomeContentState.Content)?.snapshot ?: return emptyList()
     val channelFilters =
         snapshot.channels
@@ -19828,7 +21469,7 @@ private fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChannel
                 val channelId = conversation.channelId?.value ?: return@mapNotNull null
                 SearchChannelFilterItem(
                     id = channelId,
-                    label = "#${conversation.name}",
+                    label = conversation.name.removePrefix("#"),
                     icon = SlockLucideIconName.Hash
                 )
             }
@@ -19894,6 +21535,22 @@ internal data class SearchEntityResult(
     val memberId: String?
         get() = memberIdentity?.memberId?.value
 }
+
+internal fun ThreadLaunchConversationIdentity.homeSearchChannelLeadingIconName(): SlockLucideIconName =
+    when {
+        kind == ConversationKind.Joint -> SlockLucideIconName.GitBranch
+        channelType.equals("private", ignoreCase = true) -> SlockLucideIconName.Lock
+        else -> SlockLucideIconName.Hash
+    }
+
+internal fun SearchEntityResult.homeSearchEntityLeadingIconName(): SlockLucideIconName? =
+    when (type) {
+        SearchEntityType.Channel -> conversationIdentity?.homeSearchChannelLeadingIconName() ?: SlockLucideIconName.Hash
+        SearchEntityType.Computer -> SlockLucideIconName.Monitor
+        SearchEntityType.DirectMessage,
+        SearchEntityType.Human,
+        SearchEntityType.Agent -> null
+    }
 
 internal sealed interface HomeSearchEntityDestination {
     data class Conversation(val identity: ThreadLaunchConversationIdentity) : HomeSearchEntityDestination
@@ -20031,17 +21688,17 @@ internal fun homeSearchEntityResults(
         .take(5)
 }
 
-private data class HomeSearchEntityCandidate(
+internal data class HomeSearchEntityCandidate(
     val result: SearchEntityResult,
     val searchFields: List<HomeSearchEntitySearchField>,
 )
 
-private data class HomeSearchEntitySearchField(
+internal data class HomeSearchEntitySearchField(
     val value: String,
     val priority: Int,
 )
 
-private fun homeSearchEntityCandidates(
+internal fun homeSearchEntityCandidates(
     homeState: SharedHomeState,
     senderFilters: List<SearchSenderFilterItem>,
     channelLabel: String,
@@ -20054,11 +21711,19 @@ private fun homeSearchEntityCandidates(
 ): List<HomeSearchEntityCandidate> {
     val snapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot ?: return emptyList()
     val conversations = snapshot.channels + snapshot.directMessages
+    val homeServerId = snapshot.server.id.value
+    // task #238: this map is an identity index, so it needs an owner scope and must reject blank
+    // ids. Keyed by a bare memberId, a joint-channel member carried in from another server could
+    // collide with a local DM peer; and a blank wire peerId (`MemberId("")`) survived the null
+    // check and sat in the map as a key that can only ever join unrelated rows. A missing scope
+    // dimension does not cost an extra row - it merges two identities into one.
     val byPresenceMemberId =
         snapshot.directMessages
             .mapNotNull { conversation ->
-                val memberId = conversation.presenceMemberId?.value ?: return@mapNotNull null
-                memberId to conversation.toThreadLaunchConversationIdentity()
+                val scope =
+                    homeSearchMemberScopeKey(homeServerId, conversation.presenceMemberId?.value.orEmpty())
+                        ?: return@mapNotNull null
+                scope to conversation.toThreadLaunchConversationIdentity()
             }
             .toMap()
     val conversationEntries =
@@ -20075,7 +21740,7 @@ private fun homeSearchEntityCandidates(
                     SearchEntityResult(
                         key = "conversation:${conversation.threadId.value}",
                         type = type,
-                        title = if (type == SearchEntityType.Channel) "#${conversation.name}" else conversation.name,
+                        title = conversation.name,
                         subtitle =
                             conversation.subtitle?.takeIf { it.isNotBlank() }
                                 ?: if (type == SearchEntityType.Channel) channelLabel else dmLabel,
@@ -20095,9 +21760,26 @@ private fun homeSearchEntityCandidates(
                     )
             )
         }
+    val dmCandidatesByThreadId =
+        conversationEntries
+            .asSequence()
+            .filter { candidate -> candidate.result.type == SearchEntityType.DirectMessage }
+            .mapNotNull { candidate -> candidate.result.threadId?.let { threadId -> threadId to candidate } }
+            .toMap()
+    // task #238: a DM row and its member row are the same entity reached through two disjoint key
+    // namespaces ("conversation:<threadId>" vs "sender:<server>:<kind>:<memberId>"), so the
+    // trailing distinctBy() was structurally unable to collapse them. Merge from the member side:
+    // it is the richer row, and its `byPresenceMemberId` hit only needs presenceMemberId, whereas
+    // the conversation side's dmPeerIdentity additionally requires a parseable peer kind - i.e.
+    // strictly weaker coverage. The member row already carries the DM launch affordance via
+    // conversationIdentity, so it also absorbs the DM row's search fields before that row is
+    // dropped, keeping DM name/subtitle/threadId queryable.
+    val absorbedDmThreadIds = mutableSetOf<String>()
     val memberEntries =
         senderFilters.mapNotNull { sender ->
-            val conversation = byPresenceMemberId[sender.id]
+            val conversation =
+                homeSearchMemberScopeKey(sender.sourceServerId.value, sender.id)
+                    ?.let { scope -> byPresenceMemberId[scope] }
             val suggestion =
                 sender.toHomeSearchEntityResult(
                     conversationIdentity = conversation,
@@ -20105,6 +21787,9 @@ private fun homeSearchEntityCandidates(
                     personLabel = personLabel,
                     membersLabel = membersLabel,
                 ) ?: return@mapNotNull null
+            val absorbedDm =
+                conversation?.threadId?.value?.let { threadId -> dmCandidatesByThreadId[threadId] }
+            absorbedDm?.result?.threadId?.let { threadId -> absorbedDmThreadIds += threadId }
             HomeSearchEntityCandidate(
                 result = suggestion,
                 searchFields =
@@ -20112,7 +21797,7 @@ private fun homeSearchEntityCandidates(
                         HomeSearchEntitySearchField(sender.displayLabel, priority = 0),
                         HomeSearchEntitySearchField(sender.handle, priority = 1),
                         HomeSearchEntitySearchField(sender.id, priority = 5),
-                    )
+                    ) + absorbedDm?.searchFields.orEmpty()
             )
         }
     val computerEntries =
@@ -20151,7 +21836,33 @@ private fun homeSearchEntityCandidates(
                 )
             }
             .toList()
-    return (conversationEntries + memberEntries + computerEntries).distinctBy { it.result.key }
+    val visibleConversationEntries =
+        conversationEntries.filterNot { candidate ->
+            candidate.result.type == SearchEntityType.DirectMessage &&
+                candidate.result.threadId?.let { threadId -> threadId in absorbedDmThreadIds } == true
+        }
+    return (visibleConversationEntries + memberEntries + computerEntries).distinctBy { it.result.key }
+}
+
+/**
+ * Owner scope for the DM-peer identity index used by [homeSearchEntityCandidates].
+ *
+ * A member id is only unique within its own server, so an identity key that omits the server can
+ * merge two distinct people. Callers pass the server the row was sourced from: DM rows come from
+ * the current Home snapshot, member rows carry their own `sourceServerId` (joint channels surface
+ * members from other servers).
+ *
+ * Deliberately a typed pair rather than a "$serverId:$memberId" string: a concatenated key is
+ * delimiter-ambiguous, so ("a:b", "c") and ("a", "b:c") would collide into one entry - the same
+ * wrong-merge failure this scope exists to prevent. Blank components yield no key at all, so a
+ * blank wire peer id can never become a merge key that joins unrelated rows.
+ */
+private data class HomeSearchMemberScope(val serverId: String, val memberId: String)
+
+private fun homeSearchMemberScopeKey(serverId: String, memberId: String): HomeSearchMemberScope? {
+    val scopedServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return null
+    val scopedMemberId = memberId.trim().takeIf { it.isNotBlank() } ?: return null
+    return HomeSearchMemberScope(serverId = scopedServerId, memberId = scopedMemberId)
 }
 
 internal fun homeSearchFrequentEntityResults(
@@ -20462,6 +22173,9 @@ internal data class SharedHomeConversationRowSeed(
     val kind: ConversationKind,
     val unreadCount: Int = 0,
     val lastMessageAt: String? = null,
+    val lastMessagePreview: String? = null,
+    val lastMessageSenderName: String? = null,
+    val fallbackAvatarWireValue: String? = null,
     val peerType: String? = null,
     val fallbackPresenceMemberId: String? = null,
     val fallbackName: String = "",
@@ -20470,7 +22184,8 @@ internal data class SharedHomeConversationRowSeed(
     val fallbackJoined: Boolean = true,
     val fallbackArchived: Boolean = false,
     val fallbackActivityMuted: Boolean = false,
-    val fallbackActivityMuteSupported: Boolean = false
+    val fallbackActivityMuteSupported: Boolean = false,
+    val fallbackBridgeProvider: String? = null
 )
 
 internal data class SharedHomeConversationRowProjector(
@@ -20555,6 +22270,9 @@ private fun HomeConversationRow.toSharedHomeConversationRowSeed(): SharedHomeCon
         kind = kind,
         unreadCount = unreadCount,
         lastMessageAt = lastMessageAt,
+        lastMessagePreview = lastMessagePreview,
+        lastMessageSenderName = lastMessageSenderName,
+        fallbackAvatarWireValue = directMessagePeerAvatarWireValue?.takeIf { it.isNotBlank() },
         peerType = directMessagePeerType?.takeIf { it.isNotBlank() },
         fallbackPresenceMemberId = presenceMemberId?.value,
         fallbackName = name,
@@ -20563,7 +22281,8 @@ private fun HomeConversationRow.toSharedHomeConversationRowSeed(): SharedHomeCon
         fallbackJoined = joined && permissions.canRead,
         fallbackArchived = archived,
         fallbackActivityMuted = activityMuted,
-        fallbackActivityMuteSupported = activityMuteSupported
+        fallbackActivityMuteSupported = activityMuteSupported,
+        fallbackBridgeProvider = bridgeProvider
     )
 
 private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
@@ -20591,14 +22310,18 @@ private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
         channelType = projectedChannelType ?: fallbackChannelType,
         unreadCount = unreadCount,
         lastMessageAt = lastMessageAt,
+        lastMessagePreview = lastMessagePreview,
+        lastMessageSenderName = lastMessageSenderName,
         description = directoryProjection?.subtitle ?: fallbackDescription,
+        avatarWireValue = directoryProjection?.avatarWireValue ?: fallbackAvatarWireValue,
         peerType = peerType,
         presenceMemberId = directoryProjection?.peerIdentity?.memberId?.value ?: fallbackPresenceMemberId,
         hasDraft = draftProjection.hasRootDraft(id),
         joined = directoryProjection?.joined ?: fallbackJoined,
         archived = directoryProjection?.archived ?: fallbackArchived,
         activityMuted = directoryProjection?.activityMuted ?: fallbackActivityMuted,
-        activityMuteSupported = directoryProjection?.activityMuteSupported ?: fallbackActivityMuteSupported
+        activityMuteSupported = directoryProjection?.activityMuteSupported ?: fallbackActivityMuteSupported,
+        bridgeProvider = directoryProjection?.bridgeProvider ?: fallbackBridgeProvider
     )
 }
 
@@ -20875,7 +22598,10 @@ internal fun buildAppShellThreadPayload(
     val routeIdentity = conversation.resolveThreadRouteIdentity()
     val surfaceKind = routeIdentity.surfaceKind
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
-    if (isReplyThread && !routeIdentity.hasCompleteReplyIdentity) {
+    // Trust the source tuple: parent channel+message ids alone are enough to open the
+    // reply thread. Only a missing tuple is unrecoverable here; an unresolved parent
+    // kind stays observable via parentSurfaceKind/parentChannelKind = null (#304/#307).
+    if (isReplyThread && routeIdentity.parentKey == null) {
         onWarn("thread_launch_rejected reason=reply_identity_incomplete source=app_shell threadId=${conversation.threadId.value}")
         return null
     }
@@ -21058,6 +22784,17 @@ private fun Pager.openHomeSecondaryPage(
             timeContext?.todayEpochDay?.let { put("todayEpochDay", it) }
             timeContext?.nowEpochMillis?.let { put("nowEpochMillis", it) }
             put("timeFormat", timeContext?.timeFormat ?: SlockTimeFormat24Hour)
+            // task #13: the secondary page decides its adaptive workspace gate from its own
+            // pageData (HuaTuo's alpha-50 evidence: the shell's flag never reached the pushed
+            // page, so activityAdaptiveEnabled stayed false and details mounted full-screen).
+            // Forward the shell's flag value verbatim — OFF stays OFF.
+            put(
+                SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED,
+                this@openHomeSecondaryPage.pageData.params.optBoolean(
+                    SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED,
+                    false,
+                ),
+            )
         }
     openSlockPage(
         pageName = pageName,
@@ -21247,7 +22984,9 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     val routeIdentity = conversation.resolveThreadRouteIdentity()
     val surfaceKind = routeIdentity.surfaceKind
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
-    if (isReplyThread && !routeIdentity.hasCompleteReplyIdentity) {
+    // Same contract as buildAppShellThreadPayload: source tuple alone is sufficient;
+    // only a missing parentKey rejects the launch (#304/#307).
+    if (isReplyThread && routeIdentity.parentKey == null) {
         onWarn("thread_launch_rejected reason=reply_identity_incomplete source=standalone threadId=${conversation.threadId.value}")
         return null
     }
@@ -21343,6 +23082,7 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is MessageNew -> "message_new"
         is MessageUpdated -> "message_updated"
         is DirectMessageCreated -> "dm_new"
+        is ThreadFollowersUpdated -> "thread_followers_updated"
         is ThreadUpdated -> "thread_updated"
         is TaskCreated -> "task_created"
         is TaskUpdated -> "task_updated"
@@ -21367,6 +23107,7 @@ private fun RealtimeEvent.performanceMarkerPhase(): String =
         is MemberPresenceUpdated -> "realtime_presence_apply"
         is MessageNew,
         is MessageUpdated,
+        is ThreadFollowersUpdated,
         is ThreadUpdated,
         is TaskCreated,
         is TaskUpdated,
@@ -21534,6 +23275,42 @@ private fun AppShellSilentRestoreContent() {
                 .fillMaxSize()
                 .background(SlockColor.SurfaceWhite)
     )
+}
+
+@Composable
+private fun AppShellCachedHomePreviewContent(
+    bridge: build.raft.app.base.BridgeModule,
+    shellScope: SlockAppShellScope,
+    state: SharedHomeState
+) {
+    SlockAppShellSurface(
+        shellScope = shellScope,
+        bottomTabs = emptyList(),
+        onBottomTabSelected = {},
+        showBottomTabs = false,
+        interactionLocked = true
+    ) {
+        SharedHomeScreen(
+            bridge = bridge,
+            state = state,
+            active = false,
+            sessionReady = false,
+            serverDrawerEnabled = false,
+            homeServerAvatarEnabled = false,
+            onIntent = {},
+            onNotificationDismiss = {},
+            onOpenSearch = {},
+            onOpenActivity = {},
+            onOpenSaved = {},
+            onOpenComputers = {},
+            onOpenUrl = {},
+            onOpenServerSelection = {},
+            onCreateChannel = {},
+            onOpenConversation = {},
+            topSafeAreaOverride = shellScope.topSafeArea,
+            bottomContentPadding = shellScope.contentBottomInset(includeBottomTabBar = false)
+        )
+    }
 }
 
 @Composable
@@ -22812,6 +24589,7 @@ internal fun HomeActivityVisualContent() {
             pullRefreshing = params.optBoolean("task797Refreshing", false),
             activityTaskStatusBadgesEnabled = true,
             draftProjection = homeActivityVisualDraftProjection,
+            foregroundEpoch = 0L,
             modifier = Modifier.fillMaxSize()
         )
     }
@@ -22825,6 +24603,7 @@ internal fun HomeActivityHitTargetVisualContent() {
             snapshot = homeActivityVisualSnapshot,
             onOpenItem = { item -> openedKey = item.key },
             onClose = {},
+            foregroundEpoch = 0L,
             modifier = Modifier.fillMaxSize()
         )
         openedKey?.let { key ->
@@ -22988,6 +24767,7 @@ internal fun HomeActivityAvatarVisualContent(activitySenderAvatarsEnabled: Boole
             activityTaskStatusBadgesEnabled = true,
             activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
             draftProjection = homeActivityAvatarVisualDraftProjection,
+            foregroundEpoch = 0L,
             modifier = Modifier.fillMaxSize()
         )
     }
@@ -23620,3 +25400,87 @@ private fun SettingsHomePageLinkPayload.toTabItemPayload(): SlockTabItemPayload 
         value = value,
         section = section,
     )
+
+
+// task #386/#401: Slack-nav More tab destinations. Tasks/Members/Settings live behind the More
+// action menu; gate-off keeps the legacy four-tab bar where they stay first-class tabs.
+internal enum class SlockSlackNavMoreDestination {
+    Tasks,
+    Members,
+    Settings
+}
+
+/** task #401: in Slack-nav mode every More tap (including re-taps while More is selected)
+ *  opens the destination menu instead of switching straight to a sticky sub-page. */
+internal fun slockSlackNavMoreTapOpensMenu(slackNavMode: Boolean, tappedTab: String): Boolean =
+    slackNavMode && tappedTab == SlockSlackNavTabs.More
+
+@Composable
+private fun SlockSlackNavMoreMenu(
+    selected: SlockSlackNavMoreDestination?,
+    bottomInset: Dp,
+    onDismiss: () -> Unit,
+    onSelect: (SlockSlackNavMoreDestination) -> Unit
+) {
+    val tasksTitle = stringResource(MR.strings.tab_tasks)
+    val membersTitle = stringResource(MR.strings.tab_members)
+    val settingsTitle = stringResource(MR.strings.tab_settings)
+    val tasksSubtitle = stringResource(MR.strings.more_hub_tasks_subtitle)
+    val membersSubtitle = stringResource(MR.strings.more_hub_members_subtitle)
+    val settingsSubtitle = stringResource(MR.strings.more_hub_settings_subtitle)
+    val rows =
+        listOf(
+            Triple(SlockSlackNavMoreDestination.Tasks, tasksTitle to tasksSubtitle, SlockLucideIconName.ClipboardList),
+            Triple(SlockSlackNavMoreDestination.Members, membersTitle to membersSubtitle, SlockLucideIconName.Users),
+            Triple(SlockSlackNavMoreDestination.Settings, settingsTitle to settingsSubtitle, SlockLucideIconName.Settings)
+        )
+    Modal(onWillDismiss = { onDismiss() }) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            SlockModalDismissBarrier(overlayAlpha = 0.35f, onDismiss = onDismiss)
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(start = SlockSpacing.Md, end = SlockSpacing.Md, bottom = bottomInset + SlockSpacing.Sm)
+                        .widthIn(max = 320.dp)
+                        .padding(end = 4.dp, bottom = 4.dp)
+                        .slockDialogContentPointerBarrier()
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .offset(x = 4.dp, y = 4.dp)
+                            .background(SlockColor.ShadowBlack)
+                )
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .padding(SlockSpacing.Sm),
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                ) {
+                    rows.forEach { (destination, labels, icon) ->
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        if (destination == selected) SlockColor.SurfaceCream else SlockColor.SurfaceWhite
+                                    )
+                        ) {
+                            SlockActionSheetRow(
+                                title = labels.first,
+                                subtitle = labels.second,
+                                icon = icon,
+                                onClick = { onSelect(destination) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

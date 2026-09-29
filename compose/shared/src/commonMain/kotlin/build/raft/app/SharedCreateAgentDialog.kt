@@ -36,8 +36,17 @@ import build.raft.app.data.SharedCreateAgentExactFormKey
 import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.SharedCreateAgentFormStoreState
 import build.raft.app.data.SharedCreateAgentMachineFormKey
+import build.raft.app.data.CREATE_AGENT_KIMI_SDK_RUNTIME_ID
 import build.raft.app.data.SharedResolvedAgentCreateForm
 import build.raft.app.data.buildBuiltInRuntimeConfig
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loaded
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
+import build.raft.app.data.runtimeform.v2.applyRuntimeFormV2Change
+import build.raft.app.data.runtimeform.v2.initialRuntimeFormV2Values
+import build.raft.app.data.runtimeform.v2.runtimeFormV2Submission
+import build.raft.app.data.runtimeform.v2.runtimeFormV2ValuesAfterSourceReload
+import build.raft.app.data.runtimeform.v2.validateRuntimeFormV2
 import build.raft.app.data.shouldClearBuiltInWriteOnlySecret
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
@@ -97,8 +106,18 @@ internal data class SharedCreateAgentDialogSubmit(
     val machineId: String?,
     val runtimeConfig: RuntimeConfig? = null,
     val formDefinitionRef: build.raft.app.data.SharedRuntimeFormDefinitionRef? = null,
-    val external: Boolean = false
+    val external: Boolean = false,
+    /** Runtime form v2: sent instead of runtimeConfig/formDefinitionRef. */
+    val runtimeFormV2: RuntimeFormV2SubmitBody? = null
 )
+
+private sealed interface RuntimeFormV2DialogLoad {
+    data object Idle : RuntimeFormV2DialogLoad
+    data object Loading : RuntimeFormV2DialogLoad
+    data class Ready(val loaded: RuntimeFormV2Loaded) : RuntimeFormV2DialogLoad
+    data class Failed(val code: String) : RuntimeFormV2DialogLoad
+}
+
 
 internal const val SharedCreateAgentDialogHostRoute = "create-agent"
 
@@ -193,7 +212,8 @@ internal fun SharedCreateAgentDialogSubmit.toCreateAgentRequest(): build.raft.ap
         runtimeConfig = runtimeConfig,
         formDefinitionRef = formDefinitionRef,
         external = external,
-        avatarUrl = randomCreateAgentAvatarWireValue()
+        avatarUrl = randomCreateAgentAvatarWireValue(),
+        runtimeFormV2 = runtimeFormV2
     )
 
 internal fun buildSharedCreateAgentDialogSubmit(
@@ -220,12 +240,28 @@ internal fun buildSharedCreateAgentDialogSubmit(
     builtInApiKey: TextFieldValue = TextFieldValue(""),
     builtInBaseUrl: String = "",
     builtInSupportsImageInput: Boolean = false,
+    builtInLoadLocalPlugins: Boolean = false,
     builtInModel: String = "",
-    runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList()
+    runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList(),
+    kimiSdkForm: SharedResolvedAgentCreateForm? = null
 ): SharedCreateAgentDialogSubmit {
     val finalMachineId =
         if (external) null
         else (requiredComputer?.takeIf { it.isNotBlank() } ?: selectedMachineId)
+    // kimi-sdk (task #275): the wire decision is proven by live capability + exact ref.
+    // Without either, both the effort and the ref are stripped (fail closed) — even if a
+    // stale draft value is still present.
+    val kimiSdkWireSelection =
+        if (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID) {
+            val effectiveModel = if (customModelMode) customModelName.trim() else model
+            kimiSdkCreateReasoningWireSelection(
+                capability = kimiSdkLiveReasoningCapability(runtime, effectiveModel, runtimeModelsOverride),
+                formRef = kimiSdkReasoningFormRef(kimiSdkForm),
+                chosenEffort = reasoningEffort
+            )
+        } else {
+            null
+        }
     val runtimeConfig =
         if (external) {
             null
@@ -235,6 +271,7 @@ internal fun buildSharedCreateAgentDialogSubmit(
                 apiKey = builtInApiKey.text,
                 baseUrl = builtInBaseUrl,
                 supportsImageInput = builtInSupportsImageInput,
+                loadLocalPlugins = builtInLoadLocalPlugins,
                 model = builtInModel,
                 envVars = createAgentRuntimeEnvVars(envVarEntries)
             )
@@ -258,14 +295,24 @@ internal fun buildSharedCreateAgentDialogSubmit(
                 reasoningDefaultEffort = reasoningMetadata.defaultReasoningEffort,
                 envVars = createAgentRuntimeEnvVars(envVarEntries),
                 command = command.takeIf { supportsRuntimeCommand(runtime) }
-            )
+            ).let { config ->
+                if (kimiSdkWireSelection != null) {
+                    // buildRuntimeConfig nulls kimi effort via the static gate; the proven live
+                    // capability decision re-applies it (null = Default/unmanaged, omitted on wire).
+                    config.copy(reasoningEffort = kimiSdkWireSelection.reasoningEffort)
+                } else {
+                    config
+                }
+            }
         }
     return SharedCreateAgentDialogSubmit(
         name = name.trim().removePrefix("@"),
         description = description.trim().takeIf { it.isNotBlank() },
         machineId = finalMachineId,
         runtimeConfig = runtimeConfig,
-        formDefinitionRef = builtInForm?.definition?.ref.takeIf { runtime == "builtin" },
+        formDefinitionRef =
+            builtInForm?.definition?.ref.takeIf { runtime == "builtin" }
+                ?: kimiSdkWireSelection?.formDefinitionRef,
         external = external
     )
 }
@@ -686,8 +733,85 @@ internal fun createAgentRuntimeModelReasoningSelection(
             )
     )
 
-private fun List<CreateAgentDropdownItem>.toBrutalSelectOptions(): List<SlockBrutalSelectOption> =
+internal fun List<CreateAgentDropdownItem>.toBrutalSelectOptions(): List<SlockBrutalSelectOption> =
     map { item -> SlockBrutalSelectOption(id = item.id, label = item.label, enabled = item.enabled) }
+
+// ── kimi-sdk reasoning effort (task #275) ────────────────────────────────────
+// kimi-sdk stays OUT of the static REASONING_EFFORT_RUNTIMES set: its selector is
+// offered only from LIVE server capability — the selected computer+model catalog
+// carrying non-empty supportedReasoningEfforts with a valid default, plus the exact
+// kimi-sdk form ref. No static fallback, no version inference.
+
+/** Live reasoning capability for kimi-sdk, proven only by the live per-model catalog. */
+internal data class KimiSdkLiveReasoningCapability(
+    val supportedReasoningEfforts: List<String>,
+    val defaultReasoningEffort: String
+)
+
+internal fun kimiSdkLiveReasoningCapability(
+    runtime: String,
+    model: String,
+    runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption>
+): KimiSdkLiveReasoningCapability? {
+    if (runtime != CREATE_AGENT_KIMI_SDK_RUNTIME_ID) return null
+    val cleanModel = model.trim()
+    if (cleanModel.isEmpty()) return null
+    val live = runtimeModelsOverride.firstOrNull { it.id == cleanModel } ?: return null
+    val efforts = live.supportedReasoningEfforts
+    val default = live.defaultReasoningEffort
+    if (efforts.isEmpty() || default.isNullOrBlank() || default !in efforts) return null
+    return KimiSdkLiveReasoningCapability(supportedReasoningEfforts = efforts, defaultReasoningEffort = default)
+}
+
+/** The resolved kimi-sdk form's exact ref, or null when absent/unsupported. */
+internal fun kimiSdkReasoningFormRef(
+    form: SharedResolvedAgentCreateForm?
+): build.raft.app.data.SharedRuntimeFormDefinitionRef? =
+    form?.definition?.ref?.takeIf { it.isSupportedKimiSdk }
+
+/** Selector items for kimi-sdk: the live efforts ONLY, plus the Default entry. */
+internal fun createAgentKimiSdkReasoningDropdownItems(
+    capability: KimiSdkLiveReasoningCapability,
+    defaultLabel: String = "Default"
+): List<CreateAgentDropdownItem> {
+    val labelsById = REASONING_EFFORTS.toMap()
+    return listOf(CreateAgentDropdownItem(id = CREATE_AGENT_DEFAULT_REASONING_ID, label = defaultLabel)) +
+        capability.supportedReasoningEfforts.map { id ->
+            CreateAgentDropdownItem(id = id, label = labelsById[id] ?: id)
+        }
+}
+
+/**
+ * Reconcile a draft effort against live capability: keep a still-valid choice,
+ * anything else (or no capability) drops to Default (null = unmanaged), never
+ * inventing a value from a static table.
+ */
+internal fun reconcileKimiSdkReasoningEffort(
+    capability: KimiSdkLiveReasoningCapability?,
+    current: String?
+): String? {
+    if (capability == null) return null
+    return current?.takeIf { it in capability.supportedReasoningEfforts }
+}
+
+/** What the kimi create wire actually carries once capability + ref are proven. */
+internal data class KimiSdkReasoningWireSelection(
+    val reasoningEffort: String?,
+    val formDefinitionRef: build.raft.app.data.SharedRuntimeFormDefinitionRef
+)
+
+internal fun kimiSdkCreateReasoningWireSelection(
+    capability: KimiSdkLiveReasoningCapability?,
+    formRef: build.raft.app.data.SharedRuntimeFormDefinitionRef?,
+    chosenEffort: String?
+): KimiSdkReasoningWireSelection? {
+    val ref = formRef?.takeIf { it.isSupportedKimiSdk } ?: return null
+    if (capability == null) return null
+    return KimiSdkReasoningWireSelection(
+        reasoningEffort = chosenEffort?.takeIf { it in capability.supportedReasoningEfforts },
+        formDefinitionRef = ref
+    )
+}
 
 @Composable
 internal fun SharedCreateAgentDialog(
@@ -717,10 +841,13 @@ internal fun SharedCreateAgentDialog(
     createAgentFormStore: SharedCreateAgentFormStore? = null,
     createAgentServerId: String? = null,
     builtInFormOverride: SharedResolvedAgentCreateForm? = null,
+    kimiSdkForm: SharedResolvedAgentCreateForm? = null,
     currentAgentCount: Int = 0,
     maxAgents: Int = -1,
     limitPlanLabel: String? = null,
     external: Boolean = false,
+    runtimeFormV2Override: RuntimeFormV2Access? = null,
+    errorFieldKeys: Set<String> = emptySet(),
     onDismiss: () -> Unit,
     onSubmit: (SharedCreateAgentDialogSubmit) -> Unit
 ) {
@@ -755,6 +882,7 @@ internal fun SharedCreateAgentDialog(
     var builtInApiKey by remember { mutableStateOf(TextFieldValue("")) }
     var builtInBaseUrl by remember { mutableStateOf("") }
     var builtInSupportsImageInput by remember { mutableStateOf(false) }
+    var builtInLoadLocalPlugins by remember { mutableStateOf(false) }
     var builtInModel by remember { mutableStateOf("") }
     var builtInSecretIdentity by remember { mutableStateOf<SharedBuiltInWriteOnlyIdentity?>(null) }
     var envVarEntries by remember {
@@ -797,6 +925,26 @@ internal fun SharedCreateAgentDialog(
         availableSelectedMachineId?.let { machineId -> SharedCreateAgentExactFormKey(cleanCreateAgentServerId, machineId, ref) }
     }
     val builtInForm = builtInFormOverride ?: builtInExactKey?.let(createAgentFormState.resolvedForms::get)
+    // kimi-sdk (task #275): the exact form ref comes from the live runtime catalog (or an
+    // explicit override in fixtures); the resolved form proves the server speaks the schema.
+    val kimiSdkCatalogRef =
+        if (runtime != CREATE_AGENT_KIMI_SDK_RUNTIME_ID) {
+            null
+        } else {
+            createAgentMachineKey?.let { key ->
+                createAgentFormState.runtimeCatalogs[key]?.options
+                    ?.singleOrNull { it.runtimeId == CREATE_AGENT_KIMI_SDK_RUNTIME_ID && it.selectable }
+                    ?.formDefinitionRef
+                    ?.takeIf { it.isSupportedKimiSdk }
+            }
+        }
+    val kimiSdkRef = kimiSdkCatalogRef ?: kimiSdkReasoningFormRef(kimiSdkForm)
+    val kimiSdkExactKey = kimiSdkRef?.let { ref ->
+        availableSelectedMachineId?.let { machineId ->
+            SharedCreateAgentExactFormKey(cleanCreateAgentServerId, machineId, ref)
+        }
+    }
+    val resolvedKimiSdkForm = kimiSdkForm ?: kimiSdkExactKey?.let(createAgentFormState.resolvedForms::get)
     val shouldRefreshDialogBuiltInForm =
         createAgentFormStore != null &&
             cleanCreateAgentServerId.isNotBlank() &&
@@ -826,12 +974,40 @@ internal fun SharedCreateAgentDialog(
     ) {
         mutableStateOf(0)
     }
+    // Runtime form v2 (flag `runtime_form_v2_web`): null keeps the v1 form untouched.
+    // Read on every recomposition (value-equal), so a flag that resolves after open still applies.
+    val runtimeFormV2 = runtimeFormV2Override ?: createAgentFormStore?.runtimeFormV2Access(cleanCreateAgentServerId)
+    // Runtime form v2 needs only the live catalog to offer Built-in; its form comes from v2.
+    val builtInV2Offered =
+        runtimeFormV2 != null &&
+            builtInCatalog?.options?.any { it.runtimeId == "builtin" && it.selectable } == true
     val builtInRuntimeEnabled =
         canEnableBuiltInRuntime(
             hasFormOverride = builtInFormOverride != null,
             hasSupportedExactRef = builtInRef != null,
             hasResolvedExactForm = builtInForm != null
-        )
+        ) || builtInV2Offered
+    val v2Candidate =
+        // Any runtime: the server decides which runtimes have a v2 form (404 otherwise, then v1),
+        // so a runtime moving to v2 needs no app release.
+        runtimeFormV2 != null && !external && availableSelectedMachineId != null && runtime.isNotBlank()
+    var v2LoadAttempt by remember(runtimeFormV2, availableSelectedMachineId, runtime, external) { mutableStateOf(0) }
+    var v2Load by remember(runtimeFormV2, availableSelectedMachineId, runtime, external, v2LoadAttempt) {
+        mutableStateOf<RuntimeFormV2DialogLoad>(if (v2Candidate) RuntimeFormV2DialogLoad.Loading else RuntimeFormV2DialogLoad.Idle)
+    }
+    val v2Loaded = (v2Load as? RuntimeFormV2DialogLoad.Ready)?.loaded
+    // v2 owns the runtime section while it loads or is ready; a failure falls back to v1.
+    val v2Active = v2Candidate && (v2Load is RuntimeFormV2DialogLoad.Loading || v2Loaded != null)
+    var v2Values by remember(v2Loaded) {
+        mutableStateOf(v2Loaded?.let { initialRuntimeFormV2Values(it.form, it.sources) }.orEmpty())
+    }
+    var v2Touched by remember(v2Loaded) { mutableStateOf(emptySet<String>()) }
+    // Re-probed option sources sit on top of the loaded form; render, validate and submit against them.
+    val (v2Form, v2SourceRefresh) =
+        rememberRuntimeFormV2SourceRefresh(runtimeFormV2, availableSelectedMachineId, v2Loaded) { updated, sourceId ->
+            v2Values = runtimeFormV2ValuesAfterSourceReload(updated.form, updated.sources, v2Values, sourceId)
+        }
+    val v2Errors = v2Form?.let { validateRuntimeFormV2(it.form, it.sources, v2Values) }.orEmpty()
     val builtInFormLoading =
         dialogBuiltInFormRefreshState.loading ||
             createAgentMachineKey?.let { it in createAgentFormState.loadingRuntimeCatalogs } == true ||
@@ -876,6 +1052,7 @@ internal fun SharedCreateAgentDialog(
         builtInApiKey = TextFieldValue("")
         builtInSecretIdentity = null
         builtInSupportsImageInput = false
+        builtInLoadLocalPlugins = false
         fastMode = false
         command = ""
         reasoningEffort = null
@@ -892,6 +1069,18 @@ internal fun SharedCreateAgentDialog(
         if (!machineRuntimeInitialized) {
             resetRuntimeForMachine(nextMachineId)
             machineRuntimeInitialized = true
+        }
+    }
+
+    LaunchedEffect(runtimeFormV2, availableSelectedMachineId, runtime, external, v2LoadAttempt) {
+        val source = runtimeFormV2 ?: return@LaunchedEffect
+        val machineId = availableSelectedMachineId ?: return@LaunchedEffect
+        if (!v2Candidate) return@LaunchedEffect
+        v2Load = when (val result = source.loader.loadCreate(source.serverId, machineId, runtime)) {
+            is DataResult.Content -> RuntimeFormV2DialogLoad.Ready(result.data)
+            is DataResult.Error -> RuntimeFormV2DialogLoad.Failed(result.error.code)
+            is DataResult.NoPermission -> RuntimeFormV2DialogLoad.Failed(result.blocker.code)
+            is DataResult.Empty -> RuntimeFormV2DialogLoad.Failed(result.reason.name)
         }
     }
 
@@ -932,6 +1121,42 @@ internal fun SharedCreateAgentDialog(
         }
     }
 
+    // kimi-sdk (task #275): load the exact form through the shared runtime-form chain when the
+    // kimi runtime is selected. Silent fail-closed — no capability evidence, no selector.
+    LaunchedEffect(
+        createAgentFormStore,
+        cleanCreateAgentServerId,
+        availableSelectedMachineId,
+        runtime,
+        external,
+        kimiSdkRef
+    ) {
+        if (runtime != CREATE_AGENT_KIMI_SDK_RUNTIME_ID || external) return@LaunchedEffect
+        val formStore = createAgentFormStore ?: return@LaunchedEffect
+        val serverId = cleanCreateAgentServerId.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val machineId = availableSelectedMachineId ?: return@LaunchedEffect
+        kimiSdkRef ?: return@LaunchedEffect
+        formStore.loadSupportedKimiSdkForm(serverId, machineId)
+    }
+
+    val kimiSdkReasoningModel = if (customModelMode) customModelName.trim() else model
+    val kimiSdkReasoningCapability =
+        if (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID && kimiSdkReasoningFormRef(resolvedKimiSdkForm) != null) {
+            kimiSdkLiveReasoningCapability(runtime, kimiSdkReasoningModel, runtimeModelsOverride)
+        } else {
+            null
+        }
+
+    // kimi-sdk: reconcile the draft effort when live capability arrives; if it is lost
+    // mid-edit, fail closed back to Default with no explicit value left to submit.
+    LaunchedEffect(runtime, kimiSdkReasoningCapability) {
+        if (runtime != CREATE_AGENT_KIMI_SDK_RUNTIME_ID) return@LaunchedEffect
+        val reconciled = reconcileKimiSdkReasoningEffort(kimiSdkReasoningCapability, reasoningEffort)
+        if (reconciled != reasoningEffort) {
+            reasoningEffort = reconciled
+        }
+    }
+
     LaunchedEffect(builtInForm) {
         val providerSource = builtInForm?.optionSources?.get("provider") as? SharedAgentCreateFormOptionSource.Select
             ?: return@LaunchedEffect
@@ -944,6 +1169,7 @@ internal fun SharedCreateAgentDialog(
         builtInBaseUrl = ""
         builtInApiKey = TextFieldValue("")
         builtInSupportsImageInput = false
+        builtInLoadLocalPlugins = false
         builtInSecretIdentity = null
     }
 
@@ -1014,6 +1240,7 @@ internal fun SharedCreateAgentDialog(
                 apiKey = effectiveBuiltInApiKey.text,
                 baseUrl = builtInBaseUrl,
                 supportsImageInput = builtInSupportsImageInput,
+                loadLocalPlugins = builtInLoadLocalPlugins,
                 model = builtInModel,
                 envVars = createAgentRuntimeEnvVars(envVarEntries)
             )
@@ -1030,12 +1257,16 @@ internal fun SharedCreateAgentDialog(
         !selectedMachineBlocked &&
         runtimeAvailabilityError == null &&
         (external ||
-            isCreateAgentRuntimeContractReady(
-                runtime = runtime,
-                builtInFormRefreshAdmitted = dialogBuiltInFormRefreshState.admitted,
-                builtInFormLoading = builtInFormLoading,
-                hasBuiltInRuntimeConfig = builtInRuntimeConfig != null
-            ))
+            if (v2Active) {
+                v2Loaded != null && v2Errors.isEmpty()
+            } else {
+                isCreateAgentRuntimeContractReady(
+                    runtime = runtime,
+                    builtInFormRefreshAdmitted = dialogBuiltInFormRefreshState.admitted,
+                    builtInFormLoading = builtInFormLoading,
+                    hasBuiltInRuntimeConfig = builtInRuntimeConfig != null
+                )
+            })
     val showMachinePicker = !external
 
     LaunchedEffect(selectedMachineId, selectedMachineRuntimeIds, runtime) {
@@ -1217,15 +1448,96 @@ internal fun SharedCreateAgentDialog(
                         }
                     }
                 }
+                val v2FailureCode = (v2Load as? RuntimeFormV2DialogLoad.Failed)?.code
+                val v1FormMissing =
+                    (runtime == "builtin" && builtInForm == null) ||
+                        (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID && resolvedKimiSdkForm == null)
+                if (!external && v2Candidate && v2FailureCode != null && v1FormMissing) {
+                    // v2 failed and there is no v1 form to fall back to: say so instead of a blank section.
+                    item(key = "runtime-form-v2-failure") {
+                        SlockRaftUiBanner(
+                            status = SlockRaftUiBannerStatus.Warning,
+                            description =
+                                MR.strings.runtime_form_v2_load_failed.format(listOf(v2FailureCode)).localized(),
+                            size = SlockRaftUiBannerSize.Medium,
+                            action = {
+                                SlockBrutalActionButton(
+                                    label = stringResource(MR.strings.common_retry),
+                                    onClick = { v2LoadAttempt += 1 },
+                                    enabled = !submitting,
+                                    leadingIcon = SlockLucideIconName.RefreshCw,
+                                    minWidth = 72.dp,
+                                    minHeight = 32.dp,
+                                    shadowOffset = SlockShadow.BrutalSmall
+                                )
+                            }
+                        )
+                    }
+                }
                 if (!external) {
                     item(key = "runtime") {
-                        if (runtime == "builtin") {
+                        if (v2Active) {
+                            RuntimeFormV2RuntimeSection(
+                                runtime = runtime,
+                                onRuntimeChange = { newRuntime ->
+                                    val nextCatalog =
+                                        availableSelectedMachineId?.let { machineId ->
+                                            runtimeModelsByMachineAndRuntime[machineId to newRuntime]
+                                        }
+                                    val selection =
+                                        createAgentRuntimeModelReasoningSelection(
+                                            runtime = newRuntime,
+                                            model = createAgentPreferredModelId(
+                                                runtime = newRuntime,
+                                                runtimeModelsOverride = nextCatalog?.models.orEmpty(),
+                                                runtimeModelsDefault = nextCatalog?.defaultModel
+                                            ),
+                                            currentReasoningEffort = reasoningEffort,
+                                            runtimeModelsOverride = nextCatalog?.models.orEmpty()
+                                        )
+                                    runtime = selection.runtime
+                                    model = selection.model
+                                    reasoningEffort = selection.reasoningEffort
+                                    customModelMode = false
+                                },
+                                machineRuntimeIds = selectedMachineRuntimeIds,
+                                runtimeAvailabilityError = runtimeAvailabilityError,
+                                enabled = !submitting
+                            ) {
+                                if (v2Loaded == null) {
+                                    Text(
+                                        text = stringResource(MR.strings.agent_create_state_computers_loading),
+                                        style = SlockType.Caption,
+                                        color = SlockColor.TextMutedGray
+                                    )
+                                } else {
+                                    RuntimeFormV2Fields(
+                                        loaded = v2Form ?: v2Loaded,
+                                        values = v2Values,
+                                        onChange = { key, value ->
+                                            val current = v2Form ?: v2Loaded
+                                            v2Values = applyRuntimeFormV2Change(current.form, current.sources, v2Values, key, value)
+                                            v2Touched = v2Touched + key
+                                        },
+                                        errors = v2Errors.filterKeys { it in v2Touched || it in errorFieldKeys },
+                                        serverErrorKeys = errorFieldKeys,
+                                        serverMessage = null,
+                                        editing = false,
+                                        advancedOpen = advancedOpen,
+                                        onAdvancedOpenChange = { advancedOpen = it },
+                                        enabled = !submitting,
+                                        sourceRefresh = v2SourceRefresh
+                                    )
+                                }
+                            }
+                        } else if (runtime == "builtin") {
                             BuiltInRuntimeSection(
                                 runtime = runtime,
                                 onRuntimeChange = { newRuntime ->
                                     if (newRuntime != runtime) {
                                         builtInApiKey = TextFieldValue("")
                                         builtInSupportsImageInput = false
+                                        builtInLoadLocalPlugins = false
                                     }
                                     val nextCatalog =
                                         availableSelectedMachineId?.let { machineId ->
@@ -1257,6 +1569,7 @@ internal fun SharedCreateAgentDialog(
                                     if (it != builtInProviderId) builtInApiKey = TextFieldValue("")
                                     builtInProviderId = it
                                     builtInSupportsImageInput = false
+                                    builtInLoadLocalPlugins = false
                                 },
                                 apiKey = effectiveBuiltInApiKey,
                                 onApiKeyChange = {
@@ -1270,6 +1583,8 @@ internal fun SharedCreateAgentDialog(
                                 },
                                 supportsImageInput = builtInSupportsImageInput,
                                 onSupportsImageInputChange = { builtInSupportsImageInput = it },
+                                loadLocalPlugins = builtInLoadLocalPlugins,
+                                onLoadLocalPluginsChange = { builtInLoadLocalPlugins = it },
                                 model = builtInModel,
                                 onModelChange = { builtInModel = it },
                                 envVarEntries = envVarEntries,
@@ -1281,6 +1596,7 @@ internal fun SharedCreateAgentDialog(
                         } else {
                             AdvancedRuntimeSection(
                             runtime = runtime,
+                            kimiSdkReasoningCapability = kimiSdkReasoningCapability,
                             onRuntimeChange = { newRuntime ->
                                 val nextCatalog =
                                     availableSelectedMachineId?.let { machineId ->
@@ -1396,6 +1712,21 @@ internal fun SharedCreateAgentDialog(
                     minWidth = 126.dp,
                     backgroundColor = SlockColor.AccentPink,
                     onClick = {
+                        val v2Submit = (v2Form ?: v2Loaded)?.takeIf { v2Active }?.let { loaded ->
+                            SharedCreateAgentDialogSubmit(
+                                name = trimmedName.removePrefix("@"),
+                                description = description.text.trim().takeIf { it.isNotBlank() },
+                                machineId = requiredComputer?.takeIf { it.isNotBlank() } ?: selectedMachineId,
+                                runtimeFormV2 = RuntimeFormV2SubmitBody(
+                                    runtimeId = loaded.form.runtimeId.ifBlank { runtime },
+                                    formValues = runtimeFormV2Submission(loaded.form, v2Values, loaded.sources)
+                                )
+                            )
+                        }
+                        if (v2Submit != null) {
+                            onSubmit(v2Submit)
+                            return@SlockBrutalActionButton
+                        }
                         onSubmit(
                             buildSharedCreateAgentDialogSubmit(
                                 name = trimmedName,
@@ -1421,8 +1752,10 @@ internal fun SharedCreateAgentDialog(
                                 builtInApiKey = effectiveBuiltInApiKey,
                                 builtInBaseUrl = builtInBaseUrl,
                                 builtInSupportsImageInput = builtInSupportsImageInput,
+                                builtInLoadLocalPlugins = builtInLoadLocalPlugins,
                                 builtInModel = builtInModel,
-                                runtimeModelsOverride = runtimeModelsOverride
+                                runtimeModelsOverride = runtimeModelsOverride,
+                                kimiSdkForm = resolvedKimiSdkForm
                             )
                         )
                     }
@@ -1606,6 +1939,8 @@ internal fun BuiltInRuntimeSection(
     onBaseUrlChange: (String) -> Unit,
     supportsImageInput: Boolean,
     onSupportsImageInputChange: (Boolean) -> Unit,
+    loadLocalPlugins: Boolean,
+    onLoadLocalPluginsChange: (Boolean) -> Unit,
     model: String,
     onModelChange: (String) -> Unit,
     envVarEntries: List<Pair<String, String>>,
@@ -1752,8 +2087,37 @@ internal fun BuiltInRuntimeSection(
                     focusManager.clearFocus(force = true)
                     onAdvancedOpenChange(!advancedOpen)
                 }
-                if (advancedOpen && "/envVars" in form.definition.uiSchema.advancedPointers) {
-                    EnvVarsEditor(envVarEntries, onEnvVarEntriesChange, enabled)
+                if (advancedOpen) {
+                    form.definition.uiSchema.advancedPointers.forEach { pointer ->
+                        val field = pointer.removePrefix("/")
+                        val copy = fieldCopy[field]
+                        when (field) {
+                            "loadLocalPlugins" -> {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    SlockCheckbox(
+                                        checked = loadLocalPlugins,
+                                        onCheckedChange = onLoadLocalPluginsChange,
+                                        enabled = enabled
+                                    )
+                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(
+                                            text = copy?.label ?: "Load local Pi plugins",
+                                            style = SlockType.Caption,
+                                            color = SlockColor.TextBlack
+                                        )
+                                        copy?.hint?.let {
+                                            Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+                                        }
+                                    }
+                                }
+                            }
+                            "envVars" -> EnvVarsEditor(envVarEntries, onEnvVarEntriesChange, enabled)
+                        }
+                    }
                 }
             }
         }
@@ -1769,6 +2133,7 @@ internal fun AdvancedRuntimeSection(
     customModelMode: Boolean,
     onCustomModelModeChange: (Boolean) -> Unit,
     customModelName: String,
+    kimiSdkReasoningCapability: KimiSdkLiveReasoningCapability? = null,
     onCustomModelNameChange: (String) -> Unit,
     runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption>,
     runtimeModelsLoading: Boolean = false,
@@ -2050,6 +2415,33 @@ internal fun AdvancedRuntimeSection(
                 }
             )
         }
+        // kimi-sdk (task #275): separate gate — live catalog + resolved form ref only,
+        // never the static REASONING_EFFORT_RUNTIMES/BASE fallbacks above.
+        if (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID && kimiSdkReasoningCapability != null) {
+            SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_reasoning))
+            val kimiReasoningOptions =
+                createAgentKimiSdkReasoningDropdownItems(
+                    capability = kimiSdkReasoningCapability,
+                    defaultLabel = stringResource(MR.strings.agent_create_action_default)
+                )
+            val kimiReasoningSelectedId = reasoningEffort ?: CREATE_AGENT_DEFAULT_REASONING_ID
+            SlockBrutalSelectField(
+                options = kimiReasoningOptions.toBrutalSelectOptions(),
+                selectedId = kimiReasoningSelectedId,
+                selectedLabel =
+                    kimiReasoningOptions.firstOrNull { it.id == kimiReasoningSelectedId }?.label
+                        ?: stringResource(MR.strings.agent_create_action_default),
+                placeholder = stringResource(MR.strings.agent_create_action_default),
+                enabled = enabled,
+                rowHeight = 36.dp,
+                onSelect = { option ->
+                    focusManager.clearFocus(force = true)
+                    onReasoningEffortChange(
+                        if (option.id == CREATE_AGENT_DEFAULT_REASONING_ID) null else option.id
+                    )
+                }
+            )
+        }
         if (supportsRuntimeFastMode(runtime)) {
             SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_mode))
             Row(
@@ -2111,7 +2503,7 @@ internal fun AdvancedRuntimeSection(
 }
 
 @Composable
-private fun AdvancedToggleButton(open: Boolean, onToggle: () -> Unit) {
+internal fun AdvancedToggleButton(open: Boolean, onToggle: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -2134,7 +2526,7 @@ private fun AdvancedToggleButton(open: Boolean, onToggle: () -> Unit) {
 }
 
 @Composable
-private fun CreateAgentSectionLabelWithAction(
+internal fun CreateAgentSectionLabelWithAction(
     label: String,
     required: Boolean = false,
     actionIcon: SlockLucideIconName,
@@ -2178,13 +2570,19 @@ private fun SlockCreateAgentSpinnerIcon() {
 }
 
 @Composable
-private fun EnvVarsEditor(
+internal fun EnvVarsEditor(
     entries: List<Pair<String, String>>,
     onChange: (List<Pair<String, String>>) -> Unit,
-    enabled: Boolean
+    enabled: Boolean,
+    label: String? = null,
+    required: Boolean = false
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_environment_variables), optional = true)
+        SlockBrutalSectionLabel(
+            label = label ?: stringResource(MR.strings.agent_create_label_environment_variables),
+            required = required,
+            optional = !required
+        )
         entries.forEachIndexed { idx, (key, value) ->
             Row(
                 modifier = Modifier.fillMaxWidth(),

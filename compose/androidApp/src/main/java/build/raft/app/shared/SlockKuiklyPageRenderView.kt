@@ -2,9 +2,12 @@ package build.raft.app.shared
 
 import android.content.Context
 import android.util.Size
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.core.content.ContextCompat
+import build.raft.app.R
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
 import com.tencent.kuikly.core.render.android.context.KuiklyRenderCoreExecuteModeBase
 import com.tencent.kuikly.core.render.android.exception.ErrorReason
@@ -22,6 +25,10 @@ internal class SlockKuiklyPageRenderView(
     private val parentDelegate: KuiklyRenderViewBaseDelegatorDelegate
 ) : FrameLayout(context), IKuiklyRenderViewExport {
 
+    /** Opaque branded handoff while a newly routed child has not painted. */
+    private val startupHoldView =
+        LayoutInflater.from(context).inflate(R.layout.slock_app_shell_splash_hold, this, false)
+
     private var childRenderView: SlockKuiklyChildRenderView? = null
     private var pageName: String = ""
     private var pageDataText: String = "{}"
@@ -33,10 +40,17 @@ internal class SlockKuiklyPageRenderView(
     private var childDidAttach = false
     private var childVisible = false
     private var childInitPosted = false
+    private var childLoadFinished = false
     private var lastChildRootWidthPx: Int? = null
     private var lastChildRootHeightPx: Int? = null
     private var destroyed = false
     private val lazyChildEvents = mutableListOf<() -> Unit>()
+
+    init {
+        setBackgroundColor(ContextCompat.getColor(context, R.color.slock_surface_cream))
+        addView(startupHoldView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        hideStartupHold()
+    }
 
     private val childDelegate =
         object : KuiklyRenderViewBaseDelegatorDelegate {
@@ -92,6 +106,7 @@ internal class SlockKuiklyPageRenderView(
                 errorReason: ErrorReason,
                 executeMode: KuiklyRenderCoreExecuteModeBase
             ) {
+                releaseStartupHold()
                 parentDelegate.onUnhandledException(throwable, errorReason, executeMode)
             }
 
@@ -100,6 +115,9 @@ internal class SlockKuiklyPageRenderView(
                 errorReason: ErrorReason?,
                 executeMode: KuiklyRenderCoreExecuteModeBase
             ) {
+                // Release before callbacks: a callback may synchronously update page props and
+                // start a replacement child, which must be allowed to show its own hold.
+                releaseStartupHold()
                 (parentDelegate as? SlockKuiklyChildPageLoadListener)
                     ?.onSlockKuiklyChildPageLoadComplete(
                         pageName = pageName,
@@ -200,18 +218,21 @@ internal class SlockKuiklyPageRenderView(
         childInitPosted = false
         lazyChildEvents.clear()
         destroyChild()
+        releaseStartupHold()
         super.onDestroy()
     }
 
     private fun updatePageName(next: String) {
         if (pageName == next) return
         pageName = next
+        invalidateStartupHold()
         resetChildIfAttached()
     }
 
     private fun updatePageData(next: String) {
         if (pageDataText == next) return
         pageDataText = next
+        invalidateStartupHold()
         resetChildIfAttached()
     }
 
@@ -219,13 +240,17 @@ internal class SlockKuiklyPageRenderView(
         if (childActive == next) return
         childActive = next
         syncChildVisibility()
-        if (next) {
+        if (next && !childLoadFinished) {
+            showStartupHold()
             scheduleChildInitIfReady()
+        } else if (!next) {
+            hideStartupHold()
         }
     }
 
     private fun resetChildIfAttached() {
         if (childRenderView == null) return
+        showStartupHold()
         destroyChild()
         scheduleChildInitIfReady()
         if (isInLayout) {
@@ -258,6 +283,8 @@ internal class SlockKuiklyPageRenderView(
                 addView(it, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
             }
         childRenderView = child
+        childLoadFinished = false
+        showStartupHold()
         child.onAttach(
             contextCode = "",
             pageName = pageName,
@@ -269,6 +296,33 @@ internal class SlockKuiklyPageRenderView(
         lastChildRootHeightPx = height
         syncChildVisibility()
         performAllLazyChildEvents()
+    }
+
+    private fun showStartupHold() {
+        if (!slockKuiklyChildStartupHoldVisible(childActive, childLoadFinished, pageName)) {
+            hideStartupHold()
+            return
+        }
+        startupHoldView.visibility = View.VISIBLE
+        startupHoldView.isClickable = true
+        startupHoldView.isFocusable = true
+        startupHoldView.bringToFront()
+    }
+
+    private fun hideStartupHold() {
+        startupHoldView.visibility = View.GONE
+        startupHoldView.isClickable = false
+        startupHoldView.isFocusable = false
+    }
+
+    private fun invalidateStartupHold() {
+        childLoadFinished = false
+        showStartupHold()
+    }
+
+    private fun releaseStartupHold() {
+        childLoadFinished = true
+        hideStartupHold()
     }
 
     private fun destroyChild() {
@@ -347,6 +401,9 @@ internal class SlockKuiklyPageRenderView(
     }
 
     private fun syncChildVisibility() {
+        // Retained hosts are stacked. Hide the entire inactive host, including its
+        // opaque background, so it cannot cover the active sibling's content.
+        visibility = if (childActive) View.VISIBLE else View.INVISIBLE
         val shouldBeRendered =
             slockKuiklyChildShouldRender(childActive = childActive, childAttached = childDidAttach)
         val shouldBeLifecycleVisible =
@@ -448,6 +505,12 @@ internal fun slockKuiklyRootViewSizeDidChangedData(
         "height" to heightPx / resolvedDensity
     )
 }
+
+internal fun slockKuiklyChildStartupHoldVisible(
+    childActive: Boolean,
+    childLoadFinished: Boolean,
+    pageName: String,
+): Boolean = childActive && !childLoadFinished && pageName.isNotBlank()
 
 internal fun slockKuiklyChildRenderVisibility(visible: Boolean): Int =
     if (visible) View.VISIBLE else View.INVISIBLE

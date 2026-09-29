@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -14,6 +16,49 @@ import yaml
 DEFAULT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CASE_DIR = DEFAULT_ROOT / "docs" / "qa-acceptance" / "cases"
 MANIFEST_NAME = "release-1.7.0-android.json"
+
+# (2026-08-31, artin: the production-server special case was removed from this
+# contract — the name is no longer referenced here at all.)
+# The login case is the entry gate every automated run passes through; its
+# server-picker branch must keep naming the QA server explicitly so a picker
+# never leaves the choice to the model.
+LOGIN_CASE_ID = "login-email-password"
+QA_SERVER_NAME = "OranixSlockTest"
+# server-switch is the one case whose SUBJECT is server selection; its steps
+# must name both QA servers by display name, or the runtime guard's
+# "goal names no server -> error" clause fires by design (task #171; XiShi's
+# fourth-source finding). NOTE: these two teeth pin the known selection cases
+# only — "a case requiring selection of a server it never names" has no
+# general detector here.
+SERVER_SWITCH_CASE_ID = "server-switch"
+QA_SERVER_B_NAME = "qa-server-b-slock"
+ALLOWED_QA_SERVER_NAMES = (QA_SERVER_NAME, QA_SERVER_B_NAME)
+# Structural rule (XiShi, #2287 review): a goal that drives server SELECTION
+# in a case that never names an allowed server is exactly the shape the
+# runtime guard answers with verdict error — catch it at contract time.
+# SCOPE, stated honestly (LiBai, #2287 review): this catches known selection
+# phrasings and near-kin ONLY — a selection verb followed by "server" within
+# one clause. Verb-first order is required, so "On the server picker, tap the
+# second row" and similar inversions escape; the runtime guard remains the
+# fail-closed layer for those. Known positive: the pre-fix 26-server-switch
+# goal "Tap server B exactly once".
+SELECTION_GOAL_RE = re.compile(
+    r"\b(tap|select|choose|pick|join|open|log\s+in(?:to)?|switch(?:es|ing)?\s+to)\b"
+    r"[^.\n]{0,60}\bserver\b",
+    re.IGNORECASE,
+)
+
+
+def _iter_goals(node: Any) -> Iterator[str]:
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "goal" and isinstance(value, str):
+                yield value
+            else:
+                yield from _iter_goals(value)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _iter_goals(item)
 
 
 class ContractError(ValueError):
@@ -127,6 +172,19 @@ def load_contract(case_dir: Path = DEFAULT_CASE_DIR) -> ReleaseAcceptanceContrac
             raise ContractError(f"{path.name}: missing non-empty top-level id")
         if case_id in sources:
             raise ContractError(f"duplicate case id {case_id}: {sources[case_id][0].name}, {path.name}")
+        # ⚠️ 2026-08-31, artin: the "no case source may name the production
+        # server" check was REMOVED here. His line: don't special-case that
+        # name ("按我的口径哦，不用特别判断不能出现 Raft Android"). The
+        # positive half below still stands — a case that drives server
+        # selection must name an allowed QA server.
+        raw_text = path.read_text(encoding="utf-8")
+        selection_goal = next((g for g in _iter_goals(source) if SELECTION_GOAL_RE.search(g)), None)
+        if selection_goal is not None and not any(n in raw_text for n in ALLOWED_QA_SERVER_NAMES):
+            raise ContractError(
+                f"{path.name}: goal {selection_goal!r} drives server selection but the "
+                f"case names no QA server ({', '.join(ALLOWED_QA_SERVER_NAMES)}) — the "
+                f"runtime guard answers unnamed selection with verdict error by design",
+            )
         sources[case_id] = (path, source)
 
     actual = set(sources)
@@ -154,6 +212,25 @@ def load_contract(case_dir: Path = DEFAULT_CASE_DIR) -> ReleaseAcceptanceContrac
         if not has_ios_variant and not has_unified_platform_matrix:
             raise ContractError(
                 f"{path.name}: automated case must preserve the unified Android/iOS contract",
+            )
+
+    # Polarity pair, presence half: the login case's picker branch must keep
+    # naming the QA server. Deleting that line would leave picker choice to
+    # the model — exactly what the July incident runs did.
+    login_path, _login = sources[LOGIN_CASE_ID]
+    if QA_SERVER_NAME not in login_path.read_text(encoding="utf-8"):
+        raise ContractError(
+            f"{login_path.name}: the login case must name {QA_SERVER_NAME!r} "
+            f"for its server-picker branch",
+        )
+    switch_path, _switch = sources[SERVER_SWITCH_CASE_ID]
+    switch_text = switch_path.read_text(encoding="utf-8")
+    for name in (QA_SERVER_NAME, QA_SERVER_B_NAME):
+        if name not in switch_text:
+            raise ContractError(
+                f"{switch_path.name}: the server-switch case must name {name!r} "
+                f"by display name — abstract A/B goals trip the runtime "
+                f"guard's no-name clause by design",
             )
 
     path, server_create = sources["server-create"]

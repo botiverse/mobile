@@ -5,16 +5,24 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.Message
 import build.raft.app.model.ServerId
+import build.raft.app.model.ThreadId
 import build.raft.app.model.messageStreamChannelId
+import build.raft.app.model.preferredAvatarWireValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 private val forwardTargetJson = Json {
     ignoreUnknownKeys = true
@@ -154,6 +162,35 @@ data class ForwardMessageExecuteRequest(
         get() = destination.channelId
 }
 
+data class ForwardMessageSendResult(
+    val message: Message?
+)
+
+data class ForwardMessageBatchExecuteRequest(
+    val sourceServerId: ServerId,
+    val sourceChannelId: ChannelId,
+    val destinations: List<ForwardMessageDestination>,
+    val messageIds: List<String>,
+    val mode: ForwardMessageSendMode,
+    val note: String,
+    val requestId: String
+)
+
+data class ForwardMessageBatchDelivery(
+    val destination: ForwardMessageDestination,
+    val message: Message
+)
+
+data class ForwardMessageBatchFailure(
+    val destination: ForwardMessageDestination,
+    val code: String
+)
+
+data class ForwardMessageBatchResult(
+    val deliveries: List<ForwardMessageBatchDelivery>,
+    val failures: List<ForwardMessageBatchFailure>
+)
+
 interface ForwardMessageTargetRepository {
     suspend fun recentTargets(serverId: ServerId, limit: Int): DataResult<List<ForwardMessageTarget>>
     suspend fun directoryTargets(
@@ -172,7 +209,10 @@ interface ForwardMessageTargetRepository {
         target: ForwardMessageTarget,
         allowJoin: Boolean = false
     ): DataResult<ForwardMessageDestination>
-    suspend fun forwardMessages(request: ForwardMessageExecuteRequest): DataResult<Unit>
+    suspend fun forwardMessages(request: ForwardMessageExecuteRequest): DataResult<ForwardMessageSendResult>
+
+    suspend fun forwardMessagesBatch(request: ForwardMessageBatchExecuteRequest): DataResult<ForwardMessageBatchResult> =
+        DataResult.Error(ScreenError(code = "forward_batch_unsupported", retryable = false))
 }
 
 class RealForwardMessageTargetRepository(
@@ -337,7 +377,7 @@ class RealForwardMessageTargetRepository(
         }
     }
 
-    override suspend fun forwardMessages(request: ForwardMessageExecuteRequest): DataResult<Unit> {
+    override suspend fun forwardMessages(request: ForwardMessageExecuteRequest): DataResult<ForwardMessageSendResult> {
         currentSession() ?: return forwardAuthRequired()
         if (request.messageIds.isEmpty()) {
             return DataResult.Empty(EmptyReason.NoMessages)
@@ -353,7 +393,88 @@ class RealForwardMessageTargetRepository(
                     bodyText = forwardTargetJson.encodeToString(request.toWireBody())
                 )
             },
-            mapper = { Unit }
+            mapper = { bodyText ->
+                val message = parseSharedSentMessage(
+                    bodyText = bodyText,
+                    fallbackThreadId = ThreadId(request.destination.channelId.value),
+                    diagnostics = warningLogger
+                ) ?: error("forward response missing canonical message")
+                ForwardMessageSendResult(message = message)
+            }
+        )
+    }
+
+    override suspend fun forwardMessagesBatch(request: ForwardMessageBatchExecuteRequest): DataResult<ForwardMessageBatchResult> {
+        currentSession() ?: return forwardAuthRequired()
+        val destinations = request.destinations.distinctBy { it.channelId.value }
+        if (request.messageIds.isEmpty() || destinations.isEmpty() || request.requestId.isBlank()) {
+            return DataResult.Empty(EmptyReason.NoMessages)
+        }
+        val executionServerId = destinations.first().serverId
+        if (destinations.any { it.serverId != executionServerId }) {
+            return DataResult.Error(ScreenError(code = "forward_cross_server_batch_unsupported", retryable = false))
+        }
+        return executeForwardTargets(
+            source = "forward_messages_batch",
+            block = {
+                networkClient.request(
+                    priority = DataRequestPriority.Foreground,
+                    path = "messages/forward",
+                    method = "POST",
+                    serverIdOverride = executionServerId,
+                    bodyText = forwardTargetJson.encodeToString(
+                        ForwardMessagesBatchRequestBody.serializer(),
+                        ForwardMessagesBatchRequestBody(
+                            destinationChannelIds = destinations.map { it.channelId.value },
+                            requestId = request.requestId,
+                            sourceMessageIds = request.messageIds,
+                            note = request.note.trim()
+                        )
+                    )
+                )
+            },
+            mapper = { bodyText ->
+                val response = forwardTargetJson.decodeFromString(
+                    ForwardMessagesBatchResponseBody.serializer(),
+                    bodyText
+                )
+                val destinationByChannelId = destinations.associateBy { it.channelId.value }
+                val expectedIds = destinationByChannelId.keys
+                val returnedIds = response.results.map { it.destinationChannelId }
+                require(returnedIds.size == expectedIds.size && returnedIds.toSet() == expectedIds) {
+                    "forward batch response destinations do not match request"
+                }
+                val deliveries = mutableListOf<ForwardMessageBatchDelivery>()
+                val failures = mutableListOf<ForwardMessageBatchFailure>()
+                response.results.forEach { result ->
+                    val destination = destinationByChannelId[result.destinationChannelId]
+                        ?: error("forward batch response contains an unknown destination")
+                    when (result.status) {
+                        "failed" -> {
+                            failures += ForwardMessageBatchFailure(
+                                destination = destination,
+                                code = result.code?.takeIf { it.isNotBlank() } ?: "forward_failed"
+                            )
+                            return@forEach
+                        }
+                        "success" -> Unit
+                        else -> error("forward batch response contains an unknown status")
+                    }
+                    val message = result.message?.let {
+                        parseSharedSentMessage(
+                            bodyText = it.toString(),
+                            fallbackThreadId = ThreadId(destination.channelId.value),
+                            diagnostics = warningLogger
+                        )
+                    }
+                    if (message == null || message.channelId != destination.channelId) {
+                        failures += ForwardMessageBatchFailure(destination, "forward_response_invalid")
+                    } else {
+                        deliveries += ForwardMessageBatchDelivery(destination, message)
+                    }
+                }
+                ForwardMessageBatchResult(deliveries = deliveries, failures = failures)
+            }
         )
     }
 
@@ -733,6 +854,8 @@ private fun MemberProfile.toForwardMemberCandidate(serverId: ServerId): ForwardM
             MemberKind.Human -> ForwardMessageTargetKind.HumanDirectMessageCandidate
             MemberKind.Agent -> ForwardMessageTargetKind.AgentDirectMessageCandidate
             MemberKind.System -> return null
+            // External projections are never forward-target identities.
+            MemberKind.External -> return null
         }
     val title = displayName.trim().takeIf { it.isNotBlank() } ?: handle.trim().takeIf { it.isNotBlank() } ?: return null
     return ForwardMessageTarget(
@@ -741,7 +864,7 @@ private fun MemberProfile.toForwardMemberCandidate(serverId: ServerId): ForwardM
         id = id.value,
         title = title,
         subtitle = handle.trim().takeIf { it.isNotBlank() }?.let { "@$it" }.orEmpty(),
-        avatarWireValue = avatar?.wireValue ?: avatarUrl,
+        avatarWireValue = preferredAvatarWireValue(avatar, avatarUrl),
         avatarLabel = avatarLabel.ifBlank { title.take(1).uppercase() },
         channelKind = ConversationKind.DirectMessage,
         channelType = "dm",
@@ -899,6 +1022,27 @@ private data class ForwardMessagesRequestBody(
     val destinationChannelId: String,
     val sourceMessageIds: List<String>,
     val note: String = ""
+)
+
+@Serializable
+private data class ForwardMessagesBatchRequestBody(
+    val destinationChannelIds: List<String>,
+    val requestId: String,
+    val sourceMessageIds: List<String>,
+    val note: String = ""
+)
+
+@Serializable
+private data class ForwardMessagesBatchResponseBody(
+    val results: List<ForwardMessagesBatchResultBody> = emptyList()
+)
+
+@Serializable
+private data class ForwardMessagesBatchResultBody(
+    val destinationChannelId: String,
+    val status: String,
+    val message: JsonElement? = null,
+    val code: String? = null
 )
 
 private fun ForwardMessageExecuteRequest.toWireBody(): ForwardMessagesRequestBody =

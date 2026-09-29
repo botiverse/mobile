@@ -652,9 +652,7 @@ export class SlockOhosRealtimeHostContext {
     return left.socketUrl === right.socketUrl &&
       left.environmentId === right.environmentId &&
       left.principalId === right.principalId &&
-      left.authGeneration === right.authGeneration &&
-      left.connectionFamilyId === right.connectionFamilyId &&
-      left.accessToken === right.accessToken;
+      left.connectionFamilyId === right.connectionFamilyId;
   }
 }
 

@@ -38,37 +38,49 @@ typed local data source backed by SQLDelight once the smoke DB is in place.
 
 ## Checkout
 
+Only the SQLDelight fork is ever checked out from source, and only for OHOS.
+Even there it is a fallback rather than a routine step:
+`compose/settings.ohos.gradle.kts` calls `ensureSubmodule` on it only when
+`needsSqlDelight` — that is, when one of the required
+`app.cash.sqldelight` OHOS artifacts is missing from the local Maven
+repositories. With those artifacts present, no submodule is needed at all.
+Android never needs it and resolves `app.cash.sqldelight` from Maven.
+
+So run this when the OHOS artifacts are unavailable locally:
+
 ```bash
-git submodule update --init --recursive third_party/stately third_party/sqliter third_party/sqldelight
+git submodule update --init --recursive third_party/sqldelight
 ```
+
+Do **not** init or build `third_party/stately` or `third_party/sqliter`. Those
+moved to published Touchlab artifacts, and
+`scripts/ci/test_remote_touchlab_ci_contract.py` fails the build if a workflow
+initialises or publishes them locally — `git submodule update --init
+third_party/stately` is in its forbidden list.
 
 ## Local Verification
 
-Publish the dependency stack to Maven local in this order:
+Only the SQLDelight fork is published locally, and only in the fallback case
+described above:
 
 ```bash
-cd third_party/stately
-./gradlew \
-  :stately-strict:publishKotlinMultiplatformPublicationToMavenLocal \
-  :stately-strict:publishOhosArm64PublicationToMavenLocal \
-  :stately-concurrency:publishKotlinMultiplatformPublicationToMavenLocal \
-  :stately-concurrency:publishOhosArm64PublicationToMavenLocal
-
-cd ../sqliter
-./gradlew \
-  :sqliter-driver:publishKotlinMultiplatformPublicationToMavenLocal \
-  :sqliter-driver:publishOhosArm64PublicationToMavenLocal
-
-cd ../sqldelight
+cd third_party/sqldelight
 ./gradlew :sqldelight-gradle-plugin:publishToMavenLocal
 ./gradlew :drivers:native-driver:compileKotlinOhosArm64
 ```
 
-The verified `sqldelight` native-driver compile resolves these local artifacts:
+That compile resolves its Stately and SQLiter dependencies **from Raft
+Artifacts**, not from a local publish:
 
 - `co.touchlab:stately-concurrency-ohosarm64:2.1.0-KBA-001`
 - `co.touchlab:stately-strict-ohosarm64:2.1.0-KBA-001`
 - `co.touchlab:sqliter-driver-ohosarm64:1.3.3-KBA-001`
+
+Do not publish those three locally. The `stately` and `sqliter` publish
+commands this section used to carry are the ones
+`scripts/ci/test_remote_touchlab_ci_contract.py` forbids
+(`:stately-strict:publish`, `:sqliter-driver:publish` are in its list), so
+following them puts a workspace out of contract with CI.
 
 ## Current App Build Entry
 

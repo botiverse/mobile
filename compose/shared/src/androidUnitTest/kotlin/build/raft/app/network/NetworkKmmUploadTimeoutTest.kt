@@ -63,6 +63,20 @@ class NetworkKmmUploadTimeoutTest {
             body = NetworkResponseBody(bytes = """{"ok":true}""".encodeToByteArray())
         )
 
+    private fun fileBody() =
+        SlockHttpFileBody(
+            path = "/tmp/large.bin",
+            contentType = "application/octet-stream",
+            contentLength = 199_229_440L,
+            openStream = {
+                NetworkByteStream(
+                    contentLength = 199_229_440L,
+                    readAllBlock = { error("whole-file read forbidden") },
+                    readChunksBlock = { }
+                )
+            }
+        )
+
     private suspend fun NetworkKmmSlockHttpExecutor.uploadStreaming() =
         executeMultipart(
             priority = SlockRequestPriority.Foreground,
@@ -94,6 +108,68 @@ class NetworkKmmUploadTimeoutTest {
         )
         assertEquals(200, response.code)
         assertTrue(response.isSuccessful)
+    }
+
+    @Test
+    fun presignedFileUploadIsFlaggedForHttp1Only() = runTest {
+        var captured: NetworkRequest? = null
+        val executor =
+            NetworkKmmSlockHttpExecutor(
+                warningLogger = {},
+                requestStarterOverride = { request, onComplete ->
+                    captured = request
+                    onComplete(okResponse(request))
+                    SlockNetworkRequestCancelHandle {}
+                }
+            )
+
+        val response =
+            executor.executeFile(
+                priority = SlockRequestPriority.Foreground,
+                url = "https://example.test/r2-bucket/key",
+                method = "PUT",
+                headers = emptyMap(),
+                body = fileBody()
+            )
+
+        val request = assertNotNull(captured)
+        assertTrue(request.isHttp1Only(), "presigned direct-upload PUT must opt out of HTTP/3")
+        assertEquals(
+            10_000L,
+            request.policy.streamTimeouts.connectTimeoutMillis,
+            "presigned direct-upload PUT must keep connect at 10s (task #1135)"
+        )
+        assertEquals(200, response.code)
+    }
+
+    @Test
+    fun presignedBytesUploadIsFlaggedForHttp1Only() = runTest {
+        var captured: NetworkRequest? = null
+        val executor =
+            NetworkKmmSlockHttpExecutor(
+                warningLogger = {},
+                requestStarterOverride = { request, onComplete ->
+                    captured = request
+                    onComplete(okResponse(request))
+                    SlockNetworkRequestCancelHandle {}
+                }
+            )
+
+        executor.executeBytes(
+            priority = SlockRequestPriority.Foreground,
+            url = "https://example.test/r2-bucket/key",
+            method = "PUT",
+            headers = emptyMap(),
+            bodyBytes = "hello".encodeToByteArray()
+        )
+
+        val request = assertNotNull(captured)
+        assertTrue(request.isHttp1Only(), "in-memory presigned PUT must also opt out of HTTP/3")
+        assertEquals(
+            10_000L,
+            request.policy.streamTimeouts.connectTimeoutMillis,
+            "in-memory presigned PUT must keep connect below its 30s total budget"
+        )
     }
 
     @Test

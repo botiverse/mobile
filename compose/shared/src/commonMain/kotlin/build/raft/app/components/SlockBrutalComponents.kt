@@ -66,6 +66,7 @@ import com.tencent.kuikly.compose.ui.graphics.RectangleShape
 import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.ui.draw.shadow
 import com.tencent.kuikly.compose.ui.draw.alpha
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -77,6 +78,7 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.core.views.KeyboardParams
 import com.tencent.tmm.kmmresource.compose.stringResource
 
 internal data class SlockModalShellModel(
@@ -554,6 +556,37 @@ internal fun SlockBrutalTextField(
 }
 
 /**
+ * Height the input frame must reserve so [maxLines] lines of [lineHeight] fit inside the
+ * vertical padding and the 2dp border. A two-line description field (create-channel,
+ * connected-apps, …) used to keep the single-line 42dp: 42 − 2×8 padding − 2×2 border = 22dp of
+ * content for two 18sp lines, so the field scrolled its first line out whenever the caret sat at
+ * the end (task #536, `components.home.create-channel.dialog`). Web's `<textarea rows={2}>`
+ * simply grows. Single-line fields keep [fieldMinHeight] exactly (byte-identical look).
+ */
+internal fun slockBrutalInputFieldFrameMinHeight(
+    fieldMinHeight: Dp,
+    maxLines: Int,
+    lineHeight: Dp,
+    verticalPadding: Dp,
+    borderWidth: Dp = SlockStroke.Default
+): Dp {
+    if (maxLines <= 1) return fieldMinHeight
+    val needed = lineHeight * maxLines + verticalPadding * 2 + borderWidth * 2
+    return if (needed > fieldMinHeight) needed else fieldMinHeight
+}
+
+@Composable
+private fun TextStyle.slockLineHeightDp(): Dp =
+    with(LocalDensity.current) {
+        val lh: TextUnit = lineHeight
+        when {
+            lh.isSp -> lh.toDp()
+            fontSize.isSp -> fontSize.toDp() * 1.3f
+            else -> 18.dp
+        }
+    }
+
+/**
  * Shared frame for the two [SlockBrutalInputField] overloads (String + TextFieldValue). Owns the
  * single register-conditional wrapper so both overloads stay in lockstep and the elegant branch
  * lives in exactly one place (same single-source approach as the elegant button/card in this file).
@@ -672,6 +705,8 @@ internal fun SlockBrutalInputField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
+    keyboardHeightChange: (KeyboardParams) -> Unit = {},
+    onFocusChanged: (Boolean) -> Unit = {},
     focusRequester: FocusRequester = remember { FocusRequester() },
     showClearWhenNotEmpty: Boolean = false,
     onClear: (() -> Unit)? = null,
@@ -690,7 +725,13 @@ internal fun SlockBrutalInputField(
         focused = focused,
         forceFocused = forceFocused,
         showShadow = showShadow,
-        fieldMinHeight = fieldMinHeight,
+        fieldMinHeight =
+            slockBrutalInputFieldFrameMinHeight(
+                fieldMinHeight = fieldMinHeight,
+                maxLines = maxLines,
+                lineHeight = resolvedTextStyle.slockLineHeightDp(),
+                verticalPadding = verticalPadding
+            ),
         horizontalPadding = horizontalPadding,
         verticalPadding = verticalPadding,
         borderColor = borderColor,
@@ -719,11 +760,18 @@ internal fun SlockBrutalInputField(
                 placeholder = placeholder,
                 placeholderColor = placeholderColor,
                 autoFocus = autoFocus && focusPolicy.acceptsFocus,
-                onFocus = { focused = true },
-                onBlur = { focused = false },
+                onFocus = {
+                    focused = true
+                    onFocusChanged(true)
+                },
+                onBlur = {
+                    focused = false
+                    onFocusChanged(false)
+                },
                 maxLines = maxLines,
                 keyboardOptions = keyboardOptions,
                 keyboardActions = keyboardActions,
+                keyboardHeightChange = keyboardHeightChange,
                 enabled = focusPolicy.acceptsFocus,
                 readOnly = !focusPolicy.acceptsFocus,
                 textStyle = resolvedTextStyle,
@@ -773,6 +821,8 @@ internal fun SlockBrutalInputField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
+    keyboardHeightChange: (KeyboardParams) -> Unit = {},
+    onFocusChanged: (Boolean) -> Unit = {},
     focusRequester: FocusRequester = remember { FocusRequester() },
     showClearWhenNotEmpty: Boolean = false,
     onClear: (() -> Unit)? = null,
@@ -791,7 +841,13 @@ internal fun SlockBrutalInputField(
         focused = focused,
         forceFocused = forceFocused,
         showShadow = showShadow,
-        fieldMinHeight = fieldMinHeight,
+        fieldMinHeight =
+            slockBrutalInputFieldFrameMinHeight(
+                fieldMinHeight = fieldMinHeight,
+                maxLines = maxLines,
+                lineHeight = resolvedTextStyle.slockLineHeightDp(),
+                verticalPadding = verticalPadding
+            ),
         horizontalPadding = horizontalPadding,
         verticalPadding = verticalPadding,
         borderColor = borderColor,
@@ -820,11 +876,18 @@ internal fun SlockBrutalInputField(
                 placeholder = placeholder,
                 placeholderColor = placeholderColor,
                 autoFocus = autoFocus && focusPolicy.acceptsFocus,
-                onFocus = { focused = true },
-                onBlur = { focused = false },
+                onFocus = {
+                    focused = true
+                    onFocusChanged(true)
+                },
+                onBlur = {
+                    focused = false
+                    onFocusChanged(false)
+                },
                 maxLines = maxLines,
                 keyboardOptions = keyboardOptions,
                 keyboardActions = keyboardActions,
+                keyboardHeightChange = keyboardHeightChange,
                 enabled = focusPolicy.acceptsFocus,
                 readOnly = !focusPolicy.acceptsFocus,
                 textStyle = resolvedTextStyle,

@@ -39,6 +39,7 @@ import { captureAndroidScreenshotWithPostProof } from "./android_capture_proof.m
 import { buildEvidenceOverlays, screenshotPixelTap } from "./evidence_annotations.mjs";
 import { capacityClientFromEnv, runWithModelRetries } from "./model_capacity.mjs";
 import { detectForeignAndroidSystemBlocker } from "./system_blocker.mjs";
+import { serverGuardSection } from "./server_guard.mjs";
 import { adbRunAsShellArgs } from "./mobile_login_bootstrap_lib.mjs";
 
 const argv = process.argv.slice(2);
@@ -54,7 +55,8 @@ const opts = {
   appPackage: arg("--package", "build.raft.app"),
   playbook: arg("--playbook", process.env.QA_PLAYBOOK || "docs/qa-acceptance-operations.md"),
   // "android" drives adb directly (unchanged); "ios" delegates every device
-  // primitive to scripts/qa/ios_driver.mjs (simctl + XCUITest loop harness).
+  // primitive to scripts/qa/ios_driver.mjs (agent-device by default; qa-loop
+  // keeps the XCUITest file protocol).
   platform: arg("--platform", process.env.QA_PLATFORM || "android"),
   iosIoDir: arg("--ios-io-dir", process.env.QA_LOOP_IO_DIR || ""),
   iosUdid: arg("--ios-udid", process.env.QA_IOS_UDID || "booted"),
@@ -128,7 +130,11 @@ function captureAndroidQaBoundary(imageSha256) {
   const installScript =
     `umask 077; mkdir -p files/qa-bootstrap/inbox; tmp='${relative}.tmp'; ` +
     `cat >\"$tmp\"; chmod 600 \"$tmp\"; mv \"$tmp\" '${relative}'`;
-  adb(adbRunAsShellArgs("exec-in", opts.appPackage, installScript), {
+  // adb shell -T + stdin, not exec-in: canary-15 (CI 34684737549, hosted
+  // emulator) reached READY through the same helper on "shell" and then this
+  // exec-in injection was torn at stdin EOF, so no request file, no App ack
+  // (timed out below). Same channel difference as mobile#2476.
+  adb(adbRunAsShellArgs("shell", opts.appPackage, installScript), {
     input: request,
     encoding: "utf8",
   });
@@ -150,7 +156,21 @@ function captureAndroidQaBoundary(imageSha256) {
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
   }
-  throw new Error("QA capture boundary acknowledgement timed out");
+  // Discriminator on the timeout path (HuaTuo): read the request file back on
+  // the plain shell channel. Absent → the injection did not land (channel);
+  // present with the right sha → the App did not acknowledge (broadcast /
+  // receiver side). Names, mode and digest only; no contents.
+  let landed = "readback failed";
+  try {
+    const seen = adb(["shell", `run-as ${opts.appPackage} sh -c 'ls -laZ files/qa-bootstrap/inbox 2>&1; sha256sum ${relative} 2>&1 | cut -d" " -f1'`], { encoding: "utf8" });
+    const lines = seen.trim().split("\n");
+    const sha = lines[lines.length - 1]?.trim() ?? "";
+    const present = lines.some((line) => line.endsWith(` ${requestId}.capture`));
+    landed = `present=${present} sha_matches=${`sha256:${sha}` === requestDigest} inbox=${JSON.stringify(lines.slice(0, -1).join(" | ")).slice(0, 600)}`;
+  } catch (error) {
+    landed = `readback failed: ${String(error?.message ?? error).slice(0, 200)}`;
+  }
+  throw new Error(`QA capture boundary acknowledgement timed out (request file readback: ${landed})`);
 }
 
 // Structured view of the current uiautomator dump — the single source both
@@ -289,6 +309,10 @@ function preamble(size) {
     "",
     `Screen: ${size.w}x${size.h} px. GOAL:`,
     opts.goal,
+    // Spliced directly after the goal so the ban is adjacent to whatever text
+    // it may need to override — every goal source passes through here, so no
+    // caller-supplied goal can route around it (task #171).
+    ...serverGuardSection(),
     "",
     "Respond with EXACTLY ONE action as strict JSON (no prose, no markdown):",
     '  {"action":"tap","x":<px>,"y":<px>}            tap a point',
@@ -564,7 +588,7 @@ async function main() {
     if (!opts.iosIoDir) { console.error("--platform ios requires --ios-io-dir / QA_LOOP_IO_DIR"); process.exit(2); }
     const { createIosDriver } = await import("./ios_driver.mjs");
     drv = createIosDriver({ ioDir: opts.iosIoDir, udid: opts.iosUdid, bundle: opts.appPackage });
-    console.error("waiting for the iOS loop harness (xcodebuild test) to launch the app...");
+    console.error(`waiting for the iOS driver (${drv.driver}) to open the app...`);
     await drv.waitReady();
   }
   const stepsPath = path.join(opts.out, "steps.jsonl");
@@ -622,6 +646,14 @@ async function main() {
 
   let verdict = null, reason = "", turns = 0, executionDiagnosis = null;
   let noProgressTriggered = false, lastObservationFingerprint = "", sameObservationTurns = 0;
+  // Why this exists: "undecided" has several causes with OPPOSITE next actions —
+  // budget exhausted (raise the budget and rerun) vs the no-progress fuse (raise
+  // that threshold) vs the agent finishing without proving the goal (investigate
+  // the fixture/case). Those look identical in the verdict, and a reader who
+  // cannot tell them apart sends someone to fix a fixture that is not broken.
+  // The cause is already computed below for the forced-verdict prompt; it was
+  // only ever logged to steps.jsonl, so the verdict could not self-report it.
+  let terminatedBy = "goal_completed";
   const tapAnnotations = [];
   const assertionAnnotations = [];
   while (turns < opts.maxTurns && Date.now() < deadline) {
@@ -823,9 +855,27 @@ async function main() {
     // two 8-minute runs uploaded evidence but died verdict-less). The prompt
     // forbids upgrading unverified requirements to pass; exit 2 stays
     // reserved for real infrastructure (emulator dead, model unreachable).
-    const budgetCause = noProgressTriggered
-      ? `no-progress fuse (${opts.noProgressTurns} repeated actions)`
-      : turns >= opts.maxTurns ? `turn budget (${opts.maxTurns})` : `wall clock (${opts.maxMinutes}min)`;
+    // ONE decision, two renderings. @JingKe asked whether the steps.jsonl cause and
+    // the verdict's terminated_by are the same computation or a second one — a fair
+    // question, because a reader using the log as a stand-in for the field needs them
+    // to agree. They were two ternaries over the same conditions, which can drift.
+    // Now the human-readable cause is derived FROM terminatedBy, so the log and the
+    // verdict cannot disagree.
+    terminatedBy = noProgressTriggered
+      ? "no_progress"
+      : turns >= opts.maxTurns ? "max_turns" : "wall_clock";
+    // @LiBai's blocker: a lookup replaces the ternary's else-branch fallback, so an
+    // unmapped terminatedBy yields undefined -- which then interpolates into the
+    // MODEL PROMPT below as the literal string "undefined". Silent, never red, and a
+    // corrupted instruction to boot. Unreachable today (the assignment above emits
+    // exactly these three), but it is the same shape this PR exists to remove: an
+    // unenumerated value quietly becoming a plausible-looking one. Keep the fallback,
+    // and make it self-report rather than blend in.
+    const budgetCause = {
+      no_progress: `no-progress fuse (${opts.noProgressTurns} repeated actions)`,
+      max_turns: `turn budget (${opts.maxTurns})`,
+      wall_clock: `wall clock (${opts.maxMinutes}min)`,
+    }[terminatedBy] ?? `UNMAPPED termination reason "${terminatedBy}" — add it to this table and to the gate's terminated_by mapping`;
     logStep({ turn: turns, event: "forced_verdict", cause: budgetCause });
     try {
       pruneImages(messages);
@@ -896,6 +946,9 @@ async function main() {
     goal: redact(opts.goal), verdict, reason: redact(reason), turns,
     durationMs: Date.now() - started, model: "MiniMax-M3", screen: size,
     execution_diagnosis: executionDiagnosis,
+    // goal_completed here means the loop ended on its own terms, NOT that the goal
+    // passed — read `verdict` for that. It only rules out budget/fuse truncation.
+    terminated_by: terminatedBy,
     execution_budget: { max_turns: opts.maxTurns, max_minutes: opts.maxMinutes, no_progress_turns: opts.noProgressTurns },
     usage: { ...modelUsage, totalTokens: modelUsage.input + modelUsage.output },
     annotations: {

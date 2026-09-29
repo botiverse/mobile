@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import plistlib
 import shutil
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -10,6 +12,7 @@ from typing import Any
 from device_use.runner import CommandResult, DeviceUseError, run_command
 
 from .config import IosConfig
+from . import qa_loop
 
 
 class IosUseError(DeviceUseError):
@@ -135,65 +138,220 @@ class IosSimulator:
         derived_data: Path | None = None,
         bundle: str | None = None,
         device: str | None = None,
+        driver: str | None = None,
+        agent_device_bin: str | None = None,
     ) -> dict[str, Any]:
+        from .agent_device import DRIVER_AGENT_DEVICE, DRIVER_QA_LOOP
+
+        resolved_driver = (driver or os.environ.get("IOS_USE_DRIVER") or DRIVER_AGENT_DEVICE).strip()
+        resolved_device = device or self.ensure_device()
+        resolved_bundle = bundle or self.config.bundle
+        if resolved_driver == DRIVER_AGENT_DEVICE:
+            return self._interact_agent_device(
+                actions,
+                bundle=resolved_bundle,
+                device=resolved_device,
+                binary=agent_device_bin,
+            )
+        if resolved_driver != DRIVER_QA_LOOP:
+            raise IosUseError(f"unknown ios-use driver {resolved_driver!r}; use agent-device or qa-loop")
         resolved_workspace = workspace or self.config.workspace
         if resolved_workspace is None:
-            raise IosUseError("interact requires --workspace or IOS_USE_WORKSPACE")
-        resolved_device = device or self.ensure_device()
+            raise IosUseError("qa-loop driver requires --workspace or IOS_USE_WORKSPACE")
         resolved_derived_data = derived_data or self.config.derived_data
-        resolved_configuration = configuration or self.config.configuration
-        build_result = self.xcodebuild(
-            [
-                "-workspace",
-                str(resolved_workspace),
-                "-scheme",
-                interaction_scheme,
-                "-configuration",
-                resolved_configuration,
-                "-destination",
-                f"id={resolved_device}",
-                "-derivedDataPath",
-                str(resolved_derived_data),
-                "-quiet",
-                "build-for-testing",
-            ]
-        )
-        xctestrun = self._patched_xctestrun(
-            actions,
-            derived_data=resolved_derived_data,
+        session = self._ensure_qa_loop(
+            workspace=resolved_workspace,
             interaction_scheme=interaction_scheme,
-            bundle=bundle or self.config.bundle,
+            configuration=configuration or self.config.configuration,
+            derived_data=resolved_derived_data,
+            bundle=resolved_bundle,
+            device=resolved_device,
         )
-        test_result = self.xcodebuild(
-            [
-                "-xctestrun",
-                str(xctestrun),
-                "-destination",
-                f"id={resolved_device}",
-                "-derivedDataPath",
-                str(resolved_derived_data),
-                "-quiet",
-                "-only-testing:iosAppUITests/IosUseInteractionTests/testRunIosUseActions",
-                "test-without-building",
-            ]
-        )
+        results: list[Any] = []
+        with qa_loop.exclusive_lock(qa_loop.lock_path_for(session["root"])):
+            for action in actions:
+                for mapped in qa_loop.map_ios_use_action(action):
+                    results.append(qa_loop.send_action(session["io_dir"], mapped))
         return {
             "device": resolved_device,
             "scheme": interaction_scheme,
-            "bundle": bundle or self.config.bundle,
+            "bundle": resolved_bundle,
             "actions": actions,
-            "xctestrun": str(xctestrun),
-            "build": compact_result(build_result),
-            "test": compact_result(test_result),
+            "harness": "QaAcceptanceLoopTests",
+            "driver": "qa-loop",
+            "io_dir": str(session["io_dir"]),
+            "loop_pid": session["pid"],
+            "results": results,
         }
 
-    def _patched_xctestrun(
+    def _interact_agent_device(
         self,
         actions: list[dict[str, Any]],
         *,
+        bundle: str,
+        device: str,
+        binary: str | None,
+    ) -> dict[str, Any]:
+        from .agent_device import AgentDeviceSession, resolve_binary
+
+        session = AgentDeviceSession(binary=resolve_binary(binary), bundle=bundle, device=device)
+        session.ensure_open()
+        screen_px = self._screen_px(device)
+        results: list[str] = []
+        for action in actions:
+            results.extend(session.apply(action, screen_px=screen_px))
+        return {
+            "device": device,
+            "bundle": bundle,
+            "actions": actions,
+            "driver": "agent-device",
+            "harness": "agent-device",
+            "session": session.session,
+            "binary": session.binary,
+            "results": results,
+        }
+
+    def _screen_px(self, device: str) -> tuple[int, int]:
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
+            path = Path(handle.name)
+        try:
+            self.xcrun(["simctl", "io", device, "screenshot", str(path)])
+            data = path.read_bytes()
+        finally:
+            path.unlink(missing_ok=True)
+        if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n":
+            raise IosUseError("could not read simulator screenshot size")
+        width = int.from_bytes(data[16:20], "big")
+        height = int.from_bytes(data[20:24], "big")
+        return width, height
+
+    def start_xcodebuild_background(
+        self,
+        args: list[str],
+        *,
+        log_path: Path,
+        env: dict[str, str] | None = None,
+    ) -> int:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_file = log_path.open("ab")
+        proc = subprocess.Popen(
+            [self.config.xcodebuild, *args],
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            env=env,
+        )
+        return proc.pid
+
+    def _ensure_qa_loop(
+        self,
+        *,
+        workspace: Path,
+        interaction_scheme: str,
+        configuration: str,
+        derived_data: Path,
+        bundle: str,
+        device: str,
+    ) -> dict[str, Any]:
+        root = qa_loop.loop_root(derived_data, device)
+        io_dir = qa_loop.io_dir_for(root)
+        pid_path = qa_loop.pid_path_for(root)
+        log_path = qa_loop.log_path_for(root)
+        ready = io_dir / "ready.json"
+        wanted = qa_loop.session_identity(
+            workspace=workspace,
+            scheme=interaction_scheme,
+            configuration=configuration,
+            bundle=bundle,
+            device=device,
+        )
+        with qa_loop.exclusive_lock(qa_loop.lock_path_for(root)):
+            stored = qa_loop.read_session(root)
+            existing = qa_loop.read_pid(pid_path)
+            if existing is None and isinstance(stored, dict):
+                raw_pid = stored.get("pid")
+                if isinstance(raw_pid, int):
+                    existing = raw_pid
+                elif isinstance(raw_pid, str) and raw_pid.isdigit():
+                    existing = int(raw_pid)
+            if (
+                existing
+                and qa_loop.pid_alive(existing)
+                and ready.exists()
+                and not qa_loop.loop_sources_newer(workspace, ready)
+                and qa_loop.session_matches(stored, wanted)
+            ):
+                return {"root": root, "io_dir": io_dir, "pid": existing}
+            if existing:
+                qa_loop.stop_process_group(existing)
+            if io_dir.exists():
+                shutil.rmtree(io_dir)
+            io_dir.mkdir(parents=True)
+            if log_path.exists():
+                log_path.unlink()
+            self.xcodebuild(
+                [
+                    "-workspace",
+                    str(workspace),
+                    "-scheme",
+                    interaction_scheme,
+                    "-configuration",
+                    configuration,
+                    "-destination",
+                    f"id={device}",
+                    "-derivedDataPath",
+                    str(derived_data),
+                    "-quiet",
+                    "build-for-testing",
+                ]
+            )
+            # Same channel as .github/workflows/qa-acceptance-ios.yml: TEST_RUNNER_*
+            # is forwarded into the XCUITest process. Patching only the first
+            # xctestrun target used to inject env into iosAppTests and skip the
+            # UI test, which XCTSkip'd in ~3s with no ready.json.
+            runner_env = os.environ.copy()
+            runner_env["TEST_RUNNER_QA_LOOP_IO_DIR"] = str(io_dir)
+            runner_env["TEST_RUNNER_QA_LOOP_BUNDLE"] = bundle
+            runner_env["TEST_RUNNER_QA_LOOP_IDLE_TIMEOUT"] = qa_loop.DEFAULT_IDLE_TIMEOUT
+            pid = 0
+            try:
+                pid = self.start_xcodebuild_background(
+                    [
+                        "-workspace",
+                        str(workspace),
+                        "-scheme",
+                        interaction_scheme,
+                        "-configuration",
+                        configuration,
+                        "-destination",
+                        f"id={device}",
+                        "-derivedDataPath",
+                        str(derived_data),
+                        "-quiet",
+                        f"-only-testing:{qa_loop.QA_LOOP_TEST}",
+                        "test-without-building",
+                    ],
+                    log_path=log_path,
+                    env=runner_env,
+                )
+                pid_path.write_text(str(pid), encoding="utf-8")
+                qa_loop.write_session(root, wanted, pid=pid)
+                qa_loop.wait_ready(io_dir, pid=pid, log_path=log_path)
+            except Exception:
+                if pid:
+                    qa_loop.stop_process_group(pid)
+                raise
+            return {"root": root, "io_dir": io_dir, "pid": pid}
+
+    def _patched_xctestrun(
+        self,
+        env_vars: dict[str, str],
+        *,
         derived_data: Path,
         interaction_scheme: str,
-        bundle: str,
+        bundle: str | None = None,
     ) -> Path:
         products = derived_data / "Build" / "Products"
         candidates = sorted(
@@ -204,19 +362,24 @@ class IosSimulator:
         if not candidates:
             raise IosUseError(f"xctestrun not found after build-for-testing in {products}")
         source = candidates[0]
-        patched = products / f"ios-use-actions-{now_id()}.xctestrun"
+        patched = products / f"ios-use-qa-loop-{now_id()}.xctestrun"
         shutil.copyfile(source, patched)
         with patched.open("rb") as stream:
             data = plistlib.load(stream)
-        test_key = next((key for key in data.keys() if key != "__xctestrun_metadata__"), None)
-        if test_key is None:
+        patched_any = False
+        for key, target in data.items():
+            if key == "__xctestrun_metadata__" or not isinstance(target, dict):
+                continue
+            if "EnvironmentVariables" not in target and "TestingEnvironmentVariables" not in target:
+                continue
+            patched_any = True
+            for env_key in ("EnvironmentVariables", "TestingEnvironmentVariables"):
+                target.setdefault(env_key, {})
+                target[env_key].update(env_vars)
+                if bundle:
+                    target[env_key]["IOS_USE_BUNDLE"] = bundle
+        if not patched_any:
             raise IosUseError(f"invalid xctestrun without test target entry: {patched}")
-        target = data[test_key]
-        encoded_actions = json.dumps(actions, ensure_ascii=False, separators=(",", ":"))
-        for env_key in ("EnvironmentVariables", "TestingEnvironmentVariables"):
-            target.setdefault(env_key, {})
-            target[env_key]["IOS_USE_ACTIONS"] = encoded_actions
-            target[env_key]["IOS_USE_BUNDLE"] = bundle
         with patched.open("wb") as stream:
             plistlib.dump(data, stream)
         return patched

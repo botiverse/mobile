@@ -25,6 +25,23 @@ internal data class SlockNetworkTransportPlatformPolicy(
     val readyDetail: String
 )
 
+internal const val SLOCK_HTTP1_ONLY_METADATA_KEY = "com.raft.mobile.transport.http1_only"
+internal const val SLOCK_HTTP1_ONLY_METADATA_VALUE = "true"
+
+internal fun NetworkRequest.flagHttp1Only(warningLogger: (String) -> Unit) {
+    val metadata = metadata
+    if (metadata is MutableMap<String, String>) {
+        metadata[SLOCK_HTTP1_ONLY_METADATA_KEY] = SLOCK_HTTP1_ONLY_METADATA_VALUE
+    } else {
+        warningLogger(
+            "slock_networkkmm_http1_only_flag_failed metadata=${metadata::class.simpleName}"
+        )
+    }
+}
+
+internal fun NetworkRequest.isHttp1Only(): Boolean =
+    metadata[SLOCK_HTTP1_ONLY_METADATA_KEY] == SLOCK_HTTP1_ONLY_METADATA_VALUE
+
 internal expect fun slockNetworkTransportPlatformPolicy(): SlockNetworkTransportPlatformPolicy
 
 /** Mirrors the process-global remote policy into non-NetworkClient platform consumers. */
@@ -76,7 +93,10 @@ internal class SlockNetworkTransportController(
 
     fun updateRemoteActiveSelection(scopeId: String, serverId: String?): String? =
         mutateRemoteState("selection") { state ->
-            val normalizedScope = scopeId.trim().ifBlank { "legacy" }
+            // A shell scope id is required (SlockShellStoreScope rejects blank ids). Two anonymous
+            // callers must not share one "legacy" slot and overwrite each other's active server.
+            val normalizedScope = scopeId.trim()
+            if (normalizedScope.isBlank()) return@mutateRemoteState state
             val normalizedServer = serverId?.trim()?.takeIf(String::isNotBlank)
             val next = state.activeServerByScope.toMutableMap()
             if (normalizedServer == null) next.remove(normalizedScope) else next[normalizedScope] = normalizedServer
@@ -104,12 +124,16 @@ internal class SlockNetworkTransportController(
 
     fun selectionFor(request: NetworkRequest): NetworkEngineSelection {
         val snapshot = getPreferenceSync()
+        val http1Only = request.isHttp1Only()
         // Request-owned and copied by NetworkKMM. A later Settings change does
         // not mutate this call, including auth/retry attempts owned by it.
-        request.setCurlHttp3Enabled(snapshot.effectiveHttp3Enabled)
+        // Presigned direct-upload PUTs are pinned to HTTP/1.1: their R2 S3
+        // endpoints must not attempt an HTTP/3 upgrade even when the remote
+        // transport policy pins a request to curl_h3.
+        request.setCurlHttp3Enabled(if (http1Only) false else snapshot.effectiveHttp3Enabled)
         return NetworkEngineSelection(
             requestedEngine =
-                if (snapshot.curlRequestedForNewCalls) {
+                if (http1Only || snapshot.curlRequestedForNewCalls) {
                     NetworkTransportEngine.CURL
                 } else {
                     NetworkTransportEngine.KTOR
@@ -177,9 +201,9 @@ internal class SlockNetworkTransportController(
         }
         val variants = evaluations.map { evaluation ->
             if (!evaluation.enabled) {
-                SlockRemoteTransportVariant.CurlH3
+                SlockRemoteTransportVariant.CurlH2
             } else {
-                SlockRemoteTransportVariant.fromWire(evaluation.variant) ?: SlockRemoteTransportVariant.CurlH3
+                SlockRemoteTransportVariant.fromWire(evaluation.variant) ?: SlockRemoteTransportVariant.CurlH2
             }
         }.toSet()
         return if (variants.size == 1) {
@@ -298,7 +322,7 @@ private data class RemoteTransportPolicy(
     companion object {
         val Default = RemoteTransportPolicy(
             resolved = false,
-            variant = SlockRemoteTransportVariant.CurlH3,
+            variant = SlockRemoteTransportVariant.CurlH2,
             conflicting = false
         )
     }
@@ -395,7 +419,10 @@ internal fun slockNetworkClientConfig(
                             "negotiatedProtocol=${diagnostics.negotiatedProtocol} " +
                             "status=${diagnostics.statusCode ?: "none"} " +
                             "errorKind=${diagnostics.errorKind ?: "none"} " +
-                            "transportId=${diagnostics.timing.transportRequestId ?: "none"}"
+                            "transportId=${diagnostics.timing.transportRequestId ?: "none"} " +
+                            // task #372 / #1135: clamped connect budget actually handed to the
+                            // engine (0.1.0-raft.38); 0 = route did not report, shown as none.
+                            "effectiveConnectTimeoutMillis=${diagnostics.timing.effectiveConnectTimeoutMillis.takeIf { it > 0 }?.toString() ?: "none"}"
                     )
                 }
             }

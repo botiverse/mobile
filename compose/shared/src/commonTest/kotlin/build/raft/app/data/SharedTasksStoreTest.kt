@@ -2213,10 +2213,142 @@ class SharedTasksStoreTest {
                 }
         )
 
+    @Test
+    fun assignTaskCommitsAssigneeAndClearsBusyState() = runBlocking {
+        val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val previousTask = task("task-1", TaskStatus.Todo, revision = 4L)
+        val assignee = MemberProfile(MemberId("user-2"), "Nathan Peer", "nathan", MemberKind.Human)
+        val authStore =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                    accessToken = "token",
+                    refreshToken = "refresh",
+                    selectedServerId = "server-1"
+                )
+            )
+        val repository =
+            FakeTasksRepository(
+                assignResult =
+                    DataResult.Content(
+                        TaskActionResult(task("task-1", TaskStatus.Todo, assignee = assignee, revision = 5L))
+                    )
+            )
+        val viewModel =
+            SharedTasksViewModel(
+                authStore = authStore,
+                dataSource = noOpTasksDataSource(),
+                runtimeScopeOverride = runtimeScope,
+                useCase = SharedTasksUseCase(authStore = authStore, repository = repository)
+            )
+        viewModel.dispatch(
+            SharedTasksRouteIntent.SeedContent(
+                TaskSnapshot(tasks = listOf(previousTask), summaryCounts = mapOf(TaskStatus.Todo to 1))
+            )
+        )
+
+        viewModel.dispatch(SharedTasksRouteIntent.AssignTask(previousTask, assignee))
+        yield()
+
+        val state = viewModel.state.value
+        val content = assertIs<ScreenLoadState.Content<TasksContent>>(state.loadState).data
+        assertEquals(MemberId("user-2"), content.tasks.single().assignee?.id)
+        assertEquals(null, state.statusUpdatingTaskId)
+        assertEquals(null, state.statusUpdateErrorCode)
+        assertEquals(1, repository.assignCalls)
+        assertEquals(MemberId("user-2"), repository.lastAssignee?.id)
+        assertEquals(4L, repository.lastExpectedRevision)
+        runtimeScope.cancel()
+    }
+
+    @Test
+    fun assignTaskWithSameAssigneeIsSkippedWithoutNetworkCall() = runBlocking {
+        val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val assignee = MemberProfile(MemberId("user-2"), "Nathan Peer", "nathan", MemberKind.Human)
+        val previousTask = task("task-1", TaskStatus.Todo, assignee = assignee, revision = 4L)
+        val authStore =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                    accessToken = "token",
+                    refreshToken = "refresh",
+                    selectedServerId = "server-1"
+                )
+            )
+        val repository = FakeTasksRepository()
+        val viewModel =
+            SharedTasksViewModel(
+                authStore = authStore,
+                dataSource = noOpTasksDataSource(),
+                runtimeScopeOverride = runtimeScope,
+                useCase = SharedTasksUseCase(authStore = authStore, repository = repository)
+            )
+        viewModel.dispatch(
+            SharedTasksRouteIntent.SeedContent(
+                TaskSnapshot(tasks = listOf(previousTask), summaryCounts = mapOf(TaskStatus.Todo to 1))
+            )
+        )
+
+        viewModel.dispatch(SharedTasksRouteIntent.AssignTask(previousTask, assignee))
+        yield()
+
+        assertEquals(0, repository.assignCalls)
+        runtimeScope.cancel()
+    }
+
+    @Test
+    fun assignTaskUnassignSendsNullAssignee() = runBlocking {
+        val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val assignee = MemberProfile(MemberId("user-2"), "Nathan Peer", "nathan", MemberKind.Human)
+        val previousTask = task("task-1", TaskStatus.Todo, assignee = assignee, revision = 4L)
+        val authStore =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                    accessToken = "token",
+                    refreshToken = "refresh",
+                    selectedServerId = "server-1"
+                )
+            )
+        val repository =
+            FakeTasksRepository(
+                assignResult =
+                    DataResult.Content(
+                        TaskActionResult(task("task-1", TaskStatus.Todo, assignee = null, revision = 5L))
+                    )
+            )
+        val viewModel =
+            SharedTasksViewModel(
+                authStore = authStore,
+                dataSource = noOpTasksDataSource(),
+                runtimeScopeOverride = runtimeScope,
+                useCase = SharedTasksUseCase(authStore = authStore, repository = repository)
+            )
+        viewModel.dispatch(
+            SharedTasksRouteIntent.SeedContent(
+                TaskSnapshot(tasks = listOf(previousTask), summaryCounts = mapOf(TaskStatus.Todo to 1))
+            )
+        )
+
+        viewModel.dispatch(SharedTasksRouteIntent.AssignTask(previousTask, null))
+        yield()
+
+        val state = viewModel.state.value
+        val content = assertIs<ScreenLoadState.Content<TasksContent>>(state.loadState).data
+        assertEquals(null, content.tasks.single().assignee)
+        assertEquals(null, state.statusUpdateErrorCode)
+        assertEquals(1, repository.assignCalls)
+        assertEquals(null, repository.lastAssignee)
+        assertEquals(4L, repository.lastExpectedRevision)
+        runtimeScope.cancel()
+    }
+
     private class FakeTasksRepository(
         private val loadResult: DataResult<TaskSnapshot> =
             DataResult.Error(ScreenError("not_configured")),
         private val updateResult: DataResult<TaskActionResult> =
+            DataResult.Error(ScreenError("not_configured")),
+        private val assignResult: DataResult<TaskActionResult> =
             DataResult.Error(ScreenError("not_configured")),
         private val createResult: DataResult<TaskSnapshot> =
             DataResult.Error(ScreenError("not_configured"))
@@ -2264,6 +2396,25 @@ class SharedTasksStoreTest {
             return updateResult
         }
 
+        var assignCalls = 0
+            private set
+        var lastAssignee: MemberProfile? = null
+            private set
+        var lastExpectedRevision: Long? = null
+            private set
+
+        override suspend fun assignTask(
+            serverId: ServerId,
+            taskId: TaskId,
+            assignee: MemberProfile?,
+            expectedRevision: Long?
+        ): DataResult<TaskActionResult> {
+            assignCalls += 1
+            lastAssignee = assignee
+            lastExpectedRevision = expectedRevision
+            return assignResult
+        }
+
         override suspend fun createTasks(
             serverId: ServerId,
             channelId: ChannelId,
@@ -2278,6 +2429,8 @@ class SharedTasksStoreTest {
         private val channelLoadResult: DataResult<TaskSnapshot> =
             DataResult.Error(ScreenError("not_configured")),
         private val updateResult: DataResult<TaskActionResult> =
+            DataResult.Error(ScreenError("not_configured")),
+        private val assignResult: DataResult<TaskActionResult> =
             DataResult.Error(ScreenError("not_configured")),
         private val createResult: DataResult<TaskSnapshot> =
             DataResult.Error(ScreenError("not_configured"))
@@ -2317,6 +2470,28 @@ class SharedTasksStoreTest {
             status: TaskStatus
         ): DataResult<TaskActionResult> =
             updateResult
+
+        var assignCalls = 0
+            private set
+        var lastAssignTaskId: TaskId? = null
+            private set
+        var lastAssignee: MemberProfile? = null
+            private set
+        var lastExpectedRevision: Long? = null
+            private set
+
+        override suspend fun assignTask(
+            serverId: ServerId,
+            taskId: TaskId,
+            assignee: MemberProfile?,
+            expectedRevision: Long?
+        ): DataResult<TaskActionResult> {
+            assignCalls += 1
+            lastAssignTaskId = taskId
+            lastAssignee = assignee
+            lastExpectedRevision = expectedRevision
+            return assignResult
+        }
 
         override suspend fun createTasks(
             serverId: ServerId,
