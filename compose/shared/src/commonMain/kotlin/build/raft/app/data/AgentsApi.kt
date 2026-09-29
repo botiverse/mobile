@@ -2,6 +2,9 @@ package build.raft.app.data
 
 import build.raft.app.model.isExternalAgent
 import build.raft.app.model.MemberId
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
+import build.raft.app.data.runtimeform.v2.runtimeFormV2ServerError
+import build.raft.app.data.runtimeform.v2.withRuntimeFormV2
 import build.raft.app.model.RuntimeProviderConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.KSerializer
@@ -13,6 +16,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
 
 private val agentsApiJson = Json {
     ignoreUnknownKeys = true
@@ -57,6 +61,9 @@ internal interface SlockAgentsApi {
     suspend fun updateAgentScopes(agentId: MemberId, body: String): HomeNetworkResponse
     suspend fun resetAgentScopes(agentId: MemberId): HomeNetworkResponse
     suspend fun issueBootstrapToken(agentId: MemberId, body: String): HomeNetworkResponse
+    /** Runtime form protocol v2 for editing: `GET /agents/:id/runtime-form`, the create form plus `values`. */
+    suspend fun agentRuntimeFormV2(agentId: MemberId): HomeNetworkResponse =
+        error("agentRuntimeFormV2 is not implemented")
 }
 
 internal class SlockAgentsNetworkApi(
@@ -152,6 +159,12 @@ internal class SlockAgentsNetworkApi(
             priority = DataRequestPriority.Visible,
             path = "agents/${agentId.value}/workspace-files/read",
             query = listOf("path" to path)
+        )
+
+    override suspend fun agentRuntimeFormV2(agentId: MemberId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/runtime-form"
         )
 
     override suspend fun agentSkills(agentId: MemberId): HomeNetworkResponse =
@@ -502,7 +515,8 @@ private fun <T> HomeNetworkResponse.toAgentsDataError(): DataResult<T> {
                 ScreenError(
                     code = runtimeFormIssueCodeOrNull() ?: agentNameConflictCodeOrNull() ?: "http_$code",
                     retryable = code != 404,
-                    serverMessage = serverMessage
+                    serverMessage = serverMessage,
+                    formFieldKeys = runtimeFormV2ServerError(bodyText ?: errorBodyText)?.fieldKeys.orEmpty()
                 )
             )
     }
@@ -934,6 +948,13 @@ private val agentsApiCreateBodyJson = Json {
 }
 
 internal fun buildCreateAgentBody(body: CreateAgentBody): String = agentsApiCreateBodyJson.encodeToString(body)
+
+/** Runtime form v2 create: the create body plus `formDefinitionRef {protocolVersion:2}` and `formValues`. */
+internal fun buildCreateAgentV2Body(body: CreateAgentBody, submit: RuntimeFormV2SubmitBody): String =
+    agentsApiCreateBodyJson.encodeToJsonElement(CreateAgentBody.serializer(), body.copy(runtimeConfig = null, formDefinitionRef = null))
+        .jsonObject
+        .withRuntimeFormV2(submit)
+        .toString()
 internal fun buildUpdateAgentBody(body: UpdateAgentBody): String = agentsApiJson.encodeToString(body)
 internal fun buildResetAgentBody(mode: String): String = agentsApiJson.encodeToString(ResetAgentBody(mode))
 internal fun buildAssignAgentMachineBody(machineId: String?): String =

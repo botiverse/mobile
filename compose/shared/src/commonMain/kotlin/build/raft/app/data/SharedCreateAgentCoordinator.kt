@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.SharedCreateAgentMachineOption
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
 import build.raft.app.SharedCreateAgentRuntimeModelCatalog
 import build.raft.app.SharedCreateAgentRuntimeModelOption
 import build.raft.app.model.RUNTIME_MODELS
@@ -39,7 +40,9 @@ internal data class CreateAgentRequest(
     val runtimeConfig: RuntimeConfig?,
     val formDefinitionRef: SharedRuntimeFormDefinitionRef? = null,
     val external: Boolean,
-    val avatarUrl: String? = null
+    val avatarUrl: String? = null,
+    /** Runtime form v2 create: replaces runtimeConfig/formDefinitionRef on the wire. */
+    val runtimeFormV2: RuntimeFormV2SubmitBody? = null
 )
 
 internal class SharedCreateAgentCoordinator(
@@ -48,21 +51,37 @@ internal class SharedCreateAgentCoordinator(
     private val logger: (String) -> Unit = {}
 ) {
     suspend fun createAgent(request: CreateAgentRequest): DataResult<AgentSummary> {
-        val body = buildCreateAgentBody(
-            CreateAgentBody(
-                name = request.name,
-                description = request.description,
-                model = request.runtimeConfig?.model?.toModelIdOrNull(),
-                runtime = request.runtimeConfig?.runtime,
-                reasoningEffort = request.runtimeConfig?.reasoningEffort,
-                machineId = request.machineId,
-                envVars = request.runtimeConfig?.envVars,
-                avatarUrl = request.avatarUrl,
-                runtimeConfig = request.runtimeConfig,
-                formDefinitionRef = request.formDefinitionRef,
-                external = request.external.takeIf { it }
-            )
-        )
+        val v2 = request.runtimeFormV2
+        val body =
+            if (v2 != null) {
+                // The server assembles the runtimeConfig from the field values.
+                buildCreateAgentV2Body(
+                    CreateAgentBody(
+                        name = request.name,
+                        description = request.description,
+                        runtime = v2.runtimeId,
+                        machineId = request.machineId,
+                        avatarUrl = request.avatarUrl
+                    ),
+                    v2
+                )
+            } else {
+                buildCreateAgentBody(
+                    CreateAgentBody(
+                        name = request.name,
+                        description = request.description,
+                        model = request.runtimeConfig?.model?.toModelIdOrNull(),
+                        runtime = request.runtimeConfig?.runtime,
+                        reasoningEffort = request.runtimeConfig?.reasoningEffort,
+                        machineId = request.machineId,
+                        envVars = request.runtimeConfig?.envVars,
+                        avatarUrl = request.avatarUrl,
+                        runtimeConfig = request.runtimeConfig,
+                        formDefinitionRef = request.formDefinitionRef,
+                        external = request.external.takeIf { it }
+                    )
+                )
+            }
         return when (val result = agentsApiClient.createAgent(body)) {
             is DataResult.Content -> DataResult.Content(result.data)
             is DataResult.Empty -> DataResult.Empty(result.reason)

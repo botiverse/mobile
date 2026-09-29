@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.data.runtimeform.v2.runtimeFormV2ServerError
+import build.raft.app.data.runtimeform.v2.withRuntimeFormV2
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -1182,9 +1184,13 @@ fun buildSharedAgentProfileUpdateBody(request: AgentProfileUpdateRequest): Strin
                     }
                 }
                 request.runtimeResetMode?.let { put("restartMode", it.wireValue) }
+            } else if (request.runtimeFormV2 != null) {
+                request.runtimeResetMode?.let { put("restartMode", it.wireValue) }
             }
         }
-    return body.toString()
+    // Runtime form v2 edit: the server assembles the runtimeConfig from field
+    // values, so only the ref and formValues travel (never runtimeConfig).
+    return request.runtimeFormV2?.let { body.withRuntimeFormV2(it) }?.toString() ?: body.toString()
 }
 
 private fun RuntimeModelConfig.toAgentModelWireValue(): String =
@@ -1317,7 +1323,8 @@ private fun <T> HomeNetworkResponse.toDataError(): DataResult<T> {
                 ScreenError(
                     code = "http_$code",
                     retryable = code != 404,
-                    serverMessage = serverMessage
+                    serverMessage = serverMessage,
+                    formFieldKeys = runtimeFormV2ServerError(bodyText ?: errorBodyText)?.fieldKeys.orEmpty()
                 )
             )
     }

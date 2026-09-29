@@ -48,7 +48,12 @@ data class ScreenError(
      * upload retry policy can classify an explicit transient/terminal code without guessing from
      * HTTP status or human text.
      */
-    val serverCode: String? = null
+    val serverCode: String? = null,
+    /**
+     * Runtime form v2: the fields a 4xx response's issues point at (`/formValues/<field>`),
+     * so the form can mark them. Empty for every other error.
+     */
+    val formFieldKeys: List<String> = emptyList()
 )
 
 data class PermissionBlocker(

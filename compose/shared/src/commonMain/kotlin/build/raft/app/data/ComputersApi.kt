@@ -58,6 +58,18 @@ interface SlockComputersApi {
         ref: SharedRuntimeFormDefinitionRef,
         sourceId: String
     ): HomeNetworkResponse = error("runtimeFormOptionSource is not implemented")
+    /** Runtime form protocol v2: `GET …/runtime-forms/v2/:runtimeId`, the current form with no schemaVersion pin. */
+    suspend fun runtimeFormV2(
+        serverId: ServerId,
+        machineId: String,
+        runtimeId: String
+    ): HomeNetworkResponse = error("runtimeFormV2 is not implemented")
+    suspend fun runtimeFormV2OptionSource(
+        serverId: ServerId,
+        machineId: String,
+        runtimeId: String,
+        sourceId: String
+    ): HomeNetworkResponse = error("runtimeFormV2OptionSource is not implemented")
     suspend fun runtimeModels(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse
     suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse
 }
@@ -150,6 +162,31 @@ internal class SlockComputersNetworkApi(
                 "servers/${serverId.value}/machines/${machineId.trim()}/runtime-form-definitions/" +
                     "${ref.runtimeId}/option-sources/${sourceId.trim()}",
             query = listOf("schemaVersion" to ref.schemaVersion),
+            serverIdOverride = serverId
+        )
+
+    override suspend fun runtimeFormV2(
+        serverId: ServerId,
+        machineId: String,
+        runtimeId: String
+    ): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-forms/v2/${runtimeId.trim()}",
+            serverIdOverride = serverId
+        )
+
+    override suspend fun runtimeFormV2OptionSource(
+        serverId: ServerId,
+        machineId: String,
+        runtimeId: String,
+        sourceId: String
+    ): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path =
+                "servers/${serverId.value}/machines/${machineId.trim()}/runtime-forms/v2/" +
+                    "${runtimeId.trim()}/option-sources/${sourceId.trim()}",
             serverIdOverride = serverId
         )
 
