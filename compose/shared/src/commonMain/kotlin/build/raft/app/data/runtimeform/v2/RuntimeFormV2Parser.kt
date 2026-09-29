@@ -37,9 +37,12 @@ internal const val RUNTIME_FORM_V2_OPTIONS_FROM_KEY = "x-optionsFrom"
 internal val RUNTIME_FORM_V2_CLIENT_CAPABILITIES: Set<String> = setOf(
     // FieldCopy.choices: display label/description per option value.
     RUNTIME_FORM_V2_CAPABILITY_CHOICE_LABELS,
+    // OptionSource.customValueAllowed: a select that also accepts a typed value.
+    RUNTIME_FORM_V2_CAPABILITY_CUSTOM_VALUE,
 )
 
 internal const val RUNTIME_FORM_V2_CAPABILITY_CHOICE_LABELS: String = "choice.labels"
+internal const val RUNTIME_FORM_V2_CAPABILITY_CUSTOM_VALUE: String = "select.custom_value"
 
 internal enum class RuntimeFormV2FieldKind {
     Text,

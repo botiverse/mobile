@@ -25,8 +25,8 @@ class RuntimeFormV2ChoiceLabelsTest {
     @Test
     fun choiceLabelsIsAcceptedAndStillOnlyItsOwnCapability() {
         assertTrue(RUNTIME_FORM_V2_CAPABILITY_CHOICE_LABELS in RUNTIME_FORM_V2_CLIENT_CAPABILITIES)
-        // The other two stay gated until implemented: a form needing them still falls back to v1.
-        assertNull(parseRuntimeFormV2(CODEX_LIKE_REQUIRES_CUSTOM_VALUE))
+        // option_source.status stays gated until implemented: a form needing it still falls back to v1.
+        assertNull(parseRuntimeFormV2(REQUIRES_STATUS))
     }
 
     @Test
@@ -71,10 +71,10 @@ class RuntimeFormV2ChoiceLabelsTest {
         assertNull(tier.single { it.value == "steady" }.description, "non-string description is dropped")
     }
 
-    private val CODEX_LIKE_REQUIRES_CUSTOM_VALUE: JsonObject =
+    private val REQUIRES_STATUS: JsonObject =
         formJson(CHOICES_V2_FORM_JSON).set(
             listOf("requiredClientCapabilities"),
-            buildJsonArray { add(JsonPrimitive("choice.labels")); add(JsonPrimitive("select.custom_value")) }
+            buildJsonArray { add(JsonPrimitive("choice.labels")); add(JsonPrimitive("option_source.status")) }
         )
 
     private fun formJson(body: String): JsonObject = Json.parseToJsonElement(body).jsonObject

@@ -54,13 +54,20 @@ internal data class RuntimeFormV2Source(
     val defaultValue: String? = null,
     val optionsByValue: Map<String, List<RuntimeFormV2Choice>>? = null,
     val defaultValueByValue: Map<String, String>? = null,
-    val customValueAllowedByValue: Map<String, Boolean>? = null
+    val customValueAllowedByValue: Map<String, Boolean>? = null,
+    /** `select.custom_value` (kind select only): a combobox; any typed value is valid besides the listed ones. */
+    val customValueAllowed: Boolean? = null
 )
 
 internal typealias RuntimeFormV2Sources = Map<String, RuntimeFormV2Source>
 
 internal sealed interface RuntimeFormV2Choices {
-    data class Select(val options: List<RuntimeFormV2Choice>, val allowEmpty: Boolean) : RuntimeFormV2Choices
+    /** [allowCustom] (`select.custom_value`): pick a listed option or type any value; a stored unlisted value is shown as typed. */
+    data class Select(
+        val options: List<RuntimeFormV2Choice>,
+        val allowEmpty: Boolean,
+        val allowCustom: Boolean = false
+    ) : RuntimeFormV2Choices
     data object FreeText : RuntimeFormV2Choices
 }
 
@@ -97,7 +104,8 @@ internal fun parseRuntimeFormV2Source(value: JsonElement): RuntimeFormV2Source? 
         }?.toMap(),
         customValueAllowedByValue = (root["customValueAllowedByValue"] as? JsonObject)?.mapNotNull { (parent, allowed) ->
             (allowed as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull?.let { parent to it }
-        }?.toMap()
+        }?.toMap(),
+        customValueAllowed = (root["customValueAllowed"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull
     )
 }
 
@@ -112,7 +120,11 @@ internal fun runtimeFormV2Choices(
     val source = field.optionSourceId?.let { sources[it] }
     return when (field.kind) {
         RuntimeFormV2FieldKind.Select ->
-            RuntimeFormV2Choices.Select(source?.options.orEmpty().map { it.labelledFor(field) }, allowEmpty = false)
+            RuntimeFormV2Choices.Select(
+                source?.options.orEmpty().map { it.labelledFor(field) },
+                allowEmpty = false,
+                allowCustom = source?.customValueAllowed == true
+            )
         RuntimeFormV2FieldKind.DependentSelect -> {
             val parent = values.text(field.dependsOn)
             if (source?.customValueAllowedByValue?.get(parent) == true) {
@@ -224,7 +236,8 @@ internal fun runtimeFormV2ValuesAfterSourceReload(
         val current = next.text(field.key)
         if (current.isEmpty()) continue
         val choices = runtimeFormV2Choices(field, sources, next) as? RuntimeFormV2Choices.Select ?: continue
-        if (choices.options.any { it.value == current }) continue
+        // A typed value (`select.custom_value`) is the user's own; a re-probe never replaces it.
+        if (choices.allowCustom || choices.options.any { it.value == current }) continue
         next = applyRuntimeFormV2Change(form, sources, next, field.key, defaultFor(field, sources, next))
     }
     return next
@@ -291,7 +304,15 @@ internal fun validateRuntimeFormV2(
             errors[field.key] = RuntimeFormV2ErrorCode.InvalidUrl
         }
         val choices = runtimeFormV2Choices(field, sources, values)
-        if (choices is RuntimeFormV2Choices.Select && text.isNotEmpty() && choices.options.none { it.value == text }) {
+        // A derived list with nothing to offer (a model without an effort menu, or a typed custom model no
+        // option describes) is not shown, so it cannot be corrected here: its value goes to the server
+        // unchanged, which validates it. Mirrors slock v2State.
+        val unconstrained = field.kind == RuntimeFormV2FieldKind.DerivedSelect &&
+            choices is RuntimeFormV2Choices.Select && choices.options.isEmpty()
+        if (
+            choices is RuntimeFormV2Choices.Select && !choices.allowCustom && !unconstrained &&
+            text.isNotEmpty() && choices.options.none { it.value == text }
+        ) {
             errors[field.key] = RuntimeFormV2ErrorCode.NotAChoice
         }
     }
