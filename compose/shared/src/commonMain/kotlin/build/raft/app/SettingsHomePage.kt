@@ -3038,6 +3038,10 @@ private fun SlockAppShellReadyContent(
                 railInlineSecondaryDestination = railInlineSecondaryDestination,
                 activityReachedThisSession = railActivityReached,
             )
+        // While an inline secondary destination (Search) covers the middle pane, the
+        // underlying rail tab is the host the cover returns to — clamping it now would
+        // strand the exit path (e.g. Activity + Search -> Home after close).
+        if (railInlineSecondaryDestination != null) return@LaunchedEffect
         if (retainedAppShellSelectedTab(selectedTab) !in allowedKeys) {
             bridge.log(
                 "app_shell_slack_nav_tab_clamp selectedTab=$selectedTab keys=${slackNavTabKeys.joinToString(",")}"
@@ -5828,6 +5832,11 @@ private fun SlockAppShellReadyContent(
                                     railInlineSecondaryDestination = AppShellRailSearchKey
                                     bridge.log("app_shell_rail_secondary_open destination=search")
                                 } else {
+                                    // Tapping a real rail item dismisses the inline
+                                    // secondary destination even when the underlying
+                                    // tab is already selected (Activity -> Search ->
+                                    // Activity must land back on Activity).
+                                    railInlineSecondaryDestination = null
                                     onAppShellTabSelected(key)
                                 }
                             },
