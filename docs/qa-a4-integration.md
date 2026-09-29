@@ -1,6 +1,6 @@
-# Test-only A4 integration revision 16 — DO NOT MERGE
+# Test-only A4 integration revision 17 — DO NOT MERGE
 
-Shared PR2730: e3aaf6faee4e5d20585ac974143eda8bcad9ee1a (rebased main includes layout 2727/2728).
+Shared PR2730: 70dc7ba1004c36d709944b517cf8bbb9dd2bc07e (rebased main includes layout 2727/2728).
 Native PR2731: 4d1628e4779a9fd593dce0d84c98b822084b0b1c.
 
 This QA branch alone sets the source initiation default and nativeGuardedCommitAvailable true.
@@ -94,3 +94,15 @@ draft and require restore_skipped, no READY or CommitDispatched, actual timeout
 cleanup and visible source/draft retention. This proves a deliberately invalid
 record only, not a natural deletion race or unknown bounds fallback. Keep both
 READY delay flags zero. Product branches/gates remain unchanged.
+
+Revision 17 integrates the normal-anchor intent fix: restoration dispatches an
+ExactOffset message Anchor, awaits controller settlement and verifies Anchored
+identity plus first-visible index before READY. Invalid fallback identities hold
+READY. The controller declarations now precede the restore effect. Native source
+and QA hooks are unchanged. r16 remains independently bound to its running build.
+
+For normal nonempty validation leave invalid-anchor and both READY-delay flags
+off; use a nonzero source offset and compare staged offset, immediate readback,
+post-inset relayout and final wide geometry. Current source checks index but not
+pixel offset in its success predicate; this carrier is for runtime evidence, not
+full contract approval. atLatest and failed restoration remain separate cases.

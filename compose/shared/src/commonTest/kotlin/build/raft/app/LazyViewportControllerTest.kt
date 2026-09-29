@@ -309,6 +309,50 @@ class LazyViewportControllerTest {
     }
 
     @Test
+    fun adaptiveAnchorRestore_insetChangeReassertsAnchorInsteadOfReplayingLatest() {
+        // A4 restore regression (task #18): the destination pane used to scrollToItem directly
+        // while the controller intent stayed FollowingLatest, so the first composer_inset_relayout
+        // ContentMutated(InsetChange) replayed a Latest command and yanked the restored viewport
+        // back to bottom. Restore now transfers intent to Anchored(ExactOffset) via the
+        // controller, so the same mutation must re-assert the restored anchor.
+        val restored =
+            reduceLazyViewport(
+                LazyViewportControllerState(),
+                LazyViewportEvent.Anchor(
+                    target = LazyViewportAnchorTarget.Message("A4FX-025"),
+                    offset = -0,
+                    layoutGeneration = 1L,
+                    placement = LazyViewportAnchorPlacement.ExactOffset,
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
+        val consumed =
+            reduceLazyViewport(
+                restored,
+                LazyViewportEvent.CommandConsumed(restored.pendingCommand!!.id)
+            )
+        val afterInset =
+            reduceLazyViewport(
+                consumed,
+                LazyViewportEvent.ContentMutated(LazyViewportMutation.InsetChange)
+            )
+
+        val intent = assertIs<LazyViewportIntent.Anchored>(afterInset.intent)
+        assertEquals(LazyViewportAnchorTarget.Message("A4FX-025"), intent.target)
+        assertEquals(
+            LazyViewportCommandTarget.Anchor(
+                target = LazyViewportAnchorTarget.Message("A4FX-025"),
+                offset = -0,
+                layoutGeneration = 1L,
+                placement = LazyViewportAnchorPlacement.ExactOffset
+            ),
+            afterInset.pendingCommand?.target
+        )
+        assertTrue(afterInset.accepts(afterInset.pendingCommand!!))
+        assertNotEquals(LazyViewportCommandTarget.Latest, afterInset.pendingCommand?.target)
+    }
+
+    @Test
     fun renderedTailInvalidation_ignoresNonMatchingCommandId() {
         val anchored =
             reduceLazyViewport(

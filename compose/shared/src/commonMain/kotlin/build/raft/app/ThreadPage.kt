@@ -17423,124 +17423,6 @@ private fun ThreadMessagesListContent(
     // staged record is deliberately NOT consumed here: the shell consumes it only when the
     // native commit receipt reports `committed`, so a rejected or failed transfer keeps the
     // anchor available for a retry.
-    LaunchedEffect(closeReq, renderPayload.status, renderPayload.messages.size) {
-        val request = closeReq ?: return@LaunchedEffect
-        val posted = adaptiveReadyPosted?.value ?: localAdaptiveReadyPosted
-        if (posted) return@LaunchedEffect
-        if (
-            evaluateSlockAdaptiveReadyGate(
-                posted,
-                renderPayload.status,
-                renderPayload.messages.size,
-            ) != SlockAdaptiveReadyGate.RestoreThenReady
-        ) {
-            return@LaunchedEffect
-        }
-        postDetailReadyTrace("effect_enter")
-        val identity =
-            adaptiveSharedStores
-                .adaptiveWorkspaceStore(adaptiveStoreScope)
-                .snapshot()
-                .workspace
-                ?.selection
-                ?.takeIf { sel -> sel.identity.key == request.identityKey }
-                ?.identity
-            ?: run {
-                postDetailReadyTrace("selection_miss")
-                if (adaptiveReadyPosted != null) {
-                    adaptiveReadyPosted.value = true
-                } else {
-                    localAdaptiveReadyPosted = true
-                }
-                return@LaunchedEffect
-            }
-        val anchorStore = adaptiveSharedStores.adaptiveScrollAnchorStore(adaptiveStoreScope)
-        val anchor = anchorStore.peek(adaptiveStoreScope.shellInstanceId, identity)
-        if (anchor != null && !anchor.atLatest) {
-            adaptiveAnchorRestoreInFlight = true
-            val firstMessageIndex = renderPayload.firstMessageListItemIndex()
-            val locatedIndex =
-                anchor.messageId
-                    ?.let { id -> renderPayload.messages.indexOfFirst { m -> m.id == id } }
-                    ?.takeIf { it >= 0 }
-                    ?.let { it + firstMessageIndex }
-            if (locatedIndex != null) {
-                postDetailReadyTrace("layout_wait_begin") {
-                    put("anchorMessageId", anchor.messageId)
-                    put("locatedIndex", locatedIndex.toDouble())
-                }
-                listState.awaitThreadMessagesLayoutFrame()
-                postDetailReadyTrace("layout_wait_end")
-                listState.scrollToItem(locatedIndex, anchor.messageOffsetPx)
-                postDetailReadyTrace("restore_applied") {
-                    put("firstVisible", listState.firstVisibleItemIndex.toDouble())
-                    put("firstVisibleOffset", listState.firstVisibleItemScrollOffset.toDouble())
-                    put("anchorOffsetPx", anchor.messageOffsetPx.toDouble())
-                    put("visibleItems", listState.layoutInfo.visibleItemsInfo.size.toDouble())
-                    put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
-                }
-            } else if (
-                anchor.fallbackIndex >= 0 &&
-                anchor.fallbackIndex < (listState.layoutInfo.totalItemsCount.takeIf { it > 0 } ?: Int.MAX_VALUE)
-            ) {
-                postDetailReadyTrace("layout_wait_begin") {
-                    put("anchorMessageId", "miss")
-                    put("fallbackIndex", anchor.fallbackIndex.toDouble())
-                }
-                listState.awaitThreadMessagesLayoutFrame()
-                postDetailReadyTrace("layout_wait_end")
-                listState.scrollToItem(anchor.fallbackIndex, anchor.messageOffsetPx)
-                postDetailReadyTrace("restore_applied") {
-                    put("firstVisible", listState.firstVisibleItemIndex.toDouble())
-                    put("firstVisibleOffset", listState.firstVisibleItemScrollOffset.toDouble())
-                    put("anchorOffsetPx", anchor.messageOffsetPx.toDouble())
-                    put("visibleItems", listState.layoutInfo.visibleItemsInfo.size.toDouble())
-                    put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
-                }
-            } else {
-                // Jony's v15 boundary: a staged anchor whose message is absent AND whose
-                // fallback is out of range means the destination cannot honor the transfer —
-                // READY would lie ("restored") and authorize the native commit that pops the
-                // source. Hold READY; the caller's readyTimeout cancels the adoption and keeps
-                // the source page + staged anchor for an explicit retry. Leave
-                // adaptiveAnchorRestoreInFlight set so the bottom-anchor loop cannot claim the
-                // viewport while the handoff is still pending.
-                postDetailReadyTrace("restore_skipped") {
-                    put("anchorMessageId", anchor.messageId ?: "null")
-                    put("fallbackIndex", anchor.fallbackIndex.toDouble())
-                    put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
-                }
-                return@LaunchedEffect
-            }
-            // The restore owns the viewport now: mark the initial bottom anchor settled and
-            // disable auto-bottom so no in-loop FollowLatest or later auto-correction re-pins
-            // the viewport to latest (in-flight coroutine exits on the next iteration).
-            initialBottomAnchorReady = true
-            allowBottomAutoAnchor = false
-            adaptiveAnchorRestoreInFlight = false
-        } else if (anchor != null) {
-            // atLatest=true means the staged anchor sits at the bottom already — the default
-            // bottom-anchor path can own the viewport without fighting the restore.
-            adaptiveAnchorRestoreInFlight = false
-        }
-        if (adaptiveReadyPosted != null) {
-            adaptiveReadyPosted.value = true
-        } else {
-            localAdaptiveReadyPosted = true
-        }
-        val eventBus = adaptiveEventBus ?: return@LaunchedEffect
-        postDetailReadyTrace("ready_post")
-        eventBus.post(
-            eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
-            eventData =
-                JSONObject()
-                    .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, request.shellInstanceId)
-                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, request.generation.toDouble()),
-            crossProcess = true,
-            source = "adaptive_detail_ready",
-        )
-    }
 
     val unreadJumpAtCanonicalBottom =
         threadUnreadJumpAtCanonicalBottom(
@@ -17605,6 +17487,202 @@ private fun ThreadMessagesListContent(
         }.first { (epoch, pendingId) ->
             epoch != commandId.epoch || pendingId == null
         }
+    }
+    LaunchedEffect(closeReq, renderPayload.status, renderPayload.messages.size) {
+        val request = closeReq ?: return@LaunchedEffect
+        val posted = adaptiveReadyPosted?.value ?: localAdaptiveReadyPosted
+        if (posted) return@LaunchedEffect
+        if (
+            evaluateSlockAdaptiveReadyGate(
+                posted,
+                renderPayload.status,
+                renderPayload.messages.size,
+            ) != SlockAdaptiveReadyGate.RestoreThenReady
+        ) {
+            return@LaunchedEffect
+        }
+        postDetailReadyTrace("effect_enter")
+        val identity =
+            adaptiveSharedStores
+                .adaptiveWorkspaceStore(adaptiveStoreScope)
+                .snapshot()
+                .workspace
+                ?.selection
+                ?.takeIf { sel -> sel.identity.key == request.identityKey }
+                ?.identity
+            ?: run {
+                postDetailReadyTrace("selection_miss")
+                if (adaptiveReadyPosted != null) {
+                    adaptiveReadyPosted.value = true
+                } else {
+                    localAdaptiveReadyPosted = true
+                }
+                return@LaunchedEffect
+            }
+        val anchorStore = adaptiveSharedStores.adaptiveScrollAnchorStore(adaptiveStoreScope)
+        val anchor = anchorStore.peek(adaptiveStoreScope.shellInstanceId, identity)
+        fun verifyAnchorRestore(targetMessageId: String, targetIndex: Int): Boolean {
+            val settledIntent = viewportControllerState.intent as? LazyViewportIntent.Anchored
+            if (settledIntent == null ||
+                settledIntent.target != LazyViewportAnchorTarget.Message(targetMessageId)
+            ) {
+                postDetailReadyTrace("restore_rejected") {
+                    put("anchorMessageId", targetMessageId)
+                    put("reason", "intent_not_anchored")
+                    put("intent", viewportControllerState.intent.logTag())
+                }
+                return false
+            }
+            if (listState.firstVisibleItemIndex != targetIndex) {
+                postDetailReadyTrace("restore_rejected") {
+                    put("anchorMessageId", targetMessageId)
+                    put("reason", "position_mismatch")
+                    put("firstVisible", listState.firstVisibleItemIndex.toDouble())
+                    put("targetIndex", targetIndex.toDouble())
+                }
+                return false
+            }
+            return true
+        }
+        if (anchor != null && !anchor.atLatest) {
+            adaptiveAnchorRestoreInFlight = true
+            val firstMessageIndex = renderPayload.firstMessageListItemIndex()
+            val locatedIndex =
+                anchor.messageId
+                    ?.let { id -> renderPayload.messages.indexOfFirst { m -> m.id == id } }
+                    ?.takeIf { it >= 0 }
+                    ?.let { it + firstMessageIndex }
+            if (locatedIndex != null) {
+                postDetailReadyTrace("layout_wait_begin") {
+                    put("anchorMessageId", anchor.messageId)
+                    put("locatedIndex", locatedIndex.toDouble())
+                }
+                listState.awaitThreadMessagesLayoutFrame()
+                postDetailReadyTrace("layout_wait_end")
+                // Take viewport ownership through the controller, not a bare scroll: with intent
+                // left at FollowingLatest, the next composer_inset_relayout replays
+                // Mutation.InsetChange and yanks the restored viewport back to bottom. Anchored
+                // (ExactOffset) makes later relayouts re-assert this message+offset instead.
+                viewportLayoutGeneration += 1L
+                dispatchViewportEvent(
+                    LazyViewportEvent.Anchor(
+                        target = LazyViewportAnchorTarget.Message(requireNotNull(anchor.messageId)),
+                        offset = -anchor.messageOffsetPx,
+                        layoutGeneration = viewportLayoutGeneration,
+                        placement = LazyViewportAnchorPlacement.ExactOffset,
+                        fallback = LazyViewportAnchorFallback.Free
+                    )
+                )
+                viewportControllerState.pendingCommand?.id?.let { awaitViewportCommandSettlement(it) }
+                // Settlement returning is not proof of success: AnchorUnavailable settles too
+                // (epoch bump + pending cleared, intent degrades to UserDragging). Gate READY on
+                // intent still Anchored on the target and the readback actually showing it.
+                if (!verifyAnchorRestore(requireNotNull(anchor.messageId), locatedIndex)) {
+                    return@LaunchedEffect
+                }
+                postDetailReadyTrace("restore_applied") {
+                    put("firstVisible", listState.firstVisibleItemIndex.toDouble())
+                    put("firstVisibleOffset", listState.firstVisibleItemScrollOffset.toDouble())
+                    put("anchorOffsetPx", anchor.messageOffsetPx.toDouble())
+                    put("visibleItems", listState.layoutInfo.visibleItemsInfo.size.toDouble())
+                    put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
+                }
+            } else if (
+                anchor.fallbackIndex >= 0 &&
+                anchor.fallbackIndex < (listState.layoutInfo.totalItemsCount.takeIf { it > 0 } ?: Int.MAX_VALUE)
+            ) {
+                postDetailReadyTrace("layout_wait_begin") {
+                    put("anchorMessageId", "miss")
+                    put("fallbackIndex", anchor.fallbackIndex.toDouble())
+                }
+                listState.awaitThreadMessagesLayoutFrame()
+                postDetailReadyTrace("layout_wait_end")
+                val fallbackMessageId =
+                    renderPayload.messages
+                        .getOrNull(anchor.fallbackIndex - firstMessageIndex)
+                        ?.id
+                if (fallbackMessageId != null) {
+                    // Same ownership transfer as the located branch: intent must leave
+                    // FollowingLatest or a later inset relayout replays Latest and yanks the
+                    // restored viewport to bottom.
+                    viewportLayoutGeneration += 1L
+                    dispatchViewportEvent(
+                        LazyViewportEvent.Anchor(
+                            target = LazyViewportAnchorTarget.Message(fallbackMessageId),
+                            offset = -anchor.messageOffsetPx,
+                            layoutGeneration = viewportLayoutGeneration,
+                            placement = LazyViewportAnchorPlacement.ExactOffset,
+                            fallback = LazyViewportAnchorFallback.Free
+                        )
+                    )
+                    viewportControllerState.pendingCommand?.id?.let { awaitViewportCommandSettlement(it) }
+                    if (!verifyAnchorRestore(fallbackMessageId, anchor.fallbackIndex)) {
+                        return@LaunchedEffect
+                    }
+                } else {
+                    // No durable message identity at the fallback index — a bare scroll would
+                    // leave intent at FollowingLatest and the next inset relayout would yank
+                    // the viewport to bottom. Hold READY (same contract as restore_skipped):
+                    // readyTimeout cancels the adoption and keeps source + anchor for retry.
+                    postDetailReadyTrace("restore_skipped") {
+                        put("anchorMessageId", anchor.messageId ?: "null")
+                        put("fallbackIndex", anchor.fallbackIndex.toDouble())
+                        put("reason", "no_message_at_fallback_index")
+                        put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
+                    }
+                    return@LaunchedEffect
+                }
+                postDetailReadyTrace("restore_applied") {
+                    put("restoreBasis", "fallback_index")
+                    put("firstVisible", listState.firstVisibleItemIndex.toDouble())
+                    put("firstVisibleOffset", listState.firstVisibleItemScrollOffset.toDouble())
+                    put("anchorOffsetPx", anchor.messageOffsetPx.toDouble())
+                    put("visibleItems", listState.layoutInfo.visibleItemsInfo.size.toDouble())
+                    put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
+                }
+            } else {
+                // Jony's v15 boundary: a staged anchor whose message is absent AND whose
+                // fallback is out of range means the destination cannot honor the transfer —
+                // READY would lie ("restored") and authorize the native commit that pops the
+                // source. Hold READY; the caller's readyTimeout cancels the adoption and keeps
+                // the source page + staged anchor for an explicit retry. Leave
+                // adaptiveAnchorRestoreInFlight set so the bottom-anchor loop cannot claim the
+                // viewport while the handoff is still pending.
+                postDetailReadyTrace("restore_skipped") {
+                    put("anchorMessageId", anchor.messageId ?: "null")
+                    put("fallbackIndex", anchor.fallbackIndex.toDouble())
+                    put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
+                }
+                return@LaunchedEffect
+            }
+            // The restore owns the viewport now: mark the initial bottom anchor settled and
+            // disable auto-bottom so no in-loop FollowLatest or later auto-correction re-pins
+            // the viewport to latest (in-flight coroutine exits on the next iteration).
+            initialBottomAnchorReady = true
+            allowBottomAutoAnchor = false
+            adaptiveAnchorRestoreInFlight = false
+        } else if (anchor != null) {
+            // atLatest=true means the staged anchor sits at the bottom already — the default
+            // bottom-anchor path can own the viewport without fighting the restore.
+            adaptiveAnchorRestoreInFlight = false
+        }
+        if (adaptiveReadyPosted != null) {
+            adaptiveReadyPosted.value = true
+        } else {
+            localAdaptiveReadyPosted = true
+        }
+        val eventBus = adaptiveEventBus ?: return@LaunchedEffect
+        postDetailReadyTrace("ready_post")
+        eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+            eventData =
+                JSONObject()
+                    .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, request.shellInstanceId)
+                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, request.generation.toDouble()),
+            crossProcess = true,
+            source = "adaptive_detail_ready",
+        )
     }
     var measuredThreadViewportHeightDp by remember(threadInstanceKey) { mutableStateOf(0f) }
     val viewportMeasurementReady = threadViewportMeasurementReady(measuredThreadViewportHeightDp)
