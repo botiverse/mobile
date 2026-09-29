@@ -2941,8 +2941,20 @@ private fun SlockAppShellReadyContent(
     // the Slack keys are not child pages, and with the gate on the legacy hidden keys (tasks/
     // members) are not first-class tabs anymore. Home is the safe anchor in both cases.
     // Mirrors selectAppShellTab but avoids the local-function ordering constraint.
-    LaunchedEffect(slackNavTabKeys, selectedTab) {
-        if (retainedAppShellSelectedTab(selectedTab) !in slackNavTabKeys) {
+    LaunchedEffect(slackNavTabKeys, selectedTab, largeScreenNavigation, shellScope.adaptivePane) {
+        // task #13: while the wide rail is active, Activity is a first-class rail
+        // destination even under the legacy tab order — the clamp must not evict it.
+        // navRailActive is declared later in this composable, so inline the same
+        // predicate here (rail = flag && LeftRail pref && DualPane).
+        val railActive =
+            slockAdaptiveNavRailActive(
+                flagEnabled = adaptiveNavRailEnabled,
+                navigationPreference = largeScreenNavigation,
+                paneState = shellScope.adaptivePane
+            )
+        val allowedKeys =
+            if (railActive) slackNavTabKeys + SlockSlackNavTabs.Activity else slackNavTabKeys
+        if (retainedAppShellSelectedTab(selectedTab) !in allowedKeys) {
             bridge.log(
                 "app_shell_slack_nav_tab_clamp selectedTab=$selectedTab keys=${slackNavTabKeys.joinToString(",")}"
             )
@@ -5667,10 +5679,11 @@ private fun SlockAppShellReadyContent(
                             )
                         } ?: false
                     {
-                        // task #13 (three-pane): a Search rail entry sits alongside the Slack
-                        // tabs only while the wide rail is active. It is an inline middle-pane
-                        // destination (no page push), so it lives outside slackNavTabKeys and
-                        // never participates in retained-tab state.
+                        // task #13 (three-pane): Search and (in legacy nav mode) Activity
+                        // rail entries sit alongside the resolved tabs only while the wide
+                        // rail is active. Search is an inline middle-pane destination (no
+                        // page push), so it lives outside slackNavTabKeys and never
+                        // participates in retained-tab state.
                         val railSearchItem =
                             remember(searchTabLabel, railInlineSecondaryDestination) {
                                 SlockBottomTabItemPayload(
@@ -5683,14 +5696,31 @@ private fun SlockAppShellReadyContent(
                         val railItems =
                             appShellBottomTabItems
                                 .filter { it.key != "settings" }
-                                .let { tabs ->
-                                    val activityIndex = tabs.indexOfFirst { it.key == SlockSlackNavTabs.Activity }
+                                .toMutableList()
+                                .apply {
+                                    // Legacy nav has no Activity tab; the rail must still
+                                    // expose it so wide screens can reach the three-pane
+                                    // surface directly.
+                                    if (none { it.key == SlockSlackNavTabs.Activity }) {
+                                        add(
+                                            SlockBottomTabItemPayload(
+                                                key = SlockSlackNavTabs.Activity,
+                                                label = activityTabLabel,
+                                                iconName = SlockLucideIconName.Bell,
+                                                selected =
+                                                    railInlineSecondaryDestination == null &&
+                                                        retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity,
+                                            )
+                                        )
+                                    }
+                                    val activityIndex = indexOfFirst { it.key == SlockSlackNavTabs.Activity }
                                     if (activityIndex >= 0) {
-                                        tabs.toMutableList().apply { add(activityIndex + 1, railSearchItem) }
+                                        add(activityIndex + 1, railSearchItem)
                                     } else {
-                                        tabs + railSearchItem
+                                        add(railSearchItem)
                                     }
                                 }
+                                .toList()
                         SlockNavigationRailTabBar(
                             items = railItems,
                             onSelect = { key ->
