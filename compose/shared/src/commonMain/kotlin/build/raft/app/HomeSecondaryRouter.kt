@@ -114,6 +114,9 @@ private data class HomeSecondaryRouteEnvironment(
     val sharedHomeStore: SharedHomeStore?,
     val readReceiptCoordinator: ReadReceiptCoordinator,
     val readReceiptOwnerFactory: (String, String) -> ReadReceiptOwner,
+    // Shell-scoped workspace (resolves to the AppShell's store under the shared scope)
+    // so standalone opens while desktop mode is OFF can park the current selection.
+    val sharedWorkspaceStore: SharedAdaptiveWorkspaceStore,
     // task #13 three-pane: when the destination is embedded inside the AppShell middle pane
     // (wide LeftRail), conversation/entity opens must route to the shell's adaptive workspace
     // OpenDetail instead of pushing a standalone page (which would cover the rail).
@@ -245,6 +248,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
             sharedHomeStore = sharedStores.sharedHomeStore(storeScope),
             readReceiptCoordinator = sharedStores.processReadReceiptCoordinator(),
             readReceiptOwnerFactory = sharedStores::readReceiptOwner,
+            sharedWorkspaceStore = sharedStores.adaptiveWorkspaceStore(storeScope),
             inlineOpenRequest = inlineOpenRequest,
             inlineOpenEntity = inlineOpenEntity,
             inlineOnClose = inlineOnClose,
@@ -392,7 +396,7 @@ private fun HomeActivityRouterContent(
                     // task #45: OFF keeps the workspace parked, but the standalone open is
                     // the user's current selection — record it so a later ON restores this
                     // conversation instead of a stale pre-OFF one.
-                    parkActivityStandaloneSelection(
+                    parkStandaloneSelection(
                         environment = environment,
                         workspaceStore = activityWorkspaceStore,
                         request = request,
@@ -594,12 +598,19 @@ private fun HomeActivityRouterContent(
 
 
 
-private fun parkActivityStandaloneSelection(
+private fun parkStandaloneSelection(
     environment: HomeSecondaryRouteEnvironment,
     workspaceStore: SharedAdaptiveWorkspaceStore,
     request: HomeMessageOpenRequest,
     serverId: String?,
 ) {
+    // Only park while desktop mode is OFF: ON + compact standalone pushes are normal
+    // navigation and must not overwrite the live selection shown on the next wide tick.
+    if (KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+            .readDesktopModeOnLargeScreenSync()
+    ) {
+        return
+    }
     val readyServerId = serverId?.trim()?.takeIf(String::isNotBlank) ?: return
     val launchPayload =
         buildStandaloneConversationThreadLaunchPayload(
@@ -867,7 +878,16 @@ private fun HomeSearchRouterContent(
                         environment.inlineOpenRequest?.let { open ->
                             open(resolution.request, "home_search")
                             true
-                        } ?: environment.pager.openStandaloneHomeMessageRequest(
+                        } ?: run {
+                            // task #45: OFF standalone opens through Search still park the
+                            // current selection so re-enabling restores this conversation.
+                            parkStandaloneSelection(
+                                environment = environment,
+                                workspaceStore = environment.sharedWorkspaceStore,
+                                request = resolution.request,
+                                serverId = searchServerId,
+                            )
+                            environment.pager.openStandaloneHomeMessageRequest(
                             bridge = environment.bridge,
                             request = resolution.request,
                             source = "home_search",
@@ -875,7 +895,8 @@ private fun HomeSearchRouterContent(
                             alignOwnMessagesRight = environment.alignOwnMessagesRight,
                             compactConsecutiveMessages = environment.compactConsecutiveMessages,
                             storeScope = environment.storeScope
-                        )
+                            )
+                        }
                     if (opened) {
                         val entityKey =
                             resolution.request.conversationIdentity.searchPersonalizationEntityKeyOrNull()
@@ -1035,7 +1056,13 @@ private fun HomeSavedRouterContent(
                         conversationDirectory = openConversationDirectory
                     )
             ) {
-                is ConversationOpenResolution.Resolved ->
+                is ConversationOpenResolution.Resolved -> {
+                    parkStandaloneSelection(
+                        environment = environment,
+                        workspaceStore = environment.sharedWorkspaceStore,
+                        request = resolution.request,
+                        serverId = savedServerId,
+                    )
                     environment.pager.openStandaloneHomeMessageRequest(
                         bridge = environment.bridge,
                         request = resolution.request,
@@ -1045,6 +1072,7 @@ private fun HomeSavedRouterContent(
                         compactConsecutiveMessages = environment.compactConsecutiveMessages,
                                     storeScope = environment.storeScope
                     )
+                }
                 is ConversationOpenResolution.Pending -> {
                     environment.bridge.logWarn(
                         "saved_open_request_pending reason=${resolution.reason} itemKey=${item.key}"
