@@ -1,0 +1,75 @@
+package build.raft.app
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import build.raft.app.base.BridgeModule
+import build.raft.app.data.BridgeSettingsPlatformCapabilities
+import build.raft.app.data.DataResult
+import build.raft.app.data.SharedAuthDataSource
+import build.raft.app.data.SharedAuthResult
+import build.raft.app.data.SlockWebLoginCompletion
+import build.raft.app.data.kuiklyBridgeCallContext
+import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.resources.MR
+import com.tencent.kuikly.core.pager.Pager
+import com.tencent.tmm.kmmresource.compose.stringResource
+import kotlinx.coroutines.launch
+
+@Composable
+internal fun WebLoginScreen(pager: Pager, bridge: BridgeModule, auth: SharedAuthDataSource) {
+    val scope = rememberCoroutineScope()
+    val platform = remember(bridge) {
+        BridgeSettingsPlatformCapabilities(bridge, "", scope.kuiklyBridgeCallContext())
+    }
+    var starting by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
+    val completion by SlockWebLoginCompletion.status.collectAsState()
+    LaunchedEffect(completion) {
+        when (completion) {
+            "app_shell", "choose_server" -> {
+                when (val session = auth.currentSession()) {
+                    is SharedAuthResult.Success -> pager.openPostAuthRoute(session.data)
+                    else -> failed = true
+                }
+                SlockWebLoginCompletion.clear()
+            }
+            "login_error", "legal_acceptance", "retry" -> {
+                failed = true
+                SlockWebLoginCompletion.clear()
+            }
+        }
+    }
+    AuthScaffold(contentScrollable = true) {
+        AuthCenterMark()
+        AuthFormColumn {
+            AuthError(if (failed) stringResource(MR.strings.auth_web_login_failed) else null)
+            AuthActionButton(
+                text = stringResource(MR.strings.auth_web_login_button),
+                tone = AuthButtonTone.Pink,
+                enabled = !starting,
+                loading = starting,
+                onClick = {
+                    if (!starting) {
+                        starting = true
+                        failed = false
+                        SlockWebLoginCompletion.clear()
+                        scope.launch {
+                            try {
+                                val result = runCatchingPreservingCancellation { platform.startWebLogin() }.getOrNull()
+                                failed = result !is DataResult.Content
+                            } finally {
+                                starting = false
+                            }
+                        }
+                    }
+                },
+            )
+        }
+    }
+}

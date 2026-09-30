@@ -255,6 +255,10 @@ private fun LoginScreen() {
         pageData = pager.pageData.params
     )
     val authRuntimeCapabilities by sharedStores.authRuntimeCapabilityStore.state.collectAsState()
+    if (authRuntimeCapabilities.webLoginOnly) {
+        WebLoginScreen(pager, bridge, authDataSource)
+        return
+    }
     val linkNavigator =
         rememberSlockLinkNavigator(
             pager = pager,
@@ -1998,7 +2002,7 @@ private fun Pager.openAuthPage(pageName: String) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(pageName, pageData)
 }
 
-private fun Pager.openPostAuthRoute(session: StoredAuthSession) {
+internal fun Pager.openPostAuthRoute(session: StoredAuthSession) {
     val destination = postAuthRouteDestination(session)
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(
@@ -2106,14 +2110,16 @@ internal fun JSONObject.authRouteMessage(): String? =
 
 internal fun SharedAuthRuntimeCapabilityStore.seedFromAuthPageData(
     pageData: JSONObject
-): SharedAuthRuntimeCapabilities =
-    seedSocialProviders(
+): SharedAuthRuntimeCapabilities {
+    seedWebLoginOnly(if (pageData.has("slockWebLoginOnly")) pageData.optBoolean("slockWebLoginOnly", false) else null)
+    return seedSocialProviders(
         if (pageData.has(AUTH_SOCIAL_PROVIDERS_KEY)) {
             pageData.optString(AUTH_SOCIAL_PROVIDERS_KEY)
         } else {
             null
         }
     )
+}
 
 @Composable
 internal fun rememberAuthRuntimeCapabilities(

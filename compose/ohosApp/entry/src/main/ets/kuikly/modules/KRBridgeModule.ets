@@ -59,6 +59,7 @@ import {
   slockOhosPrivateAttachmentFileName,
 } from '../SlockOhosPrivateAttachmentStore';
 import { SLOCK_OHOS_BUILD_TIME, SLOCK_OHOS_GIT_COMMIT } from '../generated/SlockOhosBuildMetadata';
+import { prepareSlockOhosAppLogin } from '../SlockOhosAppLogin';
 import { prepareSlockOhosMobileOAuth } from '../SlockOhosMobileOAuth';
 
 interface OhosPickedThreadAttachment {
@@ -1377,10 +1378,11 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const records = this.parseRecord(params);
       const action = records["action"] as string;
       switch (action) {
+        case "appLoginPrepare":
         case "mobileOAuthLink": {
           try {
             const provider = (records["providerId"] as string | undefined) ?? '';
-            const preparation = prepareSlockOhosMobileOAuth(provider, 'link');
+            const preparation = action === 'appLoginPrepare' ? prepareSlockOhosAppLogin() : prepareSlockOhosMobileOAuth(provider, 'link');
             callback({
               "status": "prepared",
               "generation": preparation.generation,
@@ -1393,6 +1395,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           }
           return;
         }
+        case "appLoginOpen":
         case "mobileOAuthOpen": {
           const authorizationUrl = ((records["authorizationUrl"] as string | undefined) ?? '').trim();
           if (!authorizationUrl.startsWith('https://')) {
@@ -1404,6 +1407,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
             await context.startAbility({
               action: 'ohos.want.action.viewData',
               uri: authorizationUrl,
+              entities: ['entity.system.browsable'],
             });
             callback({ "status": "started" });
           } catch (_error) {

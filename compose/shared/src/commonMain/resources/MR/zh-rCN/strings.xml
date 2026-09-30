@@ -2131,4 +2131,6 @@
     <string name="joint_over_limit_grace_detail">该联合频道在 %1$s 之前处于宽限期且超出成员上限。需要其中一个服务器的管理员升级，或让一个免费服务器退出。</string>
     <string name="joint_billing_locked_title">联合频道只读</string>
     <string name="joint_billing_locked_detail">宽限期已结束。在管理员升级或一个免费服务器退出之前，此频道为只读。</string>
+    <string name="auth_web_login_button">登录到 Raft</string>
+    <string name="auth_web_login_failed">未能完成登录，请重试。</string>
 </resources>

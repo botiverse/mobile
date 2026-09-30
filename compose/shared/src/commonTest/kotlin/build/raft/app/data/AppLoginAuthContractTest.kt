@@ -1,0 +1,46 @@
+package build.raft.app.data
+
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class AppLoginAuthContractTest {
+    private class Transport : SlockAuthTransport by AuthDataSourceTest.FakeAuthApi() {
+        var startBody = ""
+        var completeBody = ""
+        var response = AuthNetworkResponse(200,
+            """{"user":{"id":"user-1","email":"user@slock.ai","displayName":"Artin"},"accessToken":"access-token","refreshToken":"refresh-token"}""")
+        override suspend fun startAppLogin(bodyText: String): AuthNetworkResponse {
+            startBody = bodyText
+            return AuthNetworkResponse(201, """{"requestId":"request-1","loginUrl":"https://raft.example/login/app?request=request-1","expiresAt":"2026-09-30T10:00:00Z"}""")
+        }
+        override suspend fun completeAppLogin(bodyText: String): AuthNetworkResponse {
+            completeBody = bodyText
+            return response
+        }
+    }
+    @Test fun pureLoginContractUsesNoOAuthFieldsAndCommitsCanonicalSession() = runTest {
+        val transport = Transport()
+        val store = InMemorySlockAuthSessionStore()
+        val source = SharedAuthDataSource(transport, store)
+        assertTrue(source.startAppLogin("raft://login/callback", "challenge") is SharedAuthResult.Success)
+        assertEquals("""{"returnUri":"raft://login/callback","codeChallenge":"challenge"}""", transport.startBody)
+        assertTrue(source.completeAppLogin("handoff", "verifier") is SharedAuthResult.Success)
+        assertEquals("""{"code":"handoff","codeVerifier":"verifier"}""", transport.completeBody)
+        assertEquals("user-1", store.readSession()?.user?.id)
+        assertEquals("access-token", store.readSession()?.accessToken)
+        assertEquals(1, store.readSession()?.servers?.size)
+    }
+    @Test fun malformedResponseAndEnvironmentChangeCannotInstallSession() = runTest {
+        val transport = Transport()
+        val store = InMemorySlockAuthSessionStore()
+        val source = SharedAuthDataSource(transport, store)
+        assertEquals(SharedAuthResult.Unauthenticated, source.completeAppLogin("code", "verifier") { false })
+        assertNull(store.readSession())
+        transport.response = AuthNetworkResponse(200, """{"access_token":"legacy","refresh_token":"legacy"}""")
+        assertTrue(source.completeAppLogin("code", "verifier") is SharedAuthResult.Failure)
+        assertNull(store.readSession())
+    }
+}
