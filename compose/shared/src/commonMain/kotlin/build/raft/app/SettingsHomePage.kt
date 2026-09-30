@@ -160,6 +160,7 @@ import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.WindowNavigationAction
 import build.raft.app.data.WindowNavigationIntent
 import build.raft.app.data.WindowNavigationReadiness
+import build.raft.app.data.SlockAppShellOpenConversationContract
 import build.raft.app.data.SlockExternalPermalinkContract
 import build.raft.app.data.WindowNavigationServerListState
 import build.raft.app.data.ConversationForwardAction
@@ -4462,6 +4463,77 @@ private fun SlockAppShellReadyContent(
             recordForwardHistory = false,
             originFallback = request.originFallback
         )
+    }
+
+    // Embedded detail panes hand conversation opens back to this shell so the
+    // request follows the canonical identity -> OpenDetail pipeline (dual-pane
+    // updates the right pane in place; narrow/OFF falls back to the standalone
+    // path inside openHomeConversation). The child posts only the wire launch
+    // payload — no Thread state crosses pageData.
+    DisposableEffect(eventBus, storeScope.shellInstanceId) {
+        val subscription =
+            eventBus.observe(
+                eventName = SlockAppShellOpenConversationContract.EventName,
+                crossProcess = true
+            ) { eventData ->
+                val data = eventData ?: return@observe
+                if (
+                    data.optString(SlockAppShellOpenConversationContract.KeyShellScopeId).trim() !=
+                        storeScope.shellInstanceId
+                ) {
+                    return@observe
+                }
+                val payloadJson =
+                    data.optString(SlockAppShellOpenConversationContract.KeyLaunchPayload).trim()
+                val launchPayload =
+                    runCatching {
+                        AppShellNotificationLaunchJson
+                            .decodeFromString(WireThreadLaunchPayload.serializer(), payloadJson)
+                            .takeIf { it.hasRouteIdentity() }
+                    }.getOrNull()
+                val serverId =
+                    data.optString(SlockAppShellOpenConversationContract.KeyServerId).trim()
+                if (launchPayload == null || serverId.isBlank()) {
+                    bridge.logWarn(
+                        "app_shell_child_open_drop reason=invalid_payload " +
+                            "serverId=${serverId.ifBlank { "missing" }}"
+                    )
+                    return@observe
+                }
+                when (
+                    val construction = launchPayload.toThreadLaunchIdentityConstruction()
+                ) {
+                    is ThreadLaunchIdentityConstructionResult.Accepted -> {
+                        val anchor =
+                            data.optString(
+                                SlockAppShellOpenConversationContract.KeyAnchorMessageId
+                            ).trim().takeIf { it.isNotBlank() }
+                        bridge.log(
+                            "app_shell_child_open " +
+                                "source=${data.optString(SlockAppShellOpenConversationContract.KeySource).trim()} " +
+                                "serverId=$serverId threadId=${construction.identity.threadId.value} " +
+                                "anchor=${anchor.orEmpty()}"
+                        )
+                        openHomeMessageRequest(
+                            HomeMessageOpenRequest(
+                                conversationIdentity = construction.identity,
+                                anchorMessageId = anchor
+                            ),
+                            source =
+                                data.optString(
+                                    SlockAppShellOpenConversationContract.KeySource
+                                ).trim().takeIf { it.isNotBlank() } ?: "embedded_child"
+                        )
+                    }
+                    is ThreadLaunchIdentityConstructionResult.Rejected -> {
+                        bridge.logWarn(
+                            "app_shell_child_open_drop reason=${construction.error.reason} " +
+                                "serverId=$serverId"
+                        )
+                    }
+                }
+            }
+        onDispose { subscription.close() }
     }
 
     LaunchedEffect(

@@ -448,14 +448,24 @@ class SharedWindowNavigationCoordinatorTest {
         val coordinator = SharedWindowNavigationCoordinator()
         coordinator.enqueue(externalLinkIntent(serverId = "server-b").copy(activationId = "act-1"))
 
-        // Pre-auth: pending, unbound.
-        assertNull(coordinator.advance(readyReadiness("server-b").copy(authGeneration = null)))
+        // Pre-auth (no canonical server yet): pending, unbound.
+        assertNull(
+            coordinator.advance(
+                readiness(
+                    canonicalServerId = null,
+                    knownServerIds = emptySet(),
+                    serverListState = WindowNavigationServerListState.Loading
+                )
+            )
+        )
 
-        // First login binds silently — the open still proceeds on this advance
-        // (the bound value only guards FUTURE advances).
-        val open =
-            coordinator.advance(readyReadiness("server-b").copy(authGeneration = "p1:1"))
-        assertIs<WindowNavigationAction.OpenConversation>(open)
+        // First authenticated readiness binds silently; the route then proceeds
+        // through the normal activation/home gates.
+        assertIs<WindowNavigationAction.ActivateServer>(
+            coordinator.advance(
+                readiness(canonicalServerId = "server-a").copy(authGeneration = "p1:1")
+            )
+        )
 
         // Fresh coordinator, same scenario but the session flips before open.
         val flipped = SharedWindowNavigationCoordinator()

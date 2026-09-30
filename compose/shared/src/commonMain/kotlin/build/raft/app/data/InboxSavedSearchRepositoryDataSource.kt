@@ -170,20 +170,31 @@ class RealInboxRepository(
                         "inbox_count_override serverId=${serverId.value} filter=${filter.wireValue} offset=$offset wireTotal=${parsed.totalCount} wireUnread=${parsed.totalUnreadCount} itemCount=${parsed.items.size} itemUnread=${parsed.items.sumOf { it.unreadCount }}"
                     )
                 }
-                InboxSnapshot(
-                    server = context.server,
-                    items = parsed.items,
-                    totalCount = parsed.totalCount,
-                    totalUnreadCount = parsed.totalUnreadCount,
-                    hasMore = parsed.hasMore,
-                    // Keep page advancement based on raw server rows. The
-                    // client may project every row out of an attention filter
-                    // when a lagging/older server includes an unfollowed
-                    // thread; advancing by projected size would repeat the
-                    // same page forever.
-                    nextOffset = offset + parsed.rawItemCount
-                ).projectActivityFilter(filter)
-                    .copy(nextOffset = offset + parsed.rawItemCount)
+                val projected =
+                    InboxSnapshot(
+                        server = context.server,
+                        items = parsed.items,
+                        totalCount = parsed.totalCount,
+                        totalUnreadCount = parsed.totalUnreadCount,
+                        hasMore = parsed.hasMore,
+                        // Keep page advancement based on raw server rows. The
+                        // client may project every row out of an attention filter
+                        // when a lagging/older server includes an unfollowed
+                        // thread; advancing by projected size would repeat the
+                        // same page forever.
+                        nextOffset = offset + parsed.rawItemCount
+                    ).projectActivityFilter(filter)
+                        .copy(nextOffset = offset + parsed.rawItemCount)
+                // task #13 QA pagination diagnostic (SangLan-approved): cursor
+                // evidence per request — filter/limit/offset, raw vs projected
+                // rows, hasMore/nextOffset. No message bodies or credentials.
+                logger(
+                    "inbox_page_diagnostic serverId=${serverId.value} " +
+                        "filter=${filter.wireValue} limit=$limit offset=$offset " +
+                        "rawItems=${parsed.rawItemCount} items=${projected.items.size} " +
+                        "hasMore=${projected.hasMore} nextOffset=${projected.nextOffset ?: -1}"
+                )
+                projected
             }
         )
     }

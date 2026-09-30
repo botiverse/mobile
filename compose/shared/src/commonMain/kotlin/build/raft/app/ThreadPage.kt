@@ -33,6 +33,7 @@ import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AgentSkillsSnapshot
 import build.raft.app.data.AddChannelMemberRequest
 import build.raft.app.data.AuthLossSignal
+import build.raft.app.data.SlockAppShellOpenConversationContract
 import build.raft.app.data.ForwardMessageBatchExecuteRequest
 import build.raft.app.data.ForwardMessageBatchResult
 import build.raft.app.data.ForwardMessageDestination
@@ -4169,7 +4170,59 @@ private fun ThreadPageScreen(
                 routerModule.closePage()
             }
         },
-        onOpenThreadPayload = { nextPayload -> openStandaloneThreadPayload(nextPayload) },
+        onOpenThreadPayload = { nextPayload ->
+            // Embedded detail child hands the open back to the shell workspace so
+            // the right pane updates in place (Rail/mid-pane kept); standalone and
+            // narrow-stack pages keep the existing push navigation unchanged.
+            if (isStandaloneThreadPage) {
+                openStandaloneThreadPayload(nextPayload)
+            } else {
+                val launchPayload = nextPayload.toWireThreadLaunchPayloadOrNull()
+                if (launchPayload == null) {
+                    bridge.toast(unableToOpenThreadLabel)
+                    bridge.logWarn(
+                        "thread_open_skip reason=missing_route_identity instanceId=${nextPayload.instanceId}"
+                    )
+                } else {
+                    val targetServerId =
+                        threadParentNavigationServerId(null) ?: storeScope.initialServerId
+                    if (targetServerId.isNullOrBlank()) {
+                        bridge.toast(unableToOpenThreadLabel)
+                        bridge.logWarn(
+                            "thread_open_skip reason=no_server_id instanceId=${nextPayload.instanceId}"
+                        )
+                    } else {
+                        sharedStores.eventBus.post(
+                            eventName = SlockAppShellOpenConversationContract.EventName,
+                            eventData =
+                                JSONObject()
+                                    .put(
+                                        SlockAppShellOpenConversationContract.KeyShellScopeId,
+                                        storeScope.shellInstanceId
+                                    )
+                                    .put(
+                                        SlockAppShellOpenConversationContract.KeyServerId,
+                                        targetServerId
+                                    )
+                                    .put(
+                                        SlockAppShellOpenConversationContract.KeyLaunchPayload,
+                                        launchPayload.encodeForAdaptiveDetailOpen()
+                                    )
+                                    .put(
+                                        SlockAppShellOpenConversationContract.KeyAnchorMessageId,
+                                        nextPayload.focusedMessageId.orEmpty()
+                                    )
+                                    .put(
+                                        SlockAppShellOpenConversationContract.KeySource,
+                                        "embedded_thread_markdown"
+                                    ),
+                            crossProcess = true,
+                            source = "embedded_thread_open_conversation"
+                        )
+                    }
+                }
+            }
+        },
         onReplaceThreadPayload = {},
         onOpenParentThread = { currentPayload, currentSessionServerId ->
             val parentServerId = threadParentNavigationServerId(currentSessionServerId)

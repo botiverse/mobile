@@ -46,3 +46,20 @@ object SlockExternalPermalinkContract {
 
     const val PageDataBlockKey = "externalLink"
 }
+
+/**
+ * Embedded detail pane -> shell host takeover (task #13 in-app fix): a child
+ * page mounted inside the workspace detail pane posts this event instead of
+ * pushing a standalone page, so the shell routes the request through the
+ * canonical identity -> OpenDetail pipeline and preserves the mid-pane.
+ */
+internal object SlockAppShellOpenConversationContract {
+    const val EventName = "slockAppShellOpenConversation"
+
+    const val KeyShellScopeId = "shellScopeId"
+    const val KeyServerId = "serverId"
+    /** Serialized WireThreadLaunchPayload; the shell re-derives typed identity. */
+    const val KeyLaunchPayload = "launchPayload"
+    const val KeyAnchorMessageId = "anchorMessageId"
+    const val KeySource = "source"
+}
