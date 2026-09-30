@@ -2134,4 +2134,15 @@
     <string name="joint_over_limit_grace_detail">该联合频道在 %1$s 之前处于宽限期且超出成员上限。需要其中一个服务器的管理员升级，或让一个免费服务器退出。</string>
     <string name="joint_billing_locked_title">联合频道只读</string>
     <string name="joint_billing_locked_detail">宽限期已结束。在管理员升级或一个免费服务器退出之前，此频道为只读。</string>
+    <string name="channel_member_role_owner">所有者</string>
+    <string name="channel_member_role_admin">管理员</string>
+    <string name="channel_member_role_guest">访客</string>
+    <string name="member_row_status_online">在线</string>
+    <string name="member_row_status_offline">离线</string>
+    <string name="member_row_status_idle">空闲</string>
+    <string name="member_row_status_disconnected">已断开</string>
+    <string name="member_row_status_error">错误</string>
+    <string name="member_row_status_external">外部</string>
+    <string name="member_row_status_working">工作中</string>
+    <string name="member_row_status_thinking">思考中</string>
 </resources>

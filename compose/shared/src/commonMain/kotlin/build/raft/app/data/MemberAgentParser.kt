@@ -659,7 +659,7 @@ fun parseSharedChannelMemberSnapshot(
         members = (decoded.humans.map { it.toMemberProfile() } + decoded.agents.map { it.toMemberProfile() })
             .distinctBy { it.id.value },
         externalMembers = decoded.externalMembers.map { it.toModel() },
-        canAddMembers = true,
+        canAddMembers = false,
     )
 }.getOrNull()
 

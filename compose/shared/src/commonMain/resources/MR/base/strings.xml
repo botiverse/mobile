@@ -2134,4 +2134,15 @@
     <string name="joint_over_limit_grace_detail">This joint channel is over its member limit until %1$s. An admin of one server must upgrade, or one free server must leave.</string>
     <string name="joint_billing_locked_title">Joint channel read-only</string>
     <string name="joint_billing_locked_detail">The grace period has ended. This channel is read-only until an admin upgrades or a free server leaves.</string>
+    <string name="channel_member_role_owner">Owner</string>
+    <string name="channel_member_role_admin">Admin</string>
+    <string name="channel_member_role_guest">Guest</string>
+    <string name="member_row_status_online">Online</string>
+    <string name="member_row_status_offline">Offline</string>
+    <string name="member_row_status_idle">Idle</string>
+    <string name="member_row_status_disconnected">Disconnected</string>
+    <string name="member_row_status_error">Error</string>
+    <string name="member_row_status_external">External</string>
+    <string name="member_row_status_working">Working</string>
+    <string name="member_row_status_thinking">Thinking</string>
 </resources>

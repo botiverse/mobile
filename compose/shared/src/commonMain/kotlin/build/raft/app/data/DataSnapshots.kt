@@ -924,7 +924,8 @@ data class AgentActivityEntry(
 data class ChannelMemberSnapshot(
     val channelId: ChannelId,
     val members: List<MemberProfile>,
-    val canAddMembers: Boolean = true,
+    val canAddMembers: Boolean = false,
+    val canRemoveMembers: Boolean = false,
     /** Slack-bridge (or other provider) participants — display-only roster rows
      *  (web `channelExternalMembers`). Never selectable/removable. */
     val externalMembers: List<ChannelExternalMemberProfile> = emptyList()

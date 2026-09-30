@@ -307,7 +307,7 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: SlockPopo
                         // Sharing member-row presentation must not replace follower-specific permissions.
                         SlockModalCompactMemberRow(
                             title = agent.label,
-                            subtitle = indicator?.label ?: agent.status,
+                            subtitle = indicator?.localizedMemberStatusLabel() ?: agent.status,
                             avatarWireValue = agent.avatarUrl,
                             avatarLabel = agent.label,
                             statusColor = indicator?.color,

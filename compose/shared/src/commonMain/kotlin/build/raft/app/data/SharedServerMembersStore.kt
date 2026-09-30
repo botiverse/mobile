@@ -108,6 +108,7 @@ data class SharedServerChannelMembersSlice(
     val members: List<MemberProfile> = emptyList(),
     val externalMembers: List<ChannelExternalMemberProfile> = emptyList(),
     val canAddMembers: Boolean = false,
+    val canRemoveMembers: Boolean = false,
     val canAddMembersKnown: Boolean = false,
     val status: SharedServerMembersLoadStatus = SharedServerMembersLoadStatus.Idle,
     val errorCode: String? = null
@@ -118,7 +119,8 @@ data class SharedServerChannelMembersSlice(
                 channelId = ChannelId(it),
                 members = members,
                 externalMembers = externalMembers,
-                canAddMembers = canAddMembers
+                canAddMembers = canAddMembers,
+                canRemoveMembers = canRemoveMembers
             )
         }
 }
@@ -1504,6 +1506,12 @@ class SharedServerMembersStore internal constructor(
         val channelKey = request.channelId.value.trim()
         val binding = currentChannelMembersOwner(ServerId(serverKey)) ?: return authSessionRequiredResult()
         if (expectedOwner != null && !binding.matches(expectedOwner)) return staleChannelMembersOwnerResult()
+        if (expectedOwner != null && !_state.value.channelMemberSlice(binding, ChannelId(channelKey)).canRemoveMembers) {
+            return DataResult.NoPermission(PermissionBlocker(
+                code = "channel_member_remove_not_allowed",
+                requiredCapability = "remove_channel_members",
+            ))
+        }
         val result =
             try {
                 memberRepository.removeChannelMember(priority, request)
@@ -2039,6 +2047,7 @@ class SharedServerMembersStore internal constructor(
                             members = members,
                             externalMembers = result.data.externalMembers,
                             canAddMembers = result.data.canAddMembers,
+                            canRemoveMembers = result.data.canRemoveMembers,
                             canAddMembersKnown = true,
                             status = SharedServerMembersLoadStatus.Loaded,
                             errorCode = null
@@ -2054,7 +2063,8 @@ class SharedServerMembersStore internal constructor(
                             channelId = ChannelId(normalizedChannelId),
                             members = members,
                             externalMembers = result.data.externalMembers,
-                            canAddMembers = result.data.canAddMembers
+                            canAddMembers = result.data.canAddMembers,
+                            canRemoveMembers = result.data.canRemoveMembers
                         )
                     )
                 }

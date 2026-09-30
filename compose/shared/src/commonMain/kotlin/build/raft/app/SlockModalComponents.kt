@@ -749,6 +749,7 @@ internal fun SlockModalCompactMemberRow(
     // remove-X) while keeping it tappable — the click still fires so the
     // caller can surface a hint. Distinct from `enabled`, which gates clicks.
     trailingMuted: Boolean = false,
+    roleBadgeLabel: String? = null,
     cacheSubject: build.raft.app.data.SlockAvatarCacheSubject? = null,
     cacheServerId: String? = null,
     onClick: () -> Unit = {}
@@ -785,6 +786,7 @@ internal fun SlockModalCompactMemberRow(
             trailingIcon = trailingIcon,
             onTrailingClick = onTrailingClick,
             trailingMuted = trailingMuted,
+            roleBadgeLabel = roleBadgeLabel,
             cacheSubject = cacheSubject,
             cacheServerId = cacheServerId
         )
@@ -813,6 +815,7 @@ internal fun RowScope.SlockModalCompactMemberRowContent(
     trailingIcon: SlockLucideIconName?,
     onTrailingClick: (() -> Unit)?,
     trailingMuted: Boolean = false,
+    roleBadgeLabel: String? = null,
     cacheSubject: build.raft.app.data.SlockAvatarCacheSubject?,
     cacheServerId: String?
 ) {
@@ -871,6 +874,12 @@ internal fun RowScope.SlockModalCompactMemberRowContent(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+            }
+        }
+        roleBadgeLabel?.takeIf { it.isNotBlank() }?.let { label ->
+            Box(Modifier.background(SlockColor.SurfaceCream).padding(horizontal = 5.dp, vertical = 2.dp)) {
+                Text(text = label, style = SlockType.Caption, color = SlockColor.TextMutedGray,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         when {
