@@ -5672,6 +5672,17 @@ private fun MembersDetailContent(
             // a real user drag.
             state.interactionSource.interactions.collect { interaction ->
                 if (interaction is DragInteraction.Start) {
+                    // A queued requestScrollToItem has no cancel handle: the
+                    // target was already written into scrollPosition and is
+                    // applied at the next remeasure. Supersede it at the same
+                    // layer by requesting the CURRENT position, so a pending
+                    // restore cannot snap the list away from the user's drag.
+                    if (state.isScrollInProgress) {
+                        state.requestScrollToItem(
+                            state.firstVisibleItemIndex,
+                            state.firstVisibleItemScrollOffset
+                        )
+                    }
                     tracker.onUserScrollStarted()
                 }
             }
@@ -5711,6 +5722,12 @@ private fun MembersDetailContent(
         LaunchedEffect(memberScrollKey) {
             state.interactionSource.interactions.collect { interaction ->
                 if (interaction is DragInteraction.Start) {
+                    if (state.isScrollInProgress) {
+                        state.requestScrollToItem(
+                            state.firstVisibleItemIndex,
+                            state.firstVisibleItemScrollOffset
+                        )
+                    }
                     tracker.onUserScrollStarted()
                 }
             }
