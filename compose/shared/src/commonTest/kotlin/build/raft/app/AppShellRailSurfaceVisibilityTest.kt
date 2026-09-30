@@ -173,29 +173,44 @@ class AppShellServerDrawerBackProjectionTest {
      * from the render projection, which strips the drawer runtime when the app-shell
      * drawer host owns it — so Back always saw `false` and fell through to
      * close_page even with the drawer settled open. Back must consume from the
-     * live shell-store snapshot; this pins the projection trap so the check can
-     * never silently move back to the stripped state.
+     * live shell-store snapshot; this pins both sides of the trap: the projection
+     * reported closed while the store snapshot (the production read path) reports
+     * expanded.
      */
     @Test
-    fun `render projection strips server drawer runtime`() {
-        val live =
-            build.raft.app.data.SharedHomeShellState(
-                home =
-                    build.raft.app.data.SharedHomeState(
-                        serverSwitcherExpanded = true,
-                        serverDrawer =
-                            build.raft.app.data.HomeServerDrawerState(expanded = true),
-                        serverDrawerCommandIntent =
-                            build.raft.app.data.HomeServerDrawerCommandIntent(
-                                desiredOpen = true,
-                                generation = 7L,
-                            ),
-                    )
+    fun `live store reports drawer expanded while render projection strips it`() {
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined)
+        val liveHome =
+            build.raft.app.data.SharedHomeState(
+                serverSwitcherExpanded = true,
+                serverDrawer = build.raft.app.data.HomeServerDrawerState(expanded = true),
+                serverDrawerCommandIntent =
+                    build.raft.app.data.HomeServerDrawerCommandIntent(
+                        desiredOpen = true,
+                        generation = 7L,
+                    ),
             )
-        val projected = live.withoutServerDrawerRuntimeForAppShellRender()
+        val store =
+            build.raft.app.data.SharedHomeShellStore(
+                homeState = kotlinx.coroutines.flow.MutableStateFlow(liveHome),
+                activityState =
+                    kotlinx.coroutines.flow.MutableStateFlow(build.raft.app.data.SharedActivityState()),
+                searchSavedState =
+                    kotlinx.coroutines.flow.MutableStateFlow(
+                        build.raft.app.data.SharedHomeSearchSavedState()
+                    ),
+                dispatchHome = { _ -> },
+                dispatchActivity = { _ -> },
+                dispatchSearchSaved = { _ -> },
+                refreshActivitySummary = { _, _ -> },
+                resetActivity = {},
+                scope = scope,
+            )
+        // The read path popMainRoute now takes for the Back consume check.
+        assertTrue(store.state.value.home.serverSwitcherExpanded)
+        val projected = store.state.value.withoutServerDrawerRuntimeForAppShellRender()
         assertFalse(projected.home.serverSwitcherExpanded)
         assertFalse(projected.home.serverDrawer.expanded)
         assertFalse(projected.home.serverDrawerCommandIntent.desiredOpen)
-        assertTrue(live.home.serverSwitcherExpanded)
     }
 }
