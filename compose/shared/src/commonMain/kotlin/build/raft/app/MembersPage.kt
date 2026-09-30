@@ -71,7 +71,8 @@ import build.raft.app.data.SharedAgentPanelTabOrderStore
 import build.raft.app.data.SlockAuthSessionTerminalSource
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.authSessionTerminalSourceOrNull
-import com.tencent.kuikly.compose.foundation.interaction.DragInteraction
+import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
+import com.tencent.kuikly.compose.foundation.gestures.awaitFirstDown
 import kotlinx.coroutines.flow.onSubscription
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockAvatarCacheRuntime
@@ -214,6 +215,8 @@ import com.tencent.kuikly.compose.ui.semantics.semantics
 import com.tencent.kuikly.compose.ui.layout.boundsInRoot
 import com.tencent.kuikly.compose.ui.geometry.Rect
 import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.input.pointer.PointerEventPass
+import com.tencent.kuikly.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
@@ -5666,36 +5669,6 @@ private fun MembersDetailContent(
         val tracker =
             trackerFor(tab, MemberDetailScrollStateRegistry.agentTabPosition(memberScrollKey, tab))
         LaunchedEffect(memberScrollKey, tab) {
-            // Real gesture evidence: requestScrollToItem also sets
-            // isScrollInProgress, so the tracker cannot attribute in-flight
-            // frames without this signal. DragInteraction.Start fires only on
-            // a real user drag.
-            state.interactionSource.interactions.collect { interaction ->
-                if (interaction is DragInteraction.Start) {
-                    // A requestScrollToItem target is written into
-                    // scrollPosition synchronously and has no cancel handle.
-                    // If one of ours is still pending and no scroll is
-                    // running yet, supersede it at the same layer by
-                    // re-requesting the CURRENT position so the pending
-                    // remeasure cannot snap away from this drag. We must NOT
-                    // call this while a scroll is in progress:
-                    // requestScrollToItem cancels in-flight scrolls via
-                    // scroll{} and would interrupt the user's own gesture —
-                    // and in that case the drag's deltas overwrite the
-                    // written target on their own anyway.
-                    if (tracker.hasPendingRestoreRequest &&
-                        !state.isScrollInProgress
-                    ) {
-                        state.requestScrollToItem(
-                            state.firstVisibleItemIndex,
-                            state.firstVisibleItemScrollOffset
-                        )
-                    }
-                    tracker.onUserScrollStarted()
-                }
-            }
-        }
-        LaunchedEffect(memberScrollKey, tab) {
             snapshotFlow {
                 // isScrollInProgress is observed too: a gesture that starts
                 // and ends within the settle window emits true->false even
@@ -5727,21 +5700,6 @@ private fun MembersDetailContent(
                 MemberDetailScrollStateRegistry.humanListPosition(memberScrollKey)
             )
         val state = humanDetailListState
-        LaunchedEffect(memberScrollKey) {
-            state.interactionSource.interactions.collect { interaction ->
-                if (interaction is DragInteraction.Start) {
-                    if (tracker.hasPendingRestoreRequest &&
-                        !state.isScrollInProgress
-                    ) {
-                        state.requestScrollToItem(
-                            state.firstVisibleItemIndex,
-                            state.firstVisibleItemScrollOffset
-                        )
-                    }
-                    tracker.onUserScrollStarted()
-                }
-            }
-        }
         LaunchedEffect(memberScrollKey) {
             snapshotFlow {
                 // isScrollInProgress is observed too: a gesture that starts
@@ -6246,7 +6204,12 @@ private fun MembersDetailContent(
                     } else {
                         LazyColumn(
                             state = agentTabListStates.getValue(pageTab),
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .membersDetailUserDragProbe(
+                                    agentTabListStates.getValue(pageTab),
+                                    scrollTrackers[pageTab]
+                                ),
                             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
                             beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
                         ) {
@@ -6399,7 +6362,12 @@ private fun MembersDetailContent(
             } else {
                 LazyColumn(
                     state = humanDetailListState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .membersDetailUserDragProbe(
+                            humanDetailListState,
+                            scrollTrackers["human"]
+                        ),
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
                     beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
                 ) {
@@ -14084,6 +14052,61 @@ internal data class MemberDetailScrollPosition(
  * keeps the last position observed with content — the position a dispose
  * fallback publishes after the list detached (and reads 0 items).
  */
+/**
+ * Real-gesture probe for the member detail lists. Kuikly routes list
+ * scrolling through the native ScrollerView bridge — the LazyListState
+ * interactionSource is wired to a commented-out scrollingContainer and
+ * never emits DragInteraction.Start — so the only Compose-layer signal is
+ * pointer input. This modifier watches pointer events WITHOUT consuming
+ * them: after a first down it accumulates that pointer's movement and, once
+ * it crosses touch slop, reports a real user drag to the tracker and
+ * supersedes a still-pending restore request with the last MEASURED
+ * position (firstVisibleItem* already reads the requested target inside
+ * the not-yet-remeasured window, so it cannot serve as the supersede base).
+ */
+internal fun Modifier.membersDetailUserDragProbe(
+    state: LazyListState,
+    tracker: MemberDetailScrollTracker?
+): Modifier =
+    pointerInput(state, tracker) {
+        if (tracker == null) return@pointerInput
+        val slop = viewConfiguration.touchSlop
+        awaitEachGesture {
+            val down =
+                awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            var accumulated = Offset.Zero
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                if (!change.pressed) break
+                accumulated += change.positionChangeIgnoreConsumed()
+                if (accumulated.getDistance() > slop) {
+                    tracker.onUserScrollStarted()
+                    // Supersede a pending restore request at the same layer:
+                    // requestScrollToItem has no cancel handle — the target
+                    // is already written into scrollPosition and is applied
+                    // at the next remeasure. Re-requesting the last measured
+                    // position overwrites it so the remeasure cannot snap the
+                    // list away from this drag. Guarded by no-scroll-in-flight
+                    // because the API cancels an ongoing scroll (which at this
+                    // instant could be the user's own just-started drag).
+                    val measured = tracker.lastPosition
+                    if (
+                        tracker.hasPendingRestoreRequest &&
+                        !state.isScrollInProgress &&
+                        measured != null
+                    ) {
+                        state.requestScrollToItem(
+                            measured.firstVisibleItemIndex,
+                            measured.firstVisibleItemScrollOffset
+                        )
+                    }
+                    break
+                }
+            }
+        }
+    }
+
 internal class MemberDetailScrollTracker(
     private val restoreTo: MemberDetailScrollPosition,
     private val label: String = "",
