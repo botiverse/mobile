@@ -85,6 +85,8 @@ struct ContentView: View {
         var data = destination.pageData
         data["pageName"] = destination.pageName
         data["slockSocialAuthProviders"] = slockIosOAuthProviders
+        // Authentication roots retain their own receiver ownership for cancellation.
+        data["slockShellInstanceId"] = scope
         if destination.pageName == "compose_slock_app_shell" {
             data["slockNativeTabBarRenderer"] = Self.appTabBarRenderer()
             data["slockShellInstanceId"] = scope

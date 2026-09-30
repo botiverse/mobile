@@ -3329,6 +3329,7 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
         NSString *provider = SlockBridgeString(params[@"providerId"]);
         [[SlockIosMobileOAuthHost shared] startWithProvider:provider
                                                       mode:@"link"
+                                              shellScopeId:nil
                                                 completion:^(NSDictionary *result) {
             callback(result);
         }];
@@ -3873,11 +3874,18 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
         return;
     }
     NSString *provider = SlockBridgeString(params[@"provider"]);
-    [[SlockIosMobileOAuthHost shared] startWithProvider:provider
-                                                  mode:@"login"
-                                            completion:^(NSDictionary *result) {
-        callback(result);
-    }];
+    SlockBridgeRunOnMain(^{
+        // Bind the requesting render root, not a global top/presented controller.
+        UIViewController *controller = self.hr_rootView.kr_viewController;
+        NSString *scope = [controller isKindOfClass:KuiklyRenderViewController.class]
+            ? ((KuiklyRenderViewController *)controller).slockShellInstanceId : nil;
+        [[SlockIosMobileOAuthHost shared] startWithProvider:provider
+                                                      mode:@"login"
+                                              shellScopeId:scope
+                                                completion:^(NSDictionary *result) {
+            callback(result);
+        }];
+    });
 }
 
 #pragma mark - Slock persistent attachment store
