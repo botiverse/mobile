@@ -13895,6 +13895,16 @@ internal class MemberDetailScrollTracker(
     var lastPosition: MemberDetailScrollPosition? = null
         private set
     private var restoreApplied = false
+    // After a restore request, the very next emitted positions can be a
+    // CLAMPED version of the target: the narrower pane physically cannot
+    // scroll as far, so LazyColumn settles below the requested offset
+    // (Alpha94 evidence: 489 -> 88). Publishing that frame would degrade the
+    // snapshot and the return trip would land at top. While the restore is
+    // still settling we only publish the position once the list actually
+    // lands on the target, or the user starts a real scroll — whichever
+    // first. If the pane can never reach the target, nothing is written and
+    // the original snapshot survives unchanged.
+    private var restoreSettlePending = false
 
     fun observe(state: LazyListState, save: (MemberDetailScrollPosition) -> Unit) {
         if (state.layoutInfo.totalItemsCount <= 0) return
@@ -13907,6 +13917,10 @@ internal class MemberDetailScrollTracker(
             // position instead of snapping back to the snapshot.
             val userAlreadyScrolled =
                 state.firstVisibleItemIndex > 0 || state.firstVisibleItemScrollOffset > 0
+            val wantsRestore =
+                !userAlreadyScrolled &&
+                    (target.firstVisibleItemIndex > 0 ||
+                        target.firstVisibleItemScrollOffset > 0)
             logger(
                 "members_detail_scroll restore_first_items label=$label " +
                     "target=${target.firstVisibleItemIndex}:" +
@@ -13914,13 +13928,11 @@ internal class MemberDetailScrollTracker(
                     "current=${state.firstVisibleItemIndex}:" +
                     "${state.firstVisibleItemScrollOffset} " +
                     "userAlreadyScrolled=$userAlreadyScrolled " +
+                    "wantsRestore=$wantsRestore " +
                     "items=${state.layoutInfo.totalItemsCount}"
             )
-            if (
-                !userAlreadyScrolled &&
-                    (target.firstVisibleItemIndex > 0 ||
-                        target.firstVisibleItemScrollOffset > 0)
-            ) {
+            if (wantsRestore) {
+                restoreSettlePending = true
                 state.requestScrollToItem(
                     target.firstVisibleItemIndex,
                     target.firstVisibleItemScrollOffset
@@ -13932,6 +13944,31 @@ internal class MemberDetailScrollTracker(
                 firstVisibleItemIndex = state.firstVisibleItemIndex,
                 firstVisibleItemScrollOffset = state.firstVisibleItemScrollOffset
             )
+        if (restoreSettlePending) {
+            // While the restore scroll is in flight (our own
+            // requestScrollToItem also reports isScrollInProgress), nothing
+            // is a settled position — keep waiting without publishing.
+            if (state.isScrollInProgress) return
+            restoreSettlePending = false
+            val atTarget =
+                position.firstVisibleItemIndex == restoreTo.firstVisibleItemIndex &&
+                    position.firstVisibleItemScrollOffset ==
+                        restoreTo.firstVisibleItemScrollOffset
+            logger(
+                "members_detail_scroll restore_settled label=$label " +
+                    "position=${position.firstVisibleItemIndex}:" +
+                    "${position.firstVisibleItemScrollOffset} " +
+                    "atTarget=$atTarget"
+            )
+            if (!atTarget) {
+                // Landing below the target means the pane physically cannot
+                // reach the snapshot (narrow viewport clamps, Alpha94: 489 ->
+                // 88). The clamped landing is not a user position — suppress
+                // this one frame so the original snapshot survives for the
+                // return trip; later user scrolls publish normally.
+                return
+            }
+        }
         if (lastPosition != position) {
             lastPosition = position
             save(position)
