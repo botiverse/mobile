@@ -2457,6 +2457,26 @@ internal fun memberDetailStatusResolverServerId(
         ?.trim()
         ?.takeIf { it.isNotBlank() }
 
+/**
+ * task #58: decide whether a session-derived user id may be written into the
+ * current Human route state. Only a still-unresolved seed may take an id: the
+ * member must match this detail's identity, and the existing user id must be
+ * blank or equal to a value this same patcher wrote earlier (so an account
+ * switch can correct or retract it — null retracts). A canonical load's own
+ * identity is authoritative and is never overwritten.
+ */
+internal fun memberDetailPatchedHumanIdentity(
+    routeState: MemberDetailRouteState,
+    memberId: MemberId?,
+    sessionUserId: String?,
+    patchedUserId: String?
+): MemberDetailRouteState.Human? {
+    val human = routeState as? MemberDetailRouteState.Human ?: return null
+    if (human.member.id != memberId) return null
+    if (!human.currentUserId.isNullOrBlank() && human.currentUserId != patchedUserId) return null
+    return human.copy(currentUserId = sessionUserId)
+}
+
 internal data class MemberDetailLoadPlan(
     val priority: DataRequestPriority,
     val showInitialLoading: Boolean,
@@ -3416,8 +3436,8 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
     // session user id, leaving the scroll identity gate closed for the whole
     // seeded composition (Alpha100: HUMAN detail produced zero tracker events
     // on both Android entries and iPad). Re-read the session here and patch
-    // the id into a still-seeded Human state. Two fences keep the late read
-    // from stamping the wrong identity:
+    // the id into a still-seeded Human state. Fences keep a late read from
+    // stamping the wrong identity:
     //   memberIdentity is a launch key — switching members relaunches with
     //   the new identity and the check re-verifies the CURRENT routeState
     //   belongs to this member (remember(memberIdentity) resets routeState,
@@ -3426,22 +3446,24 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
     //   The session is read inside the effect at apply time, so an account
     //   switch mid-flight cannot reuse a stale id captured at composition.
     //   sessionChanges (wake signal, replay=0) re-arms the read on account
-    //   switch / token change so a NEW session's id patches a still-seeded
-    //   Human; a cleared session simply finds nothing and leaves the gate
-    //   closed — the canonical load still supplies identity when it lands.
+    //   switch / token change. An id this effect patched is remembered in
+    //   patchedSeedUserId so a LATER session can correct or retract it —
+    //   a canonical load's own identity (different from what we patched) is
+    //   authoritative and is never touched.
+    var patchedSeedUserId by remember(memberIdentity) { mutableStateOf<String?>(null) }
     LaunchedEffect(memberIdentity, provider.authStore) {
         val applySessionUserId: suspend () -> Unit = {
-            val session = provider.authStore.readSession()
-            val uid = session?.user?.id?.trim()?.takeIf { it.isNotBlank() }
-            if (uid != null) {
-                (routeState as? MemberDetailRouteState.Human)?.let { current ->
-                    val stillSeededForThisMember =
-                        current.currentUserId.isNullOrBlank() &&
-                            current.member.id == memberIdentity?.memberId
-                    if (stillSeededForThisMember) {
-                        routeState = current.copy(currentUserId = uid)
-                    }
-                }
+            val uid =
+                provider.authStore.readSession()?.user?.id?.trim()
+                    ?.takeIf { it.isNotBlank() }
+            memberDetailPatchedHumanIdentity(
+                routeState = routeState,
+                memberId = memberIdentity?.memberId,
+                sessionUserId = uid,
+                patchedUserId = patchedSeedUserId
+            )?.let { patched ->
+                routeState = patched
+                patchedSeedUserId = uid
             }
         }
         // onSubscription runs after the shared-flow subscription is active,

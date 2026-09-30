@@ -623,6 +623,47 @@ class SharedMembersParserTest {
     }
 
     @Test
+    fun memberDetailPatchedHumanIdentityFencesStaleAndSwitchingSessions() {
+        val member =
+            MemberProfile(
+                id = MemberId("human-artin"),
+                displayName = "Artin",
+                handle = "artin",
+                kind = MemberKind.Human,
+                serverId = ServerId("server-1")
+            )
+        val server = ServerSummary(id = ServerId("server-1"), name = "One")
+        val seeded =
+            MemberDetailRouteState.Human(
+                server = server, currentUserId = null, member = member
+            )
+        // Blank seed takes the current session id.
+        val patched =
+            memberDetailPatchedHumanIdentity(seeded, member.id, "viewer-a", null)
+        assertEquals("viewer-a", patched?.currentUserId)
+        // A value this patcher wrote may be corrected by a newer session…
+        val repatched =
+            memberDetailPatchedHumanIdentity(patched!!, member.id, "viewer-b", "viewer-a")
+        assertEquals("viewer-b", repatched?.currentUserId)
+        // …or retracted on session clear.
+        val retracted =
+            memberDetailPatchedHumanIdentity(repatched!!, member.id, null, "viewer-b")
+        assertEquals(null, retracted?.currentUserId)
+        // A different member's state is never touched.
+        val other = seeded.copy(member = member.copy(id = MemberId("human-other")))
+        assertNull(memberDetailPatchedHumanIdentity(other, member.id, "viewer-a", null))
+        // A canonical-load identity (not written by the patcher) is authoritative.
+        val loaded = seeded.copy(currentUserId = "viewer-a")
+        assertNull(memberDetailPatchedHumanIdentity(loaded, member.id, "viewer-b", null))
+        // Non-Human states are untouched.
+        assertNull(
+            memberDetailPatchedHumanIdentity(
+                MemberDetailRouteState.Loading, member.id, "viewer-a", null
+            )
+        )
+    }
+
+    @Test
     fun memberDetailStatusResolverServerFollowsTypedRouteIdentity() {
         val localServer = ServerSummary(id = ServerId("server-local"), name = "Local")
         val remoteServer = ServerSummary(id = ServerId("server-remote"), name = "Remote")
