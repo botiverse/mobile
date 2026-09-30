@@ -1,0 +1,25 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "XDAPXFY8FZ.build.raft.app"
+        ],
+        "components": [
+          {
+            "/": "/download",
+            "comment": "mobile download entry only"
+          },
+          {
+            "/": "/s/*/channel/*",
+            "comment": "channel and reply permalinks; native validates identity and query anchors"
+          },
+          {
+            "/": "/s/*/dm/*",
+            "comment": "direct-message permalinks; native validates identity and query anchors"
+          }
+        ]
+      }
+    ]
+  }
+}

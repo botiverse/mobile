@@ -60,8 +60,9 @@ Shared must install its Open listener, publish per-scope Ready/NotReady, retain
 canonical ownership after Accepted, and emit Accepted/Result using the contract.
 Shared destination policy and Android implementation are owned separately.
 Until that implementation is integrated, an intake build is not a navigable
-Universal Link feature. No associated-domain entitlement, AASA, signing or web
-publication is changed here. A simulator/unit-test pass does not establish
+Universal Link feature. The native entitlement declares only `applinks:app.raft.build`; AASA deployment,
+profile capability and the final signed application remain separate deliveries.
+See [the association handoff](ios-external-permalink-association.md). A simulator/unit-test pass does not establish
 system HTTPS delivery on a physical signed build.
 
 Explicit window scopes also publish their own foreground visibility and lifecycle
