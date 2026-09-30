@@ -14,10 +14,15 @@ import kotlin.test.assertTrue
 class SlockHostWindowInsetsTest {
 
     // The registry is process-global; tests use unique window ids so they
-    // never observe each other's state.
+    // never observe each other's state. The counter must be a companion
+    // field: JUnit creates a fresh instance per test, so an instance-level
+    // seq restarts at 0 and collides with entries published by earlier
+    // cases in the same process.
+    private fun freshWindow(): String = "test-window-${Companion.seq++}"
 
-    private var seq = 0
-    private fun freshWindow(): String = "test-window-${seq++}"
+    companion object {
+        private var seq = 0
+    }
 
     @Test
     fun windowsAreIsolated() {
