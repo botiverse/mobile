@@ -859,7 +859,7 @@ class InMemorySlockAuthSessionStore(
         expectedAccessToken: String,
         expectedRefreshToken: String,
         candidate: StoredAuthRefreshAttempt,
-    ): StoredAuthRefreshAttempt? {
+    ): StoredAuthRefreshAttempt? =
         mutex.withLock {
             val current = session ?: return@withLock null
             if (
