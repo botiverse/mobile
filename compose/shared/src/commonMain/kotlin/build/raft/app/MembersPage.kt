@@ -5438,6 +5438,12 @@ private fun MembersDetailContent(
     // Account is part of the scroll key: two sessions can show the same
     // serverId:kind:memberId identity, and without the viewer's user id a
     // sign-out/sign-in switch would restore the previous account's offsets.
+    // The account segment must be a real session identity: composing the key
+    // with a blank user id (route still Loading or a caller that never
+    // resolved the session) would publish saves under a wrong, shared
+    // "anonymous" key. Scroll tracking is only enabled once the viewer
+    // identity is known; until then no seed/restore/save runs at all.
+    val scrollIdentityReady = !currentUserId.isNullOrBlank()
     val memberScrollKey =
         "${currentUserId?.trim().orEmpty()}:" +
             member.membersDetailSelectionKey(
@@ -5488,8 +5494,20 @@ private fun MembersDetailContent(
     }
     // remembered so recompositions of this page do not re-acquire and retire
     // its own epoch.
+    // Log identity is a stable per-key label without exposing raw account
+    // ids: the member's selection key is already a pseudonymous id, the
+    // account segment is replaced by a short hash.
+    val scrollLogLabel =
+        "${currentUserId?.trim().orEmpty().hashCode().toString(16)}:" +
+            member.membersDetailSelectionKey(
+                currentServerId?.trim() ?: member.serverId?.value?.trim().orEmpty()
+            )
     val scrollRegistryWriteEpoch = remember(memberScrollKey) {
-        MemberDetailScrollStateRegistry.acquireWriteEpoch(memberScrollKey)
+        if (scrollIdentityReady) {
+            MemberDetailScrollStateRegistry.acquireWriteEpoch(memberScrollKey)
+        } else {
+            null
+        }
     }
     // A list that is still Loading reports index 0 without representing a
     // real scroll — that clamp is what destroyed restore on every earlier
@@ -5517,11 +5535,12 @@ private fun MembersDetailContent(
             )
             MemberDetailScrollTracker(
                 saved,
-                label = "$memberScrollKey:$holderKey",
+                label = "$scrollLogLabel:$holderKey",
                 logger = scrollLog
             )
         }
     agentTabListStates.forEach { (tab, state) ->
+        if (!scrollIdentityReady) return@forEach
         val tracker =
             trackerFor(tab, MemberDetailScrollStateRegistry.agentTabPosition(memberScrollKey, tab))
         LaunchedEffect(memberScrollKey, tab) {
@@ -5544,7 +5563,7 @@ private fun MembersDetailContent(
             }
         }
     }
-    run {
+    if (scrollIdentityReady) run {
         val tracker =
             trackerFor(
                 "human",
@@ -5570,13 +5589,14 @@ private fun MembersDetailContent(
             }
         }
     }
-    DisposableEffect(memberScrollKey) {
+    DisposableEffect(memberScrollKey, scrollIdentityReady) {
         onDispose {
+            if (!scrollIdentityReady) return@onDispose
             agentTabListStates.forEach { (tab, state) ->
                 scrollTrackers[tab]?.lastPosition?.let { position ->
                     slockLogger("MembersDetailScroll")(
                         "members_detail_scroll dispose_save " +
-                            "label=$memberScrollKey:$tab " +
+                            "label=$scrollLogLabel:$tab " +
                             "position=${position.firstVisibleItemIndex}:" +
                             "${position.firstVisibleItemScrollOffset}"
                     )
@@ -5592,7 +5612,7 @@ private fun MembersDetailContent(
             scrollTrackers["human"]?.lastPosition?.let { position ->
                 slockLogger("MembersDetailScroll")(
                     "members_detail_scroll dispose_save " +
-                        "label=$memberScrollKey:human " +
+                        "label=$scrollLogLabel:human " +
                         "position=${position.firstVisibleItemIndex}:" +
                         "${position.firstVisibleItemScrollOffset}"
                 )
@@ -14061,7 +14081,7 @@ internal object MemberDetailScrollStateRegistry {
                 }
             slockLogger("MembersDetailScroll")(
                 "members_detail_scroll registry_save kind=agentTab " +
-                    "key=$memberKey tab=$tab " +
+                    "keyHash=${memberKey.hashCode().toString(16)} tab=$tab " +
                     "position=${position.firstVisibleItemIndex}:" +
                     "${position.firstVisibleItemScrollOffset} " +
                     "gen=$expectedGeneration/$generation " +
@@ -14094,7 +14114,7 @@ internal object MemberDetailScrollStateRegistry {
                 }
             slockLogger("MembersDetailScroll")(
                 "members_detail_scroll registry_save kind=humanList " +
-                    "key=$memberKey " +
+                    "keyHash=${memberKey.hashCode().toString(16)} " +
                     "position=${position.firstVisibleItemIndex}:" +
                     "${position.firstVisibleItemScrollOffset} " +
                     "gen=$expectedGeneration/$generation " +
