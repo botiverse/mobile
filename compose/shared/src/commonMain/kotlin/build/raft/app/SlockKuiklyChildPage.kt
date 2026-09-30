@@ -236,7 +236,19 @@ internal fun SlockKuiklyChildPage(
     onLoadSuccess: () -> Unit = {},
     onLoadFailure: () -> Unit = {}
 ) {
-    val pageDataText = remember(pageData.toString()) { slockEmbeddedChildPageData(pageData).toString() }
+    val parentWindowId = LocalActivity.current.pageData.params.optString("slockWindowId")
+    val pageDataText =
+        remember(pageData.toString(), parentWindowId) {
+            slockEmbeddedChildPageData(pageData)
+                .apply {
+                    // task #482: the child shares the host window; inherit its id so the
+                    // per-window live inset snapshot resolves for this pager too.
+                    if (parentWindowId.isNotBlank() && !has("slockWindowId")) {
+                        put("slockWindowId", parentWindowId)
+                    }
+                }
+                .toString()
+        }
     MakeKuiklyComposeNode<SlockKuiklyChildPageView>(
         factory = { SlockKuiklyChildPageView() },
         modifier = modifier,

@@ -2441,34 +2441,59 @@ open class SlockKuiklyActivity :
     internal fun currentPageDataSnapshotForTest(): JSONObject =
             JSONObject(pageSpec?.pageData?.text.orEmpty())
 
+    // task #482: safe-area snapshots are scoped per host window so a second
+    // Activity or display can never pollute this window's inset state. The id
+    // travels in pageData so embedded child pagers inherit their owner's
+    // snapshot (children keep the same window).
+    private val hostWindowId: String by lazy {
+        "win:${System.identityHashCode(this)}"
+    }
+
     private fun SlockKuiklyPageData.withAndroidRuntimeWindowInsets(): SlockKuiklyPageData =
+            withAndroidRuntimeWindowInsets(
+                    statusBarHeightPx = androidStatusBarHeightPx(),
+                    navigationBarHeightPx = androidNavigationBarHeightPx(),
+                    statusBarHidden = !androidStatusBarVisible(),
+            )
+
+    // Explicit-values overload used by the live inset publisher so the stored
+    // spec always carries the authoritative numbers from the dispatch that just
+    // happened — decorView.rootWindowInsets can lag behind the callback.
+    private fun SlockKuiklyPageData.withAndroidRuntimeWindowInsets(
+            statusBarHeightPx: Int,
+            navigationBarHeightPx: Int,
+            statusBarHidden: Boolean,
+    ): SlockKuiklyPageData =
             SlockKuiklyPageData.fromJson(
                     JSONObject(text).apply {
                         put(KEY_HOST_EXCLUDES_NAVIGATION_BAR, androidHostExcludesNavigationBar())
                         put(KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA, true)
-                        val statusBarVisible = androidStatusBarVisible()
-                        put(KEY_STATUS_BAR_HIDDEN, !statusBarVisible)
+                        put(KEY_HOST_WINDOW_ID, hostWindowId)
+                        val statusBarVisible = !statusBarHidden
+                        put(KEY_STATUS_BAR_HIDDEN, statusBarHidden)
                         // task #482: the renderer's reported top inset can lag or arrive in
                         // the wrong unit on large-screen/desktop-mode hosts (it resolved to
                         // ~22dp on a 48px status bar), which left the nav rail divider and
                         // page headers drawing under the system bar. Feed the real
                         // WindowInsets pixel value through the same "statusBarHeight"
                         // channel the shared resolver already merges with the native
-                        // report (max wins, so a correct renderer value is never shrunk).
-                        if (statusBarVisible) {
-                            val topPx = androidStatusBarHeightPx()
-                            if (topPx > 0) {
-                                put("statusBarHeight", topPx.toString())
-                                put("safeAreaTop", topPx.toString())
-                            }
+                        // report (the live per-window snapshot, once present, is
+                        // authoritative and may be smaller or zero).
+                        if (statusBarVisible && statusBarHeightPx > 0) {
+                            put("statusBarHeight", statusBarHeightPx.toString())
+                            put("safeAreaTop", statusBarHeightPx.toString())
                         }
                         // Same source for the bottom edge: gesture-nav taskbars are not
                         // always included in the renderer's reported bottom inset, which
                         // left the DM composer under the system bar on large screens.
-                        val bottomPx = androidNavigationBarHeightPx()
-                        if (bottomPx > 0) {
-                            put("navigationBarHeight", bottomPx.toString())
-                            put("safeAreaBottom", bottomPx.toString())
+                        // Write zero explicitly too: a taskbar that hides or shrinks must
+                        // clear the reserved padding, not keep a stale positive value.
+                        if (navigationBarHeightPx > 0) {
+                            put("navigationBarHeight", navigationBarHeightPx.toString())
+                            put("safeAreaBottom", navigationBarHeightPx.toString())
+                        } else {
+                            remove("navigationBarHeight")
+                            remove("safeAreaBottom")
                         }
                     }
             )
@@ -2618,12 +2643,27 @@ open class SlockKuiklyActivity :
         val key = "$top:$bottom:$hidden"
         if (key == lastPublishedInsetsKey) return
         lastPublishedInsetsKey = key
+        // Keep the stored pageData spec in sync with the latest authoritative
+        // values so pages/children attached later already carry this snapshot —
+        // a pager event alone would be missed by observers registered after it
+        // fired (and equal future events would be deduped away).
+        pageSpec = pageSpec?.let { spec ->
+            spec.copy(
+                    pageData =
+                            spec.pageData.withAndroidRuntimeWindowInsets(
+                                    statusBarHeightPx = top,
+                                    navigationBarHeightPx = bottom,
+                                    statusBarHidden = hidden,
+                            )
+            )
+        }
         kuiklyRenderViewDelegator.sendEvent(
                 EVENT_WINDOW_INSETS_CHANGED,
                 mapOf(
                         "statusBarHeightPx" to top.toString(),
                         "navigationBarHeightPx" to bottom.toString(),
                         "statusBarHidden" to hidden,
+                        KEY_HOST_WINDOW_ID to hostWindowId,
                 ),
         )
     }
@@ -2805,6 +2845,7 @@ open class SlockKuiklyActivity :
         private const val KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA =
                 "slockKeyboardInsetExcludesBottomSafeArea"
         private const val KEY_STATUS_BAR_HIDDEN = "slockStatusBarHidden"
+        private const val KEY_HOST_WINDOW_ID = "slockWindowId"
         // "statusBarHeight" / "safeAreaTop" / "navigationBarHeight" / "safeAreaBottom"
         // are written as string px values by withAndroidRuntimeWindowInsets(); they map
         // to JSONObject params.safeAreaPx keys in shared/SlockSafeArea.kt.
