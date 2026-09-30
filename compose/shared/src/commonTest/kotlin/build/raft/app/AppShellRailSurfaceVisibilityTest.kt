@@ -166,3 +166,36 @@ class AppShellRailSurfaceVisibilityTest {
         )
     }
 }
+
+class AppShellServerDrawerBackProjectionTest {
+    /**
+     * The Alpha79 drawer-BACK defect: `popMainRoute` read `serverSwitcherExpanded`
+     * from the render projection, which strips the drawer runtime when the app-shell
+     * drawer host owns it — so Back always saw `false` and fell through to
+     * close_page even with the drawer settled open. Back must consume from the
+     * live shell-store snapshot; this pins the projection trap so the check can
+     * never silently move back to the stripped state.
+     */
+    @Test
+    fun `render projection strips server drawer runtime`() {
+        val live =
+            build.raft.app.data.SharedHomeShellState(
+                home =
+                    build.raft.app.data.SharedHomeState(
+                        serverSwitcherExpanded = true,
+                        serverDrawer =
+                            build.raft.app.data.HomeServerDrawerState(expanded = true),
+                        serverDrawerCommandIntent =
+                            build.raft.app.data.HomeServerDrawerCommandIntent(
+                                desiredOpen = true,
+                                generation = 7L,
+                            ),
+                    )
+            )
+        val projected = live.withoutServerDrawerRuntimeForAppShellRender()
+        assertFalse(projected.home.serverSwitcherExpanded)
+        assertFalse(projected.home.serverDrawer.expanded)
+        assertFalse(projected.home.serverDrawerCommandIntent.desiredOpen)
+        assertTrue(live.home.serverSwitcherExpanded)
+    }
+}

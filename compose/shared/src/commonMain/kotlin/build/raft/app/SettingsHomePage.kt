@@ -5059,7 +5059,12 @@ private fun SlockAppShellReadyContent(
             createChannelError = null
             return true
         }
-        if (homeState.serverSwitcherExpanded) {
+        // homeState comes from homeShellRenderState, which strips the drawer runtime
+        // (withoutServerDrawerRuntimeForAppShellRender) when serverDrawerEnabled —
+        // so its serverSwitcherExpanded is always false here. Read the live store
+        // snapshot, otherwise an open app-shell drawer cannot consume Back and the
+        // route falls through to close_page (the Alpha79 drawer-BACK defect).
+        if (homeShellStore.state.value.home.serverSwitcherExpanded) {
             serverDrawerProgrammaticCloseFence?.invoke("back")
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
             return true
