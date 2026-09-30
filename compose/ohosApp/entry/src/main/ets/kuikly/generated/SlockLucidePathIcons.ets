@@ -54,12 +54,14 @@ export const SlockLucidePathIconNames: string[] = [
   'clipboard-list',
   'clock',
   'clock-3',
+  'code',
   'columns-3',
   'copy',
   'credit-card',
   'crop',
   'download',
   'ellipsis',
+  'maximize-2',
   'menu',
   'eraser',
   'external-link',
@@ -211,6 +213,8 @@ export const SlockLucidePathIconNames: string[] = [
   'wand',
   'waypoints',
   'x',
+  'zoom-in',
+  'zoom-out',
 ];
 
 export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
@@ -1715,6 +1719,33 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
       viewportHeight: 24,
     }
       ];
+    case 'code':
+      return [
+    {
+      commands: 'm 16 18 6 -6 -6 -6',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'm 8 6 -6 6 6 6',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
     case 'columns-3':
       return [
     {
@@ -1902,6 +1933,57 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
     },
     {
       commands: 'M 4 12 A 1 1 0 1 0 6 12 A 1 1 0 1 0 4 12 Z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'maximize-2':
+      return [
+    {
+      commands: 'M 15 3 h 6 v 6',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'm 21 3 -7 7',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'm 3 21 7 -7',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 9 21 H 3 v -6',
       fillPaint: 'none',
       strokePaint: 'currentColor',
       fillOpacity: 0,
@@ -8691,6 +8773,96 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
     },
     {
       commands: 'm 6 6 12 12',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'zoom-in':
+      return [
+    {
+      commands: 'M 3 11 A 8 8 0 1 0 19 11 A 8 8 0 1 0 3 11 Z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 21 21 L 16.65 16.65',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 11 8 L 11 14',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 8 11 L 14 11',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'zoom-out':
+      return [
+    {
+      commands: 'M 3 11 A 8 8 0 1 0 19 11 A 8 8 0 1 0 3 11 Z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 21 21 L 16.65 16.65',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 8 11 L 14 11',
       fillPaint: 'none',
       strokePaint: 'currentColor',
       fillOpacity: 0,
