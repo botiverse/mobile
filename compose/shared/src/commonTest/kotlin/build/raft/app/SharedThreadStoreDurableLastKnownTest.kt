@@ -112,6 +112,7 @@ class SharedThreadStoreDurableLastKnownTest {
         assertTrue(afterFailure.durableLastKnown)
         assertFalse(afterFailure.backgroundRefreshing)
         assertEquals(listOf("durable body"), afterFailure.messages.map { it.body })
+        assertTrue(afterFailure.mainLoadFailed, "a failed main load is flagged for recovery")
         failingScope.cancel()
 
         val emptyScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -128,6 +129,7 @@ class SharedThreadStoreDurableLastKnownTest {
         val afterEmpty = emptyStore.state.value.payload
         assertEquals("empty", afterEmpty.status)
         assertFalse(afterEmpty.durableLastKnown)
+        assertFalse(afterEmpty.mainLoadFailed, "a canonical answer clears the failure")
         assertTrue(afterEmpty.messages.isEmpty())
         emptyScope.cancel()
     }

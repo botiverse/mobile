@@ -1756,6 +1756,12 @@ internal data class KuiklyThreadScreenPayload(
      * slice; the frame is a first-frame stand-in, never an authority for paging or reactions.
      */
     val durableLastKnown: Boolean = false,
+    /**
+     * True while the last main timeline load (not a page of older/newer messages) failed transiently —
+     * a network error or an unusable answer. Set and cleared only by the refresh result, so recovery
+     * never mistakes a paging failure or a permission answer for it (LiBai #2782).
+     */
+    val mainLoadFailed: Boolean = false,
     val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
     val channelKind: String = "channel",
     val sourceThreadId: String? = null,
@@ -6167,6 +6173,7 @@ private fun SharedThreadRouteContentContent(
     // that lands while a refresh is still running is remembered (LiBai #2782): that refresh was issued
     // offline and may fail back to the stand-in, so the retry fires once it settles.
     val offlineStandInRecovery = remember(threadViewModel) { OfflineStandInRecoveryGate() }
+    // (the gate and attempt counter are per view model, so a new conversation starts clean)
     fun refreshOfflineStandIn(reason: String, current: KuiklyThreadScreenPayload) {
         bridge.log(
             "thread_offline_standin_refresh reason=$reason " +
@@ -6185,7 +6192,8 @@ private fun SharedThreadRouteContentContent(
             bridge.log(
                 "thread_offline_recovery_signal reason=$reason action=${offlineStandInRecoveryAction(current)} " +
                     "refresh=$refresh status=${current.status} durable=${current.durableLastKnown} " +
-                    "error=${current.errorCode ?: "none"} refreshing=${current.backgroundRefreshing}"
+                    "mainLoadFailed=${current.mainLoadFailed} error=${current.errorCode ?: "none"} " +
+                    "refreshing=${current.backgroundRefreshing}"
             )
             if (refresh) refreshOfflineStandIn(reason, current)
         }
@@ -6217,7 +6225,9 @@ private fun SharedThreadRouteContentContent(
     // shows a failed load, it also re-asks on a backoff; a successful answer stops it.
     var offlineRecoveryRetryAttempt by remember(threadViewModel) { mutableStateOf(0) }
     val offlineRecoveryAction = offlineStandInRecoveryAction(payload)
-    LaunchedEffect(offlineRecoveryAction, active) {
+    // Keyed on the view model and the attempt too: a switch to another failed conversation, or a failure
+    // that returns within one frame, must restart the timer (LiBai #2782).
+    LaunchedEffect(threadViewModel, offlineRecoveryAction, active, offlineRecoveryRetryAttempt) {
         if (offlineRecoveryAction == OfflineStandInRecoveryAction.None) {
             offlineRecoveryRetryAttempt = 0
             return@LaunchedEffect
@@ -21347,7 +21357,7 @@ internal enum class OfflineStandInRecoveryAction { Refresh, Defer, None }
 internal fun offlineStandInRecoveryAction(payload: KuiklyThreadScreenPayload): OfflineStandInRecoveryAction {
     if (payload.status == "no_permission") return OfflineStandInRecoveryAction.None
     if (payload.backgroundRefreshing || payload.status == "loading") return OfflineStandInRecoveryAction.Defer
-    val failed = payload.durableLastKnown || payload.errorCode != null
+    val failed = payload.durableLastKnown || payload.mainLoadFailed
     return if (failed) OfflineStandInRecoveryAction.Refresh else OfflineStandInRecoveryAction.None
 }
 

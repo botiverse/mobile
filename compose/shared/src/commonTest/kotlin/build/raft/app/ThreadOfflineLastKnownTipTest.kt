@@ -121,13 +121,22 @@ class ThreadOfflineLastKnownTipTest {
         // and a cold miss shows the error page — both are re-asked too.
         assertEquals(
             OfflineStandInRecoveryAction.Refresh,
-            offlineStandInRecoveryAction(base.copy(errorCode = "network_timeout")),
+            offlineStandInRecoveryAction(base.copy(mainLoadFailed = true, errorCode = "network_timeout")),
             "memory copy kept after a failed refresh"
         )
         assertEquals(
             OfflineStandInRecoveryAction.Refresh,
-            offlineStandInRecoveryAction(KuiklyThreadScreenPayload(status = "error", errorCode = "network_timeout")),
+            offlineStandInRecoveryAction(
+                KuiklyThreadScreenPayload(status = "error", mainLoadFailed = true, errorCode = "network_timeout")
+            ),
             "error page"
+        )
+        // LiBai #2782: an older/newer page failure (even a permission one) also writes errorCode and keeps
+        // status=content; it is not a main-load failure and must not trigger an automatic refresh.
+        assertEquals(
+            OfflineStandInRecoveryAction.None,
+            offlineStandInRecoveryAction(base.copy(olderMessagesStatus = "error", errorCode = "forbidden")),
+            "paging failure"
         )
         assertEquals(
             OfflineStandInRecoveryAction.Defer,
