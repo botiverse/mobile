@@ -43,6 +43,11 @@ duplicate acknowledgements, repeated intentional opens, capacity/expiry, and
 synchronous acknowledgement reentrancy. The intake cases also belong to the
 existing iOS XCTest target. Product compilation is a separate Hosted CI check.
 
+The iOS platform dispatcher forwards native Open notifications into the shared
+event bus, preserves the scope/authentication envelope, and ignores shared-origin
+echoes. Registration is process-wide and idempotent; each receiving Shell must
+validate the requested scope and generation before enqueueing.
+
 Shared must install its Open listener, publish per-scope Ready/NotReady, retain
 canonical ownership after Accepted, and emit Accepted/Result using the contract.
 Shared destination policy and Android implementation are owned separately.
