@@ -13872,11 +13872,16 @@ internal class MemberDetailScrollTracker(
         if (!restoreApplied) {
             restoreApplied = true
             val target = restoreTo
+            // Do not clobber a user who already scrolled before content
+            // arrived: if the list is populated and the position moved past
+            // the top on its own, the user beat the restore — keep their
+            // position instead of snapping back to the snapshot.
+            val userAlreadyScrolled =
+                state.firstVisibleItemIndex > 0 || state.firstVisibleItemScrollOffset > 0
             if (
-                (target.firstVisibleItemIndex > 0 || target.firstVisibleItemScrollOffset > 0) &&
-                    (state.firstVisibleItemIndex != target.firstVisibleItemIndex ||
-                        state.firstVisibleItemScrollOffset !=
-                            target.firstVisibleItemScrollOffset)
+                !userAlreadyScrolled &&
+                    (target.firstVisibleItemIndex > 0 ||
+                        target.firstVisibleItemScrollOffset > 0)
             ) {
                 state.requestScrollToItem(
                     target.firstVisibleItemIndex,

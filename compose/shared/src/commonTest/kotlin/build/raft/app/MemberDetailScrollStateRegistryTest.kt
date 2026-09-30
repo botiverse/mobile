@@ -118,17 +118,21 @@ class MemberDetailScrollStateRegistryTest {
     @Test
     fun `stale-epoch save cannot clobber a populated snapshot during page handoff`() {
         MemberDetailScrollStateRegistry.clear()
+        val oldEpoch = MemberDetailScrollStateRegistry.acquireWriteEpoch("u1:s1:agent:m1")
         MemberDetailScrollStateRegistry.saveAgentTabPosition(
             "u1:s1:agent:m1",
             MembersAgentDetailTab.Profile,
-            MemberDetailScrollPosition(firstVisibleItemIndex = 20)
+            MemberDetailScrollPosition(firstVisibleItemIndex = 20),
+            writeEpoch = oldEpoch
         )
-        // The recreated page's list is still Loading (zero items); its first
-        // emitted position is a clamped zero, not a real scroll to top.
+        // The recreated page takes the next epoch; the old page's still-
+        // Loading zero frame stamped with the retired epoch must not land.
+        MemberDetailScrollStateRegistry.acquireWriteEpoch("u1:s1:agent:m1")
         MemberDetailScrollStateRegistry.saveAgentTabPosition(
             "u1:s1:agent:m1",
             MembersAgentDetailTab.Profile,
-            MemberDetailScrollPosition()
+            MemberDetailScrollPosition(),
+            writeEpoch = oldEpoch
         )
         assertEquals(
             MemberDetailScrollPosition(firstVisibleItemIndex = 20),
