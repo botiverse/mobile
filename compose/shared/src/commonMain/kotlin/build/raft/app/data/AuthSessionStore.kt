@@ -855,33 +855,26 @@ class InMemorySlockAuthSessionStore(
         expectedRefreshToken: String,
         candidate: StoredAuthRefreshAttempt,
     ): StoredAuthRefreshAttempt? {
-        var committed = false
-        val attempt =
-            mutex.withLock {
-                val current = session ?: return@withLock null
-                if (
-                    current.user.id != expectedAccountId ||
-                    current.accessToken != expectedAccessToken ||
-                    current.refreshToken != expectedRefreshToken
-                ) {
-                    return@withLock null
-                }
-                current.refreshAttempt
-                    ?.takeIf { it.matchesAuthority(current, candidate.installationId) }
-                    ?.let { return@withLock it }
-                require(candidate.matchesAuthority(current, candidate.installationId)) {
-                    "refresh attempt authority mismatch"
-                }
-                session = current.copy(refreshAttempt = candidate)
-                bumpTerminalGenerationLocked()
-                committed = true
-                candidate
+        mutex.withLock {
+            val current = session ?: return@withLock null
+            if (
+                current.user.id != expectedAccountId ||
+                current.accessToken != expectedAccessToken ||
+                current.refreshToken != expectedRefreshToken
+            ) {
+                return@withLock null
             }
-        if (committed) {
-            terminalEvents.emit(AuthSessionEvent.BindingMetadataChanged(terminalGeneration))
+            current.refreshAttempt
+                ?.takeIf { it.matchesAuthority(current, candidate.installationId) }
+                ?.let { return@withLock it }
+            require(candidate.matchesAuthority(current, candidate.installationId)) {
+                "refresh attempt authority mismatch"
+            }
+            // task #58: refreshAttempt is refresh bookkeeping with no
+            // identity effect — it does NOT advance the terminal generation.
+            session = current.copy(refreshAttempt = candidate)
+            candidate
         }
-        return attempt
-    }
 
     override suspend fun rotateTokensAndClearRefreshAttemptIfMatch(
         expectedAccountId: String,
@@ -1196,8 +1189,11 @@ class KeyValueAuthSessionStore(
                 require(candidate.matchesAuthority(current, candidate.installationId)) {
                     "refresh attempt authority mismatch"
                 }
+                // task #58: refreshAttempt is refresh bookkeeping with no
+                // identity effect — it must NOT advance the terminal
+                // generation. A bump without a wake would strand a rejected
+                // generation-fenced commit with no retry signal.
                 writeSessionRecordLocked(current.copy(refreshAttempt = candidate))
-                nextGenerationLocked()
                 candidate
             }
         diagnosticsLogger(

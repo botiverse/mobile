@@ -736,6 +736,44 @@ class AuthSessionStoreTest {
     }
 
     @Test
+    fun refreshAttemptBookkeepingDoesNotInvalidateSnapshot() = runBlocking {
+        // task #58: prepareRefreshAttemptIfMatch writes identity-neutral
+        // refresh bookkeeping; it must NOT bump the terminal generation or
+        // the patch commit fails with no wake to retry on.
+        for (store in listOf(
+            KeyValueAuthSessionStore(InMemorySlockKeyValueStore()),
+            InMemorySlockAuthSessionStore(sampleSession()),
+        )) {
+            if (store.readSession() == null) {
+                store.replaceAuthenticatedSession(sampleSession())
+            }
+            val installationId = store.readOrCreateAuthInstallationId("ari_" + "1".repeat(32))
+            val snapshot = store.readAuthSessionTerminalSnapshot()
+            val attempt =
+                store.prepareRefreshAttemptIfMatch(
+                    expectedAccountId = sampleSession().user.id,
+                    expectedAccessToken = sampleSession().accessToken,
+                    expectedRefreshToken = sampleSession().refreshToken,
+                    candidate =
+                        StoredAuthRefreshAttempt(
+                            attemptId = "arf_" + "0".repeat(16),
+                            installationId = installationId,
+                            accountId = sampleSession().user.id,
+                            predecessorAccessToken = sampleSession().accessToken,
+                            predecessorRefreshToken = sampleSession().refreshToken,
+                            createdAtMillis = 1L,
+                        ),
+                )
+            assertNotNull(attempt)
+            var writeRan = false
+            val committed =
+                store.runIfAuthSessionRevision(snapshot.generation) { writeRan = true }
+            assertTrue(committed)
+            assertTrue(writeRan)
+        }
+    }
+
+    @Test
     fun terminalEventsWakeOnUnchangedFingerprintWritesOnInMemoryStore() = runBlocking {
         // task #58: every committed session write must wake terminal
         // consumers, even when only the server list / selection moves and
