@@ -382,6 +382,47 @@ class MemberDetailScrollTrackerTest {
     }
 
     @Test
+    fun `post-achieved clamp re-issues the restore once and suppresses the landing`() {
+        // Alpha101 evidence: seed landed at 489, atTarget published, then a
+        // second layout settle dropped the pane to 237 with NO user scroll —
+        // suppressing the write alone left the UI at the profile top. The
+        // tracker must re-scroll to the target.
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        var requested: Pair<Int, Int>? = null
+        val frame = tracker(MemberDetailScrollPosition(0, 489), saved)
+        frame(0, 489, 40, false) { _, _ -> } // seed at target opens settle
+        frame(0, 489, 40, false) { _, _ -> } // atTarget publishes
+        assertEquals(MemberDetailScrollPosition(0, 489), saved.last())
+        requested = null
+        // Post-settle clamp landing with no user scroll: suppressed AND the
+        // tracker re-issues the restore so the pane snaps back.
+        frame(0, 237, 40, false) { i, o -> requested = i to o }
+        assertEquals(0 to 489, requested)
+        assertEquals(MemberDetailScrollPosition(0, 489), saved.last())
+        // Restore in flight; landing back at target settles.
+        frame(0, 489, 40, true) { _, _ -> }
+        frame(0, 489, 40, false) { _, _ -> }
+        assertEquals(MemberDetailScrollPosition(0, 489), saved.last())
+    }
+
+    @Test
+    fun `post-achieved re-issue is bounded and never fights indefinitely`() {
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        val requests = mutableListOf<Pair<Int, Int>>()
+        val frame = tracker(MemberDetailScrollPosition(0, 489), saved)
+        frame(0, 489, 40, false) { i, o -> requests += i to o }
+        frame(0, 489, 40, false) { i, o -> requests += i to o }
+        // Three successive non-target landings with no user scroll: only
+        // MaxPostSettleReissues re-requests fire, then the tracker stops
+        // fighting (pane physically cannot hold the offset or user input is
+        // racing the restore).
+        frame(0, 237, 40, false) { i, o -> requests += i to o }
+        frame(0, 200, 40, false) { i, o -> requests += i to o }
+        frame(0, 88, 40, false) { i, o -> requests += i to o }
+        assertEquals(2, requests.size) // only the two bounded re-issues
+    }
+
+    @Test
     fun `after clamp suppression a user scroll landing still publishes`() {
         val saved = mutableListOf<MemberDetailScrollPosition>()
         val frame = tracker(MemberDetailScrollPosition(0, 489), saved)

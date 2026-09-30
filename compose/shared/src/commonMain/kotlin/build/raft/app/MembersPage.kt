@@ -14061,6 +14061,18 @@ internal class MemberDetailScrollTracker(
     // request was issued (seed already landed at target — Alpha94 path).
     private var issuedRestoreRequest = false
     private var sawUserScrollInSettle = false
+    // Alpha101: a layout pass can re-settle AFTER the target was already
+    // achieved (489 -> 237 while the UI sits at the top of the profile). The
+    // clamped landing is not user input, so the pane must be re-scrolled to
+    // the target — but only once. A second clamp means the pane physically
+    // cannot hold the offset (or the user is scrolling against the
+    // programmatic restore); either way we stop re-issuing so we cannot
+    // fight the user or loop forever.
+    private var postSettleReissues = 0
+
+    private companion object {
+        const val MaxPostSettleReissues = 2
+    }
 
     fun observe(state: LazyListState, save: (MemberDetailScrollPosition) -> Unit) =
         observe(
@@ -14179,14 +14191,27 @@ internal class MemberDetailScrollTracker(
                 restoreSettlePending = false
             } else {
                 // Landing below the target with no user scroll means the pane
-                // physically cannot reach the snapshot (narrow viewport
-                // clamps, Alpha94: 489 -> 88). The clamped landing is not a
-                // user position — suppress it so the original snapshot
-                // survives for the return trip. The settle window stays
-                // open, and the restore request is definitively over: clear
-                // the flag so a later user scroll lands on the user branch
-                // instead of being suppressed forever.
-                issuedRestoreRequest = false
+                // either physically cannot reach the snapshot (narrow-viewport
+                // clamp, Alpha94: 489 -> 88) or the layout re-settled AFTER the
+                // target had already been achieved (Alpha101: 489 -> 237). The
+                // clamped landing is not a user position — suppress the write
+                // so the snapshot survives — and re-issue the restore request
+                // so the pane actually returns to the target instead of
+                // sticking at the clamped offset. The settle window stays open
+                // for the re-requested scroll; a later user scroll still lands
+                // on the user branch because issuedRestoreRequest is false
+                // while no scroll is in flight (any real gesture marks
+                // sawUserScrollInSettle on its first in-flight frame).
+                if (postSettleReissues < MaxPostSettleReissues) {
+                    postSettleReissues += 1
+                    issuedRestoreRequest = true
+                    requestScroll(
+                        restoreTo.firstVisibleItemIndex,
+                        restoreTo.firstVisibleItemScrollOffset
+                    )
+                } else {
+                    issuedRestoreRequest = false
+                }
                 return
             }
         }
