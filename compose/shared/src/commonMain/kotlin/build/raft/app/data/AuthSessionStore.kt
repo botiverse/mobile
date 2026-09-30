@@ -669,17 +669,22 @@ class InMemorySlockAuthSessionStore(
     }
 
     override suspend fun updateTokens(accessToken: String, refreshToken: String) {
+        var committed = false
         val updatedFingerprint =
             mutex.withLock {
                 val previousFingerprint = session?.authSessionClearFingerprint()
                 val updated =
                     session?.copy(accessToken = accessToken, refreshToken = refreshToken)
-                        ?.also { session = it; bumpTerminalGenerationLocked() }
+                        ?.also {
+                            session = it
+                            bumpTerminalGenerationLocked()
+                            committed = true
+                        }
                 updated
                     ?.authSessionClearFingerprint()
                     ?.takeIf { it != previousFingerprint }
             }
-        if (rotated != null) {
+        if (committed) {
             terminalEvents.emit(AuthSessionEvent.TokensRotated(terminalGeneration))
         }
         updatedFingerprint?.let { changes.emit(it) }
