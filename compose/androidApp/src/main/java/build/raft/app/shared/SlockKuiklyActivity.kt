@@ -1046,7 +1046,7 @@ open class SlockKuiklyActivity :
         if (resolvedPageName(intent) == PAGE_APP_SHELL) {
             val envelope =
                 runCatching {
-                    resolvedPageData(intent)
+                    JSONObject(resolvedPageData(intent).text)
                         .optJSONObject(SlockExternalPermalinkContract.PageDataBlockKey)
                 }.getOrNull()
             if (envelope != null) {
