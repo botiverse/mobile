@@ -13991,7 +13991,6 @@ internal class MemberDetailScrollTracker(
                 if (!issuedRestoreRequest) sawUserScrollInSettle = true
                 return
             }
-            restoreSettlePending = false
             val atTarget =
                 position.firstVisibleItemIndex == restoreTo.firstVisibleItemIndex &&
                     position.firstVisibleItemScrollOffset ==
@@ -14002,13 +14001,21 @@ internal class MemberDetailScrollTracker(
                     "${position.firstVisibleItemScrollOffset} " +
                     "atTarget=$atTarget userScroll=$sawUserScrollInSettle"
             )
-            if (!atTarget && !sawUserScrollInSettle) {
+            if (atTarget) {
+                // Reaching the target once is not the end of settling: the
+                // narrow pane can still be measured smaller on the next
+                // layout pass and clamp down (Alpha94: 489 -> 88 one frame
+                // later). Keep the window open; publish this frame.
+            } else if (sawUserScrollInSettle) {
+                // The user's own scroll landing is a real position — publish.
+                restoreSettlePending = false
+            } else {
                 // Landing below the target with no user scroll means the pane
                 // physically cannot reach the snapshot (narrow viewport
                 // clamps, Alpha94: 489 -> 88). The clamped landing is not a
                 // user position — suppress it so the original snapshot
-                // survives for the return trip. A landing reached by a real
-                // user scroll publishes normally below.
+                // survives for the return trip. The settle window stays
+                // open: a later user scroll still publishes.
                 return
             }
         }
