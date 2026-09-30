@@ -295,10 +295,11 @@ class SharedWindowNavigationCoordinatorTest {
         )
     }
 
-    // Target-contract tests for the external-link interface (v3.1): these pin
-    // semantics the coordinator does not yet have. They are intentionally
-    // ignored until WindowNavigationReadiness gains serverListState and
-    // WindowNavigationIntent gains activationId/authGeneration.
+    // Target-contract specs for the external-link interface (v3.3): these describe
+    // semantics the coordinator does not yet implement. They are @Ignore'd
+    // documentation of the intended assertions — NOT test coverage — and flip to
+    // real tests in the same commit that adds serverListState, activationId and
+    // authGeneration.
 
     @Test
     @kotlin.test.Ignore
