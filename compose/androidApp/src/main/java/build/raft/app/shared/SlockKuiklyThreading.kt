@@ -16,7 +16,7 @@ internal object SlockKuiklyThreadAdapter : IKRThreadAdapter {
      * platform default (IKRThreadAdapter.stackSize() == 0). Deep trees such as the
      * desktop split layout opening a thread pane exhausted that default with a
      * StackOverflowError made entirely of placement frames. 8 MB matches the iOS
-     * main-thread budget; it costs virtual address space only on this one thread.
+     * main-thread budget and applies to this one thread only.
      */
     private const val CONTEXT_THREAD_STACK_SIZE_BYTES: Long = 8L shl 20
 
