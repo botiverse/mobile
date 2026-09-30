@@ -660,8 +660,10 @@ class InMemorySlockAuthSessionStore(
                 bumpTerminalGenerationLocked()
                 previousFingerprint != session.authSessionClearFingerprint()
             }
+        // Wake on EVERY committed write — server list / selection can move
+        // without changing the auth fingerprint.
+        terminalEvents.emit(AuthSessionEvent.Authenticated(terminalGeneration))
         if (changed) {
-            terminalEvents.emit(AuthSessionEvent.Authenticated(terminalGeneration))
             changes.emit(session.authSessionClearFingerprint())
         }
     }
@@ -677,10 +679,10 @@ class InMemorySlockAuthSessionStore(
                     ?.authSessionClearFingerprint()
                     ?.takeIf { it != previousFingerprint }
             }
-        updatedFingerprint?.let {
+        if (rotated != null) {
             terminalEvents.emit(AuthSessionEvent.TokensRotated(terminalGeneration))
-            changes.emit(it)
         }
+        updatedFingerprint?.let { changes.emit(it) }
     }
 
     override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) {
@@ -797,8 +799,8 @@ class InMemorySlockAuthSessionStore(
                 bumpTerminalGenerationLocked()
                 previous != session.authSessionClearFingerprint()
             }
+        terminalEvents.emit(AuthSessionEvent.Authenticated(terminalGeneration))
         if (changed) {
-            terminalEvents.emit(AuthSessionEvent.Authenticated(terminalGeneration))
             changes.emit(session.authSessionClearFingerprint())
         }
     }
@@ -814,8 +816,8 @@ class InMemorySlockAuthSessionStore(
                 persisted = updated
                 previous?.authSessionClearFingerprint() != updated.authSessionClearFingerprint()
             }
+        terminalEvents.emit(AuthSessionEvent.Authenticated(terminalGeneration))
         if (changed) {
-            terminalEvents.emit(AuthSessionEvent.Authenticated(terminalGeneration))
             changes.emit(requireNotNull(persisted).authSessionClearFingerprint())
         }
     }
@@ -840,10 +842,10 @@ class InMemorySlockAuthSessionStore(
                     updated.authSessionClearFingerprint().takeIf { it != current.authSessionClearFingerprint() }
                 updated
             }
-        newFingerprint?.let {
+        if (rotated != null) {
             terminalEvents.emit(AuthSessionEvent.TokensRotated(terminalGeneration))
-            changes.emit(it)
         }
+        newFingerprint?.let { changes.emit(it) }
         return rotated
     }
 

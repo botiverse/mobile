@@ -736,6 +736,37 @@ class AuthSessionStoreTest {
     }
 
     @Test
+    fun terminalEventsWakeOnUnchangedFingerprintWritesOnInMemoryStore() = runBlocking {
+        // task #58: every committed session write must wake terminal
+        // consumers, even when only the server list / selection moves and
+        // the auth fingerprint is unchanged.
+        for (writer in listOf<(suspend (InMemorySlockAuthSessionStore) -> Unit)>(
+            { it.saveSession(sampleSession().copy(servers = emptyList())) },
+            { it.replaceAuthenticatedSession(sampleSession().copy(servers = emptyList())) },
+            {
+                it.replaceAuthenticatedSessionPreservingSelection(
+                    sampleSession().copy(servers = emptyList())
+                )
+            },
+        )) {
+            val store = InMemorySlockAuthSessionStore(sampleSession())
+            val wake =
+                async(start = CoroutineStart.UNDISPATCHED) {
+                    store.authSessionTerminalEvents.first { it is AuthSessionEvent.Authenticated }
+                }
+            val snapshot = store.readAuthSessionTerminalSnapshot()
+            writer(store)
+            assertTrue(withTimeoutOrNull(1000) { wake.await() } is AuthSessionEvent.Authenticated)
+            // …and the write must invalidate a snapshot taken before it.
+            var writeRan = false
+            val committed =
+                store.runIfAuthSessionRevision(snapshot.generation) { writeRan = true }
+            assertFalse(committed)
+            assertFalse(writeRan)
+        }
+    }
+
+    @Test
     fun terminalEventsWakeOnSelectionOnlyChangeOnInMemoryStore() = runBlocking {
         val store = InMemorySlockAuthSessionStore(sampleSession())
         val event =
