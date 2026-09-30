@@ -5429,10 +5429,48 @@ private fun MembersDetailContent(
             member.membersDetailSelectionKey(
                 currentServerId?.trim() ?: member.serverId?.value?.trim().orEmpty()
             )
+    // Each composition owns a fresh LazyListState seeded from the registry
+    // snapshot; on dispose the position is written back. Sharing a live state
+    // object across the wide→narrow transition risks a double-attach while
+    // both child surfaces compose, and Loading frames could clamp a shared
+    // index before the recreated list has content.
     val agentTabListStates =
         MembersAgentDetailTab.entries.associateWith { tab ->
-            MemberDetailScrollStateRegistry.agentTabState(memberScrollKey, tab)
+            val saved = MemberDetailScrollStateRegistry.agentTabPosition(memberScrollKey, tab)
+            rememberLazyListState(
+                initialFirstVisibleItemIndex = saved.firstVisibleItemIndex,
+                initialFirstVisibleItemScrollOffset = saved.firstVisibleItemScrollOffset
+            )
         }
+    val humanDetailListState = run {
+        val saved = MemberDetailScrollStateRegistry.humanListPosition(memberScrollKey)
+        rememberLazyListState(
+            initialFirstVisibleItemIndex = saved.firstVisibleItemIndex,
+            initialFirstVisibleItemScrollOffset = saved.firstVisibleItemScrollOffset
+        )
+    }
+    val latestMemberScrollKey by rememberUpdatedState(memberScrollKey)
+    DisposableEffect(memberScrollKey) {
+        onDispose {
+            agentTabListStates.forEach { (tab, state) ->
+                MemberDetailScrollStateRegistry.saveAgentTabPosition(
+                    latestMemberScrollKey,
+                    tab,
+                    MemberDetailScrollPosition(
+                        firstVisibleItemIndex = state.firstVisibleItemIndex,
+                        firstVisibleItemScrollOffset = state.firstVisibleItemScrollOffset
+                    )
+                )
+            }
+            MemberDetailScrollStateRegistry.saveHumanListPosition(
+                latestMemberScrollKey,
+                MemberDetailScrollPosition(
+                    firstVisibleItemIndex = humanDetailListState.firstVisibleItemIndex,
+                    firstVisibleItemScrollOffset = humanDetailListState.firstVisibleItemScrollOffset
+                )
+            )
+        }
+    }
     var managementMenuOpen by remember(member.id.value, initialVisualMode) { mutableStateOf(false) }
     val storeLifecycleInFlight: String? = storeState.lifecycleActionInFlight
     val storeDiagnosticInFlight: String? = storeState.diagnosticActionInFlight
@@ -6029,7 +6067,7 @@ private fun MembersDetailContent(
                 }
             } else {
                 LazyColumn(
-                    state = MemberDetailScrollStateRegistry.humanListState(memberScrollKey),
+                    state = humanDetailListState,
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
                     beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
@@ -13690,23 +13728,31 @@ internal fun MemberProfile.membersDetailSelectionKey(serverId: String): String =
  * task #58: session-scoped scroll positions for member detail panes. The
  * embedded right-pane child (and the narrowed single-pane detail) destroys
  * and recreates the whole detail subtree on every pane transition, so
- * `rememberLazyListState` inside it always started back at the top. States
- * live here keyed by viewer account + member identity
- * (`currentUserId:membersDetailSelectionKey`) plus tab, so a recreated detail
- * resumes where it left off and offsets never leak across members or
- * accounts. Entries are dropped with the process; no
- * persistence is intended — this only bridges in-session pane transitions.
- * At most one detail surface is composed per shell at a time, so reusing the
- * same LazyListState instance is safe.
+ * `rememberLazyListState` inside it always started back at the top.
+ *
+ * Positions (not live LazyListState instances) live here keyed by viewer
+ * account + member identity (`currentUserId:membersDetailSelectionKey`) plus
+ * tab: a recreated detail seeds its state from the snapshot and writes the
+ * position back on dispose. Sharing the live state object would risk a
+ * double-attach during the pane transition (old child view and new one both
+ * composing momentarily) and let a Loading-frame LazyColumn clamp the shared
+ * index before content arrives — storing plain positions avoids both.
+ * Entries are dropped with the process; no persistence is intended.
  */
+internal data class MemberDetailScrollPosition(
+    val firstVisibleItemIndex: Int = 0,
+    val firstVisibleItemScrollOffset: Int = 0
+)
+
 internal object MemberDetailScrollStateRegistry {
     // Bound the map so a long session hopping across many members/accounts
     // cannot grow it without limit: beyond this many distinct member keys the
     // oldest-inserted entries are evicted (insertion-ordered keys iterator).
     // Comfortably above any realistic in-session working set.
     private const val MaxTrackedMemberKeys = 64
-    private val agentTabStates = mutableMapOf<String, MutableMap<MembersAgentDetailTab, LazyListState>>()
-    private val humanListStates = mutableMapOf<String, LazyListState>()
+    private val agentTabPositions =
+        mutableMapOf<String, MutableMap<MembersAgentDetailTab, MemberDetailScrollPosition>>()
+    private val humanListPositions = mutableMapOf<String, MemberDetailScrollPosition>()
 
     private fun MutableMap<String, *>.evictOldestOverCap() {
         while (size > MaxTrackedMemberKeys) {
@@ -13717,20 +13763,25 @@ internal object MemberDetailScrollStateRegistry {
         }
     }
 
-    @OptIn(com.tencent.kuikly.compose.foundation.ExperimentalFoundationApi::class)
-    fun agentTabState(memberKey: String, tab: MembersAgentDetailTab): LazyListState =
-        agentTabStates
-            .getOrPut(memberKey) {
-                mutableMapOf<MembersAgentDetailTab, LazyListState>()
-            }
-            .getOrPut(tab) { LazyListState() }
-            .also { agentTabStates.evictOldestOverCap() }
+    fun agentTabPosition(memberKey: String, tab: MembersAgentDetailTab): MemberDetailScrollPosition =
+        agentTabPositions[memberKey]?.get(tab) ?: MemberDetailScrollPosition()
 
-    @OptIn(com.tencent.kuikly.compose.foundation.ExperimentalFoundationApi::class)
-    fun humanListState(memberKey: String): LazyListState =
-        humanListStates
-            .getOrPut(memberKey) { LazyListState() }
-            .also { humanListStates.evictOldestOverCap() }
+    fun saveAgentTabPosition(
+        memberKey: String,
+        tab: MembersAgentDetailTab,
+        position: MemberDetailScrollPosition
+    ) {
+        agentTabPositions.getOrPut(memberKey) { mutableMapOf() }[tab] = position
+        agentTabPositions.evictOldestOverCap()
+    }
+
+    fun humanListPosition(memberKey: String): MemberDetailScrollPosition =
+        humanListPositions[memberKey] ?: MemberDetailScrollPosition()
+
+    fun saveHumanListPosition(memberKey: String, position: MemberDetailScrollPosition) {
+        humanListPositions[memberKey] = position
+        humanListPositions.evictOldestOverCap()
+    }
 
     /**
      * Drops every remembered detail scroll position. Called from session
@@ -13738,8 +13789,8 @@ internal object MemberDetailScrollStateRegistry {
      * never inherit — even briefly — the previous session's offsets.
      */
     fun clear() {
-        agentTabStates.clear()
-        humanListStates.clear()
+        agentTabPositions.clear()
+        humanListPositions.clear()
     }
 }
 
