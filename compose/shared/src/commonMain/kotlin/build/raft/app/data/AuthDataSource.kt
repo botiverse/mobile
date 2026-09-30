@@ -366,8 +366,8 @@ class SharedAuthDataSource(
         val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
         diagnosticsLogger("auth_session_persist_start provider=browser_login userPresent=${login.user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
         if (!isCurrent()) return SharedAuthResult.Unauthenticated
-        runCatchingPreservingCancellation {
-            replaceAuthenticatedSessionAndRetireChangedAccount(session, "browser_login")
+        val committed = runCatchingPreservingCancellation {
+            replaceAuthenticatedSessionAndRetireChangedAccount(session, "browser_login", isCurrent)
         }
             .getOrElse { throwable ->
                 diagnosticsLogger(
@@ -375,6 +375,7 @@ class SharedAuthDataSource(
                 )
                 return loginStageFailure("session_persist", "Could not save session locally.")
             }
+        if (!committed) return SharedAuthResult.Unauthenticated
         diagnosticsLogger("auth_session_persist_result provider=browser_login result=success stage=session_persist")
         diagnosticsLogger("auth_login_result provider=browser_login result=success serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
         return SharedAuthResult.Success(session)
@@ -1547,15 +1548,17 @@ class SharedAuthDataSource(
 
     private suspend fun replaceAuthenticatedSessionAndRetireChangedAccount(
         session: StoredAuthSession,
-        source: String
-    ) {
+        source: String,
+        isCurrent: () -> Boolean = { true },
+    ): Boolean {
         val previous = sessionStore.readSession()
         val capture =
             previous
                 ?.takeIf { it.user.id.trim() != session.user.id.trim() }
                 ?.let(::captureAvatarOwnerRetirement)
-        sessionStore.replaceAuthenticatedSession(session)
+        if (!sessionStore.replaceAuthenticatedSessionIfCurrent(session, isCurrent)) return false
         retireCapturedAvatarOwners(capture, source)
+        return true
     }
 
     private fun captureAvatarOwnerRetirement(session: StoredAuthSession?): SlockAvatarOwnerRetirementCapture? =

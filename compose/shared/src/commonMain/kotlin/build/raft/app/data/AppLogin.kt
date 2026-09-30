@@ -11,6 +11,7 @@ internal const val SLOCK_APP_LOGIN_MMKV_NAMESPACE = "slockAppLogin"
 @Serializable
 internal data class AppLoginPending(
     val generation: String,
+    val requestId: String,
     val verifier: String,
     val returnUri: String,
     val environment: String,
@@ -40,12 +41,13 @@ internal class AppLoginCoordinator(
         if (generation.isBlank() || !pkce.matches(verifier) || !pkce.matches(challenge) ||
             returnUri !in setOf("raft://login/callback", "raft-debug://login/callback")) return@withLock null
         val active = runtime() ?: return@withLock null
-        val pending = AppLoginPending(generation, verifier, returnUri, active.environment, now())
+        val startedAt = now()
         val result = active.start(returnUri, challenge)
         if (result !is SharedAuthResult.Success || runtime()?.environment != active.environment) return@withLock null
         if (result.data.requestId.isBlank() || result.data.expiresAt.isBlank()) return@withLock null
         val url = result.data.loginUrl
         if (!url.startsWith("https://")) return@withLock null
+        val pending = AppLoginPending(generation, result.data.requestId, verifier, returnUri, active.environment, startedAt)
         store.putString("pending", Json.encodeToString(AppLoginPending.serializer(), pending))
         url
     }
@@ -54,9 +56,9 @@ internal class AppLoginCoordinator(
         if (pending()?.generation == generation) clear()
     }
 
-    suspend fun complete(returnUri: String, code: String, error: String): String = mutex.withLock {
+    suspend fun complete(returnUri: String, requestId: String, code: String, error: String): String = mutex.withLock {
         val pending = pending() ?: return@withLock "ignored"
-        if (pending.returnUri != returnUri) return@withLock "ignored"
+        if (pending.returnUri != returnUri || pending.requestId != requestId) return@withLock "ignored"
         val active = runtime() ?: return@withLock "retry"
         if (active.environment != pending.environment || now() - pending.startedAt !in -60_000L until 600_000L ||
             !pkce.matches(pending.verifier)) {
@@ -77,16 +79,7 @@ internal object SlockAppLogin {
             SlockSharedKeyValueStoreProvider.create(SLOCK_APP_LOGIN_MMKV_NAMESPACE, "App login").store,
             runtime = {
                 SlockSharedStoreRegistry.currentOrNull()?.let { provider ->
-                    val auth = provider.createAuthDataSourceForCurrentEnvironment()
-                    val environmentKey = provider.apiEnvironmentStore.current().key
-                    object : AppLoginRuntime {
-                        override val environment = environmentKey
-                        override suspend fun start(returnUri: String, challenge: String) = auth.startAppLogin(returnUri, challenge)
-                        override suspend fun complete(code: String, verifier: String): Boolean =
-                            auth.completeAppLogin(code, verifier) {
-                                provider.apiEnvironmentStore.current().key == environmentKey
-                            } is SharedAuthResult.Success
-                    }
+                    createAppLoginRuntime(provider.apiEnvironmentStore, provider.authStore, provider.avatarCacheRuntime)
                 }
             },
         )
@@ -94,5 +87,31 @@ internal object SlockAppLogin {
     suspend fun start(generation: String, verifier: String, challenge: String, returnUri: String) =
         coordinator.start(generation, verifier, challenge, returnUri)
     suspend fun cancel(generation: String) = coordinator.cancel(generation)
-    suspend fun complete(returnUri: String, code: String, error: String) = coordinator.complete(returnUri, code, error)
+    suspend fun complete(returnUri: String, requestId: String, code: String, error: String) = coordinator.complete(returnUri, requestId, code, error)
+}
+
+internal fun appLoginEnvironmentIdentity(environment: SharedSettingsApiEnvironmentOption): String =
+    listOf(environment.key, environment.apiBaseUrl, environment.socketBaseUrl, environment.webUrl)
+        .joinToString("") { "${it.length}:$it" }
+
+internal fun createAppLoginRuntime(
+    environmentStore: SharedApiEnvironmentStore,
+    authStore: SlockAuthSessionStore,
+    avatarCacheRuntime: SlockAvatarCacheRuntime? = null,
+    transportFactory: (String) -> SlockAuthTransport = { SharedSlockAuthTransport(baseUrl = it) },
+): AppLoginRuntime {
+    val snapshot = environmentStore.current()
+    val identity = appLoginEnvironmentIdentity(snapshot)
+    // Capture the actual endpoints, not just "custom". Hydration must use the
+    // same API as the exchange even if the environment changes while suspended.
+    val auth = SharedAuthDataSource(transportFactory(snapshot.apiBaseUrl), authStore)
+        .withAvatarCacheRuntime(avatarCacheRuntime, UnsupportedSlockAvatarNativeCache) { snapshot.apiBaseUrl }
+    fun isCurrent() = appLoginEnvironmentIdentity(environmentStore.current()) == identity
+    return object : AppLoginRuntime {
+        override val environment = identity
+        override suspend fun start(returnUri: String, challenge: String): SharedAuthResult<AuthAppLoginStartResponse> =
+            if (isCurrent()) auth.startAppLogin(returnUri, challenge) else SharedAuthResult.Unauthenticated
+        override suspend fun complete(code: String, verifier: String): Boolean =
+            isCurrent() && auth.completeAppLogin(code, verifier, ::isCurrent) is SharedAuthResult.Success
+    }
 }

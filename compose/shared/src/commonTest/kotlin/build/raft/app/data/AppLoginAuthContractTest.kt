@@ -44,4 +44,18 @@ class AppLoginAuthContractTest {
         assertTrue(source.completeAppLogin("code", "verifier") is SharedAuthResult.Failure)
         assertNull(store.readSession())
     }
+    @Test fun environmentChangeWhileReadingPreviousSessionCannotCommit() = runBlocking {
+        val backing = InMemorySlockAuthSessionStore()
+        var current = true
+        val store = object : SlockAuthSessionStore by backing {
+            override suspend fun readSession(): StoredAuthSession? {
+                current = false
+                return backing.readSession()
+            }
+        }
+        val source = SharedAuthDataSource(Transport(), store)
+        assertEquals(SharedAuthResult.Unauthenticated, source.completeAppLogin("code", "verifier") { current })
+        assertNull(backing.readSession())
+    }
+
 }

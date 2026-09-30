@@ -10,14 +10,14 @@ import kotlinx.coroutines.delay
 private val appLoginScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
 @KNExport
-fun slockOhosAppLoginCompleteCallback(returnUri: String, code: String, error: String): Boolean {
+fun slockOhosAppLoginCompleteCallback(returnUri: String, requestId: String, code: String, error: String): Boolean {
     if (returnUri !in setOf("raft://login/callback", "raft-debug://login/callback") ||
-        code.isBlank() == error.isBlank()) return false
+        requestId.isBlank() || code.isBlank() == error.isBlank()) return false
     appLoginScope.launch {
         // Page-content readiness can precede installation of the shared store on cold startup.
         // Retain this callback only in memory while that short initialization completes.
         repeat(50) {
-            val result = runCatchingPreservingCancellation { SlockAppLogin.complete(returnUri, code, error) }
+            val result = runCatchingPreservingCancellation { SlockAppLogin.complete(returnUri, requestId, code, error) }
                 .getOrDefault("login_error")
             if (result != "retry") {
                 if (result != "ignored") SlockWebLoginCompletion.publish(result)

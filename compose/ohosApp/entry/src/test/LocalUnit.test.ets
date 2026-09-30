@@ -487,9 +487,9 @@ export default function localUnitTest() {
       const preparation = prepareSlockOhosAppLogin();
       expect(preparation.returnUri).assertEqual(SLOCK_OHOS_APP_LOGIN_URI);
       expect(/^[A-Za-z0-9_-]{43,128}$/.test(preparation.codeVerifier)).assertTrue();
-      expect(parseSlockOhosAppLoginCallback(`${SLOCK_OHOS_APP_LOGIN_URI}?code=one`)?.code).assertEqual('one');
-      expect(parseSlockOhosAppLoginCallback(`${SLOCK_OHOS_APP_LOGIN_URI}?error=access_denied`)?.error).assertEqual('access_denied');
-      for (const suffix of ['?code=a&code=b', '?code=a&error=expired', '?provider=web&code=a', '?code=%GG', '?code=a#fragment', '?code=']) {
+      expect(parseSlockOhosAppLoginCallback(`${SLOCK_OHOS_APP_LOGIN_URI}?requestId=req&code=one`)?.code).assertEqual('one');
+      expect(parseSlockOhosAppLoginCallback(`${SLOCK_OHOS_APP_LOGIN_URI}?requestId=req&error=access_denied`)?.error).assertEqual('access_denied');
+      for (const suffix of ['?code=one', '?requestId=req&code=a&error=expired', '?requestId=req&requestId=other&code=a', '?requestId=&code=a', '?code=a&code=b', '?code=a&error=expired', '?provider=web&code=a', '?code=%GG', '?code=a#fragment', '?code=']) {
         expect(parseSlockOhosAppLoginCallback(`${SLOCK_OHOS_APP_LOGIN_URI}${suffix}`) === undefined).assertTrue();
       }
       expect(parseSlockOhosAppLoginCallback('raft://oauth/callback?code=a') === undefined).assertTrue();
