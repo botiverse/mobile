@@ -83,4 +83,35 @@ class MemberDetailScrollStateRegistryTest {
             MemberDetailScrollStateRegistry.agentTabPosition("u1:s1:agent:m69", MembersAgentDetailTab.Profile)
         )
     }
+
+    @Test
+    fun `save issued before clear is retired and cannot resurrect the old position`() {
+        MemberDetailScrollStateRegistry.clear()
+        val generation = MemberDetailScrollStateRegistry.currentGeneration()
+        MemberDetailScrollStateRegistry.clear()
+        MemberDetailScrollStateRegistry.saveAgentTabPosition(
+            "u1:s1:agent:m1",
+            MembersAgentDetailTab.Profile,
+            MemberDetailScrollPosition(firstVisibleItemIndex = 11),
+            expectedGeneration = generation
+        )
+        assertEquals(
+            MemberDetailScrollPosition(),
+            MemberDetailScrollStateRegistry.agentTabPosition("u1:s1:agent:m1", MembersAgentDetailTab.Profile)
+        )
+    }
+
+    @Test
+    fun `save carrying the current generation still lands after a clear`() {
+        MemberDetailScrollStateRegistry.clear()
+        MemberDetailScrollStateRegistry.saveHumanListPosition(
+            "u2:s1:human:h1",
+            MemberDetailScrollPosition(firstVisibleItemIndex = 4),
+            expectedGeneration = MemberDetailScrollStateRegistry.currentGeneration()
+        )
+        assertEquals(
+            MemberDetailScrollPosition(firstVisibleItemIndex = 4),
+            MemberDetailScrollStateRegistry.humanListPosition("u2:s1:human:h1")
+        )
+    }
 }

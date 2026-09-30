@@ -161,6 +161,8 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -5461,25 +5463,69 @@ private fun MembersDetailContent(
             initialFirstVisibleItemScrollOffset = saved.firstVisibleItemScrollOffset
         )
     }
-    val latestMemberScrollKey by rememberUpdatedState(memberScrollKey)
+    // Positions are saved continuously (snapshotFlow), not only on dispose:
+    // during a pane transition the new detail composes BEFORE the old one is
+    // destroyed, so a dispose-only write would land after the new page already
+    // seeded its state and the restore would still start at the top. Writes
+    // use the captured memberScrollKey for this composition (not a latest
+    // ref) so a retiring page can never stamp its offsets onto the member the
+    // detail is switching to, and the registry retires save calls issued
+    // before a session clear() so a stale dispose cannot resurrect cleared
+    // positions. The generation is captured at first composition (not
+    // remembered-keyed) so saves issued after clear() carry the old session's
+    // generation and are retired rather than resurrecting offsets.
+    val scrollRegistryGeneration = MemberDetailScrollStateRegistry.currentGeneration()
+    agentTabListStates.forEach { (tab, state) ->
+        LaunchedEffect(memberScrollKey, tab) {
+            snapshotFlow {
+                MemberDetailScrollPosition(
+                    firstVisibleItemIndex = state.firstVisibleItemIndex,
+                    firstVisibleItemScrollOffset = state.firstVisibleItemScrollOffset
+                )
+            }.collect { position ->
+                MemberDetailScrollStateRegistry.saveAgentTabPosition(
+                    memberScrollKey,
+                    tab,
+                    position,
+                    expectedGeneration = scrollRegistryGeneration
+                )
+            }
+        }
+    }
+    LaunchedEffect(memberScrollKey) {
+        snapshotFlow {
+            MemberDetailScrollPosition(
+                firstVisibleItemIndex = humanDetailListState.firstVisibleItemIndex,
+                firstVisibleItemScrollOffset = humanDetailListState.firstVisibleItemScrollOffset
+            )
+        }.collect { position ->
+            MemberDetailScrollStateRegistry.saveHumanListPosition(
+                memberScrollKey,
+                position,
+                expectedGeneration = scrollRegistryGeneration
+            )
+        }
+    }
     DisposableEffect(memberScrollKey) {
         onDispose {
             agentTabListStates.forEach { (tab, state) ->
                 MemberDetailScrollStateRegistry.saveAgentTabPosition(
-                    latestMemberScrollKey,
+                    memberScrollKey,
                     tab,
                     MemberDetailScrollPosition(
                         firstVisibleItemIndex = state.firstVisibleItemIndex,
                         firstVisibleItemScrollOffset = state.firstVisibleItemScrollOffset
-                    )
+                    ),
+                    expectedGeneration = scrollRegistryGeneration
                 )
             }
             MemberDetailScrollStateRegistry.saveHumanListPosition(
-                latestMemberScrollKey,
+                memberScrollKey,
                 MemberDetailScrollPosition(
                     firstVisibleItemIndex = humanDetailListState.firstVisibleItemIndex,
                     firstVisibleItemScrollOffset = humanDetailListState.firstVisibleItemScrollOffset
-                )
+                ),
+                expectedGeneration = scrollRegistryGeneration
             )
         }
     }
@@ -13763,9 +13809,20 @@ internal object MemberDetailScrollStateRegistry {
     // oldest-inserted entries are evicted (insertion-ordered keys iterator).
     // Comfortably above any realistic in-session working set.
     private const val MaxTrackedMemberKeys = 64
+    private val lock = SynchronizedObject()
     private val agentTabPositions =
         mutableMapOf<String, MutableMap<MembersAgentDetailTab, MemberDetailScrollPosition>>()
     private val humanListPositions = mutableMapOf<String, MemberDetailScrollPosition>()
+
+    // Retired-write guard: every save carries the registry generation the
+    // caller last observed. clear() bumps the generation, so a save issued by
+    // a page that was still alive across logout/account-switch (and whose
+    // continuous save flow can fire once more before its coroutine is
+    // cancelled) is dropped instead of resurrecting the old session's
+    // offsets under the new session.
+    private var generation = 0L
+
+    fun currentGeneration(): Long = synchronized(lock) { generation }
 
     private fun MutableMap<String, *>.evictOldestOverCap() {
         while (size > MaxTrackedMemberKeys) {
@@ -13777,33 +13834,51 @@ internal object MemberDetailScrollStateRegistry {
     }
 
     fun agentTabPosition(memberKey: String, tab: MembersAgentDetailTab): MemberDetailScrollPosition =
-        agentTabPositions[memberKey]?.get(tab) ?: MemberDetailScrollPosition()
+        synchronized(lock) {
+            agentTabPositions[memberKey]?.get(tab) ?: MemberDetailScrollPosition()
+        }
 
     fun saveAgentTabPosition(
         memberKey: String,
         tab: MembersAgentDetailTab,
-        position: MemberDetailScrollPosition
+        position: MemberDetailScrollPosition,
+        expectedGeneration: Long = currentGeneration()
     ) {
-        agentTabPositions.getOrPut(memberKey) { mutableMapOf() }[tab] = position
-        agentTabPositions.evictOldestOverCap()
+        synchronized(lock) {
+            if (expectedGeneration != generation) return
+            agentTabPositions.getOrPut(memberKey) { mutableMapOf() }[tab] = position
+            agentTabPositions.evictOldestOverCap()
+        }
     }
 
     fun humanListPosition(memberKey: String): MemberDetailScrollPosition =
-        humanListPositions[memberKey] ?: MemberDetailScrollPosition()
+        synchronized(lock) { humanListPositions[memberKey] ?: MemberDetailScrollPosition() }
 
-    fun saveHumanListPosition(memberKey: String, position: MemberDetailScrollPosition) {
-        humanListPositions[memberKey] = position
-        humanListPositions.evictOldestOverCap()
+    fun saveHumanListPosition(
+        memberKey: String,
+        position: MemberDetailScrollPosition,
+        expectedGeneration: Long = currentGeneration()
+    ) {
+        synchronized(lock) {
+            if (expectedGeneration != generation) return
+            humanListPositions[memberKey] = position
+            humanListPositions.evictOldestOverCap()
+        }
     }
 
     /**
      * Drops every remembered detail scroll position. Called from session
      * teardown (logout, account switch, session clear) so a new account can
-     * never inherit — even briefly — the previous session's offsets.
+     * never inherit — even briefly — the previous session's offsets. Also
+     * bumps the registry generation so saves issued by still-disposing old
+     * pages are retired rather than written back.
      */
     fun clear() {
-        agentTabPositions.clear()
-        humanListPositions.clear()
+        synchronized(lock) {
+            agentTabPositions.clear()
+            humanListPositions.clear()
+            generation += 1
+        }
     }
 }
 
