@@ -1,11 +1,12 @@
 package build.raft.app.data
 
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+// OHOS has no kotlinx-coroutines-test KLIB; all suspend fakes complete inline and time is injected.
 class AppLoginAuthContractTest {
     private class Transport : SlockAuthTransport by AuthDataSourceTest.FakeAuthApi() {
         var startBody = ""
@@ -21,7 +22,7 @@ class AppLoginAuthContractTest {
             return response
         }
     }
-    @Test fun pureLoginContractUsesNoOAuthFieldsAndCommitsCanonicalSession() = runTest {
+    @Test fun pureLoginContractUsesNoOAuthFieldsAndCommitsCanonicalSession() = runBlocking {
         val transport = Transport()
         val store = InMemorySlockAuthSessionStore()
         val source = SharedAuthDataSource(transport, store)
@@ -33,7 +34,7 @@ class AppLoginAuthContractTest {
         assertEquals("access-token", store.readSession()?.accessToken)
         assertEquals(1, store.readSession()?.servers?.size)
     }
-    @Test fun malformedResponseAndEnvironmentChangeCannotInstallSession() = runTest {
+    @Test fun malformedResponseAndEnvironmentChangeCannotInstallSession() = runBlocking {
         val transport = Transport()
         val store = InMemorySlockAuthSessionStore()
         val source = SharedAuthDataSource(transport, store)

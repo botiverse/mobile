@@ -1,11 +1,12 @@
 package build.raft.app.data
 
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
+// OHOS has no kotlinx-coroutines-test KLIB; all suspend fakes complete inline and time is injected.
 class AppLoginCoordinatorTest {
     private val verifier = "v".repeat(43)
     private val challenge = "c".repeat(43)
@@ -23,7 +24,7 @@ class AppLoginCoordinatorTest {
             return success
         }
     }
-    @Test fun processRestartRetainsVerifierAndDuplicateCallbackCannotExchangeAgain() = runTest {
+    @Test fun processRestartRetainsVerifierAndDuplicateCallbackCannotExchangeAgain() = runBlocking {
         val store = InMemorySlockKeyValueStore()
         val runtime = Runtime()
         val first = AppLoginCoordinator(store, { runtime }, { 1000 })
@@ -36,7 +37,7 @@ class AppLoginCoordinatorTest {
         assertEquals("ignored", restarted.complete(uri, "code", ""))
         assertEquals(1, runtime.exchanges)
     }
-    @Test fun expiredOrEnvironmentChangedRequestsNeverExchange() = runTest {
+    @Test fun expiredOrEnvironmentChangedRequestsNeverExchange() = runBlocking {
         for (changed in listOf(false, true)) {
             val runtime = Runtime()
             var now = 0L
@@ -48,7 +49,7 @@ class AppLoginCoordinatorTest {
             assertEquals("ignored", coordinator.complete(uri, "code", ""))
         }
     }
-    @Test fun retryReplacesCredentialsAndOldBrowserFailureCannotCancelNewRequest() = runTest {
+    @Test fun retryReplacesCredentialsAndOldBrowserFailureCannotCancelNewRequest() = runBlocking {
         val runtime = Runtime()
         val coordinator = AppLoginCoordinator(InMemorySlockKeyValueStore(), { runtime }, { 0 })
         coordinator.start("old", verifier, challenge, uri)
@@ -57,7 +58,7 @@ class AppLoginCoordinatorTest {
         assertEquals("app_shell", coordinator.complete(uri, "code", ""))
         assertEquals("n".repeat(43), runtime.receivedVerifier)
     }
-    @Test fun cancelAndInvalidPreparationCannotDeliverSession() = runTest {
+    @Test fun cancelAndInvalidPreparationCannotDeliverSession() = runBlocking {
         val runtime = Runtime()
         val coordinator = AppLoginCoordinator(InMemorySlockKeyValueStore(), { runtime }, { 0 })
         assertNull(coordinator.start("generation", verifier, challenge, "raft://oauth/callback"))
@@ -66,7 +67,7 @@ class AppLoginCoordinatorTest {
         assertEquals(0, runtime.exchanges)
         assertEquals("ignored", coordinator.complete(uri, "code", ""))
     }
-    @Test fun coldStartupCanRetryUntilSharedRuntimeIsReady() = runTest {
+    @Test fun coldStartupCanRetryUntilSharedRuntimeIsReady() = runBlocking {
         val store = InMemorySlockKeyValueStore()
         val active = Runtime()
         var runtime: AppLoginRuntime? = active
@@ -78,7 +79,7 @@ class AppLoginCoordinatorTest {
         assertEquals("app_shell", coordinator.complete(uri, "code", ""))
         assertEquals(1, active.exchanges)
     }
-    @Test fun failedExchangeRequiresFreshLogin() = runTest {
+    @Test fun failedExchangeRequiresFreshLogin() = runBlocking {
         val runtime = Runtime().apply { success = false }
         val coordinator = AppLoginCoordinator(InMemorySlockKeyValueStore(), { runtime }, { 0 })
         coordinator.start("generation", verifier, challenge, uri)
