@@ -16,10 +16,14 @@ if (!['raft', 'raft-debug'].includes(expectedScheme)) {
 
 const moduleJson = JSON.parse(execFileSync('unzip', ['-p', hapPath, 'module.json'], { encoding: 'utf8' }));
 const entryAbility = moduleJson.module?.abilities?.find((ability) => ability.name === 'EntryAbility');
+if (entryAbility?.exported !== true) {
+  throw new Error('EntryAbility must be exported for browser callbacks');
+}
 const callbackUris = (entryAbility?.skills ?? [])
-  .filter((skill) => skill.actions?.includes('ohos.want.action.viewData'))
+  .filter((skill) => skill.actions?.includes('ohos.want.action.viewData') &&
+    skill.entities?.includes('entity.system.browsable'))
   .flatMap((skill) => skill.uris ?? [])
-  .filter((uri) => ['oauth', 'login'].includes(uri.host) && uri.path === '/callback');
+  .filter((uri) => ['oauth', 'login'].includes(uri.host) && uri.path === 'callback');
 
 if (callbackUris.length !== 2) {
   throw new Error(`Expected one OAuth and one login callback URI, found ${callbackUris.length}`);

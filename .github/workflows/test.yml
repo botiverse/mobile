@@ -1495,6 +1495,7 @@ jobs:
           hvigorw --mode module \
             -p module=entry@default -p product=default -p requiredDeviceType=phone \
             assembleHap --analyze=normal --no-daemon
+          node --test scripts/verify_mobile_oauth_hap.test.mjs
           node scripts/verify_mobile_oauth_hap.mjs \
             entry/build/default/outputs/default/entry-default-unsigned.hap \
             raft-debug

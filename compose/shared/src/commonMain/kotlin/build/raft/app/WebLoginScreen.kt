@@ -17,6 +17,12 @@ import build.raft.app.data.SlockWebLoginCompletion
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.resources.MR
+import com.tencent.kuikly.compose.foundation.layout.Arrangement
+import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.text.style.TextAlign
+import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.launch
@@ -45,8 +51,11 @@ internal fun WebLoginScreen(pager: Pager, bridge: BridgeModule, auth: SharedAuth
             }
         }
     }
-    AuthScaffold(contentScrollable = true) {
-        AuthCenterMark()
+    AuthScaffold(
+        contentScrollable = true,
+        scrollContentVerticalArrangement = Arrangement.Center,
+    ) {
+        AuthCenterMark(size = 52.dp)
         AuthFormColumn {
             AuthError(if (failed) stringResource(MR.strings.auth_web_login_failed) else null)
             AuthActionButton(
@@ -69,6 +78,12 @@ internal fun WebLoginScreen(pager: Pager, bridge: BridgeModule, auth: SharedAuth
                         }
                     }
                 },
+            )
+            Text(
+                text = stringResource(MR.strings.auth_web_login_hint),
+                modifier = Modifier.fillMaxWidth(),
+                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                textAlign = TextAlign.Center,
             )
         }
     }

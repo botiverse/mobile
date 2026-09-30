@@ -2,7 +2,8 @@ import { HvigorNode, HvigorPlugin } from '@ohos/hvigor';
 import { OhosHapContext, OhosPluginId } from '@ohos/hvigor-ohos-plugin';
 
 const CALLBACK_HOSTS = ['oauth', 'login'];
-const CALLBACK_PATH = '/callback';
+// OHOS inserts the slash between host and path; a leading slash matches //callback.
+const CALLBACK_PATH = 'callback';
 const VIEW_DATA_ACTION = 'ohos.want.action.viewData';
 
 interface OauthUri {
