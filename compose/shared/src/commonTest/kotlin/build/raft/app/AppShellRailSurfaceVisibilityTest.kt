@@ -270,6 +270,29 @@ class AppShellMembersDetailPaneTest {
     }
 
     @Test
+    fun `member detail open generation is shell-monotonic and invalidates stale writes`() {
+        val generation = AppShellMemberDetailOpenGeneration()
+        // Click A stamps 1; click B (same or different member) stamps 2.
+        val openA = generation.next()
+        val openB = generation.next()
+        // Slow A completing after B was stamped must fail the fence — no
+        // shared write (selection, pageData, agent-detail seed) may apply.
+        assertTrue(openB == generation.current())
+        assertFalse(openA == generation.current())
+        // Closing the detail while a request is in flight invalidates it.
+        generation.invalidate()
+        assertFalse(openB == generation.current())
+        // The generation is monotonic across the shell lifetime — including
+        // the list being destroyed while the single-pane detail shows (narrow /
+        // desktop-off), which previously reset a list-local counter to 0 and
+        // let a reopened member replay an old close number.
+        val reopened = generation.next()
+        assertTrue(reopened > openB)
+        assertFalse(openB == generation.current())
+        assertTrue(openB != reopened)
+    }
+
+    @Test
     fun `member selection identity key distinguishes server kind member`() {
         val selection =
             AppShellMemberDetailSelection(
