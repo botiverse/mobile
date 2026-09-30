@@ -14069,6 +14069,18 @@ internal class MemberDetailScrollTracker(
     // programmatic restore); either way we stop re-issuing so we cannot
     // fight the user or loop forever.
     private var postSettleReissues = 0
+    // True once the pane has actually landed on the restore target at least
+    // once. Re-issue only exists for the post-achieved case (Alpha101: layout
+    // re-settled after reaching 489 -> dropped to 237 with no gesture); a
+    // pre-achieve clamp landing only suppresses the write — never re-issues —
+    // so a subsequent user scroll lands on the user branch unambiguously.
+    private var restoreAchieved = false
+    // While a re-issued restore is in flight, record the trigger landing.
+    // Our own requestScrollToItem can only move the list TOWARD the target;
+    // an in-flight frame that lands farther from the target than the trigger
+    // can only be a real user gesture fighting the restore — mark it so the
+    // landing publishes instead of being suppressed again.
+    private var reIssueTriggerOffset: Int? = null
 
     private companion object {
         const val MaxPostSettleReissues = 2
@@ -14164,7 +14176,19 @@ internal class MemberDetailScrollTracker(
             // In the no-request path (seed landed at target) any scroll is
             // the user's, so remember it: the landing then belongs to them.
             if (scrollInProgress) {
-                if (!issuedRestoreRequest) sawUserScrollInSettle = true
+                val trigger = reIssueTriggerOffset
+                if (
+                    !issuedRestoreRequest ||
+                    (
+                        trigger != null &&
+                            targetDistance(positionIndex, positionOffset, restoreTo) >
+                                targetDistance(trigger.first, trigger.second, restoreTo)
+                    )
+                ) {
+                    sawUserScrollInSettle = true
+                    issuedRestoreRequest = false
+                    reIssueTriggerOffset = null
+                }
                 return
             }
             val atTarget =
@@ -14178,6 +14202,8 @@ internal class MemberDetailScrollTracker(
                     "atTarget=$atTarget userScroll=$sawUserScrollInSettle"
             )
             if (atTarget) {
+                reIssueTriggerOffset = null
+                restoreAchieved = true
                 // Reaching the target once is not the end of settling: the
                 // narrow pane can still be measured smaller on the next
                 // layout pass and clamp down (Alpha94: 489 -> 88 one frame
@@ -14189,28 +14215,31 @@ internal class MemberDetailScrollTracker(
             } else if (sawUserScrollInSettle) {
                 // The user's own scroll landing is a real position — publish.
                 restoreSettlePending = false
+                reIssueTriggerOffset = null
             } else {
                 // Landing below the target with no user scroll means the pane
                 // either physically cannot reach the snapshot (narrow-viewport
                 // clamp, Alpha94: 489 -> 88) or the layout re-settled AFTER the
                 // target had already been achieved (Alpha101: 489 -> 237). The
                 // clamped landing is not a user position — suppress the write
-                // so the snapshot survives — and re-issue the restore request
-                // so the pane actually returns to the target instead of
-                // sticking at the clamped offset. The settle window stays open
-                // for the re-requested scroll; a later user scroll still lands
-                // on the user branch because issuedRestoreRequest is false
-                // while no scroll is in flight (any real gesture marks
-                // sawUserScrollInSettle on its first in-flight frame).
-                if (postSettleReissues < MaxPostSettleReissues) {
+                // so the snapshot survives. Only the post-achieved case also
+                // re-issues the restore (bounded by MaxPostSettleReissues) so
+                // the pane snaps back instead of sticking at the clamped
+                // offset; a pre-achieve suppression never re-issues, so a
+                // later user drag marks sawUserScrollInSettle on its first
+                // in-flight frame and lands on the user branch unambiguously.
+                if (restoreAchieved && postSettleReissues < MaxPostSettleReissues) {
                     postSettleReissues += 1
                     issuedRestoreRequest = true
+                    reIssueTriggerOffset =
+                        position.firstVisibleItemIndex to position.firstVisibleItemScrollOffset
                     requestScroll(
                         restoreTo.firstVisibleItemIndex,
                         restoreTo.firstVisibleItemScrollOffset
                     )
                 } else {
                     issuedRestoreRequest = false
+                    reIssueTriggerOffset = null
                 }
                 return
             }
@@ -14220,6 +14249,13 @@ internal class MemberDetailScrollTracker(
             save(position)
         }
     }
+}
+
+internal fun targetDistance(index: Int, offset: Int, target: MemberDetailScrollPosition): Int {
+    if (index != target.firstVisibleItemIndex) {
+        return Int.MAX_VALUE / 2 + kotlin.math.abs(index - target.firstVisibleItemIndex)
+    }
+    return kotlin.math.abs(offset - target.firstVisibleItemScrollOffset)
 }
 
 internal object MemberDetailScrollStateRegistry {

@@ -423,6 +423,50 @@ class MemberDetailScrollTrackerTest {
     }
 
     @Test
+    fun `user drag during a re-issued restore is not pulled back and saves on exit`() {
+        // SangLan's race: restore achieved (489), layout re-clamps (237), the
+        // tracker re-issues scrollTo(489); the user starts dragging BEFORE the
+        // re-request lands — their in-flight frames move AWAY from the target
+        // (past the trigger), which must cancel the re-issue and let the real
+        // landing publish.
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        val requests = mutableListOf<Pair<Int, Int>>()
+        val frame = tracker(MemberDetailScrollPosition(0, 489), saved)
+        frame(0, 489, 40, false) { i, o -> requests += i to o }
+        frame(0, 489, 40, false) { i, o -> requests += i to o }
+        assertEquals(MemberDetailScrollPosition(0, 489), saved.last())
+        // Post-achieve clamp, no gesture: suppressed + one re-issue.
+        frame(0, 237, 40, false) { i, o -> requests += i to o }
+        assertEquals(listOf(0 to 489), requests)
+        // User drags farther down past the trigger while the re-issue is in
+        // flight — motion away from target proves intent; the drag wins.
+        frame(0, 120, 40, true) { _, _ -> }
+        frame(0, 60, 40, true) { _, _ -> }
+        frame(0, 60, 40, false) { _, _ -> }
+        assertEquals(MemberDetailScrollPosition(0, 60), saved.last())
+        // And no further re-issue fires: the settle window is closed on the
+        // user's landing.
+        assertEquals(1, requests.size)
+    }
+
+    @Test
+    fun `re-issue still applies when no user gesture interleaves`() {
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        val requests = mutableListOf<Pair<Int, Int>>()
+        val frame = tracker(MemberDetailScrollPosition(0, 489), saved)
+        frame(0, 489, 40, false) { i, o -> requests += i to o }
+        frame(0, 489, 40, false) { i, o -> requests += i to o }
+        frame(0, 237, 40, false) { i, o -> requests += i to o }
+        assertEquals(1, requests.size)
+        // The re-issued restore approaches the target (in-flight frames do
+        // not move past the trigger): it is ours, not the user's.
+        frame(0, 380, 40, true) { _, _ -> }
+        frame(0, 489, 40, true) { _, _ -> }
+        frame(0, 489, 40, false) { _, _ -> }
+        assertEquals(MemberDetailScrollPosition(0, 489), saved.last())
+    }
+
+    @Test
     fun `after clamp suppression a user scroll landing still publishes`() {
         val saved = mutableListOf<MemberDetailScrollPosition>()
         val frame = tracker(MemberDetailScrollPosition(0, 489), saved)
