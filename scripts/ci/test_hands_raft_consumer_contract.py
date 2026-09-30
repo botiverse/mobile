@@ -2,6 +2,7 @@
 """Static contract for resolving the Hands Android SDK only from Raft Maven."""
 
 import json
+import re
 from pathlib import Path
 
 
@@ -34,6 +35,18 @@ metadata = json.loads(read("compose/config/hands-android-sdk.json"))
 require(metadata["group"] == "build.hands", "Hands group drifted")
 require(metadata["artifact"] == "hands-android-sdk", "Hands artifact drifted")
 require(metadata["version"] == "0.13.0", "Hands version drifted")
+require(
+    metadata.get("sourceTag", "") in ("", f'android-sdk-v{metadata["version"]}'),
+    "Hands source tag does not match the release version",
+)
+require(
+    re.fullmatch(r"[0-9a-f]{40}", metadata["sourceCommit"]) is not None,
+    "Hands source commit is not pinned",
+)
+require(
+    re.fullmatch(r"[1-9][0-9]*", metadata["publishRunId"]) is not None,
+    "Hands publication run is not pinned",
+)
 for key in ("aarSha256", "nativeSymbolsSha256"):
     value = metadata[key]
     require(len(value) == 64 and all(char in "0123456789abcdef" for char in value), f"{key} is invalid")
