@@ -637,24 +637,32 @@ class SharedMembersParserTest {
             MemberDetailRouteState.Human(
                 server = server, currentUserId = null, member = member
             )
-        // Blank seed takes the current session id.
+        // Blank seed takes the current session id; the written instance
+        // becomes the patcher's own tracked state.
+        var patchedState: MemberDetailRouteState.Human? = null
         val patched =
-            memberDetailPatchedHumanIdentity(seeded, member.id, "viewer-a", null)
+            memberDetailPatchedHumanIdentity(seeded, member.id, "viewer-a", patchedState)
         assertEquals("viewer-a", patched?.currentUserId)
-        // A value this patcher wrote may be corrected by a newer session…
+        patchedState = patched
+        // The same instance may be corrected by a newer session…
         val repatched =
-            memberDetailPatchedHumanIdentity(patched!!, member.id, "viewer-b", "viewer-a")
+            memberDetailPatchedHumanIdentity(patchedState!!, member.id, "viewer-b", patchedState)
         assertEquals("viewer-b", repatched?.currentUserId)
-        // …or retracted on session clear.
+        // …or retracted on session clear (patchedState tracks the new copy).
         val retracted =
-            memberDetailPatchedHumanIdentity(repatched!!, member.id, null, "viewer-b")
+            memberDetailPatchedHumanIdentity(repatched!!, member.id, null, repatched)
         assertEquals(null, retracted?.currentUserId)
+        // A canonical load swaps in a DIFFERENT instance carrying the same id:
+        // reference, not value, decides authority — it must not be rewritten.
+        val loadedSameId = seeded.copy(currentUserId = "viewer-a")
+        assertNull(
+            memberDetailPatchedHumanIdentity(
+                loadedSameId, member.id, "viewer-b", patchedState
+            )
+        )
         // A different member's state is never touched.
         val other = seeded.copy(member = member.copy(id = MemberId("human-other")))
         assertNull(memberDetailPatchedHumanIdentity(other, member.id, "viewer-a", null))
-        // A canonical-load identity (not written by the patcher) is authoritative.
-        val loaded = seeded.copy(currentUserId = "viewer-a")
-        assertNull(memberDetailPatchedHumanIdentity(loaded, member.id, "viewer-b", null))
         // Non-Human states are untouched.
         assertNull(
             memberDetailPatchedHumanIdentity(

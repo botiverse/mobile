@@ -2469,11 +2469,14 @@ internal fun memberDetailPatchedHumanIdentity(
     routeState: MemberDetailRouteState,
     memberId: MemberId?,
     sessionUserId: String?,
-    patchedUserId: String?
+    patchedState: MemberDetailRouteState.Human?
 ): MemberDetailRouteState.Human? {
     val human = routeState as? MemberDetailRouteState.Human ?: return null
     if (human.member.id != memberId) return null
-    if (!human.currentUserId.isNullOrBlank() && human.currentUserId != patchedUserId) return null
+    // Reference identity, not value equality: once the canonical load swaps in
+    // its own Human instance, our patched object is gone and the loaded
+    // identity is authoritative — even if it carries the same user id.
+    if (!human.currentUserId.isNullOrBlank() && human !== patchedState) return null
     return human.copy(currentUserId = sessionUserId)
 }
 
@@ -3450,20 +3453,26 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
     //   patchedSeedUserId so a LATER session can correct or retract it —
     //   a canonical load's own identity (different from what we patched) is
     //   authoritative and is never touched.
-    var patchedSeedUserId by remember(memberIdentity) { mutableStateOf<String?>(null) }
+    var patchedSeedState by remember(memberIdentity) {
+        mutableStateOf<MemberDetailRouteState.Human?>(null)
+    }
     LaunchedEffect(memberIdentity, provider.authStore) {
         val applySessionUserId: suspend () -> Unit = {
+            // Read twice: a change that lands between them is caught by the
+            // id mismatch; what remains is the apply-time session, not a
+            // value captured before an account switch.
+            val first = provider.authStore.readSession()?.user?.id?.trim()
+            val second = provider.authStore.readSession()?.user?.id?.trim()
             val uid =
-                provider.authStore.readSession()?.user?.id?.trim()
-                    ?.takeIf { it.isNotBlank() }
+                first?.takeIf { it.isNotBlank() && it == second }
             memberDetailPatchedHumanIdentity(
                 routeState = routeState,
                 memberId = memberIdentity?.memberId,
                 sessionUserId = uid,
-                patchedUserId = patchedSeedUserId
+                patchedState = patchedSeedState
             )?.let { patched ->
                 routeState = patched
-                patchedSeedUserId = uid
+                patchedSeedState = patched
             }
         }
         // onSubscription runs after the shared-flow subscription is active,
