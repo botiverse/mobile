@@ -6982,6 +6982,24 @@ private fun SlockAppShellReadyContent(
                                     }
                                 }
                             }
+                        } else if (memberSelection != null) {
+                            // task #58 narrow/compact continuation: a member selected while
+                            // wide keeps showing as a single-pane detail (same child page);
+                            // Back dismisses the selection back to the list.
+                            SlockKuiklyChildPage(
+                                pageName = MEMBER_DETAIL_PAGE,
+                                pageData = memberSelection.pageData,
+                                modifier =
+                                    Modifier
+                                        .fillMaxSize()
+                                        .padding(
+                                            bottom =
+                                                shellScope.embeddedChildBottomInset(
+                                                    showAppShellBottomTabs
+                                                )
+                                        ),
+                                active = active,
+                            )
                         } else {
                             membersListPane(active)
                         }
