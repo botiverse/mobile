@@ -1,6 +1,7 @@
 package build.raft.app.push
 
 import build.raft.app.core.data.diagnostics.SlockAppLog
+import build.raft.app.slockSystemNotificationTargetsVisibleConversation
 import build.raft.app.shared.AndroidUnreadNotificationPoster
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
@@ -21,6 +22,22 @@ class SlockFirebaseMessagingService : FirebaseMessagingService() {
             return
         }
 
+        if (
+            slockSystemNotificationTargetsVisibleConversation(
+                serverId = data["serverId"],
+                kind = data["kind"],
+                channelId = data["channelId"],
+                threadId = data["threadId"],
+                parentChannelId = data["parentChannelId"],
+                parentMessageId = data["parentMessageId"],
+                messageId = data["messageId"],
+                category = data["category"]
+            )
+        ) {
+            // The user is already looking at this conversation: stay silent, same as the in-app banner.
+            SlockAppLog.i(TAG, "fcm_message_suppressed reason=visible_conversation")
+            return
+        }
         val request = data.toUnreadNotificationRequest()
         val result = AndroidUnreadNotificationPoster.postUnreadNotification(applicationContext, request)
         SlockAppLog.i(
