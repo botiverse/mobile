@@ -1549,6 +1549,8 @@ class SharedAuthDataSource(
             }
             sessionStore.clearSession(reason = "logout", source = "auth_data_source_logout")
             retireCapturedAvatarOwners(avatarRetirement, source = "logout")
+            // task #58: drop the cleared account's member-detail scroll state.
+            build.raft.app.MemberDetailScrollStateRegistry.clear()
             diagnosticsLogger("auth_logout_cleared serverRevocation=$serverRevocation")
             SharedAuthResult.Success(Unit)
         }
@@ -1557,6 +1559,9 @@ class SharedAuthDataSource(
         val capture = captureAvatarOwnerRetirement(sessionStore.readSession())
         sessionStore.clearSession(reason = reason, source = source)
         retireCapturedAvatarOwners(capture, source)
+        // task #58: in-session member-detail scroll positions are keyed by the
+        // cleared account's user id; drop them so a new session cannot inherit.
+        build.raft.app.MemberDetailScrollStateRegistry.clear()
     }
 
     private suspend fun replaceAuthenticatedSessionAndRetireChangedAccount(
@@ -1570,6 +1575,9 @@ class SharedAuthDataSource(
                 ?.let(::captureAvatarOwnerRetirement)
         sessionStore.replaceAuthenticatedSession(session)
         retireCapturedAvatarOwners(capture, source)
+        // task #58: same account-scoped cleanup on switch — keys already differ
+        // by user id, this bounds memory and makes the lifecycle explicit.
+        build.raft.app.MemberDetailScrollStateRegistry.clear()
     }
 
     private fun captureAvatarOwnerRetirement(session: StoredAuthSession?): SlockAvatarOwnerRetirementCapture? =
