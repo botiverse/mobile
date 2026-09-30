@@ -69,6 +69,7 @@ import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.SharedAgentIssueReportRequest
 import build.raft.app.data.SharedAgentPanelTabOrderStore
 import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.SlockAvatarCacheRuntime
 import build.raft.app.data.SlockAvatarNativeCache
 import build.raft.app.data.SlockShellStoreScope
@@ -159,6 +160,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -2535,7 +2537,8 @@ internal fun memberDetailInitialRouteState(
     identity: MemberDetailIdentity?,
     activeServerId: String?,
     agentDetailState: SharedAgentDetailState,
-    serverMembersState: SharedServerMembersState
+    serverMembersState: SharedServerMembersState,
+    sessionUserId: String? = null
 ): MemberDetailRouteState? {
     identity ?: return null
     val sourceServerId = identity.sourceServerId?.value?.trim()?.takeIf { it.isNotBlank() }
@@ -2573,7 +2576,11 @@ internal fun memberDetailInitialRouteState(
         MemberKind.Human ->
             MemberDetailRouteState.Human(
                 server = server,
-                currentUserId = null,
+                // Roster-seeded Human must carry the session identity when the
+                // caller has it: scroll tracking is gated on a non-blank user
+                // id, and a null here would leave the gate closed for the
+                // entire seeded composition (Alpha100 Android HUMAN evidence).
+                currentUserId = sessionUserId,
                 member = member.copy(serverId = identity.sourceServerId ?: member.serverId),
                 accessMode = identity.memberDetailAccessMode(activeServer)
             )
@@ -3395,15 +3402,33 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
         }
     }
     val activeServerId by provider.selectedServerStore.currentServerId.collectAsState()
+    val detailSession by produceState<StoredAuthSession?>(initialValue = null) {
+        value = provider.authStore.readSession()
+    }
     var routeState by remember(memberIdentity) {
         mutableStateOf(
             memberDetailInitialRouteState(
                 identity = memberIdentity,
                 activeServerId = provider.selectedServerStore.currentServerId.value,
                 agentDetailState = provider.agentDetailStore.state.value,
-                serverMembersState = provider.serverMembersStore.state.value
+                serverMembersState = provider.serverMembersStore.state.value,
+                // Best-effort: null when the session record has not been read
+                // yet; the canonical load still supplies the real id later.
+                sessionUserId = detailSession?.user?.id
             ) ?: MemberDetailRouteState.Loading
         )
+    }
+    // The roster seed is composed before the async session read completes;
+    // when the id arrives, patch it into a still-seeded Human state so the
+    // scroll identity gate can open without waiting for the canonical load.
+    LaunchedEffect(memberIdentity, detailSession?.user?.id) {
+        val uid = detailSession?.user?.id?.trim()?.takeIf { it.isNotBlank() }
+            ?: return@LaunchedEffect
+        (routeState as? MemberDetailRouteState.Human)?.let { seeded ->
+            if (seeded.currentUserId.isNullOrBlank()) {
+                routeState = seeded.copy(currentUserId = uid)
+            }
+        }
     }
     var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
     var agentProfileRequestGeneration by remember { mutableStateOf(0L) }
