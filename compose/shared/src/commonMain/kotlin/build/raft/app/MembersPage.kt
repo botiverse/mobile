@@ -5504,12 +5504,21 @@ private fun MembersDetailContent(
         remember(memberScrollKey) {
             mutableMapOf<Any, MemberDetailScrollTracker>()
         }
+    val scrollLog = slockLogger("MembersDetailScroll")
     fun trackerFor(holderKey: Any, saved: MemberDetailScrollPosition) =
         scrollTrackers.getOrPut(holderKey) {
+            scrollLog(
+                "members_detail_scroll tracker_seed " +
+                    "label=$memberScrollKey:$holderKey " +
+                    "seed=${saved.firstVisibleItemIndex}:" +
+                    "${saved.firstVisibleItemScrollOffset} " +
+                    "generation=$scrollRegistryGeneration " +
+                    "epoch=$scrollRegistryWriteEpoch"
+            )
             MemberDetailScrollTracker(
                 saved,
                 label = "$memberScrollKey:$holderKey",
-                logger = slockLogger("MembersDetailScroll")
+                logger = scrollLog
             )
         }
     agentTabListStates.forEach { (tab, state) ->
@@ -14006,11 +14015,23 @@ internal object MemberDetailScrollStateRegistry {
         writeEpoch: Long? = null
     ) {
         synchronized(lock) {
-            if (expectedGeneration != generation) return
-            // An epoch-stamped save is accepted only while its page still
-            // owns the key's write epoch; a null epoch (non-page callers such
-            // as tests) carries no ownership claim and bypasses this check.
-            if (writeEpoch != null && latestEpochByMemberKey[memberKey] != writeEpoch) return
+            val decision =
+                when {
+                    expectedGeneration != generation -> "reject_generation"
+                    writeEpoch != null && latestEpochByMemberKey[memberKey] != writeEpoch ->
+                        "reject_epoch"
+                    else -> "accept"
+                }
+            slockLogger("MembersDetailScroll")(
+                "members_detail_scroll registry_save kind=agentTab " +
+                    "key=$memberKey tab=$tab " +
+                    "position=${position.firstVisibleItemIndex}:" +
+                    "${position.firstVisibleItemScrollOffset} " +
+                    "gen=$expectedGeneration/$generation " +
+                    "epoch=${writeEpoch ?: -1}/${latestEpochByMemberKey[memberKey] ?: -1} " +
+                    "decision=$decision"
+            )
+            if (decision != "accept") return
             agentTabPositions.getOrPut(memberKey) { mutableMapOf() }[tab] = position
             agentTabPositions.evictOldestOverCap()
             evictOrphanedEpochs()
@@ -14027,8 +14048,23 @@ internal object MemberDetailScrollStateRegistry {
         writeEpoch: Long? = null
     ) {
         synchronized(lock) {
-            if (expectedGeneration != generation) return
-            if (writeEpoch != null && latestEpochByMemberKey[memberKey] != writeEpoch) return
+            val decision =
+                when {
+                    expectedGeneration != generation -> "reject_generation"
+                    writeEpoch != null && latestEpochByMemberKey[memberKey] != writeEpoch ->
+                        "reject_epoch"
+                    else -> "accept"
+                }
+            slockLogger("MembersDetailScroll")(
+                "members_detail_scroll registry_save kind=humanList " +
+                    "key=$memberKey " +
+                    "position=${position.firstVisibleItemIndex}:" +
+                    "${position.firstVisibleItemScrollOffset} " +
+                    "gen=$expectedGeneration/$generation " +
+                    "epoch=${writeEpoch ?: -1}/${latestEpochByMemberKey[memberKey] ?: -1} " +
+                    "decision=$decision"
+            )
+            if (decision != "accept") return
             humanListPositions[memberKey] = position
             humanListPositions.evictOldestOverCap()
             evictOrphanedEpochs()
