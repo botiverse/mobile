@@ -365,8 +365,8 @@ class SharedAuthDataSource(
             ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
         val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
         diagnosticsLogger("auth_session_persist_start provider=browser_login userPresent=${login.user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
+        if (!isCurrent()) return SharedAuthResult.Unauthenticated
         runCatchingPreservingCancellation {
-            if (!isCurrent()) return SharedAuthResult.Unauthenticated
             replaceAuthenticatedSessionAndRetireChangedAccount(session, "browser_login")
         }
             .getOrElse { throwable ->
