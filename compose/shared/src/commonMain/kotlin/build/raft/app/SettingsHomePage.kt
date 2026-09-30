@@ -18067,6 +18067,9 @@ private fun SharedMembersScreen(
     // destroyed whenever the single-pane detail takes the surface, so the
     // counter cannot live here — a reset would replay stale generations.
     memberDetailOpenGeneration: AppShellMemberDetailOpenGeneration,
+    // task #58: key of the member whose detail is open in the right pane —
+    // the matching list row renders the web-style selected highlight.
+    selectedMemberKey: String? = null,
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     val membersTitle = stringResource(MR.strings.tab_members)
@@ -18506,6 +18509,7 @@ private fun SharedMembersScreen(
                 // Task #409: persist per-machine collapse under the session user id.
                 currentUserId = current.currentUserId,
                 agentGroupCollapseStore = membersAgentGroupCollapseStore,
+                selectedMemberKey = selectedMemberKey,
                 onRefresh = {
                     onForegroundActivity("refresh")
                     onRetry()
