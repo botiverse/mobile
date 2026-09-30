@@ -14206,7 +14206,11 @@ internal class MemberDetailScrollTracker(
                     ?: state.firstVisibleItemIndex,
             positionOffset =
                 state.layoutInfo.visibleItemsInfo.firstOrNull()?.let {
-                    (-it.offset).coerceAtLeast(0)
+                    // Measured scroll offset of the first visible item:
+                    // item.offset is placed relative to viewportStartOffset,
+                    // so scrollOffset = viewportStartOffset - item.offset.
+                    (state.layoutInfo.viewportStartOffset - it.offset)
+                        .coerceAtLeast(0)
                 } ?: state.firstVisibleItemScrollOffset,
             scrollInProgress = state.isScrollInProgress,
             requestScroll = { index, offset -> state.requestScrollToItem(index, offset) },
