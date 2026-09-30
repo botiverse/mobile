@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.app.data.backFromDetail
+import build.raft.app.data.detailListSelectionId
+import build.raft.app.data.hasVisibleDetailBackHistory
+
 import build.raft.app.data.NetworkSlockThreadApi
 import build.raft.app.base.Utils
 import build.raft.app.network.slockNetworkKmmRecoveryEnvironmentId
@@ -3565,28 +3569,12 @@ private fun SlockAppShellReadyContent(
                 val request = eventData?.toSlockAdaptiveDetailCloseRequestOrNull()
                     ?: return@observe
                 if (request.shellInstanceId != storeScope.shellInstanceId) return@observe
-                val current = adaptiveWorkspaceStore.snapshot().workspace ?: return@observe
-                val next =
-                    reduceSlockAdaptiveWorkspace(
-                        current,
-                        SlockAdaptiveWorkspaceIntent.CloseDetail(
-                            identityKey = request.identityKey,
-                            generation = request.generation,
-                        ),
-                    )
-                if (current.selection != null && next.selection == null) {
+                val before = adaptiveWorkspaceStore.snapshot()
+                val after = adaptiveWorkspaceStore.update { it.backFromDetail(request) }
+                if (before.workspace?.selection != after.workspace?.selection) {
                     releaseAdaptiveHandoffLease(request.generation)
-                    homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
-                }
-                adaptiveWorkspaceStore.update { session ->
-                    session.copy(
-                        workspace = next,
-                        launchPayload =
-                            if (current.selection != null && next.selection == null) {
-                                null
-                            } else {
-                                session.launchPayload
-                            },
+                    homeShellStore.dispatch(
+                        SharedHomeShellIntent.SetSelectedConversation(after.detailListSelectionId())
                     )
                 }
             }
@@ -4703,19 +4691,10 @@ private fun SlockAppShellReadyContent(
         )
         if (current == null) return
         val selection = current.selection ?: return
-        val next =
-            reduceSlockAdaptiveWorkspace(
-                current,
-                SlockAdaptiveWorkspaceIntent.DismissDetail,
-            )
+        val request = SlockAdaptiveDetailCloseRequest(current.shellInstanceId, selection.identity.key, selection.generation)
+        val next = adaptiveWorkspaceStore.update { it.backFromDetail(request) }
         releaseAdaptiveHandoffLease(selection.generation)
-        adaptiveWorkspaceStore.update { session ->
-            session.copy(
-                workspace = next,
-                launchPayload = null,
-            )
-        }
-        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
+        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(next.detailListSelectionId()))
     }
 
     fun popMainRoute(): Boolean {
@@ -4727,6 +4706,10 @@ private fun SlockAppShellReadyContent(
         if (homeState.serverSwitcherExpanded) {
             serverDrawerProgrammaticCloseFence?.invoke("back")
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
+            return true
+        }
+        if (desktopModeOnLargeScreen && adaptiveWorkspaceStore.snapshot().hasVisibleDetailBackHistory()) {
+            dismissAdaptiveDetailSelection()
             return true
         }
         if (
@@ -6256,8 +6239,9 @@ private fun SlockAppShellReadyContent(
                                 },
                                 externalFocusLossDismissEpoch = homeFocusLossDismissEpoch,
                                 selectedConversationId =
-                                    resolveSlockHomeSelectedConversationId(
-                                        adaptiveWorkspaceEnabled = desktopModeOnLargeScreen,
+                                    if (desktopModeOnLargeScreen) adaptiveWorkspaceSession.detailListSelectionId()
+                                    else resolveSlockHomeSelectedConversationId(
+                                        adaptiveWorkspaceEnabled = false,
                                         adaptiveSelection = selection,
                                         shellSelectedConversationId = selectedHomeConversationId,
                                         homeSelectedConversationId = homeState.selectedConversationId,

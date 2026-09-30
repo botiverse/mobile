@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.data.navigateDetail
+import build.raft.app.data.shouldOpenWithinAdaptiveDetail
+
 import build.raft.app.components.SlockAnchoredMetaChip
 import build.raft.app.components.SlockAttachmentPreviewCard
 import build.raft.app.components.SlockAttachmentPreviewCardWidth
@@ -4114,7 +4117,24 @@ private fun ThreadPageScreen(
                 initialServerId = threadParentNavigationServerId(serverIdOverride) ?: storeScope.initialServerId
             )
         val openPage = {
-            pager.openSlockPage(
+            val workspaceStore = sharedStores.adaptiveWorkspaceStore(storeScope)
+            val source = adaptiveCloseRequest
+            val pane = workspaceStore.snapshot().workspace
+            if (shouldOpenWithinAdaptiveDetail(
+                    source = source,
+                    workspace = pane,
+                    desktopModeEnabled = KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore()).readDesktopModeOnLargeScreenSync(),
+                    targetServerId = targetStoreScope.initialServerId,
+                ) && source != null && pane != null
+            ) {
+                val next = workspaceStore.update { current ->
+                    current.navigateDetail(source, launchPayload, pane.serverId)
+                }
+                if (next.launchPayload != launchPayload) {
+                    bridge.toast(unableToOpenThreadLabel)
+                    bridge.logWarn("thread_open_skip reason=stale_adaptive_source")
+                }
+            } else pager.openSlockPage(
                 pageName = THREAD_PAGE,
                 pageData = launchPayload.toThreadPageData(),
                 storeScopeOverride = targetStoreScope,
