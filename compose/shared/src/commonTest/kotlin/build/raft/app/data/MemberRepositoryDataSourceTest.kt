@@ -18,7 +18,6 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
@@ -27,7 +26,7 @@ import kotlinx.serialization.json.jsonObject
 
 class MemberRepositoryDataSourceTest {
     @Test
-    fun emptyChannelRosterPreservesCanonicalAddPermission() = runTest {
+    fun emptyChannelRosterPreservesCanonicalAddPermission() = runBlocking {
         val network =
             FakeMemberNetworkClient().apply {
                 channelMembersResponse = HomeNetworkResponse(200, """{"humans":[],"agents":[]}""")
@@ -45,7 +44,7 @@ class MemberRepositoryDataSourceTest {
     }
 
     @Test
-    fun rosterDoesNotGrantMutationsWithoutMatchingChannelCapabilities() = runTest {
+    fun rosterDoesNotGrantMutationsWithoutMatchingChannelCapabilities() = runBlocking {
         // botiverse/slock 1443178ec2c72422256ea05f7d6fd5e480429e0a:
         // routes/channels.ts attaches channelCapabilities to GET /:id, not /:id/members.
         val cases = listOf(

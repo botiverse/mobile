@@ -381,7 +381,7 @@ data class MemberProfile(
     val effectiveChannelRole: String? = null,
     /** Raw `channel_role` the member holds in this channel, before effective-role resolution. */
     val channelRole: String? = null,
-    /** Why a channel admin is an admin (`role` | `owner` | `server_admin`); display-only. */
+    /** Why a channel admin is an admin (`server_role` | `channel_role` | `both`); display-only. */
     val channelAdminBasis: String? = null,
     /**
      * Server-resolved "may the current member change THIS member's channel

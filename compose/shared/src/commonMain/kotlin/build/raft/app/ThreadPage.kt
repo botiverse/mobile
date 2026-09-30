@@ -31226,8 +31226,6 @@ internal fun threadMemberListHeight(agentCount: Int, humanCount: Int, maxHeight:
     val sectionCount = listOf(agentCount, humanCount).count { it > 0 }
     val rowCount = agentCount + humanCount
     return (sectionCount * 30 + rowCount * 58 + 8).coerceIn(108, maxHeight)
-
-
 }
 
 private val KuiklyThreadMemberItem.memberKey: String
