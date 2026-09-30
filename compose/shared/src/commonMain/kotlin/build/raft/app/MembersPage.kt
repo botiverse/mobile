@@ -13702,30 +13702,35 @@ internal fun MemberProfile.membersDetailSelectionKey(serverId: String): String =
 internal object MemberDetailScrollStateRegistry {
     // Bound the map so a long session hopping across many members/accounts
     // cannot grow it without limit: beyond this many distinct member keys the
-    // oldest entries are evicted (LinkedHashMap insertion order). Comfortably
-    // above any realistic in-session working set.
+    // oldest-inserted entries are evicted (insertion-ordered keys iterator).
+    // Comfortably above any realistic in-session working set.
     private const val MaxTrackedMemberKeys = 64
-    private val agentTabStates =
-        object : LinkedHashMap<String, MutableMap<MembersAgentDetailTab, LazyListState>>(16, 0.75f, false) {
-            override fun removeEldestEntry(
-                eldest: MutableMap.MutableEntry<String, MutableMap<MembersAgentDetailTab, LazyListState>>?
-            ): Boolean = size > MaxTrackedMemberKeys
+    private val agentTabStates = mutableMapOf<String, MutableMap<MembersAgentDetailTab, LazyListState>>()
+    private val humanListStates = mutableMapOf<String, LazyListState>()
+
+    private fun MutableMap<String, *>.evictOldestOverCap() {
+        while (size > MaxTrackedMemberKeys) {
+            // linkedMapOf-style iteration order is insertion order; the first
+            // key is the oldest tracked member.
+            val eldest = keys.firstOrNull() ?: return
+            remove(eldest)
         }
-    private val humanListStates =
-        object : LinkedHashMap<String, LazyListState>(16, 0.75f, false) {
-            override fun removeEldestEntry(
-                eldest: MutableMap.MutableEntry<String, LazyListState>?
-            ): Boolean = size > MaxTrackedMemberKeys
-        }
+    }
 
     @OptIn(com.tencent.kuikly.compose.foundation.ExperimentalFoundationApi::class)
     fun agentTabState(memberKey: String, tab: MembersAgentDetailTab): LazyListState =
-        agentTabStates.getOrPut(memberKey) { mutableMapOf() }
+        agentTabStates
+            .getOrPut(memberKey) {
+                mutableMapOf<MembersAgentDetailTab, LazyListState>()
+                    .also { agentTabStates.evictOldestOverCap() }
+            }
             .getOrPut(tab) { LazyListState() }
 
     @OptIn(com.tencent.kuikly.compose.foundation.ExperimentalFoundationApi::class)
     fun humanListState(memberKey: String): LazyListState =
-        humanListStates.getOrPut(memberKey) { LazyListState() }
+        humanListStates.getOrPut(memberKey) {
+            LazyListState().also { humanListStates.evictOldestOverCap() }
+        }
 
     /**
      * Drops every remembered detail scroll position. Called from session

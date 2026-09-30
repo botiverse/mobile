@@ -58,4 +58,24 @@ class MemberDetailScrollStateRegistryTest {
         assertSame(one, MemberDetailScrollStateRegistry.humanListState("u1:s1:human:h1"))
         assertNotSame(one, MemberDetailScrollStateRegistry.humanListState("u1:s1:human:h2"))
     }
+
+    @Test
+    fun `entry cap evicts oldest member keys`() {
+        MemberDetailScrollStateRegistry.clear()
+        val states =
+            (0 until 70).map { i ->
+                MemberDetailScrollStateRegistry.agentTabState(
+                    "u1:s1:agent:m$i",
+                    MembersAgentDetailTab.Profile
+                )
+            }
+        // Oldest entries are gone; the most recent still resolves to itself.
+        val oldest =
+            MemberDetailScrollStateRegistry.agentTabState("u1:s1:agent:m0", MembersAgentDetailTab.Profile)
+        assertNotSame(states[0], oldest)
+        assertSame(
+            states[69],
+            MemberDetailScrollStateRegistry.agentTabState("u1:s1:agent:m69", MembersAgentDetailTab.Profile)
+        )
+    }
 }
