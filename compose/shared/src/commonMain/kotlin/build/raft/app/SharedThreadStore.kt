@@ -6682,6 +6682,12 @@ internal class SharedThreadStore(
                             is DataResult.Empty -> result.reason != EmptyReason.NoMessages
                             else -> false
                         },
+                mainLoadFailed =
+                    when (result) {
+                        is DataResult.Error -> true
+                        is DataResult.Empty -> result.reason != EmptyReason.NoMessages
+                        else -> false
+                    },
             )
         var committedPayload: KuiklyThreadScreenPayload? = null
         val committed =
@@ -11814,6 +11820,7 @@ internal fun KuiklyThreadScreenPayload.withContentSliceFrom(patch: KuiklyThreadS
         backgroundRefreshing = patch.backgroundRefreshing,
         // The content slice carries its own provenance: a network patch is never last-known.
         durableLastKnown = patch.durableLastKnown,
+        mainLoadFailed = patch.mainLoadFailed,
         messages = patch.messages,
         gapRefillMessageIds = patch.gapRefillMessageIds,
         originMessage = patch.originMessage,
