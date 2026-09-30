@@ -14184,8 +14184,18 @@ internal class MemberDetailScrollTracker(
     fun observe(state: LazyListState, save: (MemberDetailScrollPosition) -> Unit) =
         observe(
             itemCount = state.layoutInfo.totalItemsCount,
-            positionIndex = state.firstVisibleItemIndex,
-            positionOffset = state.firstVisibleItemScrollOffset,
+            // firstVisibleItem* reads scrollPosition, which requestScrollToItem
+            // writes synchronously — during a pending restore it reports the
+            // un-applied target, not what is on screen. The measured position
+            // comes from the first actually-composed item in layoutInfo; fall
+            // back to scrollPosition only when nothing is measured yet.
+            positionIndex =
+                state.layoutInfo.visibleItemsInfo.firstOrNull()?.index
+                    ?: state.firstVisibleItemIndex,
+            positionOffset =
+                state.layoutInfo.visibleItemsInfo.firstOrNull()?.let {
+                    (-it.offset).coerceAtLeast(0)
+                } ?: state.firstVisibleItemScrollOffset,
             scrollInProgress = state.isScrollInProgress,
             requestScroll = { index, offset -> state.requestScrollToItem(index, offset) },
             save = save
