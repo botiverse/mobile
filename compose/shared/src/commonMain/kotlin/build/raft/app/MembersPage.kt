@@ -5505,7 +5505,13 @@ private fun MembersDetailContent(
             mutableMapOf<Any, MemberDetailScrollTracker>()
         }
     fun trackerFor(holderKey: Any, saved: MemberDetailScrollPosition) =
-        scrollTrackers.getOrPut(holderKey) { MemberDetailScrollTracker(saved) }
+        scrollTrackers.getOrPut(holderKey) {
+            MemberDetailScrollTracker(
+                saved,
+                label = "$memberScrollKey:$holderKey",
+                logger = slockLogger("MembersDetailScroll")
+            )
+        }
     agentTabListStates.forEach { (tab, state) ->
         val tracker =
             trackerFor(tab, MemberDetailScrollStateRegistry.agentTabPosition(memberScrollKey, tab))
@@ -5559,6 +5565,12 @@ private fun MembersDetailContent(
         onDispose {
             agentTabListStates.forEach { (tab, state) ->
                 scrollTrackers[tab]?.lastPosition?.let { position ->
+                    slockLogger("MembersDetailScroll")(
+                        "members_detail_scroll dispose_save " +
+                            "label=$memberScrollKey:$tab " +
+                            "position=${position.firstVisibleItemIndex}:" +
+                            "${position.firstVisibleItemScrollOffset}"
+                    )
                     MemberDetailScrollStateRegistry.saveAgentTabPosition(
                         memberScrollKey,
                         tab,
@@ -5569,6 +5581,12 @@ private fun MembersDetailContent(
                 }
             }
             scrollTrackers["human"]?.lastPosition?.let { position ->
+                slockLogger("MembersDetailScroll")(
+                    "members_detail_scroll dispose_save " +
+                        "label=$memberScrollKey:human " +
+                        "position=${position.firstVisibleItemIndex}:" +
+                        "${position.firstVisibleItemScrollOffset}"
+                )
                 MemberDetailScrollStateRegistry.saveHumanListPosition(
                     memberScrollKey,
                     position,
@@ -13861,7 +13879,9 @@ internal data class MemberDetailScrollPosition(
  * fallback publishes after the list detached (and reads 0 items).
  */
 internal class MemberDetailScrollTracker(
-    private val restoreTo: MemberDetailScrollPosition
+    private val restoreTo: MemberDetailScrollPosition,
+    private val label: String = "",
+    private val logger: (String) -> Unit = {}
 ) {
     var lastPosition: MemberDetailScrollPosition? = null
         private set
@@ -13878,6 +13898,15 @@ internal class MemberDetailScrollTracker(
             // position instead of snapping back to the snapshot.
             val userAlreadyScrolled =
                 state.firstVisibleItemIndex > 0 || state.firstVisibleItemScrollOffset > 0
+            logger(
+                "members_detail_scroll restore_first_items label=$label " +
+                    "target=${target.firstVisibleItemIndex}:" +
+                    "${target.firstVisibleItemScrollOffset} " +
+                    "current=${state.firstVisibleItemIndex}:" +
+                    "${state.firstVisibleItemScrollOffset} " +
+                    "userAlreadyScrolled=$userAlreadyScrolled " +
+                    "items=${state.layoutInfo.totalItemsCount}"
+            )
             if (
                 !userAlreadyScrolled &&
                     (target.firstVisibleItemIndex > 0 ||
