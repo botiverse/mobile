@@ -23251,7 +23251,19 @@ internal fun buildAppShellThreadPayload(
         subtitle = null,
         status = "loading",
         surfaceKind = surfaceKind,
-        channelKind = routeChannelKind ?: conversation.channelType?.takeIf { it.isNotBlank() } ?: conversation.kind.name.lowercase(),
+        channelKind =
+            routeChannelKind
+                ?: if (isReplyThread) {
+                    // ReplyThread re-emits as a legacy wire payload downstream; the #417
+                    // construction rejects channelKind=Thread on a thread surface
+                    // (conflicting_legacy_identity). The wire channel-kind vocabulary for a
+                    // reply thread is the parent channel kind, matching
+                    // buildStandaloneConversationThreadLaunchPayload.
+                    conversation.threadParentChannelKind() ?: KuiklyThreadSurfaceKind.Channel
+                } else {
+                    conversation.channelType?.takeIf { it.isNotBlank() }
+                        ?: conversation.kind.name.lowercase()
+                },
         sourceThreadId = streamChannelId,
         streamChannelId = streamChannelId,
         parentChannelId = parentChannelId,

@@ -164,6 +164,42 @@ class SlockThreadWebLinkTargetTest {
     }
 
     @Test
+    fun canonicalChannelThreadLinkSurvivesEmbeddedWireRoundTrip() {
+        val target =
+            requireNotNull(
+                (
+                    "https://app.raft.build/s/botiverse/channel/channel-123" +
+                        "?msg=reply-456&thread=channel-123%3Aparent-789"
+                    ).toSlockThreadWebLinkTarget()
+            )
+
+        val request =
+            requireNotNull(
+                target.resolveMarkdownOpenRequest(
+                    serverId = "server-1",
+                    conversationDirectory = emptyList<SharedConversationDirectoryProjection>()
+                        .toSharedConversationDirectoryState()
+                )
+            )
+        val payload =
+            requireNotNull(
+                buildAppShellThreadPayload(
+                    request.conversationIdentity,
+                    anchorMessageId = request.anchorMessageId
+                )
+            )
+
+        // Embedded pane posts the re-serialized legacy wire payload back to the shell;
+        // the #417 construction must accept the same thread identity it produced.
+        val wirePayload = requireNotNull(payload.toWireThreadLaunchPayloadOrNull())
+        val construction = wirePayload.toThreadLaunchIdentityConstruction()
+        assertEquals(
+            ThreadLaunchIdentityConstructionResult.Accepted::class,
+            construction::class
+        )
+    }
+
+    @Test
     fun canonicalChannelLinkResolvesWithoutDirectoryProjection() {
         val target =
             requireNotNull(
