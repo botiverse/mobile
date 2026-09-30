@@ -71,7 +71,7 @@ import build.raft.app.data.SharedAgentPanelTabOrderStore
 import build.raft.app.data.SlockAuthSessionTerminalSource
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.authSessionTerminalSourceOrNull
-import androidx.compose.foundation.interaction.DragInteraction
+import com.tencent.kuikly.compose.foundation.interaction.DragInteraction
 import kotlinx.coroutines.flow.onSubscription
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockAvatarCacheRuntime
@@ -14210,6 +14210,14 @@ internal class MemberDetailScrollTracker(
                 if (userScrollActive) {
                     sawUserScrollInSettle = true
                     issuedRestoreRequest = false
+                    // Track the live position so an immediate exit during the
+                    // drag still saves where the user actually is, not the
+                    // stale restore target.
+                    lastPosition =
+                        MemberDetailScrollPosition(
+                            firstVisibleItemIndex = positionIndex,
+                            firstVisibleItemScrollOffset = positionOffset
+                        )
                 }
                 return
             }

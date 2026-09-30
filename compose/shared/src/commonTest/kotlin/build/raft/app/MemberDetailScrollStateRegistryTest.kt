@@ -485,6 +485,26 @@ class MemberDetailScrollTrackerTest {
     }
 
     @Test
+    fun `exit mid-drag during re-issue saves the live drag position`() {
+        // Immediate exit while the drag is still in flight: there is no
+        // settled landing frame, so the tracker must track the live user
+        // position for the dispose save instead of keeping the stale
+        // restore target.
+        val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        val frame = frameOf(t, saved)
+        frame(0, 489, 40, false) { _, _ -> }
+        frame(0, 489, 40, false) { _, _ -> }
+        frame(0, 237, 40, false) { _, _ -> } // post-achieve clamp -> re-issue
+        t.onUserScrollStarted()
+        frame(0, 380, 40, true) { _, _ -> }
+        frame(0, 355, 40, true) { _, _ -> }
+        // Page disposed here without a settled frame: the dispose write
+        // reads lastPosition and must carry the user's live offset.
+        assertEquals(MemberDetailScrollPosition(0, 355), t.lastPosition)
+    }
+
+    @Test
     fun `re-issue still applies when no user gesture interleaves`() {
         val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
         val saved = mutableListOf<MemberDetailScrollPosition>()
