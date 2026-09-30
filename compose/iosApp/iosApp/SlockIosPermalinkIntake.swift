@@ -137,7 +137,13 @@ final class SlockIosPermalinkIntake {
         result(activationId, status.rawValue)
     }
 
-    /// Explicit auth cancellation/scene destruction: no pending survives ownership.
+    func cancelUnboundAuthentication() {
+        for item in pending where item.authGeneration == nil { result(item.activationId, "login_cancelled") }
+        pending.removeAll { $0.authGeneration == nil }
+        ready = false
+    }
+
+    /// Scene destruction: no pending survives ownership.
     func cancel(reason: String) {
         for item in pending { result(item.activationId, reason) }
         pending.removeAll()
