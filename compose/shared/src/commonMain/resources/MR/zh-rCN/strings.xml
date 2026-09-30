@@ -2088,6 +2088,13 @@
     <string name="markdown_task_list_checkbox">任务列表复选框</string>
     <string name="markdown_task_list_checked">已完成</string>
     <string name="markdown_task_list_unchecked">未完成</string>
+    <string name="markdown_mermaid_diagram">图表</string>
+    <string name="markdown_mermaid_code">代码</string>
+    <string name="markdown_mermaid_zoom_in">放大</string>
+    <string name="markdown_mermaid_zoom_out">缩小</string>
+    <string name="markdown_mermaid_copy_source">复制源码</string>
+    <string name="markdown_mermaid_fullscreen">全屏</string>
+    <string name="markdown_mermaid_close_fullscreen">退出全屏</string>
     <string name="runtime_form_v2_update_required">请升级 App 以编辑此设置。</string>
     <string name="runtime_form_v2_update_required_blocking">此 agent 有一项必填设置当前 App 版本无法编辑，请升级 App 后再保存。</string>
     <string name="runtime_form_v2_error_required">必填</string>

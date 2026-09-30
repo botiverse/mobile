@@ -2081,6 +2081,13 @@
     <string name="markdown_task_list_checkbox">タスクリストのチェックボックス</string>
     <string name="markdown_task_list_checked">完了</string>
     <string name="markdown_task_list_unchecked">未完了</string>
+    <string name="markdown_mermaid_diagram">図</string>
+    <string name="markdown_mermaid_code">コード</string>
+    <string name="markdown_mermaid_zoom_in">拡大</string>
+    <string name="markdown_mermaid_zoom_out">縮小</string>
+    <string name="markdown_mermaid_copy_source">ソースをコピー</string>
+    <string name="markdown_mermaid_fullscreen">全画面</string>
+    <string name="markdown_mermaid_close_fullscreen">全画面を閉じる</string>
     <string name="runtime_form_v2_update_required">この設定を編集するにはアプリを更新してください。</string>
     <string name="runtime_form_v2_update_required_blocking">このエージェントには、このバージョンのアプリでは編集できない必須設定があります。保存するにはアプリを更新してください。</string>
     <string name="runtime_form_v2_error_required">必須項目です</string>

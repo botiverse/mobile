@@ -2088,6 +2088,13 @@
     <string name="markdown_task_list_checkbox">Task list checkbox</string>
     <string name="markdown_task_list_checked">Completed</string>
     <string name="markdown_task_list_unchecked">Not completed</string>
+    <string name="markdown_mermaid_diagram">Diagram</string>
+    <string name="markdown_mermaid_code">Code</string>
+    <string name="markdown_mermaid_zoom_in">Zoom in</string>
+    <string name="markdown_mermaid_zoom_out">Zoom out</string>
+    <string name="markdown_mermaid_copy_source">Copy source</string>
+    <string name="markdown_mermaid_fullscreen">Full screen</string>
+    <string name="markdown_mermaid_close_fullscreen">Close full screen</string>
     <string name="runtime_form_v2_update_required">Update the app to edit this setting.</string>
     <string name="runtime_form_v2_update_required_blocking">This agent has a required setting this app version cannot edit. Update the app to save changes.</string>
     <string name="runtime_form_v2_error_required">Required</string>

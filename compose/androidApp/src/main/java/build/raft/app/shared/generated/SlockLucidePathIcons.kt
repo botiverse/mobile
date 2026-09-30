@@ -1874,6 +1874,44 @@ internal object SlockLucidePathIcons {
         )
     }
 
+    private val Code: SlockLucideIconSpec by lazy {
+        SlockLucideIconSpec(
+            name = "code",
+            viewBox =
+                SlockLucideViewBox(
+                    minX = 0f,
+                    minY = 0f,
+                    width = 24f,
+                    height = 24f,
+                ),
+            paths =
+                listOf(
+            SlockLucidePathSpec(
+                pathData = "m16 18 6-6-6-6",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+            SlockLucidePathSpec(
+                pathData = "m8 6-6 6 6 6",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+                ),
+        )
+    }
+
     private val Columns3: SlockLucideIconSpec by lazy {
         SlockLucideIconSpec(
             name = "columns-3",
@@ -2122,6 +2160,66 @@ internal object SlockLucidePathIcons {
             ),
             SlockLucidePathSpec(
                 pathData = "M 4.0 12.0 A 1.0 1.0 0 1 0 6.0 12.0 A 1.0 1.0 0 1 0 4.0 12.0 Z",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+                ),
+        )
+    }
+
+    private val Maximize2: SlockLucideIconSpec by lazy {
+        SlockLucideIconSpec(
+            name = "maximize-2",
+            viewBox =
+                SlockLucideViewBox(
+                    minX = 0f,
+                    minY = 0f,
+                    width = 24f,
+                    height = 24f,
+                ),
+            paths =
+                listOf(
+            SlockLucidePathSpec(
+                pathData = "M15 3h6v6",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+            SlockLucidePathSpec(
+                pathData = "m21 3-7 7",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+            SlockLucidePathSpec(
+                pathData = "m3 21 7-7",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+            SlockLucidePathSpec(
+                pathData = "M9 21H3v-6",
                 fillPaint = null,
                 strokePaint = "currentColor",
                 fillOpacity = 0f,
@@ -10359,6 +10457,115 @@ internal object SlockLucidePathIcons {
         )
     }
 
+    private val ZoomIn: SlockLucideIconSpec by lazy {
+        SlockLucideIconSpec(
+            name = "zoom-in",
+            viewBox =
+                SlockLucideViewBox(
+                    minX = 0f,
+                    minY = 0f,
+                    width = 24f,
+                    height = 24f,
+                ),
+            paths =
+                listOf(
+            SlockLucidePathSpec(
+                pathData = "M 3.0 11.0 A 8.0 8.0 0 1 0 19.0 11.0 A 8.0 8.0 0 1 0 3.0 11.0 Z",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+            SlockLucidePathSpec(
+                pathData = "M 21.0 21.0 L 16.65 16.65",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+            SlockLucidePathSpec(
+                pathData = "M 11.0 8.0 L 11.0 14.0",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+            SlockLucidePathSpec(
+                pathData = "M 8.0 11.0 L 14.0 11.0",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+                ),
+        )
+    }
+
+    private val ZoomOut: SlockLucideIconSpec by lazy {
+        SlockLucideIconSpec(
+            name = "zoom-out",
+            viewBox =
+                SlockLucideViewBox(
+                    minX = 0f,
+                    minY = 0f,
+                    width = 24f,
+                    height = 24f,
+                ),
+            paths =
+                listOf(
+            SlockLucidePathSpec(
+                pathData = "M 3.0 11.0 A 8.0 8.0 0 1 0 19.0 11.0 A 8.0 8.0 0 1 0 3.0 11.0 Z",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+            SlockLucidePathSpec(
+                pathData = "M 21.0 21.0 L 16.65 16.65",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+            SlockLucidePathSpec(
+                pathData = "M 8.0 11.0 L 14.0 11.0",
+                fillPaint = null,
+                strokePaint = "currentColor",
+                fillOpacity = 0f,
+                strokeOpacity = 1f,
+                strokeWidth = 2f,
+                strokeLineCap = SlockLucideStrokeLineCap.Round,
+                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
+                fillRule = SlockLucideFillRule.NonZero,
+            ),
+                ),
+        )
+    }
+
     private val FilledBookmark: SlockLucideIconSpec by lazy {
         SlockLucideIconSpec(
             name = "filled-bookmark",
@@ -10426,12 +10633,14 @@ internal object SlockLucidePathIcons {
             "clipboard-list",
             "clock",
             "clock-3",
+            "code",
             "columns-3",
             "copy",
             "credit-card",
             "crop",
             "download",
             "ellipsis",
+            "maximize-2",
             "menu",
             "eraser",
             "external-link",
@@ -10583,6 +10792,8 @@ internal object SlockLucidePathIcons {
             "wand",
             "waypoints",
             "x",
+            "zoom-in",
+            "zoom-out",
         )
 
     val VariantNames: List<String> =
@@ -10630,12 +10841,14 @@ internal object SlockLucidePathIcons {
             "clipboard-list" -> ClipboardList
             "clock" -> Clock
             "clock-3" -> Clock3
+            "code" -> Code
             "columns-3" -> Columns3
             "copy" -> Copy
             "credit-card" -> CreditCard
             "crop" -> Crop
             "download" -> Download
             "ellipsis" -> Ellipsis
+            "maximize-2" -> Maximize2
             "menu" -> Menu
             "eraser" -> Eraser
             "external-link" -> ExternalLink
@@ -10787,6 +11000,8 @@ internal object SlockLucidePathIcons {
             "wand" -> Wand
             "waypoints" -> Waypoints
             "x" -> X
+            "zoom-in" -> ZoomIn
+            "zoom-out" -> ZoomOut
             "filled-bookmark" -> FilledBookmark
             else -> null
         }

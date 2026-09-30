@@ -96,12 +96,14 @@ LUCIDE_ICONS = [
     "clipboard-list",
     "clock",
     "clock-3",
+    "code",
     "columns-3",
     "copy",
     "credit-card",
     "crop",
     "download",
     "ellipsis",
+    "maximize-2",
     "menu",
     "eraser",
     "external-link",
@@ -253,6 +255,8 @@ LUCIDE_ICONS = [
     "wand",
     "waypoints",
     "x",
+    "zoom-in",
+    "zoom-out",
 ]
 
 CUSTOM_ICONS = {
