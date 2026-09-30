@@ -3930,6 +3930,25 @@ private fun SlockAppShellReadyContent(
             sharedStores.foregroundBannerStore(navigationStoreScope)
         }
     val foregroundMessageBanner by foregroundBannerStore.banner.collectAsState()
+    // System notifications stay silent for the conversation on screen, same rule as the in-app banner.
+    DisposableEffect(sharedStores, pager.pagerId, foregroundBannerStore) {
+        val ownerId = "app-shell:${pager.pagerId}"
+        SlockVisibleConversationRegistry.register(ownerId) {
+            if (!sharedStores.isActiveAppShellPager(pager.pagerId)) return@register null
+            SlockVisibleConversationSnapshot(
+                currentServerId = selectedServerStore.selectedServerId.value,
+                visibleConversationKey =
+                    appShellVisibleForegroundConversationKey(
+                        selectedTab = latestSelectedTab,
+                        selectedHomeDestination = latestSelectedHomeDestination,
+                        selectedConversationId = latestSelectedHomeConversationId
+                    ),
+                visibleRouteIdentity = foregroundBannerStore.visibleRouteIdentity(),
+                conversationDirectory = latestAppShellConversationDirectory
+            )
+        }
+        onDispose { SlockVisibleConversationRegistry.unregister(ownerId) }
+    }
     val visibleRefreshGate = remember { AppShellVisibleRefreshGate() }
 
     fun refreshVisibleAppShellRoute(
