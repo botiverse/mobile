@@ -13700,8 +13700,23 @@ internal fun MemberProfile.membersDetailSelectionKey(serverId: String): String =
  * same LazyListState instance is safe.
  */
 internal object MemberDetailScrollStateRegistry {
-    private val agentTabStates = mutableMapOf<String, MutableMap<MembersAgentDetailTab, LazyListState>>()
-    private val humanListStates = mutableMapOf<String, LazyListState>()
+    // Bound the map so a long session hopping across many members/accounts
+    // cannot grow it without limit: beyond this many distinct member keys the
+    // oldest entries are evicted (LinkedHashMap insertion order). Comfortably
+    // above any realistic in-session working set.
+    private const val MaxTrackedMemberKeys = 64
+    private val agentTabStates =
+        object : LinkedHashMap<String, MutableMap<MembersAgentDetailTab, LazyListState>>(16, 0.75f, false) {
+            override fun removeEldestEntry(
+                eldest: MutableMap.MutableEntry<String, MutableMap<MembersAgentDetailTab, LazyListState>>?
+            ): Boolean = size > MaxTrackedMemberKeys
+        }
+    private val humanListStates =
+        object : LinkedHashMap<String, LazyListState>(16, 0.75f, false) {
+            override fun removeEldestEntry(
+                eldest: MutableMap.MutableEntry<String, LazyListState>?
+            ): Boolean = size > MaxTrackedMemberKeys
+        }
 
     @OptIn(com.tencent.kuikly.compose.foundation.ExperimentalFoundationApi::class)
     fun agentTabState(memberKey: String, tab: MembersAgentDetailTab): LazyListState =
@@ -13711,6 +13726,16 @@ internal object MemberDetailScrollStateRegistry {
     @OptIn(com.tencent.kuikly.compose.foundation.ExperimentalFoundationApi::class)
     fun humanListState(memberKey: String): LazyListState =
         humanListStates.getOrPut(memberKey) { LazyListState() }
+
+    /**
+     * Drops every remembered detail scroll position. Called from session
+     * teardown (logout, account switch, session clear) so a new account can
+     * never inherit — even briefly — the previous session's offsets.
+     */
+    fun clear() {
+        agentTabStates.clear()
+        humanListStates.clear()
+    }
 }
 
 private val MemberProfile.membersComputerId: String?
