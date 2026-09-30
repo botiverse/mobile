@@ -218,4 +218,34 @@ class MemberDetailScrollStateRegistryTest {
             MemberDetailScrollStateRegistry.agentTabPosition("u1:s1:agent:m1", MembersAgentDetailTab.Profile)
         )
     }
+
+    @Test
+    fun `acquiring an epoch for another member never retires an unsaved owner`() {
+        MemberDetailScrollStateRegistry.clear()
+        val ownerEpoch = MemberDetailScrollStateRegistry.acquireWriteEpoch("u1:s1:agent:m1")
+        // Other members' owners and saves churn while m1's page is still in
+        // Loading (zero-item saves dropped) — its epoch must survive.
+        (0 until 10).forEach { i ->
+            val key = "u1:s1:agent:other$i"
+            val epoch = MemberDetailScrollStateRegistry.acquireWriteEpoch(key)
+            MemberDetailScrollStateRegistry.saveAgentTabPosition(
+                key,
+                MembersAgentDetailTab.Profile,
+                MemberDetailScrollPosition(firstVisibleItemIndex = i),
+                itemCount = 10,
+                writeEpoch = epoch
+            )
+        }
+        MemberDetailScrollStateRegistry.saveAgentTabPosition(
+            "u1:s1:agent:m1",
+            MembersAgentDetailTab.Profile,
+            MemberDetailScrollPosition(firstVisibleItemIndex = 15),
+            itemCount = 90,
+            writeEpoch = ownerEpoch
+        )
+        assertEquals(
+            MemberDetailScrollPosition(firstVisibleItemIndex = 15),
+            MemberDetailScrollStateRegistry.agentTabPosition("u1:s1:agent:m1", MembersAgentDetailTab.Profile)
+        )
+    }
 }

@@ -13862,6 +13862,7 @@ internal object MemberDetailScrollStateRegistry {
         synchronized(lock) {
             val epoch = ++epochCounter
             latestEpochByMemberKey[memberKey] = epoch
+            evictOrphanedEpochs()
             epoch
         }
 
@@ -13875,13 +13876,18 @@ internal object MemberDetailScrollStateRegistry {
     }
 
     // The epoch map tracks one long per member key and is bounded the same
-    // way: entries whose member key was evicted from the position maps are
-    // no longer reachable for restore, so their ownership records can go.
+    // way. Only truly orphaned entries are evicted: an epoch whose owner has
+    // not saved yet (its early frames may be dropped by the itemCount gate)
+    // is still the active writer — removing it would retire a live page and
+    // reject every later save it makes. So entries survive while their key
+    // has no snapshot yet; orphans are pruned only when the key's positions
+    // existed and were evicted, or never arrived and newer owners exist for
+    // OTHER keys (bounded via a generous cap on epoch entries).
+    private const val MaxEpochKeys = MaxTrackedMemberKeys * 2
     private fun evictOrphanedEpochs() {
-        val it = latestEpochByMemberKey.keys.iterator()
-        while (it.hasNext()) {
-            val key = it.next()
-            if (key !in agentTabPositions && key !in humanListPositions) it.remove()
+        while (latestEpochByMemberKey.size > MaxEpochKeys) {
+            val eldest = latestEpochByMemberKey.keys.firstOrNull() ?: return
+            latestEpochByMemberKey.remove(eldest)
         }
     }
 
