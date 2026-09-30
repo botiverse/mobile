@@ -69,6 +69,8 @@ import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.SharedAgentIssueReportRequest
 import build.raft.app.data.SharedAgentPanelTabOrderStore
 import build.raft.app.data.SlockAuthSessionChangeSource
+import build.raft.app.data.SlockAuthSessionEventSource
+import build.raft.app.data.authSessionClearFingerprint
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockAvatarCacheRuntime
 import build.raft.app.data.SlockAvatarNativeCache
@@ -238,6 +240,8 @@ import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -2440,7 +2444,15 @@ internal sealed interface MemberDetailRouteState {
         val server: ServerSummary,
         val currentUserId: String?,
         val member: MemberProfile,
-        val accessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull
+        val accessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull,
+        /**
+         * task #58 provenance marker: true ONLY on instances whose
+         * [currentUserId] was written by the seed-identity patcher (never by
+         * the canonical profile load). Session-change corrections may rewrite
+         * or retract the id on such instances; a loaded identity — flagged
+         * false — is authoritative even when its value equals the patch.
+         */
+        val provisionalSeedUserId: Boolean = false
     ) : MemberDetailRouteState
 }
 
@@ -2468,16 +2480,18 @@ internal fun memberDetailStatusResolverServerId(
 internal fun memberDetailPatchedHumanIdentity(
     routeState: MemberDetailRouteState,
     memberId: MemberId?,
-    sessionUserId: String?,
-    patchedState: MemberDetailRouteState.Human?
+    sessionUserId: String?
 ): MemberDetailRouteState.Human? {
     val human = routeState as? MemberDetailRouteState.Human ?: return null
     if (human.member.id != memberId) return null
-    // Reference identity, not value equality: once the canonical load swaps in
-    // its own Human instance, our patched object is gone and the loaded
-    // identity is authoritative — even if it carries the same user id.
-    if (!human.currentUserId.isNullOrBlank() && human !== patchedState) return null
-    return human.copy(currentUserId = sessionUserId)
+    // Provenance is structural, not referential: only a blank seed or an
+    // instance still flagged as our provisional patch may be (re)written.
+    // A canonical load's identity (flag false) is authoritative even when it
+    // carries the same user id, and survives data-class equality.
+    if (!human.currentUserId.isNullOrBlank() && !human.provisionalSeedUserId) {
+        return null
+    }
+    return human.copy(currentUserId = sessionUserId, provisionalSeedUserId = true)
 }
 
 internal data class MemberDetailLoadPlan(
@@ -3453,37 +3467,68 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
     //   patchedSeedUserId so a LATER session can correct or retract it —
     //   a canonical load's own identity (different from what we patched) is
     //   authoritative and is never touched.
-    var patchedSeedState by remember(memberIdentity) {
-        mutableStateOf<MemberDetailRouteState.Human?>(null)
-    }
+    // The roster seed composes before the canonical profile load supplies the
+    // session user id, leaving the scroll identity gate closed for the whole
+    // seeded composition (Alpha100: HUMAN detail produced zero tracker events
+    // on both Android entries and iPad). The patch below is fenced end to end:
+    //   memberIdentity is a launch key — switching members relaunches and the
+    //   helper re-verifies the CURRENT routeState still belongs to this member.
+    //   Auth generation is the commit-time authority: authSessionEvents carry
+    //   a monotonic generation, so a read that raced an account switch is
+    //   dropped when a newer event has already arrived — the late value never
+    //   lands. Events and the patch run in this one coroutine, so between the
+    //   generation check and the write no switch can interleave.
+    //   provenance: only instances flagged provisionalSeedUserId (written by
+    //   this patcher) may be corrected/retracted; a canonical load's Human is
+    //   authoritative even when it carries the same user id.
+    // Commit-time authority is the event's own fingerprint: sessionChanges
+    // emits the post-change session fingerprint, so a wake pins the exact
+    // session generation it announced. The patch applies only when the
+    // just-read session's fingerprint equals the wake's fingerprint — a read
+    // that raced an account switch mismatches and is re-read once; on a
+    // second mismatch the write is skipped and the next event retries.
+    // Same-coroutine ordering means the fingerprint check is the commit gate.
     LaunchedEffect(memberIdentity, provider.authStore) {
-        val applySessionUserId: suspend () -> Unit = {
-            // Read twice: a change that lands between them is caught by the
-            // id mismatch; what remains is the apply-time session, not a
-            // value captured before an account switch.
-            val first = provider.authStore.readSession()?.user?.id?.trim()
-            val second = provider.authStore.readSession()?.user?.id?.trim()
-            val uid =
-                first?.takeIf { it.isNotBlank() && it == second }
+        suspend fun applySessionUserId(expectedFingerprint: String?) {
+            var session = provider.authStore.readSession()
+            if (
+                expectedFingerprint != null &&
+                session?.let { it.authSessionClearFingerprint() } != expectedFingerprint
+            ) {
+                session = provider.authStore.readSession()
+                if (session?.let { it.authSessionClearFingerprint() } != expectedFingerprint) {
+                    return
+                }
+            }
+            val uid = session?.user?.id?.trim()?.takeIf { it.isNotBlank() }
             memberDetailPatchedHumanIdentity(
                 routeState = routeState,
                 memberId = memberIdentity?.memberId,
-                sessionUserId = uid,
-                patchedState = patchedSeedState
-            )?.let { patched ->
-                routeState = patched
-                patchedSeedState = patched
-            }
+                sessionUserId = uid
+            )?.let { patched -> routeState = patched }
+        }
+        // Wake sources merged: sessionChanges carries the post-change session
+        // fingerprint (used as the commit gate — a read that raced a switch
+        // mismatches and is dropped/re-read), while authSessionEvents covers
+        // Cleared (no session ⇒ no fingerprint) so logout retracts the patch.
+        val changeSource = provider.authStore as? SlockAuthSessionChangeSource
+        val eventSource = provider.authStore as? SlockAuthSessionEventSource
+        val wakes =
+            listOfNotNull(
+                changeSource?.sessionChanges?.map { it },
+                eventSource?.authSessionEvents?.map { null }
+            )
+        if (wakes.isEmpty()) {
+            applySessionUserId(expectedFingerprint = null)
+            return@LaunchedEffect
         }
         // onSubscription runs after the shared-flow subscription is active,
-        // so a session change that lands between the initial read and
-        // subscribing cannot be missed — the initial tick still applies the
-        // latest persisted session.
-        (provider.authStore as? SlockAuthSessionChangeSource)
-            ?.sessionChanges
-            ?.onSubscription { applySessionUserId() }
-            ?.collect { applySessionUserId() }
-            ?: applySessionUserId()
+        // so a change landing between the initial read and subscribing
+        // cannot be missed — the initial tick still applies the latest
+        // persisted session.
+        merge(*wakes.toTypedArray())
+            .onSubscription { applySessionUserId(expectedFingerprint = null) }
+            .collect { fingerprint -> applySessionUserId(fingerprint) }
     }
     var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
     var agentProfileRequestGeneration by remember { mutableStateOf(0L) }
