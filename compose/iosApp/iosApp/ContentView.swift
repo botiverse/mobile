@@ -3,6 +3,10 @@ import SwiftUI
 import shared
 
 struct ContentView: View {
+    @StateObject private var permalinkHost = SlockIosPermalinkSceneHost(
+        visibilitySink: ContentView.publishSceneVisibility
+    )
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var oauthRouteStore = SlockIosOAuthRouteStore.shared
 
     var body: some View {
@@ -11,47 +15,79 @@ struct ContentView: View {
         // sees SLOCK_VISUAL_FIXTURE_PAGE). When present, render that fixture page
         // as the root instead of the app shell so the Simulator screenshot
         // captures the fixture. Same pageName+pageData contract as Android.
-        if let fixture = ContentView.visualFixtureLaunch() {
-            KuiklyRenderViewPage(pageName: fixture.pageName, data: fixture.data)
-                .ignoresSafeArea()
-                // task #419: hide the status bar so the capture screenshot has no
-                // clock/wifi/battery overlaying the fixture (the changing clock is
-                // the main diff-noise source). This is applied at the SwiftUI layer
-                // because the app uses the SwiftUI App lifecycle — the window's
-                // UIHostingController honors this, whereas a UIKit prefers-hidden on
-                // a VC embedded via a representable never gets consulted. The home
-                // indicator has no SwiftUI control before iOS 16 (deployment target
-                // is 14.1); left visible for now (fixed bottom bar, low diff impact).
-                .statusBar(hidden: true)
-                .onAppear {
-                    // Settle signal for the capture job: it reads this line via
-                    // `simctl launch --console` (+ a small buffer) before taking
-                    // the screenshot, so it never catches the launch splash.
-                    print("SLOCK_VISUAL_FIXTURE_READY page=\(fixture.pageName)")
-                }
-        } else {
-            let destination = oauthRouteStore.destination
-            KuiklyRenderViewPage(
-                pageName: destination.pageName,
-                data: ContentView.hostPageData(destination)
-            )
-                .id(destination.revision)
-                .ignoresSafeArea()
-                .onOpenURL { url in
-                    _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "swiftui_open_url")
-                }
-                .onAppear {
-                    SlockIosMobileOAuthHost.shared.resumeDeferredCallbackIfNeeded()
-                }
+        Group {
+            if let fixture = ContentView.visualFixtureLaunch() {
+                KuiklyRenderViewPage(pageName: fixture.pageName, data: fixturePageData(fixture))
+                    .ignoresSafeArea()
+                    // task #419: hide the status bar so the capture screenshot has no
+                    // clock/wifi/battery overlaying the fixture (the changing clock is
+                    // the main diff-noise source). This is applied at the SwiftUI layer
+                    // because the app uses the SwiftUI App lifecycle — the window's
+                    // UIHostingController honors this, whereas a UIKit prefers-hidden on
+                    // a VC embedded via a representable never gets consulted. The home
+                    // indicator has no SwiftUI control before iOS 16 (deployment target
+                    // is 14.1); left visible for now (fixed bottom bar, low diff impact).
+                    .statusBar(hidden: true)
+                    .onAppear {
+                        // Settle signal for the capture job: it reads this line via
+                        // `simctl launch --console` (+ a small buffer) before taking
+                        // the screenshot, so it never catches the launch splash.
+                        print("SLOCK_VISUAL_FIXTURE_READY page=\(fixture.pageName)")
+                    }
+            } else {
+                let destination = oauthRouteStore.destination
+                KuiklyRenderViewPage(
+                    pageName: destination.pageName,
+                    data: hostPageData(destination)
+                )
+                    .id(destination.revision)
+                    .ignoresSafeArea()
+                    .onOpenURL { url in
+                        _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "swiftui_open_url")
+                    }
+                    .onAppear {
+                        SlockIosMobileOAuthHost.shared.resumeDeferredCallbackIfNeeded()
+                    }
+            }
+        }
+        .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+            permalinkHost.accept(activity)
+        }
+        .onAppear { permalinkHost.setVisible(scenePhase == .active) }
+        .onChange(of: scenePhase) { phase in
+            permalinkHost.setVisible(phase == .active)
         }
     }
 
-    private static func hostPageData(_ destination: SlockIosOAuthDestination) -> [String: Any] {
+    private static func publishSceneVisibility(scope: String, visible: Bool, epoch: Int) {
+        SlockHostVisibilityKt.updateSlockHostVisibility(shellInstanceId: scope, visible: visible)
+        NotificationCenter.default.post(
+            name: Notification.Name(GeneratedRealtimeContract.Notify.eventName),
+            object: nil,
+            userInfo: [
+                GeneratedRealtimeContract.PayloadKey.action: "appLifecycle",
+                "event": visible ? "show" : "hide", "foregroundEpoch": epoch,
+                "pageName": "compose_slock_app_shell", "shellInstanceId": scope,
+            ]
+        )
+    }
+
+    private func fixturePageData(_ fixture: VisualFixtureLaunch) -> [String: Any] {
+        var data = fixture.data
+        if fixture.pageName == "compose_slock_app_shell" {
+            data["slockShellInstanceId"] = permalinkHost.bindRoot(revision: "fixture")
+        }
+        return data
+    }
+
+    private func hostPageData(_ destination: SlockIosOAuthDestination) -> [String: Any] {
+        let scope = permalinkHost.bindRoot(revision: destination.revision)
         var data = destination.pageData
         data["pageName"] = destination.pageName
         data["slockSocialAuthProviders"] = slockIosOAuthProviders
         if destination.pageName == "compose_slock_app_shell" {
-            data["slockNativeTabBarRenderer"] = appTabBarRenderer()
+            data["slockNativeTabBarRenderer"] = Self.appTabBarRenderer()
+            data["slockShellInstanceId"] = scope
         }
         return data
     }
