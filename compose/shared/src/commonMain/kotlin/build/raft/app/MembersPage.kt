@@ -5448,21 +5448,28 @@ private fun MembersDetailContent(
     // object across the wide→narrow transition risks a double-attach while
     // both child surfaces compose, and Loading frames could clamp a shared
     // index before the recreated list has content.
+    // key() on memberScrollKey: the remembered states are rebuilt when the
+    // detail switches member — otherwise the surviving LazyListState would
+    // still carry the previous member's offset AND its save flows would keep
+    // publishing that offset under the new member's key.
     val agentTabListStates =
-        MembersAgentDetailTab.entries.associateWith { tab ->
-            val saved = MemberDetailScrollStateRegistry.agentTabPosition(memberScrollKey, tab)
+        key(memberScrollKey) {
+            MembersAgentDetailTab.entries.associateWith { tab ->
+                val saved = MemberDetailScrollStateRegistry.agentTabPosition(memberScrollKey, tab)
+                rememberLazyListState(
+                    initialFirstVisibleItemIndex = saved.firstVisibleItemIndex,
+                    initialFirstVisibleItemScrollOffset = saved.firstVisibleItemScrollOffset
+                )
+            }
+        }
+    val humanDetailListState =
+        key(memberScrollKey) {
+            val saved = MemberDetailScrollStateRegistry.humanListPosition(memberScrollKey)
             rememberLazyListState(
                 initialFirstVisibleItemIndex = saved.firstVisibleItemIndex,
                 initialFirstVisibleItemScrollOffset = saved.firstVisibleItemScrollOffset
             )
         }
-    val humanDetailListState = run {
-        val saved = MemberDetailScrollStateRegistry.humanListPosition(memberScrollKey)
-        rememberLazyListState(
-            initialFirstVisibleItemIndex = saved.firstVisibleItemIndex,
-            initialFirstVisibleItemScrollOffset = saved.firstVisibleItemScrollOffset
-        )
-    }
     // Positions are saved continuously (snapshotFlow), not only on dispose:
     // during a pane transition the new detail composes BEFORE the old one is
     // destroyed, so a dispose-only write would land after the new page already
