@@ -18326,7 +18326,8 @@ private fun SharedMembersScreen(
             // shared members page under the session user id.
             val membersAgentGroupCollapseStore = remember {
                 build.raft.app.data.KeyValueMembersAgentMachineGroupCollapseStore(
-                    build.raft.app.data.slockSharedPreferenceStore()
+                    build.raft.app.data.slockSharedPreferenceStore(),
+                    logger = slockLogger("SlockMembersCollapse")
                 )
             }
             MembersRouteContent(

@@ -1964,7 +1964,8 @@ internal fun MembersPageContent(
     // key family the web sidebar uses.
     val membersAgentGroupCollapseStore = remember {
         build.raft.app.data.KeyValueMembersAgentMachineGroupCollapseStore(
-            build.raft.app.data.slockSharedPreferenceStore()
+            build.raft.app.data.slockSharedPreferenceStore(),
+            logger = slockLogger("SlockMembersCollapse")
         )
     }
     val agentsApiClient = remember(networkClient) {
