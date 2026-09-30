@@ -19,7 +19,8 @@ internal enum class ConversationOpenSource {
     Markdown,
     ParentConversation,
     AuthResume,
-    HistoryForward
+    HistoryForward,
+    ExternalLink
 }
 
 internal data class ConversationOpenSourceMessageIdentity(
@@ -249,6 +250,23 @@ internal fun AppShellNotificationThreadLaunchRequest.toConversationOpenSourceMes
         conversationKind = conversationKind
     )
 
+/**
+ * External HTTPS permalink (interface v3.4 §1): the path channelId always names
+ * the containing channel/dm; a reply permalink carries `parentMessageId` and is
+ * thread-shaped, resolved via the trusted typed rebuild like the Markdown source.
+ */
+internal fun SlockMessagePermalinkTarget.toConversationOpenSourceMessageIdentity(): ConversationOpenSourceMessageIdentity =
+    ConversationOpenSourceMessageIdentity(
+        source = ConversationOpenSource.ExternalLink,
+        messageId = messageId.value.takeIf { it.isNotBlank() },
+        channelId = channelId.value.takeIf { it.isNotBlank() },
+        parentChannelId = channelId.value.takeIf { threadParentMessageId != null && it.isNotBlank() },
+        parentMessageId = threadParentMessageId?.value?.takeIf { it.isNotBlank() },
+        conversationKind =
+            ConversationKind.Thread.takeIf { threadParentMessageId != null } ?: routeKind,
+        parentConversationKind = routeKind.takeIf { threadParentMessageId != null }
+    )
+
 internal fun TaskSummary.toConversationOpenSourceMessageIdentity(
     parentConversationKind: ConversationKind? = null
 ): ConversationOpenSourceMessageIdentity {
@@ -364,6 +382,7 @@ private fun ConversationOpenSourceMessageIdentity.resolveOpenAnchorMessageId(
         ConversationOpenSource.HistoryForward,
         ConversationOpenSource.Task,
         ConversationOpenSource.Markdown,
+        ConversationOpenSource.ExternalLink,
         ConversationOpenSource.ParentConversation,
         ConversationOpenSource.AuthResume -> messageId
     }?.takeIf { it.isNotBlank() }

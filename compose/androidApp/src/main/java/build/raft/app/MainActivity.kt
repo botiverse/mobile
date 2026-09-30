@@ -11,6 +11,7 @@ import build.raft.app.shared.SlockKuiklyRouteKeys
 import build.raft.app.shared.resolveAndroidShellLaunchTarget
 import build.raft.app.shared.taskLaunchPlan
 import build.raft.app.shared.withAndroidShellLaunchTarget
+import java.util.UUID
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.mobileOAuthConflictMessageOrNull
 import build.raft.app.data.SharedAuthDataSource
@@ -18,6 +19,7 @@ import build.raft.app.data.SharedAuthErrorCode
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SharedEmailVerificationResult
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.SlockExternalPermalinkContract
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -90,10 +92,34 @@ class MainActivity : ComponentActivity() {
             !handleMobileOAuthCallback(intent) &&
             !handleSocialAuthCallback(intent) &&
             !handleEmailVerificationLink(intent) &&
+            !handleSlockMessagePermalinkLink(intent) &&
             !handleUnsupportedSlockWebLink(intent)
         ) {
             openSharedShell(intent)
         }
+    }
+
+    /**
+     * task #13 external deep-link: canonical `/s/{serverSlug}/{channel|dm}/{id}`
+     * permalinks resolve inside the app instead of bouncing to the browser.
+     * Each delivered VIEW click mints a fresh `activationId`; the shared window
+     * navigation coordinator dedups on the intent key (which includes it), so
+     * OS-level redelivery of the same pageData stays idempotent while a genuine
+     * re-click re-opens. Anything that fails parsing falls through to the
+     * existing unsupported-web-link fallback.
+     */
+    private fun handleSlockMessagePermalinkLink(intent: Intent?): Boolean {
+        val uri = intent?.takeIf { it.action == Intent.ACTION_VIEW }?.data ?: return false
+        val target = uri.toString().toSlockMessagePermalinkTarget() ?: return false
+        val pageData = androidExternalPermalinkPageData(target, uri)
+        SlockAppLog.d(
+            "SlockBoot",
+            "external_permalink_received " +
+                "serverSlug=${target.serverSlug} route=${uri.path.orEmpty()} " +
+                "activationId=${pageData.optJSONObject(SlockExternalPermalinkContract.PageDataBlockKey)?.optString(SlockExternalPermalinkContract.KeyActivationId).orEmpty()}"
+        )
+        openSharedShellPageData(pageData)
+        return true
     }
 
     private fun handleExternalShareIntent(intent: Intent?): Boolean {
@@ -541,6 +567,42 @@ internal fun slockLaunchSource(
         action == Intent.ACTION_MAIN -> "launcher"
         else -> action.ifBlank { "unknown" }
     }
+
+/**
+ * Builds the AppShell pageData carrying the external-link identity envelope.
+ * The shell scope is this window's own `slockShellInstanceId`, resolved by the
+ * shared launch-target contract (single-window Android today, deterministic so
+ * Ready/Accepted stay scoped rather than broadcast).
+ */
+fun androidExternalPermalinkPageData(
+    target: SlockMessagePermalinkTarget,
+    uri: Uri,
+): JSONObject {
+    val shellScopeId =
+        resolveAndroidShellLaunchTarget(JSONObject()).shellInstanceId
+    val envelope =
+        JSONObject()
+            .put(SlockExternalPermalinkContract.KeyActivationId, UUID.randomUUID().toString())
+            .put(SlockExternalPermalinkContract.KeyServerSlug, target.serverSlug)
+            .put(SlockExternalPermalinkContract.KeyChannelId, target.channelId.value)
+            .put(
+                SlockExternalPermalinkContract.KeyRouteKind,
+                when (target.routeKind) {
+                    build.raft.app.model.ConversationKind.DirectMessage -> "dm"
+                    else -> "channel"
+                }
+            )
+            .put(SlockExternalPermalinkContract.KeyShellScopeId, shellScopeId)
+            .put(SlockExternalPermalinkContract.KeyReceivedAtMillis, System.currentTimeMillis().toString())
+            .put(SlockExternalPermalinkContract.KeyOriginHost, uri.host.orEmpty())
+    target.threadParentMessageId?.value?.takeIf(String::isNotBlank)?.let { parent ->
+        envelope.put(SlockExternalPermalinkContract.KeyParentMessageId, parent)
+    }
+    target.messageId.value.takeIf(String::isNotBlank)?.let { message ->
+        envelope.put(SlockExternalPermalinkContract.KeyMessageId, message)
+    }
+    return JSONObject().put(SlockExternalPermalinkContract.PageDataBlockKey, envelope)
+}
 
 internal fun Intent?.shouldOpenUnsupportedSlockWebLinkExternally(): Boolean =
     this?.data?.let { uri ->

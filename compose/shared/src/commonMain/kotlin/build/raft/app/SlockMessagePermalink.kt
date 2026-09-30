@@ -5,7 +5,7 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.MessageId
 
 /** Identity carried by a canonical Raft message permalink. */
-internal data class SlockMessagePermalinkTarget(
+data class SlockMessagePermalinkTarget(
     val rawUrl: String,
     val serverSlug: String,
     val routeKind: ConversationKind,
@@ -57,7 +57,7 @@ private val INLINE_CODE_PATTERN = Regex("""``[^`]+``|`[^`]+`""")
  * Parses the canonical `/s/{serverSlug}/{channel|dm}/{channelId}` contract.
  * The configured web origin is an exact additional allow-list entry.
  */
-internal fun String.toSlockMessagePermalinkTarget(
+fun String.toSlockMessagePermalinkTarget(
     configuredWebUrl: String? = null
 ): SlockMessagePermalinkTarget? {
     val parsed = parseSlockAbsoluteUrl() ?: return null

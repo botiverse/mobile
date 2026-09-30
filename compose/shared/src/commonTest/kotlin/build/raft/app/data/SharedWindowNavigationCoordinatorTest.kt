@@ -204,14 +204,23 @@ class SharedWindowNavigationCoordinatorTest {
 
         // Session still resolving: an empty known-server list must not trip the
         // server_unavailable guard, and no canonical server means no action at all.
-        val emptyReadiness = readiness(canonicalServerId = null, knownServerIds = emptySet())
+        val emptyReadiness =
+            readiness(
+                canonicalServerId = null,
+                knownServerIds = emptySet(),
+                serverListState = WindowNavigationServerListState.Loading
+            )
         assertNull(coordinator.advance(emptyReadiness))
         assertEquals(1, coordinator.requestCount)
 
         // Server list hydrated but canonical server not yet selected: still pending.
         assertNull(
             coordinator.advance(
-                readiness(canonicalServerId = null, knownServerIds = setOf("server-a", "server-b"))
+                readiness(
+                    canonicalServerId = null,
+                    knownServerIds = setOf("server-a", "server-b"),
+                    serverListState = WindowNavigationServerListState.Loading
+                )
             )
         )
         assertEquals(1, coordinator.requestCount)
@@ -237,7 +246,13 @@ class SharedWindowNavigationCoordinatorTest {
         val preAuth = SharedWindowNavigationCoordinator()
         preAuth.enqueue(externalLinkIntent(serverId = "server-missing"))
         assertNull(
-            preAuth.advance(readiness(canonicalServerId = null, knownServerIds = emptySet()))
+            preAuth.advance(
+                readiness(
+                    canonicalServerId = null,
+                    knownServerIds = emptySet(),
+                    serverListState = WindowNavigationServerListState.Loading
+                )
+            )
         )
         assertEquals(1, preAuth.requestCount)
         assertIs<WindowNavigationAction.Reject>(
@@ -257,11 +272,15 @@ class SharedWindowNavigationCoordinatorTest {
         // reported through rejectActivation exactly once.
         val blind = SharedWindowNavigationCoordinator()
         blind.enqueue(externalLinkIntent(serverId = "server-missing"))
-        val activation =
-            assertIs<WindowNavigationAction.ActivateServer>(
-                blind.advance(readiness(canonicalServerId = "server-a", knownServerIds = emptySet()))
+        val activating =
+            readiness(
+                canonicalServerId = "server-a",
+                knownServerIds = emptySet(),
+                serverListState = WindowNavigationServerListState.Loading
             )
-        assertNull(blind.advance(readiness(canonicalServerId = "server-a", knownServerIds = emptySet())))
+        val activation =
+            assertIs<WindowNavigationAction.ActivateServer>(blind.advance(activating))
+        assertNull(blind.advance(activating))
         val rejected =
             assertIs<WindowNavigationAction.Reject>(
                 blind.rejectActivation(activation.intent.key, "server_unavailable")
@@ -295,39 +314,209 @@ class SharedWindowNavigationCoordinatorTest {
         )
     }
 
-    // Target-contract specs for the external-link interface (v3.3): these describe
-    // semantics the coordinator does not yet implement. They are @Ignore'd
-    // documentation of the intended assertions — NOT test coverage — and flip to
-    // real tests in the same commit that adds serverListState, activationId and
-    // authGeneration.
+    // Target-contract tests for the external-link interface (v3.4): serverListState
+    // distinguishes "still resolving"/"failed" from a legitimately loaded list;
+    // activationId separates distinct user clicks so terminal dedup only applies
+    // within one activation; authGeneration drops intents bound to a dead session.
 
     @Test
-    @kotlin.test.Ignore
     fun externalLinkLoadedEmptyServerListRejects() {
-        // Target contract: a successfully loaded, legitimately empty server list
-        // must terminate the intent (there is provably no such server), unlike
-        // a list that is merely still empty because it has not loaded.
-        // Requires: WindowNavigationReadiness.serverListState = Loaded with
-        // knownServerIds empty -> Reject("server_unavailable"), exactly once.
+        // A successfully loaded, legitimately empty server list terminates the
+        // intent — there is provably no such server — unlike a list that is
+        // merely empty because it has not loaded yet.
+        val coordinator = SharedWindowNavigationCoordinator()
+        coordinator.enqueue(externalLinkIntent(serverId = "server-missing"))
+
+        // Pre-auth: no canonical server yet, so the intent stays pending without
+        // activating or rejecting.
+        assertNull(
+            coordinator.advance(
+                readiness(
+                    canonicalServerId = null,
+                    knownServerIds = emptySet(),
+                    serverListState = WindowNavigationServerListState.Loading
+                )
+            )
+        )
+        val rejected =
+            assertIs<WindowNavigationAction.Reject>(
+                coordinator.advance(
+                    readiness(
+                        canonicalServerId = "server-a",
+                        knownServerIds = emptySet(),
+                        serverListState = WindowNavigationServerListState.Loaded
+                    )
+                )
+            )
+        assertEquals("server_unavailable", rejected.reason)
+        assertNull(
+            coordinator.advance(
+                readiness(
+                    canonicalServerId = "server-a",
+                    knownServerIds = emptySet(),
+                    serverListState = WindowNavigationServerListState.Loaded
+                )
+            )
+        )
     }
 
     @Test
-    @kotlin.test.Ignore
     fun externalLinkFailedListKeepsPendingAndDropsStaleSnapshot() {
-        // Target contract: serverListState = Failed (even when a stale non-empty
-        // knownServerIds snapshot is carried) must NOT reject as
-        // server_unavailable; the intent stays pending until a Loaded emission.
-        // Requires: readiness carries serverListState explicitly; Failed ->
-        // advance returns null and no Reject, stale list never consulted.
+        // A Failed list emission must NOT reject as server_unavailable even when it
+        // still carries a stale non-empty snapshot; the intent stays pending until
+        // a Loaded emission decides.
+        val coordinator = SharedWindowNavigationCoordinator()
+        coordinator.enqueue(externalLinkIntent(serverId = "server-missing"))
+
+        val failedWithStaleList =
+            readiness(
+                canonicalServerId = null,
+                knownServerIds = setOf("server-a", "server-b"),
+                serverListState = WindowNavigationServerListState.Failed
+            )
+        assertNull(coordinator.advance(failedWithStaleList))
+        assertNull(coordinator.advance(failedWithStaleList))
+        assertEquals(1, coordinator.requestCount)
+
+        assertIs<WindowNavigationAction.Reject>(
+            coordinator.advance(
+                readiness(
+                    canonicalServerId = "server-a",
+                    knownServerIds = setOf("server-a", "server-b"),
+                    serverListState = WindowNavigationServerListState.Loaded
+                )
+            )
+        )
     }
 
     @Test
-    @kotlin.test.Ignore
-    fun externalLinkDuplicateActivationReAcksAndNewActivationOpensAgain() {
-        // Target contract: re-delivery of the same activationId is a no-op open
-        // but still re-emits Accepted to the SAME shellScopeId; a genuinely new
-        // user click carries a new activationId and opens again even after a
-        // terminal state. Requires: activationId inside WindowNavigationIntent.key.
+    fun externalLinkDuplicateActivationDedupsAndNewActivationOpensAgain() {
+        // Re-delivery of the same activationId dedups inside the window scope; a
+        // genuinely new user click mints a new activationId and opens again even
+        // after the previous activation reached a terminal stage.
+        val coordinator = SharedWindowNavigationCoordinator()
+        val first = externalLinkIntent(serverId = "server-b").copy(activationId = "act-1")
+        assertTrue(coordinator.enqueue(first))
+        assertFalse(coordinator.enqueue(first.copy()))
+
+        val ready = readyReadiness("server-b")
+        assertIs<WindowNavigationAction.OpenConversation>(coordinator.advance(ready))
+        assertNull(coordinator.advance(ready))
+        assertFalse(coordinator.enqueue(first.copy()))
+
+        val second = externalLinkIntent(serverId = "server-b").copy(activationId = "act-2")
+        assertTrue(coordinator.enqueue(second))
+        assertIs<WindowNavigationAction.OpenConversation>(coordinator.advance(ready))
+        assertNull(coordinator.advance(ready))
+    }
+
+    @Test
+    fun notificationColdStartKeepsPendingWhileServerListLoads() {
+        // Regression pin (SangLan mandate): the notification migration point must
+        // not hard-fill `Loaded`. Before the auth session resolves, the server
+        // list reports Loading/empty and the intent stays Pending — exactly the
+        // wait semantics the legacy empty-list guard provided.
+        val coordinator = SharedWindowNavigationCoordinator()
+        coordinator.enqueue(notificationIntent(serverId = "server-b"))
+
+        val coldStart =
+            readiness(
+                canonicalServerId = null,
+                knownServerIds = emptySet(),
+                serverListState = WindowNavigationServerListState.Loading
+            )
+        assertNull(coordinator.advance(coldStart))
+        assertEquals(1, coordinator.requestCount)
+
+        // List still Loading but a canonical session landed: activate, never reject.
+        assertIs<WindowNavigationAction.ActivateServer>(
+            coordinator.advance(
+                readiness(
+                    canonicalServerId = "server-a",
+                    knownServerIds = emptySet(),
+                    serverListState = WindowNavigationServerListState.Loading
+                )
+            )
+        )
+    }
+
+    @Test
+    fun externalLinkUnboundIntentBindsOnceThenDiesOnSwitch() {
+        // An intent delivered before login carries no generation: the first
+        // authenticated readiness binds it exactly once, and a later account
+        // switch terminates it rather than replaying the other user's route.
+        val coordinator = SharedWindowNavigationCoordinator()
+        coordinator.enqueue(externalLinkIntent(serverId = "server-b").copy(activationId = "act-1"))
+
+        // Pre-auth: pending, unbound.
+        assertNull(coordinator.advance(readyReadiness("server-b").copy(authGeneration = null)))
+
+        // First login binds silently — the open still proceeds on this advance
+        // (the bound value only guards FUTURE advances).
+        val open =
+            coordinator.advance(readyReadiness("server-b").copy(authGeneration = "p1:1"))
+        assertIs<WindowNavigationAction.OpenConversation>(open)
+
+        // Fresh coordinator, same scenario but the session flips before open.
+        val flipped = SharedWindowNavigationCoordinator()
+        flipped.enqueue(externalLinkIntent(serverId = "server-b").copy(activationId = "act-2"))
+        // Bind at p1:1 while not yet open (canonical elsewhere → ActivateServer first).
+        assertIs<WindowNavigationAction.ActivateServer>(
+            flipped.advance(readiness(canonicalServerId = "server-a").copy(authGeneration = "p1:1"))
+        )
+        val stale =
+            assertIs<WindowNavigationAction.Reject>(
+                flipped.advance(readyReadiness("server-b").copy(authGeneration = "p2:2"))
+            )
+        assertEquals("auth_generation_stale", stale.reason)
+    }
+
+    @Test
+    fun externalLinkBoundIntentDiesWhenAuthGenerationMovesOn() {
+        // An intent bound to principal+generation "p1:1" terminates once the live
+        // session reports a different generation; the stale route is never replayed.
+        val coordinator = SharedWindowNavigationCoordinator()
+        coordinator.enqueue(
+            externalLinkIntent(serverId = "server-b").copy(
+                activationId = "act-1",
+                authGeneration = "p1:1"
+            )
+        )
+
+        // Logged out entirely: the bound intent dies rather than later replaying
+        // a dead session's route once a different account lands.
+        val loggedOut =
+            assertIs<WindowNavigationAction.Reject>(
+                coordinator.advance(readyReadiness("server-b").copy(authGeneration = null))
+            )
+        assertEquals("auth_generation_stale", loggedOut.reason)
+
+        // A second intent bound while session 1 was live dies on session 2.
+        val movedOn = SharedWindowNavigationCoordinator()
+        movedOn.enqueue(
+            externalLinkIntent(serverId = "server-b").copy(
+                activationId = "act-1",
+                authGeneration = "p1:1"
+            )
+        )
+        val stale =
+            assertIs<WindowNavigationAction.Reject>(
+                movedOn.advance(readyReadiness("server-b").copy(authGeneration = "p2:2"))
+            )
+        assertEquals("auth_generation_stale", stale.reason)
+        assertNull(movedOn.advance(readyReadiness("server-b").copy(authGeneration = "p2:2")))
+
+        // A bound intent that still matches opens normally.
+        val fresh = SharedWindowNavigationCoordinator()
+        fresh.enqueue(
+            externalLinkIntent(serverId = "server-b").copy(
+                activationId = "act-1",
+                authGeneration = "p2:2"
+            )
+        )
+        assertIs<WindowNavigationAction.OpenConversation>(
+            fresh.advance(readyReadiness("server-b").copy(authGeneration = "p2:2"))
+        )
     }
 
     @Test
@@ -387,14 +576,18 @@ class SharedWindowNavigationCoordinatorTest {
         homeSnapshotServerId: String? = null,
         homeSessionServerId: String? = null,
         knownServerIds: Set<String> = setOf("server-a", "server-b"),
-        conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState()
+        conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState(),
+        serverListState: WindowNavigationServerListState = WindowNavigationServerListState.Loaded,
+        authGeneration: String? = null
     ): WindowNavigationReadiness =
         WindowNavigationReadiness(
             knownServerIds = knownServerIds,
             canonicalServerId = canonicalServerId,
             homeSnapshotServerId = homeSnapshotServerId,
             homeSessionServerId = homeSessionServerId,
-            conversationDirectory = conversationDirectory
+            conversationDirectory = conversationDirectory,
+            serverListState = serverListState,
+            authGeneration = authGeneration
         )
 
     private fun readyReadiness(serverId: String): WindowNavigationReadiness =

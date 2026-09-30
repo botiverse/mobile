@@ -360,6 +360,7 @@ class SharedConversationForwardHistoryTest {
             canonicalServerId = serverId,
             homeSnapshotServerId = serverId,
             homeSessionServerId = serverId,
-            conversationDirectory = directory
+            conversationDirectory = directory,
+            serverListState = WindowNavigationServerListState.Loaded
         )
 }

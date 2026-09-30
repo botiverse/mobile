@@ -160,6 +160,8 @@ import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.WindowNavigationAction
 import build.raft.app.data.WindowNavigationIntent
 import build.raft.app.data.WindowNavigationReadiness
+import build.raft.app.data.SlockExternalPermalinkContract
+import build.raft.app.data.WindowNavigationServerListState
 import build.raft.app.data.ConversationForwardAction
 import build.raft.app.data.toConversationForwardEntry
 import build.raft.app.data.SlockSystemNotificationContract
@@ -2848,6 +2850,7 @@ private fun SlockAppShellReadyContent(
             )
         }
     var systemNotificationNavigationTick by remember { mutableStateOf(0) }
+    var externalLinkNavigationTick by remember { mutableStateOf(0) }
     DisposableEffect(eventBus, windowNavigationCoordinator, bridge) {
         val subscription =
             eventBus.observe(SlockSystemNotificationContract.OpenEventName) { eventData ->
@@ -2875,6 +2878,64 @@ private fun SlockAppShellReadyContent(
                 source = "app_shell_notification_navigation_not_ready"
             )
             subscription.close()
+        }
+    }
+
+    // task #13 external deep-link: acknowledge the pageData-delivered intent once
+    // (enqueue is idempotent on the intent key, which contains activationId), and
+    // keep the scoped Ready/NotReady heartbeat alongside the notification channel.
+    // The Accepted receipt carries the live bound generation; an Unbound intent
+    // (delivered before login) binds at the first advance readiness provides.
+    DisposableEffect(eventBus, notificationWindowNavigationIntent, windowNavigationCoordinator, bridge) {
+        val externalIntent =
+            notificationWindowNavigationIntent?.takeIf { it.source == ExternalLinkSourceValue }
+        if (externalIntent == null) return@DisposableEffect onDispose { }
+        val enqueued = windowNavigationCoordinator.enqueue(externalIntent)
+        externalLinkNavigationTick += 1
+        eventBus.post(
+            eventName = SlockExternalPermalinkContract.AcceptedEventName,
+            eventData =
+                JSONObject()
+                    .put(
+                        "status",
+                        if (enqueued) {
+                            SlockExternalPermalinkContract.AcceptedStatusFirstTime
+                        } else {
+                            SlockExternalPermalinkContract.AcceptedStatusDuplicate
+                        }
+                    )
+                    .put(SlockExternalPermalinkContract.KeyActivationId, externalIntent.activationId)
+                    .put(SlockExternalPermalinkContract.KeyShellScopeId, storeScope.shellInstanceId)
+                    .put(
+                        SlockExternalPermalinkContract.KeyAuthGeneration,
+                        processRealtimeAuthority?.witness?.let {
+                            "${it.principalId}:${it.authGeneration}"
+                        } ?: ""
+                    ),
+            source = "app_shell_external_link_received"
+        )
+        eventBus.post(
+            eventName = SlockExternalPermalinkContract.ReadyEventName,
+            eventData =
+                JSONObject()
+                    .put(SlockExternalPermalinkContract.KeyShellScopeId, storeScope.shellInstanceId)
+                    .put(
+                        SlockExternalPermalinkContract.KeyAuthGeneration,
+                        processRealtimeAuthority?.witness?.let {
+                            "${it.principalId}:${it.authGeneration}"
+                        } ?: ""
+                    ),
+            source = "app_shell_external_link_ready"
+        )
+        onDispose {
+            eventBus.post(
+                eventName = SlockExternalPermalinkContract.NotReadyEventName,
+                eventData =
+                    JSONObject()
+                        .put(SlockExternalPermalinkContract.KeyShellScopeId, storeScope.shellInstanceId)
+                        .put("reason", "shell_disposed"),
+                source = "app_shell_external_link_not_ready"
+            )
         }
     }
     val homeSearchSavedViewModel: SharedHomeSearchSavedViewModel =
@@ -4504,7 +4565,21 @@ private fun SlockAppShellReadyContent(
                 canonicalServerId = readySession?.currentServerId,
                 homeSnapshotServerId = content?.snapshot?.server?.id?.value,
                 homeSessionServerId = content?.session?.currentServerId,
-                conversationDirectory = appShellConversationDirectory
+                conversationDirectory = appShellConversationDirectory,
+                // A bound session owns the authoritative (possibly empty) list; before that,
+                // "not yet resolved" must stay pending rather than reject as unavailable.
+                serverListState =
+                    if (readySession != null) {
+                        WindowNavigationServerListState.Loaded
+                    } else {
+                        WindowNavigationServerListState.Loading
+                    },
+                // Intents bound before login carry no identity; a bound intent dies when
+                // the authenticated principal+generation no longer matches.
+                authGeneration =
+                    processRealtimeAuthority?.witness?.let { witness ->
+                        "${witness.principalId}:${witness.authGeneration}"
+                    }
             )
         when (val action = conversationForwardHistory.requestForward(readiness)) {
             is ConversationForwardAction.Open -> {
@@ -4541,8 +4616,10 @@ private fun SlockAppShellReadyContent(
     LaunchedEffect(
         notificationWindowNavigationIntent?.key,
         systemNotificationNavigationTick,
+        externalLinkNavigationTick,
         readySession?.currentServerId,
         readySession?.servers,
+        processRealtimeAuthority?.witness,
         homeState.content,
         appShellConversationDirectory,
         threadTimeContext,
@@ -4558,7 +4635,21 @@ private fun SlockAppShellReadyContent(
                 canonicalServerId = readySession?.currentServerId,
                 homeSnapshotServerId = content?.snapshot?.server?.id?.value,
                 homeSessionServerId = content?.session?.currentServerId,
-                conversationDirectory = appShellConversationDirectory
+                conversationDirectory = appShellConversationDirectory,
+                // A bound session owns the authoritative (possibly empty) list; before that,
+                // "not yet resolved" must stay pending rather than reject as unavailable.
+                serverListState =
+                    if (readySession != null) {
+                        WindowNavigationServerListState.Loaded
+                    } else {
+                        WindowNavigationServerListState.Loading
+                    },
+                // Intents bound before login carry no identity; a bound intent dies when
+                // the authenticated principal+generation no longer matches.
+                authGeneration =
+                    processRealtimeAuthority?.witness?.let { witness ->
+                        "${witness.principalId}:${witness.authGeneration}"
+                    }
             )
         when (val action = windowNavigationCoordinator.advance(readiness)) {
             is WindowNavigationAction.ActivateServer -> {
@@ -4597,14 +4688,35 @@ private fun SlockAppShellReadyContent(
                 )
             }
             is WindowNavigationAction.OpenConversation -> {
-                selectAppShellTab("home")
-                retainedAppShellTabs = retainedAppShellTabs + "home"
-                homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
+                // Destination policy (external-link interface v3.4): an external
+                // permalink landing on the already-canonical server keeps the wide
+                // screen's mid-pane (Activity/Search tab + secondary destination);
+                // only the conversation pane is replaced. Cross-server intents pass
+                // through ActivateServer above, so this branch is always same-server.
+                // Notifications keep the original Home landing.
+                val externalLinkSameServer = action.intent.source == "external_link"
+                if (!externalLinkSameServer) {
+                    selectAppShellTab("home")
+                    retainedAppShellTabs = retainedAppShellTabs + "home"
+                    homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
+                }
                 bridge.log(
                     "window_navigation_open source=${action.intent.source} " +
                         "threadId=${action.request.conversationIdentity.threadId.value} " +
-                        "focusedMessageId=${action.request.anchorMessageId.orEmpty()}"
+                        "focusedMessageId=${action.request.anchorMessageId.orEmpty()} " +
+                        "preserveMidPane=$externalLinkSameServer"
                 )
+                if (externalLinkSameServer) {
+                    eventBus.post(
+                        eventName = SlockExternalPermalinkContract.ResultEventName,
+                        eventData =
+                            JSONObject()
+                                .put("status", SlockExternalPermalinkContract.ResultStatusOpened)
+                                .put(SlockExternalPermalinkContract.KeyActivationId, action.intent.activationId)
+                                .put(SlockExternalPermalinkContract.KeyShellScopeId, storeScope.shellInstanceId),
+                        source = "app_shell_external_link_result"
+                    )
+                }
                 openHomeMessageRequest(action.request, source = action.intent.source)
             }
             is WindowNavigationAction.Reject -> {
@@ -4612,6 +4724,18 @@ private fun SlockAppShellReadyContent(
                     "window_navigation_drop source=${action.intent.source} reason=${action.reason} " +
                         "targetServerId=${action.intent.serverId}"
                 )
+                if (action.intent.source == ExternalLinkSourceValue) {
+                    eventBus.post(
+                        eventName = SlockExternalPermalinkContract.ResultEventName,
+                        eventData =
+                            JSONObject()
+                                .put("status", SlockExternalPermalinkContract.ResultStatusRejected)
+                                .put("reason", action.reason)
+                                .put(SlockExternalPermalinkContract.KeyActivationId, action.intent.activationId)
+                                .put(SlockExternalPermalinkContract.KeyShellScopeId, storeScope.shellInstanceId),
+                        source = "app_shell_external_link_result"
+                    )
+                }
                 bridge.toast(
                     if (action.reason == "server_unavailable") {
                         "Notification server unavailable"
@@ -22635,12 +22759,68 @@ private fun JSONObject.appShellNotificationServerId(): String? =
  * enqueued, the window-scoped coordinator owns retry, readiness, and exactly-once consumption.
  */
 internal fun JSONObject.appShellWindowNavigationIntent(fallbackServerId: String?): WindowNavigationIntent? {
+    appShellExternalLinkWindowNavigationIntent()?.let { return it }
     val request = appShellNotificationThreadLaunchRequest() ?: return null
     val serverId = appShellNotificationServerId() ?: fallbackServerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
     return WindowNavigationIntent(
         serverId = serverId,
         sourceIdentity = request.toConversationOpenSourceMessageIdentity(),
         source = "system_notification"
+    )
+}
+
+private const val ExternalLinkSourceValue = "external_link"
+
+/**
+ * task #13 external deep-link: reads the `externalLink` identity envelope that
+ * Android/iOS hosts place in pageData (interface v3.4 §1). Absent or empty
+ * optional fields map to null — never a fabricated anchor. The envelope is
+ * identity-only; the coordinator decides server availability and consumption.
+ */
+internal fun JSONObject.appShellExternalLinkWindowNavigationIntent(): WindowNavigationIntent? {
+    val envelope =
+        optJSONObject(SlockExternalPermalinkContract.PageDataBlockKey) ?: return null
+    val activationId =
+        envelope.optString(SlockExternalPermalinkContract.KeyActivationId).trim()
+            .takeIf { it.isNotBlank() } ?: return null
+    val serverSlug =
+        envelope.optString(SlockExternalPermalinkContract.KeyServerSlug).trim()
+            .takeIf { it.isNotBlank() } ?: return null
+    val channelId =
+        envelope.optString(SlockExternalPermalinkContract.KeyChannelId).trim()
+            .takeIf { it.isNotBlank() } ?: return null
+    val routeKind =
+        when (envelope.optString(SlockExternalPermalinkContract.KeyRouteKind).trim().lowercase()) {
+            "dm" -> build.raft.app.model.ConversationKind.DirectMessage
+            "channel" -> build.raft.app.model.ConversationKind.Channel
+            else -> return null
+        }
+    val parentMessageId =
+        envelope.optString(SlockExternalPermalinkContract.KeyParentMessageId).trim()
+            .takeIf { it.isNotBlank() }
+    val messageId =
+        envelope.optString(SlockExternalPermalinkContract.KeyMessageId).trim()
+            .takeIf { it.isNotBlank() }
+    val identity =
+        ConversationOpenSourceMessageIdentity(
+            source = ConversationOpenSource.ExternalLink,
+            messageId = messageId,
+            channelId = channelId,
+            parentChannelId = channelId.takeIf { parentMessageId != null },
+            parentMessageId = parentMessageId,
+            conversationKind =
+                if (parentMessageId != null) {
+                    build.raft.app.model.ConversationKind.Thread
+                } else {
+                    routeKind
+                },
+            parentConversationKind = routeKind.takeIf { parentMessageId != null }
+        )
+    return WindowNavigationIntent(
+        serverId = serverSlug,
+        sourceIdentity = identity,
+        source = ExternalLinkSourceValue,
+        activationId = activationId
     )
 }
 

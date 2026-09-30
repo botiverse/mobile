@@ -16,12 +16,17 @@ import kotlinx.atomicfu.locks.synchronized
 internal data class WindowNavigationIntent(
     val serverId: String,
     val sourceIdentity: ConversationOpenSourceMessageIdentity,
-    val source: String
+    val source: String,
+    /** Unique id per external system event; retries reuse it, new clicks mint one. */
+    val activationId: String? = null,
+    /** Principal+generation the intent was bound to; null = unbound (pre-login). */
+    val authGeneration: String? = null
 ) {
     val key: String =
         listOf(
             serverId,
             source,
+            activationId.orEmpty(),
             sourceIdentity.source.name,
             sourceIdentity.threadChannelId.orEmpty(),
             sourceIdentity.channelId.orEmpty(),
@@ -36,13 +41,20 @@ internal data class WindowNavigationIntent(
     }
 }
 
+/** Readiness of the server list itself; Loaded is the only state that may reject. */
+
 /** Canonical, server-qualified readiness supplied by the AppShell integration. */
+internal enum class WindowNavigationServerListState { Loading, Failed, Loaded }
+
 internal data class WindowNavigationReadiness(
     val knownServerIds: Set<String> = emptySet(),
     val canonicalServerId: String? = null,
     val homeSnapshotServerId: String? = null,
     val homeSessionServerId: String? = null,
-    val conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState()
+    val conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState(),
+    val serverListState: WindowNavigationServerListState,
+    /** Current authenticated principal generation; stale bound intents are dropped. */
+    val authGeneration: String? = null
 )
 
 /**
@@ -118,9 +130,26 @@ internal class SharedWindowNavigationCoordinator {
             return WindowNavigationAction.Reject(intent, "conversation_identity_missing")
         }
 
-        if (readiness.knownServerIds.isNotEmpty() && intent.serverId !in readiness.knownServerIds) {
+        if (
+            readiness.serverListState == WindowNavigationServerListState.Loaded &&
+            intent.serverId !in readiness.knownServerIds
+        ) {
             state.stage = RequestStage.Rejected
             return WindowNavigationAction.Reject(intent, "server_unavailable")
+        }
+
+        // A bound intent whose principal generation moved on — or whose session is
+        // gone entirely — is dead: terminate it rather than replaying a previous
+        // account's pending route. An Unbound intent (delivered before login,
+        // authGeneration == null) binds exactly once to the first authenticated
+        // generation the readiness reports; further switches kill it as stale.
+        if (intent.authGeneration == null) {
+            readiness.authGeneration?.let { bound ->
+                state.intent = intent.copy(authGeneration = bound)
+            }
+        } else if (readiness.authGeneration != intent.authGeneration) {
+            state.stage = RequestStage.Rejected
+            return WindowNavigationAction.Reject(intent, "auth_generation_stale")
         }
 
         val canonicalServerId = readiness.canonicalServerId
@@ -184,7 +213,7 @@ internal class SharedWindowNavigationCoordinator {
     }
 
     private data class RequestState(
-        val intent: WindowNavigationIntent,
+        var intent: WindowNavigationIntent,
         var activationRequested: Boolean = false,
         var homeStartRequested: Boolean = false,
         var stage: RequestStage = RequestStage.Pending
