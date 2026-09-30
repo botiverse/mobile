@@ -5673,11 +5673,22 @@ private fun MembersDetailContent(
                 // isScrollInProgress is observed too: a gesture that starts
                 // and ends within the settle window emits true->false even
                 // when the landing equals the last position, so the tracker
-                // still sees the user's scroll boundary.
+                // still sees the user's scroll boundary. The trigger also
+                // observes the MEASURED position (visibleItemsInfo), not only
+                // the scrollPosition getters — requestScrollToItem rewrites
+                // the getters synchronously, so a getter-only key can miss
+                // the frame where the restore actually lands.
                 state.isScrollInProgress to
                     Triple(
-                        state.firstVisibleItemIndex,
-                        state.firstVisibleItemScrollOffset,
+                        state.layoutInfo.visibleItemsInfo
+                            .firstOrNull()?.index
+                            ?: state.firstVisibleItemIndex,
+                        state.layoutInfo.visibleItemsInfo
+                            .firstOrNull()
+                            ?.let {
+                                state.layoutInfo.viewportStartOffset - it.offset
+                            }
+                            ?: state.firstVisibleItemScrollOffset,
                         state.layoutInfo.totalItemsCount
                     )
             }.collect {
@@ -5705,11 +5716,22 @@ private fun MembersDetailContent(
                 // isScrollInProgress is observed too: a gesture that starts
                 // and ends within the settle window emits true->false even
                 // when the landing equals the last position, so the tracker
-                // still sees the user's scroll boundary.
+                // still sees the user's scroll boundary. The trigger also
+                // observes the MEASURED position (visibleItemsInfo), not only
+                // the scrollPosition getters — requestScrollToItem rewrites
+                // the getters synchronously, so a getter-only key can miss
+                // the frame where the restore actually lands.
                 state.isScrollInProgress to
                     Triple(
-                        state.firstVisibleItemIndex,
-                        state.firstVisibleItemScrollOffset,
+                        state.layoutInfo.visibleItemsInfo
+                            .firstOrNull()?.index
+                            ?: state.firstVisibleItemIndex,
+                        state.layoutInfo.visibleItemsInfo
+                            .firstOrNull()
+                            ?.let {
+                                state.layoutInfo.viewportStartOffset - it.offset
+                            }
+                            ?: state.firstVisibleItemScrollOffset,
                         state.layoutInfo.totalItemsCount
                     )
             }.collect {
