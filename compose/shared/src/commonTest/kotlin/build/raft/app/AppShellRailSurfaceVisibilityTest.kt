@@ -173,9 +173,9 @@ class AppShellServerDrawerBackProjectionTest {
      * from the render projection, which strips the drawer runtime when the app-shell
      * drawer host owns it — so Back always saw `false` and fell through to
      * close_page even with the drawer settled open. Back must consume from the
-     * live shell-store snapshot. This test feeds both states through the same
-     * consume seam popMainRoute uses, so wiring the seam to the projected state
-     * is caught here.
+     * live shell-store snapshot. This test only pins the projection/store
+     * divergence on the shared consume seam — the production call site is
+     * covered by source review and device re-verify, not by this test.
      */
     @Test
     fun `live store reports drawer expanded while render projection strips it`() {
