@@ -986,10 +986,19 @@ class SharedAuthDataSource(
                     }
                     val failure = response.toSharedAuthFailure()
                     diagnosticsLogger("auth_servers_load_result result=failure source=access_token code=${failure.code}")
+                    markServersListDegraded(session)
                     return failure
                 }
             }
         return persistLoadedServers(session, servers, source = "access_token")
+    }
+
+    // Marks the persisted session's server list as degraded without touching tokens or
+    // selection. No-op when the session was replaced or cleared concurrently (#466).
+    private suspend fun markServersListDegraded(session: StoredAuthSession) {
+        sessionStore.updateMetadata(expectedAccountId = session.user.id) { latest ->
+            latest.copy(serversListDegraded = true)
+        }
     }
 
     private suspend fun loadServersAfterRefresh(session: StoredAuthSession): SharedAuthResult<StoredAuthSession> {
@@ -1018,6 +1027,7 @@ class SharedAuthDataSource(
                             }
                             val failure = retryResponse.toSharedAuthFailure()
                             diagnosticsLogger("auth_servers_load_result result=failure source=refresh_retry code=${failure.code}")
+                            markServersListDegraded(updated)
                             return failure
                         }
                     }

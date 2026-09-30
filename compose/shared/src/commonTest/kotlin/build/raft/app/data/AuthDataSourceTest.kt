@@ -111,6 +111,30 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun loadServersFailureMarksSessionListDegraded() = runBlocking {
+        val store =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                    accessToken = "access-token",
+                    refreshToken = "refresh-token",
+                    servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock"))
+                )
+            )
+        val source =
+            SharedAuthDataSource(
+                transport = FakeAuthApi(serversResponse = AuthNetworkResponse(500, """{"error":"upstream"}""")),
+                sessionStore = store
+            )
+
+        val result = source.loadServers()
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals(true, store.readSession()?.serversListDegraded)
+        assertEquals(listOf("server-1"), store.readSession()?.servers?.map { it.id })
+    }
+
+    @Test
     fun qaBootstrapConsumePersistsCanonicalSessionAndBindingInOneReplace() = runBlocking {
         val store = InMemorySlockAuthSessionStore()
         val api = FakeAuthApi(qaConsumeResponse = qaConsumeResponse)

@@ -513,6 +513,26 @@ class SharedWindowNavigationCoordinatorTest {
     }
 
     @Test
+    fun failedServerListKeepsIntentPendingWithoutDispatch() {
+        // A degraded list must not terminate (server_unavailable) AND must not
+        // dispatch: a stale snapshot cannot drive activation or open.
+        val coordinator = SharedWindowNavigationCoordinator()
+        coordinator.enqueue(externalLinkIntent("server-b").copy(activationId = "act-f"))
+
+        assertNull(
+            coordinator.advance(
+                readyReadiness("server-a").copy(
+                    serverListState = WindowNavigationServerListState.Failed
+                )
+            )
+        )
+        // Still pending once a real list lands — activation proceeds normally.
+        assertIs<WindowNavigationAction.ActivateServer>(
+            coordinator.advance(readyReadiness("server-a"))
+        )
+    }
+
+    @Test
     fun externalLinkBoundIntentDiesWhenAuthGenerationMovesOn() {
         // An intent bound to principal+generation "p1:1" terminates once the live
         // session reports a different generation; the stale route is never replayed.

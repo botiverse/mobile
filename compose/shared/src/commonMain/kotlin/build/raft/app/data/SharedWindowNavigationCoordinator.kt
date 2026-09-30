@@ -140,6 +140,12 @@ internal class SharedWindowNavigationCoordinator {
             state.stage = RequestStage.Rejected
             return WindowNavigationAction.Reject(intent, "server_unavailable")
         }
+        // Failed likewise never advances: a degraded snapshot must not drive an
+        // activation/open against a stale server set either. The intent keeps its
+        // binding state and retries when a Loaded readiness arrives.
+        if (readiness.serverListState == WindowNavigationServerListState.Failed) {
+            return null
+        }
 
         // A bound intent whose principal generation moved on — or whose session is
         // gone entirely — is dead: terminate it rather than replaying a previous
