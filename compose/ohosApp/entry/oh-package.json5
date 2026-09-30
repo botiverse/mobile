@@ -6,7 +6,7 @@
   "author": "",
   "license": "",
   "dependencies": {
-    "@botiverse/hands": "0.3.3",
+    "@botiverse/hands": "file:./libs/hands.har",
     "@kuikly-open/render": "file:../../build/kuikly/core-render-ohos-2.24.0-raft.8-2.0.21-ohos.har",
     "@ohos/apng": "^1.0.0-rc.8",
     "@kuiklybase/knoi": "0.0.4",

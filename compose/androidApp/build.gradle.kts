@@ -51,7 +51,8 @@ val handsAndroidSdkModule = "$handsAndroidSdkGroup:$handsAndroidSdkArtifact"
 val handsAndroidSdkCoordinate = "$handsAndroidSdkModule:$handsAndroidSdkVersion"
 val handsAndroidSdkSourceRepo = handsAndroidSdkMetadataString("sourceRepo")
 val handsAndroidSdkSourceCommit = handsAndroidSdkMetadataString("sourceCommit")
-val handsAndroidSdkSourceTag = handsAndroidSdkMetadataString("sourceTag")
+// Workflow-dispatched releases are pinned by sourceCommit + publishRunId without a tag.
+val handsAndroidSdkSourceTag = handsAndroidSdkMetadata["sourceTag"]?.toString()?.trim().orEmpty()
 val handsAndroidSdkPublishRunId = handsAndroidSdkMetadataString("publishRunId")
 val handsAndroidSdkNativeSymbolsArtifactId = handsAndroidSdkMetadataString("nativeSymbolsArtifactId")
 val handsAndroidSdkAarSha256 = handsAndroidSdkMetadataString("aarSha256")
@@ -141,7 +142,9 @@ if (handsAndroidSdkSourceRepo != "https://github.com/botiverse/hands") {
 if (!handsAndroidSdkSourceCommit.matches(Regex("[0-9a-f]{40}"))) {
     throw GradleException("Hands Android SDK sourceCommit must be a full lowercase Git SHA")
 }
-if (handsAndroidSdkSourceTag != "android-sdk-v$handsAndroidSdkVersion") {
+if (handsAndroidSdkSourceTag.isNotEmpty() &&
+    handsAndroidSdkSourceTag != "android-sdk-v$handsAndroidSdkVersion"
+) {
     throw GradleException(
         "Hands Android SDK sourceTag must match version: " +
             "expected=android-sdk-v$handsAndroidSdkVersion actual=$handsAndroidSdkSourceTag"

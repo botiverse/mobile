@@ -33,7 +33,7 @@ for forbidden in (
 metadata = json.loads(read("compose/config/hands-android-sdk.json"))
 require(metadata["group"] == "build.hands", "Hands group drifted")
 require(metadata["artifact"] == "hands-android-sdk", "Hands artifact drifted")
-require(metadata["version"] == "0.12.4", "Hands version drifted")
+require(metadata["version"] == "0.13.0", "Hands version drifted")
 for key in ("aarSha256", "nativeSymbolsSha256"):
     value = metadata[key]
     require(len(value) == 64 and all(char in "0123456789abcdef" for char in value), f"{key} is invalid")
