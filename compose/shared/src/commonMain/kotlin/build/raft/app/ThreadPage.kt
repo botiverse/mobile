@@ -5827,6 +5827,19 @@ private fun SharedThreadRouteContentContent(
         currentSession = producerContext?.session
         replyCacheProvenanceOwner = producerContext?.provenance
         currentServerSlug = producerContext?.session?.currentServerSlug()
+        // task #1153: the captured session snapshot can precede server-roster
+        // population, leaving the slug permanently null and silently disabling
+        // quoted permalink cards for the whole thread session. Re-read the
+        // (freshly captured) session for a bounded window until it resolves.
+        if (currentServerSlug == null) {
+            currentServerSlug =
+                resolveThreadServerSlugWithRetry {
+                    dataSource
+                        .captureReplyCacheProducerContext()
+                        ?.session
+                        ?.currentServerSlug()
+                }
+        }
     }
     LaunchedEffect(initialPayload, initialThreadInstanceKey) {
         if (!initialRouteIdentity.canRetainThreadPageFor(incomingRouteIdentity)) {
@@ -23416,7 +23429,21 @@ private fun ThreadMessageCardContent(
         quotedPermalinkState.value = null
         quotedPermalinkTarget = null
         val loader = quotedPermalinkLoader ?: return@LaunchedEffect
-        val target = message.body.extractFirstQuotedMessagePermalink(currentServerSlug) ?: return@LaunchedEffect
+        val target = message.body.extractFirstQuotedMessagePermalink(currentServerSlug)
+        if (target == null) {
+            // task #1153: quoted permalink cards used to fail silently. This
+            // event only proves extraction returned null — it does not
+            // distinguish "no quoted permalink" from external links, code /
+            // Markdown links, or slug mismatch. serverSlug=null is a useful
+            // signal, but a non-null slug does not prove a slug mismatch.
+            if (message.body.contains("http")) {
+                diagnosticsLogger(
+                    "thread_quoted_permalink_skip messageId=${message.id} " +
+                        "serverSlug=${currentServerSlug ?: "null"}"
+                )
+            }
+            return@LaunchedEffect
+        }
         quotedPermalinkTarget = target
         quotedPermalinkState.value = ThreadQuotedPermalinkUiState.Loading
         quotedPermalinkState.value =
