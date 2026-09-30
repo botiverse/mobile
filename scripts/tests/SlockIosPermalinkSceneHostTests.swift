@@ -87,6 +87,13 @@ final class SlockIosPermalinkSceneHostTests: XCTestCase {
         post(center, "Ready", ["shellScopeId": scope, "authGeneration": "next:1"])
         host.resume()
         XCTAssertEqual(deliveries, 0)
+        host.accept(activity())
+        XCTAssertEqual(deliveries, 1)
+        post(center, "NotReady", ["shellScopeId": scope, "authGeneration": "next:1", "reason": "login_cancelled"])
+        host.resume()
+        XCTAssertEqual(deliveries, 1)
+        post(center, "Ready", ["shellScopeId": scope, "authGeneration": "next:1"])
+        XCTAssertEqual(deliveries, 2, "Bound ownership is retired by auth generation, not login cancellation")
     }
 
     private func activity() -> NSUserActivity {

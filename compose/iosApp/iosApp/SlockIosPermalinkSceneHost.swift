@@ -87,7 +87,7 @@ final class SlockIosPermalinkSceneHost: ObservableObject {
         case "slockExternalPermalinkReady", "slockExternalPermalinkNotReady":
             if notification.name.rawValue == "slockExternalPermalinkNotReady",
                data["reason"] as? String == "login_cancelled", generation == intake.authGeneration {
-                intake.cancel(reason: "login_cancelled")
+                intake.cancelUnboundAuthentication()
                 updateRetryTimer()
                 return
             }
