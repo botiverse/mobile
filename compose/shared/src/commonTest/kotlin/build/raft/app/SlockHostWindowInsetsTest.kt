@@ -13,13 +13,11 @@ import kotlin.test.assertTrue
  */
 class SlockHostWindowInsetsTest {
 
-    private fun resetAll() {
-        // The registry is process-global; tests must not observe each other's
-        // windows. Use unique window ids per test instead of resetting.
-    }
+    // The registry is process-global; tests use unique window ids so they
+    // never observe each other's state.
 
     private var seq = 0
-    private fun freshWindow(): String = "test-window-${seq++}-${System.identityHashCode(this)}"
+    private fun freshWindow(): String = "test-window-${seq++}"
 
     @Test
     fun windowsAreIsolated() {

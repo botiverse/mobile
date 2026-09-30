@@ -236,15 +236,26 @@ internal fun SlockKuiklyChildPage(
     onLoadSuccess: () -> Unit = {},
     onLoadFailure: () -> Unit = {}
 ) {
-    val parentWindowId = LocalActivity.current.pageData.params.optString("slockWindowId")
+    val parentParams = LocalActivity.current.pageData.params
+    val parentWindowId = parentParams.optString("slockWindowId")
+    val parentKeyboardExcludes = parentParams.optBoolean("slockKeyboardInsetExcludesBottomSafeArea", false)
+    val parentHostExcludesNav = parentParams.optBoolean("slockHostExcludesNavigationBar", false)
     val pageDataText =
-        remember(pageData.toString(), parentWindowId) {
+        remember(pageData.toString(), parentWindowId, parentKeyboardExcludes, parentHostExcludesNav) {
             slockEmbeddedChildPageData(pageData)
                 .apply {
                     // task #482: the child shares the host window; inherit its id so the
-                    // per-window live inset snapshot resolves for this pager too.
+                    // per-window live inset snapshot resolves for this pager too, plus
+                    // the host consumption flags that gate how the live snapshot is
+                    // interpreted (host-excluded nav bar, watcher's nav-subtracted IME).
                     if (parentWindowId.isNotBlank() && !has("slockWindowId")) {
                         put("slockWindowId", parentWindowId)
+                    }
+                    if (parentKeyboardExcludes && !has("slockKeyboardInsetExcludesBottomSafeArea")) {
+                        put("slockKeyboardInsetExcludesBottomSafeArea", true)
+                    }
+                    if (parentHostExcludesNav && !has("slockHostExcludesNavigationBar")) {
+                        put("slockHostExcludesNavigationBar", true)
                     }
                 }
                 .toString()
