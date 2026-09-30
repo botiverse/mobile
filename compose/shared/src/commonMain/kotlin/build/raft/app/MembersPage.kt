@@ -69,7 +69,6 @@ import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.SharedAgentIssueReportRequest
 import build.raft.app.data.SharedAgentPanelTabOrderStore
 import build.raft.app.data.SlockAuthSessionStore
-import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.SlockAvatarCacheRuntime
 import build.raft.app.data.SlockAvatarNativeCache
 import build.raft.app.data.SlockShellStoreScope
@@ -160,7 +159,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -3402,31 +3400,39 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
         }
     }
     val activeServerId by provider.selectedServerStore.currentServerId.collectAsState()
-    val detailSession by produceState<StoredAuthSession?>(initialValue = null) {
-        value = provider.authStore.readSession()
-    }
     var routeState by remember(memberIdentity) {
         mutableStateOf(
             memberDetailInitialRouteState(
                 identity = memberIdentity,
                 activeServerId = provider.selectedServerStore.currentServerId.value,
                 agentDetailState = provider.agentDetailStore.state.value,
-                serverMembersState = provider.serverMembersStore.state.value,
-                // Best-effort: null when the session record has not been read
-                // yet; the canonical load still supplies the real id later.
-                sessionUserId = detailSession?.user?.id
+                serverMembersState = provider.serverMembersStore.state.value
             ) ?: MemberDetailRouteState.Loading
         )
     }
-    // The roster seed is composed before the async session read completes;
-    // when the id arrives, patch it into a still-seeded Human state so the
-    // scroll identity gate can open without waiting for the canonical load.
-    LaunchedEffect(memberIdentity, detailSession?.user?.id) {
-        val uid = detailSession?.user?.id?.trim()?.takeIf { it.isNotBlank() }
+    // The roster seed composes before the canonical profile load supplies the
+    // session user id, leaving the scroll identity gate closed for the whole
+    // seeded composition (Alpha100: HUMAN detail produced zero tracker events
+    // on both Android entries and iPad). Re-read the session here and patch
+    // the id into a still-seeded Human state. Two fences keep the late read
+    // from stamping the wrong identity:
+    //   memberIdentity is a launch key — switching members relaunches with
+    //   the new identity and the check re-verifies the CURRENT routeState
+    //   belongs to this member (remember(memberIdentity) resets routeState,
+    //   but a member switch + in-flight canonical load could still land the
+    //   previous member's loaded state before this effect runs).
+    //   The session is read inside the effect at apply time, so an account
+    //   switch mid-flight cannot reuse a stale id captured at composition.
+    LaunchedEffect(memberIdentity, provider.authStore) {
+        val session = provider.authStore.readSession()
+        val uid = session?.user?.id?.trim()?.takeIf { it.isNotBlank() }
             ?: return@LaunchedEffect
-        (routeState as? MemberDetailRouteState.Human)?.let { seeded ->
-            if (seeded.currentUserId.isNullOrBlank()) {
-                routeState = seeded.copy(currentUserId = uid)
+        (routeState as? MemberDetailRouteState.Human)?.let { current ->
+            val stillSeededForThisMember =
+                current.currentUserId.isNullOrBlank() &&
+                    current.member.id == memberIdentity?.memberId
+            if (stillSeededForThisMember) {
+                routeState = current.copy(currentUserId = uid)
             }
         }
     }

@@ -597,6 +597,32 @@ class SharedMembersParserTest {
     }
 
     @Test
+    fun memberDetailInitialRouteSeedsHumanWithSessionUserId() {
+        // task #58: the roster seed must carry the viewer identity so the
+        // detail scroll gate (non-blank userId) can open immediately instead
+        // of staying closed for the entire seeded composition (Alpha100).
+        val member =
+            MemberProfile(
+                id = MemberId("human-artin"),
+                displayName = "Artin",
+                handle = "artin",
+                kind = MemberKind.Human,
+                serverId = ServerId("server-1")
+            )
+        val server = ServerSummary(id = ServerId("server-1"), name = "One")
+        val route =
+            memberDetailInitialRouteState(
+                identity = MemberDetailIdentity(member.id, member.kind, server.id),
+                activeServerId = server.id.value,
+                agentDetailState = SharedAgentDetailState(),
+                serverMembersState = serverMembersState(server, member),
+                sessionUserId = "viewer-u1"
+            )
+        val human = assertIs<MemberDetailRouteState.Human>(route)
+        assertEquals("viewer-u1", human.currentUserId)
+    }
+
+    @Test
     fun memberDetailStatusResolverServerFollowsTypedRouteIdentity() {
         val localServer = ServerSummary(id = ServerId("server-local"), name = "Local")
         val remoteServer = ServerSummary(id = ServerId("server-remote"), name = "Remote")
