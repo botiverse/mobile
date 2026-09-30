@@ -1211,12 +1211,6 @@ internal fun retainedAppShellSelectedTab(selectedTab: String): String =
     selectedTab.takeIf { it in retainedAppShellTabKeys } ?: "home"
 
 /**
- * task #13: the shared adaptive detail slot lives inside adaptiveSplitListDetail, which is
- * hosted by the Home surface (no pushed secondary page), the Activity rail tab, or an inline
- * rail secondary destination (Search). Any other destination — or a backgrounded host —
- * suspends the detail (ParentVisibilityChanged).
- */
-/**
  * Alpha79 drawer-BACK contract: the Back consume check must read the LIVE
  * SharedHomeShellStore state, never the render projection — the projection
  * strips the drawer runtime (withoutServerDrawerRuntimeForAppShellRender) for
@@ -1226,6 +1220,12 @@ internal fun appShellServerDrawerConsumesBack(
     shellState: build.raft.app.data.SharedHomeShellState,
 ): Boolean = shellState.home.serverSwitcherExpanded
 
+/**
+ * task #13: the shared adaptive detail slot lives inside adaptiveSplitListDetail, which is
+ * hosted by the Home surface (no pushed secondary page), the Activity rail tab, or an inline
+ * rail secondary destination (Search). Any other destination — or a backgrounded host —
+ * suspends the detail (ParentVisibilityChanged).
+ */
 internal fun appShellSharedDetailSurfaceVisible(
     pageVisible: Boolean,
     selectedTab: String,
