@@ -17,7 +17,7 @@ Wire contract (Raft task49, JingKe interface v3.4):
 
 - Open: `slockExternalPermalinkOpen`; identity-only fields and `stringify` JSON.
 - Ready/NotReady: `shellScopeId` and optional `authGeneration` string. Explicit
-  login cancellation uses NotReady `reason=login_cancelled` to clear pending;
+  login cancellation uses NotReady `reason=login_cancelled` to clear only unbound pending;
   ordinary receiver suspension does not cancel authentication.
 - Accepted: `activationId`, `shellScopeId`, `authGeneration`, `status` equal to
   `accepted_first_time`, `accepted_duplicate`, or `rejected`.
