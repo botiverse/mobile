@@ -5545,11 +5545,16 @@ private fun MembersDetailContent(
             trackerFor(tab, MemberDetailScrollStateRegistry.agentTabPosition(memberScrollKey, tab))
         LaunchedEffect(memberScrollKey, tab) {
             snapshotFlow {
-                Triple(
-                    state.firstVisibleItemIndex,
-                    state.firstVisibleItemScrollOffset,
-                    state.layoutInfo.totalItemsCount
-                )
+                // isScrollInProgress is observed too: a gesture that starts
+                // and ends within the settle window emits true->false even
+                // when the landing equals the last position, so the tracker
+                // still sees the user's scroll boundary.
+                state.isScrollInProgress to
+                    Triple(
+                        state.firstVisibleItemIndex,
+                        state.firstVisibleItemScrollOffset,
+                        state.layoutInfo.totalItemsCount
+                    )
             }.collect {
                 tracker.observe(state) { position ->
                     MemberDetailScrollStateRegistry.saveAgentTabPosition(
@@ -5572,11 +5577,16 @@ private fun MembersDetailContent(
         val state = humanDetailListState
         LaunchedEffect(memberScrollKey) {
             snapshotFlow {
-                Triple(
-                    state.firstVisibleItemIndex,
-                    state.firstVisibleItemScrollOffset,
-                    state.layoutInfo.totalItemsCount
-                )
+                // isScrollInProgress is observed too: a gesture that starts
+                // and ends within the settle window emits true->false even
+                // when the landing equals the last position, so the tracker
+                // still sees the user's scroll boundary.
+                state.isScrollInProgress to
+                    Triple(
+                        state.firstVisibleItemIndex,
+                        state.firstVisibleItemScrollOffset,
+                        state.layoutInfo.totalItemsCount
+                    )
             }.collect {
                 tracker.observe(state) { position ->
                     MemberDetailScrollStateRegistry.saveHumanListPosition(
@@ -13994,6 +14004,10 @@ internal class MemberDetailScrollTracker(
                         target.firstVisibleItemScrollOffset
                     )
                 }
+                // The frame that opened the settle window is the seed frame,
+                // not a landing — do not evaluate it below, or its non-target
+                // position would clear issuedRestoreRequest in the same call.
+                return
             }
         }
         val position =

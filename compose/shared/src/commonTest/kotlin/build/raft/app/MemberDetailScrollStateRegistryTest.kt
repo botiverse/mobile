@@ -273,19 +273,22 @@ class MemberDetailScrollTrackerTest {
     fun `alpha94 replay - seed lands intact then clamp is suppressed`() {
         val saved = mutableListOf<MemberDetailScrollPosition>()
         val frame = tracker(MemberDetailScrollPosition(0, 489), saved)
-        // First populated frame already at the seeded offset (restore target).
+        // First populated frame already at the seeded offset (restore
+        // target): it opens the settle window and is itself the seed frame,
+        // not a landing — nothing publishes, but the snapshot already holds
+        // 489 so nothing is lost either.
         frame(0, 489, 40, false) { _, _ -> }
-        assertEquals(listOf(MemberDetailScrollPosition(0, 489)), saved)
-        // Next layout pass clamps down — must not be published.
+        assertEquals(emptyList<MemberDetailScrollPosition>(), saved)
+        // Next layout pass clamps down — must not be published either.
         frame(0, 88, 40, false) { _, _ -> }
-        assertEquals(listOf(MemberDetailScrollPosition(0, 489)), saved)
+        assertEquals(emptyList<MemberDetailScrollPosition>(), saved)
     }
 
     @Test
     fun `alpha94 replay - user scroll during settle publishes the landing`() {
         val saved = mutableListOf<MemberDetailScrollPosition>()
         val frame = tracker(MemberDetailScrollPosition(0, 489), saved)
-        frame(0, 489, 40, false) { _, _ -> }
+        frame(0, 489, 40, false) { _, _ -> } // seed frame opens settle
         // User scrolls up once: in-flight frames while scrolling...
         frame(0, 300, 40, true) { _, _ -> }
         // ...then the landing publishes and the window closes.
