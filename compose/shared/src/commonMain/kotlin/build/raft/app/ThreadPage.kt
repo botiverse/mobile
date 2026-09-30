@@ -6181,7 +6181,13 @@ private fun SharedThreadRouteContentContent(
     DisposableEffect(threadViewModel, sharedStores.eventBus, realtimeEvents) {
         fun onRecovered(reason: String) {
             val current = threadViewModel.state.value.payload
-            if (offlineStandInRecovery.onNetworkRecovered(current)) refreshOfflineStandIn(reason, current)
+            val refresh = offlineStandInRecovery.onNetworkRecovered(current)
+            bridge.log(
+                "thread_offline_recovery_signal reason=$reason action=${offlineStandInRecoveryAction(current)} " +
+                    "refresh=$refresh status=${current.status} durable=${current.durableLastKnown} " +
+                    "error=${current.errorCode ?: "none"} refreshing=${current.backgroundRefreshing}"
+            )
+            if (refresh) refreshOfflineStandIn(reason, current)
         }
         val hostNetworkEvents = KuiklyHostNetworkEvents(sharedStores.eventBus)
         val networkSubscription = hostNetworkEvents.addAuthoritativeOnlineListener { onRecovered("network_recovered") }
@@ -6196,9 +6202,33 @@ private fun SharedThreadRouteContentContent(
             realtimeEvents.removeListener(realtimeSubscription)
         }
     }
-    LaunchedEffect(offlineStandInRecovery, payload.durableLastKnown, payload.backgroundRefreshing) {
+    LaunchedEffect(
+        offlineStandInRecovery,
+        payload.durableLastKnown,
+        payload.backgroundRefreshing,
+        payload.status,
+        payload.errorCode
+    ) {
         val current = threadViewModel.state.value.payload
         if (offlineStandInRecovery.onPayloadSettled(current)) refreshOfflineStandIn("network_recovered_deferred", current)
+    }
+    // Signals are not enough on their own: Android never publishes the realtime reconnect to pages, and a
+    // per-app block never changes the system network state (HuaTuo alpha 78 logs). While the visible page
+    // shows a failed load, it also re-asks on a backoff; a successful answer stops it.
+    var offlineRecoveryRetryAttempt by remember(threadViewModel) { mutableStateOf(0) }
+    val offlineRecoveryAction = offlineStandInRecoveryAction(payload)
+    LaunchedEffect(offlineRecoveryAction, active) {
+        if (offlineRecoveryAction == OfflineStandInRecoveryAction.None) {
+            offlineRecoveryRetryAttempt = 0
+            return@LaunchedEffect
+        }
+        if (offlineRecoveryAction != OfflineStandInRecoveryAction.Refresh || !active) return@LaunchedEffect
+        delay(offlineRecoveryRetryDelayMs(offlineRecoveryRetryAttempt))
+        val current = threadViewModel.state.value.payload
+        if (offlineStandInRecoveryAction(current) == OfflineStandInRecoveryAction.Refresh) {
+            offlineRecoveryRetryAttempt += 1
+            refreshOfflineStandIn("retry_backoff_$offlineRecoveryRetryAttempt", current)
+        }
     }
     val threadVisibleResumeGate = remember(threadInstanceKey, storeScope.shellInstanceId) {
         ThreadVisibleResumeGate()
@@ -21302,18 +21332,24 @@ internal fun isRealtimeTransportConnectedEvent(eventData: JSONObject, currentSer
     return eventData.optString(SlockRealtimeNotifyContract.KeyServerId).trim() == serverId
 }
 
+/** Retry spacing for a visible page stuck on a failed load: 10 s, 20 s, 40 s, then every 60 s. */
+internal fun offlineRecoveryRetryDelayMs(attempt: Int): Long =
+    (10_000L shl attempt.coerceIn(0, 3)).coerceAtMost(60_000L)
+
 internal enum class OfflineStandInRecoveryAction { Refresh, Defer, None }
 
 /**
- * What a recovered network does to the thread on screen: re-ask an idle offline stand-in; remember it
- * while a refresh is running (that refresh may still fail back to the stand-in); otherwise nothing.
+ * What a recovered network does to the thread on screen. Anything the last load left behind as a failure
+ * is re-asked: the offline stand-in, a memory copy kept after a failed refresh (HuaTuo alpha 78: warm
+ * re-entry shows that, not the stand-in), or the error page. A load still running is remembered, since it
+ * may yet fail; a permission answer is final and is not retried.
  */
-internal fun offlineStandInRecoveryAction(payload: KuiklyThreadScreenPayload): OfflineStandInRecoveryAction =
-    when {
-        !payload.durableLastKnown -> OfflineStandInRecoveryAction.None
-        payload.backgroundRefreshing -> OfflineStandInRecoveryAction.Defer
-        else -> OfflineStandInRecoveryAction.Refresh
-    }
+internal fun offlineStandInRecoveryAction(payload: KuiklyThreadScreenPayload): OfflineStandInRecoveryAction {
+    if (payload.status == "no_permission") return OfflineStandInRecoveryAction.None
+    if (payload.backgroundRefreshing || payload.status == "loading") return OfflineStandInRecoveryAction.Defer
+    val failed = payload.durableLastKnown || payload.errorCode != null
+    return if (failed) OfflineStandInRecoveryAction.Refresh else OfflineStandInRecoveryAction.None
+}
 
 /**
  * Per-page memory of a network recovery (LiBai #2782): the host de-duplicates repeated online signals,

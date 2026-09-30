@@ -117,6 +117,28 @@ class ThreadOfflineLastKnownTipTest {
             offlineStandInRecoveryAction(base.copy(durableLastKnown = true, backgroundRefreshing = true))
         )
         assertEquals(OfflineStandInRecoveryAction.None, offlineStandInRecoveryAction(base.copy(durableLastKnown = false)))
+        // HuaTuo alpha 78: a warm re-entry keeps the memory copy after a failed refresh (no stand-in, no tip),
+        // and a cold miss shows the error page — both are re-asked too.
+        assertEquals(
+            OfflineStandInRecoveryAction.Refresh,
+            offlineStandInRecoveryAction(base.copy(errorCode = "network_timeout")),
+            "memory copy kept after a failed refresh"
+        )
+        assertEquals(
+            OfflineStandInRecoveryAction.Refresh,
+            offlineStandInRecoveryAction(KuiklyThreadScreenPayload(status = "error", errorCode = "network_timeout")),
+            "error page"
+        )
+        assertEquals(
+            OfflineStandInRecoveryAction.Defer,
+            offlineStandInRecoveryAction(KuiklyThreadScreenPayload(status = "loading")),
+            "first load still running"
+        )
+        assertEquals(
+            OfflineStandInRecoveryAction.None,
+            offlineStandInRecoveryAction(KuiklyThreadScreenPayload(status = "no_permission", errorCode = "forbidden")),
+            "a permission answer is final"
+        )
     }
 
     @Test
@@ -152,5 +174,11 @@ class ThreadOfflineLastKnownTipTest {
         assertFalse(isRealtimeTransportConnectedEvent(event(connected, null), "server-a"), "no server on the event")
         assertFalse(isRealtimeTransportConnectedEvent(event(connected, "server-a"), null), "page without a session server")
         assertFalse(isRealtimeTransportConnectedEvent(event("message:new", "server-a"), "server-a"))
+    }
+
+    @Test
+    fun aVisibleFailedLoadRetriesOnAGrowingCappedBackoff() {
+        assertEquals(listOf(10_000L, 20_000L, 40_000L, 60_000L, 60_000L), (0..4).map(::offlineRecoveryRetryDelayMs))
+        assertEquals(10_000L, offlineRecoveryRetryDelayMs(-1))
     }
 }
