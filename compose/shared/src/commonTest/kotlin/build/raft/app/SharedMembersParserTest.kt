@@ -13,6 +13,9 @@ import build.raft.app.data.SharedAgentDetailOwner
 import build.raft.app.data.SharedAgentDetailState
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
+import build.raft.app.data.StoredAuthUser
+import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.parseSharedAgentActivity
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
@@ -637,16 +640,22 @@ class SharedMembersParserTest {
             MemberDetailRouteState.Human(
                 server = server, currentUserId = null, member = member
             )
-        // Blank seed takes the current session id; the written instance
-        // becomes the patcher's own tracked state.
+        fun session(userId: String, serverIds: List<String> = listOf("server-1")) =
+            StoredAuthSession(
+                user = StoredAuthUser(id = userId, email = "v@slock.ai", displayName = "V"),
+                accessToken = "a-$userId",
+                refreshToken = "r-$userId",
+                selectedServerId = serverIds.firstOrNull(),
+                servers = serverIds.map { StoredAuthServer(id = it, name = it, slug = it) }
+            )
         // Blank seed takes the current session id and is flagged provisional.
         val patched =
-            memberDetailPatchedHumanIdentity(seeded, member.id, "viewer-a")
+            memberDetailPatchedHumanIdentity(seeded, member.id, session("viewer-a"))
         assertEquals("viewer-a", patched?.currentUserId)
         assertEquals(true, patched?.provisionalSeedUserId)
         // A provisional instance may be corrected by a newer session…
         val repatched =
-            memberDetailPatchedHumanIdentity(patched!!, member.id, "viewer-b")
+            memberDetailPatchedHumanIdentity(patched!!, member.id, session("viewer-b"))
         assertEquals("viewer-b", repatched?.currentUserId)
         assertEquals(true, repatched?.provisionalSeedUserId)
         // …or retracted on session clear.
@@ -658,14 +667,27 @@ class SharedMembersParserTest {
         // provisional flag — provenance, not the value, keeps it safe: a
         // later switch/clear must not rewrite it.
         val loadedSameId = seeded.copy(currentUserId = "viewer-a")
-        assertNull(memberDetailPatchedHumanIdentity(loadedSameId, member.id, "viewer-b"))
+        assertNull(memberDetailPatchedHumanIdentity(loadedSameId, member.id, session("viewer-b")))
+        // A session that does not own the detail's server (same member id on
+        // a different server binding) must not write.
+        val foreignSession = session("viewer-c", serverIds = listOf("server-9"))
+        assertNull(memberDetailPatchedHumanIdentity(seeded, member.id, foreignSession))
+        // A remote-profile detail on a joined-but-not-selected server is owned:
+        // the id may be written from the joined list.
+        val remoteSeeded =
+            seeded.copy(server = ServerSummary(id = ServerId("server-2"), name = "Two"))
+        val remotePatched =
+            memberDetailPatchedHumanIdentity(
+                remoteSeeded, member.id, session("viewer-d", listOf("server-1", "server-2"))
+            )
+        assertEquals("viewer-d", remotePatched?.currentUserId)
         // A different member's state is never touched.
         val other = seeded.copy(member = member.copy(id = MemberId("human-other")))
-        assertNull(memberDetailPatchedHumanIdentity(other, member.id, "viewer-a"))
+        assertNull(memberDetailPatchedHumanIdentity(other, member.id, session("viewer-a")))
         // Non-Human states are untouched.
         assertNull(
             memberDetailPatchedHumanIdentity(
-                MemberDetailRouteState.Loading, member.id, "viewer-a"
+                MemberDetailRouteState.Loading, member.id, session("viewer-a")
             )
         )
     }

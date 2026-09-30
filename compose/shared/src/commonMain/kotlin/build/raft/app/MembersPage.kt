@@ -69,6 +69,8 @@ import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.SharedAgentIssueReportRequest
 import build.raft.app.data.SharedAgentPanelTabOrderStore
 import build.raft.app.data.SlockAuthSessionTerminalSource
+import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.authSessionTerminalSourceOrNull
 import kotlinx.coroutines.flow.onSubscription
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockAvatarCacheRuntime
@@ -2477,7 +2479,7 @@ internal fun memberDetailStatusResolverServerId(
 internal fun memberDetailPatchedHumanIdentity(
     routeState: MemberDetailRouteState,
     memberId: MemberId?,
-    sessionUserId: String?
+    session: StoredAuthSession?
 ): MemberDetailRouteState.Human? {
     val human = routeState as? MemberDetailRouteState.Human ?: return null
     if (human.member.id != memberId) return null
@@ -2488,6 +2490,24 @@ internal fun memberDetailPatchedHumanIdentity(
     if (!human.currentUserId.isNullOrBlank() && !human.provisionalSeedUserId) {
         return null
     }
+    // The identity commit is authorized only while the read session still
+    // owns this detail's server (account + env + server checked inside the
+    // store lock by the caller). A cleared session retracts a provisional
+    // id; a session bound to a different environment/server must never
+    // write into this detail at all.
+    if (session == null) {
+        return if (human.provisionalSeedUserId && !human.currentUserId.isNullOrBlank()) {
+            human.copy(currentUserId = null, provisionalSeedUserId = true)
+        } else {
+            null
+        }
+    }
+    val detailServerId = human.server.id.value.trim()
+    val sessionOwnsServer =
+        session.currentServerId?.trim() == detailServerId ||
+            session.servers.any { it.id.trim() == detailServerId }
+    if (!sessionOwnsServer) return null
+    val sessionUserId = session.user.id.trim().takeIf { it.isNotBlank() } ?: return null
     return human.copy(currentUserId = sessionUserId, provisionalSeedUserId = true)
 }
 
@@ -3459,24 +3479,29 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
     // load's identity stays authoritative. On stores without the terminal
     // source the patch simply never fires — the gate stays closed until the
     // canonical load resolves.
-    val authTerminalSource = provider.authStore as? SlockAuthSessionTerminalSource
+    val authTerminalSource = provider.authStore.authSessionTerminalSourceOrNull()
     LaunchedEffect(memberIdentity, authTerminalSource) {
         if (authTerminalSource == null) return@LaunchedEffect
         suspend fun applySessionUserId() {
+            // Read the authoritative snapshot (session + generation) under
+            // the store mutation lock, then commit the patch under the SAME
+            // lock only if that generation still holds — a switch/clear that
+            // lands between read and commit bumps the generation and drops
+            // this write entirely. The helper additionally verifies the
+            // session still owns the detail's server before writing.
             val snapshot = authTerminalSource.readAuthSessionTerminalSnapshot()
-            val uid =
-                snapshot.session?.user?.id?.trim()?.takeIf { it.isNotBlank() }
             authTerminalSource.runIfAuthSessionRevision(snapshot.generation) {
                 memberDetailPatchedHumanIdentity(
                     routeState = routeState,
                     memberId = memberIdentity?.memberId,
-                    sessionUserId = uid
+                    session = snapshot.session
                 )?.let { patched -> routeState = patched }
             }
         }
-        // onSubscription replays a reconcile after the subscription is
+        // onSubscription replays a reconcile only after the subscription is
         // active, so a mutation committed between subscribe and the first
-        // read is still covered by that read.
+        // read is still covered by that read. (onStart would run before the
+        // upstream collect and reopen the missed-notification window.)
         authTerminalSource.authSessionTerminalEvents
             .onSubscription { applySessionUserId() }
             .collect { applySessionUserId() }

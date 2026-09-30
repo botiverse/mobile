@@ -594,7 +594,10 @@ data class StoredAuthServer(
 
 class InMemorySlockAuthSessionStore(
     initialSession: StoredAuthSession? = null
-) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource, SlockAuthSessionChangeSource, SlockAuthServerSelectionMemory {
+) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource, SlockAuthSessionChangeSource, SlockAuthSessionTerminalSource, SlockAuthServerSelectionMemory {
+    private var terminalGeneration = 0L
+    private val terminalEvents = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 64)
+    override val authSessionTerminalEvents: SharedFlow<AuthSessionEvent> = terminalEvents.asSharedFlow()
     private val mutex = Mutex()
     private val invalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     private val changes = MutableSharedFlow<String>(extraBufferCapacity = 1)
@@ -608,6 +611,42 @@ class InMemorySlockAuthSessionStore(
     override suspend fun readSession(): StoredAuthSession? =
         mutex.withLock { session }
 
+    override suspend fun readAuthSessionTerminalSnapshot(): AuthSessionTerminalSnapshot =
+        mutex.withLock {
+            AuthSessionTerminalSnapshot(
+                generation = terminalGeneration,
+                session = session,
+            )
+        }
+
+    override suspend fun runIfAuthSessionTerminalRevision(
+        expectedGeneration: Long,
+        action: () -> Unit,
+    ): Boolean =
+        mutex.withLock {
+            if (terminalGeneration != expectedGeneration || session != null) {
+                return@withLock false
+            }
+            action()
+            true
+        }
+
+    override suspend fun runIfAuthSessionRevision(
+        expectedGeneration: Long,
+        action: () -> Unit,
+    ): Boolean =
+        mutex.withLock {
+            if (terminalGeneration != expectedGeneration) {
+                return@withLock false
+            }
+            action()
+            true
+        }
+
+    private fun bumpTerminalGenerationLocked() {
+        terminalGeneration += 1
+    }
+
     override suspend fun readOrCreateAuthInstallationId(candidate: String): String =
         mutex.withLock {
             authInstallationId ?: candidate.validatedAuthInstallationId().also { authInstallationId = it }
@@ -618,9 +657,11 @@ class InMemorySlockAuthSessionStore(
             mutex.withLock {
                 val previousFingerprint = this.session?.authSessionClearFingerprint()
                 this.session = session
+                bumpTerminalGenerationLocked()
                 previousFingerprint != session.authSessionClearFingerprint()
             }
         if (changed) {
+            terminalEvents.emit(AuthSessionEvent.Authenticated(terminalGeneration))
             changes.emit(session.authSessionClearFingerprint())
         }
     }
@@ -631,12 +672,15 @@ class InMemorySlockAuthSessionStore(
                 val previousFingerprint = session?.authSessionClearFingerprint()
                 val updated =
                     session?.copy(accessToken = accessToken, refreshToken = refreshToken)
-                        ?.also { session = it }
+                        ?.also { session = it; bumpTerminalGenerationLocked() }
                 updated
                     ?.authSessionClearFingerprint()
                     ?.takeIf { it != previousFingerprint }
             }
-        updatedFingerprint?.let { changes.emit(it) }
+        updatedFingerprint?.let {
+            terminalEvents.emit(AuthSessionEvent.TokensRotated(terminalGeneration))
+            changes.emit(it)
+        }
     }
 
     override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) {
@@ -656,16 +700,27 @@ class InMemorySlockAuthSessionStore(
                         }
                     }
                     current.copy(selectedServerId = serverId, selectedServerSlug = serverSlug)
-                        .also { session = it }
+                        .also { session = it; bumpTerminalGenerationLocked() }
                         .authSessionClearFingerprint()
                         .takeIf { it != previousFingerprint }
                 }
             }
-        updatedFingerprint?.let { changes.emit(it) }
+        updatedFingerprint?.let {
+            terminalEvents.emit(AuthSessionEvent.BindingMetadataChanged(terminalGeneration))
+            changes.emit(it)
+        }
     }
 
     override suspend fun clearSession(reason: String, source: String) {
-        mutex.withLock { session = null }
+        var generation: Long? = null
+        mutex.withLock {
+            session = null
+            bumpTerminalGenerationLocked()
+            generation = terminalGeneration
+        }
+        generation?.let {
+            terminalEvents.emit(AuthSessionEvent.Cleared(it, AuthSessionClearReason.Logout))
+        }
         invalidations.emit(Unit)
     }
 
@@ -687,9 +742,13 @@ class InMemorySlockAuthSessionStore(
                     return@withLock false
                 }
                 session = null
+                bumpTerminalGenerationLocked()
                 true
             }
-        if (cleared) invalidations.emit(Unit)
+        if (cleared) {
+            terminalEvents.emit(AuthSessionEvent.Cleared(terminalGeneration, AuthSessionClearReason.Logout))
+            invalidations.emit(Unit)
+        }
         return cleared
     }
 
@@ -711,9 +770,13 @@ class InMemorySlockAuthSessionStore(
                     return@withLock AuthSessionClearOutcome.AuthorityChanged
                 }
                 session = null
+                bumpTerminalGenerationLocked()
                 AuthSessionClearOutcome.Cleared
             }
-        if (outcome == AuthSessionClearOutcome.Cleared) invalidations.emit(Unit)
+        if (outcome == AuthSessionClearOutcome.Cleared) {
+            terminalEvents.emit(AuthSessionEvent.Cleared(terminalGeneration, AuthSessionClearReason.Logout))
+            invalidations.emit(Unit)
+        }
         return outcome
     }
 
@@ -722,9 +785,11 @@ class InMemorySlockAuthSessionStore(
             mutex.withLock {
                 val previous = this.session?.authSessionClearFingerprint()
                 this.session = session
+                bumpTerminalGenerationLocked()
                 previous != session.authSessionClearFingerprint()
             }
         if (changed) {
+            terminalEvents.emit(AuthSessionEvent.Authenticated(terminalGeneration))
             changes.emit(session.authSessionClearFingerprint())
         }
     }
@@ -736,10 +801,12 @@ class InMemorySlockAuthSessionStore(
                 val previous = this.session
                 val updated = session.withPreservedProcessSelection(previous)
                 this.session = updated
+                bumpTerminalGenerationLocked()
                 persisted = updated
                 previous?.authSessionClearFingerprint() != updated.authSessionClearFingerprint()
             }
         if (changed) {
+            terminalEvents.emit(AuthSessionEvent.Authenticated(terminalGeneration))
             changes.emit(requireNotNull(persisted).authSessionClearFingerprint())
         }
     }
@@ -759,11 +826,15 @@ class InMemorySlockAuthSessionStore(
                 }
                 val updated = current.copy(accessToken = newAccessToken, refreshToken = newRefreshToken)
                 session = updated
+                bumpTerminalGenerationLocked()
                 newFingerprint =
                     updated.authSessionClearFingerprint().takeIf { it != current.authSessionClearFingerprint() }
                 updated
             }
-        newFingerprint?.let { changes.emit(it) }
+        newFingerprint?.let {
+            terminalEvents.emit(AuthSessionEvent.TokensRotated(terminalGeneration))
+            changes.emit(it)
+        }
         return rotated
     }
 
