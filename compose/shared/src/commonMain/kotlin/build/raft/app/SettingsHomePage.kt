@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.backFromDetail
 import build.raft.app.data.detailListSelectionId
+import build.raft.app.data.hasVisibleDetailBackHistory
 
 import build.raft.app.data.NetworkSlockThreadApi
 import build.raft.app.base.Utils
@@ -4705,6 +4706,10 @@ private fun SlockAppShellReadyContent(
         if (homeState.serverSwitcherExpanded) {
             serverDrawerProgrammaticCloseFence?.invoke("back")
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
+            return true
+        }
+        if (desktopModeOnLargeScreen && adaptiveWorkspaceStore.snapshot().hasVisibleDetailBackHistory()) {
+            dismissAdaptiveDetailSelection()
             return true
         }
         if (

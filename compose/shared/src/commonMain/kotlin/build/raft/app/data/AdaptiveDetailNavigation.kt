@@ -88,3 +88,8 @@ internal fun SharedAdaptiveWorkspaceSession.detailListSelectionId(): String? =
     detailHistory?.takeIf { it.owner == workspace?.selection }?.previous?.firstOrNull()
         ?.toSlockAdaptiveDetailIdentity(workspace?.serverId.orEmpty())?.threadId
         ?: workspace?.selection?.identity?.let { it.parentChannelId ?: it.threadId }
+
+internal fun SharedAdaptiveWorkspaceSession.hasVisibleDetailBackHistory(): Boolean =
+    workspace?.parentVisible == true && detailHistory?.let {
+        it.owner == workspace.selection && it.previous.isNotEmpty()
+    } == true
