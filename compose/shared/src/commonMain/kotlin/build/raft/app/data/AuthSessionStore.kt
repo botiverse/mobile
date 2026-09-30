@@ -923,6 +923,7 @@ class InMemorySlockAuthSessionStore(
         transform: (StoredAuthSession) -> StoredAuthSession,
     ) {
         var newFingerprint: String? = null
+        var committed = false
         mutex.withLock {
             val current = session ?: return@withLock
             if (expectedAccountId != null && current.user.id != expectedAccountId) return@withLock
@@ -933,11 +934,12 @@ class InMemorySlockAuthSessionStore(
             if (updated != current) {
                 session = updated
                 bumpTerminalGenerationLocked()
+                committed = true
                 newFingerprint =
                     updated.authSessionClearFingerprint().takeIf { it != current.authSessionClearFingerprint() }
             }
         }
-        if (newFingerprint != null) {
+        if (committed) {
             terminalEvents.emit(AuthSessionEvent.BindingMetadataChanged(terminalGeneration))
         }
         newFingerprint?.let { changes.emit(it) }
@@ -1320,8 +1322,11 @@ class KeyValueAuthSessionStore(
                 generation = nextGenerationLocked()
                 previousFingerprint != fingerprint
             }
+        // Wake is emitted on every committed write (server list / selection
+        // can change without moving the auth fingerprint); the
+        // fingerprint-gated `changes` bus stays for its own consumers.
+        storeEvents.emit(AuthSessionEvent.Authenticated(generation))
         if (changed) {
-            storeEvents.emit(AuthSessionEvent.Authenticated(generation))
             changes.emit(fingerprint)
         }
         diagnosticsLogger(

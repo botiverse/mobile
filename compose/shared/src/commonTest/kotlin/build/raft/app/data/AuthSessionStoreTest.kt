@@ -696,6 +696,29 @@ class AuthSessionStoreTest {
     }
 
     @Test
+    fun sessionRevisionCommitRejectsInMemoryMetadataMutationBetweenSnapshotAndCommit() = runBlocking {
+        // task #58: InMemory.updateMetadata can strip the detail's server
+        // without moving the auth fingerprint — a stale snapshot must still
+        // be rejected, and a terminal wake must be emitted.
+        val store = InMemorySlockAuthSessionStore(sampleSession())
+        val wake =
+            async(start = CoroutineStart.UNDISPATCHED) {
+                store.authSessionTerminalEvents.first { it is AuthSessionEvent.BindingMetadataChanged }
+            }
+        val snapshot = store.readAuthSessionTerminalSnapshot()
+
+        store.updateMetadata(expectedAccountId = sampleSession().user.id) { latest ->
+            latest.copy(servers = latest.servers.filter { it.id != "server-1" })
+        }
+        var writeRan = false
+        val committed =
+            store.runIfAuthSessionRevision(snapshot.generation) { writeRan = true }
+        assertFalse(committed)
+        assertFalse(writeRan)
+        assertTrue(withTimeoutOrNull(1000) { wake.await() } is AuthSessionEvent.BindingMetadataChanged)
+    }
+
+    @Test
     fun sessionRevisionCommitRejectsSelectionOnlyChangeOnInMemoryStore() = runBlocking {
         // task #58: updateSelectedServer mutates server ownership but does
         // NOT change the auth fingerprint — the wake must not be gated on
