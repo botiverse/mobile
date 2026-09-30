@@ -156,4 +156,50 @@ class MemberDetailScrollStateRegistryTest {
             MemberDetailScrollStateRegistry.humanListPosition("u1:s1:human:h1")
         )
     }
+
+    @Test
+    fun `only the newest write epoch for a member key lands`() {
+        MemberDetailScrollStateRegistry.clear()
+        val oldEpoch = MemberDetailScrollStateRegistry.acquireWriteEpoch("u1:s1:agent:m1")
+        val newEpoch = MemberDetailScrollStateRegistry.acquireWriteEpoch("u1:s1:agent:m1")
+        // Old page still has a populated list and disposes late: its write is
+        // stamped with the retired epoch and must be dropped.
+        MemberDetailScrollStateRegistry.saveAgentTabPosition(
+            "u1:s1:agent:m1",
+            MembersAgentDetailTab.Profile,
+            MemberDetailScrollPosition(firstVisibleItemIndex = 30),
+            itemCount = 90,
+            writeEpoch = oldEpoch
+        )
+        MemberDetailScrollStateRegistry.saveAgentTabPosition(
+            "u1:s1:agent:m1",
+            MembersAgentDetailTab.Profile,
+            MemberDetailScrollPosition(firstVisibleItemIndex = 3),
+            itemCount = 90,
+            writeEpoch = newEpoch
+        )
+        assertEquals(
+            MemberDetailScrollPosition(firstVisibleItemIndex = 3),
+            MemberDetailScrollStateRegistry.agentTabPosition("u1:s1:agent:m1", MembersAgentDetailTab.Profile)
+        )
+    }
+
+    @Test
+    fun `write epochs are per member key`() {
+        MemberDetailScrollStateRegistry.clear()
+        val epochA = MemberDetailScrollStateRegistry.acquireWriteEpoch("u1:s1:agent:m1")
+        MemberDetailScrollStateRegistry.acquireWriteEpoch("u1:s1:agent:m2")
+        // Acquiring an epoch for m2 does not retire m1's writer.
+        MemberDetailScrollStateRegistry.saveAgentTabPosition(
+            "u1:s1:agent:m1",
+            MembersAgentDetailTab.Profile,
+            MemberDetailScrollPosition(firstVisibleItemIndex = 6),
+            itemCount = 10,
+            writeEpoch = epochA
+        )
+        assertEquals(
+            MemberDetailScrollPosition(firstVisibleItemIndex = 6),
+            MemberDetailScrollStateRegistry.agentTabPosition("u1:s1:agent:m1", MembersAgentDetailTab.Profile)
+        )
+    }
 }

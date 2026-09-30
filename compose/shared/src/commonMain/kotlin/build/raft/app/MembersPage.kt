@@ -5480,8 +5480,17 @@ private fun MembersDetailContent(
     // before a session clear() so a stale dispose cannot resurrect cleared
     // positions. The generation is captured at first composition (not
     // remembered-keyed) so saves issued after clear() carry the old session's
-    // generation and are retired rather than resurrecting offsets.
-    val scrollRegistryGeneration = MemberDetailScrollStateRegistry.currentGeneration()
+    // generation and are retired rather than resurrecting offsets. The write
+    // epoch is acquired per member key: a new composition takes ownership and
+    // the still-composing old page's writes are retired with its older epoch.
+    val scrollRegistryGeneration = remember(memberScrollKey) {
+        MemberDetailScrollStateRegistry.currentGeneration()
+    }
+    // remembered so recompositions of this page do not re-acquire and retire
+    // its own epoch.
+    val scrollRegistryWriteEpoch = remember(memberScrollKey) {
+        MemberDetailScrollStateRegistry.acquireWriteEpoch(memberScrollKey)
+    }
     agentTabListStates.forEach { (tab, state) ->
         LaunchedEffect(memberScrollKey, tab) {
             snapshotFlow {
@@ -5495,7 +5504,8 @@ private fun MembersDetailContent(
                     tab,
                     position,
                     expectedGeneration = scrollRegistryGeneration,
-                    itemCount = state.layoutInfo.totalItemsCount
+                    itemCount = state.layoutInfo.totalItemsCount,
+                    writeEpoch = scrollRegistryWriteEpoch
                 )
             }
         }
@@ -5511,7 +5521,8 @@ private fun MembersDetailContent(
                 memberScrollKey,
                 position,
                 expectedGeneration = scrollRegistryGeneration,
-                itemCount = humanDetailListState.layoutInfo.totalItemsCount
+                itemCount = humanDetailListState.layoutInfo.totalItemsCount,
+                writeEpoch = scrollRegistryWriteEpoch
             )
         }
     }
@@ -5526,7 +5537,8 @@ private fun MembersDetailContent(
                         firstVisibleItemScrollOffset = state.firstVisibleItemScrollOffset
                     ),
                     expectedGeneration = scrollRegistryGeneration,
-                    itemCount = state.layoutInfo.totalItemsCount
+                    itemCount = state.layoutInfo.totalItemsCount,
+                    writeEpoch = scrollRegistryWriteEpoch
                 )
             }
             MemberDetailScrollStateRegistry.saveHumanListPosition(
@@ -5536,7 +5548,8 @@ private fun MembersDetailContent(
                     firstVisibleItemScrollOffset = humanDetailListState.firstVisibleItemScrollOffset
                 ),
                 expectedGeneration = scrollRegistryGeneration,
-                itemCount = humanDetailListState.layoutInfo.totalItemsCount
+                itemCount = humanDetailListState.layoutInfo.totalItemsCount,
+                writeEpoch = scrollRegistryWriteEpoch
             )
         }
     }
@@ -13825,15 +13838,32 @@ internal object MemberDetailScrollStateRegistry {
         mutableMapOf<String, MutableMap<MembersAgentDetailTab, MemberDetailScrollPosition>>()
     private val humanListPositions = mutableMapOf<String, MemberDetailScrollPosition>()
 
-    // Retired-write guard: every save carries the registry generation the
-    // caller last observed. clear() bumps the generation, so a save issued by
-    // a page that was still alive across logout/account-switch (and whose
-    // continuous save flow can fire once more before its coroutine is
-    // cancelled) is dropped instead of resurrecting the old session's
-    // offsets under the new session.
+    // Retired-write guard, two levels:
+    // 1. Registry generation — clear() bumps it; saves carrying a stale
+    //    generation were issued by a session that no longer exists and are
+    //    dropped, so a page still disposing across logout/account-switch
+    //    cannot resurrect the old session's offsets.
+    // 2. Per-member write epoch — each new detail composition acquires the
+    //    next epoch for its member key, and only saves stamped with the
+    //    latest epoch land. While a wide→narrow transition briefly runs the
+    //    old and new page side by side (same generation, both lists possibly
+    //    populated), the old page's delayed writes are rejected because it
+    //    holds an older epoch, so it cannot overwrite the position the new
+    //    page already scrolled to.
     private var generation = 0L
+    private var epochCounter = 0L
+    private val latestEpochByMemberKey = mutableMapOf<String, Long>()
 
     fun currentGeneration(): Long = synchronized(lock) { generation }
+
+    /** Acquires the next write epoch for [memberKey]; every save that should
+     *  be accepted must carry the returned epoch. */
+    fun acquireWriteEpoch(memberKey: String): Long =
+        synchronized(lock) {
+            val epoch = ++epochCounter
+            latestEpochByMemberKey[memberKey] = epoch
+            epoch
+        }
 
     private fun MutableMap<String, *>.evictOldestOverCap() {
         while (size > MaxTrackedMemberKeys) {
@@ -13854,10 +13884,12 @@ internal object MemberDetailScrollStateRegistry {
         tab: MembersAgentDetailTab,
         position: MemberDetailScrollPosition,
         expectedGeneration: Long = currentGeneration(),
-        itemCount: Int = Int.MAX_VALUE
+        itemCount: Int = Int.MAX_VALUE,
+        writeEpoch: Long = latestEpochByMemberKey[memberKey] ?: -1L
     ) {
         synchronized(lock) {
             if (expectedGeneration != generation) return
+            if (latestEpochByMemberKey[memberKey] != writeEpoch) return
             // An empty/Loading list reports index 0 without representing a
             // real scroll. While the old and new detail coexist, the new
             // page's save flow could otherwise publish that clamped zero and
@@ -13875,10 +13907,12 @@ internal object MemberDetailScrollStateRegistry {
         memberKey: String,
         position: MemberDetailScrollPosition,
         expectedGeneration: Long = currentGeneration(),
-        itemCount: Int = Int.MAX_VALUE
+        itemCount: Int = Int.MAX_VALUE,
+        writeEpoch: Long = latestEpochByMemberKey[memberKey] ?: -1L
     ) {
         synchronized(lock) {
             if (expectedGeneration != generation) return
+            if (latestEpochByMemberKey[memberKey] != writeEpoch) return
             if (itemCount == 0) return
             humanListPositions[memberKey] = position
             humanListPositions.evictOldestOverCap()
