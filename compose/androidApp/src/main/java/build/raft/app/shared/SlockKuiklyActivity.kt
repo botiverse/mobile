@@ -2446,9 +2446,57 @@ open class SlockKuiklyActivity :
                     JSONObject(text).apply {
                         put(KEY_HOST_EXCLUDES_NAVIGATION_BAR, androidHostExcludesNavigationBar())
                         put(KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA, true)
-                        put(KEY_STATUS_BAR_HIDDEN, !androidStatusBarVisible())
+                        val statusBarVisible = androidStatusBarVisible()
+                        put(KEY_STATUS_BAR_HIDDEN, !statusBarVisible)
+                        // task #482: the renderer's reported top inset can lag or arrive in
+                        // the wrong unit on large-screen/desktop-mode hosts (it resolved to
+                        // ~22dp on a 48px status bar), which left the nav rail divider and
+                        // page headers drawing under the system bar. Feed the real
+                        // WindowInsets pixel value through the same "statusBarHeight"
+                        // channel the shared resolver already merges with the native
+                        // report (max wins, so a correct renderer value is never shrunk).
+                        if (statusBarVisible) {
+                            val topPx = androidStatusBarHeightPx()
+                            if (topPx > 0) {
+                                put("statusBarHeight", topPx.toString())
+                                put("safeAreaTop", topPx.toString())
+                            }
+                        }
+                        // Same source for the bottom edge: gesture-nav taskbars are not
+                        // always included in the renderer's reported bottom inset, which
+                        // left the DM composer under the system bar on large screens.
+                        val bottomPx = androidNavigationBarHeightPx()
+                        if (bottomPx > 0) {
+                            put("navigationBarHeight", bottomPx.toString())
+                            put("safeAreaBottom", bottomPx.toString())
+                        }
                     }
             )
+
+    private fun androidStatusBarHeightPx(): Int {
+        val decorView = window?.decorView ?: return 0
+        if (Build.VERSION.SDK_INT >= 30) {
+            val insets = decorView.rootWindowInsets ?: return 0
+            return insets.getInsets(WindowInsets.Type.statusBars()).top
+        }
+        @Suppress("DEPRECATION")
+        return decorView.rootWindowInsets?.systemWindowInsetTop ?: 0
+    }
+
+    // Navigation bar and the gesture-mode taskbar can be reported under different
+    // inset types; take the max so either presentation clears the composer.
+    private fun androidNavigationBarHeightPx(): Int {
+        val decorView = window?.decorView ?: return 0
+        if (Build.VERSION.SDK_INT >= 30) {
+            val insets = decorView.rootWindowInsets ?: return 0
+            val navigation = insets.getInsets(WindowInsets.Type.navigationBars()).bottom
+            val gestures =
+                    insets.getInsets(WindowInsets.Type.systemGestures()).bottom
+            return maxOf(navigation, gestures)
+        }
+        @Suppress("DEPRECATION")
+        return decorView.rootWindowInsets?.systemWindowInsetBottom ?: 0
+    }
 
     private fun androidHostExcludesNavigationBar(): Boolean =
             androidHostExcludesNavigationBarForMode(androidNavigationMode())
@@ -2729,6 +2777,9 @@ open class SlockKuiklyActivity :
         private const val KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA =
                 "slockKeyboardInsetExcludesBottomSafeArea"
         private const val KEY_STATUS_BAR_HIDDEN = "slockStatusBarHidden"
+        // "statusBarHeight" / "safeAreaTop" are written as string px values by
+        // withAndroidRuntimeWindowInsets(); they map to JSONObject params.safeAreaPx keys
+        // in shared/SlockSafeArea.kt.
         private const val NAVIGATION_MODE_SETTING = "navigation_mode"
         private const val NAVIGATION_MODE_RESOURCE = "config_navBarInteractionMode"
         private const val NAVIGATION_MODE_GESTURAL = 2

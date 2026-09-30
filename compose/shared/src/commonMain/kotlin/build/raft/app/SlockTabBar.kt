@@ -695,12 +695,21 @@ internal fun SlockNavigationRailTabBar(
                 }
             }
         }
-        Box(
-            modifier = Modifier
-                .width(SlockStroke.Default)
-                .fillMaxHeight()
-                .background(SlockColor.BorderBlack)
-        )
+        // task #482: the rail's right-edge divider used to span the full window
+        // height and drew across the system status bar. Keep the band itself
+        // edge-to-edge but start the divider at the same top inset the header
+        // content already respects (visual-testing opt-out keeps 0).
+        Column(Modifier.fillMaxHeight()) {
+            if (topSafeArea > 0.dp) {
+                Spacer(Modifier.height(topSafeArea))
+            }
+            Box(
+                modifier = Modifier
+                    .width(SlockStroke.Default)
+                    .fillMaxHeight()
+                    .background(SlockColor.BorderBlack)
+            )
+        }
     }
 }
 
