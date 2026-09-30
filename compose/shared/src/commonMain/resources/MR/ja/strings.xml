@@ -487,6 +487,9 @@
     <string name="thread_members_remove_confirm_question">%1$s を #%2$s から削除しますか？</string>
     <string name="thread_members_remove_confirm_detail">このメンバーへの通常のチャンネル配信は停止します。フォロー中のスレッドは自動的には解除されず、フォロー中の公開スレッドからは本人が解除または整理するまで通知が届く場合があります。非公開コンテンツは引き続き現在のアクセス権で保護されます。</string>
     <string name="thread_members_refresh_detail">この会話を更新して、もう一度お試しください。</string>
+    <string name="thread_members_search_placeholder">メンバーを検索</string>
+    <string name="thread_members_external">Slack 参加者</string>
+    <string name="thread_members_provider_slack">Slack</string>
     <string name="thread_add_member_search">検索</string>
     <string name="thread_add_member_name_placeholder">名前</string>
     <string name="thread_add_member_no_people_loaded">ユーザーが読み込まれていません</string>
@@ -2124,4 +2127,15 @@
     <string name="joint_over_limit_grace_detail">このジョイントチャンネルは %1$s までメンバー数上限を超過しています。いずれかのサーバーの管理者がアップグレードするか、無料サーバーが脱退する必要があります。</string>
     <string name="joint_billing_locked_title">ジョイントチャンネルは読み取り専用です</string>
     <string name="joint_billing_locked_detail">猶予期間が終了しました。管理者がアップグレードするか無料サーバーが脱退するまで、このチャンネルは読み取り専用です。</string>
+    <string name="channel_member_role_owner">オーナー</string>
+    <string name="channel_member_role_admin">管理者</string>
+    <string name="channel_member_role_guest">ゲスト</string>
+    <string name="member_row_status_online">オンライン</string>
+    <string name="member_row_status_offline">オフライン</string>
+    <string name="member_row_status_idle">待機中</string>
+    <string name="member_row_status_disconnected">切断</string>
+    <string name="member_row_status_error">エラー</string>
+    <string name="member_row_status_external">外部</string>
+    <string name="member_row_status_working">作業中</string>
+    <string name="member_row_status_thinking">思考中</string>
 </resources>

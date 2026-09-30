@@ -487,6 +487,9 @@
     <string name="thread_members_remove_confirm_question">Remove %1$s from #%2$s?</string>
     <string name="thread_members_remove_confirm_detail">Ordinary channel delivery stops for them. Existing followed threads are not automatically unfollowed; followed public threads can still notify them until they unfollow or manage those threads. Private content remains gated by current access.</string>
     <string name="thread_members_refresh_detail">REFRESH THIS CONVERSATION AND TRY AGAIN.</string>
+    <string name="thread_members_search_placeholder">Search members</string>
+    <string name="thread_members_external">Slack participants</string>
+    <string name="thread_members_provider_slack">Slack</string>
     <string name="thread_add_member_search">Search</string>
     <string name="thread_add_member_name_placeholder">Name</string>
     <string name="thread_add_member_no_people_loaded">NO PEOPLE LOADED</string>
@@ -2131,4 +2134,15 @@
     <string name="joint_over_limit_grace_detail">This joint channel is over its member limit until %1$s. An admin of one server must upgrade, or one free server must leave.</string>
     <string name="joint_billing_locked_title">Joint channel read-only</string>
     <string name="joint_billing_locked_detail">The grace period has ended. This channel is read-only until an admin upgrades or a free server leaves.</string>
+    <string name="channel_member_role_owner">Owner</string>
+    <string name="channel_member_role_admin">Admin</string>
+    <string name="channel_member_role_guest">Guest</string>
+    <string name="member_row_status_online">Online</string>
+    <string name="member_row_status_offline">Offline</string>
+    <string name="member_row_status_idle">Idle</string>
+    <string name="member_row_status_disconnected">Disconnected</string>
+    <string name="member_row_status_error">Error</string>
+    <string name="member_row_status_external">External</string>
+    <string name="member_row_status_working">Working</string>
+    <string name="member_row_status_thinking">Thinking</string>
 </resources>

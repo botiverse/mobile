@@ -961,7 +961,24 @@ class RealMemberRepository(
                 }
             )
         result.logChannelMemberCounts(source = "channel_members", channelId = channelId.value, logger = logger)
-        return result
+        if (result !is DataResult.Content) return result
+        // Member capabilities belong to the channel response, never the roster.
+        // Missing/failed detail keeps the readable roster and denies mutations.
+        val detail = executeMember(
+            emptyReason = EmptyReason.NoMembers,
+            block = { networkClient.request(priority, "channels/${channelId.value}") },
+            source = "channel_member_capabilities",
+            mapper = { body -> parseSlockChannelDetail(body)
+                ?: throw IllegalStateException("Channel detail missing") },
+        )
+        val channel = (detail as? DataResult.Content)?.data
+            ?.takeIf { it.channelId == channelId }
+        val mutable = channel != null && !channel.archived &&
+            !(channel.channelType == "channel" && channel.name.removePrefix("#") == "all")
+        return DataResult.Content(result.data.copy(
+            canAddMembers = mutable && channel?.channelCapabilities?.addChannelMembers == true,
+            canRemoveMembers = mutable && channel?.channelCapabilities?.removeChannelMembers == true,
+        ))
     }
 
     override suspend fun addChannelMember(

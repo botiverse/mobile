@@ -30,6 +30,7 @@ class MemberRepositoryDataSourceTest {
         val network =
             FakeMemberNetworkClient().apply {
                 channelMembersResponse = HomeNetworkResponse(200, """{"humans":[],"agents":[]}""")
+                channelDetailResponse = HomeNetworkResponse(200, """{"id":"channel-empty","name":"design","type":"channel","channelCapabilities":{"addChannelMembers":true,"removeChannelMembers":false}}""")
             }
         val repository = RealMemberRepository(sampleStore(), network)
 
@@ -40,6 +41,30 @@ class MemberRepositoryDataSourceTest {
 
         assertEquals(emptyList(), result.data.members)
         assertTrue(result.data.canAddMembers)
+    }
+
+    @Test
+    fun rosterDoesNotGrantMutationsWithoutMatchingChannelCapabilities() = runBlocking {
+        // botiverse/slock 1443178ec2c72422256ea05f7d6fd5e480429e0a:
+        // routes/channels.ts attaches channelCapabilities to GET /:id, not /:id/members.
+        val cases = listOf(
+            HomeNetworkResponse(503, "{}"),
+            HomeNetworkResponse(200, """{"id":"channel-empty","name":"design","type":"channel"}"""),
+            HomeNetworkResponse(200, """{"id":"another","name":"design","type":"channel","channelCapabilities":{"addChannelMembers":true,"removeChannelMembers":true}}"""),
+            HomeNetworkResponse(200, """{"id":"channel-empty","name":"all","type":"channel","channelCapabilities":{"addChannelMembers":true,"removeChannelMembers":true}}"""),
+            HomeNetworkResponse(200, """{"id":"channel-empty","name":"design","type":"channel","archivedAt":"2026-09-30T00:00:00Z","channelCapabilities":{"addChannelMembers":true,"removeChannelMembers":true}}"""),
+        )
+        for (response in cases) {
+            val network = FakeMemberNetworkClient().apply {
+                channelMembersResponse = HomeNetworkResponse(200, """{"humans":[{"id":"user-1","name":"Alex","effectiveChannelRole":"admin"}],"agents":[]}""")
+                channelDetailResponse = response
+            }
+            val result = assertIs<DataResult.Content<ChannelMemberSnapshot>>(
+                RealMemberRepository(sampleStore(), network).getChannelMembers(DataRequestPriority.Visible, ChannelId("channel-empty")))
+            assertEquals("admin", result.data.members.single().effectiveChannelRole)
+            assertFalse(result.data.canAddMembers)
+            assertFalse(result.data.canRemoveMembers)
+        }
     }
 
     @Test
@@ -572,6 +597,7 @@ class MemberRepositoryDataSourceTest {
         var agentsListActivity: String = "idle"
         var agentsListActivityDetail: String = "Ready"
         var channelMembersResponse: HomeNetworkResponse? = null
+        var channelDetailResponse: HomeNetworkResponse = HomeNetworkResponse(403, "{}")
         var startBlocker: CompletableDeferred<Unit>? = null
 
         override suspend fun request(
@@ -709,6 +735,7 @@ class MemberRepositoryDataSourceTest {
                     calls += "DELETE agents/agent-1"
                     ok("""{"ok":true}""")
                 }
+                normalized == "channels/channel-empty" && method == "GET" -> channelDetailResponse
                 normalized == "channels/channel-empty/members" && method == "GET" ->
                     channelMembersResponse ?: error("Missing channel members response")
                 else -> error("Unhandled request $method $normalized query=$query")
