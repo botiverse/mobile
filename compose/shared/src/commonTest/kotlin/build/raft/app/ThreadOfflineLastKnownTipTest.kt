@@ -100,16 +100,22 @@ class ThreadOfflineLastKnownTipTest {
     }
 
     @Test
-    fun aRecoveredNetworkReasksOnlyForAnIdleOfflineStandIn() {
+    fun aRecoveredNetworkReasksAnIdleStandInAndDefersWhileARefreshIsRunning() {
         val base = KuiklyThreadScreenPayload(status = "content")
-        // The stand-in whose refresh failed is re-asked when the host reports the network back.
-        assertTrue(shouldRefreshOfflineStandInOnNetworkRecovered(base.copy(durableLastKnown = true, backgroundRefreshing = false)))
-        assertTrue(
-            shouldRefreshOfflineStandInOnNetworkRecovered(base.copy(status = "empty", durableLastKnown = true)),
+        assertEquals(
+            OfflineStandInRecoveryAction.Refresh,
+            offlineStandInRecoveryAction(base.copy(durableLastKnown = true, backgroundRefreshing = false))
+        )
+        assertEquals(
+            OfflineStandInRecoveryAction.Refresh,
+            offlineStandInRecoveryAction(base.copy(status = "empty", durableLastKnown = true)),
             "an empty last-known channel too"
         )
-        // A refresh already running, or network content already on screen: nothing to do.
-        assertFalse(shouldRefreshOfflineStandInOnNetworkRecovered(base.copy(durableLastKnown = true, backgroundRefreshing = true)))
-        assertFalse(shouldRefreshOfflineStandInOnNetworkRecovered(base.copy(durableLastKnown = false)))
+        // LiBai #2782: a refresh started offline may still fail back to the stand-in, so the signal is kept.
+        assertEquals(
+            OfflineStandInRecoveryAction.Defer,
+            offlineStandInRecoveryAction(base.copy(durableLastKnown = true, backgroundRefreshing = true))
+        )
+        assertEquals(OfflineStandInRecoveryAction.None, offlineStandInRecoveryAction(base.copy(durableLastKnown = false)))
     }
 }

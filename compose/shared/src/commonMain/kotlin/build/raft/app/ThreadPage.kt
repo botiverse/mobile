@@ -5710,21 +5710,35 @@ private fun SharedThreadRouteContentContent(
     val timelineSlice = renderSlice.timelineSlice
     // An offline stand-in (durable last-known frame whose refresh failed) is only replaced by a network
     // answer; nothing re-asked after the network came back, so it stayed until the channel was re-entered
-    // (HuaTuo, alpha 71). The host's authoritative online signal now re-requests it in place.
+    // (HuaTuo, alpha 71). The host's authoritative online signal now re-requests it in place. A signal
+    // that lands while a refresh is still running is remembered (LiBai #2782): that refresh was issued
+    // offline and may fail back to the stand-in, so the retry fires once it settles.
+    var offlineStandInRecoveryPending by remember(threadViewModel) { mutableStateOf(false) }
+    fun dispatchOfflineStandInRecovery(reason: String) {
+        val current = threadViewModel.state.value.payload
+        when (offlineStandInRecoveryAction(current)) {
+            OfflineStandInRecoveryAction.Refresh -> {
+                offlineStandInRecoveryPending = false
+                bridge.log(
+                    "thread_offline_standin_refresh reason=$reason " +
+                        "threadId=${current.sourceThreadId.orEmpty()} status=${current.status}"
+                )
+                threadViewModel.dispatch(SharedThreadIntent.Refresh)
+            }
+            OfflineStandInRecoveryAction.Defer -> offlineStandInRecoveryPending = true
+            OfflineStandInRecoveryAction.None -> offlineStandInRecoveryPending = false
+        }
+    }
     DisposableEffect(threadViewModel, sharedStores.eventBus) {
         val hostNetworkEvents = KuiklyHostNetworkEvents(sharedStores.eventBus)
         val subscription =
             hostNetworkEvents.addAuthoritativeOnlineListener {
-                val current = threadViewModel.state.value.payload
-                if (shouldRefreshOfflineStandInOnNetworkRecovered(current)) {
-                    bridge.log(
-                        "thread_offline_standin_refresh reason=network_recovered " +
-                            "threadId=${current.sourceThreadId.orEmpty()} status=${current.status}"
-                    )
-                    threadViewModel.dispatch(SharedThreadIntent.Refresh)
-                }
+                dispatchOfflineStandInRecovery("network_recovered")
             }
         onDispose { hostNetworkEvents.removeListener(subscription) }
+    }
+    LaunchedEffect(offlineStandInRecoveryPending, payload.durableLastKnown, payload.backgroundRefreshing) {
+        if (offlineStandInRecoveryPending) dispatchOfflineStandInRecovery("network_recovered_deferred")
     }
     val replyMetadataByParentId = renderSlice.replyMetadataByParentId
     val highlightedMentions = renderSlice.highlightedMentions
@@ -21269,9 +21283,18 @@ internal fun threadOlderMessagesStatusSpec(
  *   replacing the frame (transient failure). A canonical answer clears `durableLastKnown` and
  *   both go away together with the content replacement.
  */
-/** The offline stand-in is still on screen and no refresh is running: a recovered network should re-ask. */
-internal fun shouldRefreshOfflineStandInOnNetworkRecovered(payload: KuiklyThreadScreenPayload): Boolean =
-    payload.durableLastKnown && !payload.backgroundRefreshing
+internal enum class OfflineStandInRecoveryAction { Refresh, Defer, None }
+
+/**
+ * What a recovered network does to the thread on screen: re-ask an idle offline stand-in; remember it
+ * while a refresh is running (that refresh may still fail back to the stand-in); otherwise nothing.
+ */
+internal fun offlineStandInRecoveryAction(payload: KuiklyThreadScreenPayload): OfflineStandInRecoveryAction =
+    when {
+        !payload.durableLastKnown -> OfflineStandInRecoveryAction.None
+        payload.backgroundRefreshing -> OfflineStandInRecoveryAction.Defer
+        else -> OfflineStandInRecoveryAction.Refresh
+    }
 
 internal data class ThreadOfflineLastKnownChrome(
     val insetActive: Boolean,
