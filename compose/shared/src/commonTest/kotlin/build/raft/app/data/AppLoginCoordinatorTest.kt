@@ -66,6 +66,18 @@ class AppLoginCoordinatorTest {
         assertEquals(0, runtime.exchanges)
         assertEquals("ignored", coordinator.complete(uri, "code", ""))
     }
+    @Test fun coldStartupCanRetryUntilSharedRuntimeIsReady() = runTest {
+        val store = InMemorySlockKeyValueStore()
+        val active = Runtime()
+        var runtime: AppLoginRuntime? = active
+        val coordinator = AppLoginCoordinator(store, { runtime }, { 0 })
+        coordinator.start("generation", verifier, challenge, uri)
+        runtime = null
+        assertEquals("retry", coordinator.complete(uri, "code", ""))
+        runtime = active
+        assertEquals("app_shell", coordinator.complete(uri, "code", ""))
+        assertEquals(1, active.exchanges)
+    }
     @Test fun failedExchangeRequiresFreshLogin() = runTest {
         val runtime = Runtime().apply { success = false }
         val coordinator = AppLoginCoordinator(InMemorySlockKeyValueStore(), { runtime }, { 0 })

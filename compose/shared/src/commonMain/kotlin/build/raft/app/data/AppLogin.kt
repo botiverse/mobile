@@ -57,7 +57,7 @@ internal class AppLoginCoordinator(
     suspend fun complete(returnUri: String, code: String, error: String): String = mutex.withLock {
         val pending = pending() ?: return@withLock "ignored"
         if (pending.returnUri != returnUri) return@withLock "ignored"
-        val active = runtime() ?: return@withLock "login_error"
+        val active = runtime() ?: return@withLock "retry"
         if (active.environment != pending.environment || now() - pending.startedAt !in -60_000L until 600_000L ||
             !pkce.matches(pending.verifier)) {
             clear()
