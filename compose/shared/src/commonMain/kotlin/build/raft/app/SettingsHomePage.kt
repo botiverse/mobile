@@ -1295,6 +1295,33 @@ internal data class AppShellMemberDetailSelection(
 }
 
 /**
+ * task #58 open-generation authority, owned by the shell (not the list
+ * composable): the Members list is destroyed whenever the single-pane detail
+ * takes the surface (narrow / desktop-mode off), so a counter that lived in
+ * the list would reset on every return and could replay stale generations.
+ * Monotonic per shell session — click stamps via [next], every write path
+ * must prove `next() == current()` before touching shared detail state, and
+ * any selection clear (Back dismiss, close event, server/session switch)
+ * bumps the counter so a still in-flight request cannot reopen a detail the
+ * user already closed.
+ */
+internal class AppShellMemberDetailOpenGeneration {
+    var value by mutableStateOf(0L)
+        private set
+
+    fun next(): Long {
+        value += 1L
+        return value
+    }
+
+    fun current(): Long = value
+
+    fun invalidate() {
+        value += 1L
+    }
+}
+
+/**
  * Members dual-pane gate: identical conditions to the shared adaptive detail
  * (desktop mode on + DualPane layout), but keyed to the member selection, which
  * is intentionally separate from the conversation workspace selection.
@@ -2135,6 +2162,7 @@ private fun SlockAppShellReadyContent(
     // renders in the right pane of the Members surface instead of pushing the
     // standalone detail page. serverId-scoped; cleared on server/account switch.
     var selectedAppShellMemberDetail by remember { mutableStateOf<AppShellMemberDetailSelection?>(null) }
+    val memberDetailOpenGeneration = remember { AppShellMemberDetailOpenGeneration() }
     var adaptiveDefaultLandingServerId by remember { mutableStateOf<String?>(null) }
     var tabScrollToTopRequests by remember { mutableStateOf(AppShellTabScrollToTopRequests()) }
     val bottomTabTapTracker = remember { AppShellBottomTabTapTracker() }
@@ -4292,6 +4320,7 @@ private fun SlockAppShellReadyContent(
         tasksListPosition = AppShellLazyListPosition()
         membersListState = AppShellMembersListState()
         selectedAppShellMemberDetail = null
+        memberDetailOpenGeneration.invalidate()
         // Retire all in-memory Home rows on an auth/session reset. Durable identity snapshots are
         // intentionally retained and will be rehydrated only under the successor account/server
         // key; keeping the old rows here would create an A-account/B-account preview window.
@@ -4327,6 +4356,7 @@ private fun SlockAppShellReadyContent(
                     return@observe
                 }
                 selectedAppShellMemberDetail = null
+                memberDetailOpenGeneration.invalidate()
             }
         onDispose { subscription.close() }
     }
@@ -4337,6 +4367,7 @@ private fun SlockAppShellReadyContent(
         val selection = selectedAppShellMemberDetail
         if (selection != null && selection.serverId != readyServerId) {
             selectedAppShellMemberDetail = null
+            memberDetailOpenGeneration.invalidate()
         }
     }
 
@@ -5180,6 +5211,7 @@ private fun SlockAppShellReadyContent(
                     "selectedTab=$selectedTab"
             )
             selectedAppShellMemberDetail = null
+            memberDetailOpenGeneration.invalidate()
             return true
         }
         if (
@@ -6924,6 +6956,7 @@ private fun SlockAppShellReadyContent(
                             onForegroundActivity = { reason ->
                                 prewarmAdmissionGate.invalidate("members_$reason")
                             },
+                            memberDetailOpenGeneration = memberDetailOpenGeneration,
                             onOpenMemberDetailInline =
                                 if (membersDualPane) {
                                     { listServerId, identity, pageData, openGeneration ->
@@ -17976,6 +18009,10 @@ private fun SharedMembersScreen(
     // same surface (web-style list|detail); when null the legacy standalone push is
     // used (compact / desktop mode off).
     onOpenMemberDetailInline: ((serverId: String, MemberDetailIdentity, JSONObject, openGeneration: Long) -> Unit)? = null,
+    // task #58: shell-owned monotonic open generation. The list composable is
+    // destroyed whenever the single-pane detail takes the surface, so the
+    // counter cannot live here — a reset would replay stale generations.
+    memberDetailOpenGeneration: AppShellMemberDetailOpenGeneration,
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     val membersTitle = stringResource(MR.strings.tab_members)
@@ -17987,11 +18024,6 @@ private fun SharedMembersScreen(
     var state by remember(currentServerId) {
         mutableStateOf<SharedMembersUiState>(initialContent ?: SharedMembersUiState.Loading)
     }
-    // task #58: click-order token for the inline detail open — the preload is a
-    // coroutine, so a slow Agent open can resolve after a later Human click.
-    // Stamp the click here (synchronously) and only let the matching generation
-    // apply its pageData; stale preloads cannot overwrite the newest selection.
-    var memberDetailOpenGeneration by remember { mutableStateOf(0L) }
     var refreshing by remember { mutableStateOf(false) }
     val pager = LocalActivity.current.getPager() as Pager
     val routeScope = rememberCoroutineScope()
@@ -18308,8 +18340,7 @@ private fun SharedMembersScreen(
                 agentStatusResolver = agentStatusResolver,
                 onOpenMemberDetail = { member ->
                     onForegroundActivity("open_member")
-                    memberDetailOpenGeneration += 1L
-                    val openGeneration = memberDetailOpenGeneration
+                    val openGeneration = memberDetailOpenGeneration.next()
                     routeScope.launch {
                         val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
                         val accessMode = identity.memberDetailAccessMode(serverId)
@@ -18341,6 +18372,17 @@ private fun SharedMembersScreen(
                             bridge.toast(openProfileFailedMessage)
                             bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
                         } else {
+                            // Generation check BEFORE any shared-detail write: a
+                            // stale preload must not seed the agent detail store
+                            // (that would overwrite the newer member's detail)
+                            // any more than it may apply the selection.
+                            if (openGeneration != memberDetailOpenGeneration.current()) {
+                                bridge.log(
+                                    "members_detail_open_stale_drop " +
+                                        "generation=$openGeneration current=${memberDetailOpenGeneration.current()}"
+                                )
+                                return@launch
+                            }
                             val seedMember =
                                 member.copy(
                                     serverId =
@@ -18349,12 +18391,12 @@ private fun SharedMembersScreen(
                                 )
                             agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
                             if (onOpenMemberDetailInline != null) {
-                                if (openGeneration == memberDetailOpenGeneration) {
+                                if (openGeneration == memberDetailOpenGeneration.current()) {
                                     onOpenMemberDetailInline(serverId, identity, pageData, openGeneration)
                                 } else {
                                     bridge.log(
                                         "members_detail_open_inline_stale " +
-                                            "generation=$openGeneration current=$memberDetailOpenGeneration"
+                                            "generation=$openGeneration current=${memberDetailOpenGeneration.current()}"
                                     )
                                 }
                             } else {
