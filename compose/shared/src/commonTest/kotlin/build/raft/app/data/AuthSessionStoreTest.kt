@@ -730,18 +730,32 @@ class AuthSessionStoreTest {
 
     @Test
     fun serversListDegradedFlagSurvivesDurableSerialization() = runBlocking {
-        // Real durable round-trip: encode -> key/value store -> fresh store instance
-        // decodes. The degraded mark must persist across a process restart, and a
-        // clean overwrite must durably clear it.
-        val keyValue = InMemorySlockKeyValueStore()
-        val writer = KeyValueAuthSessionStore(keyValue)
-        writer.replaceAuthenticatedSession(sampleSession().copy(serversListDegraded = true))
+        // Real durable round-trip: the companion's cachedSessionRecords is keyed by the
+        // key/value OBJECT, so carrying the raw string into a NEW key/value store forces
+        // a genuine decode — the same thing a process restart does.
+        val writerKv = InMemorySlockKeyValueStore()
+        KeyValueAuthSessionStore(writerKv)
+            .replaceAuthenticatedSession(sampleSession().copy(serversListDegraded = true))
 
-        val restarted = KeyValueAuthSessionStore(keyValue)
-        assertEquals(true, restarted.readSession()?.serversListDegraded)
+        val degradedEncoded = writerKv.getString(SLOCK_AUTH_SESSION_RECORD_KEY)
+        assertContains(degradedEncoded.orEmpty(), "\"serversListDegraded\":true")
 
-        restarted.replaceAuthenticatedSession(sampleSession())
-        assertEquals(false, KeyValueAuthSessionStore(keyValue).readSession()?.serversListDegraded)
+        val restartKv = InMemorySlockKeyValueStore(
+            mapOf(SLOCK_AUTH_SESSION_RECORD_KEY to degradedEncoded.orEmpty())
+        )
+        assertEquals(true, KeyValueAuthSessionStore(restartKv).readSession()?.serversListDegraded)
+
+        // A clean overwrite must durably clear the mark.
+        val clearKv = InMemorySlockKeyValueStore(
+            mapOf(SLOCK_AUTH_SESSION_RECORD_KEY to degradedEncoded.orEmpty())
+        )
+        val clearer = KeyValueAuthSessionStore(clearKv)
+        clearer.replaceAuthenticatedSession(sampleSession())
+        val cleanEncoded = clearKv.getString(SLOCK_AUTH_SESSION_RECORD_KEY)
+        val secondRestartKv = InMemorySlockKeyValueStore(
+            mapOf(SLOCK_AUTH_SESSION_RECORD_KEY to cleanEncoded.orEmpty())
+        )
+        assertEquals(false, KeyValueAuthSessionStore(secondRestartKv).readSession()?.serversListDegraded)
     }
 
     private fun sampleQaBootstrap(attempt: Int): StoredQaBootstrapMetadata =

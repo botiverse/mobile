@@ -4596,6 +4596,16 @@ private fun SlockAppShellReadyContent(
     // updates the right pane in place; narrow/OFF falls back to the standalone
     // path inside openHomeConversation). The child posts only the wire launch
     // payload — no Thread state crosses pageData.
+    // The DisposableEffect subscription outlives recompositions, so the callback must
+    // reach the latest composable state through a rememberUpdatedState indirection —
+    // plain `val` captures (e.g. readyServerId arriving after first composition) would
+    // otherwise freeze at their first-composition value and silently force the
+    // standalone-push branch even when dual-pane is active.
+    val latestEmbeddedOpenHomeConversation by rememberUpdatedState(
+        { request: HomeMessageOpenRequest, source: String ->
+            openHomeMessageRequest(request, source)
+        }
+    )
     DisposableEffect(eventBus, storeScope.shellInstanceId) {
         val subscription =
             eventBus.observe(
@@ -4640,15 +4650,14 @@ private fun SlockAppShellReadyContent(
                                 "serverId=$serverId threadId=${construction.identity.threadId.value} " +
                                 "anchor=${anchor.orEmpty()}"
                         )
-                        openHomeMessageRequest(
+                        latestEmbeddedOpenHomeConversation(
                             HomeMessageOpenRequest(
                                 conversationIdentity = construction.identity,
                                 anchorMessageId = anchor
                             ),
-                            source =
-                                data.optString(
-                                    SlockAppShellOpenConversationContract.KeySource
-                                ).trim().takeIf { it.isNotBlank() } ?: "embedded_child"
+                            data.optString(
+                                SlockAppShellOpenConversationContract.KeySource
+                            ).trim().takeIf { it.isNotBlank() } ?: "embedded_child"
                         )
                     }
                     is ThreadLaunchIdentityConstructionResult.Rejected -> {
