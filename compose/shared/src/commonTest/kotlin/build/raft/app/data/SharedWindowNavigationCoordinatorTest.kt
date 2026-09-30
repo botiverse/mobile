@@ -191,10 +191,10 @@ class SharedWindowNavigationCoordinatorTest {
         )
     }
 
-    // task #13 external deep-link spec validation: an external HTTPS permalink intent
-    // must behave like the notification intent through the same coordinator — stay
-    // pending while the server list is still empty (auth/session catching up), open
-    // exactly once after readiness converges, and reject only after the list is real.
+    // task #13 external deep-link CURRENT-BEHAVIOR pins (interface v3.1 §2):
+    // today's coordinator treats "empty knownServerIds" as the not-ready signal.
+    // These tests document that existing semantic; the target contract adds
+    // serverListState so a legitimately loaded-empty list can still reject.
 
     @Test
     fun externalLinkStaysPendingUntilServerListHydratesThenOpensOnce() {
@@ -293,6 +293,40 @@ class SharedWindowNavigationCoordinatorTest {
             ConversationKind.Thread,
             action.request.conversationIdentity.kind
         )
+    }
+
+    // Target-contract tests for the external-link interface (v3.1): these pin
+    // semantics the coordinator does not yet have. They are intentionally
+    // ignored until WindowNavigationReadiness gains serverListState and
+    // WindowNavigationIntent gains activationId/authGeneration.
+
+    @Test
+    @kotlin.test.Ignore
+    fun externalLinkLoadedEmptyServerListRejects() {
+        // Target contract: a successfully loaded, legitimately empty server list
+        // must terminate the intent (there is provably no such server), unlike
+        // a list that is merely still empty because it has not loaded.
+        // Requires: WindowNavigationReadiness.serverListState = Loaded with
+        // knownServerIds empty -> Reject("server_unavailable"), exactly once.
+    }
+
+    @Test
+    @kotlin.test.Ignore
+    fun externalLinkFailedListKeepsPendingAndDropsStaleSnapshot() {
+        // Target contract: serverListState = Failed (even when a stale non-empty
+        // knownServerIds snapshot is carried) must NOT reject as
+        // server_unavailable; the intent stays pending until a Loaded emission.
+        // Requires: readiness carries serverListState explicitly; Failed ->
+        // advance returns null and no Reject, stale list never consulted.
+    }
+
+    @Test
+    @kotlin.test.Ignore
+    fun externalLinkDuplicateActivationReAcksAndNewActivationOpensAgain() {
+        // Target contract: re-delivery of the same activationId is a no-op open
+        // but still re-emits Accepted to the SAME shellScopeId; a genuinely new
+        // user click carries a new activationId and opens again even after a
+        // terminal state. Requires: activationId inside WindowNavigationIntent.key.
     }
 
     @Test
