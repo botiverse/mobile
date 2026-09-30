@@ -13925,6 +13925,11 @@ internal class MemberDetailScrollTracker(
     // first. If the pane can never reach the target, nothing is written and
     // the original snapshot survives unchanged.
     private var restoreSettlePending = false
+    // requestScrollToItem-driven frames also report isScrollInProgress, so a
+    // settle scroll can only be attributed to the user when no restore
+    // request was issued (seed already landed at target — Alpha94 path).
+    private var issuedRestoreRequest = false
+    private var sawUserScrollInSettle = false
 
     fun observe(state: LazyListState, save: (MemberDetailScrollPosition) -> Unit) {
         if (state.layoutInfo.totalItemsCount <= 0) return
@@ -13964,6 +13969,7 @@ internal class MemberDetailScrollTracker(
             if (wantsRestore) {
                 restoreSettlePending = true
                 if (!atRestoreTarget) {
+                    issuedRestoreRequest = true
                     state.requestScrollToItem(
                         target.firstVisibleItemIndex,
                         target.firstVisibleItemScrollOffset
@@ -13977,10 +13983,14 @@ internal class MemberDetailScrollTracker(
                 firstVisibleItemScrollOffset = state.firstVisibleItemScrollOffset
             )
         if (restoreSettlePending) {
-            // While the restore scroll is in flight (our own
-            // requestScrollToItem also reports isScrollInProgress), nothing
-            // is a settled position — keep waiting without publishing.
-            if (state.isScrollInProgress) return
+            // While scrolling is in flight nothing is a settled position —
+            // our own requestScrollToItem also reports isScrollInProgress.
+            // In the no-request path (seed landed at target) any scroll is
+            // the user's, so remember it: the landing then belongs to them.
+            if (state.isScrollInProgress) {
+                if (!issuedRestoreRequest) sawUserScrollInSettle = true
+                return
+            }
             restoreSettlePending = false
             val atTarget =
                 position.firstVisibleItemIndex == restoreTo.firstVisibleItemIndex &&
@@ -13990,14 +14000,15 @@ internal class MemberDetailScrollTracker(
                 "members_detail_scroll restore_settled label=$label " +
                     "position=${position.firstVisibleItemIndex}:" +
                     "${position.firstVisibleItemScrollOffset} " +
-                    "atTarget=$atTarget"
+                    "atTarget=$atTarget userScroll=$sawUserScrollInSettle"
             )
-            if (!atTarget) {
-                // Landing below the target means the pane physically cannot
-                // reach the snapshot (narrow viewport clamps, Alpha94: 489 ->
-                // 88). The clamped landing is not a user position — suppress
-                // this one frame so the original snapshot survives for the
-                // return trip; later user scrolls publish normally.
+            if (!atTarget && !sawUserScrollInSettle) {
+                // Landing below the target with no user scroll means the pane
+                // physically cannot reach the snapshot (narrow viewport
+                // clamps, Alpha94: 489 -> 88). The clamped landing is not a
+                // user position — suppress it so the original snapshot
+                // survives for the return trip. A landing reached by a real
+                // user scroll publishes normally below.
                 return
             }
         }
