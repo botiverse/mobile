@@ -98,4 +98,18 @@ class ThreadOfflineLastKnownTipTest {
             ).toThreadTimelineSlice()
         assertEquals(MR.strings.thread_offline_older_unavailable.desc(), threadOlderMessagesStatusSpec(slice).label)
     }
+
+    @Test
+    fun aRecoveredNetworkReasksOnlyForAnIdleOfflineStandIn() {
+        val base = KuiklyThreadScreenPayload(status = "content")
+        // The stand-in whose refresh failed is re-asked when the host reports the network back.
+        assertTrue(shouldRefreshOfflineStandInOnNetworkRecovered(base.copy(durableLastKnown = true, backgroundRefreshing = false)))
+        assertTrue(
+            shouldRefreshOfflineStandInOnNetworkRecovered(base.copy(status = "empty", durableLastKnown = true)),
+            "an empty last-known channel too"
+        )
+        // A refresh already running, or network content already on screen: nothing to do.
+        assertFalse(shouldRefreshOfflineStandInOnNetworkRecovered(base.copy(durableLastKnown = true, backgroundRefreshing = true)))
+        assertFalse(shouldRefreshOfflineStandInOnNetworkRecovered(base.copy(durableLastKnown = false)))
+    }
 }

@@ -23,6 +23,7 @@ import build.raft.app.base.Utils
 import build.raft.app.base.putIfAbsent
 import build.raft.app.base.bridgeModule
 import build.raft.app.base.reduceAttachmentDownloadProgress
+import build.raft.app.data.KuiklyHostNetworkEvents
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.ThreadPendingSendInFlightRegistry
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
@@ -5707,6 +5708,24 @@ private fun SharedThreadRouteContentContent(
     }.collectAsState(threadViewModel.currentRenderSlice)
     val payload = renderSlice.payload
     val timelineSlice = renderSlice.timelineSlice
+    // An offline stand-in (durable last-known frame whose refresh failed) is only replaced by a network
+    // answer; nothing re-asked after the network came back, so it stayed until the channel was re-entered
+    // (HuaTuo, alpha 71). The host's authoritative online signal now re-requests it in place.
+    DisposableEffect(threadViewModel, sharedStores.eventBus) {
+        val hostNetworkEvents = KuiklyHostNetworkEvents(sharedStores.eventBus)
+        val subscription =
+            hostNetworkEvents.addAuthoritativeOnlineListener {
+                val current = threadViewModel.state.value.payload
+                if (shouldRefreshOfflineStandInOnNetworkRecovered(current)) {
+                    bridge.log(
+                        "thread_offline_standin_refresh reason=network_recovered " +
+                            "threadId=${current.sourceThreadId.orEmpty()} status=${current.status}"
+                    )
+                    threadViewModel.dispatch(SharedThreadIntent.Refresh)
+                }
+            }
+        onDispose { hostNetworkEvents.removeListener(subscription) }
+    }
     val replyMetadataByParentId = renderSlice.replyMetadataByParentId
     val highlightedMentions = renderSlice.highlightedMentions
     // Task #228 successor (direction A): the shared Home directory is the same
@@ -21250,6 +21269,10 @@ internal fun threadOlderMessagesStatusSpec(
  *   replacing the frame (transient failure). A canonical answer clears `durableLastKnown` and
  *   both go away together with the content replacement.
  */
+/** The offline stand-in is still on screen and no refresh is running: a recovered network should re-ask. */
+internal fun shouldRefreshOfflineStandInOnNetworkRecovered(payload: KuiklyThreadScreenPayload): Boolean =
+    payload.durableLastKnown && !payload.backgroundRefreshing
+
 internal data class ThreadOfflineLastKnownChrome(
     val insetActive: Boolean,
     val tipVisible: Boolean
