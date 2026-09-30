@@ -162,21 +162,22 @@ class MemberDetailScrollStateRegistryTest {
         MemberDetailScrollStateRegistry.clear()
         val oldEpoch = MemberDetailScrollStateRegistry.acquireWriteEpoch("u1:s1:agent:m1")
         val newEpoch = MemberDetailScrollStateRegistry.acquireWriteEpoch("u1:s1:agent:m1")
-        // Old page still has a populated list and disposes late: its write is
-        // stamped with the retired epoch and must be dropped.
-        MemberDetailScrollStateRegistry.saveAgentTabPosition(
-            "u1:s1:agent:m1",
-            MembersAgentDetailTab.Profile,
-            MemberDetailScrollPosition(firstVisibleItemIndex = 30),
-            itemCount = 90,
-            writeEpoch = oldEpoch
-        )
+        // New page writes first; the old page still has a populated list and
+        // disposes late: its write is stamped with the retired epoch and must
+        // not overwrite the new position.
         MemberDetailScrollStateRegistry.saveAgentTabPosition(
             "u1:s1:agent:m1",
             MembersAgentDetailTab.Profile,
             MemberDetailScrollPosition(firstVisibleItemIndex = 3),
             itemCount = 90,
             writeEpoch = newEpoch
+        )
+        MemberDetailScrollStateRegistry.saveAgentTabPosition(
+            "u1:s1:agent:m1",
+            MembersAgentDetailTab.Profile,
+            MemberDetailScrollPosition(firstVisibleItemIndex = 30),
+            itemCount = 90,
+            writeEpoch = oldEpoch
         )
         assertEquals(
             MemberDetailScrollPosition(firstVisibleItemIndex = 3),
@@ -199,6 +200,21 @@ class MemberDetailScrollStateRegistryTest {
         )
         assertEquals(
             MemberDetailScrollPosition(firstVisibleItemIndex = 6),
+            MemberDetailScrollStateRegistry.agentTabPosition("u1:s1:agent:m1", MembersAgentDetailTab.Profile)
+        )
+    }
+
+    @Test
+    fun `epoch-less saves bypass ownership for non-page callers`() {
+        MemberDetailScrollStateRegistry.clear()
+        MemberDetailScrollStateRegistry.acquireWriteEpoch("u1:s1:agent:m1")
+        MemberDetailScrollStateRegistry.saveAgentTabPosition(
+            "u1:s1:agent:m1",
+            MembersAgentDetailTab.Profile,
+            MemberDetailScrollPosition(firstVisibleItemIndex = 12)
+        )
+        assertEquals(
+            MemberDetailScrollPosition(firstVisibleItemIndex = 12),
             MemberDetailScrollStateRegistry.agentTabPosition("u1:s1:agent:m1", MembersAgentDetailTab.Profile)
         )
     }

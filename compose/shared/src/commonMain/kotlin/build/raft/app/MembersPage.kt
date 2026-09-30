@@ -13874,6 +13874,17 @@ internal object MemberDetailScrollStateRegistry {
         }
     }
 
+    // The epoch map tracks one long per member key and is bounded the same
+    // way: entries whose member key was evicted from the position maps are
+    // no longer reachable for restore, so their ownership records can go.
+    private fun evictOrphanedEpochs() {
+        val it = latestEpochByMemberKey.keys.iterator()
+        while (it.hasNext()) {
+            val key = it.next()
+            if (key !in agentTabPositions && key !in humanListPositions) it.remove()
+        }
+    }
+
     fun agentTabPosition(memberKey: String, tab: MembersAgentDetailTab): MemberDetailScrollPosition =
         synchronized(lock) {
             agentTabPositions[memberKey]?.get(tab) ?: MemberDetailScrollPosition()
@@ -13885,11 +13896,14 @@ internal object MemberDetailScrollStateRegistry {
         position: MemberDetailScrollPosition,
         expectedGeneration: Long = currentGeneration(),
         itemCount: Int = Int.MAX_VALUE,
-        writeEpoch: Long = latestEpochByMemberKey[memberKey] ?: -1L
+        writeEpoch: Long? = null
     ) {
         synchronized(lock) {
             if (expectedGeneration != generation) return
-            if (latestEpochByMemberKey[memberKey] != writeEpoch) return
+            // An epoch-stamped save is accepted only while its page still
+            // owns the key's write epoch; a null epoch (non-page callers such
+            // as tests) carries no ownership claim and bypasses this check.
+            if (writeEpoch != null && latestEpochByMemberKey[memberKey] != writeEpoch) return
             // An empty/Loading list reports index 0 without representing a
             // real scroll. While the old and new detail coexist, the new
             // page's save flow could otherwise publish that clamped zero and
@@ -13897,6 +13911,7 @@ internal object MemberDetailScrollStateRegistry {
             if (itemCount == 0) return
             agentTabPositions.getOrPut(memberKey) { mutableMapOf() }[tab] = position
             agentTabPositions.evictOldestOverCap()
+            evictOrphanedEpochs()
         }
     }
 
@@ -13908,14 +13923,15 @@ internal object MemberDetailScrollStateRegistry {
         position: MemberDetailScrollPosition,
         expectedGeneration: Long = currentGeneration(),
         itemCount: Int = Int.MAX_VALUE,
-        writeEpoch: Long = latestEpochByMemberKey[memberKey] ?: -1L
+        writeEpoch: Long? = null
     ) {
         synchronized(lock) {
             if (expectedGeneration != generation) return
-            if (latestEpochByMemberKey[memberKey] != writeEpoch) return
+            if (writeEpoch != null && latestEpochByMemberKey[memberKey] != writeEpoch) return
             if (itemCount == 0) return
             humanListPositions[memberKey] = position
             humanListPositions.evictOldestOverCap()
+            evictOrphanedEpochs()
         }
     }
 
@@ -13930,6 +13946,7 @@ internal object MemberDetailScrollStateRegistry {
         synchronized(lock) {
             agentTabPositions.clear()
             humanListPositions.clear()
+            latestEpochByMemberKey.clear()
             generation += 1
         }
     }
