@@ -2596,8 +2596,36 @@ open class SlockKuiklyActivity :
         val content = findViewById<View>(android.R.id.content) ?: return
         content.setOnApplyWindowInsetsListener { view, insets ->
             view.requestLayout()
+            // task #482: pageData is a one-shot snapshot taken before the first
+            // inset dispatch, so it can carry zero/stale bar heights. Publish
+            // every real dispatch to the shared layer, which merges it with the
+            // renderer-reported value (max wins) and re-pads affected surfaces.
+            publishWindowInsets(insets)
             insets
         }
+    }
+
+    private var lastPublishedInsetsKey: String? = null
+
+    private fun publishWindowInsets(insets: WindowInsets) {
+        val top = insets.getInsets(WindowInsets.Type.statusBars()).top
+        val bottom =
+                maxOf(
+                        insets.getInsets(WindowInsets.Type.navigationBars()).bottom,
+                        insets.getInsets(WindowInsets.Type.systemGestures()).bottom,
+                )
+        val hidden = !insets.isVisible(WindowInsets.Type.statusBars())
+        val key = "$top:$bottom:$hidden"
+        if (key == lastPublishedInsetsKey) return
+        lastPublishedInsetsKey = key
+        kuiklyRenderViewDelegator.sendEvent(
+                EVENT_WINDOW_INSETS_CHANGED,
+                mapOf(
+                        "statusBarHeightPx" to top.toString(),
+                        "navigationBarHeightPx" to bottom.toString(),
+                        "statusBarHidden" to hidden,
+                ),
+        )
     }
 
     private fun applyLightSystemBarsAppearance(window: Window) {
@@ -2777,9 +2805,10 @@ open class SlockKuiklyActivity :
         private const val KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA =
                 "slockKeyboardInsetExcludesBottomSafeArea"
         private const val KEY_STATUS_BAR_HIDDEN = "slockStatusBarHidden"
-        // "statusBarHeight" / "safeAreaTop" are written as string px values by
-        // withAndroidRuntimeWindowInsets(); they map to JSONObject params.safeAreaPx keys
-        // in shared/SlockSafeArea.kt.
+        // "statusBarHeight" / "safeAreaTop" / "navigationBarHeight" / "safeAreaBottom"
+        // are written as string px values by withAndroidRuntimeWindowInsets(); they map
+        // to JSONObject params.safeAreaPx keys in shared/SlockSafeArea.kt.
+        private const val EVENT_WINDOW_INSETS_CHANGED = "slockWindowInsetsChanged"
         private const val NAVIGATION_MODE_SETTING = "navigation_mode"
         private const val NAVIGATION_MODE_RESOURCE = "config_navBarInteractionMode"
         private const val NAVIGATION_MODE_GESTURAL = 2
