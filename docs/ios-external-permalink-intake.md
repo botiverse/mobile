@@ -34,6 +34,14 @@ The native queue is bounded to eight pending activations and five minutes.
 It retries on readiness, foreground, and a timer while pending; overflow and
 expiry are recorded explicitly without logging the URL or message content.
 
+Login cancellation is emitted only after the shared OAuth coordinator admits a
+terminal cancellation for the original OAuth generation. Native browser cancellation,
+Apple authorization cancellation and warm `access_denied` callbacks use a scope
+captured from the requesting render controller; linking, ordinary failures, superseded
+callbacks and missing scopes cannot cancel another window's queue. The scope is
+also supplied to native authentication roots. Cold callbacks without a captured
+in-process scope do not broadcast a guessed cancellation.
+
 ## Verification and remaining integration
 
 `scripts/test_ios_permalink_intake.sh` compiles the production Foundation queue

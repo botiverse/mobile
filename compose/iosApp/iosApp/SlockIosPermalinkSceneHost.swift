@@ -135,3 +135,35 @@ final class SlockIosPermalinkSceneHost: ObservableObject {
         intake.cancel(reason: "scene_destroyed")
     }
 }
+
+
+/// One active OAuth request owns cancellation. Scope is captured from its render
+/// root, and only an admitted user cancellation may release that root's Unbound links.
+final class SlockIosLoginCancellationRelay {
+    private struct Request {
+        let generation: String
+        let mode: String
+        let scope: String?
+    }
+    private var request: Request?
+    private let center: NotificationCenter
+
+    init(center: NotificationCenter = .default) { self.center = center }
+
+    func begin(generation: String, mode: String, scope: String?) {
+        request = Request(generation: generation, mode: mode, scope: scope)
+    }
+
+    func finish(generation: String?, error: String?, status: String, applyRoute: Bool) {
+        guard let request, generation == request.generation else { return }
+        self.request = nil
+        guard applyRoute, request.mode == "login", status == "login_error",
+              ["provider_cancelled", "access_denied", "user_cancelled"].contains(error ?? ""),
+              let scope = request.scope, !scope.isEmpty else { return }
+        let data = ["shellScopeId": scope, "reason": "login_cancelled"]
+        guard let bytes = try? JSONSerialization.data(withJSONObject: data),
+              let json = String(data: bytes, encoding: .utf8) else { return }
+        center.post(name: Notification.Name("slockExternalPermalinkNotReady"),
+                    object: nil, userInfo: ["stringify": json])
+    }
+}
