@@ -116,21 +116,19 @@ class MemberDetailScrollStateRegistryTest {
     }
 
     @Test
-    fun `empty list save cannot clobber a populated snapshot during page handoff`() {
+    fun `stale-epoch save cannot clobber a populated snapshot during page handoff`() {
         MemberDetailScrollStateRegistry.clear()
         MemberDetailScrollStateRegistry.saveAgentTabPosition(
             "u1:s1:agent:m1",
             MembersAgentDetailTab.Profile,
-            MemberDetailScrollPosition(firstVisibleItemIndex = 20),
-            itemCount = 90
+            MemberDetailScrollPosition(firstVisibleItemIndex = 20)
         )
         // The recreated page's list is still Loading (zero items); its first
         // emitted position is a clamped zero, not a real scroll to top.
         MemberDetailScrollStateRegistry.saveAgentTabPosition(
             "u1:s1:agent:m1",
             MembersAgentDetailTab.Profile,
-            MemberDetailScrollPosition(),
-            itemCount = 0
+            MemberDetailScrollPosition()
         )
         assertEquals(
             MemberDetailScrollPosition(firstVisibleItemIndex = 20),
@@ -143,13 +141,11 @@ class MemberDetailScrollStateRegistryTest {
         MemberDetailScrollStateRegistry.clear()
         MemberDetailScrollStateRegistry.saveHumanListPosition(
             "u1:s1:human:h1",
-            MemberDetailScrollPosition(firstVisibleItemIndex = 8),
-            itemCount = 40
+            MemberDetailScrollPosition(firstVisibleItemIndex = 8)
         )
         MemberDetailScrollStateRegistry.saveHumanListPosition(
             "u1:s1:human:h1",
-            MemberDetailScrollPosition(),
-            itemCount = 40
+            MemberDetailScrollPosition()
         )
         assertEquals(
             MemberDetailScrollPosition(),
@@ -169,14 +165,12 @@ class MemberDetailScrollStateRegistryTest {
             "u1:s1:agent:m1",
             MembersAgentDetailTab.Profile,
             MemberDetailScrollPosition(firstVisibleItemIndex = 3),
-            itemCount = 90,
             writeEpoch = newEpoch
         )
         MemberDetailScrollStateRegistry.saveAgentTabPosition(
             "u1:s1:agent:m1",
             MembersAgentDetailTab.Profile,
             MemberDetailScrollPosition(firstVisibleItemIndex = 30),
-            itemCount = 90,
             writeEpoch = oldEpoch
         )
         assertEquals(
@@ -195,7 +189,6 @@ class MemberDetailScrollStateRegistryTest {
             "u1:s1:agent:m1",
             MembersAgentDetailTab.Profile,
             MemberDetailScrollPosition(firstVisibleItemIndex = 6),
-            itemCount = 10,
             writeEpoch = epochA
         )
         assertEquals(
@@ -232,7 +225,6 @@ class MemberDetailScrollStateRegistryTest {
                 key,
                 MembersAgentDetailTab.Profile,
                 MemberDetailScrollPosition(firstVisibleItemIndex = i),
-                itemCount = 10,
                 writeEpoch = epoch
             )
         }
@@ -240,7 +232,6 @@ class MemberDetailScrollStateRegistryTest {
             "u1:s1:agent:m1",
             MembersAgentDetailTab.Profile,
             MemberDetailScrollPosition(firstVisibleItemIndex = 15),
-            itemCount = 90,
             writeEpoch = ownerEpoch
         )
         assertEquals(

@@ -5491,66 +5491,91 @@ private fun MembersDetailContent(
     val scrollRegistryWriteEpoch = remember(memberScrollKey) {
         MemberDetailScrollStateRegistry.acquireWriteEpoch(memberScrollKey)
     }
+    // A list that is still Loading reports index 0 without representing a
+    // real scroll — that clamp is what destroyed restore on every earlier
+    // revision: rememberLazyListState's initialIndex seeds the state once,
+    // an empty LazyColumn clamps it to 0 immediately, and content arriving
+    // later never re-applies the seed. Each state is therefore driven by a
+    // remembered holder that (a) re-applies the saved snapshot the first
+    // time items actually exist, and (b) keeps the last position observed
+    // while items were present so the dispose fallback still writes a real
+    // position after the list has already detached (layoutInfo reads 0).
+    val scrollTrackers =
+        remember(memberScrollKey) {
+            mutableMapOf<Any, MemberDetailScrollTracker>()
+        }
+    fun trackerFor(holderKey: Any, saved: MemberDetailScrollPosition) =
+        scrollTrackers.getOrPut(holderKey) { MemberDetailScrollTracker(saved) }
     agentTabListStates.forEach { (tab, state) ->
+        val tracker =
+            trackerFor(tab, MemberDetailScrollStateRegistry.agentTabPosition(memberScrollKey, tab))
         LaunchedEffect(memberScrollKey, tab) {
             snapshotFlow {
-                MemberDetailScrollPosition(
-                    firstVisibleItemIndex = state.firstVisibleItemIndex,
-                    firstVisibleItemScrollOffset = state.firstVisibleItemScrollOffset
+                Triple(
+                    state.firstVisibleItemIndex,
+                    state.firstVisibleItemScrollOffset,
+                    state.layoutInfo.totalItemsCount
                 )
-            }.collect { position ->
-                MemberDetailScrollStateRegistry.saveAgentTabPosition(
-                    memberScrollKey,
-                    tab,
-                    position,
-                    expectedGeneration = scrollRegistryGeneration,
-                    itemCount = state.layoutInfo.totalItemsCount,
-                    writeEpoch = scrollRegistryWriteEpoch
-                )
+            }.collect {
+                tracker.observe(state) { position ->
+                    MemberDetailScrollStateRegistry.saveAgentTabPosition(
+                        memberScrollKey,
+                        tab,
+                        position,
+                        expectedGeneration = scrollRegistryGeneration,
+                        writeEpoch = scrollRegistryWriteEpoch
+                    )
+                }
             }
         }
     }
-    LaunchedEffect(memberScrollKey) {
-        snapshotFlow {
-            MemberDetailScrollPosition(
-                firstVisibleItemIndex = humanDetailListState.firstVisibleItemIndex,
-                firstVisibleItemScrollOffset = humanDetailListState.firstVisibleItemScrollOffset
+    run {
+        val tracker =
+            trackerFor(
+                "human",
+                MemberDetailScrollStateRegistry.humanListPosition(memberScrollKey)
             )
-        }.collect { position ->
-            MemberDetailScrollStateRegistry.saveHumanListPosition(
-                memberScrollKey,
-                position,
-                expectedGeneration = scrollRegistryGeneration,
-                itemCount = humanDetailListState.layoutInfo.totalItemsCount,
-                writeEpoch = scrollRegistryWriteEpoch
-            )
+        val state = humanDetailListState
+        LaunchedEffect(memberScrollKey) {
+            snapshotFlow {
+                Triple(
+                    state.firstVisibleItemIndex,
+                    state.firstVisibleItemScrollOffset,
+                    state.layoutInfo.totalItemsCount
+                )
+            }.collect {
+                tracker.observe(state) { position ->
+                    MemberDetailScrollStateRegistry.saveHumanListPosition(
+                        memberScrollKey,
+                        position,
+                        expectedGeneration = scrollRegistryGeneration,
+                        writeEpoch = scrollRegistryWriteEpoch
+                    )
+                }
+            }
         }
     }
     DisposableEffect(memberScrollKey) {
         onDispose {
             agentTabListStates.forEach { (tab, state) ->
-                MemberDetailScrollStateRegistry.saveAgentTabPosition(
+                scrollTrackers[tab]?.lastPosition?.let { position ->
+                    MemberDetailScrollStateRegistry.saveAgentTabPosition(
+                        memberScrollKey,
+                        tab,
+                        position,
+                        expectedGeneration = scrollRegistryGeneration,
+                        writeEpoch = scrollRegistryWriteEpoch
+                    )
+                }
+            }
+            scrollTrackers["human"]?.lastPosition?.let { position ->
+                MemberDetailScrollStateRegistry.saveHumanListPosition(
                     memberScrollKey,
-                    tab,
-                    MemberDetailScrollPosition(
-                        firstVisibleItemIndex = state.firstVisibleItemIndex,
-                        firstVisibleItemScrollOffset = state.firstVisibleItemScrollOffset
-                    ),
+                    position,
                     expectedGeneration = scrollRegistryGeneration,
-                    itemCount = state.layoutInfo.totalItemsCount,
                     writeEpoch = scrollRegistryWriteEpoch
                 )
             }
-            MemberDetailScrollStateRegistry.saveHumanListPosition(
-                memberScrollKey,
-                MemberDetailScrollPosition(
-                    firstVisibleItemIndex = humanDetailListState.firstVisibleItemIndex,
-                    firstVisibleItemScrollOffset = humanDetailListState.firstVisibleItemScrollOffset
-                ),
-                expectedGeneration = scrollRegistryGeneration,
-                itemCount = humanDetailListState.layoutInfo.totalItemsCount,
-                writeEpoch = scrollRegistryWriteEpoch
-            )
         }
     }
     var managementMenuOpen by remember(member.id.value, initialVisualMode) { mutableStateOf(false) }
@@ -13827,6 +13852,50 @@ internal data class MemberDetailScrollPosition(
     val firstVisibleItemScrollOffset: Int = 0
 )
 
+/**
+ * Per-composition scroll handoff for one member-detail list. Loading lists
+ * clamp a seeded LazyListState to index 0 (which is why the earlier
+ * initialIndex-only restore never survived async content), so the tracker
+ * re-applies the snapshot on the first frame that actually has items and
+ * keeps the last position observed with content — the position a dispose
+ * fallback publishes after the list detached (and reads 0 items).
+ */
+internal class MemberDetailScrollTracker(
+    private val restoreTo: MemberDetailScrollPosition
+) {
+    var lastPosition: MemberDetailScrollPosition? = null
+        private set
+    private var restoreApplied = false
+
+    fun observe(state: LazyListState, save: (MemberDetailScrollPosition) -> Unit) {
+        if (state.layoutInfo.totalItemsCount <= 0) return
+        if (!restoreApplied) {
+            restoreApplied = true
+            val target = restoreTo
+            if (
+                (target.firstVisibleItemIndex > 0 || target.firstVisibleItemScrollOffset > 0) &&
+                    (state.firstVisibleItemIndex != target.firstVisibleItemIndex ||
+                        state.firstVisibleItemScrollOffset !=
+                            target.firstVisibleItemScrollOffset)
+            ) {
+                state.requestScrollToItem(
+                    target.firstVisibleItemIndex,
+                    target.firstVisibleItemScrollOffset
+                )
+            }
+        }
+        val position =
+            MemberDetailScrollPosition(
+                firstVisibleItemIndex = state.firstVisibleItemIndex,
+                firstVisibleItemScrollOffset = state.firstVisibleItemScrollOffset
+            )
+        if (lastPosition != position) {
+            lastPosition = position
+            save(position)
+        }
+    }
+}
+
 internal object MemberDetailScrollStateRegistry {
     // Bound the map so a long session hopping across many members/accounts
     // cannot grow it without limit: beyond this many distinct member keys the
@@ -13876,13 +13945,12 @@ internal object MemberDetailScrollStateRegistry {
     }
 
     // The epoch map tracks one long per member key and is bounded the same
-    // way. Only truly orphaned entries are evicted: an epoch whose owner has
-    // not saved yet (its early frames may be dropped by the itemCount gate)
-    // is still the active writer — removing it would retire a live page and
-    // reject every later save it makes. So entries survive while their key
-    // has no snapshot yet; orphans are pruned only when the key's positions
-    // existed and were evicted, or never arrived and newer owners exist for
-    // OTHER keys (bounded via a generous cap on epoch entries).
+    // way. An epoch entry is never removed just because its owner has not
+    // saved yet — a page still in Loading (zero-item frames skipped by the
+    // tracker) is the active writer and retiring it would reject every later
+    // save it makes. Only a hard cap applies: beyond MaxEpochKeys the oldest
+    // entries are evicted, degrading that member to no-restore rather than
+    // breaking correctness.
     private const val MaxEpochKeys = MaxTrackedMemberKeys * 2
     private fun evictOrphanedEpochs() {
         while (latestEpochByMemberKey.size > MaxEpochKeys) {
@@ -13901,7 +13969,6 @@ internal object MemberDetailScrollStateRegistry {
         tab: MembersAgentDetailTab,
         position: MemberDetailScrollPosition,
         expectedGeneration: Long = currentGeneration(),
-        itemCount: Int = Int.MAX_VALUE,
         writeEpoch: Long? = null
     ) {
         synchronized(lock) {
@@ -13910,11 +13977,6 @@ internal object MemberDetailScrollStateRegistry {
             // owns the key's write epoch; a null epoch (non-page callers such
             // as tests) carries no ownership claim and bypasses this check.
             if (writeEpoch != null && latestEpochByMemberKey[memberKey] != writeEpoch) return
-            // An empty/Loading list reports index 0 without representing a
-            // real scroll. While the old and new detail coexist, the new
-            // page's save flow could otherwise publish that clamped zero and
-            // clobber the snapshot the handoff depends on.
-            if (itemCount == 0) return
             agentTabPositions.getOrPut(memberKey) { mutableMapOf() }[tab] = position
             agentTabPositions.evictOldestOverCap()
             evictOrphanedEpochs()
@@ -13928,13 +13990,11 @@ internal object MemberDetailScrollStateRegistry {
         memberKey: String,
         position: MemberDetailScrollPosition,
         expectedGeneration: Long = currentGeneration(),
-        itemCount: Int = Int.MAX_VALUE,
         writeEpoch: Long? = null
     ) {
         synchronized(lock) {
             if (expectedGeneration != generation) return
             if (writeEpoch != null && latestEpochByMemberKey[memberKey] != writeEpoch) return
-            if (itemCount == 0) return
             humanListPositions[memberKey] = position
             humanListPositions.evictOldestOverCap()
             evictOrphanedEpochs()
