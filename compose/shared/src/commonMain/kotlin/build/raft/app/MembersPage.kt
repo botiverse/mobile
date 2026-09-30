@@ -5487,7 +5487,8 @@ private fun MembersDetailContent(
                     memberScrollKey,
                     tab,
                     position,
-                    expectedGeneration = scrollRegistryGeneration
+                    expectedGeneration = scrollRegistryGeneration,
+                    itemCount = state.layoutInfo.totalItemsCount
                 )
             }
         }
@@ -5502,7 +5503,8 @@ private fun MembersDetailContent(
             MemberDetailScrollStateRegistry.saveHumanListPosition(
                 memberScrollKey,
                 position,
-                expectedGeneration = scrollRegistryGeneration
+                expectedGeneration = scrollRegistryGeneration,
+                itemCount = humanDetailListState.layoutInfo.totalItemsCount
             )
         }
     }
@@ -5516,7 +5518,8 @@ private fun MembersDetailContent(
                         firstVisibleItemIndex = state.firstVisibleItemIndex,
                         firstVisibleItemScrollOffset = state.firstVisibleItemScrollOffset
                     ),
-                    expectedGeneration = scrollRegistryGeneration
+                    expectedGeneration = scrollRegistryGeneration,
+                    itemCount = state.layoutInfo.totalItemsCount
                 )
             }
             MemberDetailScrollStateRegistry.saveHumanListPosition(
@@ -5525,7 +5528,8 @@ private fun MembersDetailContent(
                     firstVisibleItemIndex = humanDetailListState.firstVisibleItemIndex,
                     firstVisibleItemScrollOffset = humanDetailListState.firstVisibleItemScrollOffset
                 ),
-                expectedGeneration = scrollRegistryGeneration
+                expectedGeneration = scrollRegistryGeneration,
+                itemCount = humanDetailListState.layoutInfo.totalItemsCount
             )
         }
     }
@@ -13842,10 +13846,16 @@ internal object MemberDetailScrollStateRegistry {
         memberKey: String,
         tab: MembersAgentDetailTab,
         position: MemberDetailScrollPosition,
-        expectedGeneration: Long = currentGeneration()
+        expectedGeneration: Long = currentGeneration(),
+        itemCount: Int = Int.MAX_VALUE
     ) {
         synchronized(lock) {
             if (expectedGeneration != generation) return
+            // An empty/Loading list reports index 0 without representing a
+            // real scroll. While the old and new detail coexist, the new
+            // page's save flow could otherwise publish that clamped zero and
+            // clobber the snapshot the handoff depends on.
+            if (itemCount == 0) return
             agentTabPositions.getOrPut(memberKey) { mutableMapOf() }[tab] = position
             agentTabPositions.evictOldestOverCap()
         }
@@ -13857,10 +13867,12 @@ internal object MemberDetailScrollStateRegistry {
     fun saveHumanListPosition(
         memberKey: String,
         position: MemberDetailScrollPosition,
-        expectedGeneration: Long = currentGeneration()
+        expectedGeneration: Long = currentGeneration(),
+        itemCount: Int = Int.MAX_VALUE
     ) {
         synchronized(lock) {
             if (expectedGeneration != generation) return
+            if (itemCount == 0) return
             humanListPositions[memberKey] = position
             humanListPositions.evictOldestOverCap()
         }

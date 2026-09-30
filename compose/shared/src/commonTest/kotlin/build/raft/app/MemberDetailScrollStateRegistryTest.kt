@@ -114,4 +114,46 @@ class MemberDetailScrollStateRegistryTest {
             MemberDetailScrollStateRegistry.humanListPosition("u2:s1:human:h1")
         )
     }
+
+    @Test
+    fun `empty list save cannot clobber a populated snapshot during page handoff`() {
+        MemberDetailScrollStateRegistry.clear()
+        MemberDetailScrollStateRegistry.saveAgentTabPosition(
+            "u1:s1:agent:m1",
+            MembersAgentDetailTab.Profile,
+            MemberDetailScrollPosition(firstVisibleItemIndex = 20),
+            itemCount = 90
+        )
+        // The recreated page's list is still Loading (zero items); its first
+        // emitted position is a clamped zero, not a real scroll to top.
+        MemberDetailScrollStateRegistry.saveAgentTabPosition(
+            "u1:s1:agent:m1",
+            MembersAgentDetailTab.Profile,
+            MemberDetailScrollPosition(),
+            itemCount = 0
+        )
+        assertEquals(
+            MemberDetailScrollPosition(firstVisibleItemIndex = 20),
+            MemberDetailScrollStateRegistry.agentTabPosition("u1:s1:agent:m1", MembersAgentDetailTab.Profile)
+        )
+    }
+
+    @Test
+    fun `zero position still saves when the list is populated`() {
+        MemberDetailScrollStateRegistry.clear()
+        MemberDetailScrollStateRegistry.saveHumanListPosition(
+            "u1:s1:human:h1",
+            MemberDetailScrollPosition(firstVisibleItemIndex = 8),
+            itemCount = 40
+        )
+        MemberDetailScrollStateRegistry.saveHumanListPosition(
+            "u1:s1:human:h1",
+            MemberDetailScrollPosition(),
+            itemCount = 40
+        )
+        assertEquals(
+            MemberDetailScrollPosition(),
+            MemberDetailScrollStateRegistry.humanListPosition("u1:s1:human:h1")
+        )
+    }
 }
