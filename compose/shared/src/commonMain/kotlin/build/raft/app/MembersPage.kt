@@ -5421,10 +5421,14 @@ private fun MembersDetailContent(
     // transition, and the recreated detail must resume at the same scroll
     // offset — keyed by member identity so one member's position never
     // leaks onto another.
+    // Account is part of the scroll key: two sessions can show the same
+    // serverId:kind:memberId identity, and without the viewer's user id a
+    // sign-out/sign-in switch would restore the previous account's offsets.
     val memberScrollKey =
-        member.membersDetailSelectionKey(
-            currentServerId?.trim() ?: member.serverId?.value?.trim().orEmpty()
-        )
+        "${currentUserId?.trim().orEmpty()}:" +
+            member.membersDetailSelectionKey(
+                currentServerId?.trim() ?: member.serverId?.value?.trim().orEmpty()
+            )
     val agentTabListStates =
         MembersAgentDetailTab.entries.associateWith { tab ->
             MemberDetailScrollStateRegistry.agentTabState(memberScrollKey, tab)
@@ -13687,9 +13691,10 @@ internal fun MemberProfile.membersDetailSelectionKey(serverId: String): String =
  * embedded right-pane child (and the narrowed single-pane detail) destroys
  * and recreates the whole detail subtree on every pane transition, so
  * `rememberLazyListState` inside it always started back at the top. States
- * live here keyed by member identity (`membersDetailSelectionKey`) plus tab,
- * so a recreated detail resumes where it left off and one member's offsets
- * never leak onto another member. Entries are dropped with the process; no
+ * live here keyed by viewer account + member identity
+ * (`currentUserId:membersDetailSelectionKey`) plus tab, so a recreated detail
+ * resumes where it left off and offsets never leak across members or
+ * accounts. Entries are dropped with the process; no
  * persistence is intended — this only bridges in-session pane transitions.
  * At most one detail surface is composed per shell at a time, so reusing the
  * same LazyListState instance is safe.
