@@ -5672,12 +5672,20 @@ private fun MembersDetailContent(
             // a real user drag.
             state.interactionSource.interactions.collect { interaction ->
                 if (interaction is DragInteraction.Start) {
-                    // A queued requestScrollToItem has no cancel handle: the
-                    // target was already written into scrollPosition and is
-                    // applied at the next remeasure. Supersede it at the same
-                    // layer by requesting the CURRENT position, so a pending
-                    // restore cannot snap the list away from the user's drag.
-                    if (state.isScrollInProgress) {
+                    // A requestScrollToItem target is written into
+                    // scrollPosition synchronously and has no cancel handle.
+                    // If one of ours is still pending and no scroll is
+                    // running yet, supersede it at the same layer by
+                    // re-requesting the CURRENT position so the pending
+                    // remeasure cannot snap away from this drag. We must NOT
+                    // call this while a scroll is in progress:
+                    // requestScrollToItem cancels in-flight scrolls via
+                    // scroll{} and would interrupt the user's own gesture —
+                    // and in that case the drag's deltas overwrite the
+                    // written target on their own anyway.
+                    if (tracker.hasPendingRestoreRequest &&
+                        !state.isScrollInProgress
+                    ) {
                         state.requestScrollToItem(
                             state.firstVisibleItemIndex,
                             state.firstVisibleItemScrollOffset
@@ -5722,7 +5730,9 @@ private fun MembersDetailContent(
         LaunchedEffect(memberScrollKey) {
             state.interactionSource.interactions.collect { interaction ->
                 if (interaction is DragInteraction.Start) {
-                    if (state.isScrollInProgress) {
+                    if (tracker.hasPendingRestoreRequest &&
+                        !state.isScrollInProgress
+                    ) {
                         state.requestScrollToItem(
                             state.firstVisibleItemIndex,
                             state.firstVisibleItemScrollOffset
@@ -14118,6 +14128,10 @@ internal class MemberDetailScrollTracker(
     // a programmatic frame (LiBai 237->380->stop380 example). isScrollInProgress
     // alone cannot distinguish either because requestScrollToItem also sets it.
     private var userScrollActive = false
+
+    /** True while a restore request we issued is still pending application. */
+    val hasPendingRestoreRequest: Boolean
+        get() = restoreSettlePending && issuedRestoreRequest
 
     fun onUserScrollStarted() {
         userScrollActive = true
