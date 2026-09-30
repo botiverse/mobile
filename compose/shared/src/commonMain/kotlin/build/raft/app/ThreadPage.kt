@@ -4727,58 +4727,58 @@ private fun ThreadMembersPageScreen() {
                     )
                 }
             }
-        if (addDialogVisible && canAddMembers) {
-            ThreadAddMemberModal(
-                inline = true,
-                members = members,
-                candidates = candidates,
-                canAddMembers = canAddMembers,
-                agentStatusResolver = agentStatusResolver,
-                memberAvatarResolver = memberAvatarResolver,
-                addMemberStatus = addMemberStatus,
-                addMemberErrorCode = addMemberErrorCode,
-                onDismiss = { addDialogVisible = false },
-                onSubmit = { member ->
-                    val profile = member.toMemberProfile() ?: return@ThreadAddMemberModal
-                    if (addMemberStatus == "adding") return@ThreadAddMemberModal
-                    addMemberStatus = "adding"
-                    addMemberErrorCode = null
-                    memberScope.launch {
-                        when (
-                            val result =
-                                serverMembersStore.addChannelMember(
-                                    owner = routeOwner,
-                                    request =
-                                        AddChannelMemberRequest(
-                                            channelId = route.channelId,
-                                            memberId = profile.id,
-                                            kind = profile.kind
-                                        ),
-                                    priority = DataRequestPriority.Foreground
-                                )
-                        ) {
-                            is DataResult.Content -> {
-                                addMemberStatus = "idle"
-                                addMemberErrorCode = null
-                                addDialogVisible = false
-                            }
-                            is DataResult.NoPermission -> {
-                                addMemberStatus = "no_permission"
-                                addMemberErrorCode = result.blocker.code
-                            }
-                            is DataResult.Error -> {
-                                addMemberStatus = "failed"
-                                addMemberErrorCode = result.error.code
-                            }
-                            is DataResult.Empty -> {
-                                addMemberStatus = "failed"
-                                addMemberErrorCode = result.reason.name
+            if (addDialogVisible && canAddMembers) {
+                ThreadAddMemberModal(
+                    inline = true,
+                    members = members,
+                    candidates = candidates,
+                    canAddMembers = canAddMembers,
+                    agentStatusResolver = agentStatusResolver,
+                    memberAvatarResolver = memberAvatarResolver,
+                    addMemberStatus = addMemberStatus,
+                    addMemberErrorCode = addMemberErrorCode,
+                    onDismiss = { addDialogVisible = false },
+                    onSubmit = { member ->
+                        val profile = member.toMemberProfile() ?: return@ThreadAddMemberModal
+                        if (addMemberStatus == "adding") return@ThreadAddMemberModal
+                        addMemberStatus = "adding"
+                        addMemberErrorCode = null
+                        memberScope.launch {
+                            when (
+                                val result =
+                                    serverMembersStore.addChannelMember(
+                                        owner = routeOwner,
+                                        request =
+                                            AddChannelMemberRequest(
+                                                channelId = route.channelId,
+                                                memberId = profile.id,
+                                                kind = profile.kind
+                                            ),
+                                        priority = DataRequestPriority.Foreground
+                                    )
+                            ) {
+                                is DataResult.Content -> {
+                                    addMemberStatus = "idle"
+                                    addMemberErrorCode = null
+                                    addDialogVisible = false
+                                }
+                                is DataResult.NoPermission -> {
+                                    addMemberStatus = "no_permission"
+                                    addMemberErrorCode = result.blocker.code
+                                }
+                                is DataResult.Error -> {
+                                    addMemberStatus = "failed"
+                                    addMemberErrorCode = result.error.code
+                                }
+                                is DataResult.Empty -> {
+                                    addMemberStatus = "failed"
+                                    addMemberErrorCode = result.reason.name
+                                }
                             }
                         }
                     }
-                }
-            )
-        }
+                )
+            }
         }
         SlockBackHandler(enabled = addDialogVisible, label = "thread_members_inline_add") {
             if (addMemberStatus != "adding") addDialogVisible = false
