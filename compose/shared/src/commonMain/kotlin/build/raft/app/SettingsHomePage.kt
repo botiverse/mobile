@@ -17936,6 +17936,11 @@ private fun SharedMembersScreen(
     var state by remember(currentServerId) {
         mutableStateOf<SharedMembersUiState>(initialContent ?: SharedMembersUiState.Loading)
     }
+    // task #58: click-order token for the inline detail open — the preload is a
+    // coroutine, so a slow Agent open can resolve after a later Human click.
+    // Stamp the click here (synchronously) and only let the matching generation
+    // apply its pageData; stale preloads cannot overwrite the newest selection.
+    var memberDetailOpenGeneration by remember { mutableStateOf(0L) }
     var refreshing by remember { mutableStateOf(false) }
     val pager = LocalActivity.current.getPager() as Pager
     val routeScope = rememberCoroutineScope()
@@ -18252,6 +18257,8 @@ private fun SharedMembersScreen(
                 agentStatusResolver = agentStatusResolver,
                 onOpenMemberDetail = { member ->
                     onForegroundActivity("open_member")
+                    memberDetailOpenGeneration += 1L
+                    val openGeneration = memberDetailOpenGeneration
                     routeScope.launch {
                         val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
                         val accessMode = identity.memberDetailAccessMode(serverId)
@@ -18291,7 +18298,14 @@ private fun SharedMembersScreen(
                                 )
                             agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
                             if (onOpenMemberDetailInline != null) {
-                                onOpenMemberDetailInline(serverId, identity, pageData)
+                                if (openGeneration == memberDetailOpenGeneration) {
+                                    onOpenMemberDetailInline(serverId, identity, pageData)
+                                } else {
+                                    bridge.log(
+                                        "members_detail_open_inline_stale " +
+                                            "generation=$openGeneration current=$memberDetailOpenGeneration"
+                                    )
+                                }
                             } else {
                                 pager.openSlockPage(
                                     pageName = MEMBER_DETAIL_PAGE,
