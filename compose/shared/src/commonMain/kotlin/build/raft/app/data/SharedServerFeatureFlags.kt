@@ -56,9 +56,9 @@ const val THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY: String =
 
 /**
  * Thread message list laid out bottom-up (`reverseLayout`): the newest row is item 0 and renders
- * at the bottom from the first frame, with no scroll-to-bottom pass. Default OFF everywhere; local
- * A/B goes through the diagnostics "Local Feature Overrides" ForceOn/ForceOff latch. Decided once
- * per thread open.
+ * at the bottom from the first frame, with no scroll-to-bottom pass. On by default in alpha builds;
+ * release builds follow this server flag (default OFF). Local A/B goes through the diagnostics
+ * "Local Feature Overrides" ForceOn/ForceOff latch. Decided once per thread open.
  */
 const val MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY: String = "mobile_thread_reverse_layout_v0"
 
