@@ -68,6 +68,7 @@ import build.raft.app.data.SharedAgentDetailState
 import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.SharedAgentIssueReportRequest
 import build.raft.app.data.SharedAgentPanelTabOrderStore
+import build.raft.app.data.SlockAuthSessionChangeSource
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockAvatarCacheRuntime
 import build.raft.app.data.SlockAvatarNativeCache
@@ -3423,18 +3424,29 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
     //   previous member's loaded state before this effect runs).
     //   The session is read inside the effect at apply time, so an account
     //   switch mid-flight cannot reuse a stale id captured at composition.
+    //   sessionChanges (wake signal, replay=0) re-arms the read on account
+    //   switch / token change so a NEW session's id patches a still-seeded
+    //   Human; a cleared session simply finds nothing and leaves the gate
+    //   closed — the canonical load still supplies identity when it lands.
     LaunchedEffect(memberIdentity, provider.authStore) {
-        val session = provider.authStore.readSession()
-        val uid = session?.user?.id?.trim()?.takeIf { it.isNotBlank() }
-            ?: return@LaunchedEffect
-        (routeState as? MemberDetailRouteState.Human)?.let { current ->
-            val stillSeededForThisMember =
-                current.currentUserId.isNullOrBlank() &&
-                    current.member.id == memberIdentity?.memberId
-            if (stillSeededForThisMember) {
-                routeState = current.copy(currentUserId = uid)
+        val applySessionUserId: suspend () -> Unit = {
+            val session = provider.authStore.readSession()
+            val uid = session?.user?.id?.trim()?.takeIf { it.isNotBlank() }
+            if (uid != null) {
+                (routeState as? MemberDetailRouteState.Human)?.let { current ->
+                    val stillSeededForThisMember =
+                        current.currentUserId.isNullOrBlank() &&
+                            current.member.id == memberIdentity?.memberId
+                    if (stillSeededForThisMember) {
+                        routeState = current.copy(currentUserId = uid)
+                    }
+                }
             }
         }
+        applySessionUserId()
+        (provider.authStore as? SlockAuthSessionChangeSource)
+            ?.sessionChanges
+            ?.collect { applySessionUserId() }
     }
     var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
     var agentProfileRequestGeneration by remember { mutableStateOf(0L) }
