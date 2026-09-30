@@ -202,6 +202,8 @@ import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.semantics.selected
+import com.tencent.kuikly.compose.ui.semantics.semantics
 import com.tencent.kuikly.compose.ui.layout.boundsInRoot
 import com.tencent.kuikly.compose.ui.geometry.Rect
 import com.tencent.kuikly.compose.ui.geometry.Offset
@@ -4897,7 +4899,17 @@ internal fun MembersListContent(
                     label = displayAgentsLabel,
                     count = agents.size,
                     expanded = agentsExpanded,
-                    onExpandedChange = { agentsExpanded = it },
+                    onExpandedChange = {
+                        // Task #409 forensics: the AGENTS section header also
+                        // collapses the whole list visually but is session-only
+                        // state — log it so a collapse with no machine-group
+                        // tap/write can be attributed to this path.
+                        slockLogInfo(
+                            "SlockMembersCollapse",
+                            "members_agents_section_toggle expanded=$it"
+                        )
+                        agentsExpanded = it
+                    },
                     modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
                     minHeight = MembersListSectionHeaderMinHeight,
                     trailingContent = {
@@ -13348,6 +13360,7 @@ private fun MembersListRow(
             .background(
                 if (selected) SlockColor.AccentPink.copy(alpha = 0.2f) else Color.Transparent
             )
+            .semantics { this.selected = selected }
             .clickable(onClick = onClick)
             .padding(vertical = SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
