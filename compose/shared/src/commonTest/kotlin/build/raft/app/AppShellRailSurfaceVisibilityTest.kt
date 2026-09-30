@@ -246,6 +246,30 @@ class AppShellMembersDetailPaneTest {
     }
 
     @Test
+    fun `member detail close event only clears the matching live selection`() {
+        val selection =
+            AppShellMemberDetailSelection(
+                serverId = "s1",
+                memberId = "m1",
+                kind = "agent",
+                pageData = com.tencent.kuikly.core.nvi.serialization.json.JSONObject(),
+                generation = 3L,
+            )
+        // Live close: same key + same generation clears.
+        assertTrue(appShellMemberDetailCloseApplies("s1:agent:m1", 3L, selection))
+        // Blank or foreign keys never clear.
+        assertFalse(appShellMemberDetailCloseApplies("", 3L, selection))
+        assertFalse(appShellMemberDetailCloseApplies("s1:human:m1", 3L, selection))
+        assertFalse(appShellMemberDetailCloseApplies("s1:agent:m2", 3L, selection))
+        // A close posted by a previous generation (incl. same-member reopen)
+        // must not clear the newer selection.
+        assertFalse(appShellMemberDetailCloseApplies("s1:agent:m1", 2L, selection))
+        assertFalse(appShellMemberDetailCloseApplies("s1:agent:m1", 0L, selection))
+        // A close against no live selection is a no-op.
+        assertFalse(appShellMemberDetailCloseApplies("s1:agent:m1", 3L, null))
+    }
+
+    @Test
     fun `member selection identity key distinguishes server kind member`() {
         val selection =
             AppShellMemberDetailSelection(

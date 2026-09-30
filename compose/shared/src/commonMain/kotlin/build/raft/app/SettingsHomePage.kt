@@ -1304,6 +1304,25 @@ internal fun appShellMembersDetailPaneVisible(
     layout: SlockAdaptivePaneLayout,
 ): Boolean = desktopModeOnLargeScreen && layout == SlockAdaptivePaneLayout.DualPane
 
+/**
+ * task #58 embedded member-detail close contract: a SLOCK_MEMBER_DETAIL_CLOSE_EVENT
+ * clears the shell selection only when it was posted by the live detail — the
+ * member identity key must be non-blank and equal, and the generation must match
+ * the selection's open generation exactly. A stale close (older detail, dropped
+ * in-flight open, or same-member reopen superseded by a newer generation) must
+ * never clear the newer selection.
+ */
+internal fun appShellMemberDetailCloseApplies(
+    eventKey: String,
+    eventGeneration: Long,
+    selection: AppShellMemberDetailSelection?,
+): Boolean {
+    val current = selection ?: return false
+    return eventKey.isNotBlank() &&
+        eventKey == current.key &&
+        eventGeneration == current.generation
+}
+
 internal fun shouldHandleAppShellTabSelection(currentTab: String, nextTab: String): Boolean =
     retainedAppShellSelectedTab(currentTab) != retainedAppShellSelectedTab(nextTab)
 
@@ -4288,23 +4307,28 @@ private fun SlockAppShellReadyContent(
 
     // task #58: the embedded member detail posts its own close intent; the shell
     // clears the selection rather than letting the child close a route it does not own.
-    LaunchedEffect(navigationStoreScope.shellInstanceId) {
-        sharedStores.eventBus.observe(
-            eventName = SLOCK_MEMBER_DETAIL_CLOSE_EVENT,
-            crossProcess = true,
-        ) { eventData ->
-            val shellId =
-                eventData?.optString(SLOCK_MEMBER_DETAIL_CLOSE_SHELL_ID)?.trim()
-                    ?: return@observe
-            if (shellId != navigationStoreScope.shellInstanceId) return@observe
-            val key = eventData.optString(SLOCK_MEMBER_DETAIL_CLOSE_KEY).trim()
-            val generation = eventData.optDouble(SLOCK_MEMBER_DETAIL_CLOSE_GENERATION, 0.0).toLong()
-            val current = selectedAppShellMemberDetail ?: return@observe
-            if (key.isNotBlank() && key != current.key) return@observe
-            // A close posted by an older detail must not clear a newer selection.
-            if (generation > 0L && generation < current.generation) return@observe
-            selectedAppShellMemberDetail = null
-        }
+    // The close must match the live selection's identity key AND its open
+    // generation exactly — an event posted by a previously disposed detail (or a
+    // stale in-flight one) must not clear a newer selection, including reopening
+    // the same member.
+    DisposableEffect(sharedStores.eventBus, navigationStoreScope.shellInstanceId) {
+        val subscription =
+            sharedStores.eventBus.observe(
+                eventName = SLOCK_MEMBER_DETAIL_CLOSE_EVENT,
+                crossProcess = true,
+            ) { eventData ->
+                val shellId =
+                    eventData?.optString(SLOCK_MEMBER_DETAIL_CLOSE_SHELL_ID)?.trim()
+                        ?: return@observe
+                if (shellId != navigationStoreScope.shellInstanceId) return@observe
+                val key = eventData.optString(SLOCK_MEMBER_DETAIL_CLOSE_KEY).trim()
+                val generation = eventData.optDouble(SLOCK_MEMBER_DETAIL_CLOSE_GENERATION, 0.0).toLong()
+                if (!appShellMemberDetailCloseApplies(key, generation, selectedAppShellMemberDetail)) {
+                    return@observe
+                }
+                selectedAppShellMemberDetail = null
+            }
+        onDispose { subscription.close() }
     }
 
     // task #58: member detail is server-scoped — switching servers must not keep a
@@ -6902,7 +6926,7 @@ private fun SlockAppShellReadyContent(
                             },
                             onOpenMemberDetailInline =
                                 if (membersDualPane) {
-                                    { listServerId, identity, pageData ->
+                                    { listServerId, identity, pageData, openGeneration ->
                                         prewarmAdmissionGate.invalidate("members_open_detail_inline")
                                         // The click's list server is authoritative — a server
                                         // switch that raced the preload must not re-home this
@@ -17951,7 +17975,7 @@ private fun SharedMembersScreen(
     // task #58: on wide screens the member detail renders in the right pane of the
     // same surface (web-style list|detail); when null the legacy standalone push is
     // used (compact / desktop mode off).
-    onOpenMemberDetailInline: ((serverId: String, MemberDetailIdentity, JSONObject) -> Unit)? = null,
+    onOpenMemberDetailInline: ((serverId: String, MemberDetailIdentity, JSONObject, openGeneration: Long) -> Unit)? = null,
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     val membersTitle = stringResource(MR.strings.tab_members)
@@ -18326,7 +18350,7 @@ private fun SharedMembersScreen(
                             agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
                             if (onOpenMemberDetailInline != null) {
                                 if (openGeneration == memberDetailOpenGeneration) {
-                                    onOpenMemberDetailInline(serverId, identity, pageData)
+                                    onOpenMemberDetailInline(serverId, identity, pageData, openGeneration)
                                 } else {
                                     bridge.log(
                                         "members_detail_open_inline_stale " +
