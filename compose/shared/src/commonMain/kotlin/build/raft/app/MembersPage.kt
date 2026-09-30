@@ -4935,6 +4935,16 @@ internal fun MembersListContent(
                                         resolveAgentGroupCollapseToggle(
                                             isAgentGroupCollapsed(group.key)
                                         )
+                                    // Task #409 forensics: log the tap before
+                                    // the store write so write=0 can separate
+                                    // "tap never reached this handler" from
+                                    // "store absent / blank scope skipped".
+                                    slockLogInfo(
+                                        "SlockMembersCollapse",
+                                        "members_agent_group_collapse_tap " +
+                                            "machineKey=${group.key} storePresent=${agentGroupCollapseStore != null} " +
+                                            "userIdBlank=${membersCurrentUserId.isBlank()} collapseNow=$collapseNow"
+                                    )
                                     agentGroupCollapseOverrides =
                                         agentGroupCollapseOverrides + (group.key to collapseNow)
                                     agentGroupCollapseStore?.setCollapsed(
@@ -5405,10 +5415,20 @@ private fun MembersDetailContent(
     // set when the detail switches member, so one member's scroll offsets
     // never show up on another (same pattern as ThreadPage's listState). The
     // map covers the FULL enum, so getValue below is total whatever the
-    // visible-tab set is.
-    val agentTabListStates = key(member.id.value) {
-        MembersAgentDetailTab.entries.associateWith { rememberLazyListState() }
-    }
+    // visible-tab set is. States now come from the session registry rather
+    // than a bare remember: the embedded right-pane child (and the narrowed
+    // single-pane detail) destroys this whole subtree on every pane
+    // transition, and the recreated detail must resume at the same scroll
+    // offset — keyed by member identity so one member's position never
+    // leaks onto another.
+    val memberScrollKey =
+        member.membersDetailSelectionKey(
+            currentServerId?.trim() ?: member.serverId?.value?.trim().orEmpty()
+        )
+    val agentTabListStates =
+        MembersAgentDetailTab.entries.associateWith { tab ->
+            MemberDetailScrollStateRegistry.agentTabState(memberScrollKey, tab)
+        }
     var managementMenuOpen by remember(member.id.value, initialVisualMode) { mutableStateOf(false) }
     val storeLifecycleInFlight: String? = storeState.lifecycleActionInFlight
     val storeDiagnosticInFlight: String? = storeState.diagnosticActionInFlight
@@ -6005,6 +6025,7 @@ private fun MembersDetailContent(
                 }
             } else {
                 LazyColumn(
+                    state = MemberDetailScrollStateRegistry.humanListState(memberScrollKey),
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
                     beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
@@ -13660,6 +13681,32 @@ private val MemberProfile.membersComputerName: String?
  */
 internal fun MemberProfile.membersDetailSelectionKey(serverId: String): String =
     "${serverId.trim()}:${kind.memberKindWireValue()}:${id.value}"
+
+/**
+ * task #58: session-scoped scroll positions for member detail panes. The
+ * embedded right-pane child (and the narrowed single-pane detail) destroys
+ * and recreates the whole detail subtree on every pane transition, so
+ * `rememberLazyListState` inside it always started back at the top. States
+ * live here keyed by member identity (`membersDetailSelectionKey`) plus tab,
+ * so a recreated detail resumes where it left off and one member's offsets
+ * never leak onto another member. Entries are dropped with the process; no
+ * persistence is intended — this only bridges in-session pane transitions.
+ * At most one detail surface is composed per shell at a time, so reusing the
+ * same LazyListState instance is safe.
+ */
+internal object MemberDetailScrollStateRegistry {
+    private val agentTabStates = mutableMapOf<String, MutableMap<MembersAgentDetailTab, LazyListState>>()
+    private val humanListStates = mutableMapOf<String, LazyListState>()
+
+    @OptIn(com.tencent.kuikly.compose.foundation.ExperimentalFoundationApi::class)
+    fun agentTabState(memberKey: String, tab: MembersAgentDetailTab): LazyListState =
+        agentTabStates.getOrPut(memberKey) { mutableMapOf() }
+            .getOrPut(tab) { LazyListState() }
+
+    @OptIn(com.tencent.kuikly.compose.foundation.ExperimentalFoundationApi::class)
+    fun humanListState(memberKey: String): LazyListState =
+        humanListStates.getOrPut(memberKey) { LazyListState() }
+}
 
 private val MemberProfile.membersComputerId: String?
     get() =
