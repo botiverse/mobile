@@ -14081,6 +14081,12 @@ internal fun Modifier.membersDetailUserDragProbe(
                 if (!change.pressed) break
                 accumulated += change.positionChangeIgnoreConsumed()
                 if (accumulated.getDistance() > slop) {
+                    // Order matters: hasPendingRestoreRequest reads
+                    // issuedRestoreRequest, which onUserScrollStarted()
+                    // clears — capture the pending state BEFORE reporting
+                    // the gesture.
+                    val pendingRestore = tracker.hasPendingRestoreRequest
+                    val measured = tracker.lastObservedPosition
                     tracker.onUserScrollStarted()
                     // Supersede a pending restore request at the same layer:
                     // requestScrollToItem has no cancel handle — the target
@@ -14090,9 +14096,8 @@ internal fun Modifier.membersDetailUserDragProbe(
                     // list away from this drag. Guarded by no-scroll-in-flight
                     // because the API cancels an ongoing scroll (which at this
                     // instant could be the user's own just-started drag).
-                    val measured = tracker.lastPosition
                     if (
-                        tracker.hasPendingRestoreRequest &&
+                        pendingRestore &&
                         !state.isScrollInProgress &&
                         measured != null
                     ) {
@@ -14152,6 +14157,14 @@ internal class MemberDetailScrollTracker(
     // alone cannot distinguish either because requestScrollToItem also sets it.
     private var userScrollActive = false
 
+    // The latest frame position actually observed — including landings whose
+    // publish was suppressed (e.g. a post-restore clamp). During a pending
+    // restore, LazyListState.firstVisibleItem* already reads the un-applied
+    // target written into scrollPosition, so this is the only base that
+    // reflects where the list really is.
+    var lastObservedPosition: MemberDetailScrollPosition? = null
+        private set
+
     /** True while a restore request we issued is still pending application. */
     val hasPendingRestoreRequest: Boolean
         get() = restoreSettlePending && issuedRestoreRequest
@@ -14192,6 +14205,11 @@ internal class MemberDetailScrollTracker(
         save: (MemberDetailScrollPosition) -> Unit
     ) {
         if (itemCount <= 0) return
+        lastObservedPosition =
+            MemberDetailScrollPosition(
+                firstVisibleItemIndex = positionIndex,
+                firstVisibleItemScrollOffset = positionOffset
+            )
         if (!restoreApplied) {
             restoreApplied = true
             val target = restoreTo
