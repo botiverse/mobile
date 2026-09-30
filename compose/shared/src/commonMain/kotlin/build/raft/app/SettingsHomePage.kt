@@ -4285,6 +4285,24 @@ private fun SlockAppShellReadyContent(
         }
     }
 
+    // task #58: the embedded member detail posts its own close intent; the shell
+    // clears the selection rather than letting the child close a route it does not own.
+    LaunchedEffect(navigationStoreScope.shellInstanceId) {
+        sharedStores.eventBus.observe(
+            eventName = SLOCK_MEMBER_DETAIL_CLOSE_EVENT,
+            crossProcess = true,
+        ) { eventData ->
+            val shellId =
+                eventData?.optString(SLOCK_MEMBER_DETAIL_CLOSE_SHELL_ID)?.trim()
+                    ?: return@observe
+            if (shellId != navigationStoreScope.shellInstanceId) return@observe
+            val key = eventData.optString(SLOCK_MEMBER_DETAIL_CLOSE_KEY).trim()
+            val current = selectedAppShellMemberDetail ?: return@observe
+            if (key.isNotBlank() && key != current.key) return@observe
+            selectedAppShellMemberDetail = null
+        }
+    }
+
     // task #58: member detail is server-scoped — switching servers must not keep a
     // stale profile open on the right pane.
     LaunchedEffect(readyServerId) {
@@ -6880,18 +6898,31 @@ private fun SlockAppShellReadyContent(
                             },
                             onOpenMemberDetailInline =
                                 if (membersDualPane) {
-                                    { identity, pageData ->
+                                    { listServerId, identity, pageData ->
                                         prewarmAdmissionGate.invalidate("members_open_detail_inline")
+                                        // The click's list server is authoritative — a server
+                                        // switch that raced the preload must not re-home this
+                                        // member under the new server.
                                         selectedAppShellMemberDetail =
                                             AppShellMemberDetailSelection(
-                                                serverId = readyServerId.orEmpty(),
+                                                serverId = listServerId,
                                                 memberId = identity.memberId.value,
                                                 kind = identity.kind.memberKindWireValue(),
-                                                pageData = pageData.withSlockShellStoreScope(navigationStoreScope),
+                                                pageData =
+                                                    pageData
+                                                        .withSlockShellStoreScope(navigationStoreScope)
+                                                        .put(
+                                                            SLOCK_MEMBER_DETAIL_CLOSE_SHELL_ID,
+                                                            navigationStoreScope.shellInstanceId,
+                                                        )
+                                                        .put(
+                                                            SLOCK_MEMBER_DETAIL_CLOSE_KEY,
+                                                            "${listServerId}:${identity.kind.memberKindWireValue()}:${identity.memberId.value}",
+                                                        ),
                                             )
                                         bridge.log(
                                             "members_detail_open_inline memberId=${identity.memberId.value} " +
-                                                "kind=${identity.kind.memberKindWireValue()} serverId=$readyServerId"
+                                                "kind=${identity.kind.memberKindWireValue()} serverId=$listServerId"
                                         )
                                     }
                                 } else {
@@ -17893,7 +17924,7 @@ private fun SharedMembersScreen(
     // task #58: on wide screens the member detail renders in the right pane of the
     // same surface (web-style list|detail); when null the legacy standalone push is
     // used (compact / desktop mode off).
-    onOpenMemberDetailInline: ((MemberDetailIdentity, JSONObject) -> Unit)? = null,
+    onOpenMemberDetailInline: ((serverId: String, MemberDetailIdentity, JSONObject) -> Unit)? = null,
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     val membersTitle = stringResource(MR.strings.tab_members)
@@ -18260,7 +18291,7 @@ private fun SharedMembersScreen(
                                 )
                             agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
                             if (onOpenMemberDetailInline != null) {
-                                onOpenMemberDetailInline(identity, pageData)
+                                onOpenMemberDetailInline(serverId, identity, pageData)
                             } else {
                                 pager.openSlockPage(
                                     pageName = MEMBER_DETAIL_PAGE,

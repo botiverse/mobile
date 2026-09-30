@@ -99,3 +99,7 @@ internal suspend fun <T> MemberDetailIdentity.dispatchMemberDetailLookup(
         MemberKind.External -> unsupported(memberId, kind)
     }
 }
+
+internal const val SLOCK_MEMBER_DETAIL_CLOSE_EVENT = "slockMemberDetailClose"
+internal const val SLOCK_MEMBER_DETAIL_CLOSE_SHELL_ID = "slockMemberDetailCloseShellId"
+internal const val SLOCK_MEMBER_DETAIL_CLOSE_KEY = "slockMemberDetailCloseKey"

@@ -2618,6 +2618,7 @@ internal fun membersAgentDetailOwnerForSession(
 }
 
 private class MemberDetailRouteProvider(
+    val sharedStores: build.raft.app.data.SlockSharedStoreRegistry,
     val bridge: BridgeModule,
     val reportIssueFailedMessage: String,
     val authStore: SlockAuthSessionStore,
@@ -3306,6 +3307,7 @@ private fun rememberMemberDetailRouteProvider(
         agentsApiClient
     ) {
         MemberDetailRouteProvider(
+            sharedStores = sharedStores,
             bridge = bridge,
             reportIssueFailedMessage = reportIssueFailedMessage,
             authStore = authStore,
@@ -3362,6 +3364,28 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
     val provider = rememberMemberDetailRouteProvider(pager, bridge)
     val routeScope = rememberCoroutineScope()
     val memberIdentity = payload.identity
+    // task #58: when hosted as an embedded right-pane child (Members dual pane),
+    // in-page Back affordances must close the detail selection, not the route —
+    // the shell clears its selection on SLOCK_MEMBER_DETAIL_CLOSE_EVENT.
+    val embeddedMemberCloseShellId =
+        pager.pageData.params.optString(SLOCK_MEMBER_DETAIL_CLOSE_SHELL_ID).trim()
+    val embeddedMemberCloseKey =
+        pager.pageData.params.optString(SLOCK_MEMBER_DETAIL_CLOSE_KEY).trim()
+    val closeDetailPage: () -> Unit = {
+        if (embeddedMemberCloseShellId.isNotBlank()) {
+            provider.sharedStores.eventBus.post(
+                eventName = SLOCK_MEMBER_DETAIL_CLOSE_EVENT,
+                eventData =
+                    JSONObject()
+                        .put(SLOCK_MEMBER_DETAIL_CLOSE_SHELL_ID, embeddedMemberCloseShellId)
+                        .put(SLOCK_MEMBER_DETAIL_CLOSE_KEY, embeddedMemberCloseKey),
+                crossProcess = true,
+                source = "member_detail_embedded_back",
+            )
+        } else {
+            provider.bridge.closePage()
+        }
+    }
     val activeServerId by provider.selectedServerStore.currentServerId.collectAsState()
     var routeState by remember(memberIdentity) {
         mutableStateOf(
@@ -3645,12 +3669,12 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
 
     when (val current = routeState) {
         MemberDetailRouteState.Loading ->
-            MemberDetailLoadingPageShell(onBack = { provider.bridge.closePage() })
+            MemberDetailLoadingPageShell(onBack = { closeDetailPage() })
         is MemberDetailRouteState.Error ->
             MemberDetailErrorPageShell(
                 title = stringResource(MR.strings.member_error_load_member),
                 detail = current.error.userFacingMessage(errorStrings),
-                onBack = { provider.bridge.closePage() },
+                onBack = { closeDetailPage() },
                 onRetry = { localAgentDetailRefreshKey += 1 }
             )
         is MemberDetailRouteState.Agent -> {
@@ -3836,7 +3860,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                                 if (result is DataResult.Content && result.data.success) {
                                     localAgentDetailRefreshKey += 1
                                     if (action == MembersAgentLifecycleAction.Delete) {
-                                        provider.bridge.closePage()
+                                        closeDetailPage()
                                     }
                                 }
                                 return result
@@ -3898,7 +3922,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                     },
                     machineStatusRow = machineStatusRow,
                     actions = MembersDetailActions(
-                        onBack = { provider.bridge.closePage() },
+                        onBack = { closeDetailPage() },
                         onOpenDirectMessage = {
                             routeScope.launch {
                                 provider.openDirectMessage(member).openMembersDirectMessageResult(
@@ -4068,7 +4092,7 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                 canManageAgent = { _, _ -> false },
                 machineStatusRow = machineStatusRow,
                 actions = MembersDetailActions(
-                    onBack = { provider.bridge.closePage() },
+                    onBack = { closeDetailPage() },
                     onOpenDirectMessage = {
                         routeScope.launch {
                             provider.openDirectMessage(current.member).openMembersDirectMessageResult(
