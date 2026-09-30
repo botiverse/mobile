@@ -114,6 +114,11 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
     return self;
 }
 
+- (NSString *)slockShellInstanceId {
+    id value = _pageData[@"slockShellInstanceId"];
+    return [value isKindOfClass:NSString.class] && [value length] > 0 ? value : nil;
+}
+
 - (BOOL)slockIsAppShellPage {
     return [_pageName isEqualToString:SlockAppShellPageName];
 }

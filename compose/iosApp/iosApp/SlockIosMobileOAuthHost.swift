@@ -158,6 +158,7 @@ final class SlockIosMobileOAuthHost: NSObject,
         let attempt: Int
     }
 
+    private let loginCancellation = SlockIosLoginCancellationRelay()
     private var session: ASWebAuthenticationSession?
     private var appleAuthorizationController: ASAuthorizationController?
     private weak var presentationWindow: UIWindow?
@@ -187,10 +188,11 @@ final class SlockIosMobileOAuthHost: NSObject,
         }
     }
 
-    @objc(startWithProvider:mode:completion:)
+    @objc(startWithProvider:mode:shellScopeId:completion:)
     func start(
         provider: String,
         mode: String,
+        shellScopeId: String?,
         completion: @escaping (NSDictionary) -> Void
     ) {
         runOnMain { [weak self] in
@@ -221,6 +223,7 @@ final class SlockIosMobileOAuthHost: NSObject,
             self.supersedeActiveSession()
             let generation = UUID().uuidString.lowercased()
             self.pendingStartGeneration = generation
+            self.loginCancellation.begin(generation: generation, mode: normalizedMode, scope: shellScopeId)
             let handleStart: (SlockIosMobileOAuthStartResult) -> Void = { [weak self] result in
                 self?.runOnMain {
                     guard let self else { return }
@@ -527,6 +530,12 @@ final class SlockIosMobileOAuthHost: NSObject,
                     "SlockIosOAuth",
                     "oauth_callback_consumed source=\(self.safeSource(deferred.source)) status=\(result.status)"
                 )
+                self.loginCancellation.finish(
+                    generation: deferred.expectedGeneration,
+                    error: deferred.callback.error,
+                    status: result.status,
+                    applyRoute: true
+                )
                 SlockIosOAuthRouteStore.shared.apply(result)
             }
         }
@@ -689,9 +698,17 @@ final class SlockIosMobileOAuthHost: NSObject,
     }
 
     private func cancelPending(generation: String, error: String, applyRoute: Bool) {
-        SlockIosMobileOAuthBridge.shared.cancel(generation: generation, error: error) { result in
-            if applyRoute {
-                SlockIosOAuthRouteStore.shared.apply(result)
+        SlockIosMobileOAuthBridge.shared.cancel(generation: generation, error: error) { [weak self] result in
+            self?.runOnMain {
+                // The shared coordinator first validates the OAuth generation.
+                // An ignored/stale callback must not clear a newer login's links.
+                self?.loginCancellation.finish(
+                    generation: generation, error: error,
+                    status: result.status, applyRoute: applyRoute
+                )
+                if applyRoute {
+                    SlockIosOAuthRouteStore.shared.apply(result)
+                }
             }
         }
     }
