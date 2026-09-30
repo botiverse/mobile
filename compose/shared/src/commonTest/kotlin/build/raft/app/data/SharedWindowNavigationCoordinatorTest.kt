@@ -191,6 +191,110 @@ class SharedWindowNavigationCoordinatorTest {
         )
     }
 
+    // task #13 external deep-link spec validation: an external HTTPS permalink intent
+    // must behave like the notification intent through the same coordinator — stay
+    // pending while the server list is still empty (auth/session catching up), open
+    // exactly once after readiness converges, and reject only after the list is real.
+
+    @Test
+    fun externalLinkStaysPendingUntilServerListHydratesThenOpensOnce() {
+        val coordinator = SharedWindowNavigationCoordinator()
+        val intent = externalLinkIntent(serverId = "server-b")
+        assertTrue(coordinator.enqueue(intent))
+
+        // Session still resolving: an empty known-server list must not trip the
+        // server_unavailable guard, and no canonical server means no action at all.
+        val emptyReadiness = readiness(canonicalServerId = null, knownServerIds = emptySet())
+        assertNull(coordinator.advance(emptyReadiness))
+        assertEquals(1, coordinator.requestCount)
+
+        // Server list hydrated but canonical server not yet selected: still pending.
+        assertNull(
+            coordinator.advance(
+                readiness(canonicalServerId = null, knownServerIds = setOf("server-a", "server-b"))
+            )
+        )
+        assertEquals(1, coordinator.requestCount)
+
+        // Canonical server lands on another server: one-shot activation, not a reject.
+        assertIs<WindowNavigationAction.ActivateServer>(
+            coordinator.advance(readiness(canonicalServerId = "server-a"))
+        )
+        assertNull(coordinator.advance(readiness(canonicalServerId = "server-a")))
+
+        // Readiness converged: opens exactly once.
+        assertIs<WindowNavigationAction.OpenConversation>(
+            coordinator.advance(readyReadiness("server-b"))
+        )
+        assertNull(coordinator.advance(readyReadiness("server-b")))
+    }
+
+    @Test
+    fun externalLinkRejectsUnknownServerOnlyAfterListHydration() {
+        // The server_unavailable guard engages the moment the known-server list is
+        // non-empty, even before a canonical session exists. Pending therefore only
+        // holds while the list is still empty (auth/session not resolved yet).
+        val preAuth = SharedWindowNavigationCoordinator()
+        preAuth.enqueue(externalLinkIntent(serverId = "server-missing"))
+        assertNull(
+            preAuth.advance(readiness(canonicalServerId = null, knownServerIds = emptySet()))
+        )
+        assertEquals(1, preAuth.requestCount)
+        assertIs<WindowNavigationAction.Reject>(
+            preAuth.advance(
+                readiness(canonicalServerId = null, knownServerIds = setOf("server-a", "server-b"))
+            )
+        )
+        assertNull(
+            preAuth.advance(
+                readiness(canonicalServerId = "server-a", knownServerIds = setOf("server-a", "server-b"))
+            )
+        )
+
+        // List still empty but a canonical session exists on another server: the
+        // coordinator requests activation (single-shot) rather than rejecting blind;
+        // the host's selectServer resolves the slug authoritatively and failure is
+        // reported through rejectActivation exactly once.
+        val blind = SharedWindowNavigationCoordinator()
+        blind.enqueue(externalLinkIntent(serverId = "server-missing"))
+        val activation =
+            assertIs<WindowNavigationAction.ActivateServer>(
+                blind.advance(readiness(canonicalServerId = "server-a", knownServerIds = emptySet()))
+            )
+        assertNull(blind.advance(readiness(canonicalServerId = "server-a", knownServerIds = emptySet())))
+        val rejected =
+            assertIs<WindowNavigationAction.Reject>(
+                blind.rejectActivation(activation.intent.key, "server_unavailable")
+            )
+        assertEquals("server_unavailable", rejected.reason)
+        assertNull(blind.rejectActivation(activation.intent.key, "server_unavailable"))
+    }
+
+
+
+    @Test
+    fun externalLinkReplyPermalinkResolvesThreadIdentity() {
+        val coordinator = SharedWindowNavigationCoordinator()
+        val intent = externalLinkReplyIntent(serverId = "server-b")
+        assertTrue(coordinator.enqueue(intent))
+        assertFalse(coordinator.enqueue(intent))
+
+        val ready =
+            readiness(
+                canonicalServerId = "server-b",
+                homeSnapshotServerId = "server-b",
+                homeSessionServerId = "server-b",
+                conversationDirectory = hydratedThreadDirectoryFor("server-b")
+            )
+        val action = assertIs<WindowNavigationAction.OpenConversation>(coordinator.advance(ready))
+        assertNull(coordinator.advance(ready))
+        // Thread-shaped permalink: lookup resolves the reply stream, not the parent channel.
+        assertEquals(
+            ConversationKind.Thread,
+            action.request.conversationIdentity.kind
+        )
+    }
+
     @Test
     fun homeReadyRequiresCanonicalAndBothHomeServerProjections() {
         assertFalse(windowNavigationHomeReady("server-b", "server-a", "server-b", "server-b"))
@@ -198,6 +302,36 @@ class SharedWindowNavigationCoordinatorTest {
         assertFalse(windowNavigationHomeReady("server-b", "server-b", "server-b", "server-a"))
         assertTrue(windowNavigationHomeReady("server-b", "server-b", "server-b", "server-b"))
     }
+
+    private fun externalLinkIntent(serverId: String): WindowNavigationIntent =
+        WindowNavigationIntent(
+            serverId = serverId,
+            source = "external_link",
+            sourceIdentity =
+                ConversationOpenSourceMessageIdentity(
+                    source = ConversationOpenSource.Markdown,
+                    messageId = "message-1",
+                    channelId = "channel-1",
+                    threadChannelId = "channel-1",
+                    conversationKind = ConversationKind.Channel
+                )
+        )
+
+    private fun externalLinkReplyIntent(serverId: String): WindowNavigationIntent =
+        WindowNavigationIntent(
+            serverId = serverId,
+            source = "external_link",
+            sourceIdentity =
+                ConversationOpenSourceMessageIdentity(
+                    source = ConversationOpenSource.Markdown,
+                    messageId = "reply-1",
+                    channelId = "parent-channel",
+                    parentChannelId = "parent-channel",
+                    parentMessageId = "parent-1",
+                    conversationKind = ConversationKind.Thread,
+                    parentConversationKind = ConversationKind.Channel
+                )
+        )
 
     private fun notificationIntent(serverId: String): WindowNavigationIntent =
         WindowNavigationIntent(
