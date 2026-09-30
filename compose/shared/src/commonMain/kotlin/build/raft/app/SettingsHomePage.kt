@@ -2867,6 +2867,61 @@ private fun SlockAppShellReadyContent(
                 )
                 systemNotificationNavigationTick += 1
             }
+        // task #13 external deep-link hot delivery: the host posts the identity
+        // envelope straight into the live shell (no Activity/scene rebuild), so
+        // the mid-pane and uncommitted drafts survive. Receipt is scoped and
+        // idempotent on the intent key.
+        val externalSubscription =
+            eventBus.observe(SlockExternalPermalinkContract.OpenEventName) { eventData ->
+                val intent =
+                    eventData
+                        ?.let {
+                            JSONObject()
+                                .put(SlockExternalPermalinkContract.PageDataBlockKey, it)
+                                .appShellExternalLinkWindowNavigationIntent()
+                        }
+                if (intent == null) {
+                    bridge.logWarn(
+                        "window_navigation_drop source=external_link reason=invalid_identity"
+                    )
+                    return@observe
+                }
+                val enqueued = windowNavigationCoordinator.enqueue(intent)
+                bridge.log(
+                    "window_navigation_received source=external_link enqueued=$enqueued " +
+                        "targetServerId=${intent.serverId} " +
+                        "activationId=${intent.activationId.orEmpty()}"
+                )
+                eventBus.post(
+                    eventName = SlockExternalPermalinkContract.AcceptedEventName,
+                    eventData =
+                        JSONObject()
+                            .put(
+                                "status",
+                                if (enqueued) {
+                                    SlockExternalPermalinkContract.AcceptedStatusFirstTime
+                                } else {
+                                    SlockExternalPermalinkContract.AcceptedStatusDuplicate
+                                }
+                            )
+                            .put(
+                                SlockExternalPermalinkContract.KeyActivationId,
+                                intent.activationId.orEmpty()
+                            )
+                            .put(
+                                SlockExternalPermalinkContract.KeyShellScopeId,
+                                storeScope.shellInstanceId
+                            )
+                            .put(
+                                SlockExternalPermalinkContract.KeyAuthGeneration,
+                                processRealtimeAuthority?.witness?.let { witness ->
+                                    "${witness.principalId}:${witness.authGeneration}"
+                                }.orEmpty()
+                            ),
+                    source = "app_shell_external_link_received"
+                )
+                externalLinkNavigationTick += 1
+            }
         eventBus.post(
             eventName = SlockSystemNotificationContract.OpenReadyEventName,
             eventData = JSONObject(),
@@ -2879,6 +2934,7 @@ private fun SlockAppShellReadyContent(
                 source = "app_shell_notification_navigation_not_ready"
             )
             subscription.close()
+            externalSubscription.close()
         }
     }
 

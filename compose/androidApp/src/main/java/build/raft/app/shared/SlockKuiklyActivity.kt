@@ -98,6 +98,8 @@ import build.raft.app.core.data.storage.StorageManagementSnapshot
 import build.raft.app.widget.SlockActivityWidgetProvider
 import build.raft.app.widget.SlockAgentStatusWidgetProvider
 import build.raft.app.data.SlockInProcessNotifyModule
+import build.raft.app.data.SlockExternalPermalinkContract
+import build.raft.app.data.postAndroidAppScopeEvent
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.SLOCK_APP_UPDATE_EVENT
@@ -1035,6 +1037,33 @@ open class SlockKuiklyActivity :
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // task #13 external deep-link hot start: a permalink pageData envelope is
+        // delivered to the LIVE shell's navigation queue so the current Shell,
+        // mid-pane, and uncommitted drafts survive — no Activity recreate. The
+        // shared coordinator dedups on the intent key (which contains
+        // activationId), so OS-level redelivery stays idempotent while a fresh
+        // user click carries a new activationId and re-opens.
+        if (resolvedPageName(intent) == PAGE_APP_SHELL) {
+            val envelope =
+                runCatching {
+                    resolvedPageData(intent)
+                        .optJSONObject(SlockExternalPermalinkContract.PageDataBlockKey)
+                }.getOrNull()
+            if (envelope != null) {
+                setIntent(intent)
+                SlockAppLog.record(
+                    "SlockKuiklyActivity",
+                    "host_new_intent page=$PAGE_APP_SHELL externalLink=true " +
+                        "activationId=${envelope.optString(SlockExternalPermalinkContract.KeyActivationId)}"
+                )
+                postAndroidAppScopeEvent(
+                    eventName = SlockExternalPermalinkContract.OpenEventName,
+                    eventData = envelope,
+                    source = "android_external_permalink_new_intent"
+                )
+                return
+            }
+        }
         androidShellLaunchTarget?.let { AndroidShellWindowRegistry.unregister(it.shellInstanceId) }
         setIntent(intent)
         registerAndroidShellWindow(intent)
