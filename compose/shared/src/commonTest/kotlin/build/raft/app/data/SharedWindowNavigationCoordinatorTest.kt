@@ -533,6 +533,38 @@ class SharedWindowNavigationCoordinatorTest {
     }
 
     @Test
+    fun failedServerListBindsUnboundAndDiesOnGenerationSwitch() {
+        // While suspended on a degraded list, generation handling still runs:
+        // an Unbound intent binds to the first authenticated generation, and a
+        // bound intent dies when the generation moves on — a later account can
+        // never adopt the pending route across the degraded gap.
+        val coordinator = SharedWindowNavigationCoordinator()
+        coordinator.enqueue(externalLinkIntent("server-b").copy(activationId = "act-bind"))
+
+        // Failed readiness binds the unbound intent to p1:1 without dispatching.
+        assertNull(
+            coordinator.advance(
+                readyReadiness("server-a").copy(
+                    serverListState = WindowNavigationServerListState.Failed,
+                    authGeneration = "p1:1"
+                )
+            )
+        )
+
+        // A second account's generation arriving while still Failed terminates it.
+        val stale =
+            assertIs<WindowNavigationAction.Reject>(
+                coordinator.advance(
+                    readyReadiness("server-b").copy(
+                        serverListState = WindowNavigationServerListState.Failed,
+                        authGeneration = "p2:2"
+                    )
+                )
+            )
+        assertEquals("auth_generation_stale", stale.reason)
+    }
+
+    @Test
     fun externalLinkBoundIntentDiesWhenAuthGenerationMovesOn() {
         // An intent bound to principal+generation "p1:1" terminates once the live
         // session reports a different generation; the stale route is never replayed.

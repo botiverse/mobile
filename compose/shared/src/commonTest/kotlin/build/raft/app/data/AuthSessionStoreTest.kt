@@ -728,6 +728,22 @@ class AuthSessionStoreTest {
                 )
         )
 
+    @Test
+    fun serversListDegradedFlagSurvivesDurableSerialization() = runBlocking {
+        // Real durable round-trip: encode -> key/value store -> fresh store instance
+        // decodes. The degraded mark must persist across a process restart, and a
+        // clean overwrite must durably clear it.
+        val keyValue = InMemorySlockKeyValueStore()
+        val writer = KeyValueAuthSessionStore(keyValue)
+        writer.replaceAuthenticatedSession(sampleSession().copy(serversListDegraded = true))
+
+        val restarted = KeyValueAuthSessionStore(keyValue)
+        assertEquals(true, restarted.readSession()?.serversListDegraded)
+
+        restarted.replaceAuthenticatedSession(sampleSession())
+        assertEquals(false, KeyValueAuthSessionStore(keyValue).readSession()?.serversListDegraded)
+    }
+
     private fun sampleQaBootstrap(attempt: Int): StoredQaBootstrapMetadata =
         StoredQaBootstrapMetadata(
             ticketDigest = "sha256:ticket-$attempt",
