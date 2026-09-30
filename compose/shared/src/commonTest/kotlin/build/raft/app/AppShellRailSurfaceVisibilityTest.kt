@@ -173,9 +173,9 @@ class AppShellServerDrawerBackProjectionTest {
      * from the render projection, which strips the drawer runtime when the app-shell
      * drawer host owns it — so Back always saw `false` and fell through to
      * close_page even with the drawer settled open. Back must consume from the
-     * live shell-store snapshot; this pins both sides of the trap: the projection
-     * reported closed while the store snapshot (the production read path) reports
-     * expanded.
+     * live shell-store snapshot. This test feeds both states through the same
+     * consume seam popMainRoute uses, so wiring the seam to the projected state
+     * is caught here.
      */
     @Test
     fun `live store reports drawer expanded while render projection strips it`() {
@@ -206,10 +206,11 @@ class AppShellServerDrawerBackProjectionTest {
                 resetActivity = {},
                 scope = scope,
             )
-        // The read path popMainRoute now takes for the Back consume check.
-        assertTrue(store.state.value.home.serverSwitcherExpanded)
+        // The production Back consume decision runs on the live store snapshot;
+        // feeding it the stripped render projection is the Alpha79 defect.
+        assertTrue(appShellServerDrawerConsumesBack(store.state.value))
         val projected = store.state.value.withoutServerDrawerRuntimeForAppShellRender()
-        assertFalse(projected.home.serverSwitcherExpanded)
+        assertFalse(appShellServerDrawerConsumesBack(projected))
         assertFalse(projected.home.serverDrawer.expanded)
         assertFalse(projected.home.serverDrawerCommandIntent.desiredOpen)
     }

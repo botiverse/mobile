@@ -1216,6 +1216,16 @@ internal fun retainedAppShellSelectedTab(selectedTab: String): String =
  * rail secondary destination (Search). Any other destination — or a backgrounded host —
  * suspends the detail (ParentVisibilityChanged).
  */
+/**
+ * Alpha79 drawer-BACK contract: the Back consume check must read the LIVE
+ * SharedHomeShellStore state, never the render projection — the projection
+ * strips the drawer runtime (withoutServerDrawerRuntimeForAppShellRender) for
+ * render when serverDrawerEnabled, so it always reports expanded=false.
+ */
+internal fun appShellServerDrawerConsumesBack(
+    shellState: build.raft.app.data.SharedHomeShellState,
+): Boolean = shellState.home.serverSwitcherExpanded
+
 internal fun appShellSharedDetailSurfaceVisible(
     pageVisible: Boolean,
     selectedTab: String,
@@ -5061,10 +5071,10 @@ private fun SlockAppShellReadyContent(
         }
         // homeState comes from homeShellRenderState, which strips the drawer runtime
         // (withoutServerDrawerRuntimeForAppShellRender) when serverDrawerEnabled —
-        // so its serverSwitcherExpanded is always false here. Read the live store
-        // snapshot, otherwise an open app-shell drawer cannot consume Back and the
-        // route falls through to close_page (the Alpha79 drawer-BACK defect).
-        if (homeShellStore.state.value.home.serverSwitcherExpanded) {
+        // so its serverSwitcherExpanded is always false here. Decide on the live
+        // store snapshot, otherwise an open app-shell drawer cannot consume Back
+        // and the route falls through to close_page (the Alpha79 drawer-BACK defect).
+        if (appShellServerDrawerConsumesBack(homeShellStore.state.value)) {
             serverDrawerProgrammaticCloseFence?.invoke("back")
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
             return true
