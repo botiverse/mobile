@@ -2619,7 +2619,7 @@ internal fun membersAgentDetailOwnerForSession(
 }
 
 private class MemberDetailRouteProvider(
-    val sharedStores: build.raft.app.data.SlockSharedStoreRegistry,
+    val sharedStores: build.raft.app.data.SlockSharedStoreProvider,
     val bridge: BridgeModule,
     val reportIssueFailedMessage: String,
     val authStore: SlockAuthSessionStore,
