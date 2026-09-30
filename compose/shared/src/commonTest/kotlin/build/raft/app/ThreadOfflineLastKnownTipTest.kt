@@ -140,13 +140,17 @@ class ThreadOfflineLastKnownTipTest {
     }
 
     @Test
-    fun onlyATransportConnectedEventCountsAsARealtimeRecovery() {
-        val connected = com.tencent.kuikly.core.nvi.serialization.json.JSONObject()
-            .put(build.raft.app.data.realtime.SlockRealtimeNotifyContract.KeyAction,
-                build.raft.app.data.realtime.SlockRealtimeNotifyContract.ActionPresenceTransportConnected)
-        assertTrue(isRealtimeTransportConnectedEvent(connected))
-        val other = com.tencent.kuikly.core.nvi.serialization.json.JSONObject().put("action", "message:new")
-        assertFalse(isRealtimeTransportConnectedEvent(other))
-        assertFalse(isRealtimeTransportConnectedEvent(com.tencent.kuikly.core.nvi.serialization.json.JSONObject()))
+    fun onlyThisServersTransportConnectedEventCountsAsARealtimeRecovery() {
+        fun event(action: String, serverId: String?) =
+            com.tencent.kuikly.core.nvi.serialization.json.JSONObject().apply {
+                put(build.raft.app.data.realtime.SlockRealtimeNotifyContract.KeyAction, action)
+                if (serverId != null) put(build.raft.app.data.realtime.SlockRealtimeNotifyContract.KeyServerId, serverId)
+            }
+        val connected = build.raft.app.data.realtime.SlockRealtimeNotifyContract.ActionPresenceTransportConnected
+        assertTrue(isRealtimeTransportConnectedEvent(event(connected, "server-a"), "server-a"))
+        assertFalse(isRealtimeTransportConnectedEvent(event(connected, "server-b"), "server-a"), "another server's reconnect")
+        assertFalse(isRealtimeTransportConnectedEvent(event(connected, null), "server-a"), "no server on the event")
+        assertFalse(isRealtimeTransportConnectedEvent(event(connected, "server-a"), null), "page without a session server")
+        assertFalse(isRealtimeTransportConnectedEvent(event("message:new", "server-a"), "server-a"))
     }
 }
