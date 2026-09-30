@@ -318,6 +318,52 @@ class SlockAdaptiveWorkspaceTest {
         assertEquals("channel-all", resolveSlockAdaptiveHomeLandingId(null, candidates))
     }
 
+    @Test
+    fun deepLinkOpenDetailInstallsSelectionRegardlessOfCurrentDestination() {
+        // task #13 deep-link: the workspace reducer has no "current destination"
+        // input — a permalink/notification open while the rail shows Activity is
+        // exactly an OpenDetail under DualPane. The right pane must adopt the
+        // canonical identity; the Activity mid-column stays mounted underneath.
+        val state =
+            initialState().reduce(SlockAdaptiveWorkspaceIntent.WindowChanged(widePane()))
+        val identity =
+            detailIdentity("thread-deeplink").copy(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                parentChannelId = "channel-parent",
+                parentMessageId = "msg-parent",
+            )
+        val opened = state.reduce(SlockAdaptiveWorkspaceIntent.OpenDetail(identity))
+
+        assertEquals(identity, opened.selection?.identity)
+        assertEquals(SlockAdaptiveWorkspacePresentation.Split, opened.presentation)
+        // threadId != channelId: the identity key encodes both so a reply deep link
+        // cannot alias the parent channel's selection.
+        assertNotEquals(identity.channelId, identity.threadId)
+
+        // A second dispatch of the same deep link is idempotent — no generation bump,
+        // so an open detail is not reloaded or rebounced by a duplicated deep link.
+        val again = opened.reduce(SlockAdaptiveWorkspaceIntent.OpenDetail(identity))
+        assertEquals(opened.selection, again.selection)
+        assertEquals(opened.generationCursor, again.generationCursor)
+    }
+
+    @Test
+    fun deepLinkOpenDetailToDifferentServerIsRejectedAndKeepsCurrentSelection() {
+        // Deep links carry absolute thread ids; when the workspace authority is
+        // another server, the reducer must not fabricate a cross-server selection.
+        val identity = detailIdentity("thread-a")
+        val opened =
+            initialState()
+                .reduce(SlockAdaptiveWorkspaceIntent.WindowChanged(widePane()))
+                .reduce(SlockAdaptiveWorkspaceIntent.OpenDetail(identity))
+
+        val foreign = detailIdentity("thread-x").copy(serverId = "server-b")
+        val after = opened.reduce(SlockAdaptiveWorkspaceIntent.OpenDetail(foreign))
+
+        assertEquals(identity, after.selection?.identity)
+        assertEquals(opened.generationCursor, after.generationCursor)
+    }
+
     private fun initialState(): SlockAdaptiveWorkspaceState =
         SlockAdaptiveWorkspaceState(
             shellInstanceId = "shell-a",

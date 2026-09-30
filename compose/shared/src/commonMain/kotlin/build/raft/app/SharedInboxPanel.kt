@@ -1140,11 +1140,7 @@ private fun SharedActivityList(
     // this panel was covered) instead of reviving a stale checkpoint key.
     LaunchedEffect(presentedItems, externalSelectedThreadId, active) {
         if (!active || externalSelectedThreadId == null) return@LaunchedEffect
-        val match =
-            presentedItems.firstOrNull { item ->
-                item.toConversationSummary().threadId.value == externalSelectedThreadId
-            }
-        val nextKey = match?.key
+        val nextKey = resolveActivitySelectedItemKey(presentedItems, externalSelectedThreadId)
         if (selectedItemKey != nextKey) {
             selectedItemKey = nextKey
         }
@@ -2522,6 +2518,16 @@ internal fun activityShouldRequestLoadMore(
     loadingMore: Boolean,
     loadMoreErrorCode: String?
 ): Boolean = hasMore && !refreshing && !loadingMore && loadMoreErrorCode == null
+
+internal fun resolveActivitySelectedItemKey(
+    presentedItems: List<InboxItem>,
+    externalSelectedThreadId: String
+): String? =
+    presentedItems
+        .firstOrNull { item ->
+            item.toConversationSummary().threadId.value == externalSelectedThreadId
+        }
+        ?.key
 
 internal enum class ActivityLoadMoreFooterMode {
     Sentinel,

@@ -2370,6 +2370,84 @@ class SharedInboxPanelTest {
         assertEquals(true, result.loading)
     }
 
+    @Test
+    fun activityExternalSelectedRowFollowsPaginationAppendAndFailedRetry() {
+        // task #13 pagination: the workspace-selected row must keep resolving to the
+        // same list key while the mid-column grows (page append) and must survive a
+        // failed retry that leaves the list untouched.
+        val first = activityItem(key = "channel:first").copy(channelId = ChannelId("ch-first"))
+        val second = activityItem(key = "channel:second").copy(channelId = ChannelId("ch-second"))
+        val selectedThreadId = second.toConversationSummary().threadId.value
+
+        val beforeAppend = listOf(first, second)
+        assertEquals(
+            "channel:second",
+            resolveActivitySelectedItemKey(beforeAppend, selectedThreadId),
+        )
+
+        val afterAppend = beforeAppend + activityItem(key = "channel:page2-a").copy(channelId = ChannelId("ch-page2-a"))
+        assertEquals(
+            "channel:second",
+            resolveActivitySelectedItemKey(afterAppend, selectedThreadId),
+        )
+
+        // Failed load-more/retry leaves presentedItems identical → same key resolves.
+        assertEquals(
+            "channel:second",
+            resolveActivitySelectedItemKey(afterAppend, selectedThreadId),
+        )
+    }
+
+    @Test
+    fun activityExternalSelectedThreadReplyMatchesByThreadIdentityNotChannelId() {
+        // task #13 deep-link: a reply row's stream identity is its thread identity
+        // (threadId != channelId). A deep link carrying the thread id must highlight
+        // the reply row even though the row's channelId is the parent channel.
+        val reply = replyActivityItem("nested")
+        val threadKey = reply.toConversationSummary().threadId.value
+        assertNotEquals(reply.channelId.value, threadKey)
+
+        val items = listOf(activityItem(key = "channel:other").copy(channelId = ChannelId("ch-other")), reply)
+        assertEquals(
+            "thread:nested",
+            resolveActivitySelectedItemKey(items, threadKey),
+        )
+        // And the parent channel id alone must NOT highlight the reply row.
+        assertEquals(null, resolveActivitySelectedItemKey(items, reply.channelId.value))
+    }
+
+    @Test
+    fun activityExternalSelectedThreadAbsentFromEmptyMidColumnResolvesNull() {
+        // task #13 deep-link: when the Activity mid-column is empty (or the linked
+        // conversation never appears in the list), no highlight may be fabricated;
+        // the right pane still owns the detail via the workspace selection.
+        assertEquals(
+            null,
+            resolveActivitySelectedItemKey(emptyList(), "thread-deep-link"),
+        )
+        val unrelated = listOf(activityItem(key = "channel:unrelated").copy(channelId = ChannelId("ch-unrelated")))
+        assertEquals(
+            null,
+            resolveActivitySelectedItemKey(unrelated, "thread-not-present"),
+        )
+    }
+
+
+    @Test
+    fun activityExternalSelectedRowSurvivesReorderedRefresh() {
+        // Pagination/advance reordering the mid-column must not lose the row
+        // highlight bound to the workspace selection — resolution is by thread
+        // identity, not list position.
+        val a = activityItem(key = "channel:a").copy(channelId = ChannelId("ch-a"))
+        val b = activityItem(key = "channel:b").copy(channelId = ChannelId("ch-b"))
+        val selectedThreadId = b.toConversationSummary().threadId.value
+        val reordered = listOf(b, a, activityItem(key = "channel:c").copy(channelId = ChannelId("ch-c")))
+        assertEquals(
+            "channel:b",
+            resolveActivitySelectedItemKey(reordered, selectedThreadId),
+        )
+    }
+
     internal fun activityItem(
         key: String = "activity-1",
         latestActivityAt: String? = null,
