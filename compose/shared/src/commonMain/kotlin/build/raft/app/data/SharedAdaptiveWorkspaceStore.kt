@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 internal data class SharedAdaptiveWorkspaceSession(
     val workspace: SlockAdaptiveWorkspaceState? = null,
     val launchPayload: WireThreadLaunchPayload? = null,
+    val detailHistory: AdaptiveDetailHistory? = null,
     val handoffRoomLeaseOwner: RealtimeRoomLeaseOwner? = null,
     /**
      * Outstanding standalone→pane adoption requests awaiting the destination's ready report.
@@ -67,7 +68,13 @@ internal class SharedAdaptiveWorkspaceStore {
         transform: (SharedAdaptiveWorkspaceSession) -> SharedAdaptiveWorkspaceSession,
     ): SharedAdaptiveWorkspaceSession =
         synchronized(lock) {
-            transform(_state.value).also { _state.value = it }
+            transform(_state.value).let { next ->
+                val history = next.detailHistory
+                val normalized = if (history != null && history.owner != next.workspace?.selection) {
+                    next.copy(detailHistory = null)
+                } else next
+                normalized.also { _state.value = it }
+            }
         }
 
     fun clear() {
