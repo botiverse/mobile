@@ -1,7 +1,7 @@
 import { HvigorNode, HvigorPlugin } from '@ohos/hvigor';
 import { OhosHapContext, OhosPluginId } from '@ohos/hvigor-ohos-plugin';
 
-const CALLBACK_HOST = 'oauth';
+const CALLBACK_HOSTS = ['oauth', 'login'];
 const CALLBACK_PATH = '/callback';
 const VIEW_DATA_ACTION = 'ohos.want.action.viewData';
 
@@ -44,14 +44,19 @@ export function slockOhosOAuthCallbackPlugin(): HvigorPlugin {
       const entryAbility = moduleJson.module?.abilities?.find((ability) => ability.name === 'EntryAbility');
       const callbackSkills = entryAbility?.skills?.filter((skill) =>
         skill.actions?.includes(VIEW_DATA_ACTION) === true &&
-        skill.uris?.some((uri) => uri.host === CALLBACK_HOST && uri.path === CALLBACK_PATH) === true
+        skill.uris?.some((uri) => CALLBACK_HOSTS.includes(uri.host ?? '') && uri.path === CALLBACK_PATH) === true
       ) ?? [];
       if (callbackSkills.length !== 1) {
         throw new Error(
           `[slockOhosOAuthCallbackPlugin] Expected one OAuth callback skill, found ${callbackSkills.length}`
         );
       }
-      callbackSkills[0].uris = [{ scheme: callbackScheme, host: CALLBACK_HOST, path: CALLBACK_PATH }];
+      for (const host of CALLBACK_HOSTS) {
+        if (!callbackSkills[0].uris?.some((uri) => uri.host === host && uri.path === CALLBACK_PATH)) {
+          throw new Error(`[slockOhosOAuthCallbackPlugin] Missing ${host} callback route`);
+        }
+      }
+      callbackSkills[0].uris = CALLBACK_HOSTS.map((host) => ({ scheme: callbackScheme, host, path: CALLBACK_PATH }));
       context.setModuleJsonOpt(moduleJson);
     },
   };
