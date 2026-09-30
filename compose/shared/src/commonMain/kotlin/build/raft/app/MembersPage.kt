@@ -13722,15 +13722,15 @@ internal object MemberDetailScrollStateRegistry {
         agentTabStates
             .getOrPut(memberKey) {
                 mutableMapOf<MembersAgentDetailTab, LazyListState>()
-                    .also { agentTabStates.evictOldestOverCap() }
             }
             .getOrPut(tab) { LazyListState() }
+            .also { agentTabStates.evictOldestOverCap() }
 
     @OptIn(com.tencent.kuikly.compose.foundation.ExperimentalFoundationApi::class)
     fun humanListState(memberKey: String): LazyListState =
-        humanListStates.getOrPut(memberKey) {
-            LazyListState().also { humanListStates.evictOldestOverCap() }
-        }
+        humanListStates
+            .getOrPut(memberKey) { LazyListState() }
+            .also { humanListStates.evictOldestOverCap() }
 
     /**
      * Drops every remembered detail scroll position. Called from session
