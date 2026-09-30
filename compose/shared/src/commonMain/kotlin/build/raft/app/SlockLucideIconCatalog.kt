@@ -49,12 +49,14 @@ enum class SlockLucideIconName(val wireName: String) {
     ClipboardList("clipboard-list"),
     Clock("clock"),
     Clock3("clock-3"),
+    Code("code"),
     Columns3("columns-3"),
     Copy("copy"),
     CreditCard("credit-card"),
     Crop("crop"),
     Download("download"),
     Ellipsis("ellipsis"),
+    Maximize2("maximize-2"),
     Menu("menu"),
     Eraser("eraser"),
     ExternalLink("external-link"),
@@ -205,7 +207,9 @@ enum class SlockLucideIconName(val wireName: String) {
     VolumeX("volume-x"),
     Wand("wand"),
     Waypoints("waypoints"),
-    X("x");
+    X("x"),
+    ZoomIn("zoom-in"),
+    ZoomOut("zoom-out");
 
     companion object {
         fun fromWireName(value: String): SlockLucideIconName? =

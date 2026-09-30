@@ -2137,8 +2137,14 @@ internal class SharedThreadDataSource(
             )
             return routePayload.asRefreshEmpty(routePayload).copy(durableLastKnown = true)
         }
+        // Stand in with the newest page only, the same size the network's first page has: projecting,
+        // laying out and drawing the whole stored scope (up to 500 facts) held the first frame behind a
+        // loading state for over a second on a cold open (artin, Hands 2d15915b: 147 rows ⇒ ~1.3 s).
+        val pageSize = threadPageSize(partition.serverId)
         val messages =
             frame.envelopes
+                .sortedByDescending { it.fact.seq }
+                .take(pageSize)
                 .mapNotNull { envelope ->
                     envelope.toThreadMessageItem(
                         currentUserId = context.provenance.principalId,
@@ -2149,7 +2155,7 @@ internal class SharedThreadDataSource(
         if (messages.isEmpty()) return null
         diagnosticsLogger(
             "thread_durable_last_known threadId=$channelId outcome=frame scopeKind=${frame.scope.scopeKind} " +
-                "messages=${messages.size} latestSeq=${frame.cursor.latestSeq}"
+                "messages=${messages.size} stored=${frame.envelopes.size} latestSeq=${frame.cursor.latestSeq}"
         )
         return routePayload.copy(
             status = "content",
@@ -6676,6 +6682,12 @@ internal class SharedThreadStore(
                             is DataResult.Empty -> result.reason != EmptyReason.NoMessages
                             else -> false
                         },
+                mainLoadFailed =
+                    when (result) {
+                        is DataResult.Error -> true
+                        is DataResult.Empty -> result.reason != EmptyReason.NoMessages
+                        else -> false
+                    },
             )
         var committedPayload: KuiklyThreadScreenPayload? = null
         val committed =
@@ -11808,6 +11820,7 @@ internal fun KuiklyThreadScreenPayload.withContentSliceFrom(patch: KuiklyThreadS
         backgroundRefreshing = patch.backgroundRefreshing,
         // The content slice carries its own provenance: a network patch is never last-known.
         durableLastKnown = patch.durableLastKnown,
+        mainLoadFailed = patch.mainLoadFailed,
         messages = patch.messages,
         gapRefillMessageIds = patch.gapRefillMessageIds,
         originMessage = patch.originMessage,

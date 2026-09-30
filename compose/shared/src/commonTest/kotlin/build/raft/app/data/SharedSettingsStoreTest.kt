@@ -3907,12 +3907,10 @@ class SharedSettingsStoreTest {
             )
         }
 
-        override suspend fun selectLargeScreenNavigation(
-            navigation: LargeScreenNavigationPreference
-        ): ChatLayoutPreferenceSnapshot =
+        override suspend fun setDesktopModeOnLargeScreen(enabled: Boolean): ChatLayoutPreferenceSnapshot =
             ChatLayoutPreferenceSnapshot(
                 myMessageAlignment = alignment,
-                largeScreenNavigation = navigation,
+                desktopModeOnLargeScreen = enabled,
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,

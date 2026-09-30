@@ -732,6 +732,7 @@ private fun DataResult<build.raft.app.data.ChannelMemberSnapshot>.toChannelSetti
                 serverId = route.serverId.value,
                 channelId = route.channelId.value,
                 members = data.members,
+                externalMembers = data.externalMembers,
                 canAddMembers = data.canAddMembers,
                 status = SharedServerMembersLoadStatus.Loaded,
             )

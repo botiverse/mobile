@@ -148,18 +148,7 @@ enum class MyMessageAlignmentPreference(val storageKey: String) {
     }
 }
 
-enum class LargeScreenNavigationPreference(val storageKey: String) {
-    LeftRail("left_rail"),
-    FloatingDock("floating_dock");
-
-    companion object {
-        val Default = LeftRail
-
-        fun fromStorageKey(value: String?): LargeScreenNavigationPreference =
-            entries.firstOrNull { it.storageKey == value } ?: Default
-    }
-}
-
+const val DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN = true
 
 enum class TranslationModePreference(val storageKey: String) {
     Automatic("automatic"),
@@ -235,10 +224,7 @@ data class ChatLayoutPreferenceSnapshot(
     val myMessageAlignment: MyMessageAlignmentPreference,
     val supportedAlignments: List<MyMessageAlignmentPreference> =
         MyMessageAlignmentPreference.entries,
-    val largeScreenNavigation: LargeScreenNavigationPreference =
-        LargeScreenNavigationPreference.Default,
-    val supportedLargeScreenNavigation: List<LargeScreenNavigationPreference> =
-        LargeScreenNavigationPreference.entries,
+    val desktopModeOnLargeScreen: Boolean = DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN,
     val compactConsecutiveMessages: Boolean = true,
     val longMessageCollapseEnabled: Boolean = false,
     val singleTapOpensThreadEnabled: Boolean = false,
@@ -263,9 +249,9 @@ interface ChatLayoutPreferenceStore {
     fun readMyMessageAlignmentSync(): MyMessageAlignmentPreference
     suspend fun readMyMessageAlignment(): MyMessageAlignmentPreference
     suspend fun saveMyMessageAlignment(alignment: MyMessageAlignmentPreference)
-    fun readLargeScreenNavigationSync(): LargeScreenNavigationPreference
-    suspend fun readLargeScreenNavigation(): LargeScreenNavigationPreference
-    suspend fun saveLargeScreenNavigation(navigation: LargeScreenNavigationPreference)
+    fun readDesktopModeOnLargeScreenSync(): Boolean
+    suspend fun readDesktopModeOnLargeScreen(): Boolean
+    suspend fun saveDesktopModeOnLargeScreen(enabled: Boolean)
     fun readCompactConsecutiveMessagesSync(): Boolean
     suspend fun readCompactConsecutiveMessages(): Boolean
     suspend fun saveCompactConsecutiveMessages(enabled: Boolean)
@@ -335,16 +321,14 @@ class KeyValueChatLayoutPreferenceStore(
         store.putString(KEY_MY_MESSAGE_ALIGNMENT, alignment.storageKey)
     }
 
-    override fun readLargeScreenNavigationSync(): LargeScreenNavigationPreference =
-        LargeScreenNavigationPreference.fromStorageKey(
-            store.getString(KEY_LARGE_SCREEN_NAVIGATION)
-        )
+    override fun readDesktopModeOnLargeScreenSync(): Boolean =
+        store.getBoolean(KEY_DESKTOP_MODE_ON_LARGE_SCREEN, DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN)
 
-    override suspend fun readLargeScreenNavigation(): LargeScreenNavigationPreference =
-        readLargeScreenNavigationSync()
+    override suspend fun readDesktopModeOnLargeScreen(): Boolean =
+        readDesktopModeOnLargeScreenSync()
 
-    override suspend fun saveLargeScreenNavigation(navigation: LargeScreenNavigationPreference) {
-        store.putString(KEY_LARGE_SCREEN_NAVIGATION, navigation.storageKey)
+    override suspend fun saveDesktopModeOnLargeScreen(enabled: Boolean) {
+        store.putBoolean(KEY_DESKTOP_MODE_ON_LARGE_SCREEN, enabled)
     }
 
     override fun readCompactConsecutiveMessagesSync(): Boolean =
@@ -528,7 +512,7 @@ class KeyValueChatLayoutPreferenceStore(
 
     private companion object {
         const val KEY_MY_MESSAGE_ALIGNMENT = "chatLayout:my_message_alignment"
-        const val KEY_LARGE_SCREEN_NAVIGATION = "chatLayout:large_screen_navigation"
+        const val KEY_DESKTOP_MODE_ON_LARGE_SCREEN = "mobile:desktop_mode_on_large_screen"
         const val KEY_COMPACT_CONSECUTIVE_MESSAGES = "chatLayout:compact_consecutive_messages"
         const val KEY_LONG_MESSAGE_COLLAPSE_ENABLED = "chatLayout:long_message_collapse_enabled"
         const val KEY_SINGLE_TAP_OPENS_THREAD_ENABLED = "chatLayout:single_tap_opens_thread_enabled"
@@ -556,9 +540,7 @@ interface ChatLayoutPreferenceRepository {
     suspend fun selectMyMessageAlignment(
         alignment: MyMessageAlignmentPreference
     ): ChatLayoutPreferenceSnapshot
-    suspend fun selectLargeScreenNavigation(
-        navigation: LargeScreenNavigationPreference
-    ): ChatLayoutPreferenceSnapshot
+    suspend fun setDesktopModeOnLargeScreen(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setCompactConsecutiveMessages(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setLongMessageCollapseEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setSingleTapOpensThreadEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
@@ -583,7 +565,7 @@ class PersistentChatLayoutPreferenceRepository(
     override suspend fun getChatLayoutPreference(): ChatLayoutPreferenceSnapshot =
         ChatLayoutPreferenceSnapshot(
             myMessageAlignment = store.readMyMessageAlignment(),
-            largeScreenNavigation = store.readLargeScreenNavigation(),
+            desktopModeOnLargeScreen = store.readDesktopModeOnLargeScreen(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
@@ -608,7 +590,7 @@ class PersistentChatLayoutPreferenceRepository(
         store.saveMyMessageAlignment(alignment)
         return ChatLayoutPreferenceSnapshot(
             myMessageAlignment = alignment,
-            largeScreenNavigation = store.readLargeScreenNavigation(),
+            desktopModeOnLargeScreen = store.readDesktopModeOnLargeScreen(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
@@ -628,13 +610,11 @@ class PersistentChatLayoutPreferenceRepository(
         )
     }
 
-    override suspend fun selectLargeScreenNavigation(
-        navigation: LargeScreenNavigationPreference
-    ): ChatLayoutPreferenceSnapshot {
-        store.saveLargeScreenNavigation(navigation)
+    override suspend fun setDesktopModeOnLargeScreen(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+        store.saveDesktopModeOnLargeScreen(enabled)
         return ChatLayoutPreferenceSnapshot(
             myMessageAlignment = store.readMyMessageAlignment(),
-            largeScreenNavigation = navigation,
+            desktopModeOnLargeScreen = enabled,
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
@@ -658,7 +638,7 @@ class PersistentChatLayoutPreferenceRepository(
         store.saveCompactConsecutiveMessages(enabled)
         return ChatLayoutPreferenceSnapshot(
             myMessageAlignment = store.readMyMessageAlignment(),
-            largeScreenNavigation = store.readLargeScreenNavigation(),
+            desktopModeOnLargeScreen = store.readDesktopModeOnLargeScreen(),
             compactConsecutiveMessages = enabled,
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
@@ -707,7 +687,7 @@ class PersistentChatLayoutPreferenceRepository(
         store.saveForegroundMessageBannersEnabled(enabled)
         return ChatLayoutPreferenceSnapshot(
             myMessageAlignment = store.readMyMessageAlignment(),
-            largeScreenNavigation = store.readLargeScreenNavigation(),
+            desktopModeOnLargeScreen = store.readDesktopModeOnLargeScreen(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
@@ -731,7 +711,7 @@ class PersistentChatLayoutPreferenceRepository(
         store.saveActivityTaskStatusBadgesEnabled(enabled)
         return ChatLayoutPreferenceSnapshot(
             myMessageAlignment = store.readMyMessageAlignment(),
-            largeScreenNavigation = store.readLargeScreenNavigation(),
+            desktopModeOnLargeScreen = store.readDesktopModeOnLargeScreen(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
@@ -785,7 +765,7 @@ class PersistentChatLayoutPreferenceRepository(
         store.saveTranslationMode(mode)
         return ChatLayoutPreferenceSnapshot(
             myMessageAlignment = store.readMyMessageAlignment(),
-            largeScreenNavigation = store.readLargeScreenNavigation(),
+            desktopModeOnLargeScreen = store.readDesktopModeOnLargeScreen(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),

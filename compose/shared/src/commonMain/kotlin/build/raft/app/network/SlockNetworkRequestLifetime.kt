@@ -153,6 +153,8 @@ internal class SlockNetworkRequestLifetimeCoordinator(
         }
     }
 
+    fun processForegroundOrNull(): Boolean? = synchronized(lock) { processForeground }
+
     /**
      * The first observed visibility establishes process state without retiring startup work.
      * Every subsequent foreground/background edge advances the generation exactly once.
@@ -323,3 +325,7 @@ fun updateSlockProcessNetworkVisibility(foreground: Boolean): Int =
     SlockProcessNetworkRequestLifetime.coordinator
         .onProcessVisibilityChanged(foreground)
         .retiredRequestCount
+
+/** True only after a platform host has reported the process as visible. */
+fun slockProcessIsForeground(): Boolean =
+    SlockProcessNetworkRequestLifetime.coordinator.processForegroundOrNull() == true

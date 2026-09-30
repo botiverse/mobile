@@ -5,6 +5,8 @@ import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
+import build.raft.app.resources.MR
+import com.tencent.tmm.kmmresource.compose.stringResource
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -312,3 +314,18 @@ internal fun externalAgentDetailIndicator(
         }
     return ExternalAgentDetailIndicator(base.copy(color = color), caption)
 }
+
+/** Translate transport labels, retaining activity details supplied by the store. */
+@Composable
+internal fun SlockAgentStatusIndicatorState.localizedMemberStatusLabel(): String =
+    when (label.trim().lowercase()) {
+        "online", "active" -> stringResource(MR.strings.member_row_status_online)
+        "offline" -> stringResource(MR.strings.member_row_status_offline)
+        "idle", "away" -> stringResource(MR.strings.member_row_status_idle)
+        "disconnected" -> stringResource(MR.strings.member_row_status_disconnected)
+        "error" -> stringResource(MR.strings.member_row_status_error)
+        "external" -> stringResource(MR.strings.member_row_status_external)
+        "working" -> stringResource(MR.strings.member_row_status_working)
+        "thinking" -> stringResource(MR.strings.member_row_status_thinking)
+        else -> label
+    }

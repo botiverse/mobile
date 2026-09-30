@@ -126,7 +126,14 @@ data class ConversationSummary(
     val jointOverLimitGraceEndsAt: String? = null,
     val bridgeProvider: String? = null,
     val activityNotificationPreference: ChannelActivityNotificationPreference = ChannelActivityNotificationPreference.Unsupported,
-    val permissions: ConversationPermissions = ConversationPermissions()
+    val permissions: ConversationPermissions = ConversationPermissions(),
+    /**
+     * Server-resolved channel-level capabilities for the current receiver
+     * (web `channelCapabilities` on the channel record). `null` when the wire
+     * payload never carried the object — consumers must treat that as "unknown"
+     * and hide capability-gated affordances rather than assume permission.
+     */
+    val channelCapabilities: ChannelCapabilities? = null
 ) {
     val activityMuted: Boolean
         get() = activityNotificationPreference.activityMuted
@@ -142,6 +149,21 @@ data class ConversationPermissions(
     val canSend: Boolean = true,
     val canAttach: Boolean = true,
     val canCreateTask: Boolean = true
+)
+
+/**
+ * Channel-scoped capabilities resolved server-side for the current member
+ * (web parity: `channelCapabilities` consumed by `canUseChannelMemberAction` in
+ * ChannelMembers.tsx). Unlike [ConversationPermissions], every field is
+ * nullable: `null` means the server did not resolve it, which gates the
+ * affordance OFF — the members page only shows add/remove when the value is
+ * explicitly `true`.
+ */
+@Serializable
+data class ChannelCapabilities(
+    val addChannelMembers: Boolean? = null,
+    val removeChannelMembers: Boolean? = null,
+    val changeChannelMemberRoles: Boolean? = null
 )
 
 // Member Models
@@ -349,7 +371,42 @@ data class MemberProfile(
     val permissionBadges: List<String> = emptyList(),
     val serverId: ServerId? = null,
     val serverName: String? = null,
-    val serverSlug: String? = null
+    val serverSlug: String? = null,
+    /**
+     * Channel-membership projection (web `channel_members` join row fields on
+     * `useChannelMembers` results): the role the member effectively has inside
+     * THIS channel after admin-basis resolution. Only populated by channel
+     * member snapshots — server-roster producers leave it null.
+     */
+    val effectiveChannelRole: String? = null,
+    /** Raw `channel_role` the member holds in this channel, before effective-role resolution. */
+    val channelRole: String? = null,
+    /** Why a channel admin is an admin (`server_role` | `channel_role` | `both`); display-only. */
+    val channelAdminBasis: String? = null,
+    /**
+     * Server-resolved "may the current member change THIS member's channel
+     * role" (web `canChangeChannelRole`). Drives the flag-gated role-action UI;
+     * kept as data so the gate can be enabled without another wire change.
+     */
+    val canChangeChannelRole: Boolean? = null
+)
+
+/**
+ * Slack-bridge (or future provider) participant projected into a channel's
+ * member roster (web parity: `externalMembers` in ChannelMembers.tsx).
+ * Display-only rows — never selectable, never removable, never a member-detail
+ * target; [MemberKind.External] remains the message-attribution kind, this is
+ * the roster-side sibling.
+ */
+@Serializable
+data class ChannelExternalMemberProfile(
+    val id: String,
+    val provider: String? = null,
+    val displayName: String,
+    val handles: List<String> = emptyList(),
+    val actorKind: String? = null,
+    val avatarUrl: String? = null,
+    val avatarLabel: String = displayName.take(1).uppercase()
 )
 
 @Serializable

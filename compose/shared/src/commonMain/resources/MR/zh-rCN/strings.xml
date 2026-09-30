@@ -487,6 +487,9 @@
     <string name="thread_members_remove_confirm_question">要将 %1$s 移出 #%2$s 吗？</string>
     <string name="thread_members_remove_confirm_detail">该成员将停止接收此频道的普通消息。已关注的消息列不会自动取消关注；在其取消关注或管理这些消息列之前，已关注的公开消息列仍可能通知该成员。私密内容仍按当前访问权限控制。</string>
     <string name="thread_members_refresh_detail">请刷新当前对话后重试。</string>
+    <string name="thread_members_search_placeholder">搜索成员</string>
+    <string name="thread_members_external">Slack 参与者</string>
+    <string name="thread_members_provider_slack">Slack</string>
     <string name="thread_add_member_search">搜索</string>
     <string name="thread_add_member_name_placeholder">姓名</string>
     <string name="thread_add_member_no_people_loaded">尚未加载成员</string>
@@ -1624,6 +1627,8 @@
     <string name="in_app_browser_unable_to_open_link">无法打开链接</string>
     <string name="settings_mobile_compact_messages">紧凑显示连续消息</string>
     <string name="settings_mobile_multi_shell_host">多应用窗口</string>
+    <string name="settings_mobile_desktop_mode">大屏下启用桌面模式</string>
+    <string name="settings_mobile_desktop_mode_detail">在大屏上显示左侧导航栏及并排列表与详情。关闭后保持单栏移动布局与底部标签栏。</string>
     <string name="settings_mobile_multi_shell_host_detail">在独立的 Android 应用窗口中打开不同工作空间。已打开的窗口会保留到你手动关闭。</string>
     <string name="settings_mobile_server_drawer">多服务器首页抽屉</string>
     <string name="settings_mobile_server_drawer_detail">在首页使用新的多服务器左侧抽屉。关闭后继续使用当前的服务器切换浮层。</string>
@@ -2086,6 +2091,13 @@
     <string name="markdown_task_list_checkbox">任务列表复选框</string>
     <string name="markdown_task_list_checked">已完成</string>
     <string name="markdown_task_list_unchecked">未完成</string>
+    <string name="markdown_mermaid_diagram">图表</string>
+    <string name="markdown_mermaid_code">代码</string>
+    <string name="markdown_mermaid_zoom_in">放大</string>
+    <string name="markdown_mermaid_zoom_out">缩小</string>
+    <string name="markdown_mermaid_copy_source">复制源码</string>
+    <string name="markdown_mermaid_fullscreen">全屏</string>
+    <string name="markdown_mermaid_close_fullscreen">退出全屏</string>
     <string name="runtime_form_v2_update_required">请升级 App 以编辑此设置。</string>
     <string name="runtime_form_v2_update_required_blocking">此 agent 有一项必填设置当前 App 版本无法编辑，请升级 App 后再保存。</string>
     <string name="runtime_form_v2_error_required">必填</string>
@@ -2122,4 +2134,15 @@
     <string name="joint_over_limit_grace_detail">该联合频道在 %1$s 之前处于宽限期且超出成员上限。需要其中一个服务器的管理员升级，或让一个免费服务器退出。</string>
     <string name="joint_billing_locked_title">联合频道只读</string>
     <string name="joint_billing_locked_detail">宽限期已结束。在管理员升级或一个免费服务器退出之前，此频道为只读。</string>
+    <string name="channel_member_role_owner">所有者</string>
+    <string name="channel_member_role_admin">管理员</string>
+    <string name="channel_member_role_guest">访客</string>
+    <string name="member_row_status_online">在线</string>
+    <string name="member_row_status_offline">离线</string>
+    <string name="member_row_status_idle">空闲</string>
+    <string name="member_row_status_disconnected">已断开</string>
+    <string name="member_row_status_error">错误</string>
+    <string name="member_row_status_external">外部</string>
+    <string name="member_row_status_working">工作中</string>
+    <string name="member_row_status_thinking">思考中</string>
 </resources>
