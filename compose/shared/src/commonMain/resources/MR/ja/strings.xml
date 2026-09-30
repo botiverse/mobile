@@ -2075,6 +2075,7 @@
     <string name="settings_mobile_new_design_settings">新しい設定デザイン</string>
     <string name="settings_mobile_new_design_settings_detail">新しい独立したチャンネル設定ページを開きます。オフの場合は、現在の Thread 設定ダイアログを使用します。</string>
     <string name="home_adaptive_select_conversation">会話を選択</string>
+    <string name="members_adaptive_select_member">メンバーを選択</string>
     <string name="composer_add_image">画像を追加</string>
     <string name="composer_take_photo">写真を撮る</string>
     <string name="composer_attach_file">ファイル</string>

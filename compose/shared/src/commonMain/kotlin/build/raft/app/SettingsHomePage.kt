@@ -1280,6 +1280,29 @@ internal fun appShellAllowedTabKeys(
         tabKeys
     }
 
+/**
+ * task #58: the member selected on the wide Members surface; right pane hosts
+ * MEMBER_DETAIL_PAGE as a child page keyed by this selection.
+ */
+internal data class AppShellMemberDetailSelection(
+    val serverId: String,
+    val memberId: String,
+    val kind: String,
+    val pageData: JSONObject,
+) {
+    val key: String get() = "$serverId:${kind}:${memberId}"
+}
+
+/**
+ * Members dual-pane gate: identical conditions to the shared adaptive detail
+ * (desktop mode on + DualPane layout), but keyed to the member selection, which
+ * is intentionally separate from the conversation workspace selection.
+ */
+internal fun appShellMembersDetailPaneVisible(
+    desktopModeOnLargeScreen: Boolean,
+    layout: SlockAdaptivePaneLayout,
+): Boolean = desktopModeOnLargeScreen && layout == SlockAdaptivePaneLayout.DualPane
+
 internal fun shouldHandleAppShellTabSelection(currentTab: String, nextTab: String): Boolean =
     retainedAppShellSelectedTab(currentTab) != retainedAppShellSelectedTab(nextTab)
 
@@ -2088,6 +2111,10 @@ private fun SlockAppShellReadyContent(
     var observedHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
     var tasksListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
     var membersListState by remember { mutableStateOf(AppShellMembersListState()) }
+    // task #58: web-style Members list|detail on wide screens — the selected member
+    // renders in the right pane of the Members surface instead of pushing the
+    // standalone detail page. serverId-scoped; cleared on server/account switch.
+    var selectedAppShellMemberDetail by remember { mutableStateOf<AppShellMemberDetailSelection?>(null) }
     var adaptiveDefaultLandingServerId by remember { mutableStateOf<String?>(null) }
     var tabScrollToTopRequests by remember { mutableStateOf(AppShellTabScrollToTopRequests()) }
     val bottomTabTapTracker = remember { AppShellBottomTabTapTracker() }
@@ -4244,6 +4271,7 @@ private fun SlockAppShellReadyContent(
         observedHomeServerSwitchId = null
         tasksListPosition = AppShellLazyListPosition()
         membersListState = AppShellMembersListState()
+        selectedAppShellMemberDetail = null
         // Retire all in-memory Home rows on an auth/session reset. Durable identity snapshots are
         // intentionally retained and will be rehydrated only under the successor account/server
         // key; keeping the old rows here would create an A-account/B-account preview window.
@@ -4254,6 +4282,15 @@ private fun SlockAppShellReadyContent(
         if (authSessionResetGeneration > appliedAuthSessionResetGeneration) {
             appliedAuthSessionResetGeneration = authSessionResetGeneration
             resetAppShellSessionState()
+        }
+    }
+
+    // task #58: member detail is server-scoped — switching servers must not keep a
+    // stale profile open on the right pane.
+    LaunchedEffect(readyServerId) {
+        val selection = selectedAppShellMemberDetail
+        if (selection != null && selection.serverId != readyServerId) {
+            selectedAppShellMemberDetail = null
         }
     }
 
@@ -5077,6 +5114,26 @@ private fun SlockAppShellReadyContent(
         if (appShellServerDrawerConsumesBack(homeShellStore.state.value)) {
             serverDrawerProgrammaticCloseFence?.invoke("back")
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
+            return true
+        }
+        // task #58: a member detail open in the Members right pane consumes the
+        // first Back on the Members tab — same dismiss-before-exit contract as
+        // the adaptive conversation detail.
+        if (
+            selectedAppShellMemberDetail != null &&
+                (
+                    retainedAppShellSelectedTab(selectedTab) == "members" ||
+                        (
+                            retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.More &&
+                                slackNavMoreDestination == SlockSlackNavMoreDestination.Members
+                        )
+                )
+        ) {
+            bridge.log(
+                "members_detail_back_dismiss memberId=${selectedAppShellMemberDetail?.memberId.orEmpty()} " +
+                    "selectedTab=$selectedTab"
+            )
+            selectedAppShellMemberDetail = null
             return true
         }
         if (
@@ -6780,7 +6837,15 @@ private fun SlockAppShellReadyContent(
                         )
                     }
                     val membersTabContent: @Composable (active: Boolean) -> Unit = { active ->
-                        SharedMembersScreen(
+                        val membersDualPane =
+                            appShellMembersDetailPaneVisible(
+                                desktopModeOnLargeScreen = desktopModeOnLargeScreen,
+                                layout = shellScope.adaptivePane.layout,
+                            )
+                        val memberSelection = selectedAppShellMemberDetail?.takeIf { it.serverId == readyServerId }
+                        val membersEmptyLabel = stringResource(MR.strings.members_adaptive_select_member)
+                        val membersListPane: @Composable (Boolean) -> Unit = { listActive ->
+                            SharedMembersScreen(
                             bridge = bridge,
                             storeScope = navigationStoreScope,
                             session = readySession,
@@ -6792,7 +6857,7 @@ private fun SlockAppShellReadyContent(
                             agentDetailStore = appShellAgentDetailStore,
                             agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore,
                             serverMembersStore = appShellServerMembersStore,
-                            active = active,
+                            active = listActive,
                             membersRefreshKey = membersListRefreshKey,
                             initialContent =
                                 sharedMembersCachedContentForServer(membersListCachedContent, readyServerId),
@@ -6812,8 +6877,74 @@ private fun SlockAppShellReadyContent(
                             paneLayout = shellScope.adaptivePane.layout,
                             onForegroundActivity = { reason ->
                                 prewarmAdmissionGate.invalidate("members_$reason")
-                            }
+                            },
+                            onOpenMemberDetailInline =
+                                if (membersDualPane) {
+                                    { identity, pageData ->
+                                        prewarmAdmissionGate.invalidate("members_open_detail_inline")
+                                        selectedAppShellMemberDetail =
+                                            AppShellMemberDetailSelection(
+                                                serverId = readyServerId.orEmpty(),
+                                                memberId = identity.memberId.value,
+                                                kind = identity.kind.memberKindWireValue(),
+                                                pageData = pageData.withSlockShellStoreScope(navigationStoreScope),
+                                            )
+                                        bridge.log(
+                                            "members_detail_open_inline memberId=${identity.memberId.value} " +
+                                                "kind=${identity.kind.memberKindWireValue()} serverId=$readyServerId"
+                                        )
+                                    }
+                                } else {
+                                    null
+                                },
                         )
+                        }
+                        if (membersDualPane) {
+                            Row(modifier = Modifier.fillMaxSize()) {
+                                Box(
+                                    modifier = Modifier.width(360.dp).fillMaxHeight(),
+                                ) {
+                                    membersListPane(active)
+                                }
+                                Spacer(
+                                    modifier = Modifier
+                                        .width(1.dp)
+                                        .fillMaxHeight()
+                                        .background(Color.Black),
+                                )
+                                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                                    if (memberSelection != null) {
+                                        SlockKuiklyChildPage(
+                                            pageName = MEMBER_DETAIL_PAGE,
+                                            pageData = memberSelection.pageData,
+                                            modifier =
+                                                Modifier
+                                                    .fillMaxSize()
+                                                    .padding(
+                                                        bottom =
+                                                            shellScope.embeddedChildBottomInset(
+                                                                showAppShellBottomTabs
+                                                            )
+                                                    ),
+                                            active = active,
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Text(
+                                                text = membersEmptyLabel,
+                                                color = SlockColor.TextMutedGray,
+                                                fontSize = 15.sp,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            membersListPane(active)
+                        }
                     }
                     val settingsTabContent: @Composable (active: Boolean) -> Unit = {
                         SettingsAppShellHomeContent(
@@ -17758,7 +17889,11 @@ private fun SharedMembersScreen(
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
     paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
-    onForegroundActivity: (String) -> Unit = {}
+    onForegroundActivity: (String) -> Unit = {},
+    // task #58: on wide screens the member detail renders in the right pane of the
+    // same surface (web-style list|detail); when null the legacy standalone push is
+    // used (compact / desktop mode off).
+    onOpenMemberDetailInline: ((MemberDetailIdentity, JSONObject) -> Unit)? = null,
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     val membersTitle = stringResource(MR.strings.tab_members)
@@ -18124,15 +18259,19 @@ private fun SharedMembersScreen(
                                             ?: serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
                                 )
                             agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
-                            pager.openSlockPage(
-                                pageName = MEMBER_DETAIL_PAGE,
-                                pageData = pageData,
-                                storeScopeOverride = storeScope,
-                                onMissingScope = {
-                                    bridge.toast(openProfileFailedMessage)
-                                    bridge.log("members_detail_open_skip reason=missing_shell_scope source=app_shell")
-                                }
-                            )
+                            if (onOpenMemberDetailInline != null) {
+                                onOpenMemberDetailInline(identity, pageData)
+                            } else {
+                                pager.openSlockPage(
+                                    pageName = MEMBER_DETAIL_PAGE,
+                                    pageData = pageData,
+                                    storeScopeOverride = storeScope,
+                                    onMissingScope = {
+                                        bridge.toast(openProfileFailedMessage)
+                                        bridge.log("members_detail_open_skip reason=missing_shell_scope source=app_shell")
+                                    }
+                                )
+                            }
                         }
                     }
                 },

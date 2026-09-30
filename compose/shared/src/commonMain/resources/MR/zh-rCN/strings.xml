@@ -2082,6 +2082,7 @@
     <string name="settings_mobile_new_design_settings">新版设置设计</string>
     <string name="settings_mobile_new_design_settings_detail">打开新版独立频道设置页。关闭时继续使用现有 Thread 设置弹窗。</string>
     <string name="home_adaptive_select_conversation">选择一个会话</string>
+    <string name="members_adaptive_select_member">选择一个成员</string>
     <string name="composer_add_image">添加图片</string>
     <string name="composer_take_photo">拍照</string>
     <string name="composer_attach_file">文件</string>

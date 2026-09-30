@@ -2082,6 +2082,7 @@
     <string name="settings_mobile_new_design_settings">New design settings</string>
     <string name="settings_mobile_new_design_settings_detail">Open the new standalone channel settings page. When off, keep the current Thread settings dialog.</string>
     <string name="home_adaptive_select_conversation">Select a conversation</string>
+    <string name="members_adaptive_select_member">Select a member</string>
     <string name="composer_add_image">Add image</string>
     <string name="composer_take_photo">Take photo</string>
     <string name="composer_attach_file">Attach file</string>

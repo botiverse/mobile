@@ -215,3 +215,48 @@ class AppShellServerDrawerBackProjectionTest {
         assertFalse(projected.home.serverDrawerCommandIntent.desiredOpen)
     }
 }
+
+class AppShellMembersDetailPaneTest {
+    /**
+     * task #58 web-style Members list|detail: the pane gate mirrors the shared
+     * adaptive contract — desktop mode on + DualPane only — but is keyed to the
+     * member selection, not the conversation workspace, so switching tabs never
+     * clobbers either selection.
+     */
+    @Test
+    fun `members detail pane only on desktop dual pane`() {
+        assertTrue(
+            appShellMembersDetailPaneVisible(
+                desktopModeOnLargeScreen = true,
+                layout = SlockAdaptivePaneLayout.DualPane,
+            )
+        )
+        assertFalse(
+            appShellMembersDetailPaneVisible(
+                desktopModeOnLargeScreen = false,
+                layout = SlockAdaptivePaneLayout.DualPane,
+            )
+        )
+        assertFalse(
+            appShellMembersDetailPaneVisible(
+                desktopModeOnLargeScreen = true,
+                layout = SlockAdaptivePaneLayout.Compact,
+            )
+        )
+    }
+
+    @Test
+    fun `member selection identity key distinguishes server kind member`() {
+        val selection =
+            AppShellMemberDetailSelection(
+                serverId = "s1",
+                memberId = "m1",
+                kind = "agent",
+                pageData = com.tencent.kuikly.core.nvi.serialization.json.JSONObject(),
+            )
+        assertTrue(selection.key == "s1:agent:m1")
+        val other =
+            selection.copy(serverId = "s2")
+        assertTrue(other.key != selection.key)
+    }
+}
