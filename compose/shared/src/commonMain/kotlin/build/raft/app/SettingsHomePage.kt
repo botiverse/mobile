@@ -1309,16 +1309,55 @@ internal class AppShellMemberDetailOpenGeneration {
     var value by mutableStateOf(0L)
         private set
 
+    /** In-flight open request, when one has been stamped but not yet applied
+     * or dropped. Shell-visible so Back/server-switch can cancel a pending
+     * first open even while no selection exists yet. */
+    var pending by mutableStateOf<Long?>(null)
+        private set
+
     fun next(): Long {
         value += 1L
+        pending = value
         return value
     }
 
     fun current(): Long = value
 
+    /** Clears the pending marker when the request resolves (applied or
+     * dropped); a stale generation never clears a newer pending marker. */
+    fun settle(openGeneration: Long) {
+        if (pending == openGeneration) pending = null
+    }
+
     fun invalidate() {
         value += 1L
+        pending = null
     }
+}
+
+/**
+ * task #58 fenced completion for the async member-detail open: the seed and
+ * selection-apply run ONLY while `openGeneration` is still the live
+ * generation. Kept as a named function so tests exercise the exact production
+ * ordering — a stale completion must not dispatch the shared agent-detail
+ * seed (which would overwrite the newer member's detail) nor apply the
+ * selection.
+ */
+internal fun applyMemberDetailOpenCompletion(
+    generation: AppShellMemberDetailOpenGeneration,
+    openGeneration: Long,
+    seedSharedDetail: () -> Unit,
+    applySelection: () -> Unit,
+    onStale: () -> Unit = {},
+): Boolean {
+    if (openGeneration != generation.current()) {
+        onStale()
+        return false
+    }
+    seedSharedDetail()
+    applySelection()
+    generation.settle(openGeneration)
+    return true
 }
 
 /**
@@ -4365,7 +4404,13 @@ private fun SlockAppShellReadyContent(
     // stale profile open on the right pane.
     LaunchedEffect(readyServerId) {
         val selection = selectedAppShellMemberDetail
-        if (selection != null && selection.serverId != readyServerId) {
+        // A pending open was stamped under the previous server — switching must
+        // invalidate it even when no selection exists yet, otherwise the stale
+        // completion can reopen a detail under the new server.
+        if (
+            memberDetailOpenGeneration.pending != null ||
+            (selection != null && selection.serverId != readyServerId)
+        ) {
             selectedAppShellMemberDetail = null
             memberDetailOpenGeneration.invalidate()
         }
@@ -5196,21 +5241,29 @@ private fun SlockAppShellReadyContent(
         // task #58: a member detail open in the Members right pane consumes the
         // first Back on the Members tab — same dismiss-before-exit contract as
         // the adaptive conversation detail.
-        if (
-            selectedAppShellMemberDetail != null &&
+        val membersSurfaceActive =
+            retainedAppShellSelectedTab(selectedTab) == "members" ||
                 (
-                    retainedAppShellSelectedTab(selectedTab) == "members" ||
-                        (
-                            retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.More &&
-                                slackNavMoreDestination == SlockSlackNavMoreDestination.Members
-                        )
+                    retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.More &&
+                        slackNavMoreDestination == SlockSlackNavMoreDestination.Members
                 )
-        ) {
+        if (selectedAppShellMemberDetail != null && membersSurfaceActive) {
             bridge.log(
                 "members_detail_back_dismiss memberId=${selectedAppShellMemberDetail?.memberId.orEmpty()} " +
                     "selectedTab=$selectedTab"
             )
             selectedAppShellMemberDetail = null
+            memberDetailOpenGeneration.invalidate()
+            return true
+        }
+        // task #58 round-4: a first open still in flight has no selection yet —
+        // Back on the Members surface cancels the pending open instead of
+        // falling through to route exit and letting the detail pop open later.
+        if (memberDetailOpenGeneration.pending != null && membersSurfaceActive) {
+            bridge.log(
+                "members_detail_back_cancel_pending " +
+                    "generation=${memberDetailOpenGeneration.pending} selectedTab=$selectedTab"
+            )
             memberDetailOpenGeneration.invalidate()
             return true
         }
@@ -18351,15 +18404,11 @@ private fun SharedMembersScreen(
                                     accessMode.allowsPrivateAgentSurfaces &&
                                     (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)
                             ) {
+                                // The loaded order feeds only the local pageData
+                                // payload here; the shared store write is deferred
+                                // until after the generation fence below so a stale
+                                // open cannot publish into shared state.
                                 loadAgentPanelTabOrderForSharedMembers()
-                                    ?.also { order ->
-                                        agentPanelTabOrderStore.applyLoaded(
-                                            serverId = serverId,
-                                            order = order,
-                                            source = "shared_members_detail_open_preload",
-                                            logger = slockLogger("SlockAgentPanelTabOrder")
-                                        )
-                                    }
                                     ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }
                                     ?: membersPayload
                             } else {
@@ -18372,45 +18421,50 @@ private fun SharedMembersScreen(
                         if (pageData == null) {
                             bridge.toast(openProfileFailedMessage)
                             bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
+                            memberDetailOpenGeneration.settle(openGeneration)
                         } else {
-                            // Generation check BEFORE any shared-detail write: a
-                            // stale preload must not seed the agent detail store
-                            // (that would overwrite the newer member's detail)
-                            // any more than it may apply the selection.
-                            if (openGeneration != memberDetailOpenGeneration.current()) {
-                                bridge.log(
-                                    "members_detail_open_stale_drop " +
-                                        "generation=$openGeneration current=${memberDetailOpenGeneration.current()}"
-                                )
-                                return@launch
-                            }
-                            val seedMember =
-                                member.copy(
-                                    serverId =
-                                        member.serverId
-                                            ?: serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
-                                )
-                            agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
-                            if (onOpenMemberDetailInline != null) {
-                                if (openGeneration == memberDetailOpenGeneration.current()) {
-                                    onOpenMemberDetailInline(serverId, identity, pageData, openGeneration)
-                                } else {
-                                    bridge.log(
-                                        "members_detail_open_inline_stale " +
-                                            "generation=$openGeneration current=${memberDetailOpenGeneration.current()}"
-                                    )
-                                }
-                            } else {
-                                pager.openSlockPage(
-                                    pageName = MEMBER_DETAIL_PAGE,
-                                    pageData = pageData,
-                                    storeScopeOverride = storeScope,
-                                    onMissingScope = {
-                                        bridge.toast(openProfileFailedMessage)
-                                        bridge.log("members_detail_open_skip reason=missing_shell_scope source=app_shell")
+                            // Fenced completion: the shared-detail seed and the
+                            // selection/route apply run only while this click is
+                            // still the live generation — a stale preload must
+                            // not publish anything (task #58 round-3/4).
+                            val applied =
+                                applyMemberDetailOpenCompletion(
+                                    generation = memberDetailOpenGeneration,
+                                    openGeneration = openGeneration,
+                                    seedSharedDetail = {
+                                        val seedMember =
+                                            member.copy(
+                                                serverId =
+                                                    member.serverId
+                                                        ?: serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
+                                            )
+                                        agentDetailStore.dispatch(
+                                            SharedAgentDetailIntent.SeedDetailFromMember(seedMember)
+                                        )
+                                    },
+                                    applySelection = {
+                                        if (onOpenMemberDetailInline != null) {
+                                            onOpenMemberDetailInline(serverId, identity, pageData, openGeneration)
+                                        } else {
+                                            pager.openSlockPage(
+                                                pageName = MEMBER_DETAIL_PAGE,
+                                                pageData = pageData,
+                                                storeScopeOverride = storeScope,
+                                                onMissingScope = {
+                                                    bridge.toast(openProfileFailedMessage)
+                                                    bridge.log("members_detail_open_skip reason=missing_shell_scope source=app_shell")
+                                                }
+                                            )
+                                        }
+                                    },
+                                    onStale = {
+                                        bridge.log(
+                                            "members_detail_open_stale_drop " +
+                                                "generation=$openGeneration current=${memberDetailOpenGeneration.current()}"
+                                        )
                                     }
                                 )
-                            }
+                            if (!applied) memberDetailOpenGeneration.settle(openGeneration)
                         }
                     }
                 },

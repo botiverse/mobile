@@ -293,6 +293,78 @@ class AppShellMembersDetailPaneTest {
     }
 
     @Test
+    fun `stale member detail completion writes no shared detail or selection`() {
+        // Exercises the exact production completion path
+        // (applyMemberDetailOpenCompletion): a slow open resolving after a
+        // newer click must run neither the agent-detail seed nor the selection
+        // apply — if the fence were moved back behind the seed this fails.
+        val generation = AppShellMemberDetailOpenGeneration()
+        val openA = generation.next()
+        generation.next() // newer click B wins
+        var seeded = false
+        var applied = false
+        var staleLogged = false
+        val result =
+            applyMemberDetailOpenCompletion(
+                generation = generation,
+                openGeneration = openA,
+                seedSharedDetail = { seeded = true },
+                applySelection = { applied = true },
+                onStale = { staleLogged = true },
+            )
+        assertFalse(result)
+        assertFalse(seeded)
+        assertFalse(applied)
+        assertTrue(staleLogged)
+
+        // The live completion seeds and applies exactly once.
+        val openB = generation.next()
+        var seededB = false
+        var appliedB = false
+        assertTrue(
+            applyMemberDetailOpenCompletion(
+                generation = generation,
+                openGeneration = openB,
+                seedSharedDetail = { seededB = true },
+                applySelection = { appliedB = true },
+            )
+        )
+        assertTrue(seededB)
+        assertTrue(appliedB)
+    }
+
+    @Test
+    fun `pending member detail open is cancelled by close or server switch`() {
+        val generation = AppShellMemberDetailOpenGeneration()
+        // First open in flight: no selection exists yet, but the pending
+        // marker is shell-visible so Back/server-switch can cancel it.
+        val open = generation.next()
+        assertTrue(generation.pending == open)
+        generation.invalidate()
+        assertTrue(generation.pending == null)
+        // The cancelled request can no longer apply.
+        var applied = false
+        assertFalse(
+            applyMemberDetailOpenCompletion(
+                generation = generation,
+                openGeneration = open,
+                seedSharedDetail = {},
+                applySelection = { applied = true },
+            )
+        )
+        assertFalse(applied)
+        // A stale completion never clears a newer pending marker.
+        val openA = generation.next()
+        generation.settle(openA)
+        assertTrue(generation.pending == null)
+        val openB = generation.next()
+        generation.settle(openA) // stale settle — no-op
+        assertTrue(generation.pending == openB)
+        generation.settle(openB)
+        assertTrue(generation.pending == null)
+    }
+
+    @Test
     fun `member selection identity key distinguishes server kind member`() {
         val selection =
             AppShellMemberDetailSelection(
