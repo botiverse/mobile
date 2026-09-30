@@ -14024,7 +14024,11 @@ internal class MemberDetailScrollTracker(
                 // Reaching the target once is not the end of settling: the
                 // narrow pane can still be measured smaller on the next
                 // layout pass and clamp down (Alpha94: 489 -> 88 one frame
-                // later). Keep the window open; publish this frame.
+                // later). Keep the window open; publish this frame. The
+                // restore request is now finished, so any later in-flight
+                // scroll can only be the user's — clear the request flag so
+                // their landing is not mistaken for ours and suppressed.
+                issuedRestoreRequest = false
             } else if (sawUserScrollInSettle) {
                 // The user's own scroll landing is a real position — publish.
                 restoreSettlePending = false
@@ -14034,7 +14038,10 @@ internal class MemberDetailScrollTracker(
                 // clamps, Alpha94: 489 -> 88). The clamped landing is not a
                 // user position — suppress it so the original snapshot
                 // survives for the return trip. The settle window stays
-                // open: a later user scroll still publishes.
+                // open, and the restore request is definitively over: clear
+                // the flag so a later user scroll lands on the user branch
+                // instead of being suppressed forever.
+                issuedRestoreRequest = false
                 return
             }
         }

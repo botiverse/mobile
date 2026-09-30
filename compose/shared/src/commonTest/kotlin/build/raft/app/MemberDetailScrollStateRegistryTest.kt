@@ -320,4 +320,18 @@ class MemberDetailScrollTrackerTest {
         frame(0, 0, 0, false) { _, _ -> }
         assertEquals(emptyList<MemberDetailScrollPosition>(), saved)
     }
+
+    @Test
+    fun `after clamp suppression a user scroll landing still publishes`() {
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        val frame = tracker(MemberDetailScrollPosition(0, 489), saved)
+        frame(0, 0, 40, false) { _, _ -> } // seed top -> request issued
+        frame(0, 200, 40, true) { _, _ -> } // programmatic in-flight
+        frame(0, 88, 40, false) { _, _ -> } // clamped landing suppressed
+        assertEquals(emptyList<MemberDetailScrollPosition>(), saved)
+        // User then scrolls once and leaves: landing must publish.
+        frame(0, 300, 40, true) { _, _ -> }
+        frame(0, 300, 40, false) { _, _ -> }
+        assertEquals(MemberDetailScrollPosition(0, 300), saved.last())
+    }
 }
