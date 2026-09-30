@@ -343,15 +343,42 @@ class MemberDetailScrollTrackerTest {
     }
 
     @Test
-    fun `in-flight gesture on first populated frame still counts as user scroll`() {
-        // Gesture evidence path: content lands while the user is already
-        // dragging — the tracker must not fight them with a restore request.
+    fun `in-flight scroll on first populated frame wins over the restore`() {
+        // Live-intent path: content lands while a scroll is already in flight
+        // (user gesture or a deliberate programmatic move). The tracker must
+        // neither fight it with a restore request nor publish the transitory
+        // mid-flight position — the landing publishes once the scroll rests.
         val saved = mutableListOf<MemberDetailScrollPosition>()
         var requested: Pair<Int, Int>? = null
         val frame = tracker(MemberDetailScrollPosition(2, 378), saved)
         frame(2, 334, 40, true) { i, o -> requested = i to o }
         assertEquals(null, requested)
-        assertEquals(MemberDetailScrollPosition(2, 334), saved.last())
+        assertEquals(emptyList<MemberDetailScrollPosition>(), saved)
+        frame(2, 300, 40, false) { _, _ -> }
+        assertEquals(MemberDetailScrollPosition(2, 300), saved.last())
+    }
+
+    @Test
+    fun `dispose after a user scroll landing still saves the final position`() {
+        // Scroll once and leave immediately: the landing must be tracked as
+        // lastPosition so the dispose write is not lost (covers the actual
+        // save path used by the composition's DisposableEffect).
+        val tracker = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        fun frame(index: Int, offset: Int, scrolling: Boolean) =
+            tracker.observe(
+                itemCount = 40,
+                positionIndex = index,
+                positionOffset = offset,
+                scrollInProgress = scrolling,
+                requestScroll = { _, _ -> },
+                save = { saved += it }
+            )
+        frame(0, 489, false) // seed at target opens settle
+        frame(0, 300, true)
+        frame(0, 300, false)
+        assertEquals(MemberDetailScrollPosition(0, 300), tracker.lastPosition)
+        assertEquals(MemberDetailScrollPosition(0, 300), saved.last())
     }
 
     @Test

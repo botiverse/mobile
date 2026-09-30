@@ -238,6 +238,7 @@ import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
@@ -3443,10 +3444,15 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                 }
             }
         }
-        applySessionUserId()
+        // onSubscription runs after the shared-flow subscription is active,
+        // so a session change that lands between the initial read and
+        // subscribing cannot be missed — the initial tick still applies the
+        // latest persisted session.
         (provider.authStore as? SlockAuthSessionChangeSource)
             ?.sessionChanges
+            ?.onSubscription { applySessionUserId() }
             ?.collect { applySessionUserId() }
+            ?: applySessionUserId()
     }
     var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
     var agentProfileRequestGeneration by remember { mutableStateOf(0L) }
@@ -14047,11 +14053,16 @@ internal class MemberDetailScrollTracker(
             val atRestoreTarget =
                 positionIndex == target.firstVisibleItemIndex &&
                     positionOffset == target.firstVisibleItemScrollOffset
+            // An in-flight scroll on the first populated frame is a live
+            // intent — user gesture or a deliberate programmatic move (e.g.
+            // scrollToTop) — and it outranks the pending restore. We do not
+            // publish the mid-flight position (it is transitory); instead the
+            // settle window opens already marked user-driven so the landing
+            // publishes when the scroll comes to rest.
             val userScrollingNow = scrollInProgress && !atRestoreTarget
             val wantsRestore =
-                !userScrollingNow &&
-                    (target.firstVisibleItemIndex > 0 ||
-                        target.firstVisibleItemScrollOffset > 0)
+                (target.firstVisibleItemIndex > 0 ||
+                    target.firstVisibleItemScrollOffset > 0)
             logger(
                 "members_detail_scroll restore_first_items label=$label " +
                     "target=${target.firstVisibleItemIndex}:" +
@@ -14063,7 +14074,9 @@ internal class MemberDetailScrollTracker(
             )
             if (wantsRestore) {
                 restoreSettlePending = true
-                if (!atRestoreTarget) {
+                if (userScrollingNow) {
+                    sawUserScrollInSettle = true
+                } else if (!atRestoreTarget) {
                     issuedRestoreRequest = true
                     requestScroll(
                         target.firstVisibleItemIndex,
