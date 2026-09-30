@@ -1238,11 +1238,17 @@ internal fun appShellRailSurfaceBackDismissesDetailFirst(
     selectedTab: String,
     railInlineSecondaryDestination: String?,
     selectionPresent: Boolean,
+    selectedHomeDestination: String? = null,
 ): Boolean =
     selectionPresent &&
         (
             railInlineSecondaryDestination != null ||
-                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity
+                retainedAppShellSelectedTab(selectedTab) == SlockSlackNavTabs.Activity ||
+                // A shared detail opened directly on the wide Home surface (Markdown
+                // reply permalink landing in channel view) must also consume the
+                // first Back; otherwise it falls through to root close_page and the
+                // app exits to the launcher — the Alpha76 wide-mode defect.
+                (retainedAppShellSelectedTab(selectedTab) == "home" && selectedHomeDestination == null)
         )
 
 /**
@@ -5064,6 +5070,7 @@ private fun SlockAppShellReadyContent(
                 selectedTab = selectedTab,
                 railInlineSecondaryDestination = railInlineSecondaryDestination,
                 selectionPresent = adaptiveWorkspaceStore.snapshot().workspace?.selection != null,
+                selectedHomeDestination = selectedHomeDestination,
             )
         ) {
             dismissAdaptiveDetailSelection()

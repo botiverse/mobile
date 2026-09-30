@@ -89,12 +89,33 @@ class AppShellRailSurfaceVisibilityTest {
                 selectionPresent = true,
             )
         )
+        // Wide Home surface hosting the shared detail (Markdown reply permalink
+        // landing) — the Alpha76 wide-mode BACK regression — must dismiss the
+        // detail first instead of falling through to close_page.
+        assertTrue(
+            appShellRailSurfaceBackDismissesDetailFirst(
+                selectedTab = "home",
+                railInlineSecondaryDestination = null,
+                selectionPresent = true,
+                selectedHomeDestination = null,
+            )
+        )
         // No selection -> the destination itself exits; non-rail tabs keep legacy order.
         assertFalse(
             appShellRailSurfaceBackDismissesDetailFirst(
                 selectedTab = SlockSlackNavTabs.Activity,
                 railInlineSecondaryDestination = null,
                 selectionPresent = false,
+            )
+        )
+        // Compact-mode / legacy home behaviour unchanged: a selection while a home
+        // secondary destination is open is not a rail-surface detail.
+        assertFalse(
+            appShellRailSurfaceBackDismissesDetailFirst(
+                selectedTab = "home",
+                railInlineSecondaryDestination = null,
+                selectionPresent = true,
+                selectedHomeDestination = HomeDestinationSearch,
             )
         )
         assertFalse(
