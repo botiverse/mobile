@@ -5444,6 +5444,26 @@ private fun MembersDetailContent(
     // "anonymous" key. Scroll tracking is only enabled once the viewer
     // identity is known; until then no seed/restore/save runs at all.
     val scrollIdentityReady = !currentUserId.isNullOrBlank()
+    // Diagnose gate state transitions, not just saves: Alpha100 showed zero
+    // tracker events on Android for both fresh-login and session-restore
+    // entries while iPad on the same head logs normally, so the gate itself
+    // must be observable. The label carries the member selection key with a
+    // hashed account segment — never the raw user id. Logged once per
+    // identity/member combination so a gated composition is distinguishable
+    // from "detail never composed".
+    val scrollGateKey =
+        member.membersDetailSelectionKey(
+            currentServerId?.trim() ?: member.serverId?.value?.trim().orEmpty()
+        )
+    LaunchedEffect(scrollGateKey, scrollIdentityReady) {
+        slockLogger("MembersDetailScroll")(
+            "members_detail_scroll scroll_gate " +
+                "label=${currentUserId?.trim().orEmpty().hashCode().toString(16)}:" +
+                "$scrollGateKey " +
+                "identityReady=$scrollIdentityReady " +
+                "userIdBlank=${currentUserId.isNullOrBlank()}"
+        )
+    }
     val memberScrollKey =
         "${currentUserId?.trim().orEmpty()}:" +
             member.membersDetailSelectionKey(
@@ -13968,10 +13988,14 @@ internal class MemberDetailScrollTracker(
         if (!restoreApplied) {
             restoreApplied = true
             val target = restoreTo
-            // Do not clobber a user who already scrolled before content
-            // arrived: if the list is populated and the position moved past
-            // the top on its own, the user beat the restore — keep their
-            // position instead of snapping back to the snapshot.
+            // A non-zero first frame that is NOT the target is ambiguous: it
+            // can be a real pre-content user scroll, but it can also be pure
+            // layout reflow (iPad evidence: saved 2:378 reopened at 2:334 with
+            // no gesture — a 22pt content-layout delta). Position alone cannot
+            // prove user input, so only gesture evidence counts: if a scroll
+            // is actively in progress when content lands, or one starts during
+            // the settle window, the user's landing wins. Otherwise we issue
+            // the restore request and let the settle window arbitrate.
             // current == target means the rememberLazyListState seed landed
             // intact (Alpha94: narrow page logged current=489). That is a
             // restore-in-progress, not a user scroll — the settle window must
@@ -13980,10 +14004,9 @@ internal class MemberDetailScrollTracker(
             val atRestoreTarget =
                 positionIndex == target.firstVisibleItemIndex &&
                     positionOffset == target.firstVisibleItemScrollOffset
-            val userAlreadyScrolled =
-                (positionIndex > 0 || positionOffset > 0) && !atRestoreTarget
+            val userScrollingNow = scrollInProgress && !atRestoreTarget
             val wantsRestore =
-                !userAlreadyScrolled &&
+                !userScrollingNow &&
                     (target.firstVisibleItemIndex > 0 ||
                         target.firstVisibleItemScrollOffset > 0)
             logger(
@@ -13991,7 +14014,7 @@ internal class MemberDetailScrollTracker(
                     "target=${target.firstVisibleItemIndex}:" +
                     "${target.firstVisibleItemScrollOffset} " +
                     "current=$positionIndex:$positionOffset " +
-                    "userAlreadyScrolled=$userAlreadyScrolled " +
+                    "userScrollingNow=$userScrollingNow " +
                     "wantsRestore=$wantsRestore " +
                     "items=$itemCount"
             )

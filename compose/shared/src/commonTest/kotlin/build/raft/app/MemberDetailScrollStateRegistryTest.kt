@@ -325,6 +325,36 @@ class MemberDetailScrollTrackerTest {
     }
 
     @Test
+    fun `layout-delta first frame without gesture still restores the target`() {
+        // iPad evidence on 634dd884: saved 2:378 reopened at 2:334 — a 22pt
+        // layout reflow, not user input. A non-zero first frame is no longer
+        // treated as "user already scrolled"; without isScrollInProgress the
+        // tracker must issue the restore request and snap back to the target.
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        var requested: Pair<Int, Int>? = null
+        val frame = tracker(MemberDetailScrollPosition(2, 378), saved)
+        frame(2, 334, 40, false) { i, o -> requested = i to o }
+        assertEquals(2 to 378, requested)
+        assertEquals(emptyList<MemberDetailScrollPosition>(), saved)
+        // Restore lands on target and publishes the restored position.
+        frame(2, 378, 40, true) { _, _ -> }
+        frame(2, 378, 40, false) { _, _ -> }
+        assertEquals(MemberDetailScrollPosition(2, 378), saved.last())
+    }
+
+    @Test
+    fun `in-flight gesture on first populated frame still counts as user scroll`() {
+        // Gesture evidence path: content lands while the user is already
+        // dragging — the tracker must not fight them with a restore request.
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        var requested: Pair<Int, Int>? = null
+        val frame = tracker(MemberDetailScrollPosition(2, 378), saved)
+        frame(2, 334, 40, true) { i, o -> requested = i to o }
+        assertEquals(null, requested)
+        assertEquals(MemberDetailScrollPosition(2, 334), saved.last())
+    }
+
+    @Test
     fun `after clamp suppression a user scroll landing still publishes`() {
         val saved = mutableListOf<MemberDetailScrollPosition>()
         val frame = tracker(MemberDetailScrollPosition(0, 489), saved)
