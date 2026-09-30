@@ -482,6 +482,37 @@ class SharedWindowNavigationCoordinatorTest {
     }
 
     @Test
+    fun loginCancelledFlushesUnboundButKeepsBound() {
+        // Contract: a cancelled login drops the still-Unbound pending intents in
+        // this scope so a later login cannot replay them; bound intents survive
+        // (their lifecycle is governed by authGeneration).
+        val coordinator = SharedWindowNavigationCoordinator()
+        val unbound = externalLinkIntent("server-b").copy(activationId = "act-u")
+        val bound =
+            externalLinkIntent("server-b").copy(
+                activationId = "act-b",
+                authGeneration = "p1:1"
+            )
+        coordinator.enqueue(unbound)
+        coordinator.enqueue(bound)
+
+        val dropped = coordinator.flushUnboundExternalLinkIntents()
+        assertEquals(listOf(unbound.activationId), dropped.map { it.activationId })
+        // Dropped intents are terminal — no later advance or replay.
+        assertNull(
+            coordinator.advance(
+                readiness(
+                    canonicalServerId = null,
+                    knownServerIds = emptySet(),
+                    serverListState = WindowNavigationServerListState.Loading
+                )
+            )
+        )
+        // The bound intent is still tracked (count includes terminals).
+        assertEquals(2, coordinator.requestCount)
+    }
+
+    @Test
     fun externalLinkBoundIntentDiesWhenAuthGenerationMovesOn() {
         // An intent bound to principal+generation "p1:1" terminates once the live
         // session reports a different generation; the stale route is never replayed.

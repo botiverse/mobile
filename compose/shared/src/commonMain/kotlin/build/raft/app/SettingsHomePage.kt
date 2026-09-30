@@ -2886,6 +2886,19 @@ private fun SlockAppShellReadyContent(
                     )
                     return@observe
                 }
+                val addressedScope =
+                    eventData
+                        ?.optString(SlockExternalPermalinkContract.KeyShellScopeId)
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                if (addressedScope != null && addressedScope != storeScope.shellInstanceId) {
+                    bridge.logWarn(
+                        "window_navigation_drop source=external_link reason=scope_mismatch " +
+                            "addressed=$addressedScope local=${storeScope.shellInstanceId} " +
+                            "activationId=${intent.activationId.orEmpty()}"
+                    )
+                    return@observe
+                }
                 val enqueued = windowNavigationCoordinator.enqueue(intent)
                 bridge.log(
                     "window_navigation_received source=external_link enqueued=$enqueued " +
@@ -2922,6 +2935,40 @@ private fun SlockAppShellReadyContent(
                 )
                 externalLinkNavigationTick += 1
             }
+        // login_cancelled (auth-flow source: Android access_denied, iOS native
+        // intake): flush this scope's still-Unbound external-link intents so a
+        // later login cannot replay them. Bound intents are untouched — they die
+        // via auth_generation_stale.
+        val loginCancelledSubscription =
+            eventBus.observe(SlockExternalPermalinkContract.NotReadyEventName) { eventData ->
+                val reason = eventData?.optString("reason")?.trim().orEmpty()
+                if (reason != SlockExternalPermalinkContract.ReasonLoginCancelled) return@observe
+                val dropped = windowNavigationCoordinator.flushUnboundExternalLinkIntents()
+                dropped.forEach { droppedIntent ->
+                    eventBus.post(
+                        eventName = SlockExternalPermalinkContract.AcceptedEventName,
+                        eventData =
+                            JSONObject()
+                                .put("status", SlockExternalPermalinkContract.AcceptedStatusRejected)
+                                .put("reason", SlockExternalPermalinkContract.ReasonLoginCancelled)
+                                .put(
+                                    SlockExternalPermalinkContract.KeyActivationId,
+                                    droppedIntent.activationId.orEmpty()
+                                )
+                                .put(
+                                    SlockExternalPermalinkContract.KeyShellScopeId,
+                                    storeScope.shellInstanceId
+                                ),
+                        source = "app_shell_external_link_login_cancelled"
+                    )
+                }
+                if (dropped.isNotEmpty()) {
+                    bridge.log(
+                        "window_navigation_flush source=external_link " +
+                            "reason=login_cancelled dropped=${dropped.size}"
+                    )
+                }
+            }
         eventBus.post(
             eventName = SlockSystemNotificationContract.OpenReadyEventName,
             eventData = JSONObject(),
@@ -2935,18 +2982,62 @@ private fun SlockAppShellReadyContent(
             )
             subscription.close()
             externalSubscription.close()
+            loginCancelledSubscription.close()
         }
     }
 
-    // task #13 external deep-link: acknowledge the pageData-delivered intent once
-    // (enqueue is idempotent on the intent key, which contains activationId), and
-    // keep the scoped Ready/NotReady heartbeat alongside the notification channel.
-    // The Accepted receipt carries the live bound generation; an Unbound intent
-    // (delivered before login) binds at the first advance readiness provides.
+    // task #13 external deep-link: the scoped Ready heartbeat is unconditional —
+    // native holds its pending queue until the FIRST Ready for its scope, so a
+    // normal launch with no cold-start permalink must still post it or the two
+    // sides wait on each other forever.
+    DisposableEffect(eventBus, storeScope.shellInstanceId) {
+        eventBus.post(
+            eventName = SlockExternalPermalinkContract.ReadyEventName,
+            eventData =
+                JSONObject()
+                    .put(SlockExternalPermalinkContract.KeyShellScopeId, storeScope.shellInstanceId)
+                    .put(
+                        SlockExternalPermalinkContract.KeyAuthGeneration,
+                        processRealtimeAuthority?.witness?.let {
+                            "${it.principalId}:${it.authGeneration}"
+                        } ?: ""
+                    ),
+            source = "app_shell_external_link_ready"
+        )
+        onDispose {
+            eventBus.post(
+                eventName = SlockExternalPermalinkContract.NotReadyEventName,
+                eventData =
+                    JSONObject()
+                        .put(
+                            SlockExternalPermalinkContract.KeyShellScopeId,
+                            storeScope.shellInstanceId
+                        )
+                        .put("reason", "shell_disposed"),
+                source = "app_shell_external_link_not_ready"
+            )
+        }
+    }
+
+    // Acknowledge the pageData-delivered intent once (enqueue is idempotent on
+    // the intent key, which contains activationId); an Unbound intent binds at
+    // the first advance readiness provides.
     DisposableEffect(eventBus, notificationWindowNavigationIntent, windowNavigationCoordinator, bridge) {
         val externalIntent =
             notificationWindowNavigationIntent?.takeIf { it.source == ExternalLinkSourceValue }
         if (externalIntent == null) return@DisposableEffect onDispose { }
+        // Cold-start envelopes addressed to a different scope are rejected at
+        // receipt — the pageData was built for a window that no longer exists.
+        val coldScope =
+            pager.pageData.params.appShellExternalLinkShellScopeId()
+        if (coldScope != null && coldScope != storeScope.shellInstanceId) {
+            bridge.logWarn(
+                "window_navigation_drop source=external_link reason=scope_mismatch " +
+                    "addressed=$coldScope local=${storeScope.shellInstanceId} " +
+                    "activationId=${externalIntent.activationId.orEmpty()}"
+            )
+            return@DisposableEffect onDispose { }
+        }
         val enqueued = windowNavigationCoordinator.enqueue(externalIntent)
         externalLinkNavigationTick += 1
         eventBus.post(
@@ -2971,30 +3062,9 @@ private fun SlockAppShellReadyContent(
                     ),
             source = "app_shell_external_link_received"
         )
-        eventBus.post(
-            eventName = SlockExternalPermalinkContract.ReadyEventName,
-            eventData =
-                JSONObject()
-                    .put(SlockExternalPermalinkContract.KeyShellScopeId, storeScope.shellInstanceId)
-                    .put(
-                        SlockExternalPermalinkContract.KeyAuthGeneration,
-                        processRealtimeAuthority?.witness?.let {
-                            "${it.principalId}:${it.authGeneration}"
-                        } ?: ""
-                    ),
-            source = "app_shell_external_link_ready"
-        )
-        onDispose {
-            eventBus.post(
-                eventName = SlockExternalPermalinkContract.NotReadyEventName,
-                eventData =
-                    JSONObject()
-                        .put(SlockExternalPermalinkContract.KeyShellScopeId, storeScope.shellInstanceId)
-                        .put("reason", "shell_disposed"),
-                source = "app_shell_external_link_not_ready"
-            )
-        }
+        onDispose { }
     }
+
     val homeSearchSavedViewModel: SharedHomeSearchSavedViewModel =
         viewModel(key = "shared-home-search-saved") {
             SharedHomeSearchSavedViewModel(
@@ -4834,18 +4904,25 @@ private fun SlockAppShellReadyContent(
                         "focusedMessageId=${action.request.anchorMessageId.orEmpty()} " +
                         "preserveMidPane=$externalLinkSameServer"
                 )
-                if (externalLinkSameServer) {
+                openHomeMessageRequest(action.request, source = action.intent.source)
+                // Result reports the terminal outcome only AFTER the open was
+                // dispatched, and echoes the intent's own bound generation — not
+                // the current session's, which may already have moved on.
+                if (action.intent.source == ExternalLinkSourceValue) {
                     eventBus.post(
                         eventName = SlockExternalPermalinkContract.ResultEventName,
                         eventData =
                             JSONObject()
                                 .put("status", SlockExternalPermalinkContract.ResultStatusOpened)
                                 .put(SlockExternalPermalinkContract.KeyActivationId, action.intent.activationId)
-                                .put(SlockExternalPermalinkContract.KeyShellScopeId, storeScope.shellInstanceId),
+                                .put(SlockExternalPermalinkContract.KeyShellScopeId, storeScope.shellInstanceId)
+                                .put(
+                                    SlockExternalPermalinkContract.KeyAuthGeneration,
+                                    action.intent.authGeneration.orEmpty()
+                                ),
                         source = "app_shell_external_link_result"
                     )
                 }
-                openHomeMessageRequest(action.request, source = action.intent.source)
             }
             is WindowNavigationAction.Reject -> {
                 bridge.logWarn(
@@ -4860,7 +4937,11 @@ private fun SlockAppShellReadyContent(
                                 .put("status", SlockExternalPermalinkContract.ResultStatusRejected)
                                 .put("reason", action.reason)
                                 .put(SlockExternalPermalinkContract.KeyActivationId, action.intent.activationId)
-                                .put(SlockExternalPermalinkContract.KeyShellScopeId, storeScope.shellInstanceId),
+                                .put(SlockExternalPermalinkContract.KeyShellScopeId, storeScope.shellInstanceId)
+                                .put(
+                                    SlockExternalPermalinkContract.KeyAuthGeneration,
+                                    action.intent.authGeneration.orEmpty()
+                                ),
                         source = "app_shell_external_link_result"
                     )
                 }
@@ -22948,9 +23029,23 @@ internal fun JSONObject.appShellExternalLinkWindowNavigationIntent(): WindowNavi
         serverId = serverSlug,
         sourceIdentity = identity,
         source = ExternalLinkSourceValue,
-        activationId = activationId
+        activationId = activationId,
+        authGeneration =
+            envelope.optString(SlockExternalPermalinkContract.KeyAuthGeneration).trim()
+                .takeIf { it.isNotBlank() }
     )
 }
+
+/**
+ * The scope an envelope was addressed to; blank means the host could not name a
+ * scope (single-window fallback). Callers must reject non-blank mismatches —
+ * receipt fields alone cannot stop the wrong window from consuming a request.
+ */
+internal fun JSONObject.appShellExternalLinkShellScopeId(): String? =
+    optJSONObject(SlockExternalPermalinkContract.PageDataBlockKey)
+        ?.optString(SlockExternalPermalinkContract.KeyShellScopeId)
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
 
 internal fun JSONObject?.appShellSystemNotificationNavigationIntent(): WindowNavigationIntent? =
     this

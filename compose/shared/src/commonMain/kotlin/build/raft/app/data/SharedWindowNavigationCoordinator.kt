@@ -204,6 +204,24 @@ internal class SharedWindowNavigationCoordinator {
     }
 
     /**
+     * `login_cancelled` flush (interface v3.4): a cancelled sign-in drops every
+     * still-Unbound intent so a later login cannot replay a stale route; Bound
+     * intents are unaffected — they die via auth_generation_stale on the next
+     * advance. Returns the dropped intents so the caller can report receipts.
+     */
+    fun flushUnboundExternalLinkIntents(): List<WindowNavigationIntent> = synchronized(lock) {
+        if (released) return emptyList()
+        val unbound =
+            requests.values
+                .filter { !it.stage.terminal && it.intent.authGeneration == null }
+                .map { it.intent }
+        requests.values
+            .filter { !it.stage.terminal && it.intent.authGeneration == null }
+            .forEach { it.stage = RequestStage.Rejected }
+        unbound
+    }
+
+    /**
      * Releases this coordinator permanently. The provider creates a fresh instance for a later
      * shell with the same id, while any late coroutine holding this old instance becomes inert.
      */

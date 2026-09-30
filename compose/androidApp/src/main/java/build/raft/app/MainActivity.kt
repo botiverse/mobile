@@ -20,6 +20,7 @@ import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SharedEmailVerificationResult
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.SlockExternalPermalinkContract
+import build.raft.app.data.postAndroidAppScopeEvent
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -344,6 +345,20 @@ class MainActivity : ComponentActivity() {
         val error = uri.getQueryParameter("error") ?: uri.getQueryParameter("error_description")
         if (!error.isNullOrBlank()) {
             pendingStore.clear()
+            // task #13 contract: a user-cancelled login (access_denied) is the
+            // login-flow source of `login_cancelled`. Unbound external-link
+            // intents queued pre-auth must not survive into the next account's
+            // session; the shared shell flushes them on this signal.
+            if (error == "access_denied" && pending.mode == AndroidMobileOAuth.ModeLogin) {
+                postAndroidAppScopeEvent(
+                    eventName = SlockExternalPermalinkContract.NotReadyEventName,
+                    eventData =
+                        JSONObject()
+                            .put(SlockExternalPermalinkContract.KeyShellScopeId, "")
+                            .put("reason", SlockExternalPermalinkContract.ReasonLoginCancelled),
+                    source = "android_login_cancelled"
+                )
+            }
             // Map the typed conflict codes through the shared mapper before
             // surfacing anything. Previously the raw code was toasted, so a user
             // whose email simply already had a password account saw the literal
