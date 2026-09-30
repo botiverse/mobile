@@ -68,8 +68,8 @@ import build.raft.app.data.SharedAgentDetailState
 import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.SharedAgentIssueReportRequest
 import build.raft.app.data.SharedAgentPanelTabOrderStore
-import build.raft.app.data.SlockAuthSessionChangeSource
-import build.raft.app.data.SlockAuthSessionEventSource
+import build.raft.app.data.SlockAuthSessionTerminalSource
+import kotlinx.coroutines.flow.onSubscription
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockAvatarCacheRuntime
 import build.raft.app.data.SlockAvatarNativeCache
@@ -239,8 +239,6 @@ import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -3451,51 +3449,36 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
     // The roster seed composes before the canonical profile load supplies the
     // session user id, leaving the scroll identity gate closed for the whole
     // seeded composition (Alpha100: HUMAN detail produced zero tracker events
-    // on both Android entries and iPad). Fences, end to end:
-    //   memberIdentity launches the effect — switching members relaunches and
-    //   the helper re-verifies the CURRENT routeState still belongs to this
-    //   member.
-    //   A wake event re-reads the session inside the collector AFTER the read
-    //   has settled: since events and applies are serialized in this one
-    //   coroutine, a session mutation that committed before the read cannot
-    //   be missed by it — readSession observes the mutex-guarded record, so
-    //   the read value IS the authoritative session at apply time. Writes go
-    //   through memberDetailPatchedHumanIdentity, which only ever touches a
-    //   blank or provisionalSeedUserId-flagged instance.
-    LaunchedEffect(memberIdentity, provider.authStore) {
+    // on both Android entries and iPad). The patch is committed under the
+    // auth store's own mutation lock, generation-fenced: snapshot generation
+    // is captured under the lock and the write runs only while that
+    // generation still holds — no session mutation (switch / clear / token
+    // rotation) can interleave between the read and the commit. The detail's
+    // own authority checks still apply: the helper writes only a blank or
+    // provisionalSeedUserId-flagged Human of THIS member, so a canonical
+    // load's identity stays authoritative. On stores without the terminal
+    // source the patch simply never fires — the gate stays closed until the
+    // canonical load resolves.
+    val authTerminalSource = provider.authStore as? SlockAuthSessionTerminalSource
+    LaunchedEffect(memberIdentity, authTerminalSource) {
+        if (authTerminalSource == null) return@LaunchedEffect
         suspend fun applySessionUserId() {
+            val snapshot = authTerminalSource.readAuthSessionTerminalSnapshot()
             val uid =
-                provider.authStore.readSession()?.user?.id?.trim()
-                    ?.takeIf { it.isNotBlank() }
-            memberDetailPatchedHumanIdentity(
-                routeState = routeState,
-                memberId = memberIdentity?.memberId,
-                sessionUserId = uid
-            )?.let { patched -> routeState = patched }
+                snapshot.session?.user?.id?.trim()?.takeIf { it.isNotBlank() }
+            authTerminalSource.runIfAuthSessionRevision(snapshot.generation) {
+                memberDetailPatchedHumanIdentity(
+                    routeState = routeState,
+                    memberId = memberIdentity?.memberId,
+                    sessionUserId = uid
+                )?.let { patched -> routeState = patched }
+            }
         }
-        // Merge the fingerprint wake (sessionChanges — fires on any session
-        // write that changes identity) and the typed bus (authSessionEvents —
-        // additionally covers Cleared, which emits no fingerprint). Both only
-        // wake; the value written is always re-read at apply time. Neither is
-        // a SharedFlow contract beyond wake semantics, so merge(....) of
-        // Flow<T> is legal; no onSubscription.
-        val changeSource = provider.authStore as? SlockAuthSessionChangeSource
-        val eventSource = provider.authStore as? SlockAuthSessionEventSource
-        val wakes =
-            listOfNotNull(
-                changeSource?.sessionChanges,
-                eventSource?.authSessionEvents
-            )
-        if (wakes.isEmpty()) {
-            applySessionUserId()
-            return@LaunchedEffect
-        }
-        // Subscribe FIRST, then read: a subscription replay=0 drops nothing
-        // once active, and the initial apply happens only after every wake
-        // source is live, so a change committed between subscribe and the
-        // first read is still seen by that read.
-        merge(*wakes.map { it.map { Unit } }.toTypedArray())
-            .onStart { applySessionUserId() }
+        // onSubscription replays a reconcile after the subscription is
+        // active, so a mutation committed between subscribe and the first
+        // read is still covered by that read.
+        authTerminalSource.authSessionTerminalEvents
+            .onSubscription { applySessionUserId() }
             .collect { applySessionUserId() }
     }
     var localAgentDetailRefreshKey by remember { mutableStateOf(0) }

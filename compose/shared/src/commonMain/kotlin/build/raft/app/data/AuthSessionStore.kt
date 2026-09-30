@@ -358,6 +358,19 @@ internal interface SlockAuthSessionTerminalSource {
     ): Boolean
 
     /**
+     * Generic generation-fenced read-commit: [action] runs under the store
+     * mutation lock only when the store's current generation still equals
+     * [expectedGeneration] captured by a prior snapshot read — so no session
+     * mutation (switch / clear / rotate) can interleave between the caller's
+     * read and this commit. Default false: stores without a real lock simply
+     * never commit (callers must degrade, not act).
+     */
+    suspend fun runIfAuthSessionRevision(
+        expectedGeneration: Long,
+        action: () -> Unit,
+    ): Boolean = false
+
+    /**
      * Commits terminal auth loss when the revision is still absent or still owns the exact
      * captured authority. Real stores override this under the canonical mutation lock and clear
      * the captured authority before [action], so a prior best-effort clear failure cannot leave an
@@ -935,6 +948,18 @@ class KeyValueAuthSessionStore(
     ): Boolean =
         mutex.withLock {
             if (storeGeneration != expectedGeneration || readSessionRecordLocked() != null) {
+                return@withLock false
+            }
+            action()
+            true
+        }
+
+    override suspend fun runIfAuthSessionRevision(
+        expectedGeneration: Long,
+        action: () -> Unit,
+    ): Boolean =
+        mutex.withLock {
+            if (storeGeneration != expectedGeneration) {
                 return@withLock false
             }
             action()

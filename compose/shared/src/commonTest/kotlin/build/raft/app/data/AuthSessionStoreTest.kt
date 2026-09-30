@@ -605,6 +605,60 @@ class AuthSessionStoreTest {
     }
 
     @Test
+    fun sessionRevisionCommitAppliesWhileGenerationUnchanged() = runBlocking {
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        store.replaceAuthenticatedSession(sampleSession())
+        val snapshot = store.readAuthSessionTerminalSnapshot()
+        var applied: String? = null
+        val committed =
+            store.runIfAuthSessionRevision(snapshot.generation) {
+                applied = snapshot.session?.user?.id
+            }
+        assertTrue(committed)
+        assertEquals(sampleSession().user.id, applied)
+    }
+
+    @Test
+    fun sessionRevisionCommitRejectsSwitchBetweenSnapshotAndCommit() = runBlocking {
+        // task #58: a stale read must never commit — switching the account
+        // between the snapshot and the conditional commit drops the write.
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        store.replaceAuthenticatedSession(sampleSession())
+        val snapshot = store.readAuthSessionTerminalSnapshot()
+
+        store.replaceAuthenticatedSession(
+            sampleSession().copy(
+                user = sampleSession().user.copy(id = "viewer-b"),
+                accessToken = "other-access",
+                refreshToken = "other-refresh"
+            )
+        )
+        var writeRan = false
+        val committed =
+            store.runIfAuthSessionRevision(snapshot.generation) { writeRan = true }
+
+        assertFalse(committed)
+        assertFalse(writeRan)
+        assertEquals("viewer-b", store.readSession()?.user?.id)
+    }
+
+    @Test
+    fun sessionRevisionCommitRejectsClearBetweenSnapshotAndCommit() = runBlocking {
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        store.replaceAuthenticatedSession(sampleSession())
+        val snapshot = store.readAuthSessionTerminalSnapshot()
+
+        store.clearSession("logout", "test")
+        var writeRan = false
+        val committed =
+            store.runIfAuthSessionRevision(snapshot.generation) { writeRan = true }
+
+        assertFalse(committed)
+        assertFalse(writeRan)
+        assertNull(store.readSession())
+    }
+
+    @Test
     fun terminalAuthLossCommitClearsExactCapturedAuthorityLeftByEarlierClearFailure() = runBlocking {
         val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
         val captured = sampleSession()
