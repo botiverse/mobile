@@ -389,6 +389,11 @@ data class StoredAuthSession(
     val selectedServerId: String? = null,
     val selectedServerSlug: String? = null,
     val servers: List<StoredAuthServer> = emptyList(),
+    // True when `servers` was filled by a failure fallback rather than a real
+    // response: a degraded empty list must not satisfy "loaded" gates that
+    // reject pending routes as server_unavailable. Cleared on the next
+    // successful loadServers persist.
+    val serversListDegraded: Boolean = false,
     val qaBootstrap: StoredQaBootstrapMetadata? = null,
     val refreshAttempt: StoredAuthRefreshAttempt? = null,
     @Transient val qaBootstrapLaunchAuthorized: Boolean = false,

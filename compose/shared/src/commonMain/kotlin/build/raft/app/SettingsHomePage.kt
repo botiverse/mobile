@@ -4767,10 +4767,13 @@ private fun SlockAppShellReadyContent(
                 // A bound session owns the authoritative (possibly empty) list; before that,
                 // "not yet resolved" must stay pending rather than reject as unavailable.
                 serverListState =
-                    if (readySession != null) {
-                        WindowNavigationServerListState.Loaded
-                    } else {
-                        WindowNavigationServerListState.Loading
+                    when {
+                        readySession == null -> WindowNavigationServerListState.Loading
+                        // servers was filled by a login/refresh failure fallback: the list is
+                        // degraded, not authoritatively empty — reject as pending instead of
+                        // falsely terminating intents with server_unavailable.
+                        readySession.serversListDegraded -> WindowNavigationServerListState.Failed
+                        else -> WindowNavigationServerListState.Loaded
                     },
                 // Intents bound before login carry no identity; a bound intent dies when
                 // the authenticated principal+generation no longer matches.
@@ -4837,10 +4840,13 @@ private fun SlockAppShellReadyContent(
                 // A bound session owns the authoritative (possibly empty) list; before that,
                 // "not yet resolved" must stay pending rather than reject as unavailable.
                 serverListState =
-                    if (readySession != null) {
-                        WindowNavigationServerListState.Loaded
-                    } else {
-                        WindowNavigationServerListState.Loading
+                    when {
+                        readySession == null -> WindowNavigationServerListState.Loading
+                        // servers was filled by a login/refresh failure fallback: the list is
+                        // degraded, not authoritatively empty — reject as pending instead of
+                        // falsely terminating intents with server_unavailable.
+                        readySession.serversListDegraded -> WindowNavigationServerListState.Failed
+                        else -> WindowNavigationServerListState.Loaded
                     },
                 // Intents bound before login carry no identity; a bound intent dies when
                 // the authenticated principal+generation no longer matches.

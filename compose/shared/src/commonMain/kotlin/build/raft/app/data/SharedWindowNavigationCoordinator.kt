@@ -130,6 +130,9 @@ internal class SharedWindowNavigationCoordinator {
             return WindowNavigationAction.Reject(intent, "conversation_identity_missing")
         }
 
+        // A degraded list (login/refresh servers fetch failed → fallback=empty) must not
+        // terminate intents: it is not evidence the target server is unavailable, so the
+        // request stays pending until a successful list load lands.
         if (
             readiness.serverListState == WindowNavigationServerListState.Loaded &&
             intent.serverId !in readiness.knownServerIds

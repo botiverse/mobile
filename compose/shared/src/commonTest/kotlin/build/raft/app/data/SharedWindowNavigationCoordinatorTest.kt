@@ -505,7 +505,7 @@ class SharedWindowNavigationCoordinatorTest {
                     canonicalServerId = null,
                     knownServerIds = emptySet(),
                     serverListState = WindowNavigationServerListState.Loading
-                )
+                ).copy(authGeneration = "p1:1")
             )
         )
         // The bound intent is still tracked (count includes terminals).

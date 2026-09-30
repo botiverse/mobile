@@ -1,10 +1,12 @@
 package build.raft.app
 
 import build.raft.app.data.SharedConversationDirectoryProjection
+import build.raft.app.data.ThreadRouteId
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.model.ConversationKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 
 class SlockThreadWebLinkTargetTest {
@@ -193,9 +195,18 @@ class SlockThreadWebLinkTargetTest {
         // the #417 construction must accept the same thread identity it produced.
         val wirePayload = requireNotNull(payload.toWireThreadLaunchPayloadOrNull())
         val construction = wirePayload.toThreadLaunchIdentityConstruction()
+        val accepted = assertIs<ThreadLaunchIdentityConstructionResult.Accepted>(construction)
+        assertEquals("channel-123", accepted.identity.threadParentChannelId())
+        assertEquals("parent-789", accepted.identity.threadParentMessageId())
+        assertEquals(ConversationKind.Channel, accepted.parentConversationKind)
+        // Producer regression: ReplyThread must carry the parent channel-kind wire
+        // value, never "thread" (surface=Thread && channelKind=Thread is rejected).
+        assertEquals("channel", wirePayload.channelKind)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, wirePayload.surfaceKind)
+        assertEquals("reply-456", wirePayload.focusedMessageId)
         assertEquals(
-            ThreadLaunchIdentityConstructionResult.Accepted::class,
-            construction::class
+            ThreadRouteId.ReplyThread::class,
+            accepted.routeId::class
         )
     }
 

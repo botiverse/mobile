@@ -130,11 +130,13 @@ class SharedAuthDataSource(
                 }
             }
         diagnosticsLogger("auth_login_result provider=password result=success parsed=true")
+        var serversListDegraded = false
         val servers =
             when (
                 val response =
                     runCatchingPreservingCancellation { api.servers("Bearer ${login.accessToken}") }
                         .getOrElse { throwable ->
+                            serversListDegraded = true
                             diagnosticsLogger(
                                 "auth_login_servers_result result=failure stage=servers_request errorType=${throwable.safeDiagnosticsType()} mapped=network fallback=empty"
                             )
@@ -151,6 +153,7 @@ class SharedAuthDataSource(
                     if (response.contractCode != null) {
                         return loginStageFailure("servers_parse", failure.message)
                     }
+                    serversListDegraded = true
                     emptyList()
                 }
             }
@@ -163,7 +166,8 @@ class SharedAuthDataSource(
                 user = login.user,
                 accessToken = login.accessToken,
                 refreshToken = login.refreshToken,
-                servers = orderedServers
+                servers = orderedServers,
+                serversListDegraded = serversListDegraded
             ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
         val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
         diagnosticsLogger("auth_selected_server_persist_start serverIdPresent=$selectedServerPresent")
@@ -324,6 +328,7 @@ class SharedAuthDataSource(
                     return failure
                 }
             }
+        var serversListDegraded = false
         val servers =
             when (val response = api.servers("Bearer ${login.accessToken}")) {
                 is AuthApiResult.Success -> {
@@ -333,6 +338,7 @@ class SharedAuthDataSource(
                 is AuthApiResult.Failure -> {
                     val failure = response.toSharedAuthFailure()
                     diagnosticsLogger("auth_login_servers_result provider=mobile_oauth result=failure code=${failure.code} fallback=empty")
+                    serversListDegraded = true
                     emptyList()
                 }
             }
@@ -345,7 +351,8 @@ class SharedAuthDataSource(
                 user = login.user,
                 accessToken = login.accessToken,
                 refreshToken = login.refreshToken,
-                servers = orderedServers
+                servers = orderedServers,
+                serversListDegraded = serversListDegraded
             ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
         val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
         diagnosticsLogger("auth_session_persist_start provider=mobile_oauth userPresent=${login.user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
@@ -560,6 +567,7 @@ class SharedAuthDataSource(
                     return failure
                 }
             }
+        var serversListDegraded = false
         val servers =
             when (val response = api.servers("Bearer ${tokens.accessToken}")) {
                 is AuthApiResult.Success -> {
@@ -569,6 +577,7 @@ class SharedAuthDataSource(
                 is AuthApiResult.Failure -> {
                     val failure = response.toSharedAuthFailure()
                     diagnosticsLogger("auth_login_servers_result provider=$provider result=failure code=${failure.code} fallback=empty")
+                    serversListDegraded = true
                     emptyList()
                 }
             }
@@ -581,7 +590,8 @@ class SharedAuthDataSource(
                 user = user,
                 accessToken = tokens.accessToken,
                 refreshToken = tokens.refreshToken,
-                servers = orderedServers
+                servers = orderedServers,
+                serversListDegraded = serversListDegraded
             ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
         val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
         diagnosticsLogger("auth_session_persist_start provider=$provider userPresent=${user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
@@ -621,10 +631,14 @@ class SharedAuthDataSource(
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> return response.toSharedAuthFailure()
             }
+        var serversListDegraded = false
         val servers =
             when (val response = api.servers("Bearer ${register.accessToken}")) {
                 is AuthApiResult.Success -> response.data
-                is AuthApiResult.Failure -> emptyList()
+                is AuthApiResult.Failure -> {
+                    serversListDegraded = true
+                    emptyList()
+                }
             }
         val orderedServers =
             servers.orderedByServerOrder(
@@ -635,7 +649,8 @@ class SharedAuthDataSource(
                 user = register.user,
                 accessToken = register.accessToken,
                 refreshToken = register.refreshToken,
-                servers = orderedServers
+                servers = orderedServers,
+                serversListDegraded = serversListDegraded
             ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
         replaceAuthenticatedSessionAndRetireChangedAccount(session, "register")
         return SharedAuthResult.Success(session)
@@ -1076,7 +1091,8 @@ class SharedAuthDataSource(
             latest.copy(
                 servers = validated.servers,
                 selectedServerId = validated.selectedServerId,
-                selectedServerSlug = validated.selectedServerSlug
+                selectedServerSlug = validated.selectedServerSlug,
+                serversListDegraded = false
             ).also { persisted = it }
         }
         val updated = persisted ?: run {
@@ -1163,10 +1179,14 @@ class SharedAuthDataSource(
                     return response.toSharedAuthFailure()
                 }
             }
+        var createServersDegraded = false
         val latestServers =
             when (val response = api.servers(session.bearer())) {
                 is AuthApiResult.Success -> response.data
-                is AuthApiResult.Failure -> emptyList()
+                is AuthApiResult.Failure -> {
+                    createServersDegraded = true
+                    emptyList()
+                }
             }
                 .upsert(created)
                 .ifEmpty { listOf(created) }
@@ -1179,6 +1199,7 @@ class SharedAuthDataSource(
         sessionStore.updateMetadata(expectedAccountId = session.user.id) { latest ->
             latest.copy(
                 servers = latestServers,
+                serversListDegraded = createServersDegraded,
             ).also { persisted = it }
         }
         val updated = persisted ?: return SharedAuthResult.Unauthenticated
@@ -1601,15 +1622,26 @@ class SharedAuthDataSource(
                     return response.toSharedAuthFailure()
                 }
             }
+        var serversListDegraded = session.serversListDegraded
         val servers =
             when (val response = api.servers(session.bearer())) {
-                is AuthApiResult.Success -> response.data
-                is AuthApiResult.Failure -> session.servers
+                is AuthApiResult.Success -> {
+                    serversListDegraded = false
+                    response.data
+                }
+                is AuthApiResult.Failure -> {
+                    // Refresh failed: whatever list we keep is stale, not authoritative —
+                    // mark it degraded so server-availability gates stay pending.
+                    serversListDegraded = true
+                    session.servers
+                }
             }
         val orderedServers = servers.orderedByServerOrder(loadServerOrderOrNull(session.bearer(), source = "current_user"))
         // Compute the fetched metadata (user + servers + validated selection). This is token-free;
         // its tokens are the captured `session`'s and are deliberately NOT persisted below.
-        val metadata = session.copy(user = user).withValidatedServerSelection(orderedServers, serverSelectionMemory)
+        val metadata =
+            session.copy(user = user, serversListDegraded = serversListDegraded)
+                .withValidatedServerSelection(orderedServers, serverSelectionMemory)
         // #466 fix: apply the metadata onto the store's LATEST session under the store lock, keeping
         // the LATEST tokens. The old `session.copy(user=user); saveSession(updated)` wrote back this
         // captured snapshot's tokens, clobbering a token the socket coordinator may have rotated in
@@ -1624,6 +1656,7 @@ class SharedAuthDataSource(
                 servers = metadata.servers,
                 selectedServerId = metadata.selectedServerId,
                 selectedServerSlug = metadata.selectedServerSlug,
+                serversListDegraded = metadata.serversListDegraded,
             ).also { persisted = it }
         }
         // Session cleared concurrently (logout) → updateMetadata no-ops; do NOT revive it.
