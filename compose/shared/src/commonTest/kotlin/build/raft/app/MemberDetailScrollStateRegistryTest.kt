@@ -502,6 +502,11 @@ class MemberDetailScrollTrackerTest {
         // Page disposed here without a settled frame: the dispose write
         // reads lastPosition and must carry the user's live offset.
         assertEquals(MemberDetailScrollPosition(0, 355), t.lastPosition)
+        // If instead the drag settles, the landing must still publish even
+        // though lastPosition already tracked the same value in flight —
+        // live tracking and the published save are separate paths.
+        frame(0, 355, 40, false) { _, _ -> }
+        assertEquals(MemberDetailScrollPosition(0, 355), saved.last())
     }
 
     @Test

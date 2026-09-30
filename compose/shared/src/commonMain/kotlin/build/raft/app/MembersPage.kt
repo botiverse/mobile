@@ -14244,6 +14244,11 @@ internal class MemberDetailScrollTracker(
             } else if (sawUserScrollInSettle) {
                 // The user's own scroll landing is a real position — publish.
                 restoreSettlePending = false
+                // In-flight user frames already tracked this position into
+                // lastPosition for the dispose-save path; clear it so the
+                // settled landing still publishes below (the dedupe check
+                // would otherwise see lastPosition == position and skip).
+                lastPosition = null
             } else {
                 // Landing below the target with no user scroll means the pane
                 // either physically cannot reach the snapshot (narrow-viewport
