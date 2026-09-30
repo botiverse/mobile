@@ -71,6 +71,7 @@ import build.raft.app.data.SharedAgentPanelTabOrderStore
 import build.raft.app.data.SlockAuthSessionTerminalSource
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.authSessionTerminalSourceOrNull
+import androidx.compose.foundation.interaction.DragInteraction
 import kotlinx.coroutines.flow.onSubscription
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockAvatarCacheRuntime
@@ -5665,6 +5666,17 @@ private fun MembersDetailContent(
         val tracker =
             trackerFor(tab, MemberDetailScrollStateRegistry.agentTabPosition(memberScrollKey, tab))
         LaunchedEffect(memberScrollKey, tab) {
+            // Real gesture evidence: requestScrollToItem also sets
+            // isScrollInProgress, so the tracker cannot attribute in-flight
+            // frames without this signal. DragInteraction.Start fires only on
+            // a real user drag.
+            state.interactionSource.interactions.collect { interaction ->
+                if (interaction is DragInteraction.Start) {
+                    tracker.onUserScrollStarted()
+                }
+            }
+        }
+        LaunchedEffect(memberScrollKey, tab) {
             snapshotFlow {
                 // isScrollInProgress is observed too: a gesture that starts
                 // and ends within the settle window emits true->false even
@@ -5696,6 +5708,13 @@ private fun MembersDetailContent(
                 MemberDetailScrollStateRegistry.humanListPosition(memberScrollKey)
             )
         val state = humanDetailListState
+        LaunchedEffect(memberScrollKey) {
+            state.interactionSource.interactions.collect { interaction ->
+                if (interaction is DragInteraction.Start) {
+                    tracker.onUserScrollStarted()
+                }
+            }
+        }
         LaunchedEffect(memberScrollKey) {
             snapshotFlow {
                 // isScrollInProgress is observed too: a gesture that starts
@@ -14075,12 +14094,21 @@ internal class MemberDetailScrollTracker(
     // pre-achieve clamp landing only suppresses the write — never re-issues —
     // so a subsequent user scroll lands on the user branch unambiguously.
     private var restoreAchieved = false
-    // While a re-issued restore is in flight, record the trigger landing.
-    // Our own requestScrollToItem can only move the list TOWARD the target;
-    // an in-flight frame that lands farther from the target than the trigger
-    // can only be a real user gesture fighting the restore — mark it so the
-    // landing publishes instead of being suppressed again.
-    private var reIssueTriggerOffset: Int? = null
+    // Real gesture evidence: set by the composition feeding the tracker
+    // through [onUserScrollStarted] when the list's interactionSource emits
+    // DragInteraction.Start. Position/distance can never prove intent — a
+    // same-direction drag during our re-issue would otherwise be swallowed as
+    // a programmatic frame (LiBai 237->380->stop380 example). isScrollInProgress
+    // alone cannot distinguish either because requestScrollToItem also sets it.
+    private var userScrollActive = false
+
+    fun onUserScrollStarted() {
+        userScrollActive = true
+        if (restoreSettlePending) {
+            sawUserScrollInSettle = true
+            issuedRestoreRequest = false
+        }
+    }
 
     private companion object {
         const val MaxPostSettleReissues = 2
@@ -14172,22 +14200,16 @@ internal class MemberDetailScrollTracker(
             )
         if (restoreSettlePending) {
             // While scrolling is in flight nothing is a settled position —
-            // our own requestScrollToItem also reports isScrollInProgress.
-            // In the no-request path (seed landed at target) any scroll is
-            // the user's, so remember it: the landing then belongs to them.
+            // our own requestScrollToItem also reports isScrollInProgress,
+            // so an in-flight frame proves user intent only via the real
+            // gesture signal (DragInteraction.Start -> userScrollActive).
             if (scrollInProgress) {
-                val trigger = reIssueTriggerOffset
-                if (
-                    !issuedRestoreRequest ||
-                    (
-                        trigger != null &&
-                            targetDistance(positionIndex, positionOffset, restoreTo) >
-                                targetDistance(trigger.first, trigger.second, restoreTo)
-                    )
-                ) {
+                // requestScrollToItem also reports isScrollInProgress, so an
+                // in-flight frame is only user intent when the real gesture
+                // signal (DragInteraction.Start) has fired.
+                if (userScrollActive) {
                     sawUserScrollInSettle = true
                     issuedRestoreRequest = false
-                    reIssueTriggerOffset = null
                 }
                 return
             }
@@ -14202,7 +14224,6 @@ internal class MemberDetailScrollTracker(
                     "atTarget=$atTarget userScroll=$sawUserScrollInSettle"
             )
             if (atTarget) {
-                reIssueTriggerOffset = null
                 restoreAchieved = true
                 // Reaching the target once is not the end of settling: the
                 // narrow pane can still be measured smaller on the next
@@ -14215,7 +14236,6 @@ internal class MemberDetailScrollTracker(
             } else if (sawUserScrollInSettle) {
                 // The user's own scroll landing is a real position — publish.
                 restoreSettlePending = false
-                reIssueTriggerOffset = null
             } else {
                 // Landing below the target with no user scroll means the pane
                 // either physically cannot reach the snapshot (narrow-viewport
@@ -14231,15 +14251,12 @@ internal class MemberDetailScrollTracker(
                 if (restoreAchieved && postSettleReissues < MaxPostSettleReissues) {
                     postSettleReissues += 1
                     issuedRestoreRequest = true
-                    reIssueTriggerOffset =
-                        position.firstVisibleItemIndex to position.firstVisibleItemScrollOffset
                     requestScroll(
                         restoreTo.firstVisibleItemIndex,
                         restoreTo.firstVisibleItemScrollOffset
                     )
                 } else {
                     issuedRestoreRequest = false
-                    reIssueTriggerOffset = null
                 }
                 return
             }
@@ -14249,13 +14266,6 @@ internal class MemberDetailScrollTracker(
             save(position)
         }
     }
-}
-
-internal fun targetDistance(index: Int, offset: Int, target: MemberDetailScrollPosition): Int {
-    if (index != target.firstVisibleItemIndex) {
-        return Int.MAX_VALUE / 2 + kotlin.math.abs(index - target.firstVisibleItemIndex)
-    }
-    return kotlin.math.abs(offset - target.firstVisibleItemScrollOffset)
 }
 
 internal object MemberDetailScrollStateRegistry {

@@ -256,17 +256,21 @@ class MemberDetailScrollTrackerTest {
         target: MemberDetailScrollPosition,
         saved: MutableList<MemberDetailScrollPosition>
     ): (Int, Int, Int, Boolean, (Int, Int) -> Unit) -> Unit =
-        MemberDetailScrollTracker(target).let { tracker ->
-            { index, offset, items, scrolling, request ->
-                tracker.observe(
-                    itemCount = items,
-                    positionIndex = index,
-                    positionOffset = offset,
-                    scrollInProgress = scrolling,
-                    requestScroll = request,
-                    save = { saved += it }
-                )
-            }
+        frameOf(MemberDetailScrollTracker(target), saved)
+
+    private fun frameOf(
+        tracker: MemberDetailScrollTracker,
+        saved: MutableList<MemberDetailScrollPosition>
+    ): (Int, Int, Int, Boolean, (Int, Int) -> Unit) -> Unit =
+        { index, offset, items, scrolling, request ->
+            tracker.observe(
+                itemCount = items,
+                positionIndex = index,
+                positionOffset = offset,
+                scrollInProgress = scrolling,
+                requestScroll = request,
+                save = { saved += it }
+            )
         }
 
     @Test
@@ -287,9 +291,12 @@ class MemberDetailScrollTrackerTest {
     @Test
     fun `alpha94 replay - user scroll during settle publishes the landing`() {
         val saved = mutableListOf<MemberDetailScrollPosition>()
-        val frame = tracker(MemberDetailScrollPosition(0, 489), saved)
+        val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
+        val frame = frameOf(t, saved)
         frame(0, 489, 40, false) { _, _ -> } // seed frame opens settle
-        // User scrolls up once: in-flight frames while scrolling...
+        // User scrolls up once: the real gesture signal marks the in-flight
+        // frames as user intent (positions alone cannot prove it)...
+        t.onUserScrollStarted()
         frame(0, 300, 40, true) { _, _ -> }
         // ...then the landing publishes and the window closes.
         frame(0, 300, 40, false) { _, _ -> }
@@ -375,6 +382,7 @@ class MemberDetailScrollTrackerTest {
                 save = { saved += it }
             )
         frame(0, 489, false) // seed at target opens settle
+        tracker.onUserScrollStarted()
         frame(0, 300, true)
         frame(0, 300, false)
         assertEquals(MemberDetailScrollPosition(0, 300), tracker.lastPosition)
@@ -387,9 +395,10 @@ class MemberDetailScrollTrackerTest {
         // second layout settle dropped the pane to 237 with NO user scroll —
         // suppressing the write alone left the UI at the profile top. The
         // tracker must re-scroll to the target.
+        val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
         val saved = mutableListOf<MemberDetailScrollPosition>()
         var requested: Pair<Int, Int>? = null
-        val frame = tracker(MemberDetailScrollPosition(0, 489), saved)
+        val frame = frameOf(t, saved)
         frame(0, 489, 40, false) { _, _ -> } // seed at target opens settle
         frame(0, 489, 40, false) { _, _ -> } // atTarget publishes
         assertEquals(MemberDetailScrollPosition(0, 489), saved.last())
@@ -407,9 +416,10 @@ class MemberDetailScrollTrackerTest {
 
     @Test
     fun `post-achieved re-issue is bounded and never fights indefinitely`() {
+        val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
         val saved = mutableListOf<MemberDetailScrollPosition>()
         val requests = mutableListOf<Pair<Int, Int>>()
-        val frame = tracker(MemberDetailScrollPosition(0, 489), saved)
+        val frame = frameOf(t, saved)
         frame(0, 489, 40, false) { i, o -> requests += i to o }
         frame(0, 489, 40, false) { i, o -> requests += i to o }
         // Three successive non-target landings with no user scroll: only
@@ -423,23 +433,48 @@ class MemberDetailScrollTrackerTest {
     }
 
     @Test
-    fun `user drag during a re-issued restore is not pulled back and saves on exit`() {
+    fun `real drag during a re-issued restore wins and saves on exit`() {
         // SangLan's race: restore achieved (489), layout re-clamps (237), the
-        // tracker re-issues scrollTo(489); the user starts dragging BEFORE the
-        // re-request lands — their in-flight frames move AWAY from the target
-        // (past the trigger), which must cancel the re-issue and let the real
-        // landing publish.
+        // tracker re-issues scrollTo(489); the user starts a REAL drag while
+        // the re-request is in flight. Position/direction alone can never
+        // prove intent — a same-direction drag is identical to the
+        // programmatic approach — so the tracker only trusts the real
+        // gesture signal (DragInteraction.Start -> onUserScrollStarted).
+        val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
         val saved = mutableListOf<MemberDetailScrollPosition>()
         val requests = mutableListOf<Pair<Int, Int>>()
-        val frame = tracker(MemberDetailScrollPosition(0, 489), saved)
+        val frame = frameOf(t, saved)
         frame(0, 489, 40, false) { i, o -> requests += i to o }
         frame(0, 489, 40, false) { i, o -> requests += i to o }
         assertEquals(MemberDetailScrollPosition(0, 489), saved.last())
         // Post-achieve clamp, no gesture: suppressed + one re-issue.
         frame(0, 237, 40, false) { i, o -> requests += i to o }
         assertEquals(listOf(0 to 489), requests)
-        // User drags farther down past the trigger while the re-issue is in
-        // flight — motion away from target proves intent; the drag wins.
+        // Real drag toward the target (LiBai's 237->380->stop380 case): the
+        // gesture signal must win even though positions look identical to a
+        // programmatic restore approaching the target.
+        t.onUserScrollStarted()
+        frame(0, 380, 40, true) { _, _ -> }
+        frame(0, 380, 40, false) { _, _ -> }
+        assertEquals(MemberDetailScrollPosition(0, 380), saved.last())
+        // And no further re-issue fires: the settle window is closed on the
+        // user's landing.
+        assertEquals(1, requests.size)
+    }
+
+    @Test
+    fun `real drag away from target during re-issue also wins`() {
+        // Same setup, but the user drags AWAY from the target: the gesture
+        // signal — not direction — is what proves intent.
+        val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        val requests = mutableListOf<Pair<Int, Int>>()
+        val frame = frameOf(t, saved)
+        frame(0, 489, 40, false) { i, o -> requests += i to o }
+        frame(0, 489, 40, false) { i, o -> requests += i to o }
+        frame(0, 237, 40, false) { i, o -> requests += i to o }
+        assertEquals(listOf(0 to 489), requests)
+        t.onUserScrollStarted()
         frame(0, 120, 40, true) { _, _ -> }
         frame(0, 60, 40, true) { _, _ -> }
         frame(0, 60, 40, false) { _, _ -> }
@@ -451,15 +486,17 @@ class MemberDetailScrollTrackerTest {
 
     @Test
     fun `re-issue still applies when no user gesture interleaves`() {
+        val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
         val saved = mutableListOf<MemberDetailScrollPosition>()
         val requests = mutableListOf<Pair<Int, Int>>()
-        val frame = tracker(MemberDetailScrollPosition(0, 489), saved)
+        val frame = frameOf(t, saved)
         frame(0, 489, 40, false) { i, o -> requests += i to o }
         frame(0, 489, 40, false) { i, o -> requests += i to o }
         frame(0, 237, 40, false) { i, o -> requests += i to o }
         assertEquals(1, requests.size)
-        // The re-issued restore approaches the target (in-flight frames do
-        // not move past the trigger): it is ours, not the user's.
+        // The re-issued restore approaches the target. With no real gesture
+        // signal, in-flight frames are ours even at the same positions a
+        // user drag could produce — source, not shape, decides.
         frame(0, 380, 40, true) { _, _ -> }
         frame(0, 489, 40, true) { _, _ -> }
         frame(0, 489, 40, false) { _, _ -> }
@@ -469,12 +506,14 @@ class MemberDetailScrollTrackerTest {
     @Test
     fun `after clamp suppression a user scroll landing still publishes`() {
         val saved = mutableListOf<MemberDetailScrollPosition>()
-        val frame = tracker(MemberDetailScrollPosition(0, 489), saved)
+        val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
+        val frame = frameOf(t, saved)
         frame(0, 0, 40, false) { _, _ -> } // seed top -> request issued
         frame(0, 200, 40, true) { _, _ -> } // programmatic in-flight
         frame(0, 88, 40, false) { _, _ -> } // clamped landing suppressed
         assertEquals(emptyList<MemberDetailScrollPosition>(), saved)
-        // User then scrolls once and leaves: landing must publish.
+        // User then scrolls once and leaves: real gesture publishes.
+        t.onUserScrollStarted()
         frame(0, 300, 40, true) { _, _ -> }
         frame(0, 300, 40, false) { _, _ -> }
         assertEquals(MemberDetailScrollPosition(0, 300), saved.last())
