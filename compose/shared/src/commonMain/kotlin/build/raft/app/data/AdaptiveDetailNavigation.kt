@@ -1,6 +1,23 @@
 package build.raft.app.data
 
-import build.raft.app.*
+import build.raft.app.SlockAdaptiveDetailCloseRequest
+import build.raft.app.SlockAdaptiveDetailSelection
+import build.raft.app.SlockAdaptivePaneLayout
+import build.raft.app.SlockAdaptiveWorkspaceIntent
+import build.raft.app.SlockAdaptiveWorkspaceState
+import build.raft.app.WireThreadLaunchPayload
+import build.raft.app.acceptsDetailCallback
+import build.raft.app.reduceSlockAdaptiveWorkspace
+import build.raft.app.toSlockAdaptiveDetailIdentity
+
+internal fun shouldOpenWithinAdaptiveDetail(
+    source: SlockAdaptiveDetailCloseRequest?,
+    workspace: SlockAdaptiveWorkspaceState?,
+    desktopModeEnabled: Boolean,
+    targetServerId: String?,
+): Boolean = source != null && desktopModeEnabled &&
+    workspace?.pane?.layout == SlockAdaptivePaneLayout.DualPane &&
+    targetServerId == workspace.serverId
 
 /** Only route identity/intent is retained; conversation state stays in its canonical store. */
 internal data class AdaptiveDetailHistory(
@@ -26,8 +43,14 @@ internal fun SharedAdaptiveWorkspaceSession.navigateDetail(
     val selection = next.selection ?: return this
     val previous = detailHistory?.takeIf { it.owner == current.selection }?.previous.orEmpty()
     // Opening the parent from a reply header returns to its existing position in this pane.
-    val parentIndex = previous.indexOfLast { it.toSlockAdaptiveDetailIdentity(serverId) == identity }
-    val history = if (parentIndex >= 0) previous.take(parentIndex) else previous + previousPayload
+    val parentIndex = previous.indexOfLast {
+        it.toSlockAdaptiveDetailIdentity(serverId)?.copy(focusedMessageId = null) ==
+            identity.copy(focusedMessageId = null)
+    }
+    val history = if (parentIndex >= 0) previous.take(parentIndex) else previous + previousPayload.copy(
+        originFallbackPreview = null, originFallbackSenderId = null, originFallbackSenderKind = null,
+        composerSeedText = "", composerFocusRequestNonce = 0,
+    )
     return copy(
         workspace = next,
         launchPayload = target,

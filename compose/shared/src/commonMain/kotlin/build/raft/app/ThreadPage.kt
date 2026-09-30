@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.navigateDetail
+import build.raft.app.data.shouldOpenWithinAdaptiveDetail
 
 import build.raft.app.components.SlockAnchoredMetaChip
 import build.raft.app.components.SlockAttachmentPreviewCard
@@ -4118,10 +4119,12 @@ private fun ThreadPageScreen(
             val workspaceStore = sharedStores.adaptiveWorkspaceStore(storeScope)
             val source = adaptiveCloseRequest
             val pane = workspaceStore.snapshot().workspace
-            if (source != null &&
-                pane?.pane?.layout == SlockAdaptivePaneLayout.DualPane &&
-                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore()).readDesktopModeOnLargeScreenSync() &&
-                targetStoreScope.initialServerId == pane.serverId
+            if (shouldOpenWithinAdaptiveDetail(
+                    source = source,
+                    workspace = pane,
+                    desktopModeEnabled = KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore()).readDesktopModeOnLargeScreenSync(),
+                    targetServerId = targetStoreScope.initialServerId,
+                ) && source != null && pane != null
             ) {
                 val next = workspaceStore.update { current ->
                     current.navigateDetail(source, launchPayload, pane.serverId)

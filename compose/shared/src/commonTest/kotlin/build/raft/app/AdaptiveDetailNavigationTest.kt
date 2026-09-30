@@ -40,6 +40,16 @@ class AdaptiveDetailNavigationTest {
         assertNull(restored.backFromDetail(restored.source()).workspace!!.selection)
     }
 
+    @Test fun onlyAnEmbeddedWideDesktopPageInterceptsNativeNavigation() {
+        val root = session()
+        assertTrue(shouldOpenWithinAdaptiveDetail(root.source(), root.workspace, true, "server"))
+        assertFalse(shouldOpenWithinAdaptiveDetail(root.source(), root.workspace, false, "server"))
+        assertFalse(shouldOpenWithinAdaptiveDetail(null, root.workspace, true, "server"))
+        assertFalse(shouldOpenWithinAdaptiveDetail(root.source(), root.workspace, true, "other"))
+        val compact = root.workspace!!.copy(pane = root.workspace.pane.copy(layout = SlockAdaptivePaneLayout.Compact))
+        assertFalse(shouldOpenWithinAdaptiveDetail(root.source(), compact, true, "server"))
+    }
+
     @Test fun staleForeignAndCompactOpensCannotReplacePane() {
         val root = session()
         for (source in listOf(root.source().copy(shellInstanceId = "other"), root.source().copy(generation = 99))) {
