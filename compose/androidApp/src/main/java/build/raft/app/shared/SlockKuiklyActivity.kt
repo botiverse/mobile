@@ -1437,7 +1437,19 @@ open class SlockKuiklyActivity :
                 succeeded = isSucceed,
                 completedAtMillis = SystemClock.elapsedRealtime()
             )
-        if (isSucceed) return
+        if (isSucceed) {
+            // task #482: insets dispatched between onAttach (pageData copy) and
+            // the shared layer's first observer registration would be lost and
+            // dedupe-suppressed on the next equal dispatch. Force one replay at
+            // page load completion so the mounted pager converges.
+            if (Build.VERSION.SDK_INT >= 30) {
+                window?.decorView?.rootWindowInsets?.let { insets ->
+                    lastPublishedInsetsKey = null
+                    publishWindowInsets(insets)
+                }
+            }
+            return
+        }
         SlockAppLog.e(
             "SlockKuiklyHost",
             "page_load_failed reason=${errorReason?.name ?: "unknown"} mode=${executeMode.mode}"
