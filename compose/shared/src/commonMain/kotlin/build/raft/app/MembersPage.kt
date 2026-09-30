@@ -5527,7 +5527,7 @@ private fun MembersDetailContent(
         scrollTrackers.getOrPut(holderKey) {
             scrollLog(
                 "members_detail_scroll tracker_seed " +
-                    "label=$memberScrollKey:$holderKey " +
+                    "label=$scrollLogLabel:$holderKey " +
                     "seed=${saved.firstVisibleItemIndex}:" +
                     "${saved.firstVisibleItemScrollOffset} " +
                     "generation=$scrollRegistryGeneration " +
@@ -13935,8 +13935,18 @@ internal class MemberDetailScrollTracker(
             // arrived: if the list is populated and the position moved past
             // the top on its own, the user beat the restore — keep their
             // position instead of snapping back to the snapshot.
+            // current == target means the rememberLazyListState seed landed
+            // intact (Alpha94: narrow page logged current=489). That is a
+            // restore-in-progress, not a user scroll — the settle window must
+            // still open so a later clamp (489 -> 88) is suppressed rather
+            // than published as the new truth.
+            val atRestoreTarget =
+                state.firstVisibleItemIndex == target.firstVisibleItemIndex &&
+                    state.firstVisibleItemScrollOffset ==
+                        target.firstVisibleItemScrollOffset
             val userAlreadyScrolled =
-                state.firstVisibleItemIndex > 0 || state.firstVisibleItemScrollOffset > 0
+                (state.firstVisibleItemIndex > 0 ||
+                    state.firstVisibleItemScrollOffset > 0) && !atRestoreTarget
             val wantsRestore =
                 !userAlreadyScrolled &&
                     (target.firstVisibleItemIndex > 0 ||
@@ -13953,10 +13963,12 @@ internal class MemberDetailScrollTracker(
             )
             if (wantsRestore) {
                 restoreSettlePending = true
-                state.requestScrollToItem(
-                    target.firstVisibleItemIndex,
-                    target.firstVisibleItemScrollOffset
-                )
+                if (!atRestoreTarget) {
+                    state.requestScrollToItem(
+                        target.firstVisibleItemIndex,
+                        target.firstVisibleItemScrollOffset
+                    )
+                }
             }
         }
         val position =
