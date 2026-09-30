@@ -684,6 +684,7 @@ class InMemorySlockAuthSessionStore(
     }
 
     override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) {
+        var selectionApplied = false
         val updatedFingerprint =
             mutex.withLock {
                 val previousFingerprint = session?.authSessionClearFingerprint()
@@ -700,15 +701,23 @@ class InMemorySlockAuthSessionStore(
                         }
                     }
                     current.copy(selectedServerId = serverId, selectedServerSlug = serverSlug)
-                        .also { session = it; bumpTerminalGenerationLocked() }
+                        .also {
+                            session = it
+                            // task #58: selection is server ownership — it
+                            // MUST advance the terminal generation and wake
+                            // consumers even when the auth fingerprint
+                            // (which excludes server selection) is unchanged.
+                            bumpTerminalGenerationLocked()
+                            selectionApplied = true
+                        }
                         .authSessionClearFingerprint()
                         .takeIf { it != previousFingerprint }
                 }
             }
-        updatedFingerprint?.let {
+        if (selectionApplied) {
             terminalEvents.emit(AuthSessionEvent.BindingMetadataChanged(terminalGeneration))
-            changes.emit(it)
         }
+        updatedFingerprint?.let { changes.emit(it) }
     }
 
     override suspend fun clearSession(reason: String, source: String) {
@@ -843,25 +852,34 @@ class InMemorySlockAuthSessionStore(
         expectedAccessToken: String,
         expectedRefreshToken: String,
         candidate: StoredAuthRefreshAttempt,
-    ): StoredAuthRefreshAttempt? =
-        mutex.withLock {
-            val current = session ?: return@withLock null
-            if (
-                current.user.id != expectedAccountId ||
-                current.accessToken != expectedAccessToken ||
-                current.refreshToken != expectedRefreshToken
-            ) {
-                return@withLock null
+    ): StoredAuthRefreshAttempt? {
+        var committed = false
+        val attempt =
+            mutex.withLock {
+                val current = session ?: return@withLock null
+                if (
+                    current.user.id != expectedAccountId ||
+                    current.accessToken != expectedAccessToken ||
+                    current.refreshToken != expectedRefreshToken
+                ) {
+                    return@withLock null
+                }
+                current.refreshAttempt
+                    ?.takeIf { it.matchesAuthority(current, candidate.installationId) }
+                    ?.let { return@withLock it }
+                require(candidate.matchesAuthority(current, candidate.installationId)) {
+                    "refresh attempt authority mismatch"
+                }
+                session = current.copy(refreshAttempt = candidate)
+                bumpTerminalGenerationLocked()
+                committed = true
+                candidate
             }
-            current.refreshAttempt
-                ?.takeIf { it.matchesAuthority(current, candidate.installationId) }
-                ?.let { return@withLock it }
-            require(candidate.matchesAuthority(current, candidate.installationId)) {
-                "refresh attempt authority mismatch"
-            }
-            session = current.copy(refreshAttempt = candidate)
-            candidate
+        if (committed) {
+            terminalEvents.emit(AuthSessionEvent.BindingMetadataChanged(terminalGeneration))
         }
+        return attempt
+    }
 
     override suspend fun rotateTokensAndClearRefreshAttemptIfMatch(
         expectedAccountId: String,
@@ -890,10 +908,12 @@ class InMemorySlockAuthSessionStore(
                         refreshAttempt = null,
                     )
                 session = updated
+                bumpTerminalGenerationLocked()
                 newFingerprint =
                     updated.authSessionClearFingerprint().takeIf { it != current.authSessionClearFingerprint() }
                 updated
             }
+        if (rotated != null) terminalEvents.emit(AuthSessionEvent.TokensRotated(terminalGeneration))
         newFingerprint?.let { changes.emit(it) }
         return rotated
     }
@@ -912,9 +932,13 @@ class InMemorySlockAuthSessionStore(
             ) { "updateMetadata transform must not change access/refresh tokens" }
             if (updated != current) {
                 session = updated
+                bumpTerminalGenerationLocked()
                 newFingerprint =
                     updated.authSessionClearFingerprint().takeIf { it != current.authSessionClearFingerprint() }
             }
+        }
+        if (newFingerprint != null) {
+            terminalEvents.emit(AuthSessionEvent.BindingMetadataChanged(terminalGeneration))
         }
         newFingerprint?.let { changes.emit(it) }
     }
@@ -1169,6 +1193,7 @@ class KeyValueAuthSessionStore(
                     "refresh attempt authority mismatch"
                 }
                 writeSessionRecordLocked(current.copy(refreshAttempt = candidate))
+                nextGenerationLocked()
                 candidate
             }
         diagnosticsLogger(
@@ -1283,13 +1308,20 @@ class KeyValueAuthSessionStore(
 
     override suspend fun saveSession(session: StoredAuthSession) {
         val fingerprint = session.authSessionClearFingerprint()
+        var generation = 0L
         val changed =
             mutex.withLock {
                 val previousFingerprint = readSessionRecordLocked()?.authSessionClearFingerprint()
                 writeSessionRecordLocked(session)
+                // task #58: every session record write must advance the
+                // terminal generation — generation-fenced commits
+                // (runIfAuthSessionRevision) rely on it to reject reads
+                // taken before ANY mutation, including saveSession.
+                generation = nextGenerationLocked()
                 previousFingerprint != fingerprint
             }
         if (changed) {
+            storeEvents.emit(AuthSessionEvent.Authenticated(generation))
             changes.emit(fingerprint)
         }
         diagnosticsLogger(

@@ -659,6 +659,71 @@ class AuthSessionStoreTest {
     }
 
     @Test
+    fun sessionRevisionCommitRejectsMetadataMutationBetweenSnapshotAndCommit() = runBlocking {
+        // task #58: metadata writes (server list / selection) are session
+        // mutations too — they must advance the generation so a stale
+        // snapshot can never commit identity afterwards.
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        store.replaceAuthenticatedSession(sampleSession())
+        val snapshot = store.readAuthSessionTerminalSnapshot()
+
+        // Server-list mutation via updateMetadata (same tokens → fingerprint
+        // unchanged path historically skipped generation/emit).
+        store.updateMetadata(expectedAccountId = sampleSession().user.id) { latest ->
+            latest.copy(servers = latest.servers.filter { it.id != "server-1" })
+        }
+        var writeRan = false
+        val committed =
+            store.runIfAuthSessionRevision(snapshot.generation) { writeRan = true }
+        assertFalse(committed)
+        assertFalse(writeRan)
+    }
+
+    @Test
+    fun sessionRevisionCommitRejectsSaveSessionBetweenSnapshotAndCommit() = runBlocking {
+        // task #58: saveSession writes the session record and must advance
+        // the terminal generation even when the fingerprint is unchanged.
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        store.replaceAuthenticatedSession(sampleSession())
+        val snapshot = store.readAuthSessionTerminalSnapshot()
+
+        store.saveSession(sampleSession().copy(selectedServerId = "server-2"))
+        var writeRan = false
+        val committed =
+            store.runIfAuthSessionRevision(snapshot.generation) { writeRan = true }
+        assertFalse(committed)
+        assertFalse(writeRan)
+    }
+
+    @Test
+    fun sessionRevisionCommitRejectsSelectionOnlyChangeOnInMemoryStore() = runBlocking {
+        // task #58: updateSelectedServer mutates server ownership but does
+        // NOT change the auth fingerprint — the wake must not be gated on
+        // fingerprint differences.
+        val store = InMemorySlockAuthSessionStore(sampleSession())
+        val snapshot = store.readAuthSessionTerminalSnapshot()
+
+        store.updateSelectedServer("server-2", "work")
+        var writeRan = false
+        val committed =
+            store.runIfAuthSessionRevision(snapshot.generation) { writeRan = true }
+        assertFalse(committed)
+        assertFalse(writeRan)
+        assertEquals("server-2", store.readSession()?.selectedServerId)
+    }
+
+    @Test
+    fun terminalEventsWakeOnSelectionOnlyChangeOnInMemoryStore() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(sampleSession())
+        val event =
+            async(start = CoroutineStart.UNDISPATCHED) {
+                store.authSessionTerminalEvents.first { it is AuthSessionEvent.BindingMetadataChanged }
+            }
+        store.updateSelectedServer("server-2", "work")
+        assertTrue(withTimeoutOrNull(1000) { event.await() } is AuthSessionEvent.BindingMetadataChanged)
+    }
+
+    @Test
     fun terminalAuthLossCommitClearsExactCapturedAuthorityLeftByEarlierClearFailure() = runBlocking {
         val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
         val captured = sampleSession()
