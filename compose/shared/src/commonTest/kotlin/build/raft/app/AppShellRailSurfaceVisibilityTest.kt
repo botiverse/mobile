@@ -253,6 +253,7 @@ class AppShellMembersDetailPaneTest {
                 memberId = "m1",
                 kind = "agent",
                 pageData = com.tencent.kuikly.core.nvi.serialization.json.JSONObject(),
+                generation = 3L,
             )
         assertTrue(selection.key == "s1:agent:m1")
         val other =
