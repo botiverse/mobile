@@ -244,3 +244,80 @@ class MemberDetailScrollStateRegistryTest {
         )
     }
 }
+
+/**
+ * task #58: frame-level replay of the Alpha94 device evidence — the narrow
+ * pane seeded to 0:489 successfully, then a layout pass clamped it to 0:88.
+ * These drive MemberDetailScrollTracker directly (no LazyListState needed).
+ */
+class MemberDetailScrollTrackerTest {
+
+    private fun tracker(
+        target: MemberDetailScrollPosition,
+        saved: MutableList<MemberDetailScrollPosition>
+    ): (Int, Int, Int, Boolean, (Int, Int) -> Unit) -> Unit =
+        MemberDetailScrollTracker(target).let { tracker ->
+            { index, offset, items, scrolling, request ->
+                tracker.observe(
+                    itemCount = items,
+                    positionIndex = index,
+                    positionOffset = offset,
+                    scrollInProgress = scrolling,
+                    requestScroll = request,
+                    save = { saved += it }
+                )
+            }
+        }
+
+    @Test
+    fun `alpha94 replay - seed lands intact then clamp is suppressed`() {
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        val frame = tracker(MemberDetailScrollPosition(0, 489), saved)
+        // First populated frame already at the seeded offset (restore target).
+        frame(0, 489, 40, false) { _, _ -> }
+        assertEquals(listOf(MemberDetailScrollPosition(0, 489)), saved)
+        // Next layout pass clamps down — must not be published.
+        frame(0, 88, 40, false) { _, _ -> }
+        assertEquals(listOf(MemberDetailScrollPosition(0, 489)), saved)
+    }
+
+    @Test
+    fun `alpha94 replay - user scroll during settle publishes the landing`() {
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        val frame = tracker(MemberDetailScrollPosition(0, 489), saved)
+        frame(0, 489, 40, false) { _, _ -> }
+        // User scrolls up once: in-flight frames while scrolling...
+        frame(0, 300, 40, true) { _, _ -> }
+        // ...then the landing publishes and the window closes.
+        frame(0, 300, 40, false) { _, _ -> }
+        assertEquals(MemberDetailScrollPosition(0, 300), saved.last())
+    }
+
+    @Test
+    fun `restore request path suppresses the clamped landing`() {
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        var requested: Pair<Int, Int>? = null
+        val frame = tracker(MemberDetailScrollPosition(0, 489), saved)
+        // Seed landed at top; tracker issues the restore request.
+        frame(0, 0, 40, false) { i, o -> requested = i to o }
+        assertEquals(0 to 489, requested)
+        // The seed-time top frame is already inside the settle window and is
+        // suppressed (position 0:0 != target, no user scroll) — it must NOT
+        // overwrite the 0:489 snapshot while the restore is still pending.
+        assertEquals(emptyList<MemberDetailScrollPosition>(), saved)
+        // In-flight frames publish nothing; the clamped landing is ambiguous
+        // (programmatic vs user scroll) so it is suppressed and the snapshot
+        // is preserved.
+        frame(0, 200, 40, true) { _, _ -> }
+        frame(0, 88, 40, false) { _, _ -> }
+        assertEquals(emptyList<MemberDetailScrollPosition>(), saved)
+    }
+
+    @Test
+    fun `empty frames never publish`() {
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        val frame = tracker(MemberDetailScrollPosition(0, 489), saved)
+        frame(0, 0, 0, false) { _, _ -> }
+        assertEquals(emptyList<MemberDetailScrollPosition>(), saved)
+    }
+}

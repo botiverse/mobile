@@ -13931,8 +13931,30 @@ internal class MemberDetailScrollTracker(
     private var issuedRestoreRequest = false
     private var sawUserScrollInSettle = false
 
-    fun observe(state: LazyListState, save: (MemberDetailScrollPosition) -> Unit) {
-        if (state.layoutInfo.totalItemsCount <= 0) return
+    fun observe(state: LazyListState, save: (MemberDetailScrollPosition) -> Unit) =
+        observe(
+            itemCount = state.layoutInfo.totalItemsCount,
+            positionIndex = state.firstVisibleItemIndex,
+            positionOffset = state.firstVisibleItemScrollOffset,
+            scrollInProgress = state.isScrollInProgress,
+            requestScroll = { index, offset -> state.requestScrollToItem(index, offset) },
+            save = save
+        )
+
+    /**
+     * Frame-level decision logic, separated from LazyListState so the Alpha94
+     * sequences (seed lands intact then clamps; user scroll during settle)
+     * can be driven directly in unit tests.
+     */
+    fun observe(
+        itemCount: Int,
+        positionIndex: Int,
+        positionOffset: Int,
+        scrollInProgress: Boolean,
+        requestScroll: (Int, Int) -> Unit,
+        save: (MemberDetailScrollPosition) -> Unit
+    ) {
+        if (itemCount <= 0) return
         if (!restoreApplied) {
             restoreApplied = true
             val target = restoreTo
@@ -13946,12 +13968,10 @@ internal class MemberDetailScrollTracker(
             // still open so a later clamp (489 -> 88) is suppressed rather
             // than published as the new truth.
             val atRestoreTarget =
-                state.firstVisibleItemIndex == target.firstVisibleItemIndex &&
-                    state.firstVisibleItemScrollOffset ==
-                        target.firstVisibleItemScrollOffset
+                positionIndex == target.firstVisibleItemIndex &&
+                    positionOffset == target.firstVisibleItemScrollOffset
             val userAlreadyScrolled =
-                (state.firstVisibleItemIndex > 0 ||
-                    state.firstVisibleItemScrollOffset > 0) && !atRestoreTarget
+                (positionIndex > 0 || positionOffset > 0) && !atRestoreTarget
             val wantsRestore =
                 !userAlreadyScrolled &&
                     (target.firstVisibleItemIndex > 0 ||
@@ -13960,17 +13980,16 @@ internal class MemberDetailScrollTracker(
                 "members_detail_scroll restore_first_items label=$label " +
                     "target=${target.firstVisibleItemIndex}:" +
                     "${target.firstVisibleItemScrollOffset} " +
-                    "current=${state.firstVisibleItemIndex}:" +
-                    "${state.firstVisibleItemScrollOffset} " +
+                    "current=$positionIndex:$positionOffset " +
                     "userAlreadyScrolled=$userAlreadyScrolled " +
                     "wantsRestore=$wantsRestore " +
-                    "items=${state.layoutInfo.totalItemsCount}"
+                    "items=$itemCount"
             )
             if (wantsRestore) {
                 restoreSettlePending = true
                 if (!atRestoreTarget) {
                     issuedRestoreRequest = true
-                    state.requestScrollToItem(
+                    requestScroll(
                         target.firstVisibleItemIndex,
                         target.firstVisibleItemScrollOffset
                     )
@@ -13979,15 +13998,15 @@ internal class MemberDetailScrollTracker(
         }
         val position =
             MemberDetailScrollPosition(
-                firstVisibleItemIndex = state.firstVisibleItemIndex,
-                firstVisibleItemScrollOffset = state.firstVisibleItemScrollOffset
+                firstVisibleItemIndex = positionIndex,
+                firstVisibleItemScrollOffset = positionOffset
             )
         if (restoreSettlePending) {
             // While scrolling is in flight nothing is a settled position —
             // our own requestScrollToItem also reports isScrollInProgress.
             // In the no-request path (seed landed at target) any scroll is
             // the user's, so remember it: the landing then belongs to them.
-            if (state.isScrollInProgress) {
+            if (scrollInProgress) {
                 if (!issuedRestoreRequest) sawUserScrollInSettle = true
                 return
             }
