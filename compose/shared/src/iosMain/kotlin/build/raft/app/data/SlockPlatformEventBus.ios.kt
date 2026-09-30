@@ -13,6 +13,7 @@ private const val SlockPlatformEventSourceIosHost = "ios_host"
 private object IosSlockPlatformEventDispatcher {
     private var realtimeObserver: NSObjectProtocol? = null
     private var systemNotificationOpenObserver: NSObjectProtocol? = null
+    private var externalPermalinkOpenObserver: NSObjectProtocol? = null
 
     fun ensureNativeIngress() {
         if (realtimeObserver == null) {
@@ -47,6 +48,28 @@ private object IosSlockPlatformEventDispatcher {
                     }
                     SlockEnhancedNotifyCenter.post(
                         eventName = SlockSystemNotificationContract.OpenEventName,
+                        eventData = notification.toEventData(),
+                        crossProcess = false,
+                        source = SlockPlatformEventSourceIosHost
+                    )
+                }
+        }
+        if (externalPermalinkOpenObserver == null) {
+            externalPermalinkOpenObserver =
+                NSNotificationCenter.defaultCenter.addObserverForName(
+                    name = "slockExternalPermalinkOpen",
+                    `object` = null,
+                    queue = null
+                ) { notification ->
+                    notification ?: return@addObserverForName
+                    if (notification.userInfo?.get(SlockPlatformEventOriginKey) == SlockPlatformEventOriginShared) {
+                        return@addObserverForName
+                    }
+                    // Preserve the complete identity envelope (including receiver scope
+                    // and authentication generation). The receiving Shell validates it
+                    // before enqueue; this adapter must not bind or rewrite ownership.
+                    SlockEnhancedNotifyCenter.post(
+                        eventName = "slockExternalPermalinkOpen",
                         eventData = notification.toEventData(),
                         crossProcess = false,
                         source = SlockPlatformEventSourceIosHost
