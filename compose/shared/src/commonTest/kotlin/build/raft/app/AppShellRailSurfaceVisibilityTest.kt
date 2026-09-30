@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -362,6 +365,31 @@ class AppShellMembersDetailPaneTest {
         assertTrue(generation.pending == openB)
         generation.settle(openB)
         assertTrue(generation.pending == null)
+    }
+
+    @Test
+    fun `member list row selection key matches the shell detail selection`() {
+        // task #58: the left-pane highlight and the right-pane close/selection
+        // must agree on one key format — serverId:kind:memberId. If the two
+        // sides diverge (e.g. highlight keyed by memberId only), the selected
+        // row would never light up under web parity.
+        val member =
+            MemberProfile(
+                id = MemberId("m1"),
+                displayName = "Cindy",
+                handle = "cindy",
+                kind = MemberKind.Agent,
+            )
+        val selection =
+            AppShellMemberDetailSelection(
+                serverId = "s1",
+                memberId = "m1",
+                kind = "agent",
+                pageData = com.tencent.kuikly.core.nvi.serialization.json.JSONObject(),
+                generation = 3L,
+            )
+        assertTrue(member.membersDetailSelectionKey("s1") == selection.key)
+        assertFalse(member.membersDetailSelectionKey("s2") == selection.key)
     }
 
     @Test

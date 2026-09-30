@@ -4670,7 +4670,11 @@ internal fun MembersRouteContent(
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
     paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
-    onRefresh: () -> Unit = {}
+    onRefresh: () -> Unit = {},
+    // task #58: member whose detail is open in the right pane — its list row
+    // renders the web-style selected highlight. Null = no inline selection
+    // (compact standalone push, or nothing selected).
+    selectedMemberKey: String? = null
 ) {
     MembersListContent(
         payload = payload,
@@ -4690,7 +4694,8 @@ internal fun MembersRouteContent(
         onListStateSnapshot = onListStateSnapshot,
         paneLayout = paneLayout,
         currentUserId = currentUserId,
-        agentGroupCollapseStore = agentGroupCollapseStore
+        agentGroupCollapseStore = agentGroupCollapseStore,
+        selectedMemberKey = selectedMemberKey
     )
 }
 
@@ -4714,7 +4719,8 @@ internal fun MembersListContent(
     paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
     onRefresh: () -> Unit = {},
     currentUserId: String? = null,
-    agentGroupCollapseStore: build.raft.app.data.MembersAgentMachineGroupCollapseStore? = null
+    agentGroupCollapseStore: build.raft.app.data.MembersAgentMachineGroupCollapseStore? = null,
+    selectedMemberKey: String? = null
 ) {
     val createAgentSubmit = createAgent.createAgentSubmit
     val createAgentMachines = createAgent.createAgentMachines
@@ -4976,6 +4982,7 @@ internal fun MembersListContent(
                                 agentStatusResolver = agentStatusResolver,
                                 memberAvatarResolver = memberAvatarResolver,
                                 modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
+                                selected = member.membersDetailSelectionKey(payload.instanceId) == selectedMemberKey,
                                 onClick = { onOpenMember(member) }
                             )
                         }
@@ -5008,13 +5015,14 @@ internal fun MembersListContent(
                 if (humansExpanded) {
                     items(humans.size, key = { "human_${humans[it].id.value}" }) { index ->
                         val member = humans[index]
-                        MembersListRow(
-                            member = member,
-                            agentStatusResolver = agentStatusResolver,
-                            memberAvatarResolver = memberAvatarResolver,
-                            modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
-                            onClick = { onOpenMember(member) }
-                        )
+                            MembersListRow(
+                                member = member,
+                                agentStatusResolver = agentStatusResolver,
+                                memberAvatarResolver = memberAvatarResolver,
+                                modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
+                                selected = member.membersDetailSelectionKey(payload.instanceId) == selectedMemberKey,
+                                onClick = { onOpenMember(member) }
+                            )
                     }
                 }
             }
@@ -13259,6 +13267,9 @@ private fun MembersListRow(
     modifier: Modifier = Modifier,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    // task #58: web-style selected highlight for the row whose member detail is
+    // open in the right pane (web data-active → brutal-pink fill).
+    selected: Boolean = false,
     onClick: () -> Unit = {}
 ) {
     val agentStatusDisplayState =
@@ -13271,6 +13282,9 @@ private fun MembersListRow(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = MembersListRowMinHeight)
+            .background(
+                if (selected) SlockColor.AccentPink.copy(alpha = 0.2f) else Color.Transparent
+            )
             .clickable(onClick = onClick)
             .padding(vertical = SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
@@ -13637,6 +13651,15 @@ private val MemberProfile.membersComputerName: String?
             badge.removePrefix("computer:")
                 .takeIf { badge.startsWith("computer:") && it.isNotBlank() }
         }
+
+/**
+ * task #58: key matching the shell's AppShellMemberDetailSelection.key
+ * (`serverId:kind:memberId`) — the member row whose detail is open inline gets
+ * the web-style selected highlight. `payload.instanceId` is the server the page
+ * is bound to, the same value the click stamped as listServerId.
+ */
+internal fun MemberProfile.membersDetailSelectionKey(serverId: String): String =
+    "${serverId.trim()}:${kind.memberKindWireValue()}:${id.value}"
 
 private val MemberProfile.membersComputerId: String?
     get() =

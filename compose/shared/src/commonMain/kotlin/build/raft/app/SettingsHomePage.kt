@@ -7010,6 +7010,7 @@ private fun SlockAppShellReadyContent(
                                 prewarmAdmissionGate.invalidate("members_$reason")
                             },
                             memberDetailOpenGeneration = memberDetailOpenGeneration,
+                            selectedMemberKey = memberSelection?.key,
                             onOpenMemberDetailInline =
                                 if (membersDualPane) {
                                     { listServerId, identity, pageData, openGeneration ->
