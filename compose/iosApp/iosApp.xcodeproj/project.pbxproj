@@ -62,6 +62,10 @@
 		J0NY00010000000000000001 /* SlockShareControllerFailureReasonTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00020000000000000001 /* SlockShareControllerFailureReasonTests.m */; };
 		J0NY00030000000000000001 /* SlockIosOpenAttachmentTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00040000000000000001 /* SlockIosOpenAttachmentTests.m */; };
 		T25800010000000000000001 /* T258ConsumerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T25800010000000000000002 /* T258ConsumerUITests.swift */; };
+		A14900010000000000000001 /* SlockIosPermalinkIntake.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14900020000000000000001 /* SlockIosPermalinkIntake.swift */; };
+		A14900010000000000000002 /* SlockIosPermalinkSceneHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14900020000000000000002 /* SlockIosPermalinkSceneHost.swift */; };
+		A14900010000000000000003 /* SlockIosPermalinkIntake.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14900020000000000000001 /* SlockIosPermalinkIntake.swift */; };
+		A14900010000000000000004 /* SlockIosPermalinkIntakeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14900020000000000000003 /* SlockIosPermalinkIntakeTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -161,6 +165,9 @@
 		J0NY00020000000000000001 /* SlockShareControllerFailureReasonTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockShareControllerFailureReasonTests.m; sourceTree = "<group>"; };
 		J0NY00040000000000000001 /* SlockIosOpenAttachmentTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockIosOpenAttachmentTests.m; sourceTree = "<group>"; };
 		T25800010000000000000002 /* T258ConsumerUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = T258ConsumerUITests.swift; sourceTree = "<group>"; };
+		A14900020000000000000001 /* SlockIosPermalinkIntake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosPermalinkIntake.swift; sourceTree = "<group>"; };
+		A14900020000000000000002 /* SlockIosPermalinkSceneHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosPermalinkSceneHost.swift; sourceTree = "<group>"; };
+		A14900020000000000000003 /* SlockIosPermalinkIntakeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosPermalinkIntakeTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -289,6 +296,8 @@
 				A39600020000000000000001 /* InfoPlist.strings */,
 				2152FB032600AC8F00CF470E /* iOSApp.swift */,
 				A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */,
+				A14900020000000000000001 /* SlockIosPermalinkIntake.swift */,
+				A14900020000000000000002 /* SlockIosPermalinkSceneHost.swift */,
 				A13000020000000000000001 /* SlockIosAdaptivePanePublisher.swift */,
 				058557D7273AAEEB004C7B11 /* Preview Content */,
 			);
@@ -311,6 +320,7 @@
 			children = (
 				A42400020000000000000002 /* SlockIosAvatarCacheProviderTests.swift */,
 				A12900020000000000000002 /* SlockIosNetworkRequestLifetimeAdapterTests.swift */,
+				A14900020000000000000003 /* SlockIosPermalinkIntakeTests.swift */,
 				A13000020000000000000002 /* SlockIosAdaptivePanePublisherTests.swift */,
 				D43B80352E18000100C0DE11 /* SlockStackedItemTabBarTests.m */,
 				A42700020000000000000001 /* SlockAdaptiveEditorSnapshotTests.m */,
@@ -757,6 +767,8 @@
 				0474A3F329F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m in Sources */,
 				2152FB042600AC8F00CF470E /* iOSApp.swift in Sources */,
 				A12900010000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */,
+				A14900010000000000000001 /* SlockIosPermalinkIntake.swift in Sources */,
+				A14900010000000000000002 /* SlockIosPermalinkSceneHost.swift in Sources */,
 				A13000010000000000000001 /* SlockIosAdaptivePanePublisher.swift in Sources */,
 				D41350012E0F000100C0DE02 /* GeneratedRealtimeContract.swift in Sources */,
 				D41350062E140100100C0DE03 /* SlockIosAppScopeMMKV.swift in Sources */,
@@ -796,6 +808,8 @@
 				A42400010000000000000002 /* SlockIosAvatarCacheProvider.swift in Sources */,
 				A42400010000000000000003 /* SlockIosAvatarCacheProviderTests.swift in Sources */,
 				A12900010000000000000002 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */,
+				A14900010000000000000003 /* SlockIosPermalinkIntake.swift in Sources */,
+				A14900010000000000000004 /* SlockIosPermalinkIntakeTests.swift in Sources */,
 				A12900010000000000000003 /* SlockIosNetworkRequestLifetimeAdapterTests.swift in Sources */,
 				A13000010000000000000002 /* SlockIosAdaptivePanePublisher.swift in Sources */,
 				A13000010000000000000003 /* SlockIosAdaptivePanePublisherTests.swift in Sources */,
