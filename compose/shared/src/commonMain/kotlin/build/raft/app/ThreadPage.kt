@@ -5713,32 +5713,37 @@ private fun SharedThreadRouteContentContent(
     // (HuaTuo, alpha 71). The host's authoritative online signal now re-requests it in place. A signal
     // that lands while a refresh is still running is remembered (LiBai #2782): that refresh was issued
     // offline and may fail back to the stand-in, so the retry fires once it settles.
-    var offlineStandInRecoveryPending by remember(threadViewModel) { mutableStateOf(false) }
-    fun dispatchOfflineStandInRecovery(reason: String) {
-        val current = threadViewModel.state.value.payload
-        when (offlineStandInRecoveryAction(current)) {
-            OfflineStandInRecoveryAction.Refresh -> {
-                offlineStandInRecoveryPending = false
-                bridge.log(
-                    "thread_offline_standin_refresh reason=$reason " +
-                        "threadId=${current.sourceThreadId.orEmpty()} status=${current.status}"
-                )
-                threadViewModel.dispatch(SharedThreadIntent.Refresh)
+    val offlineStandInRecovery = remember(threadViewModel) { OfflineStandInRecoveryGate() }
+    fun refreshOfflineStandIn(reason: String, current: KuiklyThreadScreenPayload) {
+        bridge.log(
+            "thread_offline_standin_refresh reason=$reason " +
+                "threadId=${current.sourceThreadId.orEmpty()} status=${current.status}"
+        )
+        threadViewModel.dispatch(SharedThreadIntent.Refresh)
+    }
+    // Two recovery signals share one gate: the realtime transport reconnecting (the server is reachable
+    // again — the one that matters; the system can report "online" while the server is not, and a
+    // per-app block never changes the system state, HuaTuo alpha 74) and the host's authoritative
+    // online signal as a supplement.
+    DisposableEffect(threadViewModel, sharedStores.eventBus, realtimeEvents) {
+        fun onRecovered(reason: String) {
+            val current = threadViewModel.state.value.payload
+            if (offlineStandInRecovery.onNetworkRecovered(current)) refreshOfflineStandIn(reason, current)
+        }
+        val hostNetworkEvents = KuiklyHostNetworkEvents(sharedStores.eventBus)
+        val networkSubscription = hostNetworkEvents.addAuthoritativeOnlineListener { onRecovered("network_recovered") }
+        val realtimeSubscription =
+            realtimeEvents.addListener { eventData ->
+                if (isRealtimeTransportConnectedEvent(eventData)) onRecovered("realtime_connected")
             }
-            OfflineStandInRecoveryAction.Defer -> offlineStandInRecoveryPending = true
-            OfflineStandInRecoveryAction.None -> offlineStandInRecoveryPending = false
+        onDispose {
+            hostNetworkEvents.removeListener(networkSubscription)
+            realtimeEvents.removeListener(realtimeSubscription)
         }
     }
-    DisposableEffect(threadViewModel, sharedStores.eventBus) {
-        val hostNetworkEvents = KuiklyHostNetworkEvents(sharedStores.eventBus)
-        val subscription =
-            hostNetworkEvents.addAuthoritativeOnlineListener {
-                dispatchOfflineStandInRecovery("network_recovered")
-            }
-        onDispose { hostNetworkEvents.removeListener(subscription) }
-    }
-    LaunchedEffect(offlineStandInRecoveryPending, payload.durableLastKnown, payload.backgroundRefreshing) {
-        if (offlineStandInRecoveryPending) dispatchOfflineStandInRecovery("network_recovered_deferred")
+    LaunchedEffect(offlineStandInRecovery, payload.durableLastKnown, payload.backgroundRefreshing) {
+        val current = threadViewModel.state.value.payload
+        if (offlineStandInRecovery.onPayloadSettled(current)) refreshOfflineStandIn("network_recovered_deferred", current)
     }
     val replyMetadataByParentId = renderSlice.replyMetadataByParentId
     val highlightedMentions = renderSlice.highlightedMentions
@@ -21283,6 +21288,10 @@ internal fun threadOlderMessagesStatusSpec(
  *   replacing the frame (transient failure). A canonical answer clears `durableLastKnown` and
  *   both go away together with the content replacement.
  */
+/** The realtime transport (re)connected — the server is reachable again. */
+internal fun isRealtimeTransportConnectedEvent(eventData: JSONObject): Boolean =
+    eventData.optString(SlockRealtimeNotifyContract.KeyAction) == SlockRealtimeNotifyContract.ActionPresenceTransportConnected
+
 internal enum class OfflineStandInRecoveryAction { Refresh, Defer, None }
 
 /**
@@ -21295,6 +21304,27 @@ internal fun offlineStandInRecoveryAction(payload: KuiklyThreadScreenPayload): O
         payload.backgroundRefreshing -> OfflineStandInRecoveryAction.Defer
         else -> OfflineStandInRecoveryAction.Refresh
     }
+
+/**
+ * Per-page memory of a network recovery (LiBai #2782): the host de-duplicates repeated online signals,
+ * so one that lands while a refresh is running must be kept until that refresh settles. Each call
+ * answers whether a refresh should be dispatched now.
+ */
+internal class OfflineStandInRecoveryGate {
+    private var pending = false
+
+    fun onNetworkRecovered(payload: KuiklyThreadScreenPayload): Boolean = decide(payload)
+
+    /** Called whenever the stand-in / refresh state changes; acts only on a remembered recovery. */
+    fun onPayloadSettled(payload: KuiklyThreadScreenPayload): Boolean = pending && decide(payload)
+
+    private fun decide(payload: KuiklyThreadScreenPayload): Boolean =
+        when (offlineStandInRecoveryAction(payload)) {
+            OfflineStandInRecoveryAction.Refresh -> { pending = false; true }
+            OfflineStandInRecoveryAction.Defer -> { pending = true; false }
+            OfflineStandInRecoveryAction.None -> { pending = false; false }
+        }
+}
 
 internal data class ThreadOfflineLastKnownChrome(
     val insetActive: Boolean,

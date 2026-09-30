@@ -118,4 +118,35 @@ class ThreadOfflineLastKnownTipTest {
         )
         assertEquals(OfflineStandInRecoveryAction.None, offlineStandInRecoveryAction(base.copy(durableLastKnown = false)))
     }
+
+    @Test
+    fun aRecoverySignalDuringARefreshFiresOnceThatRefreshFailsBackToTheStandIn() {
+        // LiBai #2782 order: refresh running → online (de-duplicated, never repeated) → refresh fails.
+        val standIn = KuiklyThreadScreenPayload(status = "content", durableLastKnown = true)
+        val gate = OfflineStandInRecoveryGate()
+        assertFalse(gate.onNetworkRecovered(standIn.copy(backgroundRefreshing = true)), "deferred, not dropped")
+        assertFalse(gate.onPayloadSettled(standIn.copy(backgroundRefreshing = true)), "still running")
+        assertTrue(gate.onPayloadSettled(standIn.copy(backgroundRefreshing = false)), "failed back: re-ask now")
+        assertFalse(gate.onPayloadSettled(standIn.copy(backgroundRefreshing = false)), "exactly once")
+
+        // Same order, but the running refresh succeeds: the network answer clears the memory.
+        val succeeded = OfflineStandInRecoveryGate()
+        assertFalse(succeeded.onNetworkRecovered(standIn.copy(backgroundRefreshing = true)))
+        assertFalse(succeeded.onPayloadSettled(standIn.copy(durableLastKnown = false)))
+        assertFalse(succeeded.onPayloadSettled(standIn.copy(backgroundRefreshing = false)), "memory cleared")
+
+        // Control: online after the failure refreshes immediately.
+        assertTrue(OfflineStandInRecoveryGate().onNetworkRecovered(standIn))
+    }
+
+    @Test
+    fun onlyATransportConnectedEventCountsAsARealtimeRecovery() {
+        val connected = com.tencent.kuikly.core.nvi.serialization.json.JSONObject()
+            .put(build.raft.app.data.realtime.SlockRealtimeNotifyContract.KeyAction,
+                build.raft.app.data.realtime.SlockRealtimeNotifyContract.ActionPresenceTransportConnected)
+        assertTrue(isRealtimeTransportConnectedEvent(connected))
+        val other = com.tencent.kuikly.core.nvi.serialization.json.JSONObject().put("action", "message:new")
+        assertFalse(isRealtimeTransportConnectedEvent(other))
+        assertFalse(isRealtimeTransportConnectedEvent(com.tencent.kuikly.core.nvi.serialization.json.JSONObject()))
+    }
 }
