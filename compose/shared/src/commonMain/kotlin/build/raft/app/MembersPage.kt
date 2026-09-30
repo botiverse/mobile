@@ -3371,6 +3371,8 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
         pager.pageData.params.optString(SLOCK_MEMBER_DETAIL_CLOSE_SHELL_ID).trim()
     val embeddedMemberCloseKey =
         pager.pageData.params.optString(SLOCK_MEMBER_DETAIL_CLOSE_KEY).trim()
+    val embeddedMemberCloseGeneration =
+        pager.pageData.params.optDouble(SLOCK_MEMBER_DETAIL_CLOSE_GENERATION, 0.0).toLong()
     val closeDetailPage: () -> Unit = {
         if (embeddedMemberCloseShellId.isNotBlank()) {
             provider.sharedStores.eventBus.post(
@@ -3378,7 +3380,8 @@ private fun MemberDetailPageContent(pageVisibleTick: Int) {
                 eventData =
                     JSONObject()
                         .put(SLOCK_MEMBER_DETAIL_CLOSE_SHELL_ID, embeddedMemberCloseShellId)
-                        .put(SLOCK_MEMBER_DETAIL_CLOSE_KEY, embeddedMemberCloseKey),
+                        .put(SLOCK_MEMBER_DETAIL_CLOSE_KEY, embeddedMemberCloseKey)
+                        .put(SLOCK_MEMBER_DETAIL_CLOSE_GENERATION, embeddedMemberCloseGeneration.toDouble()),
                 crossProcess = true,
                 source = "member_detail_embedded_back",
             )

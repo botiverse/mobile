@@ -103,3 +103,4 @@ internal suspend fun <T> MemberDetailIdentity.dispatchMemberDetailLookup(
 internal const val SLOCK_MEMBER_DETAIL_CLOSE_EVENT = "slockMemberDetailClose"
 internal const val SLOCK_MEMBER_DETAIL_CLOSE_SHELL_ID = "slockMemberDetailCloseShellId"
 internal const val SLOCK_MEMBER_DETAIL_CLOSE_KEY = "slockMemberDetailCloseKey"
+internal const val SLOCK_MEMBER_DETAIL_CLOSE_GENERATION = "slockMemberDetailCloseGeneration"

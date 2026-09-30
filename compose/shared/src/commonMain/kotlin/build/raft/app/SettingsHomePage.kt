@@ -1289,6 +1289,7 @@ internal data class AppShellMemberDetailSelection(
     val memberId: String,
     val kind: String,
     val pageData: JSONObject,
+    val generation: Long = 0L,
 ) {
     val key: String get() = "$serverId:${kind}:${memberId}"
 }
@@ -4297,8 +4298,11 @@ private fun SlockAppShellReadyContent(
                     ?: return@observe
             if (shellId != navigationStoreScope.shellInstanceId) return@observe
             val key = eventData.optString(SLOCK_MEMBER_DETAIL_CLOSE_KEY).trim()
+            val generation = eventData.optDouble(SLOCK_MEMBER_DETAIL_CLOSE_GENERATION, 0.0).toLong()
             val current = selectedAppShellMemberDetail ?: return@observe
             if (key.isNotBlank() && key != current.key) return@observe
+            // A close posted by an older detail must not clear a newer selection.
+            if (generation > 0L && generation < current.generation) return@observe
             selectedAppShellMemberDetail = null
         }
     }
@@ -6908,6 +6912,7 @@ private fun SlockAppShellReadyContent(
                                                 serverId = listServerId,
                                                 memberId = identity.memberId.value,
                                                 kind = identity.kind.memberKindWireValue(),
+                                                generation = openGeneration,
                                                 pageData =
                                                     pageData
                                                         .withSlockShellStoreScope(navigationStoreScope)
@@ -6918,6 +6923,10 @@ private fun SlockAppShellReadyContent(
                                                         .put(
                                                             SLOCK_MEMBER_DETAIL_CLOSE_KEY,
                                                             "${listServerId}:${identity.kind.memberKindWireValue()}:${identity.memberId.value}",
+                                                        )
+                                                        .put(
+                                                            SLOCK_MEMBER_DETAIL_CLOSE_GENERATION,
+                                                            openGeneration.toDouble(),
                                                         ),
                                             )
                                         bridge.log(
