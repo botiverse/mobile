@@ -6208,7 +6208,8 @@ private fun MembersDetailContent(
                                 .fillMaxSize()
                                 .membersDetailUserDragProbe(
                                     agentTabListStates.getValue(pageTab),
-                                    scrollTrackers[pageTab]
+                                    scrollTrackers[pageTab],
+                                    scrollLog
                                 ),
                             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
                             beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
@@ -6366,7 +6367,8 @@ private fun MembersDetailContent(
                         .fillMaxSize()
                         .membersDetailUserDragProbe(
                             humanDetailListState,
-                            scrollTrackers["human"]
+                            scrollTrackers["human"],
+                            scrollLog
                         ),
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
                     beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
@@ -14066,7 +14068,8 @@ internal data class MemberDetailScrollPosition(
  */
 internal fun Modifier.membersDetailUserDragProbe(
     state: LazyListState,
-    tracker: MemberDetailScrollTracker?
+    tracker: MemberDetailScrollTracker?,
+    logger: (String) -> Unit = {}
 ): Modifier =
     pointerInput(state, tracker) {
         if (tracker == null) return@pointerInput
@@ -14081,6 +14084,15 @@ internal fun Modifier.membersDetailUserDragProbe(
                 if (!change.pressed) break
                 accumulated += change.positionChangeIgnoreConsumed()
                 if (accumulated.getDistance() > slop) {
+                    // Distinct evidence point for device QA: "probe_hit"
+                    // proves the pointer path delivered real input over the
+                    // native scroll area; absence means the probe never saw
+                    // the gesture (silent fallback = pre-probe behavior).
+                    logger(
+                        "members_detail_scroll probe_hit " +
+                            "pendingRestore=${tracker.hasPendingRestoreRequest} " +
+                            "scrollInProgress=${state.isScrollInProgress}"
+                    )
                     // Order matters: hasPendingRestoreRequest reads
                     // issuedRestoreRequest, which onUserScrollStarted()
                     // clears — capture the pending state BEFORE reporting
