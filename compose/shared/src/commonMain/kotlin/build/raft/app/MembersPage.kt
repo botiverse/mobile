@@ -14215,6 +14215,7 @@ internal fun Modifier.membersDetailUserDragProbe(
                     // the gesture (silent fallback = pre-probe behavior).
                     logger(
                         "members_detail_scroll probe_hit " +
+                            "label=${tracker.label} " +
                             "pendingRestore=${tracker.hasPendingRestoreRequest} " +
                             "scrollInProgress=${state.isScrollInProgress}"
                     )
@@ -14266,7 +14267,7 @@ internal fun kotlinx.coroutines.CoroutineScope.launchMembersDetailRestoreStallWa
 
 internal class MemberDetailScrollTracker(
     private val restoreTo: MemberDetailScrollPosition,
-    private val label: String = "",
+    internal val label: String = "",
     private val logger: (String) -> Unit = {}
 ) {
     var lastPosition: MemberDetailScrollPosition? = null
@@ -14538,6 +14539,14 @@ internal class MemberDetailScrollTracker(
                             firstVisibleItemIndex = positionIndex,
                             firstVisibleItemScrollOffset = positionOffset
                         )
+                    // Scoped, position-carrying evidence that an in-flight
+                    // frame was attributed to the user — the connected test
+                    // keys its "dispose during user scroll" gate on this
+                    // line rather than inferring intent from probe_hit.
+                    logger(
+                        "members_detail_scroll user_frame label=$label " +
+                            "position=${positionIndex}:${positionOffset}"
+                    )
                 }
                 return
             }

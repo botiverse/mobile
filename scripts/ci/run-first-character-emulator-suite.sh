@@ -53,6 +53,7 @@ DECLARED_TEST_IDS=(
   "diagnostics-caller-pipeline"
   "durable-partition-migration"
   "thread-newer-auto-pagination"
+  "member-detail-dispose-save"
 )
 
 # Test metadata maps
@@ -170,6 +171,12 @@ init_test_metadata() {
   TEST_RETRIES["thread-newer-auto-pagination"]=1
   TEST_OUTPUT["thread-newer-auto-pagination"]="thread-newer-auto-pagination-instrumentation.txt"
   TEST_CONDITION["thread-newer-auto-pagination"]="thread_newer_pagination_gate"
+
+  TEST_CLASS["member-detail-dispose-save"]="build.raft.app.shared.MemberDetailScrollDisposeSaveConnectedTest"
+  TEST_RUNNER["member-detail-dispose-save"]="$RUNNER_CONNECTED"
+  TEST_RETRIES["member-detail-dispose-save"]=1
+  TEST_OUTPUT["member-detail-dispose-save"]="member-detail-dispose-save-instrumentation.txt"
+  TEST_CONDITION["member-detail-dispose-save"]="always"
 
   for id in "${DECLARED_TEST_IDS[@]}"; do
     TEST_STATUS["$id"]="not_run"
