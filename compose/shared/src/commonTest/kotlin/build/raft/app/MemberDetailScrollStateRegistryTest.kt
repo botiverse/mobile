@@ -3,6 +3,7 @@ package build.raft.app
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlinx.coroutines.runBlocking
 
 /**
  * task #58: the session registry keeps one scroll snapshot per
@@ -594,4 +595,70 @@ class MemberDetailScrollTrackerTest {
         frame(0, 300, 40, false) { _, _ -> }
         assertEquals(MemberDetailScrollPosition(0, 300), saved.last())
     }
+
+    @Test
+    fun `production snapshotFlow emits when measured position catches up to the getter`() =
+        runBlocking {
+            // LiBai's missed-frame race: requestScrollToItem rewrites the
+            // scrollPosition getters synchronously (489), while the measured
+            // visibleItemsInfo still reports the clamp (237) until the next
+            // remeasure. A getter-only snapshot key sees getter=489 at the
+            // request frame and again 489 after the remeasure — equal keys,
+            // so the landing frame is never emitted and the tracker never
+            // records the achieved position. The production key must be the
+            // measured position so the catch-up frame differs and emits.
+            //
+            // Mirrors the production snapshotFlow in MembersDetailContent:
+            // key = (isScrollInProgress, Triple(measuredIdx, measuredOff,
+            // items)) where measured* = layoutInfo.visibleItemsInfo.first().
+            val scrolling = androidx.compose.runtime.mutableStateOf(false)
+            val getterIndex = androidx.compose.runtime.mutableStateOf(0)
+            val getterOffset = androidx.compose.runtime.mutableStateOf(0)
+            val measuredIndex = androidx.compose.runtime.mutableStateOf(0)
+            val measuredOffset = androidx.compose.runtime.mutableStateOf(0)
+            val items = androidx.compose.runtime.mutableStateOf(40)
+
+            val emitted = mutableListOf<Triple<Int, Int, Int>>()
+            val job =
+                kotlinx.coroutines.launch {
+                    androidx.compose.runtime.snapshotFlow {
+                        scrolling.value to
+                            Triple(
+                                measuredIndex.value,
+                                measuredOffset.value,
+                                items.value
+                            )
+                    }.collect { (_, measured) -> emitted += measured }
+                }
+            kotlinx.coroutines.yield()
+
+            // Frame 1: clamp landing at 237 (measured = 237).
+            measuredIndex.value = 0
+            measuredOffset.value = 237
+            kotlinx.coroutines.yield()
+
+            // Frame 2: tracker re-issues; requestScrollToItem writes the
+            // getter to 489 synchronously — measured still 237, so no new
+            // emission from the measured key (same Triple), correct.
+            getterIndex.value = 0
+            getterOffset.value = 489
+            kotlinx.coroutines.yield()
+
+            // Frame 3: remeasure lands — measured catches up to 489. The
+            // key MUST differ from the clamp frame so this emits.
+            measuredOffset.value = 489
+            kotlinx.coroutines.yield()
+
+            job.cancel()
+            // The critical assertion: the landing frame (0,489) was emitted.
+            // With a getter-only key, frame 3 equals frame 2 and is lost.
+            assertEquals(
+                listOf(
+                    Triple(0, 0, 40),
+                    Triple(0, 237, 40),
+                    Triple(0, 489, 40)
+                ),
+                emitted
+            )
+        }
 }
