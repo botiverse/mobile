@@ -27,6 +27,7 @@ internal object MemberDetailScrollTestSupport {
     internal const val DragSteps = 10
     internal const val DragStepDelayMs = 36L
     internal const val DragRetryDelayMs = 400L
+    internal const val ProbeHitWaitMs = 4_000L
 
     private const val MemberKey = "visual-owner:visual-server:human:visual-human-long"
     internal val KeyHash = MemberKey.hashCode().toString(16)
@@ -389,6 +390,49 @@ internal object MemberDetailScrollTestSupport {
             throw t
         }
         return drag
+    }
+
+    /**
+     * Held-drag variant with delivery evidence: injects a paced held drag
+     * and verifies the in-page `probe_hit` line appears after [after] —
+     * the gesture provably engaged the real scroll surface. A dispatch
+     * that lands before the (re)composed subtree's pointerInput attaches
+     * produces no probe_hit; that attempt is retired with ACTION_CANCEL
+     * and retried within the shared bound. Never returns a gesture that
+     * produced no probe_hit.
+     */
+    internal fun injectDragPacedUntilProbeHit(
+        startCursor: Long,
+        after: String,
+        logTag: String
+    ): HeldDrag {
+        val deadline = SystemClock.uptimeMillis() + InitialRenderTimeoutMs
+        var attempt = 0
+        while (SystemClock.uptimeMillis() < deadline) {
+            attempt++
+            val drag = injectDragPaced(logTag)
+            val probeDeadline =
+                minOf(SystemClock.uptimeMillis() + ProbeHitWaitMs, deadline)
+            var hit: String? = null
+            while (SystemClock.uptimeMillis() < probeDeadline) {
+                hit =
+                    linesAfter(startCursor, after, logTag).lastOrNull {
+                        it.contains("probe_hit") && it.contains(ScrollLabel)
+                    }
+                if (hit != null) break
+                SystemClock.sleep(LogPollMs)
+            }
+            if (hit != null) {
+                recordEvidence(logTag, "PROBE", "attempt=$attempt $hit")
+                return drag
+            }
+            // No probe evidence — retire this attempt's press before
+            // retrying so at most one pointer is ever held.
+            drag.finish(MotionEvent.ACTION_CANCEL)
+            Log.i(logTag, "held_drag_retry attempt=$attempt no probe_hit")
+            SystemClock.sleep(DragRetryDelayMs)
+        }
+        fail("held drag produced no probe_hit after $attempt attempt(s)")
     }
 
     /** A still-held injected gesture. The handle exists BEFORE the DOWN

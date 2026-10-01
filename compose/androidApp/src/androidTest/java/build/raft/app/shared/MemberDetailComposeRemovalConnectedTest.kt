@@ -193,7 +193,15 @@ class MemberDetailComposeRemovalConnectedTest {
             var disposeLineForAudit: String? = null
             var gesturePrimaryFailure: Throwable? = null
             try {
-                dragGesture = MemberDetailScrollTestSupport.injectDragPaced(TestLogTag)
+                // The re-added subtree's pointerInput may attach AFTER the
+                // seed line; a dispatch that lands too early produces no
+                // probe_hit and no user_frame. Retry until the probe
+                // acknowledges real pointer delivery (each miss retires
+                // its press with CANCEL first).
+                dragGesture =
+                    MemberDetailScrollTestSupport.injectDragPacedUntilProbeHit(
+                        startCursor, visit2.seedLine, TestLogTag
+                    )
                 val lastFrame =
                     waitForLine(startCursor, after = visit2.seedLine, "v2 user_frame") { line ->
                         line.contains("user_frame") && line.contains(ScrollLabel)
