@@ -65,11 +65,11 @@ class MemberDetailScrollDisposeSaveConnectedTest {
             waitForLine(startCursor, after = visit1.seedLine, "v1 restore_first_items") { line ->
                 line.contains("restore_first_items") && line.contains(ScrollLabel)
             }
-            // `sendPointerSync` can silently drop the whole gesture when the
-            // window is not yet focusable — the previous run showed a DOWN
-            // that produced no `probe_hit` at all. Retry the drag until the
-            // in-page probe acknowledges input; a bounded absence is a hard
-            // fail, not a silent scroll miss.
+            // The previous run showed a DOWN that produced no `probe_hit` —
+            // where the input was dropped is unproven (hypothesis: window not
+            // yet focusable). Retry the drag until the in-page probe
+            // acknowledges input; a bounded absence is a hard fail, not a
+            // silent scroll miss.
             injectDragToScrollBlocking(startCursor, after = visit1.seedLine)
             // The baseline wait itself must keep polling until an ACCEPTED
             // NON-ZERO save appears — an initial 0:0 write (or a still-
@@ -489,9 +489,9 @@ class MemberDetailScrollDisposeSaveConnectedTest {
     /**
      * Blocking drag used to establish the baseline (visit 1). Retries the
      * whole gesture until the in-page `probe_hit` log appears after
-     * [after], because `sendPointerSync` silently drops input while the
-     * window is not yet focusable — an unacknowledged drag would leave the
-     * baseline gate polling for a save that can never arrive.
+     * [after]: a `sendPointerSync` drop leaves no `probe_hit` (where the
+     * input was lost is unproven) and an unacknowledged drag would leave
+     * the baseline gate polling for a save that can never arrive.
      */
     private fun injectDragToScrollBlocking(startCursor: Long, after: String) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -503,7 +503,30 @@ class MemberDetailScrollDisposeSaveConnectedTest {
         var attempt = 0
         while (SystemClock.uptimeMillis() < deadline) {
             attempt++
-            dispatchBlockingDrag(instrumentation, x, startY, endY)
+            // sendPointerSync blocks on the UiAutomation connection — a stuck
+            // injector would hang the test thread past the loop bound, so each
+            // attempt's dispatch runs on a worker under its own latch.
+            val dispatchDone = CountDownLatch(1)
+            val dispatchFailure = arrayOfNulls<Throwable>(1)
+            val injector =
+                Thread {
+                    try {
+                        dispatchBlockingDrag(instrumentation, x, startY, endY)
+                    } catch (t: Throwable) {
+                        dispatchFailure[0] = t
+                    } finally {
+                        dispatchDone.countDown()
+                    }
+                }
+            injector.isDaemon = true
+            injector.start()
+            if (!dispatchDone.await(ScenarioCloseTimeoutMs, TimeUnit.MILLISECONDS)) {
+                injector.interrupt()
+                fail("baseline drag dispatch (attempt $attempt) blocked >${ScenarioCloseTimeoutMs}ms")
+            }
+            dispatchFailure[0]?.let {
+                throw AssertionError("baseline drag dispatch failed (attempt $attempt): ${it.message}", it)
+            }
             val hit =
                 linesAfter(startCursor, after).lastOrNull {
                     it.contains("probe_hit") && it.contains(ScrollLabel)
