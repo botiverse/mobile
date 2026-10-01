@@ -431,7 +431,6 @@ internal object MemberDetailScrollTestSupport {
         var drag: HeldDrag? = null
         var primaryFailure: Throwable? = null
         var hit: String? = null
-        var handedOff = false
         try {
             drag = injectDragPaced(logTag)
             val deadline =
@@ -464,10 +463,11 @@ internal object MemberDetailScrollTestSupport {
         } catch (t: Throwable) {
             primaryFailure = t
         }
-        if (hit != null) {
+        // Success is reachable only with a bound hit, no primary failure,
+        // and a verified non-null handle.
+        if (hit != null && primaryFailure == null) {
             try {
                 recordEvidence(logTag, "PROBE", "single $hit")
-                handedOff = true
                 return VerifiedHeldDrag(requireNotNull(drag), hit)
             } catch (t: Throwable) {
                 primaryFailure = t
