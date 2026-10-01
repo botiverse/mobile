@@ -18,7 +18,7 @@ set -euo pipefail
 for f in "$AAB_PATH" "$APK_PATH"; do [[ -f "$f" ]] || { echo "missing artifact: $f" >&2; exit 2; }; done
 
 sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
-size() { stat -f %z "$1" 2>/dev/null || stat -c %s "$1"; }
+size() { wc -c < "$1" | tr -d '[:space:]'; }
 if [[ -z "${HANDS_ANDROID_APP_ID:-}" ]]; then
   HANDS_ANDROID_APP_ID="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer $HANDS_BEARER_TOKEN" "${HANDS_API%/}/api/apps" | jq -er --arg slug "$HANDS_APP_SLUG" '.apps[] | select(.slug==$slug) | .id' | head -n1)"
 fi
