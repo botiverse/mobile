@@ -97,26 +97,32 @@ class MemberDetailScrollDisposeSaveConnectedTest {
             // The expected restore position is the LAST user-driven position
             // in flight at destroy time, not the baseline gate: drag saves
             // keep streaming during the close window, so the gate value can
-            // be stale. Prefer the latest accepted registry_save in this
-            // visit's interval strictly before dispose_save (in-flight user
-            // position, not the dispose write itself); if none exists, the
-            // dispose position itself is the last user position.
+            // be stale. Take the latest accepted registry_save in this
+            // visit's interval strictly before dispose_save, scoped to this
+            // visit's gen+epoch so a cross-visit line can never satisfy it.
+            // If the interval lost every such save the expectation is
+            // unprovable — hard fail rather than fall back to the dispose
+            // position, which would mask an exit-time write bug.
             val v1Interval = linesAfter(startCursor, visit1.seedLine)
             val v1DisposeIdx = v1Interval.indexOf(v1Dispose)
             val v1BaselineRestore =
-                v1Interval
-                    .take(v1DisposeIdx)
-                    .filter {
-                        it.contains("registry_save") &&
-                            it.contains("kind=humanList") &&
-                            it.contains("decision=accept") &&
-                            it.contains("keyHash=$KeyHash")
-                    }
-                    .mapNotNull(::parsePositionFrom)
-                    .lastOrNull()
-                    ?: requireNotNull(parsePositionFrom(v1Dispose)) {
-                        "v1 dispose_save carried no position: $v1Dispose"
-                    }
+                requireNotNull(
+                    v1Interval
+                        .take(v1DisposeIdx)
+                        .filter {
+                            it.contains("registry_save") &&
+                                it.contains("kind=humanList") &&
+                                it.contains("decision=accept") &&
+                                it.contains("keyHash=$KeyHash") &&
+                                it.contains("gen=${visit1.generation}/") &&
+                                Regex("epoch=${visit1.epoch}/${visit1.epoch}\\b")
+                                    .containsMatchIn(it)
+                        }
+                        .mapNotNull(::parsePositionFrom)
+                        .lastOrNull()
+                ) {
+                    "no accepted in-interval registry_save precedes v1 dispose_save; restore expectation unprovable"
+                }
             recordEvidence(
                 "B1_V1_RESTORE_EXPECT",
                 "epoch=${visit1.epoch} position=$v1BaselineRestore"
