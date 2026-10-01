@@ -723,20 +723,21 @@ class MemberDetailScrollTrackerTest {
         t.onPendingRestoreRetired = { retired += 1 }
         val requests = mutableListOf<Pair<Int, Int>>()
         val frame = frameOf(t, saved)
-        frame(0, 489, 40, false) { _, _ -> } // seed at target, no request
+        frame(0, 489, 40, false) { _, _ -> } // seed at target, no request issued
         frame(0, 489, 40, false) { _, _ -> } // achieved
+        // Nothing was issued yet, so nothing could be retired.
         assertEquals(0, retired)
-        // Clamped post-achieved landing: the OLD request is retired through
-        // the hook (a parked watchdog job on it is cancelled) before the
-        // fresh re-issue is flagged.
+        // Clamped post-achieved landing: re-issue is flagged — the hook is
+        // not fired because no request was outstanding to retire.
         frame(0, 237, 40, false) { i, o -> requests += i to o } // re-issue
         assertEquals(listOf(0 to 489), requests)
-        assertEquals(1, retired)
+        assertEquals(0, retired)
         assertEquals(true, t.hasPendingRestoreRequest)
-        // Another non-target landing retires this request too and re-issues
-        // once more (bounded by MaxPostSettleReissues = 2).
+        // The next non-target landing retires THIS request through the hook
+        // (a parked watchdog job on it is cancelled) before flagging the
+        // second re-issue (bounded by MaxPostSettleReissues = 2).
         frame(0, 100, 40, false) { i, o -> requests += i to o }
-        assertEquals(2, retired)
+        assertEquals(1, retired)
         assertEquals(listOf(0 to 489, 0 to 489), requests)
     }
 

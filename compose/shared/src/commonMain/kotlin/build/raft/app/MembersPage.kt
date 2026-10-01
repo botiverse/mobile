@@ -14228,7 +14228,7 @@ internal fun kotlinx.coroutines.CoroutineScope.launchMembersDetailRestoreStallWa
     }
 }
 
-internal class MemberDetailScrollTracker(internal class MemberDetailScrollTracker(
+internal class MemberDetailScrollTracker(
     private val restoreTo: MemberDetailScrollPosition,
     private val label: String = "",
     private val logger: (String) -> Unit = {}
