@@ -602,6 +602,68 @@ class MemberDetailScrollTrackerTest {
     }
 
     @Test
+    fun `stall tick re-issues a pending restore request and is bounded`() {
+        // Alpha102 + d7-iPad evidence: restore_first_items issued, then
+        // silence — no settle frame, no save — until a real gesture
+        // superseded 41-84s later. The frame pipeline alone cannot observe
+        // a swallowed request (the snapshotFlow key only changes on
+        // measured frames), so the composition drives onRestoreStalled on a
+        // tick; each pending tick re-issues the target, bounded.
+        val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        val requests = mutableListOf<Pair<Int, Int>>()
+        val frame = frameOf(t, saved)
+        // Seed lands at top -> tracker issues the restore request.
+        frame(0, 0, 40, false) { i, o -> requests += i to o }
+        assertEquals(listOf(0 to 489), requests)
+        assertEquals(true, t.hasPendingRestoreRequest)
+        // No frame ever arrives (dead request). Stall ticks must re-issue
+        // the SAME target, bounded by MaxStallReissues — the tick returns
+        // the target for the caller's suspend scrollToItem, or null when
+        // nothing should be re-issued.
+        repeat(5) {
+            t.onRestoreStalled()?.let { requests += it.firstVisibleItemIndex to it.firstVisibleItemScrollOffset }
+        }
+        assertEquals(
+            listOf(0 to 489, 0 to 489, 0 to 489, 0 to 489),
+            requests
+        )
+        // 3 retries max — the 4th and 5th ticks no-op.
+        assertEquals(null, t.onRestoreStalled())
+        assertEquals(4, requests.size)
+    }
+
+    @Test
+    fun `stall tick is a no-op once the restore lands or the user takes over`() {
+        val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        val requests = mutableListOf<Pair<Int, Int>>()
+        val frame = frameOf(t, saved)
+        frame(0, 0, 40, false) { i, o -> requests += i to o }
+        assertEquals(true, t.hasPendingRestoreRequest)
+        // User gesture supersedes: request retired, ticks stop firing.
+        t.onUserScrollStarted(scrollInFlight = false) { i, o -> requests += i to o }
+        assertEquals(false, t.hasPendingRestoreRequest)
+        assertEquals(null, t.onRestoreStalled())
+    }
+
+    @Test
+    fun `stall re-issue uses the restore target, not the clamped landing`() {
+        // The pending request's supersede base is the measured position
+        // (237 in Alpha101), but a stall retry must re-request the saved
+        // TARGET — re-writing the clamped position would bake the failure
+        // in as the new goal.
+        val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        val requests = mutableListOf<Pair<Int, Int>>()
+        val frame = frameOf(t, saved)
+        frame(0, 237, 40, false) { i, o -> requests += i to o }
+        assertEquals(listOf(0 to 489), requests)
+        t.onRestoreStalled()?.let { requests += it.firstVisibleItemIndex to it.firstVisibleItemScrollOffset }
+        assertEquals(listOf(0 to 489, 0 to 489), requests)
+    }
+
+    @Test
     fun `production frame key emits when measured position catches up to the getter`() =
         runBlocking {
             // LiBai's missed-frame race: requestScrollToItem rewrites the

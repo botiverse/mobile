@@ -5669,6 +5669,25 @@ private fun MembersDetailContent(
         val tracker =
             trackerFor(tab, MemberDetailScrollStateRegistry.agentTabPosition(memberScrollKey, tab))
         LaunchedEffect(memberScrollKey, tab) {
+            // Stall watchdog: a swallowed requestScrollToItem is silent to
+            // the snapshotFlow key (it only emits on measured change), so
+            // while a restore request stays pending we tick and let the
+            // tracker bounded-reissue. Alpha102/d7-iPad evidence: request
+            // issued, no frames for 41-84s until a real gesture.
+            launch {
+                while (true) {
+                    kotlinx.coroutines.delay(MemberDetailRestoreStallTickMs)
+                    // scrollToItem (suspend, forceRemeasure) is a different
+                    // mechanism than requestScrollToItem's pending write —
+                    // evidence shows that write can be swallowed whole.
+                    tracker.onRestoreStalled()?.let { target ->
+                        state.scrollToItem(
+                            target.firstVisibleItemIndex,
+                            target.firstVisibleItemScrollOffset
+                        )
+                    }
+                }
+            }
             snapshotFlow {
                 // isScrollInProgress is observed too: a gesture that starts
                 // and ends within the settle window emits true->false even
@@ -5710,6 +5729,18 @@ private fun MembersDetailContent(
             )
         val state = humanDetailListState
         LaunchedEffect(memberScrollKey) {
+            // Same stall watchdog as the agent-tab collector (see above).
+            launch {
+                while (true) {
+                    kotlinx.coroutines.delay(MemberDetailRestoreStallTickMs)
+                    tracker.onRestoreStalled()?.let { target ->
+                        state.scrollToItem(
+                            target.firstVisibleItemIndex,
+                            target.firstVisibleItemScrollOffset
+                        )
+                    }
+                }
+            }
             snapshotFlow {
                 // isScrollInProgress is observed too: a gesture that starts
                 // and ends within the settle window emits true->false even
@@ -14099,6 +14130,10 @@ internal fun membersDetailScrollFrameKey(
         items = items
     )
 
+// Tick for the pending-restore stall watchdog driven from the detail
+// snapshotFlow collectors (see MemberDetailScrollTracker.onRestoreStalled).
+internal const val MemberDetailRestoreStallTickMs = 800L
+
 internal fun membersDetailScrollFrameKey(state: LazyListState) =
     membersDetailScrollFrameKey(
         scrolling = state.isScrollInProgress,
@@ -14209,6 +14244,17 @@ internal class MemberDetailScrollTracker(
     // pre-achieve clamp landing only suppresses the write — never re-issues —
     // so a subsequent user scroll lands on the user branch unambiguously.
     private var restoreAchieved = false
+    // A requested restore can die inside the Kuikly fork before any frame
+    // returns: Alpha102 (Android) and the d7 iPad build both logged
+    // restore_first_items followed by NO settle/save and a still-pending
+    // request until the next real gesture (pendingRestore=true 41-84s
+    // later). The snapshotFlow key only emits on measured changes, so a
+    // swallowed request produces silence, not a wrong frame — the tracker
+    // cannot observe the stall from frames alone. The composition feeds a
+    // periodic onRestoreStalled tick; each tick bounded-reissues via the
+    // suspend scrollToItem path (forceRemeasure), which is a different
+    // mechanism than the possibly-lost requestScrollToItem write.
+    private var stalledReissues = 0
     // Real gesture evidence: set by the composition feeding the tracker
     // through [onUserScrollStarted] when the list's interactionSource emits
     // DragInteraction.Start. Position/distance can never prove intent — a
@@ -14260,8 +14306,32 @@ internal class MemberDetailScrollTracker(
         }
     }
 
+    /**
+     * Periodic stall tick driven by the composition while [hasPendingRestoreRequest]
+     * is true. Frames cannot prove a swallowed request (the snapshotFlow key only
+     * emits on measured change, so a dead request is silent), so the caller polls
+     * on a delay. Each tick that still finds the request pending re-issues the
+     * target through [scrollRequest] — bounded by [MaxStallReissues] so a pane
+     * that truly cannot reach the target (narrow clamp) stops fighting and just
+     * waits for the user's gesture, which supersedes via [onUserScrollStarted].
+     * Returns true when a re-issue was actually sent.
+     */
+    fun onRestoreStalled(): MemberDetailScrollPosition? {
+        if (!hasPendingRestoreRequest) return null
+        if (stalledReissues >= MaxStallReissues) return null
+        stalledReissues += 1
+        logger(
+            "members_detail_scroll restore_stall_retry label=$label " +
+                "target=${restoreTo.firstVisibleItemIndex}:" +
+                "${restoreTo.firstVisibleItemScrollOffset} " +
+                "attempt=$stalledReissues"
+        )
+        return restoreTo
+    }
+
     private companion object {
         const val MaxPostSettleReissues = 2
+        const val MaxStallReissues = 3
     }
 
     fun observe(state: LazyListState, save: (MemberDetailScrollPosition) -> Unit) =
