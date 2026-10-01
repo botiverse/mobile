@@ -5691,8 +5691,19 @@ private fun MembersDetailContent(
                             ?: state.firstVisibleItemScrollOffset,
                         state.layoutInfo.totalItemsCount
                     )
-            }.collect {
-                tracker.observe(state) { position ->
+            }.collect { (scrolling, measured) ->
+                // Feed the SAME captured frame to the tracker: re-reading
+                // state inside the collector could see a newer layout and
+                // attribute it to this emission.
+                tracker.observe(
+                    itemCount = measured.third,
+                    positionIndex = measured.first,
+                    positionOffset = measured.second,
+                    scrollInProgress = scrolling,
+                    requestScroll = { index, offset ->
+                        state.requestScrollToItem(index, offset)
+                    }
+                ) { position ->
                     MemberDetailScrollStateRegistry.saveAgentTabPosition(
                         memberScrollKey,
                         tab,
@@ -5734,8 +5745,16 @@ private fun MembersDetailContent(
                             ?: state.firstVisibleItemScrollOffset,
                         state.layoutInfo.totalItemsCount
                     )
-            }.collect {
-                tracker.observe(state) { position ->
+            }.collect { (scrolling, measured) ->
+                tracker.observe(
+                    itemCount = measured.third,
+                    positionIndex = measured.first,
+                    positionOffset = measured.second,
+                    scrollInProgress = scrolling,
+                    requestScroll = { index, offset ->
+                        state.requestScrollToItem(index, offset)
+                    }
+                ) { position ->
                     MemberDetailScrollStateRegistry.saveHumanListPosition(
                         memberScrollKey,
                         position,
