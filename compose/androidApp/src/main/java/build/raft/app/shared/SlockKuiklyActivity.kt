@@ -2854,8 +2854,6 @@ open class SlockKuiklyActivity :
         private const val PICKED_THREAD_ATTACHMENT_CACHE_MAX_FILES = 40
         private const val PICKED_THREAD_ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
         private const val PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME = "slock-picked-thread-attachments"
-    }
-
 
         fun start(
             context: Context,
