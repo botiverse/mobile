@@ -410,9 +410,9 @@ class MemberDetailScrollDisposeSaveConnectedTest {
             }
         issuer.isDaemon = true
         issuer.start()
-        if (!finished.await(ScenarioCloseTimeoutMs, TimeUnit.MILLISECONDS)) {
+        if (!finished.await(MemberDetailScrollTestSupport.ScenarioCloseTimeoutMs, TimeUnit.MILLISECONDS)) {
             issuer.interrupt()
-            fail("activity.finish() could not be delivered within ${ScenarioCloseTimeoutMs}ms")
+            fail("activity.finish() could not be delivered within ${MemberDetailScrollTestSupport.ScenarioCloseTimeoutMs}ms")
         }
         failure[0]?.let { throw AssertionError("activity.finish() threw: ${it.message}", it) }
         Log.i(TestLogTag, "close_issued thread=${Thread.currentThread().name}")
@@ -428,21 +428,21 @@ class MemberDetailScrollDisposeSaveConnectedTest {
      *
      * Monitor queries must run on the main thread, so each poll is
      * dispatched through `runOnMainSync` and the whole wait stays bounded
-     * by [ScenarioCloseTimeoutMs]. Fail-closed on timeout.
+     * by [MemberDetailScrollTestSupport.ScenarioCloseTimeoutMs]. Fail-closed on timeout.
      */
     private fun awaitHostDestroyed(host: SlockKuiklyActivity) {
         val monitor = ActivityLifecycleMonitorRegistry.getInstance()
-        val deadline = SystemClock.uptimeMillis() + ScenarioCloseTimeoutMs
+        val deadline = SystemClock.uptimeMillis() + MemberDetailScrollTestSupport.ScenarioCloseTimeoutMs
         while (SystemClock.uptimeMillis() < deadline) {
             val destroyed = queryStageOnMain(monitor, Stage.DESTROYED).contains(host)
             if (destroyed) {
                 Log.i(TestLogTag, "host_destroyed proof=lifecycle stage=DESTROYED")
                 return
             }
-            SystemClock.sleep(LogPollMs)
+            SystemClock.sleep(MemberDetailScrollTestSupport.LogPollMs)
         }
         val stage = currentStageOnMain(monitor, host)
-        fail("SlockKuiklyActivity never reached DESTROYED within ${ScenarioCloseTimeoutMs}ms (stage=$stage)")
+        fail("SlockKuiklyActivity never reached DESTROYED within ${MemberDetailScrollTestSupport.ScenarioCloseTimeoutMs}ms (stage=$stage)")
     }
 
     /**
@@ -467,8 +467,8 @@ class MemberDetailScrollDisposeSaveConnectedTest {
                 latch.countDown()
             }
         }
-        if (!latch.await(ScenarioCloseTimeoutMs, TimeUnit.MILLISECONDS)) {
-            fail("lifecycle monitor query for $stage did not run on main within ${ScenarioCloseTimeoutMs}ms")
+        if (!latch.await(MemberDetailScrollTestSupport.ScenarioCloseTimeoutMs, TimeUnit.MILLISECONDS)) {
+            fail("lifecycle monitor query for $stage did not run on main within ${MemberDetailScrollTestSupport.ScenarioCloseTimeoutMs}ms")
         }
         queryFailure[0]?.let { throw AssertionError("lifecycle monitor query for $stage threw: ${it.message}", it) }
         return result[0] ?: emptySet()
