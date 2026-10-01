@@ -1331,6 +1331,12 @@ class ConversationRepositoryDataSourceTest {
         val withTrace = runWith("newer_page_s3_fs=7")
         val withoutTrace = runWith(null)
         assertEquals(withoutTrace, withTrace)
+        assertEquals(2, withTrace.size)
+        assertTrue(
+            withTrace.any { it.method == "GET" && it.path == "messages/channel/channel-1" } &&
+                withTrace.any { it.method == "GET" && it.path == "messages/sync" },
+            "both actual requests must be observed; requests=$withTrace",
+        )
         assertTrue(
             withTrace.none { request -> request.query.any { (k, _) -> k == "trace" } },
             "requestTrace must not reach wire query; requests=$withTrace",

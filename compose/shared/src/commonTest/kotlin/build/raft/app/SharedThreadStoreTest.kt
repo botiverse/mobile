@@ -18075,6 +18075,99 @@ class SharedThreadStoreTest {
     }
 
 
+
+    @Test
+    fun staleRunReleaseDoesNotCompleteNewLedgerGate() = runBlocking {
+        // task #58 observability contract (same code the visual fixture runs):
+        // a release issued for an older runNonce must neither complete a gate
+        // in the new run nor write a ledger entry against it.
+        val ledger = ThreadNewerAutoFixtureLedger()
+        val nonce1 = "run-a"
+        val nonce2 = "run-b"
+        ledger.beginRun(nonce1)
+        val pending =
+            async {
+                ledger.awaitAfterResponse(
+                    runNonce = nonce1,
+                    afterSeq = 46L,
+                    limit = 30,
+                )
+            }
+        withTimeout(5_000) {
+            while (ledger.snapshot(nonce1).afterRequests.isEmpty()) {
+                yield()
+            }
+        }
+        // Arm a gate in the new run so "new gate exists" is actually tested.
+        ledger.beginRun(nonce2)
+        val newPending =
+            async {
+                ledger.awaitAfterResponse(
+                    runNonce = nonce2,
+                    afterSeq = 46L,
+                    limit = 30,
+                )
+            }
+        withTimeout(5_000) {
+            while (ledger.snapshot(nonce2).afterRequests.isEmpty()) {
+                yield()
+            }
+        }
+        val released = ledger.release(nonce1, 1, ThreadNewerAutoFixtureResponse.Success(30))
+        assertFalse(released, "stale-nonce release must fail")
+        assertTrue(
+            ledger.snapshot(nonce2).requestLog.none { it.contains("release") },
+            "stale release must not write into the new run's ledger",
+        )
+        assertTrue(newPending.isActive, "new-run gate must remain open")
+        // Now release the new gate properly so the test finishes cleanly.
+        assertTrue(ledger.release(nonce2, 1, ThreadNewerAutoFixtureResponse.Success(30)))
+        newPending.await()
+        pending.cancel()
+        runCatching { pending.await() }
+    }
+
+    @Test
+    fun repeatedReleaseOnSameCallRecordedAccurately() = runBlocking {
+        // task #58 observability contract: releasing the same call twice —
+        // first a real release, then a repeat — leaves exactly one
+        // `release#N completed=true` and one `release_attempt#N result=no_gate`
+        // or `completed=false` record, not silent corruption.
+        val ledger = ThreadNewerAutoFixtureLedger()
+        val nonce = "run-repeat"
+        ledger.beginRun(nonce)
+        val pending =
+            async {
+                ledger.awaitAfterResponse(
+                    runNonce = nonce,
+                    afterSeq = 46L,
+                    limit = 30,
+                )
+            }
+        withTimeout(5_000) {
+            while (ledger.snapshot(nonce).afterRequests.isEmpty()) {
+                yield()
+            }
+        }
+        assertTrue(
+            ledger.release(nonce, 1, ThreadNewerAutoFixtureResponse.Success(5)),
+            "first release should complete the gate",
+        )
+        pending.await()
+        val repeatResult = ledger.release(nonce, 1, ThreadNewerAutoFixtureResponse.Success(5))
+        assertFalse(repeatResult, "repeat release must not recomplete")
+        val log = ledger.snapshot(nonce).requestLog
+        assertTrue(
+            log.any { it == "release#1(success rows=5) completed=true" },
+            "completed release must be recorded; log=$log",
+        )
+        val repeatRecord = log.filter { it.contains("release_attempt#1") || (it.contains("release#1") && it.contains("completed=false")) }
+        assertTrue(
+            repeatRecord.isNotEmpty(),
+            "repeat release must leave a ledger record; log=$log",
+        )
+    }
+
     @Test
     fun concurrentStoresUseDistinctTraceIdentities() = runBlocking {
         // task #58 observability contract: two stores issuing the same kind of
