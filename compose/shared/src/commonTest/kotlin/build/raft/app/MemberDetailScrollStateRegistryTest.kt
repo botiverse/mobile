@@ -510,6 +510,29 @@ class MemberDetailScrollTrackerTest {
     }
 
     @Test
+    fun `pending restore stays visible until the gesture is reported`() {
+        // Production ordering contract used by membersDetailUserDragProbe:
+        // the probe must read hasPendingRestoreRequest BEFORE calling
+        // onUserScrollStarted(), because reporting the gesture retires the
+        // pending request. This test pins that contract at tracker level so
+        // a refactor that moves the flag clear earlier breaks loudly.
+        val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        val requests = mutableListOf<Pair<Int, Int>>()
+        val frame = frameOf(t, saved)
+        frame(0, 489, 40, false) { i, o -> requests += i to o }
+        frame(0, 489, 40, false) { i, o -> requests += i to o }
+        frame(0, 237, 40, false) { i, o -> requests += i to o } // re-issue
+        assertEquals(listOf(0 to 489), requests)
+        // While the re-issued request is still pending application, the
+        // predicate must report it so the probe can supersede.
+        assertEquals(true, t.hasPendingRestoreRequest)
+        t.onUserScrollStarted()
+        // After the gesture is reported, the request is retired.
+        assertEquals(false, t.hasPendingRestoreRequest)
+    }
+
+    @Test
     fun `re-issue still applies when no user gesture interleaves`() {
         val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
         val saved = mutableListOf<MemberDetailScrollPosition>()
