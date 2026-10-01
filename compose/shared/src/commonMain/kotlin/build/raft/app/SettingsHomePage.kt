@@ -227,6 +227,7 @@ import build.raft.app.data.SlockDatabaseLaunchAttempt
 import build.raft.app.data.SlockEventBus
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SlockSharedStoreProvider
+import build.raft.app.data.SlockAppShellDestinationSnapshots
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.attemptSlockDatabaseLaunch
 import build.raft.app.data.ScreenLoadState
@@ -2182,6 +2183,14 @@ private fun SlockAppShellReadyContent(
         pager.pageData.params.optString(APP_SHELL_AUTH_GATE_INSTANCE_ID)
     }
     var selectedTab by remember { mutableStateOf(launchSelection.selectedTab) }
+    // task #58 (config-change recreation): if this shell instance was rebuilt
+    // while the process lived (wm size/font change, fold unfold), recover the
+    // last live destination recorded under this (shell, account, server)
+    // instead of replaying the launch Intent's stale initial tab. Only applied
+    // once per composition — an explicit launch/deep-link that really wants
+    // "home" is the initial write, so a snapshot only wins when the identity
+    // matches AND the Intent seed is still the untouched launch value.
+    var recreationRestoreApplied by remember { mutableStateOf(false) }
     var childTabSwitchEpoch by remember { mutableStateOf(0) }
     var homeFocusLossDismissEpoch by remember { mutableStateOf(0) }
     var retainedAppShellTabs by remember {
@@ -3293,6 +3302,41 @@ private fun SlockAppShellReadyContent(
                 ?.takeIf { authGateState == SharedAuthGateState.Restoring }
                 ?.let { SharedAuthReadyPhase.CachedRestorePending }
     val readyServerId = selectedServerId?.trim()?.takeIf(String::isNotBlank) ?: readySession?.currentServerId
+    // task #58: consume the recorded destination once the identity that wrote
+    // it is actually live. Fires once per composition and only overwrites the
+    // untouched launch seed — a user or deep-link that already moved the tab
+    // keeps its value. Records every live change so a later recreation of the
+    // same shell restores the latest destination, not a stale one.
+    LaunchedEffect(readySession?.user?.id, readyServerId, storeScope) {
+        val accountId = readySession?.user?.id
+        if (!recreationRestoreApplied && accountId != null) {
+            SlockAppShellDestinationSnapshots
+                .consume(storeScope, accountId, readyServerId)
+                ?.takeIf { it != selectedTab && it in retainedAppShellTabKeys }
+                ?.let { restored ->
+                    if (selectedTab == launchSelection.selectedTab) {
+                        bridge.log(
+                            "app_shell_recreate_restore selectedTab=$restored " +
+                                "launchSeed=${launchSelection.selectedTab} scope=${storeScope.shellInstanceId}"
+                        )
+                        selectedTab = restored
+                    }
+                }
+            recreationRestoreApplied = true
+        }
+    }
+    // Recording waits until the restore decision resolved so the launch seed
+    // cannot clobber a pending snapshot before consume() reads it.
+    LaunchedEffect(readySession?.user?.id, readyServerId, selectedTab, storeScope, recreationRestoreApplied) {
+        val accountId = readySession?.user?.id ?: return@LaunchedEffect
+        if (!recreationRestoreApplied) return@LaunchedEffect
+        SlockAppShellDestinationSnapshots.record(
+            scope = storeScope,
+            accountId = accountId,
+            serverId = readyServerId,
+            selectedTab = selectedTab,
+        )
+    }
     // task #94: Slack-aligned bottom nav resolution. The gate (server flag + diagnostics
     // Local Feature Overrides) seeds the default; a persisted tab order always wins (artin's
     // locked rule). The resolved ordered keys are the single source for the bottom bar,

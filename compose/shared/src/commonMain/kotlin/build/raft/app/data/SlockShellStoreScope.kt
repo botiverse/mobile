@@ -1045,3 +1045,80 @@ internal fun SlockAuthSessionStore.authSessionTerminalSourceOrNull(): SlockAuthS
         is SlockShellAuthSessionStore -> processTerminalSourceOrNull()
         else -> null
     }
+
+/**
+ * task #58 (config-change recreation): the app-shell's selected tab is runtime
+ * Compose state seeded once from the launch Intent extra. When Android rebuilds
+ * the Activity for a resize/font change, the new composition re-reads that
+ * stale launch value and drops the runtime destination (Members → Home on the
+ * device evidence). This process-scoped snapshot records the last live
+ * selectedTab per (shell scope, account, server) so a same-shell recreation
+ * can recover it — while a different shell instance, account switch, or
+ * explicit navigation that lands on a fresh launch payload still wins.
+ *
+ * Identity-bounded on purpose: restore is consumed only when the snapshot's
+ * account and server still match the session that is about to run, so
+ * "same shell, different account/server" never inherits another surface's
+ * destination. Entries die with the process; there is no durable write and
+ * no cross-process recovery.
+ */
+internal data class SlockAppShellDestinationSnapshot(
+    val accountId: String,
+    val serverId: String?,
+    val selectedTab: String,
+)
+
+internal object SlockAppShellDestinationSnapshots {
+    private val cache = SlockShellScopedStoreCache<SlockAppShellDestinationSnapshot>()
+
+    /**
+     * Read the last recorded destination for [scope] if it was written by the
+     * same account and still targets [serverId]. Returns null when nothing was
+     * recorded or the identity no longer matches — callers must not reuse a
+     * stale snapshot across an account or server switch.
+     */
+    fun consume(
+        scope: SlockShellStoreScope,
+        accountId: String?,
+        serverId: String?,
+    ): String? {
+        if (accountId.isNullOrBlank()) return null
+        val snapshot = cache.get(scope) ?: return null
+        if (snapshot.accountId != accountId) return null
+        val normalizedServerId = serverId?.trim()?.takeIf { it.isNotBlank() }
+        if (snapshot.serverId != normalizedServerId) return null
+        return snapshot.selectedTab
+    }
+
+    /**
+     * Record the current destination for [scope]. Written on every live
+     * selection change; the most recent write is what a later same-shell
+     * recreation will consume.
+     */
+    fun record(
+        scope: SlockShellStoreScope,
+        accountId: String?,
+        serverId: String?,
+        selectedTab: String,
+    ) {
+        if (accountId.isNullOrBlank() || selectedTab.isBlank()) return
+        // The cache only exposes get/getOrPut/remove, so the freshest write
+        // wins by replacing the entry outright.
+        cache.remove(scope)
+        cache.getOrPut(scope) {
+            SlockAppShellDestinationSnapshot(
+                accountId = accountId,
+                serverId = serverId?.trim()?.takeIf { it.isNotBlank() },
+                selectedTab = selectedTab,
+            )
+        }
+    }
+
+    /** Drop the snapshot for [scope] (explicit sign-out / shell close). */
+    fun clear(scope: SlockShellStoreScope) {
+        cache.remove(scope)
+    }
+
+    /** Test seam: expose the live cache so tests can drive get/put directly. */
+    internal fun cacheForTest(): SlockShellScopedStoreCache<SlockAppShellDestinationSnapshot> = cache
+}
