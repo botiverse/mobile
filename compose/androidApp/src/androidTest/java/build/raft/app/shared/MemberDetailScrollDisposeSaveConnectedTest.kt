@@ -340,6 +340,14 @@ class MemberDetailScrollDisposeSaveConnectedTest {
      * `isScrollInProgress` live) when the caller destroys the host. The
      * returned handle releases or cancels the gesture on the failure path.
      */
+    /**
+     * The handle is created BEFORE the DOWN event is dispatched so any
+     * injection failure or interrupt still leaves the caller owning a valid
+     * cleanup handle — the contract is "held-press cleanup", not
+     * "constructed handle". Terminal event delivery failure is a hard error,
+     * not a logged warning: a press we cannot prove retired is a stuck
+     * pointer that could leak into the next visit's input stream.
+     */
     private fun injectDragPaced(): HeldDrag {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val metrics = instrumentation.targetContext.resources.displayMetrics
@@ -347,65 +355,88 @@ class MemberDetailScrollDisposeSaveConnectedTest {
         val startY = metrics.heightPixels * 0.72f
         val endY = metrics.heightPixels * 0.30f
         val downTime = SystemClock.uptimeMillis()
-        val events = mutableListOf<MotionEvent>()
         var currentY = startY
+        val drag =
+            HeldDrag(
+                downTime = downTime,
+                x = x,
+                instrumentation = instrumentation
+            )
         fun dispatch(event: MotionEvent) {
-            events += event
             val accepted =
                 instrumentation.uiAutomation.injectInputEvent(event, false)
-            require(accepted) {
-                "injectInputEvent rejected action=${event.actionMasked}"
+            drag.track(event)
+            if (!accepted) {
+                throw AssertionError(
+                    "injectInputEvent rejected action=${event.actionMasked}"
+                )
             }
         }
-        dispatch(MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, startY, 0))
-        repeat(DragSteps) { step ->
-            val fraction = (step + 1f) / DragSteps
-            currentY = startY + (endY - startY) * fraction
+        try {
             dispatch(
-                MotionEvent.obtain(
-                    downTime,
-                    SystemClock.uptimeMillis(),
-                    MotionEvent.ACTION_MOVE,
-                    x,
-                    currentY,
-                    0
-                )
+                MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, startY, 0)
             )
-            // Real pacing: the move run actually takes ~DragSteps*delay, so
-            // the gesture is mid-flight while the caller proceeds.
-            Thread.sleep(DragStepDelayMs)
+            repeat(DragSteps) { step ->
+                val fraction = (step + 1f) / DragSteps
+                currentY = startY + (endY - startY) * fraction
+                drag.updateY(currentY)
+                dispatch(
+                    MotionEvent.obtain(
+                        downTime,
+                        SystemClock.uptimeMillis(),
+                        MotionEvent.ACTION_MOVE,
+                        x,
+                        currentY,
+                        0
+                    )
+                )
+                // Real pacing: the move run takes ~DragSteps*delay, so the
+                // gesture is mid-flight while the caller proceeds.
+                Thread.sleep(DragStepDelayMs)
+            }
+        } catch (t: Throwable) {
+            // Injection aborted mid-gesture: retire the press before
+            // propagating so no stuck pointer survives into the next visit.
+            runCatching { drag.finish(MotionEvent.ACTION_CANCEL) }
+            throw t
         }
-        return HeldDrag(
-            downTime = downTime,
-            x = x,
-            y = currentY,
-            events = events,
-            instrumentation = instrumentation
-        )
+        return drag
     }
 
-    /** A still-held injected gesture. [finish] sends the terminal UP/CANCEL,
-     *  verifies the injection was accepted, and recycles every queued event
-     *  exactly once. */
+    /** A still-held injected gesture. The handle exists BEFORE the DOWN
+     *  event so a failed/interrupted injection still leaves the caller owning
+     *  a cleanup path. [finish] sends the terminal UP/CANCEL, FAILS when that
+     *  event is rejected (a stuck press must not be silently tolerated), and
+     *  recycles every queued event exactly once. */
     private class HeldDrag(
         private val downTime: Long,
         private val x: Float,
-        private val y: Float,
-        private val events: MutableList<MotionEvent>,
         private val instrumentation: android.app.Instrumentation
     ) {
         private var closed = false
+        private var currentY = 0f
+        private val events = mutableListOf<MotionEvent>()
+
+        fun track(event: MotionEvent) {
+            events += event
+        }
+
+        fun updateY(value: Float) {
+            currentY = value
+        }
 
         fun finish(action: Int) {
             if (closed) return
             closed = true
             val terminal =
-                MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, x, y, 0)
+                MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, x, currentY, 0)
             try {
                 val accepted =
                     instrumentation.uiAutomation.injectInputEvent(terminal, false)
                 if (!accepted) {
-                    Log.w("MemberDetailDisposeB1", "terminal gesture event rejected (action=$action)")
+                    throw AssertionError(
+                        "terminal gesture event rejected (action=$action); press may still be held"
+                    )
                 }
             } finally {
                 terminal.recycle()
