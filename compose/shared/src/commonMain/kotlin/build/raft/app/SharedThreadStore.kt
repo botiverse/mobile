@@ -9798,7 +9798,7 @@ internal class SharedThreadStore(
     // whatever generation is current when the write lands.
     private fun issueFetchSeq(kind: String, detail: String): Pair<Long, Long> {
         val fetchSeq = nextFetchSeq.incrementAndGet()
-        val requestToken = routeStaleTokenValue
+        val requestToken = routeStaleToken.value
         runCatching {
             diagnosticsLogger?.invoke(
                 "thread_fetch_issued kind=$kind storeSeq=$storeInstanceSeq fetchSeq=$fetchSeq " +
@@ -9810,14 +9810,14 @@ internal class SharedThreadStore(
 
     private fun issueOperationSeq(kind: String, detail: String): Pair<Long, Long> {
         val operationSeq = nextOperationSeq.incrementAndGet()
-        val requestToken = routeStaleTokenValue
+        val requestToken = routeStaleToken.value
         runCatching {
             diagnosticsLogger?.invoke(
                 "thread_op_issued kind=$kind storeSeq=$storeInstanceSeq opSeq=$operationSeq " +
                     "routeToken=$requestToken $detail"
             )
         }
-        return operationSeq
+        return operationSeq to requestToken
     }
 
     private fun advanceRouteStaleToken(): MviStaleToken {

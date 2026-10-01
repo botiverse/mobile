@@ -18069,6 +18069,18 @@ class SharedThreadStoreTest {
             newerReject.any { it.contains("fetchSeq=$newerFetchSeq") },
             "stale newer-page rejection must carry its own fetchSeq=$newerFetchSeq; got $newerReject",
         )
+        // Cross-generation: the reject must name the request's ORIGINAL
+        // generation (requestRouteToken from its own issue log), while the
+        // current routeToken field shows the refresh's newer generation.
+        val newerToken = Regex("routeToken=(\\d+)").find(newerIssued)!!.groupValues[1]
+        val refreshToken = Regex("routeToken=(\\d+)").find(refreshIssued)!!.groupValues[1]
+        assertNotEquals(newerToken, refreshToken, "refresh must advance the route generation")
+        assertTrue(
+            newerReject.any {
+                it.contains("requestRouteToken=$newerToken") && it.contains("routeToken=$refreshToken")
+            },
+            "reject must carry requestRouteToken=$newerToken with current routeToken=$refreshToken; got $newerReject",
+        )
         api.bodyText =
             messagesResponse("refreshed tail", id = "m16", seq = 16, historyLimited = false)
         api.releaseChannelMessages?.complete(Unit)
