@@ -17978,6 +17978,18 @@ class SharedThreadStoreTest {
             messagesResponse("refreshed tail", id = "m16", seq = 16, historyLimited = false)
         api.releaseChannelMessages?.complete(Unit)
         withTimeout(5_000) { refreshJob.await() }
+        // Refresh must carry its own fetchSeq into the apply-side write log —
+        // same correlation the rejected stale page used above.
+        val refreshWrite =
+            logs.filter {
+                it.contains("thread_payload_messages_write") &&
+                    !it.contains("rejected") &&
+                    it.contains("refresh")
+            }
+        assertTrue(
+            refreshWrite.any { it.contains("fetchSeq=$refreshFetchSeq") },
+            "refresh commit must carry refreshFetchSeq=$refreshFetchSeq; got $refreshWrite",
+        )
         } finally {
             scope.cancel()
         }
@@ -18069,6 +18081,18 @@ class SharedThreadStoreTest {
             messagesResponse("refreshed tail", id = "m16", seq = 16, historyLimited = false)
         api.releaseChannelMessages?.complete(Unit)
         withTimeout(5_000) { refreshJob.await() }
+        // Refresh must carry its own fetchSeq into the apply-side write log —
+        // same correlation the rejected stale page used above.
+        val refreshWrite =
+            logs.filter {
+                it.contains("thread_payload_messages_write") &&
+                    !it.contains("rejected") &&
+                    it.contains("refresh")
+            }
+        assertTrue(
+            refreshWrite.any { it.contains("fetchSeq=$refreshFetchSeq") },
+            "refresh commit must carry refreshFetchSeq=$refreshFetchSeq; got $refreshWrite",
+        )
         } finally {
             scope.cancel()
         }
@@ -18117,6 +18141,18 @@ class SharedThreadStoreTest {
             val staleReleased =
                 ledger.release(nonce1, 1, ThreadNewerAutoFixtureResponse.Success(30))
             assertFalse(staleReleased, "stale-nonce release must fail")
+            // Immediate check before any later release: the stale release must
+            // not have left a record on the new run's ledger while its gate is
+            // still open.
+            val logAfterStaleRelease = ledger.snapshot(nonce2).requestLog
+            assertTrue(
+                logAfterStaleRelease.none { it.contains("success rows=30") },
+                "stale release must not appear in the new run's ledger; log=$logAfterStaleRelease",
+            )
+            assertTrue(
+                ledger.snapshot(nonce2).afterRequests.isNotEmpty(),
+                "new-run gate must still be armed after the stale release",
+            )
             assertTrue(
                 ledger.release(nonce2, 1, ThreadNewerAutoFixtureResponse.Success(7)),
                 "new-run release must succeed",
@@ -18214,7 +18250,7 @@ class SharedThreadStoreTest {
                     )
                 )
             )
-            store to logs
+            return store to logs
         }
         val (storeA, logsA) = newStore()
         val (storeB, logsB) = newStore()
@@ -18225,6 +18261,81 @@ class SharedThreadStoreTest {
         val storeSeqA = Regex("storeSeq=(\\d+)").find(issuedA)!!.groupValues[1]
         val storeSeqB = Regex("storeSeq=(\\d+)").find(issuedB)!!.groupValues[1]
         assertNotEquals(storeSeqA, storeSeqB, "concurrent stores must get distinct storeSeq")
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun twoRealtimeAppliesCarryDistinctOperationSeqsIntoWriteLogs() = runBlocking {
+        // task #58 observability contract: each local write op gets its own
+        // opSeq at issue, and the apply-side write log carries that same
+        // opSeq — two consecutive realtime merges must not share an identity.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val logs = mutableListOf<String>()
+            val dataSource =
+                testSharedThreadDataSource(
+                    networkApi = FakeThreadApi(failChannelMessages = true),
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                )
+            val store =
+                SharedThreadStore(
+                    dataSource = dataSource,
+                    scope = scope,
+                    diagnosticsLogger = logs::add,
+                )
+            store.accept(SharedThreadIntent.Start(basePayload()))
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    MessageNew(
+                        Message(
+                            id = MessageId("m2"),
+                            threadId = ThreadId("channel-1"),
+                            channelId = ChannelId("channel-1"),
+                            author = member("u2", "Stdrc"),
+                            timestampLabel = "2026-05-19T16:01:00Z",
+                            body = "first realtime"
+                        )
+                    )
+                )
+            )
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    MessageNew(
+                        Message(
+                            id = MessageId("m3"),
+                            threadId = ThreadId("channel-1"),
+                            channelId = ChannelId("channel-1"),
+                            author = member("u2", "Stdrc"),
+                            timestampLabel = "2026-05-19T16:02:00Z",
+                            body = "second realtime"
+                        )
+                    )
+                )
+            )
+            val opIssued =
+                logs.filter {
+                    it.startsWith("thread_op_issued") &&
+                        it.contains("kind=realtime_stable_selected_apply")
+                }
+            assertEquals(2, opIssued.size, "each merge must issue its own op; logs=$opIssued")
+            val opSeqs =
+                opIssued.map { Regex("opSeq=(\\d+)").find(it)!!.groupValues[1] }
+            assertNotEquals(opSeqs[0], opSeqs[1], "opSeqs must differ: $opIssued")
+            val writes =
+                logs.filter {
+                    it.contains("thread_payload_messages_write") &&
+                        it.contains("tag=realtime_stable_selected_apply")
+                }
+            assertEquals(2, writes.size, "each merge must produce one apply log; logs=$writes")
+            opSeqs.forEachIndexed { index, opSeq ->
+                assertTrue(
+                    writes[index].contains("operationSeq=$opSeq"),
+                    "apply log #$index must carry opSeq=$opSeq; got ${writes[index]}",
+                )
+            }
         } finally {
             scope.cancel()
         }

@@ -1316,7 +1316,7 @@ class ConversationRepositoryDataSourceTest {
                 "GET messages/sync" to """{"messages":[]}""",
             )
         val localLogs = mutableListOf<String>()
-        fun runWith(trace: String?): List<RecordedConversationRequest> {
+        fun runWith(trace: String?): Pair<List<RecordedConversationRequest>, List<RecordedConversationRequest>> {
             val network = FakeConversationNetworkClient(responses = responses)
             val repository =
                 RealConversationRepository(
@@ -1328,11 +1328,15 @@ class ConversationRepositoryDataSourceTest {
                 repository.loadNewerMessages(ThreadId("channel-1"), 46L, 30, requestTrace = trace)
                 repository.syncNewerMessages(ThreadId("channel-1"), 10L, 30, requestTrace = trace)
             }
-            return network.requests
+            return network.requests to network.wireRequests
         }
-        val withTrace = runWith("newer_page_s3_fs=7")
-        val withoutTrace = runWith(null)
-        assertEquals(withoutTrace, withTrace)
+        val (withTrace, wireWithTrace) = runWith("newer_page_s3_fs=7")
+        val (_, wireWithoutTrace) = runWith(null)
+        assertEquals(
+            wireWithoutTrace,
+            wireWithTrace,
+            "requestTrace must not change any wire field (method/path/query/server/body)",
+        )
         assertEquals(2, withTrace.size)
         assertTrue(
             withTrace.any { it.method == "GET" && it.path == "messages/channel/channel-1" } &&
@@ -1359,6 +1363,7 @@ class ConversationRepositoryDataSourceTest {
         private val responseForRequest: (RecordedConversationRequest) -> String? = { null },
     ) : SlockNetworkClient {
         val requests = mutableListOf<RecordedConversationRequest>()
+        val wireRequests = mutableListOf<RecordedConversationRequest>()
         val serverOverrides = mutableListOf<String?>()
         val bodies = mutableListOf<String>()
         val uploadedFileNames = mutableListOf<String>()
@@ -1373,7 +1378,9 @@ class ConversationRepositoryDataSourceTest {
         ): HomeNetworkResponse {
             val normalized = path.trim('/')
             val requestKey = "$method $normalized"
-            requests += RecordedConversationRequest(priority, method, normalized, query, serverIdOverride?.value, bodyText)
+            val recorded = RecordedConversationRequest(priority, method, normalized, query)
+            requests += recorded
+            wireRequests += recorded.copy(serverOverride = serverIdOverride?.value, bodyText = bodyText)
             serverOverrides += serverIdOverride?.value
             bodyText?.let { bodies += it }
             requestStarted[requestKey]?.complete(Unit)
@@ -1392,7 +1399,7 @@ class ConversationRepositoryDataSourceTest {
             channelId: ChannelId,
             files: List<MultipartFile>
         ): HomeNetworkResponse {
-            requests += RecordedConversationRequest(priority, "POST", "messages/channels/${channelId.value}/attachments", emptyList())
+            requests += RecordedConversationRequest(priority, "POST", "messages/channels/${channelId.value}/attachments")
             uploadedFileNames += files.map { it.fileName }
             return uploadResponse ?: HomeNetworkResponse(code = 200, bodyText = uploadBody)
         }
@@ -1405,6 +1412,9 @@ class ConversationRepositoryDataSourceTest {
         val query: List<Pair<String, String>> = emptyList(),
         val serverOverride: String? = null,
         val bodyText: String? = null,
+        // serverOverride/bodyText stay defaulted here so pre-existing
+        // expectations keep their old equality shape; full wire detail is
+        // captured separately in FakeConversationNetworkClient.wireRequests.
     )
 
     private companion object {
