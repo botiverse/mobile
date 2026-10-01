@@ -571,13 +571,19 @@ class MemberDetailScrollDisposeSaveConnectedTest {
     ) {
         val downTime = SystemClock.uptimeMillis()
         val events = mutableListOf<MotionEvent>()
-        var downSent = false
+        // Owned from BEFORE the DOWN call: sendPointerSync can throw after
+        // the OS already accepted the event, so "may have been sent" — not
+        // "call returned" — is the ownership boundary for press retirement.
+        var downPossiblySent = false
         var cleanEnd = false
+        var terminateFailure: Throwable? = null
+        var primaryFailure: Throwable? = null
         try {
+            if (stop.get()) return
             val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, startY, 0)
             events += down
+            downPossiblySent = true
             instrumentation.sendPointerSync(down)
-            downSent = true
             var lastY = startY
             repeat(DragSteps) { step ->
                 if (stop.get()) return
@@ -595,6 +601,7 @@ class MemberDetailScrollDisposeSaveConnectedTest {
                 events += move
                 instrumentation.sendPointerSync(move)
             }
+            if (stop.get()) return
             val up =
                 MotionEvent.obtain(
                     downTime,
@@ -607,32 +614,48 @@ class MemberDetailScrollDisposeSaveConnectedTest {
             events += up
             instrumentation.sendPointerSync(up)
             cleanEnd = true
+        } catch (t: Throwable) {
+            primaryFailure = t
+            throw t
         } finally {
-            // If DOWN went out but the gesture did not complete, retire the
-            // press with CANCEL — a stuck pointer must never survive an
-            // aborted attempt.
-            if (downSent && !cleanEnd) {
-                try {
-                    val cancel =
-                        MotionEvent.obtain(
-                            downTime,
-                            SystemClock.uptimeMillis(),
-                            MotionEvent.ACTION_CANCEL,
-                            x,
-                            if (events.size > 1) endY else startY,
-                            0
-                        )
-                    val delivered = instrumentation.uiAutomation.injectInputEvent(cancel, false)
-                    cancel.recycle()
-                    Log.i(
-                        TestLogTag,
-                        "baseline_drag_terminated cancelDelivered=$delivered"
+            // If DOWN may have gone out but the gesture did not complete,
+            // retire the press with CANCEL — a stuck pointer must never
+            // survive an aborted attempt. CANCEL failure is NOT swallowed:
+            // it propagates to the caller (suppressed onto the in-flight
+            // error when one exists), and the cancel event always recycles.
+            if (downPossiblySent && !cleanEnd) {
+                val cancel =
+                    MotionEvent.obtain(
+                        downTime,
+                        SystemClock.uptimeMillis(),
+                        MotionEvent.ACTION_CANCEL,
+                        x,
+                        if (events.size > 1) endY else startY,
+                        0
                     )
+                try {
+                    val delivered =
+                        instrumentation.uiAutomation.injectInputEvent(cancel, false)
+                    if (!delivered) {
+                        terminateFailure =
+                            AssertionError("gesture CANCEL was rejected by injectInputEvent")
+                    }
+                    Log.i(TestLogTag, "baseline_drag_terminated cancelDelivered=$delivered")
                 } catch (t: Throwable) {
+                    terminateFailure = t
                     Log.w(TestLogTag, "baseline_drag_terminate_failed: ${t.message}")
+                } finally {
+                    cancel.recycle()
                 }
             }
             events.forEach(MotionEvent::recycle)
+            // CANCEL failure must not mask or be masked by the gesture's own
+            // error: attach it to the in-flight exception, or surface it as
+            // the failure when the gesture body itself completed abruptly
+            // without throwing (stop-flag return).
+            terminateFailure?.let { term ->
+                primaryFailure?.addSuppressed(term) ?: throw term
+            }
         }
     }
 
