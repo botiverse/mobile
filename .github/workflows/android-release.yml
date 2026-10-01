@@ -618,7 +618,7 @@ jobs:
           VERSION_CODE: ${{ steps.resolve.outputs.version_code }}
           UPLOAD_KEY_CERT_SHA256: ${{ steps.verify.outputs.upload_key_cert_sha256 }}
           AAB_PATH: ${{ steps.locate-aab.outputs.aab_path }}
-          APK_PATH: ${{ steps.locate.outputs.apk_path }}
+          APK_PATH: ${{ steps.sign.outputs.apk_path }}
         shell: bash
         run: |
           set -euo pipefail

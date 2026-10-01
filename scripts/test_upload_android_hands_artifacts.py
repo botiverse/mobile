@@ -38,6 +38,11 @@ class UploadContract(unittest.TestCase):
                      PACKAGE_NAME='build.raft.app',VERSION_NAME='1.0.0',VERSION_CODE='123',
                      UPLOAD_KEY_CERT_SHA256='b'*64,AAB_PATH=f'{td}/app.aab',APK_PATH=f'{td}/app.apk')
             return subprocess.run(['bash',str(Path(__file__).with_name('upload_android_hands_artifacts.sh'))],env=env,capture_output=True,text=True)
+    def test_workflow_uploads_signed_apk(self):
+        workflow=Path(__file__).resolve().parent.parent / ".github/workflows/android-release.yml"
+        block=workflow.read_text().split("- name: Upload immutable AAB + APK to Hands",1)[1].split("- name: Upload APK as workflow artifact",1)[0]
+        self.assertIn("APK_PATH: ${{ steps.sign.outputs.apk_path }}",block)
+
     def test_current_wire_contract(self):
         result=self.run_case('ok')
         self.assertEqual(result.returncode,0,result.stderr)
