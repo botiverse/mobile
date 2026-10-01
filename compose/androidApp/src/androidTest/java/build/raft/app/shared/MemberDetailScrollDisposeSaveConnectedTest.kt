@@ -6,6 +6,8 @@ import android.util.Log
 import android.view.MotionEvent
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import build.raft.app.MemberDetailScrollRegistryFixtureBridge
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -76,14 +78,19 @@ class MemberDetailScrollDisposeSaveConnectedTest {
                 )
             recordEvidence("B1_BASELINE", "epoch=${visit1.epoch} position=$baseline")
             closeHostOrFail(scenario)
+            // Host death has three independent proofs, all required:
+            //   (a) the Activity left every live stage (== destroyed),
+            //   (b) the composition's onDispose ran (`dispose_save` intent),
+            //   (c) an accepted registry write at this visit's gen+epoch
+            //       carried the position (dispose wrote THROUGH). Proof (c)
+            //       is the baseline wait already passed above.
+            awaitHostDestroyed()
             scenario = null
-            // The visit-1 host must be proven dead before re-entry: its
-            // onDispose writes `dispose_save` for this key; without that
-            // line the old composition may still own the write epoch when
-            // the new one launches.
-            waitForLine(startCursor, after = visit1.seedLine, "v1 dispose_save") { line ->
-                line.contains("dispose_save") && line.contains(ScrollLabel)
-            }.let { recordEvidence("B1_V1_DISPOSE", "epoch=${visit1.epoch} $it") }
+            val v1Dispose =
+                waitForLine(startCursor, after = visit1.seedLine, "v1 dispose_save") { line ->
+                    line.contains("dispose_save") && line.contains(ScrollLabel)
+                }
+            recordEvidence("B1_V1_DISPOSE", "epoch=${visit1.epoch} $v1Dispose")
 
             // ---- Visit 2: re-enter, prove baseline restored, drag inside
             // the settle window, destroy mid-drag ----
@@ -136,6 +143,9 @@ class MemberDetailScrollDisposeSaveConnectedTest {
                 // Destroy now — the press is still down and the list still
                 // scrolling while the host tears down.
                 closeHostOrFail(scenario)
+                // Same three-part death proof as visit 1: lifecycle
+                // destroyed here, dispose_save + accepted write below.
+                awaitHostDestroyed()
                 scenario = null
             } finally {
                 // On the success path the host is dead, so the terminal UP
@@ -246,6 +256,13 @@ class MemberDetailScrollDisposeSaveConnectedTest {
             scenario?.let {
                 runCatching { closeHostOrFail(it) }
                     .onFailure { e -> Log.w(TestLogTag, "finally close failed: ${e.message}") }
+                // finally must wait for the real cleanup, not just fire
+                // finish() — otherwise a still-dying host leaks into the
+                // next visit's input/lifecycle stream.
+                runCatching { awaitHostDestroyed() }
+                    .onFailure { e ->
+                        Log.w(TestLogTag, "finally destroy wait failed: ${e.message}")
+                    }
             }
             MemberDetailScrollRegistryFixtureBridge.clearForTest()
         }
@@ -299,22 +316,54 @@ class MemberDetailScrollDisposeSaveConnectedTest {
             TestLogTag,
             "close_begin thread=${Thread.currentThread().name}"
         )
+        // onActivity itself blocks until the runnable executes on the main
+        // thread, so the bounded await must wrap the CALL, not just the
+        // finish() inside it — run the whole onActivity on a worker thread.
         val finished = CountDownLatch(1)
         val failure = arrayOfNulls<Throwable>(1)
-        scenario.onActivity { activity ->
-            try {
-                activity.finish()
-            } catch (t: Throwable) {
-                failure[0] = t
-            } finally {
-                finished.countDown()
+        val issuer =
+            Thread {
+                try {
+                    scenario.onActivity { activity -> activity.finish() }
+                } catch (t: Throwable) {
+                    failure[0] = t
+                } finally {
+                    finished.countDown()
+                }
             }
-        }
+        issuer.isDaemon = true
+        issuer.start()
         if (!finished.await(ScenarioCloseTimeoutMs, TimeUnit.MILLISECONDS)) {
+            issuer.interrupt()
             fail("activity.finish() could not be delivered within ${ScenarioCloseTimeoutMs}ms")
         }
         failure[0]?.let { throw AssertionError("activity.finish() threw: ${it.message}", it) }
         Log.i(TestLogTag, "close_issued thread=${Thread.currentThread().name}")
+    }
+
+    /**
+     * Proof (a) of host death: the Activity must leave every pre-destroy
+     * stage in the lifecycle monitor. `finish()` returning — or even the
+     * onActivity runnable having run — does NOT prove the destroy was
+     * delivered; only the monitor transition does. Fail-closed on timeout.
+     */
+    private fun awaitHostDestroyed() {
+        val monitor = ActivityLifecycleMonitorRegistry.getInstance()
+        val liveStages =
+            listOf(Stage.RESUMED, Stage.PAUSED, Stage.STARTED, Stage.CREATED, Stage.PRE_ON_CREATE)
+        val deadline = SystemClock.uptimeMillis() + ScenarioCloseTimeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            val alive =
+                liveStages
+                    .flatMap { stage -> monitor.getActivitiesInStage(stage) }
+                    .filterIsInstance<SlockKuiklyActivity>()
+            if (alive.isEmpty()) {
+                Log.i(TestLogTag, "host_destroyed proof=lifecycle alive=0")
+                return
+            }
+            SystemClock.sleep(LogPollMs)
+        }
+        fail("SlockKuiklyActivity never reached DESTROYED within ${ScenarioCloseTimeoutMs}ms")
     }
 
     // -- Input -------------------------------------------------------------------
