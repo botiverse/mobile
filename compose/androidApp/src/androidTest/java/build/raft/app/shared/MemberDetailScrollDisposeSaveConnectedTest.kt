@@ -64,11 +64,16 @@ class MemberDetailScrollDisposeSaveConnectedTest {
                 line.contains("restore_first_items") && line.contains(ScrollLabel)
             }
             injectDragToScrollBlocking()
+            // The baseline wait itself must keep polling until an ACCEPTED
+            // NON-ZERO save appears — an initial 0:0 write (or a still-
+            // clamped early frame) must not satisfy the gate.
             val baseline =
-                waitForSave(startCursor, after = visit1.seedLine, epoch = visit1.epoch)
-            require(baseline.index > 0 || baseline.offset > 0) {
-                "baseline scroll never left the top; cannot exercise a non-zero restore"
-            }
+                waitForSave(
+                    startCursor,
+                    after = visit1.seedLine,
+                    epoch = visit1.epoch,
+                    requireNonZero = true
+                )
             recordEvidence("B1_BASELINE", "epoch=${visit1.epoch} position=$baseline")
             closeHostOrFail(scenario)
             scenario = null
@@ -105,35 +110,38 @@ class MemberDetailScrollDisposeSaveConnectedTest {
             }
             recordEvidence("B1_BASELINE_LANDED", "epoch=${visit2.epoch} $firstItems2")
 
-            // Drag while the post-restore settle state is still warm, with
-            // real-time spaced MOVEs and no UP — the gesture stays in flight
-            // into the destroy.
-            val dragGesture = injectDragPaced()
+            // Drag while the post-restore settle state is still warm: paced
+            // MOVEs, press HELD through the destroy. The handle covers
+            // injection, observation AND close — any failure sends CANCEL so
+            // no stuck press survives the case, and the terminal event's
+            // delivery is itself checked.
+            var dragGesture: HeldDrag? = null
             try {
+                dragGesture = injectDragPaced()
                 waitForLine(startCursor, after = visit2.seedLine, "v2 probe_hit") { line ->
                     line.contains("probe_hit") && line.contains(ScrollLabel)
                 }
-                // Last valid user frame *within this visit's interval*
-                // immediately before destroy — the expected dispose payload.
                 val lastUserFrameBeforeDestroy =
                     waitForLine(startCursor, after = visit2.seedLine, "v2 user_frame") { line ->
                         line.contains("user_frame") && line.contains(ScrollLabel)
                     }
                 recordEvidence("B1_USER_FRAME", "epoch=${visit2.epoch} $lastUserFrameBeforeDestroy")
-            } catch (t: Throwable) {
-                dragGesture.cancel()
-                throw t
+                // Destroy now — the press is still down and the list still
+                // scrolling while the host tears down.
+                closeHostOrFail(scenario)
+                scenario = null
+            } finally {
+                // On the success path the host is dead, so the terminal UP
+                // is a no-op on a destroyed window; on failure paths CANCEL
+                // guarantees the injected press is retired. Delivery result
+                // is logged, and events recycle exactly once.
+                dragGesture?.finish(action = MotionEvent.ACTION_UP)
+                dragGesture = null
             }
 
-            // Destroy now — no UP has been sent; the press is still down and
-            // the list is still scrolling while the host tears down.
-            closeHostOrFail(scenario)
-            scenario = null
-            dragGesture.release()
-
             // The dispose write must appear in THIS visit's interval (after
-            // the seed) carrying the LAST user frame position recorded in
-            // the same interval.
+            // the seed); its position must equal the LAST user_frame logged
+            // strictly BEFORE the dispose line in the same interval.
             val disposeLine =
                 waitForLine(startCursor, after = visit2.seedLine, "v2 dispose_save") { line ->
                     line.contains("dispose_save") && line.contains(ScrollLabel)
@@ -144,8 +152,11 @@ class MemberDetailScrollDisposeSaveConnectedTest {
                 }
             recordEvidence("B1_DISPOSE", "epoch=${visit2.epoch} $disposeLine")
             val intervalLines = linesAfter(startCursor, visit2.seedLine)
+            val disposeIndex = intervalLines.indexOf(disposeLine)
+            val linesThroughDispose = intervalLines.take(disposeIndex + 1)
             val lastUserFrameInInterval =
-                intervalLines
+                linesThroughDispose
+                    .dropLast(1)
                     .filter { it.contains("user_frame") && it.contains(ScrollLabel) }
                     .mapNotNull(::parsePositionFrom)
                     .lastOrNull()
@@ -155,16 +166,18 @@ class MemberDetailScrollDisposeSaveConnectedTest {
             require(disposePosition.index > 0 || disposePosition.offset > 0) {
                 "dispose_save wrote the top, not the dragged position: $disposeLine"
             }
-            val disposeIndex = intervalLines.indexOf(disposeLine)
+            // No periodic save carrying the dispose position may precede the
+            // dispose write inside this visit's interval — that would mean the
+            // position was already persisted before exit (already-saved path).
             val savesBeforeDispose =
-                intervalLines
-                    .take(disposeIndex)
+                linesThroughDispose
+                    .dropLast(1)
                     .filter {
                         it.contains("registry_save") &&
                             it.contains("kind=humanList") &&
                             it.contains("decision=accept") &&
                             it.contains("keyHash=$KeyHash") &&
-                            it.contains("epoch=${visit2.epoch}/${visit2.epoch}")
+                            Regex("epoch=${visit2.epoch}/${visit2.epoch}\\b").containsMatchIn(it)
                     }
                     .mapNotNull(::parsePositionFrom)
             if (disposePosition in savesBeforeDispose) {
@@ -173,6 +186,21 @@ class MemberDetailScrollDisposeSaveConnectedTest {
                         "$disposePosition before dispose under epoch=${visit2.epoch}"
                 )
             }
+            // And the dispose write must actually be accepted by the registry:
+            // saveHumanListPosition emits its own `registry_save` line after
+            // the dispose_save intent line — the pair proves the fallback
+            // wrote THROUGH, not merely logged intent. Require an accepted
+            // write of the same position at this epoch+generation after the
+            // dispose line and before the revisit.
+            waitForLine(startCursor, after = disposeLine, "v2 accepted dispose write") { line ->
+                line.contains("registry_save") &&
+                    line.contains("kind=humanList") &&
+                    line.contains("decision=accept") &&
+                    line.contains("keyHash=$KeyHash") &&
+                    Regex("epoch=${visit2.epoch}/${visit2.epoch}\\b").containsMatchIn(line) &&
+                    line.contains("position=${disposePosition.index}:${disposePosition.offset}") &&
+                    line.contains("gen=${visit2.generation}/")
+            }.let { recordEvidence("B1_DISPOSE_WRITE", "epoch=${visit2.epoch} $it") }
 
             // ---- Visit 3: revisit must land on the dispose position ----
             scenario = launchMemberDetailHost()
@@ -356,8 +384,9 @@ class MemberDetailScrollDisposeSaveConnectedTest {
         )
     }
 
-    /** A still-held injected gesture; [release] sends UP, [cancel] sends
-     *  CANCEL. Both recycle every queued event exactly once. */
+    /** A still-held injected gesture. [finish] sends the terminal UP/CANCEL,
+     *  verifies the injection was accepted, and recycles every queued event
+     *  exactly once. */
     private class HeldDrag(
         private val downTime: Long,
         private val x: Float,
@@ -367,19 +396,19 @@ class MemberDetailScrollDisposeSaveConnectedTest {
     ) {
         private var closed = false
 
-        fun release() = finish(MotionEvent.ACTION_UP)
-
-        fun cancel() = finish(MotionEvent.ACTION_CANCEL)
-
-        private fun finish(action: Int) {
+        fun finish(action: Int) {
             if (closed) return
             closed = true
+            val terminal =
+                MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, x, y, 0)
             try {
-                instrumentation.uiAutomation.injectInputEvent(
-                    MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, x, y, 0),
-                    false
-                )
+                val accepted =
+                    instrumentation.uiAutomation.injectInputEvent(terminal, false)
+                if (!accepted) {
+                    Log.w("MemberDetailDisposeB1", "terminal gesture event rejected (action=$action)")
+                }
             } finally {
+                terminal.recycle()
                 events.forEach(MotionEvent::recycle)
             }
         }
@@ -389,8 +418,8 @@ class MemberDetailScrollDisposeSaveConnectedTest {
 
     private data class ScrollPosition(val index: Int, val offset: Int)
 
-    /** One visit's minted tracker_seed line and its write epoch. */
-    private data class VisitSeed(val seedLine: String, val epoch: Long)
+    /** One visit's minted tracker_seed line plus its generation+epoch. */
+    private data class VisitSeed(val seedLine: String, val epoch: Long, val generation: Long)
 
     private val ScrollLabel = "visual-server:human:visual-human-long:human"
     private val MemberKey = "visual-owner:visual-server:human:visual-human-long"
@@ -462,7 +491,13 @@ class MemberDetailScrollDisposeSaveConnectedTest {
                     .mapNotNull { line ->
                         val epoch =
                             Regex("epoch=(\\d+)").find(line)?.groupValues?.get(1)?.toLong()
-                        if (epoch != null && epoch > afterEpoch) VisitSeed(line, epoch) else null
+                        val generation =
+                            Regex("generation=(\\d+)").find(line)?.groupValues?.get(1)?.toLong()
+                        if (epoch != null && epoch > afterEpoch) {
+                            VisitSeed(line, epoch, generation ?: -1L)
+                        } else {
+                            null
+                        }
                     }
                     .lastOrNull()
             if (seed != null) return seed
@@ -487,14 +522,21 @@ class MemberDetailScrollDisposeSaveConnectedTest {
         throw AssertionError("Timed out waiting for $description")
     }
 
-    private fun waitForSave(startCursor: Long, after: String, epoch: Long): ScrollPosition {
+    private fun waitForSave(
+        startCursor: Long,
+        after: String,
+        epoch: Long,
+        requireNonZero: Boolean = false
+    ): ScrollPosition {
         val line =
             waitForLine(startCursor, after, "accepted registry_save epoch=$epoch") { l ->
                 l.contains("registry_save") &&
                     l.contains("kind=humanList") &&
                     l.contains("decision=accept") &&
                     l.contains("keyHash=$KeyHash") &&
-                    l.contains("epoch=$epoch/$epoch")
+                    Regex("epoch=$epoch/$epoch\\b").containsMatchIn(l) &&
+                    (!requireNonZero ||
+                        parsePositionFrom(l)?.let { it.index > 0 || it.offset > 0 } == true)
             }
         return requireNotNull(parsePositionFrom(line)) {
             "registry_save carried no position: $line"
