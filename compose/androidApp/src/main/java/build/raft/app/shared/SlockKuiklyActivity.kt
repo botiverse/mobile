@@ -2520,12 +2520,17 @@ open class SlockKuiklyActivity :
     // savedInstanceState attach only marks recreation when no explicit
     // onNewIntent navigation disqualified it, and eligibility is consumed
     // once (a second attach with no saved state and no pending flag must not
-    // re-inject).
+    // re-inject). The eligibility inputs are the two fields this instance
+    // latched — pure function, no hidden state.
     internal fun consumeActivityRecreationEligibility(): ActivityRecreationDecision {
-        val wasSystemRecreated = lastCreateHadSavedState && !pendingExplicitIntentRecreate
+        val decision =
+            decideActivityRecreationEligibility(
+                lastCreateHadSavedState = lastCreateHadSavedState,
+                pendingExplicitIntentRecreate = pendingExplicitIntentRecreate,
+            )
         pendingExplicitIntentRecreate = false
         lastCreateHadSavedState = false
-        return ActivityRecreationDecision(injectMarker = wasSystemRecreated)
+        return decision
     }
 
     internal data class ActivityRecreationDecision(val injectMarker: Boolean)
@@ -2843,13 +2848,14 @@ open class SlockKuiklyActivity :
         // disqualifier must survive the instance boundary, so it cannot be an
         // instance field alone.
         private const val KEY_EXPLICIT_INTENT_RECREATED = "slockExplicitIntentRecreated"
-    }
         private const val KEY_APP_SHELL_INITIAL_SETTINGS_DESTINATION = "slockInitialSettingsDestination"
         private const val KEY_DIAGNOSTICS_DEEP_LINK_ID = "slockDiagnosticsDeepLinkId"
         private const val KEY_DIAGNOSTICS_DEEP_LINK_AUTO_CLOSE_MS = "slockDiagnosticsDeepLinkAutoCloseMs"
         private const val PICKED_THREAD_ATTACHMENT_CACHE_MAX_FILES = 40
         private const val PICKED_THREAD_ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
         private const val PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME = "slock-picked-thread-attachments"
+    }
+
 
         fun start(
             context: Context,
@@ -9081,3 +9087,17 @@ private fun JSONObject?.toStableStringMap(): Map<String, String> {
     }
     return result
 }
+
+
+/**
+ * task #58: whether this attach may consume the scoped destination snapshot.
+ * Inputs are the flags the Activity latched in onCreate / onNewIntent — pure
+ * so unit tests exercise the same rule the Activity runs.
+ */
+internal fun decideActivityRecreationEligibility(
+    lastCreateHadSavedState: Boolean,
+    pendingExplicitIntentRecreate: Boolean,
+): SlockKuiklyActivity.ActivityRecreationDecision =
+    SlockKuiklyActivity.ActivityRecreationDecision(
+        injectMarker = lastCreateHadSavedState && !pendingExplicitIntentRecreate
+    )

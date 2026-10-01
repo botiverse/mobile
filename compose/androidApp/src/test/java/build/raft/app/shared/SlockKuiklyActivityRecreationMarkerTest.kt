@@ -36,12 +36,17 @@ class SlockKuiklyActivityRecreationMarkerTest {
                 bundle != null && bundle["slockExplicitIntentRecreated"] != true
         }
 
+        // Calls the same production rule the Activity runs — the flags are
+        // the only inputs, so harness-vs-production parity is structural.
         fun consumeActivityRecreationEligibility(): Boolean {
-            val wasSystemRecreated =
-                lastCreateHadSavedState && !pendingExplicitIntentRecreate
+            val decision =
+                decideActivityRecreationEligibility(
+                    lastCreateHadSavedState = lastCreateHadSavedState,
+                    pendingExplicitIntentRecreate = pendingExplicitIntentRecreate,
+                )
             pendingExplicitIntentRecreate = false
             lastCreateHadSavedState = false
-            return wasSystemRecreated
+            return decision.injectMarker
         }
     }
 
