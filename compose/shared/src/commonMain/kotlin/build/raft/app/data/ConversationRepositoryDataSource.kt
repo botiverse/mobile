@@ -76,16 +76,8 @@ private suspend fun SlockNetworkClient.channelMessages(
     afterSeq: Long? = null,
     serverIdOverride: ServerId? = null,
     requestTrace: String? = null,
-): HomeNetworkResponse {
-    // task #58 observability: trace is process-local diagnostics only; it is
-    // never added to the wire request (per review contract).
-    requestTrace?.let {
-        warningLogger(
-            "thread_net_call op=channelMessages channelId=${channelId.value} " +
-                "limit=$limit before=${beforeSeq ?: -1L} after=${afterSeq ?: -1L} trace=$it"
-        )
-    }
-    return request(
+): HomeNetworkResponse =
+    request(
         priority = priority,
         path = "messages/channel/${channelId.value}",
         serverIdOverride = serverIdOverride,
@@ -118,14 +110,8 @@ private suspend fun SlockNetworkClient.messageSync(
     channelId: ChannelId? = null,
     serverIdOverride: ServerId? = null,
     requestTrace: String? = null,
-): HomeNetworkResponse {
-    requestTrace?.let {
-        warningLogger(
-            "thread_net_call op=messageSync channelId=${channelId?.value.orEmpty()} " +
-                "sinceSeq=$sinceSeq limit=$limit trace=$it"
-        )
-    }
-    return request(
+): HomeNetworkResponse =
+    request(
         priority = priority,
         path = "messages/sync",
         serverIdOverride = serverIdOverride,
@@ -136,7 +122,6 @@ private suspend fun SlockNetworkClient.messageSync(
                 channelId?.let { "channel_id" to it.value }
             )
     )
-}
 
 private suspend fun SlockNetworkClient.channelThreads(
     priority: DataRequestPriority,
@@ -593,9 +578,12 @@ class RealConversationRepository private constructor(
         includeFollowedSummaries: Boolean,
         limit: Int,
         requestTrace: String?
-    ): DataResult<ThreadSnapshot> {
+        ): DataResult<ThreadSnapshot> {
         val context = currentContext() ?: return authRequired()
         val messageLimit = limit.coerceAtLeast(1)
+        requestTrace?.let {
+            warningLogger("thread_net_call op=getThread threadId=${threadId.value} trace=$it")
+        }
         return loadChannelMessages(
             context = context,
             threadId = threadId,
@@ -826,9 +814,12 @@ class RealConversationRepository private constructor(
         beforeSeq: Long,
         limit: Int,
         requestTrace: String?
-    ): DataResult<ThreadSnapshot> {
+        ): DataResult<ThreadSnapshot> {
         val context = currentContext() ?: return authRequired()
         val messageLimit = limit.coerceAtLeast(1)
+        requestTrace?.let {
+            warningLogger("thread_net_call op=loadOlderMessages threadId=${threadId.value} trace=$it")
+        }
         return loadChannelMessages(
             context = context,
             threadId = threadId,
@@ -856,6 +847,9 @@ class RealConversationRepository private constructor(
     ): DataResult<ThreadSnapshot> {
         val context = currentContext() ?: return authRequired()
         val messageLimit = limit.coerceAtLeast(1)
+        requestTrace?.let {
+            warningLogger("thread_net_call op=loadNewerMessages threadId=${threadId.value} trace=$it")
+        }
         return executeConversation(
             emptyReason = EmptyReason.NoMessages,
             block = {
@@ -890,6 +884,9 @@ class RealConversationRepository private constructor(
     ): DataResult<ThreadSnapshot> {
         val context = currentContext() ?: return authRequired()
         val messageLimit = limit.coerceAtLeast(1)
+        requestTrace?.let {
+            warningLogger("thread_net_call op=syncNewerMessages threadId=${threadId.value} trace=$it")
+        }
         return executeConversation(
             emptyReason = EmptyReason.NoMessages,
             block = {
@@ -1184,6 +1181,9 @@ class RealConversationRepository private constructor(
         source: String = "messages_channel_reply_thread",
         requestTrace: String? = null,
     ): DataResult<ThreadSnapshot> = coroutineScope {
+        requestTrace?.let {
+            warningLogger("thread_net_call op=getReplyThread parentChannelId=${parentChannelId.value} trace=$it")
+        }
         val loadStartedAt = TimeSource.Monotonic.markNow()
         warningLogger(
             "reply_thread_load_start source=$source parentChannelId=${parentChannelId.value} " +

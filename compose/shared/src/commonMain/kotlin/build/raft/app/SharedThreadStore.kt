@@ -3225,7 +3225,14 @@ internal class SharedThreadDataSource(
                             "thread_page_size source=initial_api server=${session.currentServerId.orEmpty()} " +
                                 "pageSize=$pageSize"
                         )
-                        api.channelMessages(resolvedThreadId, limit = pageSize, requestTrace = requestTrace)
+                        api.channelMessages(resolvedThreadId, limit = pageSize, requestTrace = requestTrace).also {
+                            requestTrace?.let { trace ->
+                                diagnosticsLogger(
+                                    "thread_net_call op=channelMessages threadId=$resolvedThreadId " +
+                                        "limit=$pageSize trace=$trace"
+                                )
+                            }
+                        }
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Throwable) {
