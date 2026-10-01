@@ -244,6 +244,7 @@ public data class ThreadNewerAutoSyncRequest(
     val channelId: String,
     val sinceSeq: Long,
     val limit: Int,
+    val requestTrace: String? = null,
 )
 
 public data class ThreadNewerAutoOlderRequest(

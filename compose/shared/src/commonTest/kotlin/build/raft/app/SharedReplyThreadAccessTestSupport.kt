@@ -42,9 +42,10 @@ internal object ReplyThreadAccessNetworkApi : SharedThreadNetworkApi {
         limit: Int,
         beforeSeq: Long?,
         afterSeq: Long?,
+        requestTrace: String?,
     ): HomeNetworkResponse = error("unused")
 
-    override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String? = null): HomeNetworkResponse = error("unused")
+    override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String?): HomeNetworkResponse = error("unused")
 
     override suspend fun messageContext(messageId: String, channelId: String?): HomeNetworkResponse = error("unused")
 
@@ -105,7 +106,8 @@ internal class ReplyThreadAccessConversationRepositoryRecorder(
         parentChannelId: ChannelId,
         parentMessageId: MessageId,
         includeFollowedSummaries: Boolean,
-        limit: Int
+        limit: Int,
+        requestTrace: String?
     ): DataResult<ThreadSnapshot> {
         replyRequests += parentChannelId to parentMessageId
         replyStarted.complete(Unit)
@@ -118,7 +120,8 @@ internal class ReplyThreadAccessConversationRepositoryRecorder(
         parentMessageId: MessageId,
         includeFollowedSummaries: Boolean,
         limit: Int,
-        priority: DataRequestPriority
+        priority: DataRequestPriority,
+        requestTrace: String?
     ): DataResult<ThreadSnapshot> {
         replyPriorities += priority
         return getReplyThread(parentChannelId, parentMessageId, includeFollowedSummaries, limit)
@@ -137,7 +140,8 @@ internal class ReplyThreadAccessConversationRepositoryRecorder(
     override suspend fun getThread(
         threadId: ThreadId,
         includeFollowedSummaries: Boolean,
-        limit: Int
+        limit: Int,
+        requestTrace: String?
     ): DataResult<ThreadSnapshot> {
         threadStarted.complete(Unit)
         releaseThread?.await()
@@ -147,19 +151,22 @@ internal class ReplyThreadAccessConversationRepositoryRecorder(
     override suspend fun loadOlderMessages(
         threadId: ThreadId,
         beforeSeq: Long,
-        limit: Int
+        limit: Int,
+        requestTrace: String?
     ): DataResult<ThreadSnapshot> = error("unused")
 
     override suspend fun loadNewerMessages(
         threadId: ThreadId,
         afterSeq: Long,
-        limit: Int
+        limit: Int,
+        requestTrace: String?
     ): DataResult<ThreadSnapshot> = error("unused")
 
     override suspend fun syncNewerMessages(
         threadId: ThreadId,
         sinceSeq: Long,
-        limit: Int
+        limit: Int,
+        requestTrace: String?
     ): DataResult<ThreadSnapshot> = error("unused")
 
     override suspend fun getChannelThreads(

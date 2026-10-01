@@ -75,6 +75,7 @@ private suspend fun SlockNetworkClient.channelMessages(
     beforeSeq: Long? = null,
     afterSeq: Long? = null,
     serverIdOverride: ServerId? = null,
+    requestTrace: String? = null,
 ): HomeNetworkResponse =
     request(
         priority = priority,
@@ -84,7 +85,8 @@ private suspend fun SlockNetworkClient.channelMessages(
             listOfNotNull(
                 "limit" to limit.toString(),
                 beforeSeq?.let { "before" to it.toString() },
-                afterSeq?.let { "after" to it.toString() }
+                afterSeq?.let { "after" to it.toString() },
+                requestTrace?.let { "trace" to it }
             )
     )
 
@@ -107,6 +109,7 @@ private suspend fun SlockNetworkClient.messageSync(
     limit: Int,
     channelId: ChannelId? = null,
     serverIdOverride: ServerId? = null,
+    requestTrace: String? = null,
 ): HomeNetworkResponse =
     request(
         priority = priority,
@@ -116,7 +119,8 @@ private suspend fun SlockNetworkClient.messageSync(
             listOfNotNull(
                 "since_seq" to sinceSeq.toString(),
                 "limit" to limit.toString(),
-                channelId?.let { "channel_id" to it.value }
+                channelId?.let { "channel_id" to it.value },
+                requestTrace?.let { "trace" to it }
             )
     )
 
@@ -573,7 +577,8 @@ class RealConversationRepository private constructor(
     override suspend fun getThread(
         threadId: ThreadId,
         includeFollowedSummaries: Boolean,
-        limit: Int
+        limit: Int,
+        requestTrace: String?
     ): DataResult<ThreadSnapshot> {
         val context = currentContext() ?: return authRequired()
         val messageLimit = limit.coerceAtLeast(1)
@@ -587,6 +592,7 @@ class RealConversationRepository private constructor(
                     ChannelId(threadId.value),
                     messageLimit,
                     serverIdOverride = context.server.id,
+                    requestTrace = requestTrace,
                 )
             },
             source = "messages_channel",
@@ -689,14 +695,16 @@ class RealConversationRepository private constructor(
         parentChannelId: ChannelId,
         parentMessageId: MessageId,
         includeFollowedSummaries: Boolean,
-        limit: Int
+        limit: Int,
+        requestTrace: String?
     ): DataResult<ThreadSnapshot> =
         getReplyThread(
             parentChannelId = parentChannelId,
             parentMessageId = parentMessageId,
             includeFollowedSummaries = includeFollowedSummaries,
             limit = limit,
-            priority = DataRequestPriority.Foreground
+            priority = DataRequestPriority.Foreground,
+            requestTrace = requestTrace,
         )
 
     override suspend fun getReplyThread(
@@ -704,7 +712,8 @@ class RealConversationRepository private constructor(
         parentMessageId: MessageId,
         includeFollowedSummaries: Boolean,
         limit: Int,
-        priority: DataRequestPriority
+        priority: DataRequestPriority,
+        requestTrace: String?
     ): DataResult<ThreadSnapshot> {
         val context = currentContext() ?: return authRequired()
         val messageLimit = limit.coerceAtLeast(1)
@@ -713,7 +722,8 @@ class RealConversationRepository private constructor(
             parentChannelId = parentChannelId,
             parentMessageId = parentMessageId,
             messageLimit = messageLimit,
-            priority = priority
+            priority = priority,
+            requestTrace = requestTrace,
         )
     }
 
@@ -800,7 +810,8 @@ class RealConversationRepository private constructor(
     override suspend fun loadOlderMessages(
         threadId: ThreadId,
         beforeSeq: Long,
-        limit: Int
+        limit: Int,
+        requestTrace: String?
     ): DataResult<ThreadSnapshot> {
         val context = currentContext() ?: return authRequired()
         val messageLimit = limit.coerceAtLeast(1)
@@ -815,6 +826,7 @@ class RealConversationRepository private constructor(
                     messageLimit,
                     beforeSeq = beforeSeq,
                     serverIdOverride = context.server.id,
+                    requestTrace = requestTrace,
                 )
             },
             source = "messages_channel_older",
@@ -825,7 +837,8 @@ class RealConversationRepository private constructor(
     override suspend fun loadNewerMessages(
         threadId: ThreadId,
         afterSeq: Long,
-        limit: Int
+        limit: Int,
+        requestTrace: String?
     ): DataResult<ThreadSnapshot> {
         val context = currentContext() ?: return authRequired()
         val messageLimit = limit.coerceAtLeast(1)
@@ -838,6 +851,7 @@ class RealConversationRepository private constructor(
                     messageLimit,
                     afterSeq = afterSeq,
                     serverIdOverride = context.server.id,
+                    requestTrace = requestTrace,
                 )
             },
             emptyWhen = { it.messages.isEmpty() },
@@ -857,7 +871,8 @@ class RealConversationRepository private constructor(
     override suspend fun syncNewerMessages(
         threadId: ThreadId,
         sinceSeq: Long,
-        limit: Int
+        limit: Int,
+        requestTrace: String?
     ): DataResult<ThreadSnapshot> {
         val context = currentContext() ?: return authRequired()
         val messageLimit = limit.coerceAtLeast(1)
@@ -870,6 +885,7 @@ class RealConversationRepository private constructor(
                     limit = messageLimit,
                     channelId = ChannelId(threadId.value),
                     serverIdOverride = context.server.id,
+                    requestTrace = requestTrace,
                 )
             },
             emptyWhen = { it.messages.isEmpty() },
@@ -1151,7 +1167,8 @@ class RealConversationRepository private constructor(
         parentMessageId: MessageId,
         messageLimit: Int,
         priority: DataRequestPriority,
-        source: String = "messages_channel_reply_thread"
+        source: String = "messages_channel_reply_thread",
+        requestTrace: String? = null,
     ): DataResult<ThreadSnapshot> = coroutineScope {
         val loadStartedAt = TimeSource.Monotonic.markNow()
         warningLogger(
@@ -1203,6 +1220,7 @@ class RealConversationRepository private constructor(
                         resolvedThreadChannelId,
                         messageLimit,
                         serverIdOverride = context.server.id,
+                        requestTrace = requestTrace,
                     )
                 },
                 emptyWhen = { it.messages.isEmpty() },

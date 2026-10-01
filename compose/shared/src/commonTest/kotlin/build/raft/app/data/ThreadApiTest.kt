@@ -522,11 +522,11 @@ class ThreadApiTest {
             limit: Int,
             beforeSeq: Long?,
             afterSeq: Long?,
-            requestTrace: String? = null
+            requestTrace: String?
         ): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = channelMessagesBody)
 
-        override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String? = null): HomeNetworkResponse =
+        override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String?): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = syncBody)
 
         override suspend fun sendMessage(

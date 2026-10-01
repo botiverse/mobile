@@ -4512,22 +4512,22 @@ class SharedActivityStoreTest {
         var unfollowResult: DataResult<ThreadActionResult> =
             DataResult.Content(ThreadActionResult(ChannelId("thread-channel"), changed = true))
 
-        override suspend fun getThread(threadId: ThreadId, includeFollowedSummaries: Boolean, limit: Int): DataResult<ThreadSnapshot> =
+        override suspend fun getThread(threadId: ThreadId, includeFollowedSummaries: Boolean, limit: Int, requestTrace: String?): DataResult<ThreadSnapshot> =
             error("unused")
 
-        override suspend fun getReplyThread(parentChannelId: ChannelId, parentMessageId: MessageId, includeFollowedSummaries: Boolean, limit: Int): DataResult<ThreadSnapshot> =
+        override suspend fun getReplyThread(parentChannelId: ChannelId, parentMessageId: MessageId, includeFollowedSummaries: Boolean, limit: Int, requestTrace: String?): DataResult<ThreadSnapshot> =
             error("unused")
 
         override suspend fun getMessageContext(messageId: MessageId, channelId: ChannelId?): DataResult<ThreadSnapshot> =
             error("unused")
 
-        override suspend fun loadOlderMessages(threadId: ThreadId, beforeSeq: Long, limit: Int): DataResult<ThreadSnapshot> =
+        override suspend fun loadOlderMessages(threadId: ThreadId, beforeSeq: Long, limit: Int, requestTrace: String?): DataResult<ThreadSnapshot> =
             error("unused")
 
-        override suspend fun loadNewerMessages(threadId: ThreadId, afterSeq: Long, limit: Int): DataResult<ThreadSnapshot> =
+        override suspend fun loadNewerMessages(threadId: ThreadId, afterSeq: Long, limit: Int, requestTrace: String?): DataResult<ThreadSnapshot> =
             error("unused")
 
-        override suspend fun syncNewerMessages(threadId: ThreadId, sinceSeq: Long, limit: Int): DataResult<ThreadSnapshot> =
+        override suspend fun syncNewerMessages(threadId: ThreadId, sinceSeq: Long, limit: Int, requestTrace: String?): DataResult<ThreadSnapshot> =
             error("unused")
 
         override suspend fun getChannelThreads(channelId: ChannelId, limit: Int): DataResult<ThreadListSnapshot> =

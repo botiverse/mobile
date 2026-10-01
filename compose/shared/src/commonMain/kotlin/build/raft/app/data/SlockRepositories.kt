@@ -174,7 +174,8 @@ interface ConversationRepository {
     suspend fun getThread(
         threadId: ThreadId,
         includeFollowedSummaries: Boolean = false,
-        limit: Int = DEFAULT_PAGE_LIMIT
+        limit: Int = DEFAULT_PAGE_LIMIT,
+        requestTrace: String? = null
     ): DataResult<ThreadSnapshot>
     suspend fun getThreadReplySummaries(
         threadId: ThreadId,
@@ -185,16 +186,18 @@ interface ConversationRepository {
         parentChannelId: ChannelId,
         parentMessageId: MessageId,
         includeFollowedSummaries: Boolean = false,
-        limit: Int = DEFAULT_PAGE_LIMIT
+        limit: Int = DEFAULT_PAGE_LIMIT,
+        requestTrace: String? = null
     ): DataResult<ThreadSnapshot>
     suspend fun getReplyThread(
         parentChannelId: ChannelId,
         parentMessageId: MessageId,
         includeFollowedSummaries: Boolean = false,
         limit: Int = DEFAULT_PAGE_LIMIT,
-        priority: DataRequestPriority
+        priority: DataRequestPriority,
+        requestTrace: String? = null
     ): DataResult<ThreadSnapshot> =
-        getReplyThread(parentChannelId, parentMessageId, includeFollowedSummaries, limit)
+        getReplyThread(parentChannelId, parentMessageId, includeFollowedSummaries, limit, requestTrace)
     suspend fun getMessageContext(messageId: MessageId, channelId: ChannelId? = null): DataResult<ThreadSnapshot>
     suspend fun getMessageContext(
         messageId: MessageId,
@@ -204,17 +207,20 @@ interface ConversationRepository {
     suspend fun loadOlderMessages(
         threadId: ThreadId,
         beforeSeq: Long,
-        limit: Int = DEFAULT_PAGE_LIMIT
+        limit: Int = DEFAULT_PAGE_LIMIT,
+        requestTrace: String? = null
     ): DataResult<ThreadSnapshot>
     suspend fun loadNewerMessages(
         threadId: ThreadId,
         afterSeq: Long,
-        limit: Int = DEFAULT_PAGE_LIMIT
+        limit: Int = DEFAULT_PAGE_LIMIT,
+        requestTrace: String? = null
     ): DataResult<ThreadSnapshot>
     suspend fun syncNewerMessages(
         threadId: ThreadId,
         sinceSeq: Long,
-        limit: Int = DEFAULT_PAGE_LIMIT
+        limit: Int = DEFAULT_PAGE_LIMIT,
+        requestTrace: String? = null
     ): DataResult<ThreadSnapshot>
     suspend fun getChannelThreads(channelId: ChannelId, limit: Int = DEFAULT_PAGE_LIMIT): DataResult<ThreadListSnapshot>
     suspend fun getFollowedThreads(serverId: ServerId, limit: Int = DEFAULT_PAGE_LIMIT): DataResult<ThreadListSnapshot>

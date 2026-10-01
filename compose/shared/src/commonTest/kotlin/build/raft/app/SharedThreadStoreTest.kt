@@ -4908,6 +4908,7 @@ class SharedThreadStoreTest {
                         threadId: ThreadId,
                         includeFollowedSummaries: Boolean,
                         limit: Int,
+                        requestTrace: String?
                     ): DataResult<ThreadSnapshot> {
                         val callIndex = ++canonicalCallCount
                         val release = CompletableDeferred<Unit>()
@@ -15921,7 +15922,7 @@ class SharedThreadStoreTest {
             limit: Int,
             beforeSeq: Long?,
             afterSeq: Long?,
-            requestTrace: String? = null
+            requestTrace: String?
         ): HomeNetworkResponse {
             channelMessageCalls += 1
             channelIds += threadId
@@ -15949,7 +15950,7 @@ class SharedThreadStoreTest {
             }
         }
 
-        override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String? = null): HomeNetworkResponse {
+        override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String?): HomeNetworkResponse {
             val startedSignal = syncStartedSignals.removeFirstOrNull()
             val callRelease = syncReleases.removeFirstOrNull()
             val responseBody = syncBodyTexts.removeFirstOrNull() ?: newerBodyText
@@ -16479,7 +16480,8 @@ class SharedThreadStoreTest {
         override suspend fun getThread(
             threadId: ThreadId,
             includeFollowedSummaries: Boolean,
-            limit: Int
+            limit: Int,
+            requestTrace: String?
         ): DataResult<ThreadSnapshot> {
             getThreadRequests += threadId
             getThreadIncludeFollowedSummaries += includeFollowedSummaries
@@ -16510,7 +16512,8 @@ class SharedThreadStoreTest {
             parentChannelId: ChannelId,
             parentMessageId: MessageId,
             includeFollowedSummaries: Boolean,
-            limit: Int
+            limit: Int,
+            requestTrace: String?
         ): DataResult<ThreadSnapshot> {
             getReplyThreadRequests += parentChannelId to parentMessageId
             getReplyThreadIncludeFollowedSummaries += includeFollowedSummaries
@@ -16549,7 +16552,8 @@ class SharedThreadStoreTest {
             parentMessageId: MessageId,
             includeFollowedSummaries: Boolean,
             limit: Int,
-            priority: DataRequestPriority
+            priority: DataRequestPriority,
+            requestTrace: String?
         ): DataResult<ThreadSnapshot> {
             getReplyThreadPriorities += priority
             return getReplyThread(parentChannelId, parentMessageId, includeFollowedSummaries, limit)
@@ -16578,7 +16582,8 @@ class SharedThreadStoreTest {
         override suspend fun loadOlderMessages(
             threadId: ThreadId,
             beforeSeq: Long,
-            limit: Int
+            limit: Int,
+            requestTrace: String?
         ): DataResult<ThreadSnapshot> {
             olderRequests += threadId to beforeSeq
             olderLimits += limit
@@ -16588,7 +16593,8 @@ class SharedThreadStoreTest {
         override suspend fun loadNewerMessages(
             threadId: ThreadId,
             afterSeq: Long,
-            limit: Int
+            limit: Int,
+            requestTrace: String?
         ): DataResult<ThreadSnapshot> {
             newerRequests += threadId to afterSeq
             newerLimits += limit
@@ -16598,7 +16604,8 @@ class SharedThreadStoreTest {
         override suspend fun syncNewerMessages(
             threadId: ThreadId,
             sinceSeq: Long,
-            limit: Int
+            limit: Int,
+            requestTrace: String?
         ): DataResult<ThreadSnapshot> {
             syncNewerRequests += threadId to sinceSeq
             syncNewerLimits += limit

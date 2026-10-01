@@ -278,6 +278,7 @@ class SharedThreadSecondaryTimelineProvenanceTest {
             threadId: ThreadId,
             includeFollowedSummaries: Boolean,
             limit: Int,
+            requestTrace: String?
         ): DataResult<ThreadSnapshot> {
             if (blockRefresh) {
                 refreshStarted.complete(Unit)

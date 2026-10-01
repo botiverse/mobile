@@ -981,8 +981,8 @@ class SharedThreadReplyCacheProvenanceTest {
             object : SlockThreadApi {
                 private fun <T> unused(): ThreadApiResult<T> = ThreadApiResult.Failure(500)
 
-                override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?, afterSeq: Long?, requestTrace: String? = null): ThreadApiResult<ThreadMessagesPage> = unused()
-                override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String? = null): ThreadApiResult<ThreadMessagesPage> = unused()
+                override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?, afterSeq: Long?, requestTrace: String?): ThreadApiResult<ThreadMessagesPage> = unused()
+                override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String?): ThreadApiResult<ThreadMessagesPage> = unused()
                 override suspend fun sendMessage(channelId: String, body: String, asTask: Boolean, attachmentIds: List<String>, randomId: String?): ThreadApiResult<ThreadMessagesPage> = unused()
                 override suspend fun executePendingMentionActions(action: String, resolutionIds: List<String>): ThreadApiResult<List<PendingMentionActionExecuteResult>> = unused()
                 override suspend fun attachmentUrl(attachmentId: String, disposition: String?): ThreadApiResult<ThreadAttachmentOpenTarget> = unused()

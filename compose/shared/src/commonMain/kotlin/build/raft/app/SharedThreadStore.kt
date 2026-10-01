@@ -3109,6 +3109,7 @@ internal class SharedThreadDataSource(
         persistResult: Boolean = true,
         reusePrewarm: Boolean = false,
         replaceReplyAccessFailure: Boolean = false,
+        requestTrace: String? = null,
     ): DataResult<KuiklyThreadScreenPayload> {
         if (!isCurrentReplyCacheProvenanceForLocalSend(expectedContext.provenance)) {
             return staleReplyCacheProvenanceResult()
@@ -3124,6 +3125,7 @@ internal class SharedThreadDataSource(
                     sharedMessageStore = messageStore != null,
                 ),
             replaceReplyAccessFailure = replaceReplyAccessFailure,
+            requestTrace = requestTrace,
         )
     }
 
@@ -3132,7 +3134,8 @@ internal class SharedThreadDataSource(
         persistResult: Boolean,
         reusePrewarm: Boolean,
         replyResolutionScope: ReplyResolutionScope?,
-        replaceReplyAccessFailure: Boolean = false
+        replaceReplyAccessFailure: Boolean = false,
+        requestTrace: String? = null,
     ): DataResult<KuiklyThreadScreenPayload> {
         val resolutionScope = replyResolutionScope ?: readReplyResolutionScope() ?: return authSessionRequiredResult()
         val session = resolutionScope.session
@@ -3196,7 +3199,8 @@ internal class SharedThreadDataSource(
                         session = session,
                         basePayload = resolvedBasePayload,
                         replyResolutionScope = resolutionScope,
-                        replaceReplyAccessFailure = replaceReplyAccessFailure
+                        replaceReplyAccessFailure = replaceReplyAccessFailure,
+                        requestTrace = requestTrace,
                     )
                 } else {
                     val resolvedThreadId =
@@ -3206,7 +3210,8 @@ internal class SharedThreadDataSource(
                         session = session,
                         basePayload = resolvedBasePayload,
                         threadId = ThreadId(resolvedThreadId),
-                        replyResolutionScope = resolutionScope
+                        replyResolutionScope = resolutionScope,
+                        requestTrace = requestTrace,
                     )
                 }
             } else {
@@ -3220,7 +3225,7 @@ internal class SharedThreadDataSource(
                             "thread_page_size source=initial_api server=${session.currentServerId.orEmpty()} " +
                                 "pageSize=$pageSize"
                         )
-                        api.channelMessages(resolvedThreadId, limit = pageSize)
+                        api.channelMessages(resolvedThreadId, limit = pageSize, requestTrace = requestTrace)
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Throwable) {
@@ -4018,7 +4023,7 @@ internal class SharedThreadDataSource(
             basePayload = basePayload,
             source = "older",
             repositoryCall = { repository, threadId, pageSize ->
-                repository.loadOlderMessages(threadId, beforeSeq, pageSize)
+                repository.loadOlderMessages(threadId, beforeSeq, pageSize, requestTrace = requestTrace)
             },
             call = { threadId, pageSize ->
                 api.channelMessages(threadId, limit = pageSize, beforeSeq = beforeSeq, requestTrace = requestTrace)
@@ -4034,7 +4039,7 @@ internal class SharedThreadDataSource(
             basePayload = basePayload,
             source = "newer",
             repositoryCall = { repository, threadId, pageSize ->
-                repository.loadNewerMessages(threadId, afterSeq, pageSize)
+                repository.loadNewerMessages(threadId, afterSeq, pageSize, requestTrace = requestTrace)
             },
             call = { threadId, pageSize ->
                 api.channelMessages(threadId, limit = pageSize, afterSeq = afterSeq, requestTrace = requestTrace)
@@ -4050,7 +4055,7 @@ internal class SharedThreadDataSource(
             basePayload = basePayload,
             source = "realtime_gap",
             repositoryCall = { repository, threadId, pageSize ->
-                repository.syncNewerMessages(threadId, sinceSeq, pageSize)
+                repository.syncNewerMessages(threadId, sinceSeq, pageSize, requestTrace = requestTrace)
             },
             call = { threadId, pageSize ->
                 api.messageSync(threadId, sinceSeq = sinceSeq, limit = pageSize, requestTrace = requestTrace)
@@ -4074,7 +4079,7 @@ internal class SharedThreadDataSource(
             basePayload = basePayload,
             source = "reply_count_tail_gap",
             repositoryCall = { repository, threadId, pageSize ->
-                repository.getThread(threadId, includeFollowedSummaries = false, limit = pageSize)
+                repository.getThread(threadId, includeFollowedSummaries = false, limit = pageSize, requestTrace = requestTrace)
             },
             call = { threadId, pageSize ->
                 api.channelMessages(threadId, limit = pageSize, requestTrace = requestTrace)
@@ -4716,7 +4721,8 @@ internal class SharedThreadDataSource(
         basePayload: KuiklyThreadScreenPayload,
         threadId: ThreadId,
         replyResolutionScope: ReplyResolutionScope,
-        includeFollowedSummaries: Boolean = false
+        includeFollowedSummaries: Boolean = false,
+        requestTrace: String? = null,
     ): DataResult<KuiklyThreadScreenPayload> {
         val focusedContext =
             if (includeFollowedSummaries) {
@@ -4746,7 +4752,8 @@ internal class SharedThreadDataSource(
                 repository.getThread(
                     threadId = threadId,
                     includeFollowedSummaries = includeFollowedSummaries,
-                    limit = pageSize
+                    limit = pageSize,
+                    requestTrace = requestTrace,
                 )
             }
         val initialData = initialResult as? DataResult.Content
@@ -4763,7 +4770,8 @@ internal class SharedThreadDataSource(
                 fetchResolvedReplyThreadSnapshot(
                     session = session,
                     basePayload = basePayload,
-                    replyResolutionScope = replyResolutionScope
+                    replyResolutionScope = replyResolutionScope,
+                    requestTrace = requestTrace,
                 ).map { (resolvedBase, snapshot) ->
                     snapshot
                         ?.withReplyParentMessageFromContext(resolvedBase, replyResolutionScope = replyResolutionScope)
@@ -4904,7 +4912,8 @@ internal class SharedThreadDataSource(
         includeFollowedSummaries: Boolean = false,
         requestPriority: DataRequestPriority = DataRequestPriority.Foreground,
         replyResolutionScope: ReplyResolutionScope,
-        replaceReplyAccessFailure: Boolean = false
+        replaceReplyAccessFailure: Boolean = false,
+        requestTrace: String? = null,
     ): DataResult<KuiklyThreadScreenPayload> = coroutineScope {
         val parentChannelId = basePayload.parentChannelId?.takeIf { it.isNotBlank() }
             ?: return@coroutineScope DataResult.Error(ScreenError(code = "thread_parent_channel_missing", retryable = false))
@@ -4968,7 +4977,8 @@ internal class SharedThreadDataSource(
                         parentMessageId = MessageId(parentMessageId),
                         includeFollowedSummaries = includeFollowedSummaries,
                         limit = pageSize,
-                        priority = requestPriority
+                        priority = requestPriority,
+                        requestTrace = requestTrace,
                     )
                 }
             if (accessFlightKey != null &&
@@ -5275,7 +5285,8 @@ internal class SharedThreadDataSource(
     private suspend fun fetchResolvedReplyThreadSnapshot(
         session: StoredAuthSession,
         basePayload: KuiklyThreadScreenPayload,
-        replyResolutionScope: ReplyResolutionScope
+        replyResolutionScope: ReplyResolutionScope,
+        requestTrace: String? = null,
     ): DataResult<Pair<KuiklyThreadScreenPayload, ThreadSnapshot?>> {
         val resolvedBasePayload =
             when (
@@ -5307,7 +5318,8 @@ internal class SharedThreadDataSource(
                 repository.getThread(
                     threadId = ThreadId(resolvedThreadId),
                     includeFollowedSummaries = false,
-                    limit = pageSize
+                    limit = pageSize,
+                    requestTrace = requestTrace,
                 )
             }
         return when (resolvedResult) {
@@ -6588,9 +6600,11 @@ internal class SharedThreadStore(
             "thread_loading_patch threadId=${basePayload.sourceThreadId.orEmpty()} status=${loadingBase.status} " +
                 "messages=${loadingBase.messages.size} " + loadingBase.originDiagnostics()
         )
+        val refreshLoadingOpSeq =
+            issueOperationSeq("refresh_loading_apply", "threadId=${basePayload.sourceThreadId.orEmpty()}")
         val loadingAdmitted =
             dataSource.withCurrentReplyCacheProvenanceForLocalSend(refreshProvenance) {
-                reducePayloadPatch(writeTag = "refresh_loading_apply") { currentPayload ->
+                reducePayloadPatch(writeTag = "refresh_loading_apply", requestId = refreshLoadingOpSeq) { currentPayload ->
                     if (!routeStillCurrent(basePayload, "thread_refresh", "loading_apply", currentPayload)) {
                         return@reducePayloadPatch currentPayload
                     }
@@ -6613,7 +6627,8 @@ internal class SharedThreadStore(
                 expectedContext = refreshProducerContext,
                 persistResult = true,
                 reusePrewarm = reusePrewarm,
-                replaceReplyAccessFailure = explicitRetry
+                replaceReplyAccessFailure = explicitRetry,
+                requestTrace = "refresh_canonical_fs=$refreshFetchSeq",
             )
         val latest = _state.value.payload
         if (
@@ -8018,7 +8033,12 @@ internal class SharedThreadStore(
                                         accepted[projection.identity.parentMessageId]
                                     },
                                 )
-                            return reducePayloadPatch(cachePayload = true, writeTag = "realtime_gap_merged_apply", requestId = matchingPagination?.id ?: matchingRecovery?.id) { latestPayload ->
+                            val gapMergedOpSeq =
+                                issueOperationSeq(
+                                    "realtime_gap_merged_apply",
+                                    "relatedLoadId=${matchingPagination?.id ?: -1L} relatedRecoveryId=${matchingRecovery?.id ?: -1L}"
+                                )
+                            return reducePayloadPatch(cachePayload = true, writeTag = "realtime_gap_merged_apply", requestId = gapMergedOpSeq) { latestPayload ->
                                 latestPayload.withThreadContentProjectionFrom(commitMerged)
                             }
                         }
@@ -8056,7 +8076,8 @@ internal class SharedThreadStore(
                             targetSeq = realtimeGapServerSeq,
                             targetVersion = 1L,
                         )
-                    reducePayloadPatch(cachePayload = true) { latestPayload ->
+                    val gapLoadingOpSeq = issueOperationSeq("realtime_gap_loading", "recoveryId=$recoveryId")
+                    reducePayloadPatch(cachePayload = true, writeTag = "realtime_gap_loading", requestId = gapLoadingOpSeq) { latestPayload ->
                         latestPayload.copy(newerMessagesStatus = "loading", errorCode = null)
                     }
                     return@withLock RealtimeEventDecision(
@@ -8119,7 +8140,8 @@ internal class SharedThreadStore(
                                 accepted[projection.identity.parentMessageId]
                             },
                         )
-                    return reducePayloadPatch(cachePayload = true, writeTag = "realtime_stable_selected_apply") { latestPayload ->
+                    val stableSelectedOpSeq = issueOperationSeq("realtime_stable_selected_apply", "")
+                    return reducePayloadPatch(cachePayload = true, writeTag = "realtime_stable_selected_apply", requestId = stableSelectedOpSeq) { latestPayload ->
                         latestPayload.withThreadContentProjectionFrom(commitSelected)
                     }
                 }
@@ -8343,8 +8365,10 @@ internal class SharedThreadStore(
             }
             return
         }
-        reducePayloadPatch { currentPayload -> currentPayload.copy(olderMessagesStatus = "loading", errorCode = null) }
         val olderFetchSeq = issueFetchSeq("older_page", "beforeSeq=$beforeSeq")
+        reducePayloadPatch(writeTag = "older_page_loading", requestFetchSeq = olderFetchSeq) { currentPayload ->
+            currentPayload.copy(olderMessagesStatus = "loading", errorCode = null)
+        }
         val result = dataSource.fetchOlderThreadPayload(existing, beforeSeq, requestTrace = "older_page_fs=$olderFetchSeq")
         val latest = _state.value.payload
         if (!routeStillCurrent(existing, "thread_page", "older_after_fetch", latest)) {
@@ -8373,7 +8397,7 @@ internal class SharedThreadStore(
                 is DataResult.NoPermission ->
                     latest.copy(olderMessagesStatus = "error", errorCode = result.blocker.code)
             }
-        reducePayloadPatch(writeTag = "older_page_apply", requestId = olderFetchSeq) { currentPayload ->
+        reducePayloadPatch(writeTag = "older_page_apply", requestId = olderFetchSeq, requestFetchSeq = olderFetchSeq) { currentPayload ->
             if (!routeStillCurrent(existing, "thread_page", "older_apply", currentPayload)) {
                 return@reducePayloadPatch currentPayload
             }
@@ -8468,6 +8492,7 @@ internal class SharedThreadStore(
                         diagnosticsLogger?.invoke(
                             "thread_payload_messages_write_rejected tag=newer_after_fetch " +
                                 "routeToken=${routeStaleToken.value} requestId=$loadId " +
+                                "fetchSeq=$fetchSeq " +
                                 "reason=stale_or_route_moved " +
                                 "currentMaxSeq=${currentPayload.messages.mapNotNull { it.seq }.maxOrNull()}"
                         )
@@ -8525,6 +8550,7 @@ internal class SharedThreadStore(
                             diagnosticsLogger?.invoke(
                                 "thread_payload_messages_write_rejected tag=newer_page_apply " +
                                     "routeToken=${routeStaleToken.value} requestId=$loadId " +
+                                    "fetchSeq=$fetchSeq " +
                                     "reason=stale_or_route_moved " +
                                     "currentMaxSeq=${latestPayload.messages.mapNotNull { it.seq }.maxOrNull()}"
                             )
