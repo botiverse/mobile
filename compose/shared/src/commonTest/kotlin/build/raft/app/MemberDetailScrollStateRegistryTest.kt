@@ -695,6 +695,79 @@ class MemberDetailScrollTrackerTest {
     }
 
     @Test
+    fun `watchdog cancels an in-flight stale re-issue when the user supersedes`() =
+        runBlocking {
+            // Production-shaped interleave: the watchdog tick selects 489
+            // and launches the suspend issue (production: scrollToItem,
+            // which waits on the scroll mutex / first layout). While that
+            // job is parked, the user gesture retires the pending request —
+            // the tracker hook must cancel the parked job so the stale
+            // target never reaches the list.
+            val tracker = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
+            val saved = mutableListOf<MemberDetailScrollPosition>()
+            val frame = frameOf(tracker, saved)
+            frame(0, 0, 40, false) { _, _ -> } // seed top -> pending request
+            assertEquals(true, tracker.hasPendingRestoreRequest)
+
+            val issueStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val issueRelease = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val issued = mutableListOf<MemberDetailScrollPosition>()
+            val watchdog =
+                launchMembersDetailRestoreStallWatchdog(
+                    tracker,
+                    tickMs = 1,
+                ) { target ->
+                    issueStarted.complete(Unit)
+                    issueRelease.await()
+                    issued += target
+                }
+
+            // Let the first tick park inside issue().
+            issueStarted.await()
+            // User supersedes while the re-issue is suspended.
+            tracker.onUserScrollStarted(scrollInFlight = false) { _, _ -> }
+            issueRelease.complete(Unit)
+            yield()
+            watchdog.cancel()
+
+            // The stale target never reached the list.
+            assertEquals(emptyList<MemberDetailScrollPosition>(), issued)
+            assertEquals(false, tracker.hasPendingRestoreRequest)
+        }
+
+    @Test
+    fun `watchdog cancels the previous re-issue before launching the next tick`() =
+        runBlocking {
+            // Two pending ticks while the first re-issue is still parked:
+            // tick N+1 must cancel tick N's job, so at most one stale
+            // request can be in flight and it is always the latest target.
+            val tracker = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
+            val saved = mutableListOf<MemberDetailScrollPosition>()
+            val frame = frameOf(tracker, saved)
+            frame(0, 0, 40, false) { _, _ -> }
+
+            val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val issued = mutableListOf<MemberDetailScrollPosition>()
+            val watchdog =
+                launchMembersDetailRestoreStallWatchdog(
+                    tracker,
+                    tickMs = 1,
+                ) { target ->
+                    gate.await()
+                    issued += target
+                }
+            // Let several ticks fire while every issue is parked at the gate.
+            kotlinx.coroutines.delay(50)
+            gate.complete(Unit)
+            kotlinx.coroutines.delay(20)
+            watchdog.cancel()
+            // Only the latest tick's job survived to issue — earlier parked
+            // jobs were cancelled before reaching the list.
+            assertEquals(1, issued.size)
+            assertEquals(MemberDetailScrollPosition(0, 489), issued.last())
+        }
+
+    @Test
     fun `production frame key emits when measured position catches up to the getter`() =
         runBlocking {
             // LiBai's missed-frame race: requestScrollToItem rewrites the

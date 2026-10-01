@@ -5674,26 +5674,15 @@ private fun MembersDetailContent(
             // while a restore request stays pending we tick and let the
             // tracker bounded-reissue. Alpha102/d7-iPad evidence: request
             // issued, no frames for 41-84s until a real gesture.
-            // Cancelling the in-flight re-issue when the gesture retires
-            // the pending request keeps a stale tick target from landing
-            // after the user takes over (the suspend scrollToItem may still
-            // be waiting on the scroll mutex when the gesture fires).
-            var stallJob: kotlinx.coroutines.Job? = null
-            tracker.onPendingRestoreRetired = { stallJob?.cancel() }
-            launch {
-                while (true) {
-                    kotlinx.coroutines.delay(MemberDetailRestoreStallTickMs)
-                    // scrollToItem (suspend, forceRemeasure) is a different
-                    // mechanism than requestScrollToItem's pending write —
-                    // evidence shows that write can be swallowed whole.
-                    val target = tracker.onRestoreStalled() ?: continue
-                    stallJob = launch {
-                        state.scrollToItem(
-                            target.firstVisibleItemIndex,
-                            target.firstVisibleItemScrollOffset
-                        )
-                    }
-                }
+            // Stall watchdog: cancels the previous in-flight re-issue per
+            // tick and via tracker.onPendingRestoreRetired — scrollToItem
+            // (suspend, forceRemeasure) is a different mechanism than
+            // requestScrollToItem's swallowed pending write.
+            launchMembersDetailRestoreStallWatchdog(tracker) { target ->
+                state.scrollToItem(
+                    target.firstVisibleItemIndex,
+                    target.firstVisibleItemScrollOffset
+                )
             }
             snapshotFlow {
                 // isScrollInProgress is observed too: a gesture that starts
@@ -5736,20 +5725,12 @@ private fun MembersDetailContent(
             )
         val state = humanDetailListState
         LaunchedEffect(memberScrollKey) {
-            // Same stall watchdog as the agent-tab collector (see above).
-            var stallJob: kotlinx.coroutines.Job? = null
-            tracker.onPendingRestoreRetired = { stallJob?.cancel() }
-            launch {
-                while (true) {
-                    kotlinx.coroutines.delay(MemberDetailRestoreStallTickMs)
-                    val target = tracker.onRestoreStalled() ?: continue
-                    stallJob = launch {
-                        state.scrollToItem(
-                            target.firstVisibleItemIndex,
-                            target.firstVisibleItemScrollOffset
-                        )
-                    }
-                }
+            // Same stall watchdog as the agent-tab collector.
+            launchMembersDetailRestoreStallWatchdog(tracker) { target ->
+                state.scrollToItem(
+                    target.firstVisibleItemIndex,
+                    target.firstVisibleItemScrollOffset
+                )
             }
             snapshotFlow {
                 // isScrollInProgress is observed too: a gesture that starts
@@ -14217,7 +14198,37 @@ internal fun Modifier.membersDetailUserDragProbe(
         }
     }
 
-internal class MemberDetailScrollTracker(
+/**
+ * Pending-restore stall watchdog shared by the member detail collectors.
+ *
+ * A swallowed requestScrollToItem produces no frames, so while the tracker
+ * still reports a pending request we tick on [tickMs] and relaunch the
+ * re-issue. Each tick cancels the previous in-flight re-issue (its suspend
+ * may still be waiting on the scroll mutex) before starting a new one, and
+ * [tracker]'s onPendingRestoreRetired hook cancels the latest job the moment
+ * a user gesture retires the request — so a stale target can never land
+ * after the user took over (LiBai's interleave: tick picks 489 -> suspend
+ * scrollToItem queued behind the mutex -> user drags to 237 -> resume and
+ * snap 489). Extracted for direct coroutine-level regression testing.
+ */
+internal fun kotlinx.coroutines.CoroutineScope.launchMembersDetailRestoreStallWatchdog(
+    tracker: MemberDetailScrollTracker,
+    tickMs: Long = MemberDetailRestoreStallTickMs,
+    issue: suspend (MemberDetailScrollPosition) -> Unit,
+): kotlinx.coroutines.Job {
+    val jobHolder = arrayOfNulls<kotlinx.coroutines.Job>(1)
+    tracker.onPendingRestoreRetired = { jobHolder[0]?.cancel() }
+    return launch {
+        while (true) {
+            kotlinx.coroutines.delay(tickMs)
+            val target = tracker.onRestoreStalled() ?: continue
+            jobHolder[0]?.cancel()
+            jobHolder[0] = launch { issue(target) }
+        }
+    }
+}
+
+internal class MemberDetailScrollTracker(internal class MemberDetailScrollTracker(
     private val restoreTo: MemberDetailScrollPosition,
     private val label: String = "",
     private val logger: (String) -> Unit = {}
