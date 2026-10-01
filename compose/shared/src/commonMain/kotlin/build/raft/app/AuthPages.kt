@@ -118,8 +118,8 @@ private const val AUTH_PROFILE_SETUP_VISUAL_HANDLE_KEY = "profileSetupHandle"
 private const val AUTH_PROFILE_SETUP_VISUAL_DISPLAY_NAME_KEY = "profileSetupDisplayName"
 private const val AUTH_PROFILE_SETUP_VISUAL_DEFAULT_HANDLE = "new_designer"
 private const val AUTH_PROFILE_SETUP_VISUAL_DEFAULT_DISPLAY_NAME = "New Designer"
-private const val AUTH_TERMS_URL = "https://raft.build/terms"
-private const val AUTH_PRIVACY_URL = "https://raft.build/privacy"
+internal const val AUTH_TERMS_URL = "https://raft.build/terms"
+internal const val AUTH_PRIVACY_URL = "https://raft.build/privacy"
 
 private val MobileHiddenSocialAuthProviders = emptySet<AuthProvider>()
 
@@ -1893,9 +1893,12 @@ private fun AuthLegalNotice(
 }
 
 @Composable
-private fun AuthTermsAgreement(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    val agreementText =
-        authTermsAgreementText(
+internal fun AuthTermsAgreement(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    label: String? = null,
+) {
+    val agreementText = label?.let { AnnotatedString(it) } ?: authTermsAgreementText(
             prefix = stringResource(MR.strings.auth_terms_agreement_prefix),
             terms = stringResource(MR.strings.auth_link_terms_of_service),
             connector = stringResource(MR.strings.auth_terms_agreement_connector),

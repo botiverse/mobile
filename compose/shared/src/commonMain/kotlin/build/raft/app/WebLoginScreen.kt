@@ -33,6 +33,13 @@ internal fun WebLoginScreen(pager: Pager, bridge: BridgeModule, auth: SharedAuth
     val platform = remember(bridge) {
         BridgeSettingsPlatformCapabilities(bridge, "", scope.kuiklyBridgeCallContext())
     }
+    // Consent is explicit and local to this login screen; never infer it from a link visit.
+    var consentAccepted by remember { mutableStateOf(false) }
+    val linkNavigator = rememberSlockLinkNavigator(
+        pager = pager,
+        bridge = bridge,
+        routeScope = SlockInAppBrowserRouteScope.Unscoped,
+    )
     var starting by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
     val completion by SlockWebLoginCompletion.status.collectAsState()
@@ -58,13 +65,24 @@ internal fun WebLoginScreen(pager: Pager, bridge: BridgeModule, auth: SharedAuth
         AuthCenterMark(size = 52.dp)
         AuthFormColumn {
             AuthError(if (failed) stringResource(MR.strings.auth_web_login_failed) else null)
+            AuthTermsAgreement(
+                checked = consentAccepted,
+                onCheckedChange = { consentAccepted = it },
+                label = stringResource(MR.strings.auth_web_login_consent),
+            )
+            AuthTextLink(stringResource(MR.strings.auth_link_terms_of_service)) {
+                linkNavigator.open(AUTH_TERMS_URL)
+            }
+            AuthTextLink(stringResource(MR.strings.auth_link_privacy_policy)) {
+                linkNavigator.open(AUTH_PRIVACY_URL)
+            }
             AuthActionButton(
                 text = stringResource(MR.strings.auth_web_login_button),
                 tone = AuthButtonTone.Pink,
-                enabled = !starting,
+                enabled = consentAccepted && !starting,
                 loading = starting,
                 onClick = {
-                    if (!starting) {
+                    startWebLoginWithConsent(consentAccepted, starting) {
                         starting = true
                         failed = false
                         SlockWebLoginCompletion.clear()
