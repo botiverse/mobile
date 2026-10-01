@@ -28,10 +28,6 @@ internal object MemberDetailScrollTestSupport {
     internal const val DragStepDelayMs = 36L
     internal const val DragRetryDelayMs = 400L
     internal const val ProbeHitWaitMs = 4_000L
-    // A probe_hit carrying an emission timestamp before the dispatch
-    // belongs to an earlier press — no tolerance beyond sub-50ms
-    // timestamp quantization.
-    private const val PROBE_HIT_SKEW_MS = 50L
 
     private const val MemberKey = "visual-owner:visual-server:human:visual-human-long"
     internal val KeyHash = MemberKey.hashCode().toString(16)
@@ -409,8 +405,8 @@ internal object MemberDetailScrollTestSupport {
      * Single-attempt held drag with mandatory delivery evidence: injects
      * ONE paced held drag and requires a `probe_hit` line that (a) appears
      * strictly after the pre-dispatch line snapshot and (b) carries a
-     * logcat wall timestamp >= the dispatch wall time (only 50ms
-     * quantization tolerance — no queueing allowance). A hit that cannot
+     * logcat wall timestamp >= the dispatch wall time — strictly,
+     * with no tolerance window. A hit that cannot
      * be bound to this dispatch (stale emission, unparseable timestamp)
      * does not release the gesture; the press is retired with a checked
      * ACTION_CANCEL and the attempt FAILS.
@@ -448,10 +444,13 @@ internal object MemberDetailScrollTestSupport {
             if (hit != null) {
                 val hitMs = logcatTimestampMillis(hit)
                 val delta = hitMs?.let { it - dispatchWallMs }
-                // Mandatory binding: an unparseable timestamp or an
-                // emission before dispatch (beyond quantization) means the
+                // Mandatory binding: an unparseable timestamp or any
+                // emission strictly before dispatch means the
                 // hit cannot be proven to belong to THIS press.
-                if (hitMs == null || delta!! < -PROBE_HIT_SKEW_MS) {
+                // Strict ordering: a hit whose emission timestamp is earlier
+                // than the dispatch wall time — by any amount — cannot belong
+                // to this press; no tolerance window exists.
+                if (hitMs == null || delta!! < 0) {
                     Log.i(
                         logTag,
                         "held_drag_unbound_probe hitMs=$hitMs " +
