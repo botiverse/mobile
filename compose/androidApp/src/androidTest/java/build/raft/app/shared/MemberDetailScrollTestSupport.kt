@@ -28,6 +28,7 @@ internal object MemberDetailScrollTestSupport {
     internal const val DragStepDelayMs = 36L
     internal const val DragRetryDelayMs = 400L
     internal const val ProbeHitWaitMs = 4_000L
+    private const val PROBE_HIT_SKEW_MS = 2_000L
 
     private const val MemberKey = "visual-owner:visual-server:human:visual-human-long"
     internal val KeyHash = MemberKey.hashCode().toString(16)
@@ -407,22 +408,29 @@ internal object MemberDetailScrollTestSupport {
      * produces no probe_hit; that attempt is retired with ACTION_CANCEL
      * and retried within the shared bound. Never returns a gesture that
      * produced no probe_hit.
+     *
+     * Attempt binding is two-fold: the hit must appear strictly after this
+     * attempt's pre-dispatch line snapshot AND its logcat wall timestamp
+     * must be >= this attempt's dispatch wall time (minus clock-skew
+     * tolerance). A stale hit emitted under a previous attempt's press —
+     * even one that lands inside this attempt's poll window — carries an
+     * earlier emission timestamp and is rejected.
      */
+    internal class VerifiedHeldDrag(val drag: HeldDrag, val probeHitLine: String)
+
     internal fun injectDragPacedUntilProbeHit(
         startCursor: Long,
         after: String,
         logTag: String
-    ): HeldDrag {
+    ): VerifiedHeldDrag {
         val deadline = SystemClock.uptimeMillis() + InitialRenderTimeoutMs
         var attempt = 0
         while (SystemClock.uptimeMillis() < deadline) {
             attempt++
             Log.i(logTag, "held_drag_dispatch attempt=$attempt at=${SystemClock.uptimeMillis()}")
-            // Attempt isolation: only probe_hit lines strictly AFTER this
-            // attempt's snapshot count — a stale hit from an earlier attempt
-            // can never satisfy a later dispatch.
             val lineCountBefore =
                 linesAfter(startCursor, after, logTag).size
+            val dispatchWallMs = System.currentTimeMillis()
             var drag: HeldDrag? = null
             var primaryFailure: Throwable? = null
             var hit: String? = null
@@ -443,6 +451,27 @@ internal object MemberDetailScrollTestSupport {
                     if (hit != null) break
                     SystemClock.sleep(LogPollMs)
                 }
+                if (hit != null) {
+                    val hitMs = logcatTimestampMillis(hit)
+                    // Wall-clock binding: a hit emitted before this attempt's
+                    // dispatch (beyond clock/queue skew) belongs to an
+                    // earlier press and cannot prove this attempt.
+                    val delta = hitMs?.let { it - dispatchWallMs }
+                    val staleByTime = delta != null && delta < -PROBE_HIT_SKEW_MS
+                    if (staleByTime) {
+                        Log.i(
+                            logTag,
+                            "held_drag_stale_probe attempt=$attempt " +
+                                "hitMs=$hitMs dispatchMs=$dispatchWallMs line=$hit"
+                        )
+                        hit = null
+                    } else if (hitMs == null) {
+                        // Unparseable timestamp: keep the hit but mark the
+                        // evidence so a reviewer can see the time-binding
+                        // was not applied to this line.
+                        Log.w(logTag, "held_drag_probe_untimed attempt=$attempt line=$hit")
+                    }
+                }
             } catch (t: Throwable) {
                 primaryFailure = t
             }
@@ -452,7 +481,7 @@ internal object MemberDetailScrollTestSupport {
                 try {
                     recordEvidence(logTag, "PROBE", "attempt=$attempt $hit")
                     handedOff = true
-                    return requireNotNull(drag)
+                    return VerifiedHeldDrag(requireNotNull(drag), hit)
                 } catch (t: Throwable) {
                     primaryFailure = t
                 }

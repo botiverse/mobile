@@ -198,12 +198,19 @@ class MemberDetailComposeRemovalConnectedTest {
                 // probe_hit and no user_frame. Retry until the probe
                 // acknowledges real pointer delivery (each miss retires
                 // its press with CANCEL first).
-                dragGesture =
+                val verifiedDrag =
                     MemberDetailScrollTestSupport.injectDragPacedUntilProbeHit(
                         startCursor, visit2.seedLine, TestLogTag
                     )
+                dragGesture = verifiedDrag.drag
+                // user_frame must postdate THIS attempt's accepted probe_hit —
+                // an earlier attempt's frames can never satisfy the gate.
                 val lastFrame =
-                    waitForLine(startCursor, after = visit2.seedLine, "v2 user_frame") { line ->
+                    waitForLine(
+                        startCursor,
+                        after = verifiedDrag.probeHitLine,
+                        "v2 user_frame"
+                    ) { line ->
                         line.contains("user_frame") && line.contains(ScrollLabel)
                     }
                 val lastFramePos =
