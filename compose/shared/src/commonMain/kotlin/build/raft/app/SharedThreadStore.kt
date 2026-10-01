@@ -9771,8 +9771,8 @@ internal class SharedThreadStore(
         return emitted
     }
 
-    private var nextFetchSeq = 0L
-    private var nextOperationSeq = 0L
+    private val nextFetchSeq = atomic(0L)
+    private val nextOperationSeq = atomic(0L)
     private val storeInstanceSeq = nextSharedThreadStoreInstanceSeq.incrementAndGet()
 
     /**
@@ -9782,7 +9782,7 @@ internal class SharedThreadStore(
      * Local-only writers use operationSeq (no fetch is issued for them).
      */
     private fun issueFetchSeq(kind: String, detail: String): Long {
-        val fetchSeq = ++nextFetchSeq
+        val fetchSeq = nextFetchSeq.incrementAndGet()
         runCatching {
             diagnosticsLogger?.invoke(
                 "thread_fetch_issued kind=$kind storeSeq=$storeInstanceSeq fetchSeq=$fetchSeq " +
@@ -9793,7 +9793,7 @@ internal class SharedThreadStore(
     }
 
     private fun issueOperationSeq(kind: String, detail: String): Long {
-        val operationSeq = ++nextOperationSeq
+        val operationSeq = nextOperationSeq.incrementAndGet()
         runCatching {
             diagnosticsLogger?.invoke(
                 "thread_op_issued kind=$kind storeSeq=$storeInstanceSeq opSeq=$operationSeq " +

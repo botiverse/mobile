@@ -18340,6 +18340,94 @@ class SharedThreadStoreTest {
         }
     }
 
+    @Test
+    fun concurrentFetchIssueAllocatesDistinctSeqsCorrelatedToBoundaryTraces() = runBlocking {
+        // task #58 observability contract: fetchSeq allocation is atomic —
+        // two fetches parked in flight at the same time must receive distinct
+        // seqs, and each apply/reject log must carry the seq of ITS request,
+        // observable end-to-end via the boundary requestTrace.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val api =
+                FakeThreadApi(
+                    bodyText =
+                        messagesResponse("first body", id = "m16", seq = 16, historyLimited = false),
+                    newerBodyText = newerRowsBody(17L..46L),
+                )
+            val logs = mutableListOf<String>()
+            val dataSource =
+                testSharedThreadDataSource(
+                    networkApi = api,
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
+                )
+            val store =
+                SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+            store.accept(
+                SharedThreadIntent.Start(
+                    basePayload().copy(
+                        canLoadMoreAfter = true,
+                        canLoadMoreBefore = true,
+                        messages = listOf(payloadMessage(id = "m16", seq = 16, body = "first body")),
+                    )
+                )
+            )
+            // Park an older-page and a newer-page fetch in flight at once —
+            // issue points execute on the store's serial scope but the two
+            // requests overlap at the boundary.
+            api.afterMessagesStarted = CompletableDeferred()
+            api.releaseAfterMessages = CompletableDeferred()
+            val newerJob = async { store.loadNewer() }
+            withTimeout(5_000) { api.afterMessagesStarted?.await() }
+
+            // Older requests are channelMessages(beforeSeq) — the FakeThreadApi
+            // started/release gates only fire for canonical calls
+            // (beforeSeq==null && afterSeq==null), so wait on the recorded
+            // request; the request body itself stays parked behind the network
+            // coroutine while newer is still in flight.
+            val olderJob = async { store.loadOlder() }
+            withTimeout(5_000) { while (api.beforeSeqs.isEmpty()) yield() }
+
+            val issued = logs.filter { it.startsWith("thread_fetch_issued") }
+            val olderIssued = issued.last { it.contains("kind=older_page") }
+            val newerIssued = issued.last { it.contains("kind=newer_page") }
+            val olderSeq = Regex("fetchSeq=(\\d+)").find(olderIssued)!!.groupValues[1]
+            val newerSeq = Regex("fetchSeq=(\\d+)").find(newerIssued)!!.groupValues[1]
+            assertNotEquals(
+                olderSeq,
+                newerSeq,
+                "concurrently in-flight fetches must get distinct fetchSeqs: $olderIssued / $newerIssued",
+            )
+            val storeSeq = Regex("storeSeq=(\\d+)").find(newerIssued)!!.groupValues[1]
+            assertTrue(
+                api.channelMessagesRequestTraces.contains("older_page_s${storeSeq}_fs=$olderSeq"),
+                "older boundary trace missing; traces=${api.channelMessagesRequestTraces}",
+            )
+            assertTrue(
+                api.channelMessagesRequestTraces.contains("newer_page_s${storeSeq}_fs=$newerSeq"),
+                "newer boundary trace missing; traces=${api.channelMessagesRequestTraces}",
+            )
+            api.releaseAfterMessages?.complete(Unit)
+            withTimeout(5_000) { newerJob.await() }
+            withTimeout(5_000) { olderJob.await() }
+            // Each apply log carries the fetchSeq of its own request.
+            val writes =
+                logs.filter {
+                    it.contains("thread_payload_messages_write") && !it.contains("rejected")
+                }
+            assertTrue(
+                writes.any { it.contains("tag=older_page_apply") && it.contains("fetchSeq=$olderSeq") },
+                "older apply must carry fetchSeq=$olderSeq; writes=$writes",
+            )
+            assertTrue(
+                writes.any { it.contains("tag=newer_page_apply") && it.contains("fetchSeq=$newerSeq") },
+                "newer apply must carry fetchSeq=$newerSeq; writes=$writes",
+            )
+        } finally {
+            scope.cancel()
+        }
+    }
+
     private fun payloadMessage(id: String, seq: Long, body: String): KuiklyThreadMessageItem =
         KuiklyThreadMessageItem(
             id = id,
