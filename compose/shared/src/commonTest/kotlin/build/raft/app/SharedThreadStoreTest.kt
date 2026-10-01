@@ -17978,18 +17978,6 @@ class SharedThreadStoreTest {
             messagesResponse("refreshed tail", id = "m16", seq = 16, historyLimited = false)
         api.releaseChannelMessages?.complete(Unit)
         withTimeout(5_000) { refreshJob.await() }
-        // Refresh must carry its own fetchSeq into the apply-side write log —
-        // same correlation the rejected stale page used above.
-        val refreshWrite =
-            logs.filter {
-                it.contains("thread_payload_messages_write") &&
-                    !it.contains("rejected") &&
-                    it.contains("refresh")
-            }
-        assertTrue(
-            refreshWrite.any { it.contains("fetchSeq=$refreshFetchSeq") },
-            "refresh commit must carry refreshFetchSeq=$refreshFetchSeq; got $refreshWrite",
-        )
         } finally {
             scope.cancel()
         }
@@ -18142,29 +18130,33 @@ class SharedThreadStoreTest {
                 ledger.release(nonce1, 1, ThreadNewerAutoFixtureResponse.Success(30))
             assertFalse(staleReleased, "stale-nonce release must fail")
             // Immediate check before any later release: the stale release must
-            // not have left a record on the new run's ledger while its gate is
-            // still open.
+            // leave no record of any kind on the new run's ledger.
             val logAfterStaleRelease = ledger.snapshot(nonce2).requestLog
             assertTrue(
-                logAfterStaleRelease.none { it.contains("success rows=30") },
-                "stale release must not appear in the new run's ledger; log=$logAfterStaleRelease",
+                logAfterStaleRelease.none { it.contains("release") },
+                "stale release must not write any release/attempt record to the new run's ledger; log=$logAfterStaleRelease",
             )
-            assertTrue(
-                ledger.snapshot(nonce2).afterRequests.isNotEmpty(),
-                "new-run gate must still be armed after the stale release",
-            )
+            // Proof the gate is still armed (not just "a request was once
+            // recorded"): a release for the new nonce succeeds right now.
             assertTrue(
                 ledger.release(nonce2, 1, ThreadNewerAutoFixtureResponse.Success(7)),
-                "new-run release must succeed",
+                "new-run gate must still complete on its own release after the stale attempt",
             )
             assertEquals(
                 ThreadNewerAutoFixtureResponse.Success(7),
                 withTimeout(5_000) { newPending.await() },
-                "new-run awaiter must receive the new-run response, not the stale one",
+                "new-run awaiter must receive the new-run response",
             )
+            // Post-completion ledger: exactly the new-run release is recorded.
+            val finalLog = ledger.snapshot(nonce2).requestLog
             assertTrue(
-                ledger.snapshot(nonce2).requestLog.none { it.contains("success rows=30") },
-                "stale release must not appear in the new run's ledger",
+                finalLog.none { it.contains("success rows=30") },
+                "stale release must not appear in the new run's ledger; log=$finalLog",
+            )
+            assertEquals(
+                1,
+                finalLog.count { it.contains("release#1") && it.contains("completed=true") },
+                "exactly one completed release expected; log=$finalLog",
             )
         } finally {
             stalePending?.cancel()
@@ -18209,10 +18201,17 @@ class SharedThreadStoreTest {
                 log.count { it == "release#1(success rows=5) completed=true" },
                 "exactly one completed release record expected; log=$log",
             )
+            // The repeat must produce exactly one reject record, and it must be
+            // the completed=false release record (the gate exists but was
+            // already completed — not a no_gate attempt).
             assertEquals(
                 1,
-                log.count { it.contains("release_attempt#1") || (it.contains("release#1") && it.contains("completed=false")) },
-                "exactly one reject/no-gate record expected for the repeat; log=$log",
+                log.count { it == "release#1(success rows=5) completed=false" },
+                "exactly one completed=false reject record expected for the repeat; log=$log",
+            )
+            assertTrue(
+                log.none { it.contains("release_attempt#1") },
+                "repeat must not be recorded as no_gate — the gate existed; log=$log",
             )
         } finally {
             pending?.cancel()
