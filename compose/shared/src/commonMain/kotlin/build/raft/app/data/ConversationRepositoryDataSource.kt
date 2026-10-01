@@ -88,7 +88,6 @@ private suspend fun SlockNetworkClient.channelMessages(
                 afterSeq?.let { "after" to it.toString() }
             )
     )
-}
 
 private suspend fun SlockNetworkClient.messageContext(
     priority: DataRequestPriority,
