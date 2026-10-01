@@ -1608,15 +1608,20 @@ private val membersHumanLongDetailVisualMember = MemberProfile(
  *  - The `visualFixtures` source set (compiled only with
  *    `slockVisualFixtures=true`) supplies the implementation and registers
  *    it here bound to a run token.
- *  - Activation requires BOTH a bound controller AND the payload's
- *    `slockVisualDisposeProbe` field carrying the same run token — an
- *    ordinary detail route never observes a controller and the wrapper is
- *    a passthrough.
+ *  - Activation requires ALL of: a bound controller, the payload's
+ *    `slockVisualDisposeProbe` field carrying the same run token, AND the
+ *    routed member being the dedicated `visual-human-long` seed — any
+ *    other detail route ignores the field and the wrapper is a
+ *    passthrough.
  *
- * Threading: registration happens on the instrumentation/test thread while
- * `removed` is read on the composition path (Kuikly's compose dispatcher),
- * so the slot is held under a lock.
- */
+ * Threading: the test/instrumentation thread writes the controller's
+ * snapshot `State` and registers/unregisters under [lock]; `removed` is
+ * read on the composition path (Kuikly's compose dispatcher), which
+ * applies the flip through normal snapshot-state recomposition — removal
+ * is asynchronous and proven by the `dispose_save` log line, never by the
+ * writer call returning. The actual executing threads of record are the
+ * ones observed in the connected-run logcat evidence.
+*/
 internal object MemberDetailRemovalProbe {
     private val lock = SynchronizedObject()
     private var controllers = mutableMapOf<String, MemberDetailRemovalController>()
@@ -4401,9 +4406,16 @@ private fun MemberDetailVisualSeedContent(
     val visualMode = remember(payload.visualMode) {
         payload.visualMode.orEmpty().toMembersAgentDetailVisualMode()
     }
+    // Activation is scoped to the dedicated long-human seed: any other
+    // visual route ignores the payload field entirely, so the probe can
+    // never fire on a non-test member.
     val removalProbe =
-        payload.removalProbeToken?.let { token ->
-            MemberDetailRemovalProbe.forToken(token)
+        if (payload.identity?.memberId == membersHumanLongDetailVisualMember.id) {
+            payload.removalProbeToken?.let { token ->
+                MemberDetailRemovalProbe.forToken(token)
+            }
+        } else {
+            null
         }
     // task #58 composition-removal case: when a fixture controller is bound
     // to this run token, the whole detail subtree is composed under the

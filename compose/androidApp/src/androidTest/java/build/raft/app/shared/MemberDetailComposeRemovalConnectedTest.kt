@@ -227,8 +227,9 @@ class MemberDetailComposeRemovalConnectedTest {
 
                 // Request removal; keep the gesture OWNED — terminal CANCEL
                 // only runs after the actual dispose_save is observed (or on
-                // the failure path), so a settled periodic save cannot sneak
-                // in between the flip and recomposition.
+                // the failure path). Holding the press does NOT block the
+                // periodic saver; the post-dispose full-interval audit below
+                // is what rules out a sneaked-in same-position write.
                 MemberDetailRemovalFixtureBridge.setRemoved(runToken, true)
 
                 val disposeLine =
