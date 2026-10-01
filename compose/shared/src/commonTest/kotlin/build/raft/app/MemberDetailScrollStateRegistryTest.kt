@@ -296,7 +296,7 @@ class MemberDetailScrollTrackerTest {
         frame(0, 489, 40, false) { _, _ -> } // seed frame opens settle
         // User scrolls up once: the real gesture signal marks the in-flight
         // frames as user intent (positions alone cannot prove it)...
-        t.onUserScrollStarted()
+        t.onUserScrollStarted(scrollInFlight = false) { _, _ -> }
         frame(0, 300, 40, true) { _, _ -> }
         // ...then the landing publishes and the window closes.
         frame(0, 300, 40, false) { _, _ -> }
@@ -382,7 +382,7 @@ class MemberDetailScrollTrackerTest {
                 save = { saved += it }
             )
         frame(0, 489, false) // seed at target opens settle
-        tracker.onUserScrollStarted()
+        tracker.onUserScrollStarted(scrollInFlight = false) { _, _ -> }
         frame(0, 300, true)
         frame(0, 300, false)
         assertEquals(MemberDetailScrollPosition(0, 300), tracker.lastPosition)
@@ -453,7 +453,7 @@ class MemberDetailScrollTrackerTest {
         // Real drag toward the target (LiBai's 237->380->stop380 case): the
         // gesture signal must win even though positions look identical to a
         // programmatic restore approaching the target.
-        t.onUserScrollStarted()
+        t.onUserScrollStarted(scrollInFlight = false) { _, _ -> }
         frame(0, 380, 40, true) { _, _ -> }
         frame(0, 380, 40, false) { _, _ -> }
         assertEquals(MemberDetailScrollPosition(0, 380), saved.last())
@@ -474,7 +474,7 @@ class MemberDetailScrollTrackerTest {
         frame(0, 489, 40, false) { i, o -> requests += i to o }
         frame(0, 237, 40, false) { i, o -> requests += i to o }
         assertEquals(listOf(0 to 489), requests)
-        t.onUserScrollStarted()
+        t.onUserScrollStarted(scrollInFlight = false) { _, _ -> }
         frame(0, 120, 40, true) { _, _ -> }
         frame(0, 60, 40, true) { _, _ -> }
         frame(0, 60, 40, false) { _, _ -> }
@@ -496,7 +496,7 @@ class MemberDetailScrollTrackerTest {
         frame(0, 489, 40, false) { _, _ -> }
         frame(0, 489, 40, false) { _, _ -> }
         frame(0, 237, 40, false) { _, _ -> } // post-achieve clamp -> re-issue
-        t.onUserScrollStarted()
+        t.onUserScrollStarted(scrollInFlight = false) { _, _ -> }
         frame(0, 380, 40, true) { _, _ -> }
         frame(0, 355, 40, true) { _, _ -> }
         // Page disposed here without a settled frame: the dispose write
@@ -527,9 +527,37 @@ class MemberDetailScrollTrackerTest {
         // While the re-issued request is still pending application, the
         // predicate must report it so the probe can supersede.
         assertEquals(true, t.hasPendingRestoreRequest)
-        t.onUserScrollStarted()
+        // The production probe path: gesture reported with no scroll in
+        // flight must supersede the pending request with the last MEASURED
+        // position (237 — the clamp landing the list actually sits at),
+        // exactly once.
+        t.onUserScrollStarted(scrollInFlight = false) { i, o ->
+            requests += i to o
+        }
         // After the gesture is reported, the request is retired.
         assertEquals(false, t.hasPendingRestoreRequest)
+        assertEquals(listOf(0 to 489, 0 to 237), requests)
+    }
+
+    @Test
+    fun `gesture during in-flight scroll never supersedes via requestScroll`() {
+        // If a scroll is already running when the gesture is reported, the
+        // supersede must NOT call requestScrollToItem — on the real list it
+        // would cancel the user's own just-started drag.
+        val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        val requests = mutableListOf<Pair<Int, Int>>()
+        val frame = frameOf(t, saved)
+        frame(0, 489, 40, false) { i, o -> requests += i to o }
+        frame(0, 489, 40, false) { i, o -> requests += i to o }
+        frame(0, 237, 40, false) { i, o -> requests += i to o } // re-issue
+        assertEquals(true, t.hasPendingRestoreRequest)
+        t.onUserScrollStarted(scrollInFlight = true) { i, o ->
+            requests += i to o
+        }
+        assertEquals(false, t.hasPendingRestoreRequest)
+        // No supersede request was issued — only the original re-issue.
+        assertEquals(listOf(0 to 489), requests)
     }
 
     @Test
@@ -561,7 +589,7 @@ class MemberDetailScrollTrackerTest {
         frame(0, 88, 40, false) { _, _ -> } // clamped landing suppressed
         assertEquals(emptyList<MemberDetailScrollPosition>(), saved)
         // User then scrolls once and leaves: real gesture publishes.
-        t.onUserScrollStarted()
+        t.onUserScrollStarted(scrollInFlight = false) { _, _ -> }
         frame(0, 300, 40, true) { _, _ -> }
         frame(0, 300, 40, false) { _, _ -> }
         assertEquals(MemberDetailScrollPosition(0, 300), saved.last())

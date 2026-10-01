@@ -14139,31 +14139,16 @@ internal fun Modifier.membersDetailUserDragProbe(
                             "pendingRestore=${tracker.hasPendingRestoreRequest} " +
                             "scrollInProgress=${state.isScrollInProgress}"
                     )
-                    // Order matters: hasPendingRestoreRequest reads
-                    // issuedRestoreRequest, which onUserScrollStarted()
-                    // clears — capture the pending state BEFORE reporting
-                    // the gesture.
-                    val pendingRestore = tracker.hasPendingRestoreRequest
-                    val measured = tracker.lastObservedPosition
-                    tracker.onUserScrollStarted()
-                    // Supersede a pending restore request at the same layer:
-                    // requestScrollToItem has no cancel handle — the target
-                    // is already written into scrollPosition and is applied
-                    // at the next remeasure. Re-requesting the last measured
-                    // position overwrites it so the remeasure cannot snap the
-                    // list away from this drag. Guarded by no-scroll-in-flight
-                    // because the API cancels an ongoing scroll (which at this
-                    // instant could be the user's own just-started drag).
-                    if (
-                        pendingRestore &&
-                        !state.isScrollInProgress &&
-                        measured != null
-                    ) {
-                        state.requestScrollToItem(
-                            measured.firstVisibleItemIndex,
-                            measured.firstVisibleItemScrollOffset
-                        )
-                    }
+                    // The tracker owns the ordering: capture pending state,
+                    // retire the request, then supersede it at the same layer
+                    // with the last measured position — all inside
+                    // onUserScrollStarted so unit tests pin the real path.
+                    tracker.onUserScrollStarted(
+                        scrollInFlight = state.isScrollInProgress,
+                        requestScroll = { index, offset ->
+                            state.requestScrollToItem(index, offset)
+                        }
+                    )
                     break
                 }
             }
@@ -14227,11 +14212,34 @@ internal class MemberDetailScrollTracker(
     val hasPendingRestoreRequest: Boolean
         get() = restoreSettlePending && issuedRestoreRequest
 
-    fun onUserScrollStarted() {
+    /**
+     * A real user gesture started (reported by the pointer probe). Retires
+     * any pending restore request and, when the request was written but not
+     * yet applied (no scroll in flight), supersedes it through the same
+     * [requestScroll] path with the last MEASURED position — the pending
+     * target lives in scrollPosition and has no cancel handle, so the only
+     * way to keep it from snapping the list away from the user's drag is to
+     * overwrite it. When a scroll IS already in flight it is either the
+     * user's own just-started drag (must not be cancelled by the supersede
+     * call) or our restore (whose frames the gesture's own deltas will
+     * overwrite anyway), so no supersede is issued then.
+     */
+    fun onUserScrollStarted(
+        scrollInFlight: Boolean,
+        requestScroll: (index: Int, offset: Int) -> Unit
+    ) {
+        val pendingRestore = hasPendingRestoreRequest
+        val measured = lastObservedPosition
         userScrollActive = true
         if (restoreSettlePending) {
             sawUserScrollInSettle = true
             issuedRestoreRequest = false
+        }
+        if (pendingRestore && !scrollInFlight && measured != null) {
+            requestScroll(
+                measured.firstVisibleItemIndex,
+                measured.firstVisibleItemScrollOffset
+            )
         }
     }
 
