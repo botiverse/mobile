@@ -517,17 +517,24 @@ class ThreadApiTest {
         val unsavedMessageIds = mutableListOf<String>()
         var lastMentionActionBody: String? = null
         var lastReadToSeqRequest: Pair<String, Long>? = null
+        val channelMessagesTraces = mutableListOf<String?>()
+        val messageSyncTraces = mutableListOf<String?>()
+
         override suspend fun channelMessages(
             threadId: String,
             limit: Int,
             beforeSeq: Long?,
             afterSeq: Long?,
             requestTrace: String?
-        ): HomeNetworkResponse =
-            HomeNetworkResponse(code = 200, bodyText = channelMessagesBody)
+        ): HomeNetworkResponse {
+            channelMessagesTraces += requestTrace
+            return HomeNetworkResponse(code = 200, bodyText = channelMessagesBody)
+        }
 
-        override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String?): HomeNetworkResponse =
-            HomeNetworkResponse(code = 200, bodyText = syncBody)
+        override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String?): HomeNetworkResponse {
+            messageSyncTraces += requestTrace
+            return HomeNetworkResponse(code = 200, bodyText = syncBody)
+        }
 
         override suspend fun sendMessage(
             channelId: String,
@@ -586,6 +593,28 @@ class ThreadApiTest {
 
         override suspend fun messageContext(messageId: String, channelId: String?): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = contextBody)
+    }
+
+
+    @Test
+    fun requestTraceStaysProcessLocalAndDoesNotReachWireQuery() = runBlocking {
+        // task #58 observability contract: requestTrace flows to the boundary
+        // for ledger correlation but must never be added to the wire query.
+        val networkClient = RecordingThreadNetworkClient()
+        val api = SlockThreadApiClient(NetworkSlockThreadApi(networkClient))
+
+        api.channelMessages("thread-1", limit = 25, afterSeq = 46, requestTrace = "newer_page_s3_fs=7")
+        api.messageSync("channel-1", sinceSeq = 10, limit = 30, requestTrace = "gap_sync_s3_fs=8")
+
+        assertTrue(
+            networkClient.calls.all { !it.contains("trace=") && !it.contains("newer_page") && !it.contains("gap_sync") },
+            "requestTrace must not leak into wire query; calls=${networkClient.calls}",
+        )
+        assertTrue(
+            networkClient.calls.any { it.contains("after=46") } &&
+                networkClient.calls.any { it.contains("since_seq=10") },
+            "actual paging params unchanged; calls=${networkClient.calls}",
+        )
     }
 
     private class RecordingThreadNetworkClient : SlockNetworkClient {

@@ -17965,7 +17965,11 @@ class SharedThreadStoreTest {
             store.state.value.payload.newerMessagesStatus,
             "post-refresh release of a stale page error must not write error status",
         )
-        val reject = logs.single { it.contains("tag=newer_after_fetch") || it.contains("tag=newer_page_apply") }
+        val reject =
+            logs.single {
+                it.contains("thread_payload_messages_write_rejected") &&
+                    it.contains("tag=newer_")
+            }
         assertTrue(
             reject.contains("fetchSeq=$newerFetchSeq"),
             "rejected stale write must carry its own fetchSeq=$newerFetchSeq; got $reject",
@@ -18018,9 +18022,8 @@ class SharedThreadStoreTest {
         api.releaseAfterMessages?.complete(Unit)
         withTimeout(5_000) { firstPage.await() }
 
-        // Park newer page #2 at afterSeq=46, then launch Refresh which parks on
-        // the canonical fetch. Both are in flight in the same route generation
-        // until the page fails.
+        // Park newer page #2 at afterSeq=46, then launch Refresh (which
+        // advances the route generation) while the page is still in flight.
         api.newerResponseCode = 500
         api.afterMessagesStarted = CompletableDeferred()
         api.releaseAfterMessages = CompletableDeferred()
@@ -18069,6 +18072,88 @@ class SharedThreadStoreTest {
         } finally {
             scope.cancel()
         }
+    }
+
+
+    @Test
+    fun staleFixtureRunReleaseCannotCompleteNewGate() = runBlocking {
+        // task #58 observability contract: fixture release calls are nonce-gated
+        // — a release issued for an older runNonce must neither complete a gate
+        // in the new run nor write a ledger entry against it.
+        val nonce1 = "run-a"
+        val nonce2 = "run-b"
+        ThreadNewerAutoPaginationVisualFixtureProbe.beginRun(nonce1)
+        val pending =
+            async {
+                ThreadNewerAutoPaginationVisualFixtureProbe.awaitAfterResponse(
+                    runNonce = nonce1,
+                    afterSeq = 46L,
+                    limit = 30,
+                )
+            }
+        withTimeout(5_000) {
+            while (
+                ThreadNewerAutoPaginationVisualFixtureProbe.snapshot(nonce1)
+                    .afterRequests.isEmpty()
+            ) {
+                kotlinx.coroutines.yield()
+            }
+        }
+        // New run starts; the old run's release must not complete the new gate.
+        ThreadNewerAutoPaginationVisualFixtureProbe.beginRun(nonce2)
+        val released = ThreadNewerAutoPaginationVisualFixtureProbe.releaseSuccess(nonce1, 1, 30)
+        assertFalse(released, "stale-nonce release must fail")
+        assertTrue(
+            ThreadNewerAutoPaginationVisualFixtureProbe.snapshot(nonce2)
+                .requestLog.none { it.contains("release#") || it.contains("release_attempt") },
+            "stale release must not write into the new run's ledger",
+        )
+        pending.cancel()
+        pending.await()
+    }
+
+    @Test
+    fun repeatedReleaseOnSameCallIsRecordedAsNoGate() = runBlocking {
+        // task #58 observability contract: releasing the same call twice —
+        // first a real release, then a repeat — leaves exactly one
+        // `release#N completed=true` and one `release_attempt#N result=no_gate`.
+        val nonce = "run-repeat"
+        ThreadNewerAutoPaginationVisualFixtureProbe.beginRun(nonce)
+        val pending =
+            async {
+                ThreadNewerAutoPaginationVisualFixtureProbe.awaitAfterResponse(
+                    runNonce = nonce,
+                    afterSeq = 46L,
+                    limit = 30,
+                )
+            }
+        withTimeout(5_000) {
+            while (
+                ThreadNewerAutoPaginationVisualFixtureProbe.snapshot(nonce)
+                    .afterRequests.isEmpty()
+            ) {
+                kotlinx.coroutines.yield()
+            }
+        }
+        assertTrue(
+            ThreadNewerAutoPaginationVisualFixtureProbe.releaseSuccess(nonce, 1, 5),
+            "first release should complete the gate",
+        )
+        pending.await()
+        assertFalse(
+            ThreadNewerAutoPaginationVisualFixtureProbe.releaseSuccess(nonce, 1, 5),
+            "repeat release must not recomplete",
+        )
+        val log =
+            ThreadNewerAutoPaginationVisualFixtureProbe.snapshot(nonce).requestLog
+        assertTrue(
+            log.any { it == "release#1(success rows=5) completed=true" },
+            "completed release must be recorded; log=$log",
+        )
+        assertTrue(
+            log.any { it.contains("release_attempt#1") && it.contains("result=no_gate") },
+            "repeat release must be recorded as no_gate attempt; log=$log",
+        )
     }
 
     @Test
