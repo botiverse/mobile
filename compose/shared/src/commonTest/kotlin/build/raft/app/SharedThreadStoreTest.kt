@@ -15910,6 +15910,8 @@ class SharedThreadStoreTest {
         var releaseChannelMessages: CompletableDeferred<Unit>? = null
         var afterMessagesStarted: CompletableDeferred<Unit>? = null
         var releaseAfterMessages: CompletableDeferred<Unit>? = null
+        var beforeMessagesStarted: CompletableDeferred<Unit>? = null
+        var releaseBeforeMessages: CompletableDeferred<Unit>? = null
         var syncStarted: CompletableDeferred<Unit>? = null
         var releaseSync: CompletableDeferred<Unit>? = null
         val syncStartedSignals = ArrayDeque<CompletableDeferred<Unit>>()
@@ -15941,6 +15943,8 @@ class SharedThreadStoreTest {
             return when {
                 beforeSeq != null -> {
                     beforeSeqs += beforeSeq
+                    beforeMessagesStarted?.complete(Unit)
+                    releaseBeforeMessages?.await()
                     HomeNetworkResponse(code = 200, bodyText = olderBodyText)
                 }
                 afterSeq != null -> {
@@ -18380,13 +18384,10 @@ class SharedThreadStoreTest {
             val newerJob = async { store.loadNewer() }
             withTimeout(5_000) { api.afterMessagesStarted?.await() }
 
-            // Older requests are channelMessages(beforeSeq) — the FakeThreadApi
-            // started/release gates only fire for canonical calls
-            // (beforeSeq==null && afterSeq==null), so wait on the recorded
-            // request; the request body itself stays parked behind the network
-            // coroutine while newer is still in flight.
-            val olderJob = async { store.loadOlder() }
-            withTimeout(5_000) { while (api.beforeSeqs.isEmpty()) yield() }
+            api.beforeMessagesStarted = CompletableDeferred()
+            api.releaseBeforeMessages = CompletableDeferred()
+            val olderJob = async { store.accept(SharedThreadIntent.LoadOlder) }
+            withTimeout(5_000) { api.beforeMessagesStarted?.await() }
 
             val issued = logs.filter { it.startsWith("thread_fetch_issued") }
             val olderIssued = issued.last { it.contains("kind=older_page") }
@@ -18408,20 +18409,32 @@ class SharedThreadStoreTest {
                 "newer boundary trace missing; traces=${api.channelMessagesRequestTraces}",
             )
             api.releaseAfterMessages?.complete(Unit)
+            api.releaseBeforeMessages?.complete(Unit)
             withTimeout(5_000) { newerJob.await() }
             withTimeout(5_000) { olderJob.await() }
-            // Each apply log carries the fetchSeq of its own request.
+            // Each apply log carries the fetchSeq and the issue-time routeToken
+            // (requestRouteToken) of its own request.
             val writes =
                 logs.filter {
                     it.contains("thread_payload_messages_write") && !it.contains("rejected")
                 }
+            val olderToken = Regex("routeToken=(\\d+)").find(olderIssued)!!.groupValues[1]
+            val newerToken = Regex("routeToken=(\\d+)").find(newerIssued)!!.groupValues[1]
             assertTrue(
-                writes.any { it.contains("tag=older_page_apply") && it.contains("fetchSeq=$olderSeq") },
-                "older apply must carry fetchSeq=$olderSeq; writes=$writes",
+                writes.any {
+                    it.contains("tag=older_page_apply") &&
+                        it.contains("fetchSeq=$olderSeq") &&
+                        it.contains("requestRouteToken=$olderToken")
+                },
+                "older apply must carry fetchSeq=$olderSeq + requestRouteToken=$olderToken; writes=$writes",
             )
             assertTrue(
-                writes.any { it.contains("tag=newer_page_apply") && it.contains("fetchSeq=$newerSeq") },
-                "newer apply must carry fetchSeq=$newerSeq; writes=$writes",
+                writes.any {
+                    it.contains("tag=newer_page_apply") &&
+                        it.contains("fetchSeq=$newerSeq") &&
+                        it.contains("requestRouteToken=$newerToken")
+                },
+                "newer apply must carry fetchSeq=$newerSeq + requestRouteToken=$newerToken; writes=$writes",
             )
         } finally {
             scope.cancel()
