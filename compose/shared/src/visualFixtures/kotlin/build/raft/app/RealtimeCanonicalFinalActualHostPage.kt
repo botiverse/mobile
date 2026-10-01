@@ -1197,12 +1197,12 @@ private fun createActualThreadHost(
 private class ActualHostThreadApi(
     private val run: ActualHostRun,
 ) : SharedThreadNetworkApi {
-    override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?, afterSeq: Long?): HomeNetworkResponse {
+    override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?, afterSeq: Long?, requestTrace: String? = null): HomeNetworkResponse {
         run.recordThreadDataRequest()
         return HomeNetworkResponse(code = 200, bodyText = """{"messages":[],"historyLimited":false}""")
     }
 
-    override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int): HomeNetworkResponse =
+    override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String? = null): HomeNetworkResponse =
         HomeNetworkResponse(code = 200, bodyText = "[]")
 
     override suspend fun sendMessage(channelId: String, body: String, asTask: Boolean, attachmentIds: List<String>, randomId: String?): HomeNetworkResponse =

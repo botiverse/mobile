@@ -55,6 +55,9 @@ public object ThreadNewerAutoPaginationVisualFixtureProbe {
     private val afterRequests = mutableListOf<ThreadNewerAutoAfterRequest>()
     private val afterResponseGates = mutableMapOf<Int, CompletableDeferred<ThreadNewerAutoFixtureResponse>>()
     private val returnedAfterCalls = mutableSetOf<Int>()
+    private val syncRequests = mutableListOf<ThreadNewerAutoSyncRequest>()
+    private val olderRequests = mutableListOf<ThreadNewerAutoOlderRequest>()
+    private val requestLog = mutableListOf<String>()
 
     internal fun beginRun(runNonce: String) {
         synchronized(lock) {
@@ -67,13 +70,52 @@ public object ThreadNewerAutoPaginationVisualFixtureProbe {
             }
             afterResponseGates.clear()
             returnedAfterCalls.clear()
+            syncRequests.clear()
+            olderRequests.clear()
+            requestLog.clear()
         }
     }
 
-    internal fun recordInitialRequest(runNonce: String) {
+    internal fun recordInitialRequest(runNonce: String, requestTrace: String? = null): Int =
         synchronized(lock) {
             check(activeRunNonce == runNonce) { "stale initial request for $runNonce" }
             initialRequests += 1
+            requestLog += "channelMessages_initial#$initialRequests${requestTrace?.let { ",trace=$it" } ?: ""}"
+            initialRequests
+        }
+
+    internal fun recordSyncRequest(runNonce: String, channelId: String, sinceSeq: Long, limit: Int, requestTrace: String? = null): Int =
+        synchronized(lock) {
+            check(activeRunNonce == runNonce) { "stale sync request for $runNonce" }
+            val callNumber = syncRequests.size + 1
+            syncRequests += ThreadNewerAutoSyncRequest(
+                callNumber = callNumber,
+                channelId = channelId,
+                sinceSeq = sinceSeq,
+                limit = limit,
+                requestTrace = requestTrace,
+            )
+            requestLog += "messageSync#$callNumber(sinceSeq=$sinceSeq,limit=$limit${requestTrace?.let { ",trace=$it" } ?: ""})"
+            callNumber
+        }
+
+    internal fun recordOlderRequest(runNonce: String, beforeSeq: Long, limit: Int, requestTrace: String? = null) {
+        synchronized(lock) {
+            if (activeRunNonce == runNonce) {
+                olderRequests += ThreadNewerAutoOlderRequest(
+                    callNumber = olderRequests.size + 1,
+                    beforeSeq = beforeSeq,
+                    limit = limit,
+                    requestTrace = requestTrace,
+                )
+                requestLog += "channelMessages_older#${olderRequests.size}(beforeSeq=$beforeSeq,limit=$limit${requestTrace?.let { ",trace=$it" } ?: ""})"
+            }
+        }
+    }
+
+    internal fun recordOtherRequest(runNonce: String, description: String) {
+        synchronized(lock) {
+            if (activeRunNonce == runNonce) requestLog += description
         }
     }
 
@@ -93,6 +135,7 @@ public object ThreadNewerAutoPaginationVisualFixtureProbe {
         runNonce: String,
         afterSeq: Long,
         limit: Int,
+        requestTrace: String? = null,
     ): ThreadNewerAutoFixtureResponse {
         val (callNumber, gate) = synchronized(lock) {
             check(activeRunNonce == runNonce) { "stale newer request for $runNonce" }
@@ -103,7 +146,9 @@ public object ThreadNewerAutoPaginationVisualFixtureProbe {
                     callNumber = callNumber,
                     afterSeq = afterSeq,
                     limit = limit,
+                    requestTrace = requestTrace,
                 )
+            requestLog += "channelMessages_after#$callNumber(afterSeq=$afterSeq,limit=$limit${requestTrace?.let { ",trace=$it" } ?: ""})"
             val gate = CompletableDeferred<ThreadNewerAutoFixtureResponse>()
             afterResponseGates[callNumber] = gate
             callNumber to gate
@@ -112,6 +157,7 @@ public object ThreadNewerAutoPaginationVisualFixtureProbe {
         synchronized(lock) {
             if (activeRunNonce == runNonce) {
                 returnedAfterCalls += callNumber
+                requestLog += "afterResponse#$callNumber(${response.logLabel()})"
             }
         }
         return response
@@ -127,6 +173,9 @@ public object ThreadNewerAutoPaginationVisualFixtureProbe {
                 initialRequestCount = initialRequests,
                 afterRequests = afterRequests.toList(),
                 returnedAfterCalls = returnedAfterCalls.sorted(),
+                syncRequests = syncRequests.toList(),
+                olderRequests = olderRequests.toList(),
+                requestLog = requestLog.toList(),
             )
         }
 
@@ -153,8 +202,30 @@ public object ThreadNewerAutoPaginationVisualFixtureProbe {
             synchronized(lock) {
                 if (activeRunNonce != runNonce) return@synchronized null
                 afterResponseGates[callNumber]
-            } ?: return false
-        return gate.complete(response)
+            } ?: run {
+                // Attempt logged against the caller's nonce even when no gate is
+                // armed — a false release is evidence, not silence.
+                synchronized(lock) {
+                    if (activeRunNonce == runNonce) {
+                        requestLog += "release_attempt#$callNumber(${response.logLabel()}) result=no_gate"
+                    }
+                }
+                return false
+            }
+        // Complete inside the nonce-checked lock: the ledger records the actual
+        // completion result, and a stale-nonce call can neither complete the
+        // gate nor write a record.
+        return synchronized(lock) {
+            if (activeRunNonce != runNonce) {
+                false
+            } else {
+                // The ledger entry lands before the awaiting coroutine resumes:
+                // release -> response ordering is preserved for this run.
+                val completed = gate.complete(response)
+                requestLog += "release#$callNumber(${response.logLabel()}) completed=$completed"
+                completed
+            }
+        }
     }
 }
 
@@ -163,18 +234,42 @@ public data class ThreadNewerAutoPaginationFixtureSnapshot(
     val initialRequestCount: Int,
     val afterRequests: List<ThreadNewerAutoAfterRequest>,
     val returnedAfterCalls: List<Int>,
+    val syncRequests: List<ThreadNewerAutoSyncRequest> = emptyList(),
+    val olderRequests: List<ThreadNewerAutoOlderRequest> = emptyList(),
+    val requestLog: List<String> = emptyList(),
+)
+
+public data class ThreadNewerAutoSyncRequest(
+    val callNumber: Int,
+    val channelId: String,
+    val sinceSeq: Long,
+    val limit: Int,
+)
+
+public data class ThreadNewerAutoOlderRequest(
+    val callNumber: Int,
+    val beforeSeq: Long,
+    val limit: Int,
+    val requestTrace: String? = null,
 )
 
 public data class ThreadNewerAutoAfterRequest(
     val callNumber: Int,
     val afterSeq: Long,
     val limit: Int,
+    val requestTrace: String? = null,
 )
 
 internal sealed interface ThreadNewerAutoFixtureResponse {
     data class Success(val messageCount: Int) : ThreadNewerAutoFixtureResponse
 
     data object Error : ThreadNewerAutoFixtureResponse
+
+    fun logLabel(): String =
+        when (this) {
+            is Success -> "success rows=$messageCount"
+            Error -> "error"
+        }
 }
 
 @Page(ThreadNewerAutoPageName, supportInLocal = true)
@@ -295,10 +390,18 @@ private class ThreadNewerAutoPaginationNetworkApi(
     ): HomeNetworkResponse {
         check(threadId == ThreadNewerAutoChannelId) { "unexpected fixture thread $threadId" }
         if (beforeSeq != null) {
+            ThreadNewerAutoPaginationVisualFixtureProbe.recordOlderRequest(
+                runNonce, beforeSeq, limit, requestTrace,
+            )
             return threadNewerAutoMessagesResponse(startSeq = 1L, messageCount = 0)
         }
         if (afterSeq == null) {
-            ThreadNewerAutoPaginationVisualFixtureProbe.recordInitialRequest(runNonce)
+            val initialCall =
+                ThreadNewerAutoPaginationVisualFixtureProbe.recordInitialRequest(runNonce, requestTrace)
+            ThreadNewerAutoPaginationVisualFixtureProbe.recordOtherRequest(
+                runNonce,
+                "channelMessages_initial_resp#$initialCall rows=1..$ThreadNewerAutoInitialMessageCount",
+            )
             return threadNewerAutoMessagesResponse(
                 startSeq = 1L,
                 messageCount = ThreadNewerAutoInitialMessageCount,
@@ -310,6 +413,7 @@ private class ThreadNewerAutoPaginationNetworkApi(
                     runNonce = runNonce,
                     afterSeq = afterSeq,
                     limit = limit,
+                    requestTrace = requestTrace,
                 )
         ) {
             is ThreadNewerAutoFixtureResponse.Success ->
@@ -326,8 +430,18 @@ private class ThreadNewerAutoPaginationNetworkApi(
         }
     }
 
-    override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int): HomeNetworkResponse =
-        HomeNetworkResponse(code = 200, bodyText = "[]")
+    override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String?): HomeNetworkResponse {
+        val callNumber =
+            ThreadNewerAutoPaginationVisualFixtureProbe.recordSyncRequest(
+                runNonce, channelId, sinceSeq, limit, requestTrace,
+            )
+        return HomeNetworkResponse(code = 200, bodyText = "[]").also {
+            ThreadNewerAutoPaginationVisualFixtureProbe.recordOtherRequest(
+                runNonce,
+                "messageSync_resp#$callNumber(sinceSeq=$sinceSeq)->200 empty",
+            )
+        }
+    }
 
     override suspend fun sendMessage(
         channelId: String,

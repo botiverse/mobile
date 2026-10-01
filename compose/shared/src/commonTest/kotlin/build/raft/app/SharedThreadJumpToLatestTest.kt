@@ -128,7 +128,8 @@ class SharedThreadJumpToLatestTest {
             threadId: String,
             limit: Int,
             beforeSeq: Long?,
-            afterSeq: Long?
+            afterSeq: Long?,
+            requestTrace: String? = null
         ): HomeNetworkResponse {
             if (afterSeq != null) {
                 afterSeqs += afterSeq
@@ -141,7 +142,7 @@ class SharedThreadJumpToLatestTest {
             return HomeNetworkResponse(code = 200, bodyText = tailResponse())
         }
 
-        override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int) = unused()
+        override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String? = null) = unused()
         override suspend fun sendMessage(
             channelId: String,
             body: String,

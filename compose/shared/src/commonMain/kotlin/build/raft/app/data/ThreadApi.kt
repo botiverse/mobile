@@ -41,9 +41,10 @@ internal interface SlockThreadApi {
         threadId: String,
         limit: Int = 50,
         beforeSeq: Long? = null,
-        afterSeq: Long? = null
+        afterSeq: Long? = null,
+        requestTrace: String? = null
     ): ThreadApiResult<ThreadMessagesPage>
-    suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int = 50): ThreadApiResult<ThreadMessagesPage>
+    suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int = 50, requestTrace: String? = null): ThreadApiResult<ThreadMessagesPage>
     suspend fun messageContext(messageId: String, channelId: String? = null): ThreadApiResult<SharedMessagesPayload>
     suspend fun sendMessage(
         channelId: String,
@@ -77,9 +78,10 @@ internal class SlockThreadApiClient(
         threadId: String,
         limit: Int,
         beforeSeq: Long?,
-        afterSeq: Long?
+        afterSeq: Long?,
+        requestTrace: String?
     ): ThreadApiResult<ThreadMessagesPage> =
-        transport.channelMessages(threadId = threadId, limit = limit, beforeSeq = beforeSeq, afterSeq = afterSeq)
+        transport.channelMessages(threadId = threadId, limit = limit, beforeSeq = beforeSeq, afterSeq = afterSeq, requestTrace = requestTrace)
             .mapThreadBody(
                 contractCode = "thread_messages_contract_mismatch",
                 serializer = ChannelMessagesResponseDto.serializer(),
@@ -92,8 +94,8 @@ internal class SlockThreadApiClient(
                 )
             }
 
-    override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int): ThreadApiResult<ThreadMessagesPage> =
-        transport.messageSync(channelId = channelId, sinceSeq = sinceSeq, limit = limit)
+    override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String?): ThreadApiResult<ThreadMessagesPage> =
+        transport.messageSync(channelId = channelId, sinceSeq = sinceSeq, limit = limit, requestTrace = requestTrace)
             .mapThreadBody(
                 contractCode = "thread_sync_contract_mismatch",
                 serializer = ListSerializer(WireMessage.serializer()),
@@ -258,7 +260,8 @@ internal class NetworkSlockThreadApi(
         threadId: String,
         limit: Int,
         beforeSeq: Long?,
-        afterSeq: Long?
+        afterSeq: Long?,
+        requestTrace: String?
     ): HomeNetworkResponse =
         networkClient.request(
             priority = DataRequestPriority.Visible,
@@ -270,7 +273,7 @@ internal class NetworkSlockThreadApi(
             )
         )
 
-    override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int): HomeNetworkResponse =
+    override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String?): HomeNetworkResponse =
         networkClient.request(
             priority = DataRequestPriority.Visible,
             path = "messages/sync",

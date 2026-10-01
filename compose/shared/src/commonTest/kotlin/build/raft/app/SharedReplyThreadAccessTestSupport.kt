@@ -44,7 +44,7 @@ internal object ReplyThreadAccessNetworkApi : SharedThreadNetworkApi {
         afterSeq: Long?,
     ): HomeNetworkResponse = error("unused")
 
-    override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int): HomeNetworkResponse = error("unused")
+    override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String? = null): HomeNetworkResponse = error("unused")
 
     override suspend fun messageContext(messageId: String, channelId: String?): HomeNetworkResponse = error("unused")
 

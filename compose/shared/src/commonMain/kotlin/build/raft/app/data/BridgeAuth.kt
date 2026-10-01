@@ -947,9 +947,10 @@ internal interface SharedThreadNetworkApi {
         threadId: String,
         limit: Int = 50,
         beforeSeq: Long? = null,
-        afterSeq: Long? = null
+        afterSeq: Long? = null,
+        requestTrace: String? = null
     ): HomeNetworkResponse
-    suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int = 50): HomeNetworkResponse
+    suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int = 50, requestTrace: String? = null): HomeNetworkResponse
     suspend fun messageContext(messageId: String, channelId: String? = null): HomeNetworkResponse
     suspend fun sendMessage(
         channelId: String,

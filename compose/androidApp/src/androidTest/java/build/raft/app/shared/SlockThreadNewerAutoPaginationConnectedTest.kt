@@ -47,6 +47,7 @@ class SlockThreadNewerAutoPaginationConnectedTest {
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+            try {
             dismissAndroidCompatibilityDialog(instrumentation)
             waitForInitialFocusedHistory(nonce)
             val initial = fixtureSnapshot(nonce)
@@ -149,12 +150,15 @@ class SlockThreadNewerAutoPaginationConnectedTest {
             instrumentation.waitForIdleSync()
 
             val retryRequest = waitForAfterRequestCount(nonce, expectedCount = 3)
+            // Evidence before the assertion: the snapshot (including sync and
+            // non-afterSeq requests) must be archived even when the cursor
+            // regresses — the previous ordering dropped it on failure.
+            recordEvidence("THREAD_NEWER_RETRY_REQUEST", "snapshot=$retryRequest")
             assertEquals(
                 "Retry must request from the same committed tail after the failed page",
                 46L,
                 retryRequest.afterRequests[2].afterSeq,
             )
-            recordEvidence("THREAD_NEWER_RETRY_REQUEST", "snapshot=$retryRequest")
             assertTrue(
                 "The parked Retry request was not released",
                 ThreadNewerAutoPaginationVisualFixtureProbe.releaseSuccess(
@@ -199,6 +203,14 @@ class SlockThreadNewerAutoPaginationConnectedTest {
                 reason = "a terminal short page must disable all later newer requests",
             )
             recordEvidence("THREAD_NEWER_TERMINAL", "snapshot=${fixtureSnapshot(nonce)}")
+            } finally {
+                // Failure-path evidence: the request ledger (initial/older/sync/after,
+                // return receipts, ordered requestLog) must reach the instrumentation
+                // report even when an assertion throws mid-test.
+                runCatching {
+                    recordEvidence("THREAD_NEWER_FAILURE_SNAPSHOT", "snapshot=${fixtureSnapshot(nonce)}")
+                }
+            }
         }
     }
 

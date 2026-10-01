@@ -15920,7 +15920,8 @@ class SharedThreadStoreTest {
             threadId: String,
             limit: Int,
             beforeSeq: Long?,
-            afterSeq: Long?
+            afterSeq: Long?,
+            requestTrace: String? = null
         ): HomeNetworkResponse {
             channelMessageCalls += 1
             channelIds += threadId
@@ -15948,7 +15949,7 @@ class SharedThreadStoreTest {
             }
         }
 
-        override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int): HomeNetworkResponse {
+        override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String? = null): HomeNetworkResponse {
             val startedSignal = syncStartedSignals.removeFirstOrNull()
             val callRelease = syncReleases.removeFirstOrNull()
             val responseBody = syncBodyTexts.removeFirstOrNull() ?: newerBodyText
