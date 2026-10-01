@@ -28,14 +28,10 @@ internal object MemberDetailScrollTestSupport {
     internal const val DragStepDelayMs = 36L
     internal const val DragRetryDelayMs = 400L
     internal const val ProbeHitWaitMs = 4_000L
-    // A probe_hit carrying an emission timestamp before this attempt's
-    // dispatch belongs to an earlier press — no tolerance is applied
-    // beyond sub-50ms timestamp quantization.
+    // A probe_hit carrying an emission timestamp before the dispatch
+    // belongs to an earlier press — no tolerance beyond sub-50ms
+    // timestamp quantization.
     private const val PROBE_HIT_SKEW_MS = 50L
-    // Post-CANCEL drain: no new lines for the scroll label during this
-    // quiet window is the receipt that the retired gesture stopped
-    // producing effects before the next attempt dispatches.
-    private const val DrainQuietMs = 1_500L
 
     private const val MemberKey = "visual-owner:visual-server:human:visual-human-long"
     internal val KeyHash = MemberKey.hashCode().toString(16)
@@ -407,148 +403,97 @@ internal object MemberDetailScrollTestSupport {
         return drag
     }
 
-    /**
-     * Held-drag variant with delivery evidence: injects a paced held drag
-     * and verifies the in-page `probe_hit` line appears after [after] —
-     * the gesture provably engaged the real scroll surface. A dispatch
-     * that lands before the (re)composed subtree's pointerInput attaches
-     * produces no probe_hit; that attempt is retired with ACTION_CANCEL
-     * and retried within the shared bound. Never returns a gesture that
-     * produced no probe_hit.
-     *
-     * Attempt binding is two-fold: the hit must appear strictly after this
-     * attempt's pre-dispatch line snapshot AND its logcat wall timestamp
-     * must be >= this attempt's dispatch wall time (minus clock-skew
-     * tolerance). A stale hit emitted under a previous attempt's press —
-     * even one that lands inside this attempt's poll window — carries an
-     * earlier emission timestamp and is rejected.
-     */
     internal class VerifiedHeldDrag(val drag: HeldDrag, val probeHitLine: String)
 
+    /**
+     * Single-attempt held drag with mandatory delivery evidence: injects
+     * ONE paced held drag and requires a `probe_hit` line that (a) appears
+     * strictly after the pre-dispatch line snapshot and (b) carries a
+     * logcat wall timestamp >= the dispatch wall time (only 50ms
+     * quantization tolerance — no queueing allowance). A hit that cannot
+     * be bound to this dispatch (stale emission, unparseable timestamp)
+     * does not release the gesture; the press is retired with a checked
+     * ACTION_CANCEL and the attempt FAILS.
+     *
+     * There is no retry loop and no claimed drain receipt: the platform
+     * offers no terminal-processing acknowledgement for injected input,
+     * so cross-attempt attribution was removed by design rather than
+     * approximated by quiet windows or looser tolerances.
+     */
     internal fun injectDragPacedUntilProbeHit(
         startCursor: Long,
         after: String,
         logTag: String
     ): VerifiedHeldDrag {
-        val deadline = SystemClock.uptimeMillis() + InitialRenderTimeoutMs
-        var attempt = 0
-        while (SystemClock.uptimeMillis() < deadline) {
-            attempt++
-            Log.i(logTag, "held_drag_dispatch attempt=$attempt at=${SystemClock.uptimeMillis()}")
-            val lineCountBefore =
-                linesAfter(startCursor, after, logTag).size
-            val dispatchWallMs = System.currentTimeMillis()
-            var drag: HeldDrag? = null
-            var primaryFailure: Throwable? = null
-            var hit: String? = null
-            // Set only once the gesture has been verifiably handed to the
-            // caller; any throw before this point retires the press below.
-            var handedOff = false
+        val lineCountBefore = linesAfter(startCursor, after, logTag).size
+        val dispatchWallMs = System.currentTimeMillis()
+        Log.i(logTag, "held_drag_dispatch single at=${SystemClock.uptimeMillis()}")
+        var drag: HeldDrag? = null
+        var primaryFailure: Throwable? = null
+        var hit: String? = null
+        var handedOff = false
+        try {
+            drag = injectDragPaced(logTag)
+            val deadline =
+                SystemClock.uptimeMillis() + minOf(ProbeHitWaitMs, InitialRenderTimeoutMs)
+            while (SystemClock.uptimeMillis() < deadline) {
+                hit =
+                    linesAfter(startCursor, after, logTag)
+                        .drop(lineCountBefore)
+                        .lastOrNull {
+                            it.contains("probe_hit") && it.contains(ScrollLabel)
+                        }
+                if (hit != null) break
+                SystemClock.sleep(LogPollMs)
+            }
+            if (hit != null) {
+                val hitMs = logcatTimestampMillis(hit)
+                val delta = hitMs?.let { it - dispatchWallMs }
+                // Mandatory binding: an unparseable timestamp or an
+                // emission before dispatch (beyond quantization) means the
+                // hit cannot be proven to belong to THIS press.
+                if (hitMs == null || delta!! < -PROBE_HIT_SKEW_MS) {
+                    Log.i(
+                        logTag,
+                        "held_drag_unbound_probe hitMs=$hitMs " +
+                            "dispatchMs=$dispatchWallMs line=$hit"
+                    )
+                    hit = null
+                }
+            }
+        } catch (t: Throwable) {
+            primaryFailure = t
+        }
+        if (hit != null) {
             try {
-                drag = injectDragPaced(logTag)
-                val probeDeadline =
-                    minOf(SystemClock.uptimeMillis() + ProbeHitWaitMs, deadline)
-                while (SystemClock.uptimeMillis() < probeDeadline) {
-                    hit =
-                        linesAfter(startCursor, after, logTag)
-                            .drop(lineCountBefore)
-                            .lastOrNull {
-                                it.contains("probe_hit") && it.contains(ScrollLabel)
-                            }
-                    if (hit != null) break
-                    SystemClock.sleep(LogPollMs)
-                }
-                if (hit != null) {
-                    val hitMs = logcatTimestampMillis(hit)
-                    val delta = hitMs?.let { it - dispatchWallMs }
-                    // Binding is mandatory: an unparseable timestamp or an
-                    // emission before this attempt's dispatch (beyond
-                    // sub-tick quantization) means the hit cannot be
-                    // proven to belong to THIS press — reject it and let
-                    // the attempt retire/retry.
-                    val unbound = hitMs == null || delta!! < -PROBE_HIT_SKEW_MS
-                    if (unbound) {
-                        Log.i(
-                            logTag,
-                            "held_drag_unbound_probe attempt=$attempt " +
-                                "hitMs=$hitMs dispatchMs=$dispatchWallMs line=$hit"
-                        )
-                        hit = null
-                    }
-                }
+                recordEvidence(logTag, "PROBE", "single $hit")
+                handedOff = true
+                return VerifiedHeldDrag(requireNotNull(drag), hit)
             } catch (t: Throwable) {
                 primaryFailure = t
             }
-            if (hit != null) {
-                // Handoff path: retire-and-report still applies — a logging
-                // failure must not leak the pointer.
-                try {
-                    recordEvidence(logTag, "PROBE", "attempt=$attempt $hit")
-                    handedOff = true
-                    return VerifiedHeldDrag(requireNotNull(drag), hit)
-                } catch (t: Throwable) {
-                    primaryFailure = t
-                }
-            }
-            // Any non-handoff outcome (no probe evidence, or an exception at
-            // ANY point while the helper still owns the press) retires the
-            // attempt's pointer before the failure/retry continues — at most
-            // one pointer is ever held.
-            if (!handedOff) {
-                drag?.let { held ->
-                    try {
-                        held.finish(MotionEvent.ACTION_CANCEL)
-                        Log.i(
-                            logTag,
-                            "held_drag_retired attempt=$attempt cancel " +
-                                "at=${SystemClock.uptimeMillis()} " +
-                                "reason=${if (primaryFailure != null) "dispatch_error" else "no probe_hit"}"
-                        )
-                    } catch (cancelFailure: Throwable) {
-                        // Retirement failure on an already-failing attempt
-                        // rides along; otherwise it is the attempt's failure.
-                        primaryFailure?.addSuppressed(cancelFailure)
-                            ?: run { primaryFailure = cancelFailure }
-                    }
-                    // Post-CANCEL observation window (NOT a semantic drain
-                    // receipt): a quiet period with no new user_frame /
-                    // probe_hit lines for the label only proves no gesture
-                    // output was still arriving; a swallowed event is silent
-                    // too. It narrows cross-attempt leakage — a press still
-                    // emitting frames resets the window — but does not prove
-                    // the platform finished processing the retired input.
-                    // Per-attempt binding (snapshot + emission timestamp) is
-                    // what makes a stale hit unable to satisfy a later
-                    // attempt regardless.
-                    var lastActivityAt = SystemClock.uptimeMillis()
-                    var linesSeen = linesAfter(startCursor, after, logTag).size
-                    while (
-                        SystemClock.uptimeMillis() - lastActivityAt < DrainQuietMs &&
-                            SystemClock.uptimeMillis() < deadline
-                    ) {
-                        val now = linesAfter(startCursor, after, logTag)
-                        if (
-                            now.drop(linesSeen).any {
-                                it.contains(ScrollLabel) &&
-                                    (it.contains("user_frame") || it.contains("probe_hit"))
-                            }
-                        ) {
-                            lastActivityAt = SystemClock.uptimeMillis()
-                        }
-                        linesSeen = now.size
-                        SystemClock.sleep(LogPollMs)
-                    }
-                    Log.i(
-                        logTag,
-                        held_drag_quiet attempt=$attempt at=${SystemClock.uptimeMillis()} " +
-                            "quietFor=${SystemClock.uptimeMillis() - lastActivityAt}ms"
-                    )
-                }
-            }
-            primaryFailure?.let { throw it }
-            SystemClock.sleep(DragRetryDelayMs)
         }
-        throw AssertionError("held drag produced no probe_hit after $attempt attempt(s)")
+        // Not handed off — retire the press before failing; a cancel
+        // failure attaches to (or becomes) the attempt's failure.
+        drag?.let { held ->
+            try {
+                held.finish(MotionEvent.ACTION_CANCEL)
+                Log.i(
+                    logTag,
+                    "held_drag_retired single cancel at=${SystemClock.uptimeMillis()} " +
+                        "reason=${if (primaryFailure != null) "dispatch_error" else "no bound probe_hit"}"
+                )
+            } catch (cancelFailure: Throwable) {
+                primaryFailure?.addSuppressed(cancelFailure)
+                    ?: run { primaryFailure = cancelFailure }
+            }
+        }
+        primaryFailure?.let { throw it }
+        throw AssertionError(
+            "held drag produced no bound probe_hit " +
+                "(no post-snapshot hit within ${ProbeHitWaitMs}ms, or the hit " +
+                "could not be bound to this dispatch)"
+        )
     }
 
     /** A still-held injected gesture. The handle exists BEFORE the DOWN
