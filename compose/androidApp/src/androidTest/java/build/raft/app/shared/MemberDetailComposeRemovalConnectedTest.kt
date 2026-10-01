@@ -91,7 +91,7 @@ class MemberDetailComposeRemovalConnectedTest {
     fun humanDetailComposeRemovalDuringUserDragSavesAndRestores() {
         var scenario: ActivityScenario<SlockKuiklyActivity>? = null
         var closeFailure: Throwable? = null
-        val runToken = "b1-removal-${SystemClock.uptimeNanos()}"
+        val runToken = "b1-removal-${java.util.UUID.randomUUID()}"
         val startCursor = System.currentTimeMillis()
         try {
             MemberDetailScrollRegistryFixtureBridge.clearForTest()
