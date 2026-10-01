@@ -17628,4 +17628,179 @@ class SharedThreadStoreTest {
             replace("\\", "\\\\")
                 .replace("\"", "\\\"")
     }
+
+    @Test
+    fun failedNewerPageRetryKeepsCommittedTailCursorWithinSameGeneration() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+        val api =
+            FakeThreadApi(
+                bodyText =
+                    messagesResponse("first body", id = "m16", seq = 16, historyLimited = false),
+                newerBodyText =
+                    messagesResponse("first body", id = "m16", seq = 16, historyLimited = false),
+            )
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(
+            SharedThreadIntent.Start(
+                basePayload().copy(
+                    canLoadMoreAfter = true,
+                    messages = listOf(payloadMessage(id = "m16", seq = 16, body = "first body")),
+                )
+            )
+        )
+
+        // Page #1: afterSeq=16, succeeds, merges a full 30-row page 17..46.
+        api.newerBodyText = newerRowsBody(17L..46L)
+        api.afterMessagesStarted = CompletableDeferred()
+        api.releaseAfterMessages = CompletableDeferred()
+        val firstPage = async { store.loadNewer() }
+        withTimeout(5_000) { api.afterMessagesStarted?.await() }
+        api.releaseAfterMessages?.complete(Unit)
+        withTimeout(5_000) { firstPage.await() }
+        assertEquals(46L, store.state.value.payload.messages.mapNotNull { it.seq }.maxOrNull())
+
+        // Page #2: issued at afterSeq=46, parked, then released as HTTP 500.
+        api.newerResponseCode = 500
+        api.afterMessagesStarted = CompletableDeferred()
+        api.releaseAfterMessages = CompletableDeferred()
+        val secondPage = async { store.loadNewer() }
+        withTimeout(5_000) { api.afterMessagesStarted?.await() }
+        api.releaseAfterMessages?.complete(Unit)
+        withTimeout(5_000) { secondPage.await() }
+        assertEquals("error", store.state.value.payload.newerMessagesStatus)
+
+        // Same-generation retry: no Refresh happened, so the committed tail is
+        // intact and the retry must resume from the last committed cursor (46),
+        // not from a stale/windowed baseline. The response body is keyed to the
+        // cursor actually issued so a regressed cursor can never pass.
+        api.newerResponseCode = 200
+        api.afterMessagesStarted = CompletableDeferred()
+        api.releaseAfterMessages = CompletableDeferred()
+        val retryPage = async { store.loadNewer() }
+        withTimeout(5_000) { api.afterMessagesStarted?.await() }
+        val retryAfterSeq = api.afterSeqs.last()
+        assertEquals(
+            46L,
+            retryAfterSeq,
+            "Retry must resume from the committed tail cursor 46 (got $retryAfterSeq); " +
+                "a regressed cursor silently re-reads or drops rows",
+        )
+        api.newerBodyText = newerRowsBody((retryAfterSeq + 1)..(retryAfterSeq + 4))
+        api.releaseAfterMessages?.complete(Unit)
+        withTimeout(5_000) { retryPage.await() }
+        val finalSeqs = store.state.value.payload.messages.mapNotNull { it.seq }.toSet()
+        assertTrue(
+            (17L..46L).all { it in finalSeqs },
+            "Rows committed by page #1 must survive the failed page and its retry: " +
+                "missing=${(17L..46L).filter { it !in finalSeqs }}",
+        )
+        assertTrue(
+            ((retryAfterSeq + 1)..(retryAfterSeq + 4)).all { it in finalSeqs },
+            "Retry rows ${retryAfterSeq + 1}..${retryAfterSeq + 4} must land: " +
+                "missing=${((retryAfterSeq + 1)..(retryAfterSeq + 4)).filter { it !in finalSeqs }}",
+        )
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun failedNewerPageErrorIsIsolatedByRefreshGenerationAdvance() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+        val api =
+            FakeThreadApi(
+                bodyText =
+                    messagesResponse("first body", id = "m16", seq = 16, historyLimited = false),
+                newerBodyText =
+                    messagesResponse("first body", id = "m16", seq = 16, historyLimited = false),
+            )
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(
+            SharedThreadIntent.Start(
+                basePayload().copy(
+                    canLoadMoreAfter = true,
+                    messages = listOf(payloadMessage(id = "m16", seq = 16, body = "first body")),
+                )
+            )
+        )
+
+        // Commit the 17..46 tail first so the failed page below has a real cursor.
+        api.newerBodyText = newerRowsBody(17L..46L)
+        api.afterMessagesStarted = CompletableDeferred()
+        api.releaseAfterMessages = CompletableDeferred()
+        val firstPage = async { store.loadNewer() }
+        withTimeout(5_000) { api.afterMessagesStarted?.await() }
+        api.releaseAfterMessages?.complete(Unit)
+        withTimeout(5_000) { firstPage.await() }
+
+        // Page #2 is parked in flight at afterSeq=46 and will fail with HTTP 500.
+        api.newerResponseCode = 500
+        api.afterMessagesStarted = CompletableDeferred()
+        api.releaseAfterMessages = CompletableDeferred()
+        val secondPage = async { store.loadNewer() }
+        withTimeout(5_000) { api.afterMessagesStarted?.await() }
+        assertEquals(46L, api.afterSeqs.last())
+
+        // Refresh advances the route stale token, then parks on its own
+        // canonical (unbounded) fetch.
+        api.channelMessagesStarted = CompletableDeferred()
+        api.releaseChannelMessages = CompletableDeferred()
+        val refreshJob = async { store.accept(SharedThreadIntent.Refresh) }
+        withTimeout(5_000) { api.channelMessagesStarted?.await() }
+
+        // The stale in-flight page now resolves as an error; its error write must
+        // be dropped by the generation guard instead of marking the new generation.
+        val stateBeforeStaleErrorRelease = store.state.value.payload.newerMessagesStatus
+        api.releaseAfterMessages?.complete(Unit)
+        withTimeout(5_000) { secondPage.await() }
+        assertEquals(
+            stateBeforeStaleErrorRelease,
+            store.state.value.payload.newerMessagesStatus,
+            "A pre-refresh page failure must not leak its error state into the post-refresh generation",
+        )
+
+        // Complete the refresh fetch with a canonical body, then verify the new
+        // generation lands clean (no leaked error status/code). Resumed paging
+        // after refresh is out of scope for this probe — the fetch is parked
+        // and drained here, no further loadNewer is issued.
+        api.bodyText =
+            messagesResponse("refreshed tail", id = "m16", seq = 16, historyLimited = false)
+        api.releaseChannelMessages?.complete(Unit)
+        withTimeout(5_000) { refreshJob.await() }
+        assertNotEquals("error", store.state.value.payload.newerMessagesStatus)
+        assertEquals(null, store.state.value.payload.errorCode)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    private fun payloadMessage(id: String, seq: Long, body: String): KuiklyThreadMessageItem =
+        KuiklyThreadMessageItem(
+            id = id,
+            authorId = "u1",
+            authorName = "Artin",
+            seq = seq,
+            body = body,
+        )
+
+    private fun newerRowsBody(seqs: LongRange): String =
+        seqs
+            .map { seq ->
+                """{"id":"m$seq","seq":$seq,"channelId":"channel-1","content":"page $seq","createdAt":"2026-05-19T16:00:00Z","senderId":"u1","senderName":"Artin","senderType":"user","messageType":"chat"}"""
+            }
+            .joinToString(prefix = """{"historyLimited":false,"messages":[""", postfix = "]}")
 }
