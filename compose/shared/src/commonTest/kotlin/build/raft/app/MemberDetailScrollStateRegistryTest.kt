@@ -3,7 +3,12 @@ package build.raft.app
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 
 /**
  * task #58: the session registry keeps one scroll snapshot per
@@ -614,17 +619,17 @@ class MemberDetailScrollTrackerTest {
             // tested through its primitive contract — production passes
             // visibleItemsInfo.first().index/offset; the test passes fake
             // measured values through a tiny state stand-in.
-            val scrolling = androidx.compose.runtime.mutableStateOf(false)
-            val getterIndex = androidx.compose.runtime.mutableStateOf(0)
-            val getterOffset = androidx.compose.runtime.mutableStateOf(0)
-            val measuredIndex = androidx.compose.runtime.mutableStateOf(0)
-            val measuredOffset = androidx.compose.runtime.mutableStateOf(0)
-            val items = androidx.compose.runtime.mutableStateOf(40)
+            val scrolling = mutableStateOf(false)
+            val getterIndex = mutableStateOf(0)
+            val getterOffset = mutableStateOf(0)
+            val measuredIndex = mutableStateOf(0)
+            val measuredOffset = mutableStateOf(0)
+            val items = mutableStateOf(40)
 
             val emitted = mutableListOf<MemberDetailScrollFrameKey>()
             val job =
-                kotlinx.coroutines.launch {
-                    androidx.compose.runtime.snapshotFlow {
+                launch {
+                    snapshotFlow {
                         // Calls the SAME production primitive extractor the
                         // detail lists route through membersDetailScrollFrameKey(state);
                         // the "measured surface" (visibleItemsInfo) is faked by
@@ -642,27 +647,27 @@ class MemberDetailScrollTrackerTest {
                 }
             // Give the collector a moment to subscribe, then force snapshot
             // notification so the first read is delivered.
-            kotlinx.coroutines.yield()
+            yield()
 
             // Frame 1: clamp landing at 237 (measured = 237).
             measuredIndex.value = 0
             measuredOffset.value = 237
-            androidx.compose.runtime.Snapshot.sendApplyNotifications()
-            kotlinx.coroutines.yield()
+            Snapshot.sendApplyNotifications()
+            yield()
 
             // Frame 2: tracker re-issues; requestScrollToItem writes the
             // getter to 489 synchronously — measured still 237, so no new
             // emission from the measured key (same key), correct.
             getterIndex.value = 0
             getterOffset.value = 489
-            androidx.compose.runtime.Snapshot.sendApplyNotifications()
-            kotlinx.coroutines.yield()
+            Snapshot.sendApplyNotifications()
+            yield()
 
             // Frame 3: remeasure lands — measured catches up to 489. The
             // key MUST differ from the clamp frame so this emits.
             measuredOffset.value = 489
-            androidx.compose.runtime.Snapshot.sendApplyNotifications()
-            kotlinx.coroutines.yield()
+            Snapshot.sendApplyNotifications()
+            yield()
 
             job.cancel()
             // The critical assertion: the landing frame (measured 489) was
