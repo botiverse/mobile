@@ -77,6 +77,13 @@ class MemberDetailScrollDisposeSaveConnectedTest {
             recordEvidence("B1_BASELINE", "epoch=${visit1.epoch} position=$baseline")
             closeHostOrFail(scenario)
             scenario = null
+            // The visit-1 host must be proven dead before re-entry: its
+            // onDispose writes `dispose_save` for this key; without that
+            // line the old composition may still own the write epoch when
+            // the new one launches.
+            waitForLine(startCursor, after = visit1.seedLine, "v1 dispose_save") { line ->
+                line.contains("dispose_save") && line.contains(ScrollLabel)
+            }.let { recordEvidence("B1_V1_DISPOSE", "epoch=${visit1.epoch} $it") }
 
             // ---- Visit 2: re-enter, prove baseline restored, drag inside
             // the settle window, destroy mid-drag ----
@@ -272,25 +279,37 @@ class MemberDetailScrollDisposeSaveConnectedTest {
         return ActivityScenario.launch(intent)
     }
 
+    /**
+     * Destroy the host via `Activity.finish()` instead of
+     * `ActivityScenario.close()`: `close()` blocks in
+     * `Instrumentation.waitForIdleSync()` before issuing the destroy, and
+     * this page holds long-running composition work (the restore-stall
+     * watchdog ticks while a request is pending) that can keep the main
+     * looper busy past any close timeout — the exact hang the first
+     * instrumentation run hit. `finish()` queues the real lifecycle destroy
+     * without that idle precondition.
+     *
+     * Destruction is then PROVEN by the visit-scoped `dispose_save` log
+     * line, not by this call returning: callers always follow with the
+     * matching dispose wait, and a host whose composition never disposes
+     * fails that wait.
+     */
     private fun closeHostOrFail(scenario: ActivityScenario<SlockKuiklyActivity>) {
-        val closed = CountDownLatch(1)
+        val finished = CountDownLatch(1)
         val failure = arrayOfNulls<Throwable>(1)
-        Thread {
+        scenario.onActivity { activity ->
             try {
-                scenario.close()
+                activity.finish()
             } catch (t: Throwable) {
                 failure[0] = t
             } finally {
-                closed.countDown()
+                finished.countDown()
             }
-        }.apply {
-            isDaemon = true
-            name = "member-detail-scenario-close"
-        }.start()
-        if (!closed.await(ScenarioCloseTimeoutMs, TimeUnit.MILLISECONDS)) {
-            fail("scenario.close() did not complete within ${ScenarioCloseTimeoutMs}ms; host not proven dead")
         }
-        failure[0]?.let { throw AssertionError("scenario.close() threw: ${it.message}", it) }
+        if (!finished.await(ScenarioCloseTimeoutMs, TimeUnit.MILLISECONDS)) {
+            fail("activity.finish() could not be delivered within ${ScenarioCloseTimeoutMs}ms")
+        }
+        failure[0]?.let { throw AssertionError("activity.finish() threw: ${it.message}", it) }
     }
 
     // -- Input -------------------------------------------------------------------
