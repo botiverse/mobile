@@ -143,5 +143,36 @@ class SlockAppShellDestinationSnapshotTest {
         assertNull(decision.restoreTab)
     }
 
+
+    @Test
+    fun restoreAppliesToNonHomeDestination() {
+        // The restore policy is destination-agnostic: any retained tab can be
+        // recovered, not just members.
+        SlockAppShellDestinationSnapshots.record(scope, "acct-1", "server-a", "tasks")
+        val decision =
+            decideAppShellRestore(
+                activityWasRecreated = true,
+                restoredTab = "tasks",
+                selectedTab = "home",
+                launchSelectedTab = "home",
+                retainedTabKeys = setOf("home", "tasks", "members", "settings"),
+            )
+        assertEquals("tasks", decision.restoreTab)
+    }
+
+    @Test
+    fun noSnapshotFallsBackToLaunchSeed() {
+        // Nothing recorded for this identity/scope => decision returns null
+        // and the composition keeps the launch-time selectedTab.
+        val decision =
+            decideAppShellRestore(
+                activityWasRecreated = true,
+                restoredTab = null,
+                selectedTab = "home",
+                launchSelectedTab = "home",
+                retainedTabKeys = setOf("home", "tasks", "members", "settings"),
+            )
+        assertNull(decision.restoreTab)
+    }
 }
 
