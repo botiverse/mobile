@@ -3335,14 +3335,26 @@ private fun SlockAppShellReadyContent(
             recreationRestoreApplied = true
         }
     }
-    // task #58: once the ready session ends (sign-out of this device, account
-    // cleared) the recorded destination belongs to nobody — drop it so a
-    // later same-shell login under a different or even the same account can
-    // never inherit a destination it did not navigate to. Identity matching
-    // in consume() already rejects account mismatch; this is the deterministic
-    // teardown the reviewer asked for.
+    // task #58: once a previously-Ready session is torn down (sign-out of this
+    // device, account cleared) the recorded destination belongs to nobody —
+    // drop it so a later same-shell login under a different or even the same
+    // account can never inherit a destination it did not navigate to.
+    // IMPORTANT: keyed on the transition out of Ready, not on
+    // `readySession == null` alone — a config-change recreate re-enters
+    // through SharedAuthGateState.Restoring with no ready session, and wiping
+    // the snapshot there would destroy the pending restore it exists for.
+    var hadReadySession by remember { mutableStateOf(false) }
     LaunchedEffect(readySession?.user?.id, storeScope) {
-        if (readySession?.user?.id == null && recreationRestoreApplied) {
+        val sessionId = readySession?.user?.id
+        if (sessionId != null) {
+            hadReadySession = true
+        } else if (
+            decideAppShellSnapshotTeardown(
+                hadReadySession = hadReadySession,
+                sessionPresent = false,
+            )
+        ) {
+            hadReadySession = false
             SlockAppShellDestinationSnapshots.clear(storeScope)
             recreationRestoreApplied = false
         }
