@@ -388,6 +388,7 @@ private class ThreadNewerAutoPaginationNetworkApi(
         limit: Int,
         beforeSeq: Long?,
         afterSeq: Long?,
+        requestTrace: String?,
     ): HomeNetworkResponse {
         check(threadId == ThreadNewerAutoChannelId) { "unexpected fixture thread $threadId" }
         if (beforeSeq != null) {

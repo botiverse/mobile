@@ -6604,7 +6604,7 @@ internal class SharedThreadStore(
             issueOperationSeq("refresh_loading_apply", "threadId=${basePayload.sourceThreadId.orEmpty()}")
         val loadingAdmitted =
             dataSource.withCurrentReplyCacheProvenanceForLocalSend(refreshProvenance) {
-                reducePayloadPatch(writeTag = "refresh_loading_apply", requestId = refreshLoadingOpSeq) { currentPayload ->
+                reducePayloadPatch(writeTag = "refresh_loading_apply", operationSeq = refreshLoadingOpSeq) { currentPayload ->
                     if (!routeStillCurrent(basePayload, "thread_refresh", "loading_apply", currentPayload)) {
                         return@reducePayloadPatch currentPayload
                     }
@@ -6820,7 +6820,7 @@ internal class SharedThreadStore(
                                             ),
                                     ),
                                     writeTag = "refresh_access_apply",
-                                    requestId = null,
+                                    operationSeq = null,
                                     requestFetchSeq = refreshFetchSeq,
                                 )
                             if (didEmit && visiblePayload != null) {
@@ -8038,7 +8038,7 @@ internal class SharedThreadStore(
                                     "realtime_gap_merged_apply",
                                     "relatedLoadId=${matchingPagination?.id ?: -1L} relatedRecoveryId=${matchingRecovery?.id ?: -1L}"
                                 )
-                            return reducePayloadPatch(cachePayload = true, writeTag = "realtime_gap_merged_apply", requestId = gapMergedOpSeq) { latestPayload ->
+                            return reducePayloadPatch(cachePayload = true, writeTag = "realtime_gap_merged_apply", operationSeq = gapMergedOpSeq) { latestPayload ->
                                 latestPayload.withThreadContentProjectionFrom(commitMerged)
                             }
                         }
@@ -8077,7 +8077,7 @@ internal class SharedThreadStore(
                             targetVersion = 1L,
                         )
                     val gapLoadingOpSeq = issueOperationSeq("realtime_gap_loading", "recoveryId=$recoveryId")
-                    reducePayloadPatch(cachePayload = true, writeTag = "realtime_gap_loading", requestId = gapLoadingOpSeq) { latestPayload ->
+                    reducePayloadPatch(cachePayload = true, writeTag = "realtime_gap_loading", operationSeq = gapLoadingOpSeq) { latestPayload ->
                         latestPayload.copy(newerMessagesStatus = "loading", errorCode = null)
                     }
                     return@withLock RealtimeEventDecision(
@@ -8141,7 +8141,7 @@ internal class SharedThreadStore(
                             },
                         )
                     val stableSelectedOpSeq = issueOperationSeq("realtime_stable_selected_apply", "")
-                    return reducePayloadPatch(cachePayload = true, writeTag = "realtime_stable_selected_apply", requestId = stableSelectedOpSeq) { latestPayload ->
+                    return reducePayloadPatch(cachePayload = true, writeTag = "realtime_stable_selected_apply", operationSeq = stableSelectedOpSeq) { latestPayload ->
                         latestPayload.withThreadContentProjectionFrom(commitSelected)
                     }
                 }
@@ -8397,7 +8397,7 @@ internal class SharedThreadStore(
                 is DataResult.NoPermission ->
                     latest.copy(olderMessagesStatus = "error", errorCode = result.blocker.code)
             }
-        reducePayloadPatch(writeTag = "older_page_apply", requestId = olderFetchSeq, requestFetchSeq = olderFetchSeq) { currentPayload ->
+        reducePayloadPatch(writeTag = "older_page_apply", operationSeq = olderFetchSeq, requestFetchSeq = olderFetchSeq) { currentPayload ->
             if (!routeStillCurrent(existing, "thread_page", "older_apply", currentPayload)) {
                 return@reducePayloadPatch currentPayload
             }
@@ -8491,7 +8491,7 @@ internal class SharedThreadStore(
                     runCatching {
                         diagnosticsLogger?.invoke(
                             "thread_payload_messages_write_rejected tag=newer_after_fetch " +
-                                "routeToken=${routeStaleToken.value} requestId=$loadId " +
+                                "routeToken=${routeStaleToken.value} requestId=$loadId fetchSeq=$fetchSeq " +
                                 "fetchSeq=$fetchSeq " +
                                 "reason=stale_or_route_moved " +
                                 "currentMaxSeq=${currentPayload.messages.mapNotNull { it.seq }.maxOrNull()}"
@@ -8530,7 +8530,7 @@ internal class SharedThreadStore(
                             currentPayload.copy(newerMessagesStatus = "error", errorCode = result.blocker.code)
                     }
                 var appliedToCurrentRoute = false
-                reducePayloadPatch(cachePayload = true, writeTag = "newer_page_apply", requestId = loadId, requestFetchSeq = fetchSeq) { latestPayload ->
+                reducePayloadPatch(cachePayload = true, writeTag = "newer_page_apply", operationSeq = loadId, requestFetchSeq = fetchSeq) { latestPayload ->
                     if (
                         !staleTokenStillCurrent(
                             staleToken,
@@ -8549,7 +8549,7 @@ internal class SharedThreadStore(
                         runCatching {
                             diagnosticsLogger?.invoke(
                                 "thread_payload_messages_write_rejected tag=newer_page_apply " +
-                                    "routeToken=${routeStaleToken.value} requestId=$loadId " +
+                                    "routeToken=${routeStaleToken.value} requestId=$loadId fetchSeq=$fetchSeq " +
                                     "fetchSeq=$fetchSeq " +
                                     "reason=stale_or_route_moved " +
                                     "currentMaxSeq=${latestPayload.messages.mapNotNull { it.seq }.maxOrNull()}"
@@ -8944,7 +8944,7 @@ internal class SharedThreadStore(
                                     .cacheCanonicalPayload(merged, visiblePayloadOwnerScopeId)
                                     .withRouteContext(initial)
                                     .preserveStableTimelineFrom(currentPayload)
-                            reducePayloadPatch(writeTag = "realtime_gap_fetch_apply", requestId = recoveryId, requestFetchSeq = fetchSeq) { latestPayload ->
+                            reducePayloadPatch(writeTag = "realtime_gap_fetch_apply", operationSeq = recoveryId, requestFetchSeq = fetchSeq) { latestPayload ->
                                 if (
                                     !staleTokenStillCurrent(
                                         staleToken,
@@ -9725,7 +9725,7 @@ internal class SharedThreadStore(
     private fun reduceState(
         nextState: SharedThreadState,
         writeTag: String? = null,
-        requestId: Long? = null,
+        operationSeq: Long? = null,
         requestFetchSeq: Long? = null,
     ): Boolean {
         val previousState = _state.value
@@ -9741,9 +9741,10 @@ internal class SharedThreadStore(
             val nextMessages = synchronizedState.payload.messages
             runCatching {
                 diagnosticsLogger?.invoke(
-                    "thread_payload_messages_write tag=${writeTag ?: "untagged"} " +
+                "thread_payload_messages_write tag=${writeTag ?: "untagged"} " +
+                        "storeSeq=$storeInstanceSeq " +
                         "routeToken=${routeStaleToken.value} " +
-                        "requestId=${requestId ?: -1L} " +
+                        "operationSeq=${operationSeq ?: -1L} " +
                         "fetchSeq=${requestFetchSeq ?: -1L} " +
                         "prevSize=${previousMessages.size} " +
                         "prevMaxSeq=${previousMessages.mapNotNull { it.seq }.maxOrNull()} " +
@@ -9772,6 +9773,7 @@ internal class SharedThreadStore(
 
     private var nextFetchSeq = 0L
     private var nextOperationSeq = 0L
+    private val storeInstanceSeq = nextSharedThreadStoreInstanceSeq.incrementAndGet()
 
     /**
      * task #58 observability: every issued fetch gets a fetchSeq, threaded to the
@@ -9783,7 +9785,7 @@ internal class SharedThreadStore(
         val fetchSeq = ++nextFetchSeq
         runCatching {
             diagnosticsLogger?.invoke(
-                "thread_fetch_issued kind=$kind fetchSeq=$fetchSeq " +
+                "thread_fetch_issued kind=$kind storeSeq=$storeInstanceSeq fetchSeq=$fetchSeq " +
                     "routeToken=${routeStaleToken.value} $detail"
             )
         }
@@ -9794,7 +9796,7 @@ internal class SharedThreadStore(
         val operationSeq = ++nextOperationSeq
         runCatching {
             diagnosticsLogger?.invoke(
-                "thread_op_issued kind=$kind opSeq=$operationSeq " +
+                "thread_op_issued kind=$kind storeSeq=$storeInstanceSeq opSeq=$operationSeq " +
                     "routeToken=${routeStaleToken.value} $detail"
             )
         }
@@ -9847,7 +9849,7 @@ internal class SharedThreadStore(
     private fun reducePayloadPatch(
         cachePayload: Boolean = false,
         writeTag: String? = null,
-        requestId: Long? = null,
+        operationSeq: Long? = null,
         requestFetchSeq: Long? = null,
         patch: (KuiklyThreadScreenPayload) -> KuiklyThreadScreenPayload
     ): Boolean {
@@ -9856,7 +9858,7 @@ internal class SharedThreadStore(
             reduceState(
                 _state.value.copy(payload = nextPayload),
                 writeTag = writeTag,
-                requestId = requestId,
+                operationSeq = operationSeq,
                 requestFetchSeq = requestFetchSeq,
             )
         if (emitted && cachePayload) {
@@ -9867,7 +9869,10 @@ internal class SharedThreadStore(
         }
         return emitted
     }
+
 }
+
+private val nextSharedThreadStoreInstanceSeq = atomic(0L)
 
 internal class SharedThreadViewModel(
     private val dataSource: SharedThreadDataSource,
