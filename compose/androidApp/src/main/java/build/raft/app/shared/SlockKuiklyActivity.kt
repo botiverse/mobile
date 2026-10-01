@@ -2490,14 +2490,26 @@ open class SlockKuiklyActivity :
     // snapshot. Markers come ONLY from the current lifecycle state, never from
     // intent extras, and are consumed once per createPageSpec call.
     private fun SlockKuiklyPageData.withActivityRecreationMarker(): SlockKuiklyPageData {
-        val wasSystemRecreated = lastCreateHadSavedState && !pendingExplicitIntentRecreate
-        pendingExplicitIntentRecreate = false
-        lastCreateHadSavedState = false
-        if (!wasSystemRecreated) return this
+        val decision = consumeActivityRecreationEligibility()
+        if (!decision.injectMarker) return this
         return SlockKuiklyPageData.fromJson(
                 JSONObject(text).apply { put(KEY_ACTIVITY_RECREATED, true) }
         )
     }
+
+    // Extracted so androidApp unit tests can pin the decision chain: a
+    // savedInstanceState attach only marks recreation when no explicit
+    // onNewIntent navigation disqualified it, and eligibility is consumed
+    // once (a second attach with no saved state and no pending flag must not
+    // re-inject).
+    internal fun consumeActivityRecreationEligibility(): ActivityRecreationDecision {
+        val wasSystemRecreated = lastCreateHadSavedState && !pendingExplicitIntentRecreate
+        pendingExplicitIntentRecreate = false
+        lastCreateHadSavedState = false
+        return ActivityRecreationDecision(injectMarker = wasSystemRecreated)
+    }
+
+    internal data class ActivityRecreationDecision(val injectMarker: Boolean)
 
     // Written by onCreate so createPageSpec can see whether this attach
     // followed a real savedInstanceState (system recreate/process restore)
@@ -2807,6 +2819,7 @@ open class SlockKuiklyActivity :
         // once to decide whether a scoped destination snapshot may override the
         // launch-time initial tab. Never trusted from the incoming Intent.
         internal const val KEY_ACTIVITY_RECREATED = "slockActivityRecreated"
+    }
         private const val KEY_APP_SHELL_INITIAL_SETTINGS_DESTINATION = "slockInitialSettingsDestination"
         private const val KEY_DIAGNOSTICS_DEEP_LINK_ID = "slockDiagnosticsDeepLinkId"
         private const val KEY_DIAGNOSTICS_DEEP_LINK_AUTO_CLOSE_MS = "slockDiagnosticsDeepLinkAutoCloseMs"
