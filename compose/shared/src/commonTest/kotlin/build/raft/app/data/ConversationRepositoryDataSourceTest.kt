@@ -1303,6 +1303,40 @@ class ConversationRepositoryDataSourceTest {
             routeServerIdProvider = { "server-b" },
         )
 
+
+    @Test
+    fun threadRequestTraceStaysOffWireQuery() = runBlocking {
+        // task #58 observability contract without the trace on the wire:
+        // repository-level requestTrace is process-local only; the query sent
+        // to SlockNetworkClient must be identical with and without it.
+        val responses =
+            mapOf(
+                "GET messages/channel/channel-1" to
+                    """{"messages":[],"historyLimited":false}""",
+                "GET messages/sync" to """{"messages":[]}""",
+            )
+        fun runWith(trace: String?): List<RecordedConversationRequest> {
+            val network = FakeConversationNetworkClient(responses = responses)
+            val repository =
+                RealConversationRepository(
+                    sampleStore(),
+                    network,
+                )
+            runBlocking {
+                repository.loadNewerMessages(ThreadId("channel-1"), 46L, 30, requestTrace = trace)
+                repository.syncNewerMessages(ThreadId("channel-1"), 10L, 30, requestTrace = trace)
+            }
+            return network.requests
+        }
+        val withTrace = runWith("newer_page_s3_fs=7")
+        val withoutTrace = runWith(null)
+        assertEquals(withoutTrace, withTrace)
+        assertTrue(
+            withTrace.none { request -> request.query.any { (k, _) -> k == "trace" } },
+            "requestTrace must not reach wire query; requests=$withTrace",
+        )
+    }
+
     private class FakeConversationNetworkClient(
         private val responses: Map<String, String> = emptyMap(),
         private val failures: Map<String, String> = emptyMap(),
