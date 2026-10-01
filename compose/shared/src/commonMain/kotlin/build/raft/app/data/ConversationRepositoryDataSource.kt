@@ -76,8 +76,16 @@ private suspend fun SlockNetworkClient.channelMessages(
     afterSeq: Long? = null,
     serverIdOverride: ServerId? = null,
     requestTrace: String? = null,
-): HomeNetworkResponse =
-    request(
+): HomeNetworkResponse {
+    // task #58 observability: trace is process-local diagnostics only; it is
+    // never added to the wire request (per review contract).
+    requestTrace?.let {
+        warningLogger(
+            "thread_net_call op=channelMessages channelId=${channelId.value} " +
+                "limit=$limit before=${beforeSeq ?: -1L} after=${afterSeq ?: -1L} trace=$it"
+        )
+    }
+    return request(
         priority = priority,
         path = "messages/channel/${channelId.value}",
         serverIdOverride = serverIdOverride,
@@ -85,10 +93,10 @@ private suspend fun SlockNetworkClient.channelMessages(
             listOfNotNull(
                 "limit" to limit.toString(),
                 beforeSeq?.let { "before" to it.toString() },
-                afterSeq?.let { "after" to it.toString() },
-                requestTrace?.let { "trace" to it }
+                afterSeq?.let { "after" to it.toString() }
             )
     )
+}
 
 private suspend fun SlockNetworkClient.messageContext(
     priority: DataRequestPriority,
@@ -110,8 +118,14 @@ private suspend fun SlockNetworkClient.messageSync(
     channelId: ChannelId? = null,
     serverIdOverride: ServerId? = null,
     requestTrace: String? = null,
-): HomeNetworkResponse =
-    request(
+): HomeNetworkResponse {
+    requestTrace?.let {
+        warningLogger(
+            "thread_net_call op=messageSync channelId=${channelId?.value.orEmpty()} " +
+                "sinceSeq=$sinceSeq limit=$limit trace=$it"
+        )
+    }
+    return request(
         priority = priority,
         path = "messages/sync",
         serverIdOverride = serverIdOverride,
@@ -119,10 +133,10 @@ private suspend fun SlockNetworkClient.messageSync(
             listOfNotNull(
                 "since_seq" to sinceSeq.toString(),
                 "limit" to limit.toString(),
-                channelId?.let { "channel_id" to it.value },
-                requestTrace?.let { "trace" to it }
+                channelId?.let { "channel_id" to it.value }
             )
     )
+}
 
 private suspend fun SlockNetworkClient.channelThreads(
     priority: DataRequestPriority,
