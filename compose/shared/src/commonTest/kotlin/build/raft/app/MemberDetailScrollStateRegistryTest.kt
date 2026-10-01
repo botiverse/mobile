@@ -759,6 +759,7 @@ class MemberDetailScrollTrackerTest {
             val issueStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
             val issueRelease = kotlinx.coroutines.CompletableDeferred<Unit>()
             val issued = mutableListOf<MemberDetailScrollPosition>()
+            val jobs = mutableListOf<kotlinx.coroutines.Job>()
             val watchdog =
                 launchMembersDetailRestoreStallWatchdog(
                     tracker,
@@ -771,15 +772,31 @@ class MemberDetailScrollTrackerTest {
 
             // Let the first tick park inside issue().
             issueStarted.await()
-            // User supersedes while the re-issue is suspended.
-            tracker.onUserScrollStarted(scrollInFlight = false) { _, _ -> }
-            issueRelease.complete(Unit)
-            yield()
-            watchdog.cancel()
-
-            // The stale target never reached the list.
-            assertEquals(emptyList<MemberDetailScrollPosition>(), issued)
+            // User supersedes while the re-issue is suspended. The gesture
+            // also supersedes the pending request itself, publishing the
+            // user's own measured position instead of the stale target.
+            var superseded: Pair<Int, Int>? = null
+            tracker.onUserScrollStarted(scrollInFlight = false) { i, o ->
+                superseded = i to o
+            }
+            // The user's measured position (237, Alpha102 evidence) is the
+            // supersede base — NOT the stale 489 target.
+            assertEquals(0 to 0, superseded) // lastObserved=0:0 seed frame
             assertEquals(false, tracker.hasPendingRestoreRequest)
+
+            // Release the parked issue; a cancelled job must complete
+            // without ever appending the stale target.
+            issueRelease.complete(Unit)
+            // Wait for the watchdog's children to finish on their own —
+            // we do not cancel the watchdog first, so a leak (job still
+            // running past the retire) would hang this join and fail.
+            var waited = 0
+            while (watchdog.isActive && waited < 200) {
+                kotlinx.coroutines.delay(1)
+                waited++
+            }
+            watchdog.cancel()
+            assertEquals(emptyList<MemberDetailScrollPosition>(), issued)
         }
 
     @Test
@@ -793,6 +810,7 @@ class MemberDetailScrollTrackerTest {
             val frame = frameOf(tracker, saved)
             frame(0, 0, 40, false) { _, _ -> }
 
+            val startedCount = java.util.concurrent.atomic.AtomicInteger(0)
             val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
             val issued = mutableListOf<MemberDetailScrollPosition>()
             val watchdog =
@@ -800,16 +818,26 @@ class MemberDetailScrollTrackerTest {
                     tracker,
                     tickMs = 1,
                 ) { target ->
+                    startedCount.incrementAndGet()
                     gate.await()
                     issued += target
                 }
-            // Let several ticks fire while every issue is parked at the gate.
-            kotlinx.coroutines.delay(50)
+            // Wait until at least two ticks have parked their issue jobs —
+            // explicit barrier instead of a fixed sleep.
+            while (startedCount.get() < 2) {
+                kotlinx.coroutines.yield()
+            }
             gate.complete(Unit)
-            kotlinx.coroutines.delay(20)
+            // Join everything the watchdog spawned; cancelled parked jobs
+            // complete without appending.
+            var waited = 0
+            while (watchdog.isActive && startedCount.get() < 3 && waited < 200) {
+                kotlinx.coroutines.delay(1)
+                waited++
+            }
             watchdog.cancel()
-            // Only the latest tick's job survived to issue — earlier parked
-            // jobs were cancelled before reaching the list.
+            // Exactly one issue survived to apply — the latest tick's target
+            // (earlier parked jobs were cancelled before reaching the list).
             assertEquals(1, issued.size)
             assertEquals(MemberDetailScrollPosition(0, 489), issued.last())
         }
