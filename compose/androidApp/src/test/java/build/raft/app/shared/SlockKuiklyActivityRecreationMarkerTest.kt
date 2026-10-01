@@ -7,28 +7,38 @@ import kotlin.test.assertTrue
 /**
  * task #58: the recreate marker must only be injected when this attach
  * followed a real savedInstanceState AND was not disqualified by an
- * onNewIntent explicit navigation. Instance fields must not leak across
- * Activity instances — each new instance starts cold with both flags false.
+ * onNewIntent explicit navigation. The disqualifier travels inside the
+ * saved-state bundle, so it survives the instance boundary — an instance
+ * field alone would be lost when recreate() allocates the replacement.
  */
 class SlockKuiklyActivityRecreationMarkerTest {
 
-    /** Drive the same decision chain the Activity runs, against explicit
-     * field state — the Activity itself can't be instantiated in a unit
-     * test, so this pins the ordering and the single-shot consumption. */
+    /** Mirrors SlockKuiklyActivity's eligibility chain: onCreate latches
+     * whether the attach had saved state and whether the bundle carried the
+     * explicit-intent disqualifier; onSaveInstanceState writes the flag when
+     * the dying instance was onNewIntent-triggered. */
     private class Harness {
-        var lastCreateHadSavedState = false
-        var pendingExplicitIntentRecreate = false
-
-        fun onCreate(savedInstanceStatePresent: Boolean) {
-            lastCreateHadSavedState = savedInstanceStatePresent
-        }
+        private var pendingExplicitIntentRecreate = false
+        private var lastCreateHadSavedState = false
 
         fun onNewIntent() {
             pendingExplicitIntentRecreate = true
         }
 
+        fun onSaveInstanceState(bundle: MutableMap<String, Boolean>) {
+            if (pendingExplicitIntentRecreate) {
+                bundle["slockExplicitIntentRecreated"] = true
+            }
+        }
+
+        fun onCreate(bundle: MutableMap<String, Boolean>?) {
+            lastCreateHadSavedState =
+                bundle != null && bundle["slockExplicitIntentRecreated"] != true
+        }
+
         fun consumeActivityRecreationEligibility(): Boolean {
-            val wasSystemRecreated = lastCreateHadSavedState && !pendingExplicitIntentRecreate
+            val wasSystemRecreated =
+                lastCreateHadSavedState && !pendingExplicitIntentRecreate
             pendingExplicitIntentRecreate = false
             lastCreateHadSavedState = false
             return wasSystemRecreated
@@ -36,48 +46,42 @@ class SlockKuiklyActivityRecreationMarkerTest {
     }
 
     @Test
-    fun `saved instance attach injects marker once`() {
-        val h = Harness()
-        h.onCreate(savedInstanceStatePresent = true)
-        assertTrue(h.consumeActivityRecreationEligibility())
-        assertFalse(h.consumeActivityRecreationEligibility())
+    fun `system recreate injects marker once`() {
+        val old = Harness()
+        val bundle = mutableMapOf<String, Boolean>()
+        old.onSaveInstanceState(bundle)
+
+        val fresh = Harness()
+        fresh.onCreate(bundle)
+        assertTrue(fresh.consumeActivityRecreationEligibility())
+        assertFalse(fresh.consumeActivityRecreationEligibility())
     }
 
     @Test
     fun `cold start never injects marker`() {
-        val h = Harness()
-        h.onCreate(savedInstanceStatePresent = false)
-        assertFalse(h.consumeActivityRecreationEligibility())
-    }
-
-    @Test
-    fun `onNewIntent disqualifies recreate even with saved state`() {
-        val h = Harness()
-        h.onCreate(savedInstanceStatePresent = true)
-        h.onNewIntent()
-        assertFalse(h.consumeActivityRecreationEligibility())
-    }
-
-    @Test
-    fun `explicit intent flag does not survive a fresh instance`() {
-        val old = Harness()
-        old.onCreate(savedInstanceStatePresent = true)
-        old.onNewIntent()
-        // A real recreate allocates a new Activity; this harness instance
-        // models that — the new instance's flags start false regardless of
-        // what the old one carried.
         val fresh = Harness()
-        fresh.onCreate(savedInstanceStatePresent = false)
+        fresh.onCreate(null)
+        assertFalse(fresh.consumeActivityRecreationEligibility())
+    }
+
+    @Test
+    fun `explicit intent recreate carries disqualifier across the instance boundary`() {
+        val old = Harness()
+        old.onNewIntent()
+        val bundle = mutableMapOf<String, Boolean>()
+        old.onSaveInstanceState(bundle)
+
+        // New instance sees saved state but the bundle flag disqualifies it —
+        // this is the defect HuaTuo caught: a field alone would be lost.
+        val fresh = Harness()
+        fresh.onCreate(bundle)
         assertFalse(fresh.consumeActivityRecreationEligibility())
     }
 
     @Test
     fun `saved state without snapshot still walks launch seed`() {
-        // Marker injected (real recreate) but consume() in shared only applies
-        // the snapshot when it exists and the identity matches — recorded
-        // elsewhere; this pins that the marker alone does not force a tab.
-        val h = Harness()
-        h.onCreate(savedInstanceStatePresent = true)
-        assertTrue(h.consumeActivityRecreationEligibility())
+        val fresh = Harness()
+        fresh.onCreate(mutableMapOf())
+        assertTrue(fresh.consumeActivityRecreationEligibility())
     }
 }

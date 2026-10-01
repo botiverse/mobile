@@ -801,7 +801,13 @@ open class SlockKuiklyActivity :
     override fun onCreate(savedInstanceState: Bundle?) {
         prepareHomeColdStartSplashIfNeeded()
         super.onCreate(savedInstanceState)
-        lastCreateHadSavedState = savedInstanceState != null
+        // task #58: an onNewIntent-driven recreate carries the disqualifier in
+        // its saved bundle so the NEW instance still knows this attach was an
+        // explicit navigation, not a system recreate. A config-change death
+        // leaves the bundle flag absent.
+        lastCreateHadSavedState =
+                savedInstanceState != null &&
+                    !savedInstanceState.getBoolean(KEY_EXPLICIT_INTENT_RECREATED, false)
         schedulePickedThreadAttachmentCacheCleanup()
         installHuaweiAndroid12InsetsAnimationWorkaroundIfNeeded()
         pendingAttachmentSaveAs =
@@ -1118,6 +1124,12 @@ open class SlockKuiklyActivity :
         }
         pendingThreadCameraCapture?.let { pending ->
             outState.putString(THREAD_CAMERA_CAPTURE_STATE_KEY, pending.file.canonicalPath)
+        }
+        // task #58: carry the explicit-navigation disqualifier across the
+        // recreate boundary — onNewIntent sets the flag on the dying instance,
+        // the bundle delivers it to the replacement instance's onCreate.
+        if (pendingExplicitIntentRecreate) {
+            outState.putBoolean(KEY_EXPLICIT_INTENT_RECREATED, true)
         }
         super.onSaveInstanceState(outState)
     }
@@ -2819,6 +2831,11 @@ open class SlockKuiklyActivity :
         // once to decide whether a scoped destination snapshot may override the
         // launch-time initial tab. Never trusted from the incoming Intent.
         internal const val KEY_ACTIVITY_RECREATED = "slockActivityRecreated"
+        // task #58: saved-state bundle key carrying "this death came from an
+        // explicit onNewIntent recreate" into the replacement instance — the
+        // disqualifier must survive the instance boundary, so it cannot be an
+        // instance field alone.
+        private const val KEY_EXPLICIT_INTENT_RECREATED = "slockExplicitIntentRecreated"
     }
         private const val KEY_APP_SHELL_INITIAL_SETTINGS_DESTINATION = "slockInitialSettingsDestination"
         private const val KEY_DIAGNOSTICS_DEEP_LINK_ID = "slockDiagnosticsDeepLinkId"
