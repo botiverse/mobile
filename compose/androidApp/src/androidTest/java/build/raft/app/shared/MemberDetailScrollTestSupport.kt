@@ -426,6 +426,9 @@ internal object MemberDetailScrollTestSupport {
             var drag: HeldDrag? = null
             var primaryFailure: Throwable? = null
             var hit: String? = null
+            // Set only once the gesture has been verifiably handed to the
+            // caller; any throw before this point retires the press below.
+            var handedOff = false
             try {
                 drag = injectDragPaced(logTag)
                 val probeDeadline =
@@ -444,26 +447,36 @@ internal object MemberDetailScrollTestSupport {
                 primaryFailure = t
             }
             if (hit != null) {
-                recordEvidence(logTag, "PROBE", "attempt=$attempt $hit")
-                return requireNotNull(drag)
-            }
-            // Any non-hit outcome (no probe evidence, or an exception while
-            // holding the press) retires this attempt's pointer before the
-            // failure/ retry continues — at most one pointer is ever held.
-            drag?.let { held ->
+                // Handoff path: retire-and-report still applies — a logging
+                // failure must not leak the pointer.
                 try {
-                    held.finish(MotionEvent.ACTION_CANCEL)
-                    Log.i(
-                        logTag,
-                        "held_drag_retired attempt=$attempt cancel " +
-                            "at=${SystemClock.uptimeMillis()} " +
-                            "reason=${if (primaryFailure != null) "dispatch_error" else "no probe_hit"}"
-                    )
-                } catch (cancelFailure: Throwable) {
-                    // Retirement failure on an already-failing attempt rides
-                    // along; otherwise it is the attempt's failure.
-                    primaryFailure?.addSuppressed(cancelFailure)
-                        ?: run { primaryFailure = cancelFailure }
+                    recordEvidence(logTag, "PROBE", "attempt=$attempt $hit")
+                    handedOff = true
+                    return requireNotNull(drag)
+                } catch (t: Throwable) {
+                    primaryFailure = t
+                }
+            }
+            // Any non-handoff outcome (no probe evidence, or an exception at
+            // ANY point while the helper still owns the press) retires the
+            // attempt's pointer before the failure/retry continues — at most
+            // one pointer is ever held.
+            if (!handedOff) {
+                drag?.let { held ->
+                    try {
+                        held.finish(MotionEvent.ACTION_CANCEL)
+                        Log.i(
+                            logTag,
+                            "held_drag_retired attempt=$attempt cancel " +
+                                "at=${SystemClock.uptimeMillis()} " +
+                                "reason=${if (primaryFailure != null) "dispatch_error" else "no probe_hit"}"
+                        )
+                    } catch (cancelFailure: Throwable) {
+                        // Retirement failure on an already-failing attempt
+                        // rides along; otherwise it is the attempt's failure.
+                        primaryFailure?.addSuppressed(cancelFailure)
+                            ?: run { primaryFailure = cancelFailure }
+                    }
                 }
             }
             primaryFailure?.let { throw it }
