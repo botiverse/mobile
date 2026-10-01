@@ -39,16 +39,17 @@ build_id=$(jq -er '.build_id' <<<"$created")
 upload_asset() {
   local kind=$1 path=$2
   local asset_id url method headers complete
-  asset_id=$(jq -er --arg k "$kind" '.assets[] | select(.kind==$k) | .asset_id' <<<"$created")
-  method=$(jq -er --arg k "$kind" '.assets[] | select(.kind==$k) | .upload.method' <<<"$created")
+  asset_id=$(jq -er --arg k "$kind" '.artifacts[] | select(.kind==$k) | .asset_id' <<<"$created")
+  method=$(jq -er --arg k "$kind" '.artifacts[] | select(.kind==$k) | .upload.method' <<<"$created")
   [[ "$method" == PUT ]] || { echo "unexpected upload method" >&2; return 1; }
-  url=$(jq -er --arg k "$kind" '.assets[] | select(.kind==$k) | .upload.url' <<<"$created")
-  headers=$(jq -er --arg k "$kind" '.assets[] | select(.kind==$k) | (.upload.headers // {}) | to_entries | map([.key,.value])' <<<"$created")
-  complete=$(jq -er --arg k "$kind" '.assets[] | select(.kind==$k) | .complete_url' <<<"$created")
+  url=$(jq -er --arg k "$kind" '.artifacts[] | select(.kind==$k) | .upload.url' <<<"$created")
+  headers=$(jq -er --arg k "$kind" '.artifacts[] | select(.kind==$k) | (.upload.headers // {}) | to_entries | map([.key,.value])' <<<"$created")
+  complete=$(jq -er --arg k "$kind" '.artifacts[] | select(.kind==$k) | .complete_url' <<<"$created")
   header_args=(); while read -r k v; do header_args+=( -H "$k: $v" ); done < <(jq -r '.[] | @tsv' <<<"$headers")
   curl --fail-with-body --silent --show-error -X PUT "${header_args[@]}" --upload-file "$path" "$url" >/dev/null
   case "$complete" in
-    http://*|https://*) complete_target="$complete" ;;
+    "${HANDS_API%/}"/*) complete_target="$complete" ;;
+    http://*|https://*) echo "foreign completion origin" >&2; return 1 ;;
     /*) complete_target="${HANDS_API%/}$complete" ;;
     *) complete_target="${HANDS_API%/}/$complete" ;;
   esac
@@ -58,6 +59,15 @@ upload_asset aab "$AAB_PATH"
 upload_asset apk "$APK_PATH"
 receipt=$(curl --fail-with-body --silent --show-error "${auth[@]}" "$base/$build_id")
 [[ "$(jq -r .status <<<"$receipt")" == ready ]] || { echo 'Hands receipt not ready' >&2; exit 1; }
-[[ "$(jq '[.assets[] | select(.state=="sealed")] | length' <<<"$receipt")" == 2 ]] || { echo 'Hands receipt missing sealed assets' >&2; exit 1; }
+[[ "$(jq '[.artifacts[] | select(.status=="sealed")] | length' <<<"$receipt")" == 2 ]] || { echo 'Hands receipt missing sealed assets' >&2; exit 1; }
+jq -e --arg id "$build_id" --argjson expected "$json" '
+  .build_id == $id and .source == $expected.source and
+  .package_name == $expected.package_name and .version_name == $expected.version_name and
+  .version_code == $expected.version_code and
+  .upload_key_cert_sha256 == $expected.upload_key_cert_sha256 and
+  ([.artifacts[] | {kind,filename,size_bytes,sha256}] | sort_by(.kind)) ==
+  ($expected.artifacts | sort_by(.kind)) and
+  all(.artifacts[]; .verified_sha256 == .sha256 and .verified_size_bytes == .size_bytes)
+' <<<"$receipt" >/dev/null || { echo 'Hands receipt identity or digest mismatch' >&2; exit 1; }
 echo "build_id=$build_id"
 echo "status=ready"

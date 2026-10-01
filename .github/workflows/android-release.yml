@@ -53,6 +53,11 @@ on:
         required: false
         type: string
         default: "current"
+      upload_android_artifacts:
+        description: "Upload immutable AAB and APK to Hands without activation"
+        required: false
+        type: boolean
+        default: false
       release_mode:
         required: false
         type: string
@@ -174,6 +179,11 @@ on:
           - current
           - legacy
           - modern
+      upload_android_artifacts:
+        description: "Upload immutable AAB and APK to Hands without activation"
+        required: false
+        type: boolean
+        default: false
       release_mode:
         description: "Draft only. Review notes and smoke before the separate explicit Hands publish step."
         required: true
@@ -582,6 +592,7 @@ jobs:
           echo "verified_v31=${V31}" >> "$GITHUB_OUTPUT"
 
       - name: Locate AAB
+        if: ${{ inputs.upload_android_artifacts }}
         id: locate-aab
         shell: bash
         run: |
@@ -592,6 +603,7 @@ jobs:
           echo "aab_path=$AAB" >> "$GITHUB_OUTPUT"
 
       - name: Upload immutable AAB + APK to Hands
+        if: ${{ inputs.upload_android_artifacts }}
         id: hands-artifacts
         env:
           HANDS_API: ${{ secrets.HANDS_API || 'https://hands.build' }}
@@ -601,8 +613,8 @@ jobs:
           SOURCE_COMMIT_SHA: ${{ steps.source.outputs.source_sha }}
           CI_RUN_ID: ${{ github.run_id }}
           PACKAGE_NAME: ${{ steps.verify.outputs.package_id }}
-          VERSION_NAME: ${{ steps.resolve.outputs.version_name }}
-          VERSION_CODE: ${{ steps.resolve.outputs.version_code }}
+          VERSION_NAME: ${{ needs.resolve.outputs.version_name }}
+          VERSION_CODE: ${{ needs.resolve.outputs.version_code }}
           UPLOAD_KEY_CERT_SHA256: ${{ steps.verify.outputs.upload_key_cert_sha256 }}
           AAB_PATH: ${{ steps.locate-aab.outputs.aab_path }}
           APK_PATH: ${{ steps.locate.outputs.apk_path }}
