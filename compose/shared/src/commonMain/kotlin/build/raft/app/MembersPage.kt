@@ -5674,13 +5674,20 @@ private fun MembersDetailContent(
             // while a restore request stays pending we tick and let the
             // tracker bounded-reissue. Alpha102/d7-iPad evidence: request
             // issued, no frames for 41-84s until a real gesture.
+            // Cancelling the in-flight re-issue when the gesture retires
+            // the pending request keeps a stale tick target from landing
+            // after the user takes over (the suspend scrollToItem may still
+            // be waiting on the scroll mutex when the gesture fires).
+            var stallJob: kotlinx.coroutines.Job? = null
+            tracker.onPendingRestoreRetired = { stallJob?.cancel() }
             launch {
                 while (true) {
                     kotlinx.coroutines.delay(MemberDetailRestoreStallTickMs)
                     // scrollToItem (suspend, forceRemeasure) is a different
                     // mechanism than requestScrollToItem's pending write —
                     // evidence shows that write can be swallowed whole.
-                    tracker.onRestoreStalled()?.let { target ->
+                    val target = tracker.onRestoreStalled() ?: continue
+                    stallJob = launch {
                         state.scrollToItem(
                             target.firstVisibleItemIndex,
                             target.firstVisibleItemScrollOffset
@@ -5730,10 +5737,13 @@ private fun MembersDetailContent(
         val state = humanDetailListState
         LaunchedEffect(memberScrollKey) {
             // Same stall watchdog as the agent-tab collector (see above).
+            var stallJob: kotlinx.coroutines.Job? = null
+            tracker.onPendingRestoreRetired = { stallJob?.cancel() }
             launch {
                 while (true) {
                     kotlinx.coroutines.delay(MemberDetailRestoreStallTickMs)
-                    tracker.onRestoreStalled()?.let { target ->
+                    val target = tracker.onRestoreStalled() ?: continue
+                    stallJob = launch {
                         state.scrollToItem(
                             target.firstVisibleItemIndex,
                             target.firstVisibleItemScrollOffset
@@ -14255,6 +14265,15 @@ internal class MemberDetailScrollTracker(
     // suspend scrollToItem path (forceRemeasure), which is a different
     // mechanism than the possibly-lost requestScrollToItem write.
     private var stalledReissues = 0
+    // Composition-side hook fired whenever an issued restore request is
+    // retired (user gesture supersedes it, or a stale re-issue is dropped).
+    // The watchdog coroutine uses it to cancel a scrollToItem that was
+    // launched off a still-pending tick but has not yet acquired the scroll
+    // mutex — without this, a gesture arriving between tick selection and
+    // mutex acquisition lets the stale target land after the user took
+    // over (LiBai's interleave: tick picks 489 -> suspend -> user 237 ->
+    // tick resumes and snaps 489 anyway).
+    var onPendingRestoreRetired: (() -> Unit)? = null
     // Real gesture evidence: set by the composition feeding the tracker
     // through [onUserScrollStarted] when the list's interactionSource emits
     // DragInteraction.Start. Position/distance can never prove intent — a
@@ -14296,7 +14315,10 @@ internal class MemberDetailScrollTracker(
         userScrollActive = true
         if (restoreSettlePending) {
             sawUserScrollInSettle = true
-            issuedRestoreRequest = false
+            if (issuedRestoreRequest) {
+                issuedRestoreRequest = false
+                onPendingRestoreRetired?.invoke()
+            }
         }
         if (pendingRestore && !scrollInFlight && measured != null) {
             requestScroll(

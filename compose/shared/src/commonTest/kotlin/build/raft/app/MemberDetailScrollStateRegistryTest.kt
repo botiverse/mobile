@@ -664,6 +664,37 @@ class MemberDetailScrollTrackerTest {
     }
 
     @Test
+    fun `gesture retire of a pending request fires onPendingRestoreRetired once`() {
+        // LiBai's interleave: watchdog tick already picked the target and
+        // the suspend scrollToItem is still waiting on the scroll mutex
+        // when the gesture lands. The composition cancels that in-flight
+        // re-issue through this hook — it must fire exactly when the
+        // pending request is retired, not on frames or unrelated clears.
+        val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        var retired = 0
+        t.onPendingRestoreRetired = { retired += 1 }
+        val frame = frameOf(t, saved)
+        // Seed at target: settle opens but NO request was issued — no hook.
+        frame(0, 489, 40, false) { _, _ -> }
+        t.onUserScrollStarted(scrollInFlight = false) { _, _ -> }
+        assertEquals(0, retired)
+        // Fresh tracker: seed at top -> real request issued -> gesture
+        // supersedes -> hook fires exactly once.
+        val t2 = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
+        var retired2 = 0
+        t2.onPendingRestoreRetired = { retired2 += 1 }
+        val frame2 = frameOf(t2, saved)
+        frame2(0, 0, 40, false) { _, _ -> }
+        assertEquals(true, t2.hasPendingRestoreRequest)
+        t2.onUserScrollStarted(scrollInFlight = false) { _, _ -> }
+        assertEquals(1, retired2)
+        // A second gesture while nothing is pending must not re-fire.
+        t2.onUserScrollStarted(scrollInFlight = false) { _, _ -> }
+        assertEquals(1, retired2)
+    }
+
+    @Test
     fun `production frame key emits when measured position catches up to the getter`() =
         runBlocking {
             // LiBai's missed-frame race: requestScrollToItem rewrites the
