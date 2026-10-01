@@ -12,7 +12,7 @@ struct ContentView: View {
         // as the root instead of the app shell so the Simulator screenshot
         // captures the fixture. Same pageName+pageData contract as Android.
         if let fixture = ContentView.visualFixtureLaunch() {
-            KuiklyRenderViewPage(pageName: fixture.pageName, data: fixture.data)
+            fixturePage(fixture)
                 .ignoresSafeArea()
                 // task #419: hide the status bar so the capture screenshot has no
                 // clock/wifi/battery overlaying the fixture (the changing clock is
@@ -44,6 +44,22 @@ struct ContentView: View {
                     SlockIosMobileOAuthHost.shared.resumeDeferredCallbackIfNeeded()
                 }
         }
+    }
+
+    @ViewBuilder
+    private func fixturePage(_ fixture: VisualFixtureLaunch) -> some View {
+#if DEBUG
+        if ProcessInfo.processInfo.environment["SLOCK_QA_HUMAN_REVISIT"] == "1",
+           fixture.pageName == "compose_member_detail",
+           let payload = fixture.data["payload"] as? [String: Any],
+           payload["memberId"] as? String == "visual-human-long" {
+            HumanFixtureRevisitHost(pageName: fixture.pageName, data: fixture.data)
+        } else {
+            KuiklyRenderViewPage(pageName: fixture.pageName, data: fixture.data)
+        }
+#else
+        KuiklyRenderViewPage(pageName: fixture.pageName, data: fixture.data)
+#endif
     }
 
     private static func hostPageData(_ destination: SlockIosOAuthDestination) -> [String: Any] {
@@ -84,6 +100,51 @@ struct ContentView: View {
         return VisualFixtureLaunch(pageName: pageName, data: data)
     }
 }
+
+#if DEBUG
+// QA branch only: exercise ordinary in-process host removal/recreation. This
+// does not inject registry state or claim a pre-periodic-save interleaving.
+private struct HumanFixtureRevisitHost: View {
+    let pageName: String
+    let data: [String: Any]
+    @State private var opened = true
+    @State private var visit = 1
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Human fixture • visit \(visit)")
+                Spacer()
+                Button(opened ? "Close fixture" : "Reopen fixture") {
+                    if opened {
+                        print("JONY_HUMAN_QA close_requested visit=\(visit)")
+                        opened = false
+                    } else {
+                        visit += 1
+                        print("JONY_HUMAN_QA reopen_requested visit=\(visit)")
+                        opened = true
+                    }
+                }
+                .accessibilityIdentifier("jonyHumanFixtureToggle")
+            }
+            .padding(.horizontal, 20)
+            .frame(height: 44)
+            if opened {
+                KuiklyRenderViewPage(pageName: pageName, data: data)
+                    .id(visit)
+                    .onDisappear {
+                        // View disappearance is only a host event; shared
+                        // dispose_save and the next epoch prove the data path.
+                        print("JONY_HUMAN_QA view_disappeared")
+                    }
+            } else {
+                Text("Fixture closed; process retained")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+}
+#endif
 
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
