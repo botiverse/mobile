@@ -17878,7 +17878,11 @@ class SharedThreadStoreTest {
             SharedThreadStore(
                 dataSource = dataSource,
                 scope = scope,
-                diagnosticsLogger = { throw IllegalStateException("log boom") },
+                diagnosticsLogger = { message ->
+                    if (message.contains("thread_payload_messages_write")) {
+                        throw IllegalStateException("log boom")
+                    }
+                },
             )
         store.accept(
             SharedThreadIntent.Start(
@@ -17899,13 +17903,181 @@ class SharedThreadStoreTest {
         }
     }
 
+
+
+    @Test
+    fun staleGenerationReleaseDoesNotLeakNewerErrorWrite() = runBlocking {
+        // task #58 observability contract: a page failure released after Refresh
+        // advanced the generation must be logged as rejected with its own
+        // fetchSeq, and must not write its error state into the new generation.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+        val api =
+            FakeThreadApi(
+                bodyText =
+                    messagesResponse("first body", id = "m16", seq = 16, historyLimited = false),
+                newerBodyText = newerRowsBody(17L..46L),
+            )
+        val logs = mutableListOf<String>()
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
+            )
+        val store =
+            SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        store.accept(
+            SharedThreadIntent.Start(
+                basePayload().copy(
+                    canLoadMoreAfter = true,
+                    messages = listOf(payloadMessage(id = "m16", seq = 16, body = "first body")),
+                )
+            )
+        )
+        api.afterMessagesStarted = CompletableDeferred()
+        api.releaseAfterMessages = CompletableDeferred()
+        val firstPage = async { store.loadNewer() }
+        withTimeout(5_000) { api.afterMessagesStarted?.await() }
+        api.releaseAfterMessages?.complete(Unit)
+        withTimeout(5_000) { firstPage.await() }
+
+        api.newerResponseCode = 500
+        api.afterMessagesStarted = CompletableDeferred()
+        api.releaseAfterMessages = CompletableDeferred()
+        val secondPage = async { store.loadNewer() }
+        withTimeout(5_000) { api.afterMessagesStarted?.await() }
+        val newerFetchSeq =
+            Regex("fetchSeq=(\\d+)")
+                .find(logs.last { it.startsWith("thread_fetch_issued") && it.contains("kind=newer_page") })!!
+                .groupValues[1]
+
+        api.channelMessagesStarted = CompletableDeferred()
+        api.releaseChannelMessages = CompletableDeferred()
+        val refreshJob = async { store.accept(SharedThreadIntent.Refresh) }
+        withTimeout(5_000) { api.channelMessagesStarted?.await() }
+
+        val statusBeforeRelease = store.state.value.payload.newerMessagesStatus
+        api.releaseAfterMessages?.complete(Unit)
+        withTimeout(5_000) { secondPage.await() }
+        assertEquals(
+            statusBeforeRelease,
+            store.state.value.payload.newerMessagesStatus,
+            "post-refresh release of a stale page error must not write error status",
+        )
+        val reject = logs.single { it.contains("tag=newer_after_fetch") || it.contains("tag=newer_page_apply") }
+        assertTrue(
+            reject.contains("fetchSeq=$newerFetchSeq"),
+            "rejected stale write must carry its own fetchSeq=$newerFetchSeq; got $reject",
+        )
+        api.bodyText =
+            messagesResponse("refreshed tail", id = "m16", seq = 16, historyLimited = false)
+        api.releaseChannelMessages?.complete(Unit)
+        withTimeout(5_000) { refreshJob.await() }
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun concurrentNewerPageAndRefreshCarryDistinctFetchSeqsToApply() = runBlocking {
+        // task #58 observability contract: an in-flight newer page and a refresh
+        // in the same route generation must be distinguishable — each gets its
+        // own fetchSeq at issue, and the apply logs carry that fetchSeq (not the
+        // latest counter at write time).
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+        val api =
+            FakeThreadApi(
+                bodyText =
+                    messagesResponse("first body", id = "m16", seq = 16, historyLimited = false),
+                newerBodyText = newerRowsBody(17L..46L),
+            )
+        val logs = mutableListOf<String>()
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
+            )
+        val store =
+            SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        store.accept(
+            SharedThreadIntent.Start(
+                basePayload().copy(
+                    canLoadMoreAfter = true,
+                    messages = listOf(payloadMessage(id = "m16", seq = 16, body = "first body")),
+                )
+            )
+        )
+        // Commit page 17..46 first.
+        api.afterMessagesStarted = CompletableDeferred()
+        api.releaseAfterMessages = CompletableDeferred()
+        val firstPage = async { store.loadNewer() }
+        withTimeout(5_000) { api.afterMessagesStarted?.await() }
+        api.releaseAfterMessages?.complete(Unit)
+        withTimeout(5_000) { firstPage.await() }
+
+        // Park newer page #2 at afterSeq=46, then launch Refresh which parks on
+        // the canonical fetch. Both are in flight in the same route generation
+        // until the page fails.
+        api.newerResponseCode = 500
+        api.afterMessagesStarted = CompletableDeferred()
+        api.releaseAfterMessages = CompletableDeferred()
+        val secondPage = async { store.loadNewer() }
+        withTimeout(5_000) { api.afterMessagesStarted?.await() }
+
+        api.channelMessagesStarted = CompletableDeferred()
+        api.releaseChannelMessages = CompletableDeferred()
+        val refreshJob = async { store.accept(SharedThreadIntent.Refresh) }
+        withTimeout(5_000) { api.channelMessagesStarted?.await() }
+
+        val fetchIssued = logs.filter { it.startsWith("thread_fetch_issued") }
+        val newerIssued = fetchIssued.last { it.contains("kind=newer_page") }
+        val refreshIssued = fetchIssued.last { it.contains("kind=refresh_canonical") }
+        val newerFetchSeq = Regex("fetchSeq=(\\d+)").find(newerIssued)!!.groupValues[1]
+        val refreshFetchSeq = Regex("fetchSeq=(\\d+)").find(refreshIssued)!!.groupValues[1]
+        assertNotEquals(
+            newerFetchSeq,
+            refreshFetchSeq,
+            "concurrent newer page and refresh must receive distinct fetchSeqs: " +
+                "newer=$newerIssued refresh=$refreshIssued",
+        )
+        // The boundary trace for each fetch must carry its own storeSeq+fetchSeq.
+        assertTrue(
+            api.channelMessagesRequestTraces.any { it == "newer_page_s${Regex("storeSeq=(\\d+)").find(newerIssued)!!.groupValues[1]}_fs=$newerFetchSeq" },
+            "newer fetch trace missing; traces=${api.channelMessagesRequestTraces}",
+        )
+        assertTrue(
+            api.channelMessagesRequestTraces.any { it == "refresh_canonical_s${Regex("storeSeq=(\\d+)").find(refreshIssued)!!.groupValues[1]}_fs=$refreshFetchSeq" },
+            "refresh fetch trace missing; traces=${api.channelMessagesRequestTraces}",
+        )
+
+        // Let the stale page error resolve; its rejection must log its own
+        // fetchSeq (not the refresh's), demonstrating apply-side attribution.
+        api.releaseAfterMessages?.complete(Unit)
+        withTimeout(5_000) { secondPage.await() }
+        val newerReject = logs.filter { it.contains("thread_payload_messages_write_rejected") && it.contains("tag=newer_") }
+        assertTrue(
+            newerReject.any { it.contains("fetchSeq=$newerFetchSeq") },
+            "stale newer-page rejection must carry its own fetchSeq=$newerFetchSeq; got $newerReject",
+        )
+        api.bodyText =
+            messagesResponse("refreshed tail", id = "m16", seq = 16, historyLimited = false)
+        api.releaseChannelMessages?.complete(Unit)
+        withTimeout(5_000) { refreshJob.await() }
+        } finally {
+            scope.cancel()
+        }
+    }
+
     @Test
     fun concurrentStoresUseDistinctTraceIdentities() = runBlocking {
         // task #58 observability contract: two stores issuing the same kind of
         // fetch must not share a trace identity — storeSeq distinguishes them.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         try {
-        fun newStore(): Pair<SharedThreadStore, MutableList<String>> {
+        suspend fun newStore(): Pair<SharedThreadStore, MutableList<String>> {
             val logs = mutableListOf<String>()
             val api =
                 FakeThreadApi(
