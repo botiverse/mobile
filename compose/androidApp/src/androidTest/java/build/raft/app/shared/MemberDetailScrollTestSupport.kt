@@ -386,7 +386,14 @@ internal object MemberDetailScrollTestSupport {
                 Thread.sleep(DragStepDelayMs)
             }
         } catch (t: Throwable) {
-            runCatching { drag.finish(MotionEvent.ACTION_CANCEL) }
+            // A failed dispatch still owns the press until CANCEL lands —
+            // a swallowed cancel failure would leave a stuck pointer, so it
+            // rides along on the dispatch error instead.
+            try {
+                drag.finish(MotionEvent.ACTION_CANCEL)
+            } catch (cancelFailure: Throwable) {
+                t.addSuppressed(cancelFailure)
+            }
             throw t
         }
         return drag
@@ -410,6 +417,7 @@ internal object MemberDetailScrollTestSupport {
         var attempt = 0
         while (SystemClock.uptimeMillis() < deadline) {
             attempt++
+            Log.i(logTag, "held_drag_dispatch attempt=$attempt at=${SystemClock.uptimeMillis()}")
             val drag = injectDragPaced(logTag)
             val probeDeadline =
                 minOf(SystemClock.uptimeMillis() + ProbeHitWaitMs, deadline)
@@ -429,7 +437,7 @@ internal object MemberDetailScrollTestSupport {
             // No probe evidence — retire this attempt's press before
             // retrying so at most one pointer is ever held.
             drag.finish(MotionEvent.ACTION_CANCEL)
-            Log.i(logTag, "held_drag_retry attempt=$attempt no probe_hit")
+            Log.i(logTag, "held_drag_retired attempt=$attempt cancel at=${SystemClock.uptimeMillis()} reason=no probe_hit")
             SystemClock.sleep(DragRetryDelayMs)
         }
         fail("held drag produced no probe_hit after $attempt attempt(s)")
