@@ -9,6 +9,12 @@ import kotlin.test.assertNull
 class SlockAppShellDestinationSnapshotTest {
     private val scope = SlockShellStoreScope.create("shell-a", "server-a")
 
+    @kotlin.test.BeforeTest
+    fun resetCache() {
+        SlockAppShellDestinationSnapshots.clear(scope)
+        SlockAppShellDestinationSnapshots.clear(SlockShellStoreScope.create("shell-b", "server-a"))
+    }
+
     @Test
     fun consumeRestoresSameIdentityDestination() {
         SlockAppShellDestinationSnapshots.record(scope, "acct-1", "server-a", "members")

@@ -2503,9 +2503,16 @@ open class SlockKuiklyActivity :
     // intent extras, and are consumed once per createPageSpec call.
     private fun SlockKuiklyPageData.withActivityRecreationMarker(): SlockKuiklyPageData {
         val decision = consumeActivityRecreationEligibility()
-        if (!decision.injectMarker) return this
+        // Always scrub any caller-supplied marker before deciding to inject:
+        // the flag is authoritative only when generated from this instance's
+        // lifecycle, never trusted from the incoming Intent/pageData.
+        val scrubbed =
+            SlockKuiklyPageData.fromJson(
+                JSONObject(text).apply { remove(KEY_ACTIVITY_RECREATED) }
+            )
+        if (!decision.injectMarker) return scrubbed
         return SlockKuiklyPageData.fromJson(
-                JSONObject(text).apply { put(KEY_ACTIVITY_RECREATED, true) }
+                JSONObject(scrubbed.text).apply { put(KEY_ACTIVITY_RECREATED, true) }
         )
     }
 
