@@ -56,6 +56,7 @@ import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListScope
 import com.tencent.kuikly.compose.material3.Button
+import com.tencent.kuikly.compose.material3.ButtonDefaults
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -394,9 +395,22 @@ internal fun SlockBrutalActionSheetRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // The bare material3 Button paints the theme's default filled container
+    // (purple in this build) over the sheet's surface and disables text via the
+    // default content color. Give the row explicit register-aware colors so the
+    // parent's selected/unselected surface shows through and ink stays readable.
+    val theme = LocalSlockTheme.current
     Button(
         onClick = onClick,
         shape = RectangleShape,
+        colors =
+            ButtonDefaults.buttonColors(
+                containerColor = Color.Transparent,
+                contentColor = theme.ink,
+                disabledContainerColor = Color.Transparent,
+                disabledContentColor = theme.inkMuted
+            ),
+        elevation = null,
         modifier =
             modifier
                 .fillMaxWidth()
@@ -422,16 +436,16 @@ internal fun SlockBrutalActionSheetRow(
                 Text(
                     text = model.title,
                     style = SlockType.ButtonBold,
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
+                    color = theme.ink,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (model.subtitle.isNotBlank()) {
                     Text(
                         text = model.subtitle,
                         style = SlockType.Caption,
-                        color = SlockColor.TextMutedGray,
-                        maxLines = 2,
+                        color = theme.inkMuted,
+                        maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
