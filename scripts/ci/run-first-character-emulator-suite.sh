@@ -237,6 +237,10 @@ run_post_hook() {
       adb exec-out screencap -p > child-page-visibility-terminal.png 2>/dev/null || true
       adb logcat -d -v threadtime > child-page-visibility-logcat.txt 2>/dev/null || true
       ;;
+    member-detail-dispose-save)
+      adb shell dumpsys activity activities > member-detail-dispose-save-activity.txt 2>/dev/null || true
+      adb logcat -d -v threadtime -s MembersDetailScroll MemberDetailDisposeB1 TestRunner > member-detail-dispose-save-logcat.txt 2>/dev/null || true
+      ;;
     *)
       ;;
   esac

@@ -295,6 +295,10 @@ class MemberDetailScrollDisposeSaveConnectedTest {
      * fails that wait.
      */
     private fun closeHostOrFail(scenario: ActivityScenario<SlockKuiklyActivity>) {
+        Log.i(
+            TestLogTag,
+            "close_begin thread=${Thread.currentThread().name}"
+        )
         val finished = CountDownLatch(1)
         val failure = arrayOfNulls<Throwable>(1)
         scenario.onActivity { activity ->
@@ -310,6 +314,7 @@ class MemberDetailScrollDisposeSaveConnectedTest {
             fail("activity.finish() could not be delivered within ${ScenarioCloseTimeoutMs}ms")
         }
         failure[0]?.let { throw AssertionError("activity.finish() threw: ${it.message}", it) }
+        Log.i(TestLogTag, "close_issued thread=${Thread.currentThread().name}")
     }
 
     // -- Input -------------------------------------------------------------------
