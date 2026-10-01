@@ -167,6 +167,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.State
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import androidx.compose.runtime.rememberCoroutineScope
@@ -1394,6 +1395,17 @@ internal data class KuiklyMemberDetailPayload(
     val identity: MemberDetailIdentity? = null,
     val initialAgentTab: String? = null,
     val visualMode: String? = null,
+    /**
+     * task #58 composition-removal probe: when non-blank, the detail subtree
+     * under [MemberDetailVisualSeedContent] is wrapped in a removable
+     * composition keyed on this run token, so the fixture controller bound
+     * to the same token can take the subtree out of composition (running
+     * the production DisposableEffect.onDispose) and re-add it without any
+     * Activity lifecycle event. Inert unless a `visualFixtures` build
+     * registers a controller for this exact token; production builds keep
+     * the field parsed but never observe a controller.
+     */
+    val removalProbeToken: String? = null,
     val localOffsetMinutes: Int = 0,
     val todayEpochDay: Long? = null,
     val nowEpochMillis: Long? = null,
@@ -1582,6 +1594,54 @@ private val membersHumanLongDetailVisualMember = MemberProfile(
             )
         }
 )
+
+/**
+ * task #58 composition-removal probe — the commonMain-side registry for the
+ * fixture-mediated "remove the detail subtree" control used by the B1
+ * composition-removal connected test.
+ *
+ * Boundary contract (locked in review):
+ *  - commonMain declares only this inert registry plus the
+ *    [MemberDetailRemovalController] interface; it never instantiates a
+ *    controller itself, so production builds contain no live control
+ *    surface and no fixture symbol is referenced.
+ *  - The `visualFixtures` source set (compiled only with
+ *    `slockVisualFixtures=true`) supplies the implementation and registers
+ *    it here bound to a run token.
+ *  - Activation requires BOTH a bound controller AND the payload's
+ *    `slockVisualDisposeProbe` field carrying the same run token — an
+ *    ordinary detail route never observes a controller and the wrapper is
+ *    a passthrough.
+ *
+ * Threading: registration happens on the instrumentation/test thread while
+ * `removed` is read on the composition path (Kuikly's compose dispatcher),
+ * so the slot is held under a lock.
+ */
+internal object MemberDetailRemovalProbe {
+    private val lock = SynchronizedObject()
+    private var controllers = mutableMapOf<String, MemberDetailRemovalController>()
+
+    fun forToken(token: String): MemberDetailRemovalController? =
+        synchronized(lock) { controllers[token] }
+
+    fun register(token: String, controller: MemberDetailRemovalController) {
+        synchronized(lock) { controllers[token] = controller }
+    }
+
+    fun unregister(token: String) {
+        synchronized(lock) { controllers.remove(token) }
+    }
+}
+
+/**
+ * Fixture-side handle for the removal probe. `removed` is Compose state read
+ * on the composition path; flipping it takes the detail subtree out of
+ * composition through the real recomposition scheduler (running the
+ * production DisposableEffect.onDispose), and flipping back re-adds it.
+ */
+internal interface MemberDetailRemovalController {
+    val removed: State<Boolean>
+}
 
 private val membersAgentDetailVisualScopeSet = AgentScopeSet(
     agentId = membersAgentDetailVisualMember.id,
@@ -4341,6 +4401,33 @@ private fun MemberDetailVisualSeedContent(
     val visualMode = remember(payload.visualMode) {
         payload.visualMode.orEmpty().toMembersAgentDetailVisualMode()
     }
+    val removalProbe =
+        payload.removalProbeToken?.let { token ->
+            MemberDetailRemovalProbe.forToken(token)
+        }
+    // task #58 composition-removal case: when a fixture controller is bound
+    // to this run token, the whole detail subtree is composed under the
+    // probe's `removed` state — flipping it removes the subtree through the
+    // real recomposition path (running DisposableEffect.onDispose) while the
+    // host Activity stays alive, then re-adds it for the restore check.
+    // Without a bound controller the wrapper is a straight passthrough.
+    if (removalProbe != null) {
+        if (!removalProbe.removed.value) {
+            MemberDetailVisualSeedBody(payload, seed, initialAgentTab, visualMode, pageVisibleTick)
+        }
+    } else {
+        MemberDetailVisualSeedBody(payload, seed, initialAgentTab, visualMode, pageVisibleTick)
+    }
+}
+
+@Composable
+private fun MemberDetailVisualSeedBody(
+    payload: KuiklyMemberDetailPayload,
+    seed: MemberDetailVisualSeed,
+    initialAgentTab: MembersAgentDetailTab?,
+    visualMode: MembersAgentDetailVisualMode,
+    pageVisibleTick: Int
+) {
     MembersDetailContent(
         member = seed.member,
         currentUserId = "visual-owner",
@@ -4724,6 +4811,9 @@ internal fun JSONObject.toKuiklyMemberDetailPayload(): KuiklyMemberDetailPayload
             ),
         initialAgentTab = payload.optNullableString("initialAgentTab"),
         visualMode = payload.optNullableString("visualMode") ?: optNullableString("visualMode"),
+        removalProbeToken =
+            payload.optNullableString("slockVisualDisposeProbe")
+                ?: optNullableString("slockVisualDisposeProbe"),
         localOffsetMinutes = payload.optString("localOffsetMinutes").toIntOrNull() ?: 0,
         todayEpochDay = payload.optString("todayEpochDay").toLongOrNull(),
         nowEpochMillis = payload.optString("nowEpochMillis").toLongOrNull(),

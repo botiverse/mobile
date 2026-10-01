@@ -171,7 +171,7 @@ class MemberDetailScrollDisposeSaveConnectedTest {
             // injection, observation AND close — any failure sends CANCEL so
             // no stuck press survives the case, and the terminal event's
             // delivery is itself checked.
-            var dragGesture: HeldDrag? = null
+            var dragGesture: MemberDetailScrollTestSupport.HeldDrag? = null
             try {
                 dragGesture = injectDragPaced()
                 waitForLine(startCursor, after = visit2.seedLine, "v2 probe_hit") { line ->
@@ -484,449 +484,46 @@ class MemberDetailScrollDisposeSaveConnectedTest {
         return "UNTRACKED"
     }
 
-    // -- Input -------------------------------------------------------------------
+    // Shared logcat/input helpers live in MemberDetailScrollTestSupport;
+    // thin aliases keep the scenario body readable.
+    private val ScrollLabel get() = MemberDetailScrollTestSupport.ScrollLabel
+    private val KeyHash get() = MemberDetailScrollTestSupport.KeyHash
 
-    /**
-     * Blocking drag used to establish the baseline (visit 1). Retries the
-     * whole gesture until the in-page `probe_hit` log appears after
-     * [after]: a `sendPointerSync` drop leaves no `probe_hit` (where the
-     * input was lost is unproven) and an unacknowledged drag would leave
-     * the baseline gate polling for a save that can never arrive.
-     */
-    private fun injectDragToScrollBlocking(startCursor: Long, after: String) {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val metrics = instrumentation.targetContext.resources.displayMetrics
-        val x = metrics.widthPixels * 0.5f
-        val startY = metrics.heightPixels * 0.72f
-        val endY = metrics.heightPixels * 0.30f
-        val deadline = SystemClock.uptimeMillis() + InitialRenderTimeoutMs
-        var attempt = 0
-        while (SystemClock.uptimeMillis() < deadline) {
-            attempt++
-            // sendPointerSync blocks on the UiAutomation connection — a stuck
-            // injector would hang the test thread past the loop bound, so each
-            // attempt's dispatch runs on a worker under its own latch. The
-            // worker checks `stop` between events and ALWAYS ends the gesture
-            // with a terminal CANCEL in its own finally: on timeout we set the
-            // flag instead of interrupting, then await the worker's real exit
-            // so no leftover injector can still be writing MOVE/UP into the
-            // next window (the gesture had ownership since before DOWN).
-            val stop = java.util.concurrent.atomic.AtomicBoolean(false)
-            val dispatchDone = CountDownLatch(1)
-            val dispatchFailure = arrayOfNulls<Throwable>(1)
-            val injector =
-                Thread {
-                    try {
-                        dispatchBlockingDrag(instrumentation, x, startY, endY, stop)
-                    } catch (t: Throwable) {
-                        dispatchFailure[0] = t
-                    } finally {
-                        dispatchDone.countDown()
-                    }
-                }
-            injector.isDaemon = true
-            injector.start()
-            if (!dispatchDone.await(ScenarioCloseTimeoutMs, TimeUnit.MILLISECONDS)) {
-                // Stop cooperatively; the worker's finally retires the press
-                // with CANCEL once the blocked call unwinds.
-                stop.set(true)
-                if (!dispatchDone.await(ScenarioCloseTimeoutMs, TimeUnit.MILLISECONDS)) {
-                    // The injector is still alive — say so explicitly (the
-                    // process boundary isolates it, but a test fail is not
-                    // proof the process exited) and preserve whatever
-                    // terminal failure the worker recorded.
-                    val err =
-                        AssertionError(
-                            "baseline drag injector (attempt $attempt) did not exit " +
-                                "within ${ScenarioCloseTimeoutMs}ms of stop; a live " +
-                                "injector is still attached (isolation relies on the " +
-                                "instrumentation process ending, which this fail does " +
-                                "not prove)"
-                        )
-                    dispatchFailure[0]?.let(err::addSuppressed)
-                    throw err
-                }
-                val err =
-                    AssertionError(
-                        "baseline drag dispatch (attempt $attempt) blocked " +
-                            ">${ScenarioCloseTimeoutMs}ms"
-                    )
-                dispatchFailure[0]?.let(err::addSuppressed)
-                throw err
-            }
-            dispatchFailure[0]?.let {
-                throw AssertionError("baseline drag dispatch failed (attempt $attempt): ${it.message}", it)
-            }
-            val hit =
-                linesAfter(startCursor, after).lastOrNull {
-                    it.contains("probe_hit") && it.contains(ScrollLabel)
-                }
-            if (hit != null) {
-                recordEvidence("B1_PROBE", "attempt=$attempt $hit")
-                return
-            }
-            SystemClock.sleep(DragRetryDelayMs)
-        }
-        fail("baseline drag produced no probe_hit after $attempt attempt(s)")
-    }
+    private fun orderedLines(startCursor: Long) =
+        MemberDetailScrollTestSupport.orderedLines(startCursor, TestLogTag)
 
-    /**
-     * Dispatches DOWN + DragSteps MOVEs; checks [stop] before each event so
-     * an aborted attempt cannot keep writing into a later window. The
-     * gesture owns a press from the moment DOWN is sent, so a terminal
-     * CANCEL (or UP on clean completion) is always attempted in finally —
-     * delivery result is logged, events recycle exactly once on the worker.
-     */
-    private fun dispatchBlockingDrag(
-        instrumentation: android.app.Instrumentation,
-        x: Float,
-        startY: Float,
-        endY: Float,
-        stop: java.util.concurrent.atomic.AtomicBoolean
-    ) {
-        val downTime = SystemClock.uptimeMillis()
-        val events = mutableListOf<MotionEvent>()
-        // Owned from BEFORE the DOWN call: sendPointerSync can throw after
-        // the OS already accepted the event, so "may have been sent" — not
-        // "call returned" — is the ownership boundary for press retirement.
-        var downPossiblySent = false
-        var cleanEnd = false
-        var terminateFailure: Throwable? = null
-        var primaryFailure: Throwable? = null
-        try {
-            if (stop.get()) return
-            val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, startY, 0)
-            events += down
-            downPossiblySent = true
-            instrumentation.sendPointerSync(down)
-            var lastY = startY
-            repeat(DragSteps) { step ->
-                if (stop.get()) return
-                val fraction = (step + 1f) / DragSteps
-                lastY = startY + (endY - startY) * fraction
-                val move =
-                    MotionEvent.obtain(
-                        downTime,
-                        SystemClock.uptimeMillis(),
-                        MotionEvent.ACTION_MOVE,
-                        x,
-                        lastY,
-                        0
-                    )
-                events += move
-                instrumentation.sendPointerSync(move)
-            }
-            if (stop.get()) return
-            val up =
-                MotionEvent.obtain(
-                    downTime,
-                    SystemClock.uptimeMillis(),
-                    MotionEvent.ACTION_UP,
-                    x,
-                    endY,
-                    0
-                )
-            events += up
-            instrumentation.sendPointerSync(up)
-            cleanEnd = true
-        } catch (t: Throwable) {
-            primaryFailure = t
-            throw t
-        } finally {
-            // If DOWN may have gone out but the gesture did not complete,
-            // retire the press with CANCEL — a stuck pointer must never
-            // survive an aborted attempt. CANCEL failure is NOT swallowed:
-            // it propagates to the caller (suppressed onto the in-flight
-            // error when one exists), and the cancel event always recycles.
-            if (downPossiblySent && !cleanEnd) {
-                val cancel =
-                    MotionEvent.obtain(
-                        downTime,
-                        SystemClock.uptimeMillis(),
-                        MotionEvent.ACTION_CANCEL,
-                        x,
-                        if (events.size > 1) endY else startY,
-                        0
-                    )
-                try {
-                    val delivered =
-                        instrumentation.uiAutomation.injectInputEvent(cancel, false)
-                    if (!delivered) {
-                        terminateFailure =
-                            AssertionError("gesture CANCEL was rejected by injectInputEvent")
-                    }
-                    Log.i(TestLogTag, "baseline_drag_terminated cancelDelivered=$delivered")
-                } catch (t: Throwable) {
-                    terminateFailure = t
-                    Log.w(TestLogTag, "baseline_drag_terminate_failed: ${t.message}")
-                } finally {
-                    cancel.recycle()
-                }
-            }
-            events.forEach(MotionEvent::recycle)
-            // CANCEL failure must not mask or be masked by the gesture's own
-            // error: attach it to the in-flight exception, or surface it as
-            // the failure when the gesture body itself completed abruptly
-            // without throwing (stop-flag return).
-            terminateFailure?.let { term ->
-                primaryFailure?.addSuppressed(term) ?: throw term
-            }
-        }
-    }
+    private fun linesAfter(startCursor: Long, after: String) =
+        MemberDetailScrollTestSupport.linesAfter(startCursor, after, TestLogTag)
 
-    /**
-     * Real-time-paced drag that leaves the press HELD: DOWN + spaced MOVEs
-     * are injected non-blocking with ~[DragStepDelayMs] between events and
-     * no UP is sent, so the gesture is still physically in flight (and
-     * `isScrollInProgress` live) when the caller destroys the host. The
-     * returned handle releases or cancels the gesture on the failure path.
-     */
-    /**
-     * The handle is created BEFORE the DOWN event is dispatched so any
-     * injection failure or interrupt still leaves the caller owning a valid
-     * cleanup handle — the contract is "held-press cleanup", not
-     * "constructed handle". Terminal event delivery failure is a hard error,
-     * not a logged warning: a press we cannot prove retired is a stuck
-     * pointer that could leak into the next visit's input stream.
-     */
-    private fun injectDragPaced(): HeldDrag {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val metrics = instrumentation.targetContext.resources.displayMetrics
-        val x = metrics.widthPixels * 0.5f
-        val startY = metrics.heightPixels * 0.72f
-        val endY = metrics.heightPixels * 0.30f
-        val downTime = SystemClock.uptimeMillis()
-        var currentY = startY
-        val drag =
-            HeldDrag(
-                downTime = downTime,
-                x = x,
-                instrumentation = instrumentation
-            )
-        fun dispatch(event: MotionEvent) {
-            val accepted =
-                instrumentation.uiAutomation.injectInputEvent(event, false)
-            drag.track(event)
-            if (!accepted) {
-                throw AssertionError(
-                    "injectInputEvent rejected action=${event.actionMasked}"
-                )
-            }
-        }
-        try {
-            dispatch(
-                MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, startY, 0)
-            )
-            repeat(DragSteps) { step ->
-                val fraction = (step + 1f) / DragSteps
-                currentY = startY + (endY - startY) * fraction
-                drag.updateY(currentY)
-                dispatch(
-                    MotionEvent.obtain(
-                        downTime,
-                        SystemClock.uptimeMillis(),
-                        MotionEvent.ACTION_MOVE,
-                        x,
-                        currentY,
-                        0
-                    )
-                )
-                // Real pacing: the move run takes ~DragSteps*delay, so the
-                // gesture is mid-flight while the caller proceeds.
-                Thread.sleep(DragStepDelayMs)
-            }
-        } catch (t: Throwable) {
-            // Injection aborted mid-gesture: retire the press before
-            // propagating so no stuck pointer survives into the next visit.
-            runCatching { drag.finish(MotionEvent.ACTION_CANCEL) }
-            throw t
-        }
-        return drag
-    }
+    private fun parsePositionFrom(line: String?) =
+        MemberDetailScrollTestSupport.parsePositionFrom(line)
 
-    /** A still-held injected gesture. The handle exists BEFORE the DOWN
-     *  event so a failed/interrupted injection still leaves the caller owning
-     *  a cleanup path. [finish] sends the terminal UP/CANCEL, FAILS when that
-     *  event is rejected (a stuck press must not be silently tolerated), and
-     *  recycles every queued event exactly once. */
-    private class HeldDrag(
-        private val downTime: Long,
-        private val x: Float,
-        private val instrumentation: android.app.Instrumentation
-    ) {
-        private var closed = false
-        private var currentY = 0f
-        private val events = mutableListOf<MotionEvent>()
+    private fun waitForVisitSeed(startCursor: Long, afterEpoch: Long) =
+        MemberDetailScrollTestSupport.waitForVisitSeed(startCursor, afterEpoch, TestLogTag)
 
-        fun track(event: MotionEvent) {
-            events += event
-        }
-
-        fun updateY(value: Float) {
-            currentY = value
-        }
-
-        fun finish(action: Int) {
-            if (closed) return
-            closed = true
-            val terminal =
-                MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, x, currentY, 0)
-            try {
-                val accepted =
-                    instrumentation.uiAutomation.injectInputEvent(terminal, false)
-                if (!accepted) {
-                    throw AssertionError(
-                        "terminal gesture event rejected (action=$action); press may still be held"
-                    )
-                }
-            } finally {
-                terminal.recycle()
-                events.forEach(MotionEvent::recycle)
-            }
-        }
-    }
-
-    // -- Logcat observation --------------------------------------------------------
-
-    private data class ScrollPosition(val index: Int, val offset: Int)
-
-    /** One visit's minted tracker_seed line plus its generation+epoch. */
-    private data class VisitSeed(val seedLine: String, val epoch: Long, val generation: Long)
-
-    private val ScrollLabel = "visual-server:human:visual-human-long:human"
-    private val MemberKey = "visual-owner:visual-server:human:visual-human-long"
-    private val KeyHash = MemberKey.hashCode().toString(16)
-
-    private fun orderedLines(startCursor: Long): List<String> {
-        var process: Process? = null
-        return try {
-            process =
-                Runtime.getRuntime()
-                    .exec(arrayOf("logcat", "-d", "-s", "MembersDetailScroll"))
-            process.inputStream.bufferedReader().use { reader ->
-                reader.readLines().filter { line ->
-                    // Fail-closed: a line whose timestamp cannot be parsed is
-                    // NOT admitted as evidence.
-                    val ts = logcatTimestampMillis(line) ?: return@filter false
-                    ts >= startCursor
-                }
-            }
-        } catch (t: Throwable) {
-            Log.w(TestLogTag, "logcat read failed: ${t.message}")
-            emptyList()
-        } finally {
-            process?.destroy()
-        }
-    }
-
-    private fun linesAfter(startCursor: Long, after: String): List<String> {
-        val lines = orderedLines(startCursor)
-        val idx = lines.lastIndexOf(after)
-        return if (idx < 0) emptyList() else lines.subList(idx + 1, lines.size)
-    }
-
-    private fun logcatTimestampMillis(line: String): Long? {
-        val match =
-            Regex("^(\\d{2})-(\\d{2}) (\\d{2}):(\\d{2}):(\\d{2})\\.(\\d{3})").find(line)
-                ?: return null
-        val now = java.util.Calendar.getInstance()
-        val cal =
-            java.util.Calendar.getInstance().apply {
-                set(java.util.Calendar.MONTH, match.groupValues[1].toInt() - 1)
-                set(java.util.Calendar.DAY_OF_MONTH, match.groupValues[2].toInt())
-                set(java.util.Calendar.HOUR_OF_DAY, match.groupValues[3].toInt())
-                set(java.util.Calendar.MINUTE, match.groupValues[4].toInt())
-                set(java.util.Calendar.SECOND, match.groupValues[5].toInt())
-                set(java.util.Calendar.MILLISECOND, match.groupValues[6].toInt())
-                set(java.util.Calendar.YEAR, now.get(java.util.Calendar.YEAR))
-            }
-        return cal.timeInMillis
-    }
-
-    private fun parsePositionFrom(line: String?): ScrollPosition? {
-        if (line == null) return null
-        val match = Regex("position=(\\d+):(\\d+)").find(line) ?: return null
-        return ScrollPosition(match.groupValues[1].toInt(), match.groupValues[2].toInt())
-    }
-
-    /**
-     * Wait for THIS visit's `tracker_seed`: the newest seed for the scroll
-     * label whose `epoch=` strictly exceeds [afterEpoch]. Returns the exact
-     * line so subsequent waits can gate on "after this visit's seed".
-     */
-    private fun waitForVisitSeed(startCursor: Long, afterEpoch: Long): VisitSeed {
-        val deadline = SystemClock.uptimeMillis() + InitialRenderTimeoutMs
-        while (SystemClock.uptimeMillis() < deadline) {
-            val seed =
-                orderedLines(startCursor)
-                    .filter { it.contains("tracker_seed") && it.contains(ScrollLabel) }
-                    .mapNotNull { line ->
-                        val epoch =
-                            Regex("epoch=(\\d+)").find(line)?.groupValues?.get(1)?.toLong()
-                        val generation =
-                            Regex("generation=(\\d+)").find(line)?.groupValues?.get(1)?.toLong()
-                        if (epoch != null && epoch > afterEpoch) {
-                            VisitSeed(line, epoch, generation ?: -1L)
-                        } else {
-                            null
-                        }
-                    }
-                    .lastOrNull()
-            if (seed != null) return seed
-            SystemClock.sleep(LogPollMs)
-        }
-        throw AssertionError("Timed out waiting for tracker_seed epoch>$afterEpoch")
-    }
-
-    /** Latest line matching [match] strictly after [after]'s position. */
     private fun waitForLine(
         startCursor: Long,
         after: String,
         description: String,
         match: (String) -> Boolean
-    ): String {
-        val deadline = SystemClock.uptimeMillis() + InitialRenderTimeoutMs
-        while (SystemClock.uptimeMillis() < deadline) {
-            val line = linesAfter(startCursor, after).lastOrNull(match)
-            if (line != null) return line
-            SystemClock.sleep(LogPollMs)
-        }
-        throw AssertionError("Timed out waiting for $description")
-    }
+    ) = MemberDetailScrollTestSupport.waitForLine(startCursor, after, description, TestLogTag, match)
 
     private fun waitForSave(
         startCursor: Long,
         after: String,
         epoch: Long,
         requireNonZero: Boolean = false
-    ): ScrollPosition {
-        val line =
-            waitForLine(startCursor, after, "accepted registry_save epoch=$epoch") { l ->
-                l.contains("registry_save") &&
-                    l.contains("kind=humanList") &&
-                    l.contains("decision=accept") &&
-                    l.contains("keyHash=$KeyHash") &&
-                    Regex("epoch=$epoch/$epoch\\b").containsMatchIn(l) &&
-                    (!requireNonZero ||
-                        parsePositionFrom(l)?.let { it.index > 0 || it.offset > 0 } == true)
-            }
-        return requireNotNull(parsePositionFrom(line)) {
-            "registry_save carried no position: $line"
-        }
-    }
+    ) = MemberDetailScrollTestSupport.waitForSave(startCursor, after, epoch, TestLogTag, requireNonZero)
 
-    private fun recordEvidence(key: String, value: String) {
-        println("$key $value")
-        Log.i(TestLogTag, "$key $value")
-    }
+    private fun recordEvidence(key: String, value: String) =
+        MemberDetailScrollTestSupport.recordEvidence(TestLogTag, key, value)
 
+    private fun injectDragToScrollBlocking(startCursor: Long, after: String) =
+        MemberDetailScrollTestSupport.injectDragToScrollBlocking(startCursor, after, TestLogTag)
+
+    private fun injectDragPaced() =
+        MemberDetailScrollTestSupport.injectDragPaced(TestLogTag)
     private companion object {
         private const val TestLogTag = "MemberDetailDisposeB1"
-        private const val InitialRenderTimeoutMs = 20_000L
-        private const val ScenarioCloseTimeoutMs = 20_000L
-        private const val LogPollMs = 100L
-        private const val DragSteps = 10
-        private const val DragStepDelayMs = 36L
-        private const val DragRetryDelayMs = 400L
     }
 }

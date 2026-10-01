@@ -897,6 +897,9 @@ jobs:
             member-detail-dispose-save-instrumentation.txt
             member-detail-dispose-save-logcat.txt
             member-detail-dispose-save-activity.txt
+            member-detail-compose-removal-instrumentation.txt
+            member-detail-compose-removal-logcat.txt
+            member-detail-compose-removal-activity.txt
             *-instrumentation.txt.attempt-*
           if-no-files-found: warn
           retention-days: 7

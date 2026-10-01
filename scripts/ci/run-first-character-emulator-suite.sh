@@ -54,6 +54,7 @@ DECLARED_TEST_IDS=(
   "durable-partition-migration"
   "thread-newer-auto-pagination"
   "member-detail-dispose-save"
+  "member-detail-compose-removal"
 )
 
 # Test metadata maps
@@ -178,6 +179,12 @@ init_test_metadata() {
   TEST_OUTPUT["member-detail-dispose-save"]="member-detail-dispose-save-instrumentation.txt"
   TEST_CONDITION["member-detail-dispose-save"]="always"
 
+  TEST_CLASS["member-detail-compose-removal"]="build.raft.app.shared.MemberDetailComposeRemovalConnectedTest"
+  TEST_RUNNER["member-detail-compose-removal"]="$RUNNER_CONNECTED"
+  TEST_RETRIES["member-detail-compose-removal"]=1
+  TEST_OUTPUT["member-detail-compose-removal"]="member-detail-compose-removal-instrumentation.txt"
+  TEST_CONDITION["member-detail-compose-removal"]="always"
+
   for id in "${DECLARED_TEST_IDS[@]}"; do
     TEST_STATUS["$id"]="not_run"
     TEST_REASON["$id"]="unreached"
@@ -240,6 +247,10 @@ run_post_hook() {
     member-detail-dispose-save)
       adb shell dumpsys activity activities > member-detail-dispose-save-activity.txt 2>/dev/null || true
       adb logcat -d -v threadtime -s MembersDetailScroll MemberDetailDisposeB1 TestRunner > member-detail-dispose-save-logcat.txt 2>/dev/null || true
+      ;;
+    member-detail-compose-removal)
+      adb shell dumpsys activity activities > member-detail-compose-removal-activity.txt 2>/dev/null || true
+      adb logcat -d -v threadtime -s MembersDetailScroll MemberDetailComposeRemoval TestRunner > member-detail-compose-removal-logcat.txt 2>/dev/null || true
       ;;
     *)
       ;;
