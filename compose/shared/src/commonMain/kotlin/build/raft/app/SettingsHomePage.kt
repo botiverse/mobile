@@ -228,6 +228,7 @@ import build.raft.app.data.SlockEventBus
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SlockSharedStoreProvider
 import build.raft.app.data.SlockAppShellDestinationSnapshots
+import build.raft.app.data.decideAppShellRestore
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.attemptSlockDatabaseLaunch
 import build.raft.app.data.ScreenLoadState
@@ -3335,30 +3336,6 @@ private fun SlockAppShellReadyContent(
             recreationRestoreApplied = true
         }
     }
-    // task #58: once a previously-Ready session is torn down (sign-out of this
-    // device, account cleared) the recorded destination belongs to nobody —
-    // drop it so a later same-shell login under a different or even the same
-    // account can never inherit a destination it did not navigate to.
-    // IMPORTANT: keyed on the transition out of Ready, not on
-    // `readySession == null` alone — a config-change recreate re-enters
-    // through SharedAuthGateState.Restoring with no ready session, and wiping
-    // the snapshot there would destroy the pending restore it exists for.
-    var hadReadySession by remember { mutableStateOf(false) }
-    LaunchedEffect(readySession?.user?.id, storeScope) {
-        val sessionId = readySession?.user?.id
-        if (sessionId != null) {
-            hadReadySession = true
-        } else if (
-            decideAppShellSnapshotTeardown(
-                hadReadySession = hadReadySession,
-                sessionPresent = false,
-            )
-        ) {
-            hadReadySession = false
-            SlockAppShellDestinationSnapshots.clear(storeScope)
-            recreationRestoreApplied = false
-        }
-    }
     // Recording waits until the restore decision resolved so the launch seed
     // cannot clobber a pending snapshot before consume() reads it.
     LaunchedEffect(readySession?.user?.id, readyServerId, selectedTab, storeScope, recreationRestoreApplied) {
@@ -4407,6 +4384,14 @@ private fun SlockAppShellReadyContent(
     }
 
     fun resetAppShellSessionState() {
+        // task #58: this is the shell's explicit session-termination funnel —
+        // sign-out, account switch, server-gate reset all land here. Drop the
+        // recorded destination so no later same-shell login inherits a
+        // destination it never navigated to. A transient Restoring re-entry
+        // (config-change recreate) never reaches this function, so a pending
+        // restore keeps its snapshot.
+        SlockAppShellDestinationSnapshots.clear(storeScope)
+        recreationRestoreApplied = false
         adaptiveWorkspaceStore.update { current ->
             current.copy(
                 workspace =

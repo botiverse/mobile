@@ -1141,7 +1141,7 @@ internal fun decideAppShellRestore(
     restoredTab: String?,
     selectedTab: String,
     launchSelectedTab: String,
-    retainedTabKeys: Set<String>,
+    retainedTabKeys: Collection<String>,
 ): SlockAppShellRestoreDecision {
     if (!activityWasRecreated) return SlockAppShellRestoreDecision(restoreTab = null)
     val target = restoredTab ?: return SlockAppShellRestoreDecision(restoreTab = null)
@@ -1150,16 +1150,3 @@ internal fun decideAppShellRestore(
     if (target !in retainedTabKeys) return SlockAppShellRestoreDecision(restoreTab = null)
     return SlockAppShellRestoreDecision(restoreTab = target)
 }
-
-/**
- * task #58: whether the shell should drop its recorded destination snapshot —
- * pure so unit tests pin the transition policy the composition applies. The
- * snapshot is cleared only when a session that previously reached Ready
- * leaves it (sign-out, account cleared); a Restoring re-entry after a
- * config-change recreate must NOT clear, or the pending restore loses the
- * snapshot it exists to consume.
- */
-internal fun decideAppShellSnapshotTeardown(
-    hadReadySession: Boolean,
-    sessionPresent: Boolean,
-): Boolean = hadReadySession && !sessionPresent

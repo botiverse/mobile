@@ -1,12 +1,11 @@
 package build.raft.app
 
 import build.raft.app.data.SlockAppShellDestinationSnapshots
+import build.raft.app.data.decideAppShellRestore
 import build.raft.app.data.SlockShellStoreScope
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class SlockAppShellDestinationSnapshotTest {
     private val scope = SlockShellStoreScope.create("shell-a", "server-a")
@@ -144,26 +143,5 @@ class SlockAppShellDestinationSnapshotTest {
         assertNull(decision.restoreTab)
     }
 
-    @Test
-    fun teardownClearsOnlyAfterReadySessionEnds() {
-        // Restoring (session absent, never reached Ready) must keep the
-        // snapshot — a config-change recreate re-enters through Restoring.
-        assertFalse(
-            decideAppShellSnapshotTeardown(hadReadySession = false, sessionPresent = false)
-        )
-        // Ready -> teardown (sign-out / account cleared) clears.
-        assertTrue(
-            decideAppShellSnapshotTeardown(hadReadySession = true, sessionPresent = false)
-        )
-        // Ready with session present never clears.
-        assertFalse(
-            decideAppShellSnapshotTeardown(hadReadySession = true, sessionPresent = true)
-        )
-        // Boot into AuthRequired without a prior Ready keeps the snapshot
-        // (identity gate in consume() still guards restore).
-        assertFalse(
-            decideAppShellSnapshotTeardown(hadReadySession = false, sessionPresent = true)
-        )
-    }
 }
 
