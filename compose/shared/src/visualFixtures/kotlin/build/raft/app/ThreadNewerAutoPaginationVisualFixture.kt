@@ -83,50 +83,6 @@ public object ThreadNewerAutoPaginationVisualFixtureProbe {
         ledger.release(runNonce, callNumber, ThreadNewerAutoFixtureResponse.Error)
 }
 
-public data class ThreadNewerAutoPaginationFixtureSnapshot(
-    val runNonce: String,
-    val initialRequestCount: Int,
-    val afterRequests: List<ThreadNewerAutoAfterRequest>,
-    val returnedAfterCalls: List<Int>,
-    val syncRequests: List<ThreadNewerAutoSyncRequest> = emptyList(),
-    val olderRequests: List<ThreadNewerAutoOlderRequest> = emptyList(),
-    val requestLog: List<String> = emptyList(),
-)
-
-public data class ThreadNewerAutoSyncRequest(
-    val callNumber: Int,
-    val channelId: String,
-    val sinceSeq: Long,
-    val limit: Int,
-    val requestTrace: String? = null,
-)
-
-public data class ThreadNewerAutoOlderRequest(
-    val callNumber: Int,
-    val beforeSeq: Long,
-    val limit: Int,
-    val requestTrace: String? = null,
-)
-
-public data class ThreadNewerAutoAfterRequest(
-    val callNumber: Int,
-    val afterSeq: Long,
-    val limit: Int,
-    val requestTrace: String? = null,
-)
-
-internal sealed interface ThreadNewerAutoFixtureResponse {
-    data class Success(val messageCount: Int) : ThreadNewerAutoFixtureResponse
-
-    data object Error : ThreadNewerAutoFixtureResponse
-
-    fun logLabel(): String =
-        when (this) {
-            is Success -> "success rows=$messageCount"
-            Error -> "error"
-        }
-}
-
 @Page(ThreadNewerAutoPageName, supportInLocal = true)
 internal class ThreadNewerAutoPaginationVisualPage : BasePager() {
     override fun willInit() {
