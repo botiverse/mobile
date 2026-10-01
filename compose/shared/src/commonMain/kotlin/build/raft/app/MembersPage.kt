@@ -1552,6 +1552,37 @@ private val membersHumanDetailVisualMember = MemberProfile(
     membershipStatus = "active"
 )
 
+// task #58 B1 fixture: a Human member whose detail list is long enough to
+// actually scroll (unlike the existing visual humans, whose short content
+// fits the viewport and can never produce a non-zero position). Isolated by
+// a dedicated memberId so it does not drift the existing visual baselines;
+// the restore key still resolves via currentUserId + server/kind/member.
+private val membersHumanLongDetailVisualMember = MemberProfile(
+    id = MemberId("visual-human-long"),
+    displayName = "Long Member",
+    handle = "@visual-human-long",
+    kind = MemberKind.Human,
+    description = "Fixture member with a long created-agents list so the detail page scrolls.",
+    roleDescription = "Member",
+    serverRole = "member",
+    serverId = ServerId("visual-server"),
+    email = "visual-human-long@slock.ai",
+    avatarLabel = "L",
+    presence = Presence.Active,
+    joinedAt = "2026-06-18T00:00:00.000Z",
+    membershipStatus = "active",
+    createdAgents =
+        (1..40).map { i ->
+            AgentProfile(
+                id = MemberId("visual-human-long-agent-$i"),
+                userId = "visual-human-long",
+                displayName = "Long Agent " + i.toString().padStart(2, '0'),
+                handle = "@visual-human-long-agent-$i",
+                presence = Presence.Offline
+            )
+        }
+)
+
 private val membersAgentDetailVisualScopeSet = AgentScopeSet(
     agentId = membersAgentDetailVisualMember.id,
     granted = listOf(
@@ -4285,6 +4316,11 @@ private fun KuiklyMemberDetailPayload.toMemberDetailVisualSeedOrNull(): MemberDe
         membersHumanDetailVisualMember.id.value ->
             MemberDetailVisualSeed(
                 member = membersHumanDetailVisualMember,
+                agentDetailState = MembersAgentDetailLoadState.Idle
+            )
+        membersHumanLongDetailVisualMember.id.value ->
+            MemberDetailVisualSeed(
+                member = membersHumanLongDetailVisualMember,
                 agentDetailState = MembersAgentDetailLoadState.Idle
             )
         else -> membersAgentDetailVisualVariants
