@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.SlockAppShellDestinationSnapshots
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.AuthenticatedRouteOwner
@@ -120,10 +121,14 @@ fun releaseSlockShellStoreScope(shellInstanceId: String, serverId: String? = nul
     val normalizedShellInstanceId = shellInstanceId.trim()
     if (normalizedShellInstanceId.isBlank()) return
     ProcessAttachmentAuthScopes.retireShell(normalizedShellInstanceId)
-    SlockSharedStoreRegistry.currentOrNull()?.releaseShellStoreScope(
+    val scope =
         SlockShellStoreScope.create(
             shellInstanceId = normalizedShellInstanceId,
             initialServerId = serverId?.trim()?.takeIf { it.isNotBlank() },
         )
-    )
+    // task #58: a real shell close retires its last-destination snapshot so a
+    // later same-shellId open starts fresh. Config-change recreates skip this
+    // path (shouldReleaseAndroidShellWindow requires isFinishing && !changing).
+    SlockAppShellDestinationSnapshots.clear(scope)
+    SlockSharedStoreRegistry.currentOrNull()?.releaseShellStoreScope(scope)
 }
