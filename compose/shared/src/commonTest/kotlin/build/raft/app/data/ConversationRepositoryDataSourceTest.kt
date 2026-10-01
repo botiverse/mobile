@@ -1373,7 +1373,7 @@ class ConversationRepositoryDataSourceTest {
         ): HomeNetworkResponse {
             val normalized = path.trim('/')
             val requestKey = "$method $normalized"
-            requests += RecordedConversationRequest(priority, method, normalized, query)
+            requests += RecordedConversationRequest(priority, method, normalized, query, serverIdOverride?.value, bodyText)
             serverOverrides += serverIdOverride?.value
             bodyText?.let { bodies += it }
             requestStarted[requestKey]?.complete(Unit)
@@ -1402,7 +1402,9 @@ class ConversationRepositoryDataSourceTest {
         val priority: DataRequestPriority,
         val method: String,
         val path: String,
-        val query: List<Pair<String, String>> = emptyList()
+        val query: List<Pair<String, String>> = emptyList(),
+        val serverOverride: String? = null,
+        val bodyText: String? = null,
     )
 
     private companion object {
