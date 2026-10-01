@@ -1122,3 +1122,31 @@ internal object SlockAppShellDestinationSnapshots {
     /** Test seam: expose the live cache so tests can drive get/put directly. */
     internal fun cacheForTest(): SlockShellScopedStoreCache<SlockAppShellDestinationSnapshot> = cache
 }
+
+/**
+ * task #58: the restore decision the app shell runs when a session is ready —
+ * pure so unit tests exercise the same policy the composition applies. A
+ * recorded snapshot only wins when the host marked this attach as a system
+ * recreation, the launch seed is still untouched (no explicit selection has
+ * landed), and the restored key is one the shell retains.
+ */
+internal data class SlockAppShellRestoreDecision(
+    val restoreTab: String?,
+) {
+    val shouldRestore: Boolean get() = restoreTab != null
+}
+
+internal fun decideAppShellRestore(
+    activityWasRecreated: Boolean,
+    restoredTab: String?,
+    selectedTab: String,
+    launchSelectedTab: String,
+    retainedTabKeys: Set<String>,
+): SlockAppShellRestoreDecision {
+    if (!activityWasRecreated) return SlockAppShellRestoreDecision(restoreTab = null)
+    val target = restoredTab ?: return SlockAppShellRestoreDecision(restoreTab = null)
+    if (target == selectedTab) return SlockAppShellRestoreDecision(restoreTab = null)
+    if (selectedTab != launchSelectedTab) return SlockAppShellRestoreDecision(restoreTab = null)
+    if (target !in retainedTabKeys) return SlockAppShellRestoreDecision(restoreTab = null)
+    return SlockAppShellRestoreDecision(restoreTab = target)
+}

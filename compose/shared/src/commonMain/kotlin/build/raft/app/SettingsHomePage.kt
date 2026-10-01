@@ -3315,21 +3315,36 @@ private fun SlockAppShellReadyContent(
     LaunchedEffect(readySession?.user?.id, readyServerId, storeScope, activityWasRecreated) {
         val accountId = readySession?.user?.id
         if (!recreationRestoreApplied && accountId != null) {
-            if (activityWasRecreated) {
-                SlockAppShellDestinationSnapshots
-                    .consume(storeScope, accountId, readyServerId)
-                    ?.takeIf { it != selectedTab && it in retainedAppShellTabKeys }
-                    ?.let { restored ->
-                        if (selectedTab == launchSelection.selectedTab) {
-                            bridge.log(
-                                "app_shell_recreate_restore selectedTab=$restored " +
-                                    "launchSeed=${launchSelection.selectedTab} scope=${storeScope.shellInstanceId}"
-                            )
-                            selectedTab = restored
-                        }
-                    }
+            val decision =
+                decideAppShellRestore(
+                    activityWasRecreated = activityWasRecreated,
+                    restoredTab =
+                        SlockAppShellDestinationSnapshots
+                            .consume(storeScope, accountId, readyServerId),
+                    selectedTab = selectedTab,
+                    launchSelectedTab = launchSelection.selectedTab,
+                    retainedTabKeys = retainedAppShellTabKeys,
+                )
+            decision.restoreTab?.let { restored ->
+                bridge.log(
+                    "app_shell_recreate_restore selectedTab=$restored " +
+                        "launchSeed=${launchSelection.selectedTab} scope=${storeScope.shellInstanceId}"
+                )
+                selectedTab = restored
             }
             recreationRestoreApplied = true
+        }
+    }
+    // task #58: once the ready session ends (sign-out of this device, account
+    // cleared) the recorded destination belongs to nobody — drop it so a
+    // later same-shell login under a different or even the same account can
+    // never inherit a destination it did not navigate to. Identity matching
+    // in consume() already rejects account mismatch; this is the deterministic
+    // teardown the reviewer asked for.
+    LaunchedEffect(readySession?.user?.id, storeScope) {
+        if (readySession?.user?.id == null && recreationRestoreApplied) {
+            SlockAppShellDestinationSnapshots.clear(storeScope)
+            recreationRestoreApplied = false
         }
     }
     // Recording waits until the restore decision resolved so the launch seed
