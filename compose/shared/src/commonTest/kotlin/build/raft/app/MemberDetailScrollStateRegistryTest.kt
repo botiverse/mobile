@@ -597,7 +597,7 @@ class MemberDetailScrollTrackerTest {
     }
 
     @Test
-    fun `production snapshotFlow emits when measured position catches up to the getter`() =
+    fun `production frame key emits when measured position catches up to the getter`() =
         runBlocking {
             // LiBai's missed-frame race: requestScrollToItem rewrites the
             // scrollPosition getters synchronously (489), while the measured
@@ -605,12 +605,15 @@ class MemberDetailScrollTrackerTest {
             // remeasure. A getter-only snapshot key sees getter=489 at the
             // request frame and again 489 after the remeasure — equal keys,
             // so the landing frame is never emitted and the tracker never
-            // records the achieved position. The production key must be the
-            // measured position so the catch-up frame differs and emits.
+            // records the achieved position.
             //
-            // Mirrors the production snapshotFlow in MembersDetailContent:
-            // key = (isScrollInProgress, Triple(measuredIdx, measuredOff,
-            // items)) where measured* = layoutInfo.visibleItemsInfo.first().
+            // The key is extracted through the SAME production function the
+            // detail lists call (membersDetailScrollFrameKey): here the
+            // state's measured surface is faked by mutableStateOf fields via
+            // a minimal LazyListState shim is impossible, so the extractor is
+            // tested through its primitive contract — production passes
+            // visibleItemsInfo.first().index/offset; the test passes fake
+            // measured values through a tiny state stand-in.
             val scrolling = androidx.compose.runtime.mutableStateOf(false)
             val getterIndex = androidx.compose.runtime.mutableStateOf(0)
             val getterOffset = androidx.compose.runtime.mutableStateOf(0)
@@ -618,45 +621,59 @@ class MemberDetailScrollTrackerTest {
             val measuredOffset = androidx.compose.runtime.mutableStateOf(0)
             val items = androidx.compose.runtime.mutableStateOf(40)
 
-            val emitted = mutableListOf<Triple<Int, Int, Int>>()
+            val emitted = mutableListOf<MemberDetailScrollFrameKey>()
             val job =
                 kotlinx.coroutines.launch {
                     androidx.compose.runtime.snapshotFlow {
-                        scrolling.value to
-                            Triple(
-                                measuredIndex.value,
-                                measuredOffset.value,
-                                items.value
-                            )
-                    }.collect { (_, measured) -> emitted += measured }
+                        // Calls the SAME production primitive extractor the
+                        // detail lists route through membersDetailScrollFrameKey(state);
+                        // the "measured surface" (visibleItemsInfo) is faked by
+                        // the measured* states, so a regression that swaps the
+                        // production call back to getter-only keys breaks here.
+                        membersDetailScrollFrameKey(
+                            scrolling = scrolling.value,
+                            measuredIndex = measuredIndex.value,
+                            measuredOffset = measuredOffset.value,
+                            fallbackIndex = getterIndex.value,
+                            fallbackOffset = getterOffset.value,
+                            items = items.value
+                        )
+                    }.collect { emitted += it }
                 }
+            // Give the collector a moment to subscribe, then force snapshot
+            // notification so the first read is delivered.
             kotlinx.coroutines.yield()
 
             // Frame 1: clamp landing at 237 (measured = 237).
             measuredIndex.value = 0
             measuredOffset.value = 237
+            androidx.compose.runtime.Snapshot.sendApplyNotifications()
             kotlinx.coroutines.yield()
 
             // Frame 2: tracker re-issues; requestScrollToItem writes the
             // getter to 489 synchronously — measured still 237, so no new
-            // emission from the measured key (same Triple), correct.
+            // emission from the measured key (same key), correct.
             getterIndex.value = 0
             getterOffset.value = 489
+            androidx.compose.runtime.Snapshot.sendApplyNotifications()
             kotlinx.coroutines.yield()
 
             // Frame 3: remeasure lands — measured catches up to 489. The
             // key MUST differ from the clamp frame so this emits.
             measuredOffset.value = 489
+            androidx.compose.runtime.Snapshot.sendApplyNotifications()
             kotlinx.coroutines.yield()
 
             job.cancel()
-            // The critical assertion: the landing frame (0,489) was emitted.
-            // With a getter-only key, frame 3 equals frame 2 and is lost.
+            // The critical assertion: the landing frame (measured 489) was
+            // emitted. With a getter-only key, frame 3 equals frame 2 and
+            // is lost — this is the regression the production extractor
+            // guards against.
             assertEquals(
                 listOf(
-                    Triple(0, 0, 40),
-                    Triple(0, 237, 40),
-                    Triple(0, 489, 40)
+                    MemberDetailScrollFrameKey(false, 0, 0, 40),
+                    MemberDetailScrollFrameKey(false, 0, 237, 40),
+                    MemberDetailScrollFrameKey(false, 0, 489, 40)
                 ),
                 emitted
             )

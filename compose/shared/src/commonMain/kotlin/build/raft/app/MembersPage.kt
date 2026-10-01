@@ -5673,33 +5673,20 @@ private fun MembersDetailContent(
                 // isScrollInProgress is observed too: a gesture that starts
                 // and ends within the settle window emits true->false even
                 // when the landing equals the last position, so the tracker
-                // still sees the user's scroll boundary. The trigger also
-                // observes the MEASURED position (visibleItemsInfo), not only
-                // the scrollPosition getters — requestScrollToItem rewrites
-                // the getters synchronously, so a getter-only key can miss
-                // the frame where the restore actually lands.
-                state.isScrollInProgress to
-                    Triple(
-                        state.layoutInfo.visibleItemsInfo
-                            .firstOrNull()?.index
-                            ?: state.firstVisibleItemIndex,
-                        state.layoutInfo.visibleItemsInfo
-                            .firstOrNull()
-                            ?.let {
-                                state.layoutInfo.viewportStartOffset - it.offset
-                            }
-                            ?: state.firstVisibleItemScrollOffset,
-                        state.layoutInfo.totalItemsCount
-                    )
-            }.collect { (scrolling, measured) ->
+                // still sees the user's scroll boundary. The key is the
+                // shared MEASURED frame extractor — see
+                // membersDetailScrollFrameKey for why the getters alone
+                // cannot be the key.
+                membersDetailScrollFrameKey(state)
+            }.collect { frame ->
                 // Feed the SAME captured frame to the tracker: re-reading
                 // state inside the collector could see a newer layout and
                 // attribute it to this emission.
                 tracker.observe(
-                    itemCount = measured.third,
-                    positionIndex = measured.first,
-                    positionOffset = measured.second,
-                    scrollInProgress = scrolling,
+                    itemCount = frame.items,
+                    positionIndex = frame.index,
+                    positionOffset = frame.offset,
+                    scrollInProgress = frame.scrolling,
                     requestScroll = { index, offset ->
                         state.requestScrollToItem(index, offset)
                     }
@@ -5727,30 +5714,17 @@ private fun MembersDetailContent(
                 // isScrollInProgress is observed too: a gesture that starts
                 // and ends within the settle window emits true->false even
                 // when the landing equals the last position, so the tracker
-                // still sees the user's scroll boundary. The trigger also
-                // observes the MEASURED position (visibleItemsInfo), not only
-                // the scrollPosition getters — requestScrollToItem rewrites
-                // the getters synchronously, so a getter-only key can miss
-                // the frame where the restore actually lands.
-                state.isScrollInProgress to
-                    Triple(
-                        state.layoutInfo.visibleItemsInfo
-                            .firstOrNull()?.index
-                            ?: state.firstVisibleItemIndex,
-                        state.layoutInfo.visibleItemsInfo
-                            .firstOrNull()
-                            ?.let {
-                                state.layoutInfo.viewportStartOffset - it.offset
-                            }
-                            ?: state.firstVisibleItemScrollOffset,
-                        state.layoutInfo.totalItemsCount
-                    )
-            }.collect { (scrolling, measured) ->
+                // still sees the user's scroll boundary. The key is the
+                // shared MEASURED frame extractor — see
+                // membersDetailScrollFrameKey for why the getters alone
+                // cannot be the key.
+                membersDetailScrollFrameKey(state)
+            }.collect { frame ->
                 tracker.observe(
-                    itemCount = measured.third,
-                    positionIndex = measured.first,
-                    positionOffset = measured.second,
-                    scrollInProgress = scrolling,
+                    itemCount = frame.items,
+                    positionIndex = frame.index,
+                    positionOffset = frame.offset,
+                    scrollInProgress = frame.scrolling,
                     requestScroll = { index, offset ->
                         state.requestScrollToItem(index, offset)
                     }
@@ -14095,6 +14069,49 @@ internal data class MemberDetailScrollPosition(
  * keeps the last position observed with content — the position a dispose
  * fallback publishes after the list detached (and reads 0 items).
  */
+/**
+ * Production frame extractor shared by the detail-list snapshotFlow trigger
+ * and its regression test. The position MUST come from the measured
+ * layout (visibleItemsInfo), not the scrollPosition getters — during a
+ * pending requestScrollToItem the getters already report the un-applied
+ * target, so a getter-only key can collapse the real landing frame into a
+ * no-op emission and the tracker never learns the restore arrived.
+ */
+internal data class MemberDetailScrollFrameKey(
+    val scrolling: Boolean,
+    val index: Int,
+    val offset: Int,
+    val items: Int
+)
+
+internal fun membersDetailScrollFrameKey(
+    scrolling: Boolean,
+    measuredIndex: Int?,
+    measuredOffset: Int?,
+    fallbackIndex: Int,
+    fallbackOffset: Int,
+    items: Int
+) =
+    MemberDetailScrollFrameKey(
+        scrolling = scrolling,
+        index = measuredIndex ?: fallbackIndex,
+        offset = measuredOffset ?: fallbackOffset,
+        items = items
+    )
+
+internal fun membersDetailScrollFrameKey(state: LazyListState) =
+    membersDetailScrollFrameKey(
+        scrolling = state.isScrollInProgress,
+        measuredIndex = state.layoutInfo.visibleItemsInfo.firstOrNull()?.index,
+        measuredOffset =
+            state.layoutInfo.visibleItemsInfo.firstOrNull()?.let {
+                state.layoutInfo.viewportStartOffset - it.offset
+            },
+        fallbackIndex = state.firstVisibleItemIndex,
+        fallbackOffset = state.firstVisibleItemScrollOffset,
+        items = state.layoutInfo.totalItemsCount
+    )
+
 /**
  * Real-gesture probe for the member detail lists. Kuikly routes list
  * scrolling through the native ScrollerView bridge — the LazyListState
