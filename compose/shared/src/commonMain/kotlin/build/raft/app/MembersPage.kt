@@ -14106,6 +14106,11 @@ internal data class MemberDetailScrollPosition(
  * supersedes a still-pending restore request with the last MEASURED
  * position (firstVisibleItem* already reads the requested target inside
  * the not-yet-remeasured window, so it cannot serve as the supersede base).
+ *
+ * UNVERIFIED at source level: Kuikly's SuperTouchManager marks
+ * consumeTouchDown once any pointerInput modifier receives the down, so
+ * whether the native ScrollerView still performs the scroll while this
+ * probe is attached is a device question, not a code one.
  */
 internal fun Modifier.membersDetailUserDragProbe(
     state: LazyListState,
