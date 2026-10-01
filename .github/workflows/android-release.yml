@@ -323,6 +323,7 @@ jobs:
             .github/actions/gradle-failure-diagnostics \
             .github/gradle-cache-epoch \
             .github/gradle-cache-quarantine \
+            scripts/upload_android_hands_artifacts.sh \
             scripts/sign_android_apk_with_rotation.sh \
             scripts/verify_android_apk_with_rotation.sh \
             scripts/verify_android_dex_packaging.py \
