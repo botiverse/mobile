@@ -15916,6 +15916,8 @@ class SharedThreadStoreTest {
         val syncReleases = ArrayDeque<CompletableDeferred<Unit>>()
         val syncBodyTexts = ArrayDeque<String>()
         val syncResponseCodes = ArrayDeque<Int>()
+        val channelMessagesRequestTraces: MutableList<String?> = mutableListOf()
+        val syncRequestTraces: MutableList<String?> = mutableListOf()
 
         override suspend fun channelMessages(
             threadId: String,
@@ -15924,6 +15926,7 @@ class SharedThreadStoreTest {
             afterSeq: Long?,
             requestTrace: String?
         ): HomeNetworkResponse {
+            channelMessagesRequestTraces += requestTrace
             channelMessageCalls += 1
             channelIds += threadId
             channelMessageLimits += limit
@@ -15951,6 +15954,7 @@ class SharedThreadStoreTest {
         }
 
         override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String?): HomeNetworkResponse {
+            syncRequestTraces += requestTrace
             val startedSignal = syncStartedSignals.removeFirstOrNull()
             val callRelease = syncReleases.removeFirstOrNull()
             val responseBody = syncBodyTexts.removeFirstOrNull() ?: newerBodyText
@@ -17791,6 +17795,151 @@ class SharedThreadStoreTest {
         withTimeout(5_000) { refreshJob.await() }
         assertNotEquals("error", store.state.value.payload.newerMessagesStatus)
         assertEquals(null, store.state.value.payload.errorCode)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+
+    @Test
+    fun fetchIssueLogCarriesStoreAndFetchSeqToBoundaryTrace() = runBlocking {
+        // task #58 observability contract: every issued fetch logs
+        // `thread_fetch_issued kind=… storeSeq=S fetchSeq=N …` and the SAME
+        // storeSeq+fetchSeq pair reaches the network boundary as requestTrace
+        // (`<kind>_s<S>_fs=<N>`), so fixture/store log lines reconcile to a
+        // single fetch without relying on ordering.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+        val api =
+            FakeThreadApi(
+                bodyText =
+                    messagesResponse("first body", id = "m16", seq = 16, historyLimited = false),
+                newerBodyText = newerRowsBody(17L..20L),
+            )
+        val logs = mutableListOf<String>()
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
+            )
+        val store =
+            SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        store.accept(
+            SharedThreadIntent.Start(
+                basePayload().copy(
+                    canLoadMoreAfter = true,
+                    messages = listOf(payloadMessage(id = "m16", seq = 16, body = "first body")),
+                )
+            )
+        )
+        store.loadNewer()
+        val issued = logs.filter { it.startsWith("thread_fetch_issued") }
+        assertTrue(issued.isNotEmpty(), "loadNewer must log thread_fetch_issued; logs=$logs")
+        val issuedNewer = issued.single { it.contains("kind=newer_page") }
+        val storeSeq = Regex("storeSeq=(\\d+)").find(issuedNewer)!!.groupValues[1]
+        val fetchSeq = Regex("fetchSeq=(\\d+)").find(issuedNewer)!!.groupValues[1]
+        val trace = api.channelMessagesRequestTraces.last()
+        assertEquals(
+            "newer_page_s${storeSeq}_fs=$fetchSeq",
+            trace,
+            "boundary requestTrace must carry the same storeSeq+fetchSeq as thread_fetch_issued",
+        )
+        val writeLog = logs.single { it.contains("thread_payload_messages_write tag=newer_page_apply") }
+        assertTrue(
+            writeLog.contains("storeSeq=$storeSeq") && writeLog.contains("fetchSeq=$fetchSeq"),
+            "apply log must carry the same storeSeq+fetchSeq; got $writeLog",
+        )
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun diagnosticsLoggerThrowingDoesNotBlockPayloadWrite() = runBlocking {
+        // task #58 observability contract: a throwing diagnostics logger must not
+        // prevent or veto a messages write (observation is strictly post-write and
+        // fail-safe).
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+        val api =
+            FakeThreadApi(
+                bodyText =
+                    messagesResponse("first body", id = "m16", seq = 16, historyLimited = false),
+                newerBodyText = newerRowsBody(17L..20L),
+            )
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
+            )
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                diagnosticsLogger = { throw IllegalStateException("log boom") },
+            )
+        store.accept(
+            SharedThreadIntent.Start(
+                basePayload().copy(
+                    canLoadMoreAfter = true,
+                    messages = listOf(payloadMessage(id = "m16", seq = 16, body = "first body")),
+                )
+            )
+        )
+        store.loadNewer()
+        val seqs = store.state.value.payload.messages.mapNotNull { it.seq }.toSet()
+        assertTrue(
+            (17L..20L).all { it in seqs },
+            "write must commit even when diagnosticsLogger throws; missing=${(17L..20L).filter { it !in seqs }}",
+        )
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun concurrentStoresUseDistinctTraceIdentities() = runBlocking {
+        // task #58 observability contract: two stores issuing the same kind of
+        // fetch must not share a trace identity — storeSeq distinguishes them.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+        fun newStore(): Pair<SharedThreadStore, MutableList<String>> {
+            val logs = mutableListOf<String>()
+            val api =
+                FakeThreadApi(
+                    bodyText =
+                        messagesResponse("first body", id = "m16", seq = 16, historyLimited = false),
+                    newerBodyText = newerRowsBody(17L..20L),
+                )
+            val dataSource =
+                testSharedThreadDataSource(
+                    networkApi = api,
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
+                )
+            val store =
+                SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+            store.accept(
+                SharedThreadIntent.Start(
+                    basePayload().copy(
+                        canLoadMoreAfter = true,
+                        messages = listOf(payloadMessage(id = "m16", seq = 16, body = "first body")),
+                    )
+                )
+            )
+            store to logs
+        }
+        val (storeA, logsA) = newStore()
+        val (storeB, logsB) = newStore()
+        storeA.loadNewer()
+        storeB.loadNewer()
+        val issuedA = logsA.single { it.startsWith("thread_fetch_issued") && it.contains("kind=newer_page") }
+        val issuedB = logsB.single { it.startsWith("thread_fetch_issued") && it.contains("kind=newer_page") }
+        val storeSeqA = Regex("storeSeq=(\\d+)").find(issuedA)!!.groupValues[1]
+        val storeSeqB = Regex("storeSeq=(\\d+)").find(issuedB)!!.groupValues[1]
+        assertNotEquals(storeSeqA, storeSeqB, "concurrent stores must get distinct storeSeq")
         } finally {
             scope.cancel()
         }

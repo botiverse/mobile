@@ -3225,14 +3225,7 @@ internal class SharedThreadDataSource(
                             "thread_page_size source=initial_api server=${session.currentServerId.orEmpty()} " +
                                 "pageSize=$pageSize"
                         )
-                        api.channelMessages(resolvedThreadId, limit = pageSize, requestTrace = requestTrace).also {
-                            requestTrace?.let { trace ->
-                                diagnosticsLogger(
-                                    "thread_net_call op=channelMessages threadId=$resolvedThreadId " +
-                                        "limit=$pageSize trace=$trace"
-                                )
-                            }
-                        }
+                        api.channelMessages(resolvedThreadId, limit = pageSize, requestTrace = requestTrace)
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Throwable) {
@@ -6635,7 +6628,7 @@ internal class SharedThreadStore(
                 persistResult = true,
                 reusePrewarm = reusePrewarm,
                 replaceReplyAccessFailure = explicitRetry,
-                requestTrace = "refresh_canonical_fs=$refreshFetchSeq",
+                requestTrace = "refresh_canonical_s${storeInstanceSeq}_fs=$refreshFetchSeq",
             )
         val latest = _state.value.payload
         if (
@@ -6651,7 +6644,7 @@ internal class SharedThreadStore(
         ) {
             runCatching {
                 diagnosticsLogger?.invoke(
-                    "thread_payload_messages_write_rejected tag=refresh_after_fetch " +
+                    "thread_payload_messages_write_rejected storeSeq=$storeInstanceSeq tag=refresh_after_fetch " +
                         "routeToken=${routeStaleToken.value} fetchSeq=$refreshFetchSeq " +
                         "reason=stale_or_route_moved " +
                         "currentMaxSeq=${latest.messages.mapNotNull { it.seq }.maxOrNull()}"
@@ -8376,7 +8369,7 @@ internal class SharedThreadStore(
         reducePayloadPatch(writeTag = "older_page_loading", requestFetchSeq = olderFetchSeq) { currentPayload ->
             currentPayload.copy(olderMessagesStatus = "loading", errorCode = null)
         }
-        val result = dataSource.fetchOlderThreadPayload(existing, beforeSeq, requestTrace = "older_page_fs=$olderFetchSeq")
+        val result = dataSource.fetchOlderThreadPayload(existing, beforeSeq, requestTrace = "older_page_s${storeInstanceSeq}_fs=$olderFetchSeq")
         val latest = _state.value.payload
         if (!routeStillCurrent(existing, "thread_page", "older_after_fetch", latest)) {
             return
@@ -8472,7 +8465,7 @@ internal class SharedThreadStore(
         var outcome: ThreadNewerPageLoadOutcome = ThreadNewerPageLoadOutcome.Ignored
         val fetchSeq = issueFetchSeq("newer_page", "afterSeq=$afterSeq loadId=$loadId")
         try {
-            val result = dataSource.fetchNewerThreadPayload(initial, afterSeq, requestTrace = "newer_page_fs=$fetchSeq")
+            val result = dataSource.fetchNewerThreadPayload(initial, afterSeq, requestTrace = "newer_page_s${storeInstanceSeq}_fs=$fetchSeq")
             realtimeGapRecoveryMutex.withLock {
                 val active =
                     loadNewerState
@@ -8497,7 +8490,7 @@ internal class SharedThreadStore(
                     loadNewerState = null
                     runCatching {
                         diagnosticsLogger?.invoke(
-                            "thread_payload_messages_write_rejected tag=newer_after_fetch " +
+                            "thread_payload_messages_write_rejected storeSeq=$storeInstanceSeq tag=newer_after_fetch " +
                                 "routeToken=${routeStaleToken.value} requestId=$loadId fetchSeq=$fetchSeq " +
                                 "fetchSeq=$fetchSeq " +
                                 "reason=stale_or_route_moved " +
@@ -8555,7 +8548,7 @@ internal class SharedThreadStore(
                     ) {
                         runCatching {
                             diagnosticsLogger?.invoke(
-                                "thread_payload_messages_write_rejected tag=newer_page_apply " +
+                                "thread_payload_messages_write_rejected storeSeq=$storeInstanceSeq tag=newer_page_apply " +
                                     "routeToken=${routeStaleToken.value} requestId=$loadId fetchSeq=$fetchSeq " +
                                     "fetchSeq=$fetchSeq " +
                                     "reason=stale_or_route_moved " +
@@ -8884,9 +8877,9 @@ internal class SharedThreadStore(
                     )
                 val result =
                     if (tailFallbackArmed) {
-                        dataSource.fetchReplyThreadTailGapPayload(requestPayload, requestTrace = "gap_tail_fs=$fetchSeq")
+                        dataSource.fetchReplyThreadTailGapPayload(requestPayload, requestTrace = "gap_tail_s${storeInstanceSeq}_fs=$fetchSeq")
                     } else {
-                        dataSource.fetchRealtimeGapThreadPayload(requestPayload, nextRequest.sinceSeq, requestTrace = "gap_sync_fs=$fetchSeq")
+                        dataSource.fetchRealtimeGapThreadPayload(requestPayload, nextRequest.sinceSeq, requestTrace = "gap_sync_s${storeInstanceSeq}_fs=$fetchSeq")
                     }
                 var shouldContinue = false
                 var nextSinceSeq = nextRequest.sinceSeq

@@ -582,7 +582,9 @@ class RealConversationRepository private constructor(
         val context = currentContext() ?: return authRequired()
         val messageLimit = limit.coerceAtLeast(1)
         requestTrace?.let {
-            warningLogger("thread_net_call op=getThread threadId=${threadId.value} trace=$it")
+            runCatching {
+                runCatching { warningLogger("thread_net_call op=getThread threadId=${threadId.value} trace=$it") }
+            }
         }
         return loadChannelMessages(
             context = context,
@@ -818,7 +820,7 @@ class RealConversationRepository private constructor(
         val context = currentContext() ?: return authRequired()
         val messageLimit = limit.coerceAtLeast(1)
         requestTrace?.let {
-            warningLogger("thread_net_call op=loadOlderMessages threadId=${threadId.value} trace=$it")
+            runCatching { warningLogger("thread_net_call op=loadOlderMessages threadId=${threadId.value} trace=$it") }
         }
         return loadChannelMessages(
             context = context,
@@ -848,7 +850,7 @@ class RealConversationRepository private constructor(
         val context = currentContext() ?: return authRequired()
         val messageLimit = limit.coerceAtLeast(1)
         requestTrace?.let {
-            warningLogger("thread_net_call op=loadNewerMessages threadId=${threadId.value} trace=$it")
+            runCatching { warningLogger("thread_net_call op=loadNewerMessages threadId=${threadId.value} trace=$it") }
         }
         return executeConversation(
             emptyReason = EmptyReason.NoMessages,
@@ -885,7 +887,7 @@ class RealConversationRepository private constructor(
         val context = currentContext() ?: return authRequired()
         val messageLimit = limit.coerceAtLeast(1)
         requestTrace?.let {
-            warningLogger("thread_net_call op=syncNewerMessages threadId=${threadId.value} trace=$it")
+            runCatching { warningLogger("thread_net_call op=syncNewerMessages threadId=${threadId.value} trace=$it") }
         }
         return executeConversation(
             emptyReason = EmptyReason.NoMessages,
@@ -1182,7 +1184,7 @@ class RealConversationRepository private constructor(
         requestTrace: String? = null,
     ): DataResult<ThreadSnapshot> = coroutineScope {
         requestTrace?.let {
-            warningLogger("thread_net_call op=getReplyThread parentChannelId=${parentChannelId.value} trace=$it")
+            runCatching { warningLogger("thread_net_call op=getReplyThread parentChannelId=${parentChannelId.value} trace=$it") }
         }
         val loadStartedAt = TimeSource.Monotonic.markNow()
         warningLogger(
