@@ -3302,26 +3302,33 @@ private fun SlockAppShellReadyContent(
                 ?.takeIf { authGateState == SharedAuthGateState.Restoring }
                 ?.let { SharedAuthReadyPhase.CachedRestorePending }
     val readyServerId = selectedServerId?.trim()?.takeIf(String::isNotBlank) ?: readySession?.currentServerId
-    // task #58: consume the recorded destination once the identity that wrote
-    // it is actually live. Fires once per composition and only overwrites the
-    // untouched launch seed — a user or deep-link that already moved the tab
-    // keeps its value. Records every live change so a later recreation of the
-    // same shell restores the latest destination, not a stale one.
-    LaunchedEffect(readySession?.user?.id, readyServerId, storeScope) {
+    // task #58: consume the recorded destination only when the host attached
+    // this shell after an in-process recreate (native marks pageData with
+    // slockActivityRecreated once, generated from savedInstanceState — never
+    // trusted from Intent). Without the marker this is a fresh explicit open
+    // and the launch seed wins unconditionally; a snapshot can never override
+    // a new navigation request even when it happened to be the same shell.
+    val activityWasRecreated =
+        remember(pager.pageData.params.toString()) {
+            pager.pageData.params.optBoolean("slockActivityRecreated", false)
+        }
+    LaunchedEffect(readySession?.user?.id, readyServerId, storeScope, activityWasRecreated) {
         val accountId = readySession?.user?.id
         if (!recreationRestoreApplied && accountId != null) {
-            SlockAppShellDestinationSnapshots
-                .consume(storeScope, accountId, readyServerId)
-                ?.takeIf { it != selectedTab && it in retainedAppShellTabKeys }
-                ?.let { restored ->
-                    if (selectedTab == launchSelection.selectedTab) {
-                        bridge.log(
-                            "app_shell_recreate_restore selectedTab=$restored " +
-                                "launchSeed=${launchSelection.selectedTab} scope=${storeScope.shellInstanceId}"
-                        )
-                        selectedTab = restored
+            if (activityWasRecreated) {
+                SlockAppShellDestinationSnapshots
+                    .consume(storeScope, accountId, readyServerId)
+                    ?.takeIf { it != selectedTab && it in retainedAppShellTabKeys }
+                    ?.let { restored ->
+                        if (selectedTab == launchSelection.selectedTab) {
+                            bridge.log(
+                                "app_shell_recreate_restore selectedTab=$restored " +
+                                    "launchSeed=${launchSelection.selectedTab} scope=${storeScope.shellInstanceId}"
+                            )
+                            selectedTab = restored
+                        }
                     }
-                }
+            }
             recreationRestoreApplied = true
         }
     }

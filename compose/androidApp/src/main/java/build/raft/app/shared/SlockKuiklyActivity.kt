@@ -801,6 +801,7 @@ open class SlockKuiklyActivity :
     override fun onCreate(savedInstanceState: Bundle?) {
         prepareHomeColdStartSplashIfNeeded()
         super.onCreate(savedInstanceState)
+        lastCreateHadSavedState = savedInstanceState != null
         schedulePickedThreadAttachmentCacheCleanup()
         installHuaweiAndroid12InsetsAnimationWorkaroundIfNeeded()
         pendingAttachmentSaveAs =
@@ -1071,6 +1072,11 @@ open class SlockKuiklyActivity :
                 "SlockKuiklyActivity",
                 "host_new_intent page=${resolvedPageName(intent)} currentPage=${pageSpec?.pageName.orEmpty()}"
         )
+        // An explicit navigation recreates through the same savedInstanceState
+        // path as a config change; flag it so the next createPageSpec does not
+        // mark the attach as a system recreation and let a stale scoped
+        // destination snapshot override this fresh open.
+        pendingExplicitIntentRecreate = true
         recreate()
     }
 
@@ -2457,10 +2463,17 @@ open class SlockKuiklyActivity :
         )
     }
 
+    // task #58: set by onNewIntent for explicit-navigation recreates; cleared
+    // when createPageSpec() consumes it so a system-driven recreate (config
+    // change, fold) is distinguishable from a fresh entry into the shell.
+    private var pendingExplicitIntentRecreate = false
+
     private fun createPageSpec(): SlockKuiklyPageSpec {
         val pageData =
                 resolvedPageData(intent)
                         .withAndroidRuntimeWindowInsets()
+                        .withActivityRecreationMarker()
+
         return SlockKuiklyPageSpec(
                 pageName = pageName,
                 pageData = pageData
@@ -2469,6 +2482,28 @@ open class SlockKuiklyActivity :
 
     internal fun currentPageDataSnapshotForTest(): JSONObject =
             JSONObject(pageSpec?.pageData?.text.orEmpty())
+
+    // task #58: the shared shell keeps selectedTab in runtime state seeded from
+    // the launch Intent. After an in-process recreate the Intent still carries
+    // the original (stale) launch tab, so the shared layer needs to know this
+    // attach is a recreation — not a fresh open — before trusting the scoped
+    // snapshot. Markers come ONLY from the current lifecycle state, never from
+    // intent extras, and are consumed once per createPageSpec call.
+    private fun SlockKuiklyPageData.withActivityRecreationMarker(): SlockKuiklyPageData {
+        val wasSystemRecreated = lastCreateHadSavedState && !pendingExplicitIntentRecreate
+        pendingExplicitIntentRecreate = false
+        lastCreateHadSavedState = false
+        if (!wasSystemRecreated) return this
+        return SlockKuiklyPageData.fromJson(
+                JSONObject(text).apply { put(KEY_ACTIVITY_RECREATED, true) }
+        )
+    }
+
+    // Written by onCreate so createPageSpec can see whether this attach
+    // followed a real savedInstanceState (system recreate/process restore)
+    // vs a cold start. onNewIntent-driven recreates additionally set
+    // pendingExplicitIntentRecreate to disqualify restore consumption.
+    private var lastCreateHadSavedState = false
 
     private fun SlockKuiklyPageData.withAndroidRuntimeWindowInsets(): SlockKuiklyPageData =
             SlockKuiklyPageData.fromJson(
@@ -2767,6 +2802,11 @@ open class SlockKuiklyActivity :
         private const val NOTIFICATION_CATEGORY_DIRECT_MESSAGE = "direct_message"
         private const val ACTION_OPEN_DIAGNOSTICS = "build.raft.app.diagnostics.OPEN"
         internal const val KEY_APP_SHELL_INITIAL_TAB = "slockInitialTab"
+        // task #58: injected into pageData by withActivityRecreationMarker() when
+        // this attach follows an in-process system recreate; shared consumes it
+        // once to decide whether a scoped destination snapshot may override the
+        // launch-time initial tab. Never trusted from the incoming Intent.
+        internal const val KEY_ACTIVITY_RECREATED = "slockActivityRecreated"
         private const val KEY_APP_SHELL_INITIAL_SETTINGS_DESTINATION = "slockInitialSettingsDestination"
         private const val KEY_DIAGNOSTICS_DEEP_LINK_ID = "slockDiagnosticsDeepLinkId"
         private const val KEY_DIAGNOSTICS_DEEP_LINK_AUTO_CLOSE_MS = "slockDiagnosticsDeepLinkAutoCloseMs"
