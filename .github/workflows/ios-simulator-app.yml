@@ -69,6 +69,14 @@ jobs:
           rm -rf "$GITHUB_WORKSPACE/compose/shared/build/generated/ksp" \
                  "$GITHUB_WORKSPACE/compose/shared/build/kotlin"
 
+      # This isolated fixture carrier exceeded 4 GiB at the arm64 framework
+      # link in run 36840971425. Keep the normal repository defaults intact.
+      - name: Allow heap for fixture framework link
+        run: |
+          sysctl hw.memsize
+          sed -i '' 's/-Xmx4g/-Xmx8g/g' compose/gradle.properties
+          grep '^org.gradle.jvmargs=' compose/gradle.properties
+
       - name: Generate shared framework placeholder
         working-directory: compose
         run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain --stacktrace
@@ -158,6 +166,8 @@ jobs:
             echo "source_commit=$GITHUB_SHA"
             echo "ref=$GITHUB_REF_NAME"
             echo "run_id=$GITHUB_RUN_ID"
+            echo "visual_fixtures=true"
+            echo "qa_gradle_heap=8g"
             echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } | tee "$staging/PROVENANCE.txt"
           sha=$(awk '{print $1}' "$staging/raft-ios-simulator.app.zip.sha256")
