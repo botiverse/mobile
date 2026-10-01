@@ -65,7 +65,12 @@ class MemberDetailScrollDisposeSaveConnectedTest {
             waitForLine(startCursor, after = visit1.seedLine, "v1 restore_first_items") { line ->
                 line.contains("restore_first_items") && line.contains(ScrollLabel)
             }
-            injectDragToScrollBlocking()
+            // `sendPointerSync` can silently drop the whole gesture when the
+            // window is not yet focusable — the previous run showed a DOWN
+            // that produced no `probe_hit` at all. Retry the drag until the
+            // in-page probe acknowledges input; a bounded absence is a hard
+            // fail, not a silent scroll miss.
+            injectDragToScrollBlocking(startCursor, after = visit1.seedLine)
             // The baseline wait itself must keep polling until an ACCEPTED
             // NON-ZERO save appears — an initial 0:0 write (or a still-
             // clamped early frame) must not satisfy the gate.
@@ -481,13 +486,43 @@ class MemberDetailScrollDisposeSaveConnectedTest {
 
     // -- Input -------------------------------------------------------------------
 
-    /** Blocking drag used to establish the baseline (visit 1). */
-    private fun injectDragToScrollBlocking() {
+    /**
+     * Blocking drag used to establish the baseline (visit 1). Retries the
+     * whole gesture until the in-page `probe_hit` log appears after
+     * [after], because `sendPointerSync` silently drops input while the
+     * window is not yet focusable — an unacknowledged drag would leave the
+     * baseline gate polling for a save that can never arrive.
+     */
+    private fun injectDragToScrollBlocking(startCursor: Long, after: String) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val metrics = instrumentation.targetContext.resources.displayMetrics
         val x = metrics.widthPixels * 0.5f
         val startY = metrics.heightPixels * 0.72f
         val endY = metrics.heightPixels * 0.30f
+        val deadline = SystemClock.uptimeMillis() + InitialRenderTimeoutMs
+        var attempt = 0
+        while (SystemClock.uptimeMillis() < deadline) {
+            attempt++
+            dispatchBlockingDrag(instrumentation, x, startY, endY)
+            val hit =
+                linesAfter(startCursor, after).lastOrNull {
+                    it.contains("probe_hit") && it.contains(ScrollLabel)
+                }
+            if (hit != null) {
+                recordEvidence("B1_PROBE", "attempt=$attempt $hit")
+                return
+            }
+            SystemClock.sleep(DragRetryDelayMs)
+        }
+        fail("baseline drag produced no probe_hit after $attempt attempt(s)")
+    }
+
+    private fun dispatchBlockingDrag(
+        instrumentation: android.app.Instrumentation,
+        x: Float,
+        startY: Float,
+        endY: Float
+    ) {
         val downTime = SystemClock.uptimeMillis()
         val events = mutableListOf<MotionEvent>()
         events += MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, startY, 0)
@@ -772,5 +807,6 @@ class MemberDetailScrollDisposeSaveConnectedTest {
         private const val LogPollMs = 100L
         private const val DragSteps = 10
         private const val DragStepDelayMs = 36L
+        private const val DragRetryDelayMs = 400L
     }
 }
