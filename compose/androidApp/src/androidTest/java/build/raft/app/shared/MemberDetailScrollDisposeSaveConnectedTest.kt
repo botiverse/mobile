@@ -521,6 +521,14 @@ class MemberDetailScrollDisposeSaveConnectedTest {
             injector.isDaemon = true
             injector.start()
             if (!dispatchDone.await(ScenarioCloseTimeoutMs, TimeUnit.MILLISECONDS)) {
+                // interrupt() cannot retract a blocked sendPointerSync — the
+                // daemon may still deliver its queued events after we fail.
+                // That is safe by ordering: this fail() aborts the test before
+                // any later gesture injector runs, and the only remaining
+                // injector (HeldDrag.finish in finally) targets a host we are
+                // already destroying or one that was never launched. Events
+                // owned by the stuck worker are deliberately NOT recycled
+                // here — it still holds them.
                 injector.interrupt()
                 fail("baseline drag dispatch (attempt $attempt) blocked >${ScenarioCloseTimeoutMs}ms")
             }
