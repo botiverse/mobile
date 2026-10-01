@@ -5944,7 +5944,7 @@ private fun SlockSidebarSortOverlay(
         dismissEnabled = draggedId == null,
         contentSpacing = 12.dp
     ) {
-        Box(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).clipToBounds()) {
+        Box(modifier = Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 420.dp).clipToBounds()) {
             // Container-level long-press drag: identify the row under the finger
             // at long-press, then track the finger. Because the gesture is on
             // the container it survives list scrolling and preview reordering.

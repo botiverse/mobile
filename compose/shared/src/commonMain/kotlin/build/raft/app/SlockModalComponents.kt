@@ -28,6 +28,7 @@ import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.ColumnScope
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.RowScope
 import com.tencent.kuikly.compose.foundation.layout.Spacer
@@ -350,7 +351,7 @@ internal fun SlockUnifiedDialog(
     contentSpacing: Dp = 16.dp,
     keyboardAvoidanceEnabled: Boolean = false,
     hostRoute: String = SlockUnifiedDialogGenericHostRoute,
-    content: @Composable () -> Unit
+    content: @Composable ColumnScope.() -> Unit
 ) {
     // Resolve and capture the pager inset before entering Kuikly's native ModalView. Reading a
     // composition local from inside the hosted Modal content is too late: ModalView rehosts that
@@ -449,7 +450,7 @@ private fun SlockUnifiedDialogSurface(
     topInset: Dp,
     hostBottomInset: Dp,
     handleBack: Boolean,
-    content: @Composable () -> Unit
+    content: @Composable ColumnScope.() -> Unit
 ) {
     if (handleBack) {
         SlockBackHandler(enabled = dismissEnabled, label = "unified_dialog", onBack = onDismiss)
@@ -565,9 +566,10 @@ private fun SlockUnifiedDialogSurface(
                         if (keyboardAvoidanceEnabled) {
                             keyboardHeightDp = params.height.coerceAtLeast(0f)
                         }
-                    },
-                    content = content
-                )
+                    }
+                ) {
+                    this@Column.content()
+                }
             }
         }
     }

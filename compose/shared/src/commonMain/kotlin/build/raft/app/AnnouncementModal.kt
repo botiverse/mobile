@@ -46,7 +46,7 @@ internal fun SharedAnnouncementModal(
         maxWidth = 456.dp
     ) {
         LazyColumn(
-            modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {

@@ -477,6 +477,9 @@ import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.extension.NestedScrollMode
+import com.tencent.kuikly.compose.extension.bouncesEnable
+import com.tencent.kuikly.compose.extension.nestedScroll
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
@@ -10415,24 +10418,43 @@ private fun SettingsConnectedAppMarketplaceDetailDialog(
         dismissEnabled = !busy,
         maxWidth = 456.dp
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            SettingsConnectedAppLogoBox(
-                name = app.name,
-                logoUrl = app.logoUrl,
-                seed = app.clientId,
-                size = 56.dp
-            )
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                SettingsFormDetailText(app.description ?: stringResource(MR.strings.settings_common_no_description))
-                SettingsFormDetailText(if (app.installed) stringResource(MR.strings.settings_connected_apps_marketplace_installed_detail) else stringResource(MR.strings.settings_connected_apps_marketplace_available_detail))
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SettingsConnectedAppLogoBox(
+                        name = app.name,
+                        logoUrl = app.logoUrl,
+                        seed = app.clientId,
+                        size = 56.dp
+                    )
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        SettingsFormDetailText(app.description ?: stringResource(MR.strings.settings_common_no_description))
+                        SettingsFormDetailText(if (app.installed) stringResource(MR.strings.settings_connected_apps_marketplace_installed_detail) else stringResource(MR.strings.settings_connected_apps_marketplace_available_detail))
+                    }
+                }
+            }
+            item {
+                SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_publisher), app.developer)
+            }
+            item {
+                SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_category), app.category.settingsConnectedAppCategoryLabel(stringResource(MR.strings.settings_connected_apps_category_other)))
+            }
+            item {
+                SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_homepage), app.homepageDomain)
+            }
+            item {
+                SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_callback), app.callbackDomain)
+            }
+            item {
+                SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_data_access), app.dataAccessSummary)
+            }
+            actionState.connectedAppsErrorFor(action, app.id)?.let { err ->
+                item { SettingsFormErrorText(err) }
             }
         }
-        SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_publisher), app.developer)
-        SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_category), app.category.settingsConnectedAppCategoryLabel(stringResource(MR.strings.settings_connected_apps_category_other)))
-        SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_homepage), app.homepageDomain)
-        SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_callback), app.callbackDomain)
-        SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_data_access), app.dataAccessSummary)
-        actionState.connectedAppsErrorFor(action, app.id)?.let { SettingsFormErrorText(it) }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             app.homepageUrl?.takeIf { it.isNotBlank() }?.let { url ->
                 SlockBrutalActionButton(
@@ -18620,67 +18642,83 @@ private fun SharedCreateChannelDialog(
     SlockUnifiedDialog(
         title = stringResource(MR.strings.channel_create_title),
         dismissEnabled = !submitting,
+        keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
     ) {
-        SlockBrutalTextField(
-            label = stringResource(MR.strings.channel_create_label_name),
-            required = true,
-            value = name,
-            onValueChange = { name = it },
-            placeholder = stringResource(MR.strings.channel_create_placeholder_name),
-            enabled = !submitting,
-            hint = stringResource(MR.strings.channel_create_hint_name_format),
-            error = nameError,
-            autoFocus = true
-        )
-        SlockBrutalTextField(
-            label = stringResource(MR.strings.channel_create_label_description),
-            optional = true,
-            value = description,
-            onValueChange = { description = it },
-            placeholder = stringResource(MR.strings.channel_create_placeholder_description),
-            enabled = !submitting,
-            maxLines = 2,
-            autoFocus = false
-        )
-        SharedCreateChannelVisibilityControl(
-            selected = visibility,
-            enabled = !submitting,
-            onSelected = { visibility = it }
-        )
-        SharedCreateChannelMemberPicker(
-            loading = membersLoading,
-            hasMembers = selectableMembers.isNotEmpty(),
-            query = memberSearch,
-            onQueryChange = { memberSearch = it },
-            filteredAgentMembers = filteredAgentMembers,
-            filteredHumanMembers = filteredHumanMembers,
-            hasFilteredMembers = hasFilteredMembers,
-            selectedKeys = selectedMemberKeys,
-            enabled = !submitting,
-            agentStatusResolver = agentStatusResolver,
-            fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
-            onToggle = { key ->
-                selectedMemberKeys =
-                    if (key in selectedMemberKeys) {
-                        selectedMemberKeys - key
-                    } else {
-                        selectedMemberKeys + key
-                    }
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item {
+                SlockBrutalTextField(
+                    label = stringResource(MR.strings.channel_create_label_name),
+                    required = true,
+                    value = name,
+                    onValueChange = { name = it },
+                    placeholder = stringResource(MR.strings.channel_create_placeholder_name),
+                    enabled = !submitting,
+                    hint = stringResource(MR.strings.channel_create_hint_name_format),
+                    error = nameError,
+                    autoFocus = true
+                )
             }
-        )
-        if (!errorMessage.isNullOrBlank()) {
-            val localizedError =
-                if (errorMessage == "channel_name_invalid") {
-                    stringResource(MR.strings.channel_create_error_name_format)
-                } else {
-                    errorMessage
+            item {
+                SlockBrutalTextField(
+                    label = stringResource(MR.strings.channel_create_label_description),
+                    optional = true,
+                    value = description,
+                    onValueChange = { description = it },
+                    placeholder = stringResource(MR.strings.channel_create_placeholder_description),
+                    enabled = !submitting,
+                    maxLines = 2,
+                    autoFocus = false
+                )
+            }
+            item {
+                SharedCreateChannelVisibilityControl(
+                    selected = visibility,
+                    enabled = !submitting,
+                    onSelected = { visibility = it }
+                )
+            }
+            item {
+                SharedCreateChannelMemberPicker(
+                    loading = membersLoading,
+                    hasMembers = selectableMembers.isNotEmpty(),
+                    query = memberSearch,
+                    onQueryChange = { memberSearch = it },
+                    filteredAgentMembers = filteredAgentMembers,
+                    filteredHumanMembers = filteredHumanMembers,
+                    hasFilteredMembers = hasFilteredMembers,
+                    selectedKeys = selectedMemberKeys,
+                    enabled = !submitting,
+                    agentStatusResolver = agentStatusResolver,
+                    fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
+                    onToggle = { key ->
+                        selectedMemberKeys =
+                            if (key in selectedMemberKeys) {
+                                selectedMemberKeys - key
+                            } else {
+                                selectedMemberKeys + key
+                            }
+                    }
+                )
+            }
+            if (!errorMessage.isNullOrBlank()) {
+                val localizedError =
+                    if (errorMessage == "channel_name_invalid") {
+                        stringResource(MR.strings.channel_create_error_name_format)
+                    } else {
+                        errorMessage
+                    }
+                item {
+                    Text(
+                        text = MR.strings.channel_create_error.format(listOf(localizedError)).localized(),
+                        style = SlockType.Caption,
+                        color = SlockColor.AccentRed
+                    )
                 }
-            Text(
-                text = MR.strings.channel_create_error.format(listOf(localizedError)).localized(),
-                style = SlockType.Caption,
-                color = SlockColor.AccentRed
-            )
+            }
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -18824,7 +18862,16 @@ private fun SharedCreateChannelMemberPicker(
                             )
                         }
                     } else {
-                        LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                        LazyColumn(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .bouncesEnable(false)
+                                    .nestedScroll(
+                                        scrollUp = NestedScrollMode.SELF_ONLY,
+                                        scrollDown = NestedScrollMode.SELF_ONLY
+                                    )
+                        ) {
                             if (filteredAgentMembers.isNotEmpty()) {
                                 item(key = "agents-header") {
                                     SharedCreateChannelMemberSectionLabel(stringResource(MR.strings.thread_members_agents))

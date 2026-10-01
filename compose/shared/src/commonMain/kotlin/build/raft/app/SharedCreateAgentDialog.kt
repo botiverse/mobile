@@ -1305,17 +1305,13 @@ internal fun SharedCreateAgentDialog(
         // `CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT` is left in place as a
         // reference value (kept for any future caller that wants the legacy
         // cap); the dialog itself no longer reads it.
-        Column(
-            modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+            // React's normal dialog form uses space-y-4. Keep each field
+            // group at the same 16dp rhythm; field-internal helper/count
+            // spacing stays inside the group below.
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                // React's normal dialog form uses space-y-4. Keep each field
-                // group at the same 16dp rhythm; field-internal helper/count
-                // spacing stays inside the group below.
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
                 draftHint?.takeIf { it.isNotBlank() }?.let { hint ->
                     item(key = "draft-hint") {
                         Box(
@@ -1763,7 +1759,6 @@ internal fun SharedCreateAgentDialog(
             }
         }
     }
-}
 
 @Composable
 private fun localizedCreateAgentNameError(name: String, fallback: String): String =
