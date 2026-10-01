@@ -18466,7 +18466,7 @@ class SharedThreadStoreTest {
                         messagesResponse("first body", id = "m16", seq = 16, historyLimited = false),
                     newerBodyText = newerRowsBody(17L..46L),
                 )
-            val logs = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val logChannel = kotlinx.coroutines.channels.Channel<String>(capacity = kotlinx.coroutines.channels.Channel.UNLIMITED)
             val dataSource =
                 testSharedThreadDataSource(
                     networkApi = api,
@@ -18474,7 +18474,11 @@ class SharedThreadStoreTest {
                     cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
                 )
             val store =
-                SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = { logs.add(it) })
+                SharedThreadStore(
+                    dataSource = dataSource,
+                    scope = scope,
+                    diagnosticsLogger = { logChannel.trySend(it) },
+                )
             store.accept(
                 SharedThreadIntent.Start(
                     basePayload().copy(
@@ -18489,8 +18493,11 @@ class SharedThreadStoreTest {
             // Both accept() calls race on Dispatchers.Default — whichever
             // reaches issueFetchSeq first wins; the atomic counter must still
             // hand out two distinct seqs.
-            val jobA = async { store.accept(SharedThreadIntent.LoadNewer) }
-            val jobB = async { store.accept(SharedThreadIntent.LoadOlder) }
+            // async on Default so the two accept() bodies actually interleave
+            // at their issue points; inherit from runBlocking would serialize
+            // them before any suspension.
+            val jobA = async(Dispatchers.Default) { store.accept(SharedThreadIntent.LoadNewer) }
+            val jobB = async(Dispatchers.Default) { store.accept(SharedThreadIntent.LoadOlder) }
             withTimeout(5_000) {
                 while (api.afterSeqs.isEmpty() || api.beforeSeqs.isEmpty()) yield()
             }
@@ -18498,11 +18505,12 @@ class SharedThreadStoreTest {
             api.releaseBeforeMessages?.complete(Unit)
             withTimeout(5_000) { jobA.await() }
             withTimeout(5_000) { jobB.await() }
+            val logs = generateSequence { logChannel.tryReceive().getOrNull() }.toList()
             val issued = logs.filter { it.startsWith("thread_fetch_issued") }
             val olderIssued = issued.single { it.contains("kind=older_page") }
             val newerIssued = issued.single { it.contains("kind=newer_page") }
-            val olderSeq = Regex("fetchSeq=(\d+)").find(olderIssued)!!.groupValues[1]
-            val newerSeq = Regex("fetchSeq=(\d+)").find(newerIssued)!!.groupValues[1]
+            val olderSeq = Regex("fetchSeq=(\\d+)").find(olderIssued)!!.groupValues[1]
+            val newerSeq = Regex("fetchSeq=(\\d+)").find(newerIssued)!!.groupValues[1]
             assertNotEquals(
                 olderSeq,
                 newerSeq,
