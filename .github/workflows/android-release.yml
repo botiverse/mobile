@@ -613,8 +613,8 @@ jobs:
           SOURCE_COMMIT_SHA: ${{ steps.source.outputs.source_sha }}
           CI_RUN_ID: ${{ github.run_id }}
           PACKAGE_NAME: ${{ steps.verify.outputs.package_id }}
-          VERSION_NAME: ${{ needs.resolve.outputs.version_name }}
-          VERSION_CODE: ${{ needs.resolve.outputs.version_code }}
+          VERSION_NAME: ${{ steps.resolve.outputs.version_name }}
+          VERSION_CODE: ${{ steps.resolve.outputs.version_code }}
           UPLOAD_KEY_CERT_SHA256: ${{ steps.verify.outputs.upload_key_cert_sha256 }}
           AAB_PATH: ${{ steps.locate-aab.outputs.aab_path }}
           APK_PATH: ${{ steps.locate.outputs.apk_path }}
