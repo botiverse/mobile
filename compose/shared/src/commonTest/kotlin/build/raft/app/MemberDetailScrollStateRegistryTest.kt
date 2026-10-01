@@ -664,6 +664,49 @@ class MemberDetailScrollTrackerTest {
     }
 
     @Test
+    fun `target landing retires the issued request and fires the hook`() {
+        // Every retirement — not only gesture supersede — must cancel the
+        // watchdog's parked re-issue: a clamped landing or the achieved
+        // landing also ends the request the parked job is still carrying.
+        val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        var retired = 0
+        t.onPendingRestoreRetired = { retired += 1 }
+        val frame = frameOf(t, saved)
+        frame(0, 0, 40, false) { _, _ -> } // request issued
+        assertEquals(true, t.hasPendingRestoreRequest)
+        frame(0, 489, 40, true) { _, _ -> }
+        frame(0, 489, 40, false) { _, _ -> } // lands at target
+        assertEquals(1, retired)
+        assertEquals(false, t.hasPendingRestoreRequest)
+    }
+
+    @Test
+    fun `post-achieved clamp re-issue retires the stale parked request first`() {
+        val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        var retired = 0
+        t.onPendingRestoreRetired = { retired += 1 }
+        val requests = mutableListOf<Pair<Int, Int>>()
+        val frame = frameOf(t, saved)
+        frame(0, 489, 40, false) { _, _ -> } // seed at target, no request
+        frame(0, 489, 40, false) { _, _ -> } // achieved
+        // Nothing was issued, so nothing could be retired.
+        assertEquals(0, retired)
+        // Clamped post-achieved landing -> re-issue is flagged; the hook
+        // stays silent because no request was outstanding.
+        frame(0, 237, 40, false) { i, o -> requests += i to o }
+        assertEquals(listOf(0 to 489), requests)
+        assertEquals(0, retired)
+        assertEquals(true, t.hasPendingRestoreRequest)
+        // The next non-target landing retires THIS request via the hook
+        // before the second bounded re-issue is flagged.
+        frame(0, 100, 40, false) { i, o -> requests += i to o }
+        assertEquals(1, retired)
+        assertEquals(listOf(0 to 489, 0 to 489), requests)
+    }
+
+    @Test
     fun `gesture retire of a pending request fires onPendingRestoreRetired once`() {
         // LiBai's interleave: watchdog tick already picked the target and
         // the suspend scrollToItem is still waiting on the scroll mutex
@@ -753,7 +796,9 @@ class MemberDetailScrollTrackerTest {
             val tracker = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
             val saved = mutableListOf<MemberDetailScrollPosition>()
             val frame = frameOf(tracker, saved)
-            frame(0, 0, 40, false) { _, _ -> } // seed top -> pending request
+            // Seed lands at measured 237 (Alpha101-style clamp) so the
+            // user's supersede base is distinguishable from the target.
+            frame(0, 237, 40, false) { _, _ -> }
             assertEquals(true, tracker.hasPendingRestoreRequest)
 
             val issueStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
@@ -773,22 +818,23 @@ class MemberDetailScrollTrackerTest {
 
             // Let the first tick park inside issue().
             issueStarted.await()
-            // User supersedes while the re-issue is suspended — the gesture
-            // supersedes at the user's MEASURED position (the seed frame
-            // 0:0), not the stale 489 target.
+            // User supersedes at the measured 237 while the stale re-issue
+            // is still parked, then lands at 355 — that landing must save.
             var superseded: Pair<Int, Int>? = null
             tracker.onUserScrollStarted(scrollInFlight = false) { i, o ->
                 superseded = i to o
             }
-            assertEquals(0 to 0, superseded)
+            assertEquals(0 to 237, superseded)
             assertEquals(false, tracker.hasPendingRestoreRequest)
+            frame(0, 355, 40, true) { _, _ -> }
+            frame(0, 355, 40, false) { _, _ -> }
+            assertEquals(MemberDetailScrollPosition(0, 355), saved.last())
 
-            // Release the gate and join the issue's own child job: a
-            // cancelled job completes without ever appending the stale
-            // target; if the retire hook were not wired, the join would
-            // return after release with issued=[489] and this test fails.
+            // Release the gate and join the issue's own child job with a
+            // hard deadline: a cancelled job completes without appending;
+            // without the retire hook the release would apply 489 and fail.
             issueRelease.complete(Unit)
-            issueJob.await().join()
+            kotlinx.coroutines.withTimeout(2_000) { issueJob.await().join() }
             watchdog.cancel()
             assertEquals(emptyList<MemberDetailScrollPosition>(), issued)
         }
@@ -813,24 +859,27 @@ class MemberDetailScrollTrackerTest {
                     tracker,
                     tickMs = 1,
                 ) { target ->
-                    issueJobs.add(coroutineContext[kotlinx.coroutines.Job]!!)
+                    issueJobs += coroutineContext[kotlinx.coroutines.Job]!!
                     startedCount += 1
                     gate.await()
                     issued += target
                 }
-            // Wait until at least two ticks have parked their issue jobs —
-            // explicit barrier instead of a fixed sleep.
-            while (startedCount < 2) {
+            // Exhaust the retry budget (MaxStallReissues = 3): all three
+            // ticks park their jobs at the gate; later ticks get null and
+            // can spawn nothing further.
+            while (startedCount < 3) {
                 kotlinx.coroutines.yield()
             }
+            assertEquals(3, issueJobs.size)
             gate.complete(Unit)
-            // Join each spawned issue job directly: cancelled parked jobs
+            // Join each spawned job with a deadline: cancelled parked jobs
             // complete without appending; only the latest tick's job
             // survives to issue.
-            issueJobs.forEach { it.join() }
+            issueJobs.forEach { job ->
+                kotlinx.coroutines.withTimeout(2_000) { job.join() }
+            }
             watchdog.cancel()
-            assertEquals(1, issued.size)
-            assertEquals(MemberDetailScrollPosition(0, 489), issued.last())
+            assertEquals(listOf(MemberDetailScrollPosition(0, 489)), issued)
         }
 
     @Test
