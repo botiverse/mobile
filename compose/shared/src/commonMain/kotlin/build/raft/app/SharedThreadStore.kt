@@ -6620,7 +6620,7 @@ internal class SharedThreadStore(
             delay(SharedThreadFirstFrameDelayMillis)
         }
         val (refreshFetchSeq, refreshFetchToken) =
-            issueFetchSeq("refresh_canonical", "threadId=${basePayload.sourceThreadId.orEmpty()}")
+            issueFetchSeq("refresh_canonical", "threadId=${basePayload.sourceThreadId.orEmpty()}", capturedToken = staleToken)
         val result =
             dataSource.fetchThreadPayloadForContext(
                 basePayload = basePayload,
@@ -8366,7 +8366,7 @@ internal class SharedThreadStore(
             }
             return
         }
-        val (olderFetchSeq, olderFetchToken) = issueFetchSeq("older_page", "beforeSeq=$beforeSeq")
+        val (olderFetchSeq, olderFetchToken) = issueFetchSeq("older_page", "beforeSeq=$beforeSeq", capturedToken = staleToken)
         reducePayloadPatch(writeTag = "older_page_loading", requestFetchSeq = olderFetchSeq, requestRouteToken = olderFetchToken) { currentPayload ->
             currentPayload.copy(olderMessagesStatus = "loading", errorCode = null)
         }
@@ -8472,7 +8472,7 @@ internal class SharedThreadStore(
             } ?: return ThreadNewerPageLoadOutcome.Ignored
         var successorRecovery: Pair<KuiklyThreadScreenPayload, RealtimeVisibleStreamGapRequest>? = null
         var outcome: ThreadNewerPageLoadOutcome = ThreadNewerPageLoadOutcome.Ignored
-        val (fetchSeq, newerFetchToken) = issueFetchSeq("newer_page", "afterSeq=$afterSeq loadId=$loadId")
+        val (fetchSeq, newerFetchToken) = issueFetchSeq("newer_page", "afterSeq=$afterSeq loadId=$loadId", capturedToken = staleToken)
         try {
             val result = dataSource.fetchNewerThreadPayload(initial, afterSeq, requestTrace = "newer_page_s${storeInstanceSeq}_fs=$fetchSeq")
             realtimeGapRecoveryMutex.withLock {
@@ -8883,6 +8883,7 @@ internal class SharedThreadStore(
                     issueFetchSeq(
                         if (tailFallbackArmed) "gap_tail_fallback" else "gap_sync",
                         "sinceSeq=${nextRequest.sinceSeq} recoveryId=$recoveryId targetSeq=${nextRequest.serverSeq}",
+                        capturedToken = staleToken,
                     )
                 val result =
                     if (tailFallbackArmed) {
@@ -9796,9 +9797,9 @@ internal class SharedThreadStore(
     // captured at issue time. Apply/reject logs carry it as requestRouteToken
     // so a write can be attributed to its originating generation rather than
     // whatever generation is current when the write lands.
-    private fun issueFetchSeq(kind: String, detail: String): Pair<Long, Long> {
+    private fun issueFetchSeq(kind: String, detail: String, capturedToken: MviStaleToken? = null): Pair<Long, Long> {
         val fetchSeq = nextFetchSeq.incrementAndGet()
-        val requestToken = routeStaleToken.value
+        val requestToken = (capturedToken ?: routeStaleToken).value
         runCatching {
             diagnosticsLogger?.invoke(
                 "thread_fetch_issued kind=$kind storeSeq=$storeInstanceSeq fetchSeq=$fetchSeq " +
@@ -9808,9 +9809,9 @@ internal class SharedThreadStore(
         return fetchSeq to requestToken
     }
 
-    private fun issueOperationSeq(kind: String, detail: String): Pair<Long, Long> {
+    private fun issueOperationSeq(kind: String, detail: String, capturedToken: MviStaleToken? = null): Pair<Long, Long> {
         val operationSeq = nextOperationSeq.incrementAndGet()
-        val requestToken = routeStaleToken.value
+        val requestToken = (capturedToken ?: routeStaleToken).value
         runCatching {
             diagnosticsLogger?.invoke(
                 "thread_op_issued kind=$kind storeSeq=$storeInstanceSeq opSeq=$operationSeq " +

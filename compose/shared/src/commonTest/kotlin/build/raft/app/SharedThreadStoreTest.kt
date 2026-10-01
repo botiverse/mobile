@@ -18453,6 +18453,66 @@ class SharedThreadStoreTest {
         }
     }
 
+    @Test
+    fun racingIntentAcceptsAllocateDistinctFetchSeqs() = runBlocking {
+        // task #58 observability contract: when two paging intents are
+        // dispatched concurrently, seq allocation must never collide even if
+        // the two issue points interleave — atomic increment guards the race.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val api =
+                FakeThreadApi(
+                    bodyText =
+                        messagesResponse("first body", id = "m16", seq = 16, historyLimited = false),
+                    newerBodyText = newerRowsBody(17L..46L),
+                )
+            val logs = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val dataSource =
+                testSharedThreadDataSource(
+                    networkApi = api,
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
+                )
+            val store =
+                SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = { logs.add(it) })
+            store.accept(
+                SharedThreadIntent.Start(
+                    basePayload().copy(
+                        canLoadMoreAfter = true,
+                        canLoadMoreBefore = true,
+                        messages = listOf(payloadMessage(id = "m16", seq = 16, body = "first body")),
+                    )
+                )
+            )
+            api.releaseAfterMessages = CompletableDeferred()
+            api.releaseBeforeMessages = CompletableDeferred()
+            // Both accept() calls race on Dispatchers.Default — whichever
+            // reaches issueFetchSeq first wins; the atomic counter must still
+            // hand out two distinct seqs.
+            val jobA = async { store.accept(SharedThreadIntent.LoadNewer) }
+            val jobB = async { store.accept(SharedThreadIntent.LoadOlder) }
+            withTimeout(5_000) {
+                while (api.afterSeqs.isEmpty() || api.beforeSeqs.isEmpty()) yield()
+            }
+            api.releaseAfterMessages?.complete(Unit)
+            api.releaseBeforeMessages?.complete(Unit)
+            withTimeout(5_000) { jobA.await() }
+            withTimeout(5_000) { jobB.await() }
+            val issued = logs.filter { it.startsWith("thread_fetch_issued") }
+            val olderIssued = issued.single { it.contains("kind=older_page") }
+            val newerIssued = issued.single { it.contains("kind=newer_page") }
+            val olderSeq = Regex("fetchSeq=(\d+)").find(olderIssued)!!.groupValues[1]
+            val newerSeq = Regex("fetchSeq=(\d+)").find(newerIssued)!!.groupValues[1]
+            assertNotEquals(
+                olderSeq,
+                newerSeq,
+                "racing issue points must not allocate the same fetchSeq: $olderIssued / $newerIssued",
+            )
+        } finally {
+            scope.cancel()
+        }
+    }
+
     private fun payloadMessage(id: String, seq: Long, body: String): KuiklyThreadMessageItem =
         KuiklyThreadMessageItem(
             id = id,
