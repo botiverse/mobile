@@ -260,31 +260,37 @@ class MemberDetailScrollDisposeSaveConnectedTest {
             // Cleanup failure is NOT swallowed: if the case already failed we
             // attach it as suppressed; otherwise a surviving host fails the
             // test on its own — a PASS must never coexist with a live host.
-            scenario?.let {
-                var cleanupFailure: Throwable? = null
-                val host =
-                    try {
-                        closeHostOrFail(it)
-                    } catch (e: Throwable) {
-                        cleanupFailure = e
-                        null
+            try {
+                scenario?.let {
+                    var cleanupFailure: Throwable? = null
+                    val host =
+                        try {
+                            closeHostOrFail(it)
+                        } catch (e: Throwable) {
+                            cleanupFailure = e
+                            null
+                        }
+                    if (host != null) {
+                        try {
+                            awaitHostDestroyed(host)
+                        } catch (e: Throwable) {
+                            if (cleanupFailure == null) cleanupFailure = e else cleanupFailure!!.addSuppressed(e)
+                        }
                     }
-                if (host != null) {
-                    try {
-                        awaitHostDestroyed(host)
-                    } catch (e: Throwable) {
-                        if (cleanupFailure == null) cleanupFailure = e else cleanupFailure!!.addSuppressed(e)
+                    cleanupFailure?.let { e ->
+                        if (closeFailure != null) {
+                            closeFailure!!.addSuppressed(e)
+                        } else {
+                            throw AssertionError("host cleanup failed: ${e.message}", e)
+                        }
                     }
                 }
-                cleanupFailure?.let { e ->
-                    if (closeFailure != null) {
-                        closeFailure!!.addSuppressed(e)
-                    } else {
-                        throw AssertionError("host cleanup failed: ${e.message}", e)
-                    }
-                }
+            } finally {
+                // Registry clear must run even when the cleanup-failure throw
+                // above fires — otherwise a live-host failure would also
+                // leave the dedicated key behind and poison other cases.
+                MemberDetailScrollRegistryFixtureBridge.clearForTest()
             }
-            MemberDetailScrollRegistryFixtureBridge.clearForTest()
         }
     }
 
