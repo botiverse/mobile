@@ -16,196 +16,207 @@ import org.junit.Test
 
 /**
  * task #58 B1: real-lifecycle coverage for the member-detail dispose-save
- * path on the Human detail list.
+ * path on the Human detail list, on the dedicated `visual-human-long` seed.
  *
- * Scenario on the dedicated long-content Human visual seed
- * (`visual-human-long`, dispatched as its own `else` branch in
- * `toMemberDetailVisualSeedOrNull`, so the existing visual baselines stay
- * untouched):
+ * Visit correlation rules (locked in review):
+ *  - every host launch must mint a NEW tracker_seed with a strictly greater
+ *    write epoch; all subsequent waits for that visit only accept lines
+ *    logged AFTER that visit's seed line (by order in the tagged dump);
+ *  - phase 1 must prove a real layout and a NON-ZERO accepted save;
+ *  - phase 2 must prove the baseline actually landed (measured `current=` at
+ *    target on the restore_first_items frame, or a `restore_settled` at
+ *    `position=<baseline>` in the same visit interval) BEFORE any input;
+ *  - the dispose write must equal the LAST user_frame inside the same visit
+ *    interval, and no accepted save carrying that position may precede the
+ *    dispose line in that interval;
+ *  - phase 3 must observe a NEW measured landing at the dispose position in
+ *    its own interval (`current=` on restore_first_items, or a later
+ *    restore_settled in-interval), never reuse earlier user evidence.
  *
- *  1. Baseline visit: real blocking drag -> periodic `registry_save` lands a
- *     non-zero position under this key+epoch, then destroy the host.
- *  2. Re-entry: `restore_first_items` must carry `target=<baseline>` for
- *     THIS key and THIS epoch (the `tracker_seed` line minted the epoch for
- *     this composition). While `restoreSettlePending` is still open, inject a
- *     non-blocking drag so the probe flags `probe_hit label=<key>:human` and
- *     in-flight frames are attributed via `user_frame label=... position=`.
- *  3. Destroy the host while the drag is still delivering — `dispose_save
- *     label=...:human position=U` must appear for this key, and no
- *     accepted `registry_save` with that same position may appear anywhere
- *     in the run interval up to the dispose write.
- *  4. Third entry: `restore_first_items` must report `target=U`, proving
- *     the new composition restores the position the dispose fallback wrote.
+ * Gesture pacing: the interleave drag injects events with real-time spacing
+ * between MOVEs and never sends UP before destroy — the gesture is genuinely
+ * in flight while the host is being torn down. On the failure path a
+ * CANCEL/UP is still dispatched so no stuck press survives the case.
  *
- * All waits bound to key+epoch-scoped log lines; every miss (no probe, no
- * user frame, close failure, periodic save winning the race, wrong revisit
- * target) fails the case with an explicit reason rather than claiming the
- * interleave.
- *
- * Isolation: dedicated memberId `visual-human-long` (key tail
- * `visual-server:human:visual-human-long`); the finally block destroys the
- * host before clearing [MemberDetailScrollStateRegistry] through the gated
- * [MemberDetailScrollRegistryFixtureBridge] (visualFixtures source set only,
- * so production builds never ship a public handle into the registry).
+ * Log reads are tagged `MembersDetailScroll` and timestamp-filtered to this
+ * run's start. Any line whose timestamp cannot be parsed is excluded from
+ * matching (fail-closed), and evidence lines are re-emit ted under the test
+ * tag so the archived logcat carries the exact gate inputs.
  */
 class MemberDetailScrollDisposeSaveConnectedTest {
 
     @Test
     fun humanDetailDisposeDuringUserDragSavesAndRestores() {
-        MemberDetailScrollRegistryFixtureBridge.clearForTest()
-        // Cursor: only logcat lines at-or-after this run's start belong to
-        // this case — older visits' lines must never satisfy a wait.
-        val startCursor = System.currentTimeMillis()
         var scenario: ActivityScenario<SlockKuiklyActivity>? = null
+        var closeFailure: Throwable? = null
+        var previousEpoch = 0L
+        val startCursor = System.currentTimeMillis()
         try {
-            // ---- Phase 1: establish the non-zero baseline ----
+            MemberDetailScrollRegistryFixtureBridge.clearForTest()
+
+            // ---- Visit 1: establish the non-zero baseline ----
             scenario = launchMemberDetailHost()
-            val epoch1 =
-                waitForEpoch(startCursor, description = "phase-1 tracker_seed")
+            val visit1 = waitForVisitSeed(startCursor, afterEpoch = previousEpoch)
+            previousEpoch = visit1.epoch
+            // Real layout proof for this visit: the tracker must have seen a
+            // first populated frame BEFORE any input.
+            waitForLine(startCursor, after = visit1.seedLine, "v1 restore_first_items") { line ->
+                line.contains("restore_first_items") && line.contains(ScrollLabel)
+            }
             injectDragToScrollBlocking()
             val baseline =
-                waitForSave(startCursor, epoch1, description = "phase-1 baseline save")
+                waitForSave(startCursor, after = visit1.seedLine, epoch = visit1.epoch)
             require(baseline.index > 0 || baseline.offset > 0) {
                 "baseline scroll never left the top; cannot exercise a non-zero restore"
             }
-            recordEvidence("B1_BASELINE", "epoch=$epoch1 position=$baseline")
-            closeHostOrFail(scenario)
-
-            // ---- Phase 2: re-enter, drag inside the pending-restore settle
-            // window, destroy mid-drag ----
-            scenario = launchMemberDetailHost()
-            val epoch2 =
-                waitForEpoch(startCursor, description = "phase-2 tracker_seed")
-            val firstItems2 =
-                waitForLine(startCursor, "phase-2 restore_first_items") { line ->
-                    line.contains("restore_first_items") &&
-                        line.contains(ScrollLabel)
-                }
-            // The restore_first_items line does not carry epoch; correlate by
-            // label + being logged after epoch2's tracker_seed.
-            require(
-                firstItems2.contains("target=${baseline.index}:${baseline.offset}")
-            ) {
-                "phase-2 restore_first_items does not target baseline $baseline: $firstItems2"
-            }
-            recordEvidence("B1_FIRST_ITEMS2", "epoch=$epoch2 $firstItems2")
-
-            injectDragToScrollNonBlocking()
-            val probeLine =
-                waitForLine(startCursor, "phase-2 probe_hit") { line ->
-                    line.contains("probe_hit") && line.contains(ScrollLabel)
-                }
-            recordEvidence("B1_PROBE", "epoch=$epoch2 $probeLine")
-            val userFrame =
-                waitForLine(startCursor, "phase-2 user_frame") { line ->
-                    line.contains("user_frame") && line.contains(ScrollLabel)
-                }
-            val userPosition =
-                requireNotNull(parsePositionFrom(userFrame)) {
-                    "phase-2 user_frame carried no position: $userFrame"
-                }
-            require(userPosition.index > 0 || userPosition.offset > 0) {
-                "phase-2 user frame never left the top: $userFrame"
-            }
-            // Snapshot every accepted save under this key up to the moment we
-            // initiate destruction; the dispose-vs-save ordering gate below
-            // scans the FULL interval through the dispose write, so a save
-            // landing mid-close is still caught.
+            recordEvidence("B1_BASELINE", "epoch=${visit1.epoch} position=$baseline")
             closeHostOrFail(scenario)
             scenario = null
 
+            // ---- Visit 2: re-enter, prove baseline restored, drag inside
+            // the settle window, destroy mid-drag ----
+            scenario = launchMemberDetailHost()
+            val visit2 = waitForVisitSeed(startCursor, afterEpoch = previousEpoch)
+            previousEpoch = visit2.epoch
+            val firstItems2 =
+                waitForLine(startCursor, after = visit2.seedLine, "v2 restore_first_items") { line ->
+                    line.contains("restore_first_items") && line.contains(ScrollLabel)
+                }
+            require(
+                firstItems2.contains("target=${baseline.index}:${baseline.offset}") &&
+                    firstItems2.contains("wantsRestore=true")
+            ) {
+                "v2 restore_first_items does not target baseline $baseline: $firstItems2"
+            }
+            // Baseline must have actually landed, not merely been targeted:
+            // either the seed frame measured current=target, or a
+            // restore_settled within this visit interval lands at it.
+            val seedLandedAtBaseline =
+                Regex("current=(\\d+):(\\d+)").find(firstItems2)?.let { m ->
+                    m.groupValues[1].toInt() == baseline.index &&
+                        m.groupValues[2].toInt() == baseline.offset
+                } == true
+            if (!seedLandedAtBaseline) {
+                waitForLine(startCursor, after = visit2.seedLine, "v2 baseline settle") { line ->
+                    line.contains("restore_settled") &&
+                        line.contains(ScrollLabel) &&
+                        line.contains("position=${baseline.index}:${baseline.offset}")
+                }
+            }
+            recordEvidence("B1_BASELINE_LANDED", "epoch=${visit2.epoch} $firstItems2")
+
+            // Drag while the post-restore settle state is still warm, with
+            // real-time spaced MOVEs and no UP — the gesture stays in flight
+            // into the destroy.
+            val dragGesture = injectDragPaced()
+            try {
+                waitForLine(startCursor, after = visit2.seedLine, "v2 probe_hit") { line ->
+                    line.contains("probe_hit") && line.contains(ScrollLabel)
+                }
+                // Last valid user frame *within this visit's interval*
+                // immediately before destroy — the expected dispose payload.
+                val lastUserFrameBeforeDestroy =
+                    waitForLine(startCursor, after = visit2.seedLine, "v2 user_frame") { line ->
+                        line.contains("user_frame") && line.contains(ScrollLabel)
+                    }
+                recordEvidence("B1_USER_FRAME", "epoch=${visit2.epoch} $lastUserFrameBeforeDestroy")
+            } catch (t: Throwable) {
+                dragGesture.cancel()
+                throw t
+            }
+
+            // Destroy now — no UP has been sent; the press is still down and
+            // the list is still scrolling while the host tears down.
+            closeHostOrFail(scenario)
+            scenario = null
+            dragGesture.release()
+
+            // The dispose write must appear in THIS visit's interval (after
+            // the seed) carrying the LAST user frame position recorded in
+            // the same interval.
             val disposeLine =
-                waitForLine(startCursor, "phase-2 dispose_save") { line ->
-                    // dispose_save carries label but not epoch — the
-                    // ordering gate below correlates by line order and the
-                    // epoch2-scoped saves it gates against.
-                    line.contains("dispose_save") &&
-                        line.contains(ScrollLabel)
+                waitForLine(startCursor, after = visit2.seedLine, "v2 dispose_save") { line ->
+                    line.contains("dispose_save") && line.contains(ScrollLabel)
                 }
             val disposePosition =
                 requireNotNull(parsePositionFrom(disposeLine)) {
-                    "phase-2 dispose_save carried no position: $disposeLine"
+                    "dispose_save carried no position: $disposeLine"
                 }
-            recordEvidence("B1_DISPOSE", "epoch=$epoch2 $disposeLine")
+            recordEvidence("B1_DISPOSE", "epoch=${visit2.epoch} $disposeLine")
+            val intervalLines = linesAfter(startCursor, visit2.seedLine)
+            val lastUserFrameInInterval =
+                intervalLines
+                    .filter { it.contains("user_frame") && it.contains(ScrollLabel) }
+                    .mapNotNull(::parsePositionFrom)
+                    .lastOrNull()
+            require(disposePosition == lastUserFrameInInterval) {
+                "dispose_save wrote $disposePosition but the last in-interval user frame was $lastUserFrameInInterval"
+            }
             require(disposePosition.index > 0 || disposePosition.offset > 0) {
                 "dispose_save wrote the top, not the dragged position: $disposeLine"
             }
-            // Ordering gate: walk every line logged for this key since the
-            // run started; the dispose_save line must come before any
-            // accepted registry_save carrying the same position. A save that
-            // beat the dispose collapses the interleave into the already-
-            // saved path — report the miss explicitly.
+            val disposeIndex = intervalLines.indexOf(disposeLine)
             val savesBeforeDispose =
-                orderedLines(startCursor)
-                    .takeWhile { it != disposeLine }
+                intervalLines
+                    .take(disposeIndex)
                     .filter {
                         it.contains("registry_save") &&
                             it.contains("kind=humanList") &&
                             it.contains("decision=accept") &&
                             it.contains("keyHash=$KeyHash") &&
-                            it.contains("epoch=$epoch2")
+                            it.contains("epoch=${visit2.epoch}/${visit2.epoch}")
                     }
                     .mapNotNull(::parsePositionFrom)
             if (disposePosition in savesBeforeDispose) {
                 fail(
                     "interleave not hit: a periodic registry_save already wrote " +
-                        "$disposePosition before dispose under epoch=$epoch2"
+                        "$disposePosition before dispose under epoch=${visit2.epoch}"
                 )
             }
-            // The dispose write must carry a real user-measured position: it
-            // equals the LAST user_frame the tracker recorded before dispose,
-            // which may have advanced past the frame we first observed while
-            // the drag was still draining. Require it to match SOME user
-            // frame logged for this key, not the zero/baseline positions.
-            val allUserFrames =
-                orderedLines(startCursor)
-                    .filter { it.contains("user_frame") && it.contains(ScrollLabel) }
-                    .mapNotNull(::parsePositionFrom)
-                    .toSet()
-            require(disposePosition in allUserFrames) {
-                "dispose_save wrote $disposePosition, which is not any recorded user frame $allUserFrames"
-            }
 
-            // ---- Phase 3: revisit must target the dispose-saved position ----
+            // ---- Visit 3: revisit must land on the dispose position ----
             scenario = launchMemberDetailHost()
-            val epoch3 =
-                waitForEpoch(startCursor, description = "phase-3 tracker_seed")
+            val visit3 = waitForVisitSeed(startCursor, afterEpoch = previousEpoch)
             val firstItems3 =
-                waitForLine(startCursor, "phase-3 restore_first_items") { line ->
-                    line.contains("restore_first_items") &&
-                        line.contains(ScrollLabel) &&
-                        // must be the epoch-3 composition's line: the tracker_seed
-                        // for epoch3 was already observed, and phase-2's lines
-                        // carry a different target anyway
-                        line.contains("target=${disposePosition.index}:${disposePosition.offset}")
+                waitForLine(startCursor, after = visit3.seedLine, "v3 restore_first_items") { line ->
+                    line.contains("restore_first_items") && line.contains(ScrollLabel)
                 }
-            // Measured landing proof, not just target: the seed frame itself
-            // reports `current=I:O` — the list's actual measured first-visible
-            // item when content arrives. Require it to match the dispose-saved
-            // position (seed landed) OR a later user_frame/settle line carrying
-            // the same measured position — both count as "actually restored".
-            val measured = Regex("current=(\\d+):(\\d+)").find(firstItems3)
-            val currentMatches =
-                measured != null &&
-                    measured.groupValues[1].toInt() == disposePosition.index &&
-                    measured.groupValues[2].toInt() == disposePosition.offset
-            if (!currentMatches) {
-                val landing =
-                    waitForLine(startCursor, "phase-3 measured landing") { line ->
-                        line.contains(ScrollLabel) &&
-                            line.contains("position=${disposePosition.index}:${disposePosition.offset}") &&
-                            (line.contains("restore_settled") || line.contains("user_frame"))
-                    }
-                recordEvidence("B1_REVISIT_LANDING", "epoch=$epoch3 $landing")
+            require(
+                firstItems3.contains("target=${disposePosition.index}:${disposePosition.offset}")
+            ) {
+                "v3 restore_first_items does not target dispose position $disposePosition: $firstItems3"
             }
-            recordEvidence("B1_REVISIT", "epoch=$epoch3 $firstItems3")
+            val revisitMeasured =
+                Regex("current=(\\d+):(\\d+)").find(firstItems3)?.let { m ->
+                    m.groupValues[1].toInt() == disposePosition.index &&
+                        m.groupValues[2].toInt() == disposePosition.offset
+                } == true
+            if (!revisitMeasured) {
+                waitForLine(startCursor, after = visit3.seedLine, "v3 measured landing") { line ->
+                    line.contains("restore_settled") &&
+                        line.contains(ScrollLabel) &&
+                        line.contains("position=${disposePosition.index}:${disposePosition.offset}")
+                }
+            }
+            recordEvidence("B1_REVISIT", "epoch=${visit3.epoch} $firstItems3")
+        } catch (t: Throwable) {
+            closeFailure = t
+            throw t
         } finally {
-            scenario?.let(::closeHostOrFail)
+            // Registry clear must run even if the host failed to close —
+            // leaving the dedicated key behind would poison other cases.
+            // If a live host survived a failed close it may still write under
+            // its epoch, but the generation bump from clear() retires those
+            // writes by contract.
+            scenario?.let {
+                runCatching { closeHostOrFail(it) }
+                    .onFailure { e -> Log.w(TestLogTag, "finally close failed: ${e.message}") }
+            }
             MemberDetailScrollRegistryFixtureBridge.clearForTest()
         }
     }
 
-    // -- Host lifecycle -------------------------------------------------------
+    // -- Host lifecycle ---------------------------------------------------------
 
     private fun launchMemberDetailHost(): ActivityScenario<SlockKuiklyActivity> {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -233,14 +244,6 @@ class MemberDetailScrollDisposeSaveConnectedTest {
         return ActivityScenario.launch(intent)
     }
 
-    /**
-     * Destroy the host with a hard ceiling, and FAIL on any non-clean close:
-     * a host that cannot be confirmed destroyed may still own the write
-     * epoch and keep publishing saves that poison the ordering gate. The
-     * bounded daemon-thread join mirrors the existing visual-suite
-     * `closeScenarioBounded`, but unlike that helper we do not treat a
-     * timeout as ignorable — B1's whole premise is "the old host is dead".
-     */
     private fun closeHostOrFail(scenario: ActivityScenario<SlockKuiklyActivity>) {
         val closed = CountDownLatch(1)
         val failure = arrayOfNulls<Throwable>(1)
@@ -262,21 +265,10 @@ class MemberDetailScrollDisposeSaveConnectedTest {
         failure[0]?.let { throw AssertionError("scenario.close() threw: ${it.message}", it) }
     }
 
-    // -- Input -----------------------------------------------------------------
+    // -- Input -------------------------------------------------------------------
 
-    /** Blocking drag used to establish the baseline (phase 1). */
-    private fun injectDragToScrollBlocking() = dragEvents(blocking = true)
-
-    /**
-     * Same gesture queued non-blocking (`injectInputEvent(event, false)`), so
-     * the caller polls probe/user_frame evidence while the input pipeline is
-     * still draining the MOVE run — the actual B1 interleave. Any event the
-     * injector rejects fails the case; MotionEvents are recycled after
-     * dispatch.
-     */
-    private fun injectDragToScrollNonBlocking() = dragEvents(blocking = false)
-
-    private fun dragEvents(blocking: Boolean) {
+    /** Blocking drag used to establish the baseline (visit 1). */
+    private fun injectDragToScrollBlocking() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val metrics = instrumentation.targetContext.resources.displayMetrics
         val x = metrics.widthPixels * 0.5f
@@ -290,7 +282,7 @@ class MemberDetailScrollDisposeSaveConnectedTest {
             events +=
                 MotionEvent.obtain(
                     downTime,
-                    downTime + (DragDurationMs * fraction).toLong(),
+                    SystemClock.uptimeMillis(),
                     MotionEvent.ACTION_MOVE,
                     x,
                     startY + (endY - startY) * fraction,
@@ -300,52 +292,110 @@ class MemberDetailScrollDisposeSaveConnectedTest {
         events +=
             MotionEvent.obtain(
                 downTime,
-                downTime + DragDurationMs,
+                SystemClock.uptimeMillis(),
                 MotionEvent.ACTION_UP,
                 x,
                 endY,
                 0
             )
         try {
-            events.forEach { event ->
-                if (blocking) {
-                    instrumentation.sendPointerSync(event)
-                } else {
-                    val accepted =
-                        instrumentation.uiAutomation.injectInputEvent(event, false)
-                    require(accepted) {
-                        "injectInputEvent rejected ${event.actionMasked} at eventTime=${event.eventTime}"
-                    }
-                }
-            }
+            events.forEach { instrumentation.sendPointerSync(it) }
         } finally {
             events.forEach(MotionEvent::recycle)
         }
     }
 
-    // -- Logcat observation -----------------------------------------------------
+    /**
+     * Real-time-paced drag that leaves the press HELD: DOWN + spaced MOVEs
+     * are injected non-blocking with ~[DragStepDelayMs] between events and
+     * no UP is sent, so the gesture is still physically in flight (and
+     * `isScrollInProgress` live) when the caller destroys the host. The
+     * returned handle releases or cancels the gesture on the failure path.
+     */
+    private fun injectDragPaced(): HeldDrag {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val metrics = instrumentation.targetContext.resources.displayMetrics
+        val x = metrics.widthPixels * 0.5f
+        val startY = metrics.heightPixels * 0.72f
+        val endY = metrics.heightPixels * 0.30f
+        val downTime = SystemClock.uptimeMillis()
+        val events = mutableListOf<MotionEvent>()
+        var currentY = startY
+        fun dispatch(event: MotionEvent) {
+            events += event
+            val accepted =
+                instrumentation.uiAutomation.injectInputEvent(event, false)
+            require(accepted) {
+                "injectInputEvent rejected action=${event.actionMasked}"
+            }
+        }
+        dispatch(MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, startY, 0))
+        repeat(DragSteps) { step ->
+            val fraction = (step + 1f) / DragSteps
+            currentY = startY + (endY - startY) * fraction
+            dispatch(
+                MotionEvent.obtain(
+                    downTime,
+                    SystemClock.uptimeMillis(),
+                    MotionEvent.ACTION_MOVE,
+                    x,
+                    currentY,
+                    0
+                )
+            )
+            // Real pacing: the move run actually takes ~DragSteps*delay, so
+            // the gesture is mid-flight while the caller proceeds.
+            Thread.sleep(DragStepDelayMs)
+        }
+        return HeldDrag(
+            downTime = downTime,
+            x = x,
+            y = currentY,
+            events = events,
+            instrumentation = instrumentation
+        )
+    }
+
+    /** A still-held injected gesture; [release] sends UP, [cancel] sends
+     *  CANCEL. Both recycle every queued event exactly once. */
+    private class HeldDrag(
+        private val downTime: Long,
+        private val x: Float,
+        private val y: Float,
+        private val events: MutableList<MotionEvent>,
+        private val instrumentation: android.app.Instrumentation
+    ) {
+        private var closed = false
+
+        fun release() = finish(MotionEvent.ACTION_UP)
+
+        fun cancel() = finish(MotionEvent.ACTION_CANCEL)
+
+        private fun finish(action: Int) {
+            if (closed) return
+            closed = true
+            try {
+                instrumentation.uiAutomation.injectInputEvent(
+                    MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, x, y, 0),
+                    false
+                )
+            } finally {
+                events.forEach(MotionEvent::recycle)
+            }
+        }
+    }
+
+    // -- Logcat observation --------------------------------------------------------
 
     private data class ScrollPosition(val index: Int, val offset: Int)
 
-    /**
-     * The member-selection label carried by every tracker/probe/dispose line:
-     * `<accountHash>:<selectionKey>:human`. The account hash is not stable
-     * across runs, so we match on the stable selection tail.
-     */
-    private val ScrollLabel = "visual-server:human:visual-human-long:human"
+    /** One visit's minted tracker_seed line and its write epoch. */
+    private data class VisitSeed(val seedLine: String, val epoch: Long)
 
-    /**
-     * Restore key for the registry: `currentUserId:selectionKey` with the
-     * visual host's fixed owner. `registry_save` lines carry `keyHash=` (the
-     * Java String hash of that key) rather than the raw key.
-     */
+    private val ScrollLabel = "visual-server:human:visual-human-long:human"
     private val MemberKey = "visual-owner:visual-server:human:visual-human-long"
     private val KeyHash = MemberKey.hashCode().toString(16)
 
-    /**
-     * Fresh `logcat -d` snapshot filtered to the MembersDetailScroll tag and
-     * to lines logged at-or-after [startCursor] (event timestamps), ordered.
-     */
     private fun orderedLines(startCursor: Long): List<String> {
         var process: Process? = null
         return try {
@@ -354,7 +404,10 @@ class MemberDetailScrollDisposeSaveConnectedTest {
                     .exec(arrayOf("logcat", "-d", "-s", "MembersDetailScroll"))
             process.inputStream.bufferedReader().use { reader ->
                 reader.readLines().filter { line ->
-                    logcatTimestampMillis(line)?.let { it >= startCursor } != false
+                    // Fail-closed: a line whose timestamp cannot be parsed is
+                    // NOT admitted as evidence.
+                    val ts = logcatTimestampMillis(line) ?: return@filter false
+                    ts >= startCursor
                 }
             }
         } catch (t: Throwable) {
@@ -365,10 +418,16 @@ class MemberDetailScrollDisposeSaveConnectedTest {
         }
     }
 
-    // Logcat default format: "MM-DD HH:MM:SS.mmm PID TID LEVEL TAG: msg".
+    private fun linesAfter(startCursor: Long, after: String): List<String> {
+        val lines = orderedLines(startCursor)
+        val idx = lines.lastIndexOf(after)
+        return if (idx < 0) emptyList() else lines.subList(idx + 1, lines.size)
+    }
+
     private fun logcatTimestampMillis(line: String): Long? {
-        val match = Regex("^(\\d{2})-(\\d{2}) (\\d{2}):(\\d{2}):(\\d{2})\\.(\\d{3})").find(line)
-            ?: return null
+        val match =
+            Regex("^(\\d{2})-(\\d{2}) (\\d{2}):(\\d{2}):(\\d{2})\\.(\\d{3})").find(line)
+                ?: return null
         val now = java.util.Calendar.getInstance()
         val cal =
             java.util.Calendar.getInstance().apply {
@@ -390,28 +449,47 @@ class MemberDetailScrollDisposeSaveConnectedTest {
     }
 
     /**
-     * The `tracker_seed` line minted for the newest composition of this key —
-     * it carries `label=<scrollLabel>:human generation=… epoch=N`. Read the
-     * LAST matching seed line after [startCursor]; each host launch produces
-     * exactly one, so waits naturally bind to the latest entry.
+     * Wait for THIS visit's `tracker_seed`: the newest seed for the scroll
+     * label whose `epoch=` strictly exceeds [afterEpoch]. Returns the exact
+     * line so subsequent waits can gate on "after this visit's seed".
      */
-    private fun waitForEpoch(startCursor: Long, description: String): Long {
-        val line =
-            waitForLine(startCursor, description) { l ->
-                l.contains("tracker_seed") && l.contains(ScrollLabel)
-            }
-        val epoch =
-            Regex("epoch=(\\d+)").find(line)?.groupValues?.get(1)?.toLong()
-        return requireNotNull(epoch) { "tracker_seed carried no epoch: $line" }
+    private fun waitForVisitSeed(startCursor: Long, afterEpoch: Long): VisitSeed {
+        val deadline = SystemClock.uptimeMillis() + InitialRenderTimeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            val seed =
+                orderedLines(startCursor)
+                    .filter { it.contains("tracker_seed") && it.contains(ScrollLabel) }
+                    .mapNotNull { line ->
+                        val epoch =
+                            Regex("epoch=(\\d+)").find(line)?.groupValues?.get(1)?.toLong()
+                        if (epoch != null && epoch > afterEpoch) VisitSeed(line, epoch) else null
+                    }
+                    .lastOrNull()
+            if (seed != null) return seed
+            SystemClock.sleep(LogPollMs)
+        }
+        throw AssertionError("Timed out waiting for tracker_seed epoch>$afterEpoch")
     }
 
-    private fun waitForSave(
+    /** Latest line matching [match] strictly after [after]'s position. */
+    private fun waitForLine(
         startCursor: Long,
-        epoch: Long,
-        description: String
-    ): ScrollPosition {
+        after: String,
+        description: String,
+        match: (String) -> Boolean
+    ): String {
+        val deadline = SystemClock.uptimeMillis() + InitialRenderTimeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            val line = linesAfter(startCursor, after).lastOrNull(match)
+            if (line != null) return line
+            SystemClock.sleep(LogPollMs)
+        }
+        throw AssertionError("Timed out waiting for $description")
+    }
+
+    private fun waitForSave(startCursor: Long, after: String, epoch: Long): ScrollPosition {
         val line =
-            waitForLine(startCursor, description) { l ->
+            waitForLine(startCursor, after, "accepted registry_save epoch=$epoch") { l ->
                 l.contains("registry_save") &&
                     l.contains("kind=humanList") &&
                     l.contains("decision=accept") &&
@@ -421,20 +499,6 @@ class MemberDetailScrollDisposeSaveConnectedTest {
         return requireNotNull(parsePositionFrom(line)) {
             "registry_save carried no position: $line"
         }
-    }
-
-    private fun waitForLine(
-        startCursor: Long,
-        description: String,
-        match: (String) -> Boolean
-    ): String {
-        val deadline = SystemClock.uptimeMillis() + InitialRenderTimeoutMs
-        while (SystemClock.uptimeMillis() < deadline) {
-            val line = orderedLines(startCursor).lastOrNull(match)
-            if (line != null) return line
-            SystemClock.sleep(LogPollMs)
-        }
-        throw AssertionError("Timed out waiting for $description")
     }
 
     private fun recordEvidence(key: String, value: String) {
@@ -448,6 +512,6 @@ class MemberDetailScrollDisposeSaveConnectedTest {
         private const val ScenarioCloseTimeoutMs = 20_000L
         private const val LogPollMs = 100L
         private const val DragSteps = 10
-        private const val DragDurationMs = 360L
+        private const val DragStepDelayMs = 36L
     }
 }
