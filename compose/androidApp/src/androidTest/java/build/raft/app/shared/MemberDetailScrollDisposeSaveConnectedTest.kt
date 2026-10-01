@@ -531,13 +531,28 @@ class MemberDetailScrollDisposeSaveConnectedTest {
                 // with CANCEL once the blocked call unwinds.
                 stop.set(true)
                 if (!dispatchDone.await(ScenarioCloseTimeoutMs, TimeUnit.MILLISECONDS)) {
-                    fail(
-                        "baseline drag injector (attempt $attempt) did not exit " +
-                            "within ${ScenarioCloseTimeoutMs}ms of stop; a live " +
-                            "injector is still attached"
-                    )
+                    // The injector is still alive — say so explicitly (the
+                    // process boundary isolates it, but a test fail is not
+                    // proof the process exited) and preserve whatever
+                    // terminal failure the worker recorded.
+                    val err =
+                        AssertionError(
+                            "baseline drag injector (attempt $attempt) did not exit " +
+                                "within ${ScenarioCloseTimeoutMs}ms of stop; a live " +
+                                "injector is still attached (isolation relies on the " +
+                                "instrumentation process ending, which this fail does " +
+                                "not prove)"
+                        )
+                    dispatchFailure[0]?.let(err::addSuppressed)
+                    throw err
                 }
-                fail("baseline drag dispatch (attempt $attempt) blocked >${ScenarioCloseTimeoutMs}ms")
+                val err =
+                    AssertionError(
+                        "baseline drag dispatch (attempt $attempt) blocked " +
+                            ">${ScenarioCloseTimeoutMs}ms"
+                    )
+                dispatchFailure[0]?.let(err::addSuppressed)
+                throw err
             }
             dispatchFailure[0]?.let {
                 throw AssertionError("baseline drag dispatch failed (attempt $attempt): ${it.message}", it)
