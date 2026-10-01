@@ -505,13 +505,19 @@ class MemberDetailScrollDisposeSaveConnectedTest {
             attempt++
             // sendPointerSync blocks on the UiAutomation connection — a stuck
             // injector would hang the test thread past the loop bound, so each
-            // attempt's dispatch runs on a worker under its own latch.
+            // attempt's dispatch runs on a worker under its own latch. The
+            // worker checks `stop` between events and ALWAYS ends the gesture
+            // with a terminal CANCEL in its own finally: on timeout we set the
+            // flag instead of interrupting, then await the worker's real exit
+            // so no leftover injector can still be writing MOVE/UP into the
+            // next window (the gesture had ownership since before DOWN).
+            val stop = java.util.concurrent.atomic.AtomicBoolean(false)
             val dispatchDone = CountDownLatch(1)
             val dispatchFailure = arrayOfNulls<Throwable>(1)
             val injector =
                 Thread {
                     try {
-                        dispatchBlockingDrag(instrumentation, x, startY, endY)
+                        dispatchBlockingDrag(instrumentation, x, startY, endY, stop)
                     } catch (t: Throwable) {
                         dispatchFailure[0] = t
                     } finally {
@@ -521,15 +527,16 @@ class MemberDetailScrollDisposeSaveConnectedTest {
             injector.isDaemon = true
             injector.start()
             if (!dispatchDone.await(ScenarioCloseTimeoutMs, TimeUnit.MILLISECONDS)) {
-                // interrupt() cannot retract a blocked sendPointerSync — the
-                // daemon may still deliver its queued events after we fail.
-                // That is safe by ordering: this fail() aborts the test before
-                // any later gesture injector runs, and the only remaining
-                // injector (HeldDrag.finish in finally) targets a host we are
-                // already destroying or one that was never launched. Events
-                // owned by the stuck worker are deliberately NOT recycled
-                // here — it still holds them.
-                injector.interrupt()
+                // Stop cooperatively; the worker's finally retires the press
+                // with CANCEL once the blocked call unwinds.
+                stop.set(true)
+                if (!dispatchDone.await(ScenarioCloseTimeoutMs, TimeUnit.MILLISECONDS)) {
+                    fail(
+                        "baseline drag injector (attempt $attempt) did not exit " +
+                            "within ${ScenarioCloseTimeoutMs}ms of stop; a live " +
+                            "injector is still attached"
+                    )
+                }
                 fail("baseline drag dispatch (attempt $attempt) blocked >${ScenarioCloseTimeoutMs}ms")
             }
             dispatchFailure[0]?.let {
@@ -548,39 +555,83 @@ class MemberDetailScrollDisposeSaveConnectedTest {
         fail("baseline drag produced no probe_hit after $attempt attempt(s)")
     }
 
+    /**
+     * Dispatches DOWN + DragSteps MOVEs; checks [stop] before each event so
+     * an aborted attempt cannot keep writing into a later window. The
+     * gesture owns a press from the moment DOWN is sent, so a terminal
+     * CANCEL (or UP on clean completion) is always attempted in finally —
+     * delivery result is logged, events recycle exactly once on the worker.
+     */
     private fun dispatchBlockingDrag(
         instrumentation: android.app.Instrumentation,
         x: Float,
         startY: Float,
-        endY: Float
+        endY: Float,
+        stop: java.util.concurrent.atomic.AtomicBoolean
     ) {
         val downTime = SystemClock.uptimeMillis()
         val events = mutableListOf<MotionEvent>()
-        events += MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, startY, 0)
-        repeat(DragSteps) { step ->
-            val fraction = (step + 1f) / DragSteps
-            events +=
+        var downSent = false
+        var cleanEnd = false
+        try {
+            val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, startY, 0)
+            events += down
+            instrumentation.sendPointerSync(down)
+            downSent = true
+            var lastY = startY
+            repeat(DragSteps) { step ->
+                if (stop.get()) return
+                val fraction = (step + 1f) / DragSteps
+                lastY = startY + (endY - startY) * fraction
+                val move =
+                    MotionEvent.obtain(
+                        downTime,
+                        SystemClock.uptimeMillis(),
+                        MotionEvent.ACTION_MOVE,
+                        x,
+                        lastY,
+                        0
+                    )
+                events += move
+                instrumentation.sendPointerSync(move)
+            }
+            val up =
                 MotionEvent.obtain(
                     downTime,
                     SystemClock.uptimeMillis(),
-                    MotionEvent.ACTION_MOVE,
+                    MotionEvent.ACTION_UP,
                     x,
-                    startY + (endY - startY) * fraction,
+                    endY,
                     0
                 )
-        }
-        events +=
-            MotionEvent.obtain(
-                downTime,
-                SystemClock.uptimeMillis(),
-                MotionEvent.ACTION_UP,
-                x,
-                endY,
-                0
-            )
-        try {
-            events.forEach { instrumentation.sendPointerSync(it) }
+            events += up
+            instrumentation.sendPointerSync(up)
+            cleanEnd = true
         } finally {
+            // If DOWN went out but the gesture did not complete, retire the
+            // press with CANCEL — a stuck pointer must never survive an
+            // aborted attempt.
+            if (downSent && !cleanEnd) {
+                try {
+                    val cancel =
+                        MotionEvent.obtain(
+                            downTime,
+                            SystemClock.uptimeMillis(),
+                            MotionEvent.ACTION_CANCEL,
+                            x,
+                            if (events.size > 1) endY else startY,
+                            0
+                        )
+                    val delivered = instrumentation.uiAutomation.injectInputEvent(cancel, false)
+                    cancel.recycle()
+                    Log.i(
+                        TestLogTag,
+                        "baseline_drag_terminated cancelDelivered=$delivered"
+                    )
+                } catch (t: Throwable) {
+                    Log.w(TestLogTag, "baseline_drag_terminate_failed: ${t.message}")
+                }
+            }
             events.forEach(MotionEvent::recycle)
         }
     }
