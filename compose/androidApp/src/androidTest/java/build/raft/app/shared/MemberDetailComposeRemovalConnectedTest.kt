@@ -193,16 +193,10 @@ class MemberDetailComposeRemovalConnectedTest {
             var disposeLineForAudit: String? = null
             var gesturePrimaryFailure: Throwable? = null
             try {
-                // Single attempt: after re-add the subtree's composition is
-                // proven by restore_first_items, but pending input/layout
-                // work can still be queued — dispatching before the main
-                // queue drains can land the DOWN on the pre-removal surface.
-                // waitForIdleSync flushes that queue (bounded by the outer
-                // polling budget; if the looper jams the probe wait simply
-                // times out and fails). No retry, no pseudo-drain: missing
-                // or unbound probe evidence retires the press with CANCEL
-                // and FAILS.
-                InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+                // Single attempt: the re-added subtree's pointerInput may
+                // attach after the seed line, so a dispatch can produce no
+                // probe_hit — no retry, no pseudo-drain; missing or unbound
+                // probe evidence retires the press with CANCEL and FAILS.
                 val verifiedDrag =
                     MemberDetailScrollTestSupport.injectDragPacedUntilProbeHit(
                         startCursor, visit2.seedLine, TestLogTag
