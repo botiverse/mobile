@@ -107,8 +107,8 @@ struct ContentView: View {
 private struct HumanFixtureRevisitHost: View {
     let pageName: String
     let data: [String: Any]
-    @State private var opened = true
-    @State private var visit = 1
+    @SwiftUI.State private var opened = true
+    @SwiftUI.State private var visit = 1
 
     var body: some View {
         VStack(spacing: 0) {
