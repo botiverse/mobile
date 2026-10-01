@@ -69,14 +69,14 @@ class MemberDetailScrollDisposeSaveConnectedTest {
             // The baseline wait itself must keep polling until an ACCEPTED
             // NON-ZERO save appears — an initial 0:0 write (or a still-
             // clamped early frame) must not satisfy the gate.
-            val baseline =
+            val baselineGate =
                 waitForSave(
                     startCursor,
                     after = visit1.seedLine,
                     epoch = visit1.epoch,
                     requireNonZero = true
                 )
-            recordEvidence("B1_BASELINE", "epoch=${visit1.epoch} position=$baseline")
+            recordEvidence("B1_BASELINE", "epoch=${visit1.epoch} position=$baselineGate")
             val host1 = closeHostOrFail(scenario)
             // Host death has two required proofs at this point:
             //   (a) the specific host instance reached DESTROYED in the
@@ -94,6 +94,33 @@ class MemberDetailScrollDisposeSaveConnectedTest {
                     line.contains("dispose_save") && line.contains(ScrollLabel)
                 }
             recordEvidence("B1_V1_DISPOSE", "epoch=${visit1.epoch} $v1Dispose")
+            // The expected restore position is the LAST user-driven position
+            // in flight at destroy time, not the baseline gate: drag saves
+            // keep streaming during the close window, so the gate value can
+            // be stale. Prefer the latest accepted registry_save in this
+            // visit's interval strictly before dispose_save (in-flight user
+            // position, not the dispose write itself); if none exists, the
+            // dispose position itself is the last user position.
+            val v1Interval = linesAfter(startCursor, visit1.seedLine)
+            val v1DisposeIdx = v1Interval.indexOf(v1Dispose)
+            val v1BaselineRestore =
+                v1Interval
+                    .take(v1DisposeIdx)
+                    .filter {
+                        it.contains("registry_save") &&
+                            it.contains("kind=humanList") &&
+                            it.contains("decision=accept") &&
+                            it.contains("keyHash=$KeyHash")
+                    }
+                    .mapNotNull(::parsePositionFrom)
+                    .lastOrNull()
+                    ?: requireNotNull(parsePositionFrom(v1Dispose)) {
+                        "v1 dispose_save carried no position: $v1Dispose"
+                    }
+            recordEvidence(
+                "B1_V1_RESTORE_EXPECT",
+                "epoch=${visit1.epoch} position=$v1BaselineRestore"
+            )
 
             // ---- Visit 2: re-enter, prove baseline restored, drag inside
             // the settle window, destroy mid-drag ----
@@ -105,24 +132,25 @@ class MemberDetailScrollDisposeSaveConnectedTest {
                     line.contains("restore_first_items") && line.contains(ScrollLabel)
                 }
             require(
-                firstItems2.contains("target=${baseline.index}:${baseline.offset}") &&
-                    firstItems2.contains("wantsRestore=true")
+                firstItems2.contains(
+                    "target=${v1BaselineRestore.index}:${v1BaselineRestore.offset}"
+                ) && firstItems2.contains("wantsRestore=true")
             ) {
-                "v2 restore_first_items does not target baseline $baseline: $firstItems2"
+                "v2 restore_first_items does not target baseline $v1BaselineRestore: $firstItems2"
             }
             // Baseline must have actually landed, not merely been targeted:
             // either the seed frame measured current=target, or a
             // restore_settled within this visit interval lands at it.
             val seedLandedAtBaseline =
                 Regex("current=(\\d+):(\\d+)").find(firstItems2)?.let { m ->
-                    m.groupValues[1].toInt() == baseline.index &&
-                        m.groupValues[2].toInt() == baseline.offset
+                    m.groupValues[1].toInt() == v1BaselineRestore.index &&
+                        m.groupValues[2].toInt() == v1BaselineRestore.offset
                 } == true
             if (!seedLandedAtBaseline) {
                 waitForLine(startCursor, after = visit2.seedLine, "v2 baseline settle") { line ->
                     line.contains("restore_settled") &&
                         line.contains(ScrollLabel) &&
-                        line.contains("position=${baseline.index}:${baseline.offset}")
+                        line.contains("position=${v1BaselineRestore.index}:${v1BaselineRestore.offset}")
                 }
             }
             recordEvidence("B1_BASELINE_LANDED", "epoch=${visit2.epoch} $firstItems2")
