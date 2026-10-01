@@ -83,3 +83,351 @@ public object ThreadNewerAutoPaginationVisualFixtureProbe {
         ledger.release(runNonce, callNumber, ThreadNewerAutoFixtureResponse.Error)
 }
 
+public data class ThreadNewerAutoPaginationFixtureSnapshot(
+    val runNonce: String,
+    val initialRequestCount: Int,
+    val afterRequests: List<ThreadNewerAutoAfterRequest>,
+    val returnedAfterCalls: List<Int>,
+    val syncRequests: List<ThreadNewerAutoSyncRequest> = emptyList(),
+    val olderRequests: List<ThreadNewerAutoOlderRequest> = emptyList(),
+    val requestLog: List<String> = emptyList(),
+)
+
+public data class ThreadNewerAutoSyncRequest(
+    val callNumber: Int,
+    val channelId: String,
+    val sinceSeq: Long,
+    val limit: Int,
+    val requestTrace: String? = null,
+)
+
+public data class ThreadNewerAutoOlderRequest(
+    val callNumber: Int,
+    val beforeSeq: Long,
+    val limit: Int,
+    val requestTrace: String? = null,
+)
+
+public data class ThreadNewerAutoAfterRequest(
+    val callNumber: Int,
+    val afterSeq: Long,
+    val limit: Int,
+    val requestTrace: String? = null,
+)
+
+internal sealed interface ThreadNewerAutoFixtureResponse {
+    data class Success(val messageCount: Int) : ThreadNewerAutoFixtureResponse
+
+    data object Error : ThreadNewerAutoFixtureResponse
+
+    fun logLabel(): String =
+        when (this) {
+            is Success -> "success rows=$messageCount"
+            Error -> "error"
+        }
+}
+
+@Page(ThreadNewerAutoPageName, supportInLocal = true)
+internal class ThreadNewerAutoPaginationVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        val runNonce = pageData.params.optString("runNonce").trim()
+        require(runNonce.isNotBlank()) { "thread newer auto-pagination runNonce is required" }
+        ThreadNewerAutoPaginationVisualFixtureProbe.beginRun(runNonce)
+        val showComposer = pageData.params.optBoolean("showComposer", false)
+        setContent { ThreadNewerAutoPaginationVisualContent(runNonce, showComposer) }
+    }
+}
+
+@Composable
+private fun ThreadNewerAutoPaginationVisualContent(runNonce: String, showComposer: Boolean) {
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+    val provider = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val storeScope =
+        remember(runNonce) {
+            SlockShellStoreScope.create(
+                shellInstanceId = "thread-newer-auto-$runNonce",
+                initialServerId = ThreadNewerAutoServerId,
+            )
+        }
+    val fixtureSession = remember(runNonce) { threadNewerAutoSession(runNonce) }
+    val sessionStore =
+        remember(runNonce) {
+            InMemorySlockAuthSessionStore(fixtureSession)
+        }
+    // Task #1122: the data source has no private identity resolver any more; this fixture is its
+    // own realm (own session store, own environment id), so it names its own authority — the
+    // production authority class, fed a fixed auth context that matches the fixture session.
+    val replyCacheIdentityAuthority =
+        remember(runNonce, sessionStore, storeScope) {
+            ThreadReplyCacheIdentityAuthority(
+                sessionStore = sessionStore,
+                selectedServerStore = SelectedServerStore(storeScope),
+                authContextProvider = {
+                    ProcessPresenceAuthContext(
+                        environmentId = ThreadNewerAutoEnvironmentId,
+                        accountId = fixtureSession.user.id,
+                        authorityGeneration = 1L,
+                        writeGeneration = 1L,
+                    )
+                },
+                environmentIdProvider = { ThreadNewerAutoEnvironmentId },
+            )
+        }
+    val networkApi = remember(runNonce) { ThreadNewerAutoPaginationNetworkApi(runNonce) }
+    val dataSource =
+        remember(runNonce, sessionStore, networkApi) {
+            SharedThreadDataSource(
+                networkApi = networkApi,
+                sessionStore = sessionStore,
+                // This fixture is its own realm: name it instead of relying on a blank default.
+                cacheEnvironmentIdProvider = { ThreadNewerAutoEnvironmentId },
+                replyCacheIdentityAuthority = { replyCacheIdentityAuthority.capture() },
+                threadPageSizeProvider = { ThreadNewerAutoPageSize },
+                diagnosticsLogger = { message -> bridge.log("thread_newer_auto_fixture $message") },
+            )
+        }
+    val tasksDataSource = remember { SharedTasksDataSource(ThreadNewerAutoTasksApi) }
+    val initialPayload =
+        remember(runNonce) {
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-newer-auto-$runNonce",
+                title = "Newer pagination fixture",
+                sourceThreadId = ThreadNewerAutoChannelId,
+                streamChannelId = ThreadNewerAutoChannelId,
+                status = "loading",
+                focusedMessageId = threadNewerAutoMessageId(ThreadNewerAutoFocusedMessageSeq),
+                focusedMessageRequestNonce = 1,
+                canLoadMoreAfter = true,
+                showModeTabs = false,
+                showComposer = showComposer,
+                canSend = showComposer,
+                showMembersAction = false,
+                showSettingsAction = false,
+            )
+        }
+
+    DisposableEffect(provider, storeScope) {
+        onDispose {
+            provider.releaseShellStoreScope(storeScope)
+        }
+    }
+    val timeContextProvider = rememberLiveSlockTimeContext(initialPayload.toSlockTimeCapabilities())
+
+    SharedThreadRouteContent(
+        initialPayload = initialPayload,
+        timeContextProvider = timeContextProvider,
+        bridge = bridge,
+        dataSource = dataSource,
+        threadSendScope = provider.threadSendScope,
+        authStore = sessionStore,
+        tasksDataSource = tasksDataSource,
+        tasksDataStore = provider.tasksDataStore,
+        storeScope = storeScope,
+        composerDraftPersistSlice = provider.composerDraftPersistSlice,
+        eventBus = provider.eventBus,
+        onBack = {},
+        onAuthRequired = { code -> bridge.log("thread_newer_auto_fixture auth_required=$code") },
+    )
+}
+
+private class ThreadNewerAutoPaginationNetworkApi(
+    private val runNonce: String,
+) : SharedThreadNetworkApi {
+    private var sentMessageSequence = 100L
+
+    override suspend fun channelMessages(
+        threadId: String,
+        limit: Int,
+        beforeSeq: Long?,
+        afterSeq: Long?,
+        requestTrace: String?,
+    ): HomeNetworkResponse {
+        check(threadId == ThreadNewerAutoChannelId) { "unexpected fixture thread $threadId" }
+        if (beforeSeq != null) {
+            ThreadNewerAutoPaginationVisualFixtureProbe.recordOlderRequest(
+                runNonce, beforeSeq, limit, requestTrace,
+            )
+            return threadNewerAutoMessagesResponse(startSeq = 1L, messageCount = 0)
+        }
+        if (afterSeq == null) {
+            val initialCall =
+                ThreadNewerAutoPaginationVisualFixtureProbe.recordInitialRequest(runNonce, requestTrace)
+            ThreadNewerAutoPaginationVisualFixtureProbe.recordOtherRequest(
+                runNonce,
+                "channelMessages_initial_resp#$initialCall rows=1..$ThreadNewerAutoInitialMessageCount",
+            )
+            return threadNewerAutoMessagesResponse(
+                startSeq = 1L,
+                messageCount = ThreadNewerAutoInitialMessageCount,
+            )
+        }
+        return when (
+            val response =
+                ThreadNewerAutoPaginationVisualFixtureProbe.awaitAfterResponse(
+                    runNonce = runNonce,
+                    afterSeq = afterSeq,
+                    limit = limit,
+                    requestTrace = requestTrace,
+                )
+        ) {
+            is ThreadNewerAutoFixtureResponse.Success ->
+                threadNewerAutoMessagesResponse(
+                    startSeq = afterSeq + 1L,
+                    messageCount = response.messageCount,
+                )
+            ThreadNewerAutoFixtureResponse.Error ->
+                HomeNetworkResponse(
+                    code = 503,
+                    bodyText = null,
+                    errorBodyText = "thread_newer_auto_fixture_failure",
+                )
+        }
+    }
+
+    override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int, requestTrace: String?): HomeNetworkResponse {
+        val callNumber =
+            ThreadNewerAutoPaginationVisualFixtureProbe.recordSyncRequest(
+                runNonce, channelId, sinceSeq, limit, requestTrace,
+            )
+        return HomeNetworkResponse(code = 200, bodyText = "[]").also {
+            ThreadNewerAutoPaginationVisualFixtureProbe.recordOtherRequest(
+                runNonce,
+                "messageSync_resp#$callNumber(sinceSeq=$sinceSeq)->200 empty",
+            )
+        }
+    }
+
+    override suspend fun sendMessage(
+        channelId: String,
+        body: String,
+        asTask: Boolean,
+        attachmentIds: List<String>,
+        randomId: String?,
+    ): HomeNetworkResponse {
+        check(channelId == ThreadNewerAutoChannelId) { "unexpected fixture send channel $channelId" }
+        ThreadNewerAutoPaginationVisualFixtureProbe.recordSentRequest(runNonce)
+        sentMessageSequence += 1L
+        val seq = sentMessageSequence
+        return HomeNetworkResponse(
+            code = 200,
+            bodyText =
+                """
+                {
+                  "id":"${threadNewerAutoMessageId(seq)}",
+                  "seq":$seq,
+                  "channelId":"$ThreadNewerAutoChannelId",
+                  "content":"$body",
+                  "createdAt":"2026-07-27T06:00:00Z",
+                  "senderId":"thread-newer-auto-user",
+                  "senderName":"Thread Pagination Fixture",
+                  "senderType":"user",
+                  "messageType":"chat",
+                  "randomId":"${randomId.orEmpty()}"
+                }
+                """.trimIndent(),
+        )
+    }
+
+    override suspend fun executePendingMentionActions(
+        action: String,
+        resolutionIds: List<String>,
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = "{\"results\":[]}")
+
+    override suspend fun attachmentUrl(attachmentId: String, disposition: String?): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+
+    override suspend fun attachmentHtmlPreviewUrl(attachmentId: String): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+
+    override suspend fun attachmentComments(attachmentId: String): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+
+    override suspend fun sendAttachmentComment(attachmentId: String, body: String): HomeNetworkResponse = okResponse()
+
+    override suspend fun markChannelReadToSeq(channelId: String, seq: Long): HomeNetworkResponse = okResponse()
+
+    override suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse = okResponse()
+
+    override suspend fun saveMessage(messageId: String): HomeNetworkResponse = okResponse()
+
+    override suspend fun unsaveMessage(messageId: String): HomeNetworkResponse = okResponse()
+
+    override suspend fun addReaction(messageId: String, emoji: String): HomeNetworkResponse = okResponse()
+
+    override suspend fun removeReaction(messageId: String, emoji: String): HomeNetworkResponse = okResponse()
+
+    override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse =
+        HomeNetworkResponse(
+            code = 200,
+            bodyText =
+                "{\"threadChannelId\":\"$ThreadNewerAutoChannelId\",\"parentMessageId\":\"$parentMessageId\",\"created\":false}",
+        )
+
+    override suspend fun messageContext(messageId: String, channelId: String?): HomeNetworkResponse = okResponse()
+
+    private fun okResponse(): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = "{}")
+}
+
+private object ThreadNewerAutoTasksApi : SlockTasksApi {
+    override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
+        HomeNetworkResponse(code = 200, bodyText = "{\"tasks\":[]}")
+
+    override suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): HomeNetworkResponse =
+        HomeNetworkResponse(code = 200, bodyText = "{}")
+}
+
+private fun threadNewerAutoSession(runNonce: String): StoredAuthSession =
+    StoredAuthSession(
+        user =
+            StoredAuthUser(
+                id = "thread-newer-auto-user",
+                email = "thread-newer-auto-$runNonce@example.invalid",
+                name = "Thread Pagination Fixture",
+            ),
+        accessToken = "thread-newer-auto-access-$runNonce",
+        refreshToken = "thread-newer-auto-refresh-$runNonce",
+        selectedServerId = ThreadNewerAutoServerId,
+        selectedServerSlug = "thread-newer-auto",
+        servers =
+            listOf(
+                StoredAuthServer(
+                    id = ThreadNewerAutoServerId,
+                    name = "Thread Pagination Fixture",
+                    slug = "thread-newer-auto",
+                    role = "owner",
+                ),
+            ),
+        allowImplicitServerFallback = false,
+    )
+
+private fun threadNewerAutoMessagesResponse(startSeq: Long, messageCount: Int): HomeNetworkResponse {
+    val messages =
+        (startSeq until startSeq + messageCount)
+            .joinToString(separator = ",") { seq ->
+                val authorSuffix = if (seq % 2L == 0L) "a" else "b"
+                """
+                {
+                  "id":"${threadNewerAutoMessageId(seq)}",
+                  "seq":$seq,
+                  "channelId":"$ThreadNewerAutoChannelId",
+                  "content":"${threadNewerAutoMessageLabel(seq)} — deterministic real Thread row with enough content to wrap on a phone viewport.",
+                  "createdAt":"2026-07-20T08:${(seq % 60L).toString().padStart(2, '0')}:00Z",
+                  "senderId":"fixture-user-$authorSuffix",
+                  "senderName":"Fixture ${authorSuffix.uppercase()}",
+                  "senderType":"user",
+                  "messageType":"chat"
+                }
+                """.trimIndent()
+            }
+    return HomeNetworkResponse(
+        code = 200,
+        bodyText = "{\"historyLimited\":false,\"messages\":[$messages]}",
+    )
+}
+
+private fun threadNewerAutoMessageId(seq: Long): String = "thread-newer-auto-m$seq"
+
+public fun threadNewerAutoMessageLabel(seq: Long): String =
+    "AUTO-MSG-${seq.toString().padStart(4, '0')}"

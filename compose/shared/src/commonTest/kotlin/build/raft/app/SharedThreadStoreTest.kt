@@ -18080,6 +18080,204 @@ class SharedThreadStoreTest {
     fun staleRunReleaseDoesNotCompleteNewLedgerGate() = runBlocking {
         // task #58 observability contract (same code the visual fixture runs):
         // a release issued for an older runNonce must neither complete a gate
+        // in the new run nor write a ledger entry against it. The new run's
+        // gate is armed first, then a deliberately different response proves
+        // the awaiting coroutine received the new-run release, not the stale
+        // one (stale would be wrongly delivered if nonce checks were skipped).
+        val ledger = ThreadNewerAutoFixtureLedger()
+        val nonce1 = "run-a"
+        val nonce2 = "run-b"
+        try {
+            ledger.beginRun(nonce1)
+            val stalePending =
+                async {
+                    ledger.awaitAfterResponse(
+                        runNonce = nonce1,
+                        afterSeq = 46L,
+                        limit = 30,
+                    )
+                }
+            withTimeout(5_000) {
+                while (ledger.snapshot(nonce1).afterRequests.isEmpty()) yield()
+            }
+            ledger.beginRun(nonce2)
+            val newPending =
+                async {
+                    ledger.awaitAfterResponse(
+                        runNonce = nonce2,
+                        afterSeq = 46L,
+                        limit = 30,
+                    )
+                }
+            withTimeout(5_000) {
+                while (ledger.snapshot(nonce2).afterRequests.isEmpty()) yield()
+            }
+            // Stale release carries a distinguishable payload.
+            val staleReleased =
+                ledger.release(nonce1, 1, ThreadNewerAutoFixtureResponse.Success(30))
+            assertFalse(staleReleased, "stale-nonce release must fail")
+            // Real release on the new run returns a different response; if the
+            // stale one had leaked into the new gate this would fail or the
+            // returned value would be the stale Success(30).
+            assertTrue(
+                ledger.release(nonce2, 1, ThreadNewerAutoFixtureResponse.Success(7)),
+                "new-run release must succeed",
+            )
+            assertEquals(
+                ThreadNewerAutoFixtureResponse.Success(7),
+                newPending.await(),
+                "new-run awaiter must receive the new-run response, not the stale one",
+            )
+            assertTrue(
+                ledger.snapshot(nonce2).requestLog.none { it.contains("success rows=30") },
+                "stale release must not appear in the new run's ledger",
+            )
+            stalePending.cancel()
+            runCatching { stalePending.await() }
+        } finally {
+            // make sure no coroutine leaks
+        }
+    }
+
+    @Test
+    fun repeatedReleaseOnSameCallRecordedAccurately() = runBlocking {
+        // task #58 observability contract: releasing the same call twice —
+        // first a real release, then a repeat — leaves exactly one
+        // `release#N completed=true` and exactly one no-gate/`completed=false`
+        // record; assertions pin both counts, not just "some record exists".
+        val ledger = ThreadNewerAutoFixtureLedger()
+        val nonce = "run-repeat"
+        try {
+            ledger.beginRun(nonce)
+            val pending =
+                async {
+                    ledger.awaitAfterResponse(
+                        runNonce = nonce,
+                        afterSeq = 46L,
+                        limit = 30,
+                    )
+                }
+            withTimeout(5_000) {
+                while (ledger.snapshot(nonce).afterRequests.isEmpty()) yield()
+            }
+            assertTrue(
+                ledger.release(nonce, 1, ThreadNewerAutoFixtureResponse.Success(5)),
+                "first release should complete the gate",
+            )
+            pending.await()
+            val repeatResult = ledger.release(nonce, 1, ThreadNewerAutoFixtureResponse.Success(5))
+            assertFalse(repeatResult, "repeat release must not recomplete")
+            val log = ledger.snapshot(nonce).requestLog
+            assertEquals(
+                1,
+                log.count { it == "release#1(success rows=5) completed=true" },
+                "exactly one completed release record expected; log=$log",
+            )
+            assertEquals(
+                1,
+                log.count { it.contains("release_attempt#1") || (it.contains("release#1") && it.contains("completed=false")) },
+                "exactly one reject/no-gate record expected for the repeat; log=$log",
+            )
+        } finally {
+        }
+    }
+    @Test
+    fun concurrentNewerPageAndRefreshCarryDistinctFetchSeqsToApply() = runBlocking {
+        // task #58 observability contract: an in-flight newer page and a refresh
+        // in the same route generation must be distinguishable — each gets its
+        // own fetchSeq at issue, and the apply logs carry that fetchSeq (not the
+        // latest counter at write time).
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+        val api =
+            FakeThreadApi(
+                bodyText =
+                    messagesResponse("first body", id = "m16", seq = 16, historyLimited = false),
+                newerBodyText = newerRowsBody(17L..46L),
+            )
+        val logs = mutableListOf<String>()
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
+            )
+        val store =
+            SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        store.accept(
+            SharedThreadIntent.Start(
+                basePayload().copy(
+                    canLoadMoreAfter = true,
+                    messages = listOf(payloadMessage(id = "m16", seq = 16, body = "first body")),
+                )
+            )
+        )
+        // Commit page 17..46 first.
+        api.afterMessagesStarted = CompletableDeferred()
+        api.releaseAfterMessages = CompletableDeferred()
+        val firstPage = async { store.loadNewer() }
+        withTimeout(5_000) { api.afterMessagesStarted?.await() }
+        api.releaseAfterMessages?.complete(Unit)
+        withTimeout(5_000) { firstPage.await() }
+
+        // Park newer page #2 at afterSeq=46, then launch Refresh (which
+        // advances the route generation) while the page is still in flight.
+        api.newerResponseCode = 500
+        api.afterMessagesStarted = CompletableDeferred()
+        api.releaseAfterMessages = CompletableDeferred()
+        val secondPage = async { store.loadNewer() }
+        withTimeout(5_000) { api.afterMessagesStarted?.await() }
+
+        api.channelMessagesStarted = CompletableDeferred()
+        api.releaseChannelMessages = CompletableDeferred()
+        val refreshJob = async { store.accept(SharedThreadIntent.Refresh) }
+        withTimeout(5_000) { api.channelMessagesStarted?.await() }
+
+        val fetchIssued = logs.filter { it.startsWith("thread_fetch_issued") }
+        val newerIssued = fetchIssued.last { it.contains("kind=newer_page") }
+        val refreshIssued = fetchIssued.last { it.contains("kind=refresh_canonical") }
+        val newerFetchSeq = Regex("fetchSeq=(\\d+)").find(newerIssued)!!.groupValues[1]
+        val refreshFetchSeq = Regex("fetchSeq=(\\d+)").find(refreshIssued)!!.groupValues[1]
+        assertNotEquals(
+            newerFetchSeq,
+            refreshFetchSeq,
+            "concurrent newer page and refresh must receive distinct fetchSeqs: " +
+                "newer=$newerIssued refresh=$refreshIssued",
+        )
+        // The boundary trace for each fetch must carry its own storeSeq+fetchSeq.
+        assertTrue(
+            api.channelMessagesRequestTraces.any { it == "newer_page_s${Regex("storeSeq=(\\d+)").find(newerIssued)!!.groupValues[1]}_fs=$newerFetchSeq" },
+            "newer fetch trace missing; traces=${api.channelMessagesRequestTraces}",
+        )
+        assertTrue(
+            api.channelMessagesRequestTraces.any { it == "refresh_canonical_s${Regex("storeSeq=(\\d+)").find(refreshIssued)!!.groupValues[1]}_fs=$refreshFetchSeq" },
+            "refresh fetch trace missing; traces=${api.channelMessagesRequestTraces}",
+        )
+
+        // Let the stale page error resolve; its rejection must log its own
+        // fetchSeq (not the refresh's), demonstrating apply-side attribution.
+        api.releaseAfterMessages?.complete(Unit)
+        withTimeout(5_000) { secondPage.await() }
+        val newerReject = logs.filter { it.contains("thread_payload_messages_write_rejected") && it.contains("tag=newer_") }
+        assertTrue(
+            newerReject.any { it.contains("fetchSeq=$newerFetchSeq") },
+            "stale newer-page rejection must carry its own fetchSeq=$newerFetchSeq; got $newerReject",
+        )
+        api.bodyText =
+            messagesResponse("refreshed tail", id = "m16", seq = 16, historyLimited = false)
+        api.releaseChannelMessages?.complete(Unit)
+        withTimeout(5_000) { refreshJob.await() }
+        } finally {
+            scope.cancel()
+        }
+    }
+
+
+
+    @Test
+    fun staleRunReleaseDoesNotCompleteNewLedgerGate() = runBlocking {
+        // task #58 observability contract (same code the visual fixture runs):
+        // a release issued for an older runNonce must neither complete a gate
         // in the new run nor write a ledger entry against it.
         val ledger = ThreadNewerAutoFixtureLedger()
         val nonce1 = "run-a"

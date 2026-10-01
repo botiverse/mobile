@@ -1315,12 +1315,14 @@ class ConversationRepositoryDataSourceTest {
                     """{"messages":[],"historyLimited":false}""",
                 "GET messages/sync" to """{"messages":[]}""",
             )
+        val localLogs = mutableListOf<String>()
         fun runWith(trace: String?): List<RecordedConversationRequest> {
             val network = FakeConversationNetworkClient(responses = responses)
             val repository =
                 RealConversationRepository(
                     sampleStore(),
                     network,
+                    warningLogger = { localLogs += it },
                 )
             runBlocking {
                 repository.loadNewerMessages(ThreadId("channel-1"), 46L, 30, requestTrace = trace)
@@ -1340,6 +1342,10 @@ class ConversationRepositoryDataSourceTest {
         assertTrue(
             withTrace.none { request -> request.query.any { (k, _) -> k == "trace" } },
             "requestTrace must not reach wire query; requests=$withTrace",
+        )
+        assertTrue(
+            localLogs.any { it.contains("thread_net_call") && it.contains("trace=newer_page_s3_fs=7") },
+            "process-local trace must still be observable; logs=$localLogs",
         )
     }
 
