@@ -648,7 +648,7 @@ class MemberDetailScrollTrackerTest {
     }
 
     @Test
-    fun `stall re-issue uses the restore target, not the clamped landing`() {
+    fun `stall re-issue uses the restore target not the clamped landing`() {
         // The pending request's supersede base is the measured position
         // (237 in Alpha101), but a stall retry must re-request the saved
         // TARGET — re-writing the clamped position would bake the failure
