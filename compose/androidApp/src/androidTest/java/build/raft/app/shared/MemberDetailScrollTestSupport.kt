@@ -418,26 +418,55 @@ internal object MemberDetailScrollTestSupport {
         while (SystemClock.uptimeMillis() < deadline) {
             attempt++
             Log.i(logTag, "held_drag_dispatch attempt=$attempt at=${SystemClock.uptimeMillis()}")
-            val drag = injectDragPaced(logTag)
-            val probeDeadline =
-                minOf(SystemClock.uptimeMillis() + ProbeHitWaitMs, deadline)
+            // Attempt isolation: only probe_hit lines strictly AFTER this
+            // attempt's snapshot count — a stale hit from an earlier attempt
+            // can never satisfy a later dispatch.
+            val lineCountBefore =
+                linesAfter(startCursor, after, logTag).size
+            var drag: HeldDrag? = null
+            var primaryFailure: Throwable? = null
             var hit: String? = null
-            while (SystemClock.uptimeMillis() < probeDeadline) {
-                hit =
-                    linesAfter(startCursor, after, logTag).lastOrNull {
-                        it.contains("probe_hit") && it.contains(ScrollLabel)
-                    }
-                if (hit != null) break
-                SystemClock.sleep(LogPollMs)
+            try {
+                drag = injectDragPaced(logTag)
+                val probeDeadline =
+                    minOf(SystemClock.uptimeMillis() + ProbeHitWaitMs, deadline)
+                while (SystemClock.uptimeMillis() < probeDeadline) {
+                    hit =
+                        linesAfter(startCursor, after, logTag)
+                            .drop(lineCountBefore)
+                            .lastOrNull {
+                                it.contains("probe_hit") && it.contains(ScrollLabel)
+                            }
+                    if (hit != null) break
+                    SystemClock.sleep(LogPollMs)
+                }
+            } catch (t: Throwable) {
+                primaryFailure = t
             }
             if (hit != null) {
                 recordEvidence(logTag, "PROBE", "attempt=$attempt $hit")
-                return drag
+                return requireNotNull(drag)
             }
-            // No probe evidence — retire this attempt's press before
-            // retrying so at most one pointer is ever held.
-            drag.finish(MotionEvent.ACTION_CANCEL)
-            Log.i(logTag, "held_drag_retired attempt=$attempt cancel at=${SystemClock.uptimeMillis()} reason=no probe_hit")
+            // Any non-hit outcome (no probe evidence, or an exception while
+            // holding the press) retires this attempt's pointer before the
+            // failure/ retry continues — at most one pointer is ever held.
+            drag?.let { held ->
+                try {
+                    held.finish(MotionEvent.ACTION_CANCEL)
+                    Log.i(
+                        logTag,
+                        "held_drag_retired attempt=$attempt cancel " +
+                            "at=${SystemClock.uptimeMillis()} " +
+                            "reason=${if (primaryFailure != null) "dispatch_error" else "no probe_hit"}"
+                    )
+                } catch (cancelFailure: Throwable) {
+                    // Retirement failure on an already-failing attempt rides
+                    // along; otherwise it is the attempt's failure.
+                    primaryFailure?.addSuppressed(cancelFailure)
+                        ?: run { primaryFailure = cancelFailure }
+                }
+            }
+            primaryFailure?.let { throw it }
             SystemClock.sleep(DragRetryDelayMs)
         }
         throw AssertionError("held drag produced no probe_hit after $attempt attempt(s)")
