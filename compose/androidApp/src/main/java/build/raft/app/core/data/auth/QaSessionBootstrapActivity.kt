@@ -30,6 +30,25 @@ class QaSessionBootstrapActivity : ComponentActivity() {
         val requestId = intent.getStringExtra(EXTRA_REQUEST_ID)
         val expectedEnvelopeDigest = intent.getStringExtra(EXTRA_ENVELOPE_DIGEST)
         setIntent(Intent(this, QaSessionBootstrapActivity::class.java))
+        // Reader-side coordinates for the private inbox. The hosted emulator reports
+        // inbox_consume code=missing right after the harness verified the file
+        // through run-as (task #188); only the path THIS process resolves can be
+        // compared with the path the writer used. Paths and ids only, no contents.
+        if (!requestId.isNullOrBlank()) {
+            val inbox = java.io.File(applicationContext.filesDir, "qa-bootstrap/inbox")
+            Log.i(
+                LOG_TAG,
+                "QA_BOOTSTRAP_DIAG filesDir=${applicationContext.filesDir.absolutePath}" +
+                    " dataDir=${applicationContext.dataDir.absolutePath}" +
+                    " uid=${android.os.Process.myUid()}" +
+                    " user=${android.os.Process.myUserHandle().hashCode()}" +
+                    " path=${java.io.File(inbox, "$requestId.session").absolutePath}" +
+                    " inboxExists=${inbox.exists()}" +
+                    // Names only (request ids), never contents: is the file the harness
+                    // verified through run-as visible to THIS process before consume?
+                    " inboxEntries=${inbox.list()?.joinToString(",") ?: "null"}",
+            )
+        }
         lifecycleScope.launch {
             if (!requestId.isNullOrBlank() && !expectedEnvelopeDigest.isNullOrBlank()) {
                 consumeLoginEnvelope(requestId, expectedEnvelopeDigest)

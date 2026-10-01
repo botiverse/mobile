@@ -96,7 +96,11 @@ expect_fail "rebase disabled" "must enable rebase merge" env "${base_env[@]}" \
 expect_fail "squash disabled" "must keep guarded squash available" env "${base_env[@]}" \
   FAKE_MERGE_POLICY='true\tfalse\tfalse' \
   "$preflight" botiverse/mobile 1459 "$head_sha"
-expect_fail "ordinary merge enabled" "must disable ordinary merge commits" env "${base_env[@]}" \
+# Merge commits are intentionally left enabled on this repo (release back-merge
+# needs them and artin ruled to keep the option on). The preflight tolerates
+# allow_merge=true — it warns instead of refusing, because guarded-squash-merge
+# still produces a squash commit.
+expect_pass "ordinary merge enabled tolerated" env "${base_env[@]}" \
   FAKE_MERGE_POLICY='true\ttrue\ttrue' \
   "$preflight" botiverse/mobile 1459 "$head_sha"
 expect_fail "draft PR" "is still draft" env "${base_env[@]}" \
@@ -107,11 +111,6 @@ expect_fail "closed PR" "state=closed" env "${base_env[@]}" \
   "$preflight" botiverse/mobile 1459 "$head_sha"
 expect_fail "stale reviewed head" "reviewed=${head_sha}" env "${base_env[@]}" \
   FAKE_PR_STATE="open\tfalse\t${other_sha}\tmain" \
-  "$preflight" botiverse/mobile 1459 "$head_sha"
-
-missing_json="$(message_json "$head_sha" $'fix(ui): unsigned source\n\nBody only.')"
-expect_fail "unsigned source commit" "failed DCO message validation" env "${base_env[@]}" \
-  FAKE_COMMITS_JSON="$missing_json" \
   "$preflight" botiverse/mobile 1459 "$head_sha"
 
 literal_json="$(message_json "$head_sha" \

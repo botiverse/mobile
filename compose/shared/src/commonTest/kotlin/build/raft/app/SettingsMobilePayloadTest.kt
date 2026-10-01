@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.MOBILE_ACTION_DESKTOP_MODE
 import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
 import build.raft.app.data.MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE
 import build.raft.app.data.MOBILE_ACTION_THREAD_UNREAD_JUMP
@@ -12,6 +13,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SettingsMobilePayloadTest {
     @Test
@@ -61,6 +63,28 @@ class SettingsMobilePayloadTest {
         assertEquals("Beta", row.badgeLabel)
         assertEquals(false, row.toggleValue)
         assertEquals("true", row.value)
+        assertFalse(row.title.isBlank())
+    }
+
+    @Test
+    fun desktopModeRowDefaultsOnAndCarriesNoBadge() {
+        val snapshot =
+            SettingsMobileSnapshot(
+                pushNotifications = toggle(enabled = false),
+                muteServer = toggle(enabled = false)
+            )
+
+        val row =
+            ScreenLoadState.Content(snapshot).toMobilePayload(
+                actionState = null,
+                refreshing = false,
+                errorStrings = englishErrorPresentationStringsForTest()
+            ).sections.flatMap { it.rows }
+                .firstOrNull { it.key == MOBILE_ACTION_DESKTOP_MODE }
+
+        assertNotNull(row)
+        assertTrue(row.badgeLabel.isBlank())
+        assertEquals(true, row.toggleValue)
         assertFalse(row.title.isBlank())
     }
 

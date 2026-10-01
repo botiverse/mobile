@@ -1,7 +1,9 @@
 package build.raft.app.data
 
 import build.raft.app.base.putIfAbsent
+import build.raft.app.parseExternalAgentTimestampOrNull
 import build.raft.app.model.AvatarReference
+import build.raft.app.model.ChannelExternalMemberProfile
 import build.raft.app.model.ChannelId
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberProfile
@@ -14,6 +16,8 @@ import build.raft.app.model.ServerSummary
 import build.raft.app.model.avatarSlotResolution
 import build.raft.app.model.hidesHumanDirectoryForViewer
 import build.raft.app.model.isAgentFallbackAvatarWireValue
+import build.raft.app.slockAvatarDiagnosticsHash
+import build.raft.app.slockAvatarDiagnosticsSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -27,6 +31,8 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.time.TimeSource
@@ -48,6 +54,13 @@ data class SharedServerMembersEntry(
     val status: SharedServerMembersLoadStatus = SharedServerMembersLoadStatus.Idle,
     val errorCode: String? = null
 ) {
+    // task #329: memberId -> profile index, built once per entry instance so
+    // per-member read edges (status/profile flows, sync lookups) stop paying an
+    // O(N) linear scan per emission across every mounted row.
+    val membersById: Map<String, MemberProfile> by lazy {
+        members.associateBy { it.id.value.trim() }
+    }
+
     fun snapshotOrNull(): MemberSnapshot? =
         server?.let { MemberSnapshot(server = it, members = members) }
 }
@@ -93,7 +106,9 @@ data class SharedServerChannelMembersSlice(
     val channelId: String,
     val ownerWriteGeneration: Long = 0L,
     val members: List<MemberProfile> = emptyList(),
+    val externalMembers: List<ChannelExternalMemberProfile> = emptyList(),
     val canAddMembers: Boolean = false,
+    val canRemoveMembers: Boolean = false,
     val canAddMembersKnown: Boolean = false,
     val status: SharedServerMembersLoadStatus = SharedServerMembersLoadStatus.Idle,
     val errorCode: String? = null
@@ -103,7 +118,9 @@ data class SharedServerChannelMembersSlice(
             ChannelMemberSnapshot(
                 channelId = ChannelId(it),
                 members = members,
-                canAddMembers = canAddMembers
+                externalMembers = externalMembers,
+                canAddMembers = canAddMembers,
+                canRemoveMembers = canRemoveMembers
             )
         }
 }
@@ -178,11 +195,13 @@ data class SharedServerMembersState(
         val cleanMemberId = memberId.normalizedServerMembersId() ?: return null
         val cleanServerId = serverId?.value.normalizedServerMembersId() ?: return null
         val entries = listOfNotNull(entriesByServerId[cleanServerId])
-        val member =
+        val rosterMember =
             entries
                 .asSequence()
-                .flatMap { it.members.asSequence() }
-                .firstOrNull { it.kind == MemberKind.Agent && it.id.value.trim() == cleanMemberId }
+                .mapNotNull { it.membersById[cleanMemberId] }
+                .firstOrNull { it.kind == MemberKind.Agent }
+        val member =
+            rosterMember
                 ?: profileCacheByServerId
                     .asSequence()
                     .filter { it.key == cleanServerId }
@@ -191,7 +210,14 @@ data class SharedServerMembersState(
         // task #136: presence facts live ONLY in the process registry — the
         // state carries rosters; status reads go through the store's
         // registry-backed APIs (memberStatusFlow / memberStatus).
-        return member.toSharedServerMemberStatus(null)
+        // task #253: same seed-cache fallback as memberStatusFlow, so same policy.
+        // Narrower authority though: the flow also trusts channel slices, which need
+        // the store's owner binding and are unreachable from state. A slice-only
+        // member is therefore suppressed here and published there.
+        return applySeedOnlyOfflinePolicy(
+            resolved = member.toSharedServerMemberStatus(null),
+            seedOnly = rosterMember == null
+        )
     }
 
     fun memberProfile(
@@ -203,13 +229,18 @@ data class SharedServerMembersState(
         val entries = listOfNotNull(entriesByServerId[cleanServerId])
         return entries
             .asSequence()
-            .flatMap { it.members.asSequence() }
-            .firstOrNull { it.id.value.trim() == cleanMemberId }
+            .mapNotNull { it.membersById[cleanMemberId] }
+            .firstOrNull()
             ?: profileCacheByServerId
                 .asSequence()
                 .filter { it.key == cleanServerId }
                 .mapNotNull { it.value[cleanMemberId] }
                 .firstOrNull()
+            ?: channelMemberSlices
+                .asSequence()
+                .filter { it.key.serverId == cleanServerId }
+                .flatMap { it.value.members.asSequence() }
+                .firstOrNull { it.id.value.trim() == cleanMemberId }
     }
 
     internal fun canonicalMentionHandle(
@@ -271,8 +302,82 @@ data class SharedServerMembersState(
 data class SharedServerMemberStatus(
     val status: AgentStatus?,
     val presence: Presence,
-    val statusLabel: String? = null
+    val statusLabel: String? = null,
+    /**
+     * External agents carry no managed liveness; the indicator must render them
+     * as external regardless of [status]/[presence]. Required (no default) so a
+     * producer that forgets it fails to compile instead of silently rendering
+     * an external agent with a managed green dot (task #1119).
+     */
+    val external: Boolean,
+    /**
+     * External agents only (task #410): `lastSeenAt` — the credential's last
+     * use (ISO-8601), sourced from `GET /agents*` and advanced by realtime
+     * `agent:seen`. Presence derives from it: online while
+     * `now - lastSeenAt < 120s` (web `EXTERNAL_AGENT_ONLINE_WINDOW_MS`).
+     * Null on managed members.
+     */
+    val lastSeenAt: String? = null
 )
+
+/**
+ * The neutral marker `memberStatusFlow` already publishes when a native reconnect retires a
+ * member's pre-connect status. It exists because [Presence] cannot express Unknown.
+ */
+internal const val NeutralAgentStatusLabel = "—"
+
+/** A scoped profile plus whether it came from an authoritative record or a message-author seed. */
+private data class ScopedMemberProfileResolution(
+    val profile: MemberProfile?,
+    val authoritative: Boolean
+)
+
+/**
+ * What to publish for an agent backed only by a status-stripped message-author seed.
+ * [Presence] has no Unknown, so [withoutVolatileStatus] must write `Presence.Offline`, and on
+ * cold start that forced value reached the indicator as a definite "Offline" (task #253).
+ */
+internal enum class SeedOnlyOfflinePolicy {
+    /** The pre-task-#253 behaviour: publish the forced `Presence.Offline` unchanged. */
+    PublishAsOffline,
+
+    /** Rejected candidate: keep the dot, relabel it neutral, matching the reconnect branch. */
+    PublishNeutralLabel,
+
+    /** Publish nothing until an authoritative value exists. */
+    PublishNothing
+}
+
+/**
+ * The shipped policy (task #253): a stripped message-author seed publishes nothing until
+ * something authoritative arrives. The other arms record what the rejected candidates would
+ * publish; nothing constructs a different policy.
+ */
+internal val ActiveSeedOnlyOfflinePolicy: SeedOnlyOfflinePolicy = SeedOnlyOfflinePolicy.PublishNothing
+
+/**
+ * Applies [policy] to a status that is a forced-offline seed artefact rather than an
+ * observation. Anything carrying a real status, a real label, or a non-Offline presence is
+ * returned untouched, so a genuinely offline agent from the roster is never rewritten.
+ */
+internal fun applySeedOnlyOfflinePolicy(
+    resolved: SharedServerMemberStatus?,
+    seedOnly: Boolean,
+    policy: SeedOnlyOfflinePolicy = ActiveSeedOnlyOfflinePolicy
+): SharedServerMemberStatus? {
+    val forcedOffline =
+        seedOnly &&
+            resolved != null &&
+            resolved.status == null &&
+            resolved.statusLabel == null &&
+            resolved.presence == Presence.Offline
+    if (!forcedOffline) return resolved
+    return when (policy) {
+        SeedOnlyOfflinePolicy.PublishAsOffline -> resolved
+        SeedOnlyOfflinePolicy.PublishNeutralLabel -> resolved?.copy(statusLabel = NeutralAgentStatusLabel)
+        SeedOnlyOfflinePolicy.PublishNothing -> null
+    }
+}
 
 private fun ServerSummary?.hidesHumanDirectoryFromViewer(): Boolean =
     this?.hidesHumanDirectoryForViewer() == true
@@ -290,6 +395,12 @@ private fun SharedServerMembersEntry.visibleDirectoryEntry(): SharedServerMember
 private fun MemberProfile?.toSharedServerMemberStatus(
     presenceFact: MemberPresenceUpdated?
 ): SharedServerMemberStatus? {
+    val resolvedLastSeenAt =
+        listOfNotNull(presenceFact?.lastSeenAt, this?.lastSeenAt)
+            .filter { it.isNotBlank() }
+            // The newest observation wins whichever channel delivered it:
+            // realtime agent:seen fact or the REST roster profile.
+            .maxByOrNull { parseExternalAgentTimestampOrNull(it) ?: Long.MIN_VALUE }
     if (
         presenceFact != null &&
         (
@@ -301,13 +412,19 @@ private fun MemberProfile?.toSharedServerMemberStatus(
         return SharedServerMemberStatus(
             status = presenceFact.agentStatus ?: this?.agentStatus,
             presence = presenceFact.presence,
-            statusLabel = presenceFact.statusLabel
+            statusLabel = presenceFact.statusLabel,
+            // A presence fact never carries external-ness; it comes from the
+            // authoritative profile and must survive every liveness update.
+            external = this?.isExternal == true,
+            lastSeenAt = resolvedLastSeenAt
         )
     }
     if (this?.kind != MemberKind.Agent) return null
     return SharedServerMemberStatus(
         status = agentStatus,
-        presence = presence
+        presence = presence,
+        external = isExternal,
+        lastSeenAt = resolvedLastSeenAt
     )
 }
 
@@ -510,15 +627,30 @@ class SharedServerMembersStore internal constructor(
     private fun currentScopedMemberProfile(
         serverId: ServerId,
         memberId: String
-    ): MemberProfile? =
-        _state.value.entryFor(serverId)
-            ?.members
-            ?.firstOrNull { it.id.value.trim() == memberId }
-            ?: currentOwnerChannelMemberSlices(serverId)
+    ): MemberProfile? = currentScopedMemberProfileResolution(serverId, memberId).profile
+
+    /**
+     * Resolves a scoped profile plus the provenance that tells an authoritative record apart
+     * from a message-author seed, whose forced `Presence.Offline` is not an observation.
+     */
+    private fun currentScopedMemberProfileResolution(
+        serverId: ServerId,
+        memberId: String
+    ): ScopedMemberProfileResolution {
+        val rosterMember =
+            _state.value.entryFor(serverId)
+                ?.membersById
+                ?.get(memberId)
+        if (rosterMember != null) return ScopedMemberProfileResolution(rosterMember, authoritative = true)
+        val channelMember =
+            currentOwnerChannelMemberSlices(serverId)
                 .asSequence()
                 .flatMap { it.members.asSequence() }
                 .firstOrNull { it.id.value.trim() == memberId }
-            ?: _state.value.profileCacheByServerId[serverId.value.trim()]?.get(memberId)
+        if (channelMember != null) return ScopedMemberProfileResolution(channelMember, authoritative = true)
+        val cached = _state.value.profileCacheByServerId[serverId.value.trim()]?.get(memberId)
+        return ScopedMemberProfileResolution(cached, authoritative = false)
+    }
 
     fun currentChannelMembers(
         serverId: ServerId,
@@ -653,6 +785,29 @@ class SharedServerMembersStore internal constructor(
             .distinctUntilChanged()
     }
 
+    // task #329: per-member read edges are memoized so a Members page mounting
+    // hundreds of rows shares one upstream chain per memberId instead of each
+    // row re-subscribing its own entryFlow/presence combine (O(N) flow mounts and
+    // O(N) linear scans per update). Keyed on the normalized tuple; cleared with
+    // the store's lifecycle (flows are cold, cached instance is just a recipe).
+    private val memberReadFlowsLock = SynchronizedObject()
+    private val memberStatusFlows = mutableMapOf<Pair<String, String>, Flow<SharedServerMemberStatus?>>()
+    private val memberProfileFlows = mutableMapOf<Pair<String, String>, Flow<MemberProfile?>>()
+
+    /**
+     * Drops memoized per-member read flows. Call on session clear / account
+     * switch / shell-scope release so a new owner generation never reuses a
+     * recipe that was bound to a retired auth context (the flows are cold and
+     * rebind through presenceOwnerFlow, but the recipe map itself must not grow
+     * unbounded or leak cross-account memberIds).
+     */
+    fun clearScopedReadCaches() {
+        synchronized(memberReadFlowsLock) {
+            memberStatusFlows.clear()
+            memberProfileFlows.clear()
+        }
+    }
+
     fun memberStatusFlow(
         serverId: ServerId?,
         memberId: String?
@@ -660,7 +815,17 @@ class SharedServerMembersStore internal constructor(
         val cleanServerId = serverId?.value.normalizedServerMembersId()
         val cleanMemberId = memberId.normalizedServerMembersId()
         if (cleanServerId == null || cleanMemberId == null) return flowOf(null)
-        val scopedServerId = ServerId(cleanServerId)
+        return synchronized(memberReadFlowsLock) {
+            memberStatusFlows.getOrPut(cleanServerId to cleanMemberId) {
+                buildMemberStatusFlow(ServerId(cleanServerId), cleanMemberId)
+            }
+        }
+    }
+
+    private fun buildMemberStatusFlow(
+        scopedServerId: ServerId,
+        cleanMemberId: String
+    ): Flow<SharedServerMemberStatus?> {
         // task #136: presence comes straight from the process registry's owner
         // partition — the SSOT read edge. flatMapLatest over the owner flow so
         // this mounted flow rebinds automatically on login / account switch /
@@ -673,9 +838,10 @@ class SharedServerMembersStore internal constructor(
                 }
                 .distinctUntilChanged()
         return combine(
-            scopedMemberProfileFlow(scopedServerId, cleanMemberId),
+            scopedMemberProfileResolutionFlow(scopedServerId, cleanMemberId),
             presenceOwnerSnapshotFlow
-        ) { member, presenceOwnerSnapshot ->
+        ) { resolution, presenceOwnerSnapshot ->
+            val member = resolution.profile
             val presenceFact = presenceOwnerSnapshot.facts[cleanMemberId]
             if (presenceOwnerSnapshot.transport != null && presenceFact == null) {
                 // A native reconnect retired the profile's pre-connect status.
@@ -686,10 +852,14 @@ class SharedServerMembersStore internal constructor(
                 SharedServerMemberStatus(
                     status = null,
                     presence = Presence.Offline,
-                    statusLabel = "—"
+                    statusLabel = "—",
+                    external = member?.isExternal == true
                 )
             } else {
-                member.toSharedServerMemberStatus(presenceFact)
+                applySeedOnlyOfflinePolicy(
+                    resolved = member.toSharedServerMemberStatus(presenceFact),
+                    seedOnly = !resolution.authoritative && presenceFact == null
+                )
             }
         }.distinctUntilChanged()
     }
@@ -701,33 +871,45 @@ class SharedServerMembersStore internal constructor(
         val cleanServerId = serverId?.value.normalizedServerMembersId()
         val cleanMemberId = memberId.normalizedServerMembersId()
         if (cleanServerId == null || cleanMemberId == null) return flowOf(null)
-        return scopedMemberProfileFlow(ServerId(cleanServerId), cleanMemberId)
+        return synchronized(memberReadFlowsLock) {
+            memberProfileFlows.getOrPut(cleanServerId to cleanMemberId) {
+                scopedMemberProfileFlow(ServerId(cleanServerId), cleanMemberId)
+            }
+        }
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     private fun scopedMemberProfileFlow(
         serverId: ServerId,
         memberId: String
     ): Flow<MemberProfile?> =
+        scopedMemberProfileResolutionFlow(serverId, memberId)
+            .map { it.profile }
+            .distinctUntilChanged()
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun scopedMemberProfileResolutionFlow(
+        serverId: ServerId,
+        memberId: String
+    ): Flow<ScopedMemberProfileResolution> =
         flow {
             // `flatMapLatest` starts its inner collection asynchronously. Emit the
             // current cached profile first so a freshly opened Members row never
             // waits a frame (or loses its initial value) before the scoped flow is
             // attached.
-            emit(currentScopedMemberProfile(serverId, memberId))
+            emit(currentScopedMemberProfileResolution(serverId, memberId))
             emitAll(
                 serverMembersEntryFlow(serverId)
                     .flatMapLatest { entry ->
-                        val rosterMember = entry.members.firstOrNull { it.id.value.trim() == memberId }
+                        val rosterMember = entry.membersById[memberId]
                         if (rosterMember != null) {
-                            flowOf(rosterMember)
+                            flowOf(ScopedMemberProfileResolution(rosterMember, authoritative = true))
                         } else {
                             // Conversation/profile metadata can arrive before the canonical
                             // server directory. Observe that scoped cache without turning it
                             // into directory membership; normal Members rows remain on the
                             // narrow entry flow once the roster contains this member.
                             combine(state, channelMembersOwnerFlow(serverId)) { _, _ ->
-                                currentScopedMemberProfile(serverId, memberId)
+                                currentScopedMemberProfileResolution(serverId, memberId)
                             }.distinctUntilChanged()
                         }
                     }
@@ -780,7 +962,19 @@ class SharedServerMembersStore internal constructor(
         val incomingById = eligibleProfiles.associateBy { it.id.value.trim() }
         val enrichedDirectory =
             previous?.members.orEmpty().map { member ->
-                incomingById[member.id.value.trim()]?.let(member::mergeAuthoritativeProfile) ?: member
+                incomingById[member.id.value.trim()]
+                    ?.let { incoming ->
+                        member.mergeAuthoritativeProfile(incoming).also { merged ->
+                            logMemberAvatarUrlDropped(
+                                serverKey = key,
+                                existing = member,
+                                incoming = incoming,
+                                merged = merged,
+                                source = "roster_merge"
+                            )
+                        }
+                    }
+                    ?: member
             }
         putEntry(
             key,
@@ -814,6 +1008,40 @@ class SharedServerMembersStore internal constructor(
         )
     }
 
+    /**
+     * Shape-only diagnostic for the avatarUrl-loss lane behind task #344: logs whenever a
+     * merge turns a previously concrete `avatarUrl`/`avatar` into null. Emits member/server
+     * hashes plus the incoming avatar bucket — never the raw URL.
+     */
+    private fun logMemberAvatarUrlDropped(
+        serverKey: String,
+        existing: MemberProfile,
+        incoming: MemberProfile,
+        merged: MemberProfile,
+        source: String
+    ) {
+        val hadConcrete =
+            !existing.avatarUrl.isNullOrBlank() ||
+                (existing.avatar as? AvatarReference.Url) != null
+        val lostConcrete =
+            merged.avatarUrl.isNullOrBlank() &&
+                (merged.avatar as? AvatarReference.Url) == null
+        if (!hadConcrete || !lostConcrete) return
+        val incomingAvatarKind =
+            when {
+                incoming.avatar is AvatarReference.Url ||
+                    incoming.avatarUrl?.startsWith("http") == true -> "url"
+                incoming.avatar != null -> "pixel"
+                else -> "none"
+            }
+        logger(
+            "member_avatar_url_dropped source=$source " +
+                "serverHash=${serverKey.slockAvatarDiagnosticsHash()} " +
+                "memberHash=${existing.id.value.slockAvatarDiagnosticsHash()} " +
+                "incomingAvatar=$incomingAvatarKind"
+        )
+    }
+
     private fun cacheProfiles(
         key: String,
         profiles: List<MemberProfile>,
@@ -827,11 +1055,20 @@ class SharedServerMembersStore internal constructor(
             if (profileKey.isNotBlank()) {
                 merged[profileKey] =
                     merged[profileKey]?.let { existing ->
-                        if (authoritativeAvatar) {
-                            existing.mergeAuthoritativeProfile(profile)
-                        } else {
-                            existing.mergeSeedProfile(profile)
-                        }
+                        val next =
+                            if (authoritativeAvatar) {
+                                existing.mergeAuthoritativeProfile(profile)
+                            } else {
+                                existing.mergeSeedProfile(profile)
+                            }
+                        logMemberAvatarUrlDropped(
+                            serverKey = key,
+                            existing = existing,
+                            incoming = profile,
+                            merged = next,
+                            source = if (authoritativeAvatar) "cache_authoritative" else "cache_seed"
+                        )
+                        next
                     } ?: profile
             }
         }
@@ -1163,6 +1400,81 @@ class SharedServerMembersStore internal constructor(
         return result
     }
 
+    /**
+     * Atomic batch add (task #352): the same owner-fence / capability gate as the
+     * single add, but one request for mixed humans + agents. No per-member
+     * fallback — the server validates the whole batch and rolls back on failure.
+     */
+    suspend fun addChannelMembersBatch(
+        serverId: ServerId,
+        request: AddChannelMembersBatchRequest,
+        priority: DataRequestPriority = DataRequestPriority.Foreground
+    ): DataResult<AddChannelMembersBatchResult> =
+        addChannelMembersBatch(serverId, request, priority, expectedOwner = null)
+
+    internal suspend fun addChannelMembersBatch(
+        owner: AuthenticatedRouteOwner,
+        request: AddChannelMembersBatchRequest,
+        priority: DataRequestPriority = DataRequestPriority.Foreground
+    ): DataResult<AddChannelMembersBatchResult> {
+        val normalizedOwner = owner.normalizedOrNull() ?: return staleChannelMembersOwnerResult()
+        return addChannelMembersBatch(
+            serverId = ServerId(normalizedOwner.serverId),
+            request = request,
+            priority = priority,
+            expectedOwner = normalizedOwner
+        )
+    }
+
+    private suspend fun addChannelMembersBatch(
+        serverId: ServerId,
+        request: AddChannelMembersBatchRequest,
+        priority: DataRequestPriority,
+        expectedOwner: AuthenticatedRouteOwner?
+    ): DataResult<AddChannelMembersBatchResult> {
+        val serverKey = serverId.value.trim()
+        val channelKey = request.channelId.value.trim()
+        if (request.userIds.isEmpty() && request.agentIds.isEmpty()) {
+            return DataResult.Error(ScreenError(code = "empty_member_batch", retryable = false))
+        }
+        val binding = currentChannelMembersOwner(ServerId(serverKey)) ?: return authSessionRequiredResult()
+        if (expectedOwner != null && !binding.matches(expectedOwner)) return staleChannelMembersOwnerResult()
+        if (expectedOwner != null) {
+            val permission = _state.value.channelMemberSlice(binding, ChannelId(channelKey))
+            if (!permission.canAddMembersKnown || !permission.canAddMembers) {
+                return DataResult.NoPermission(
+                    PermissionBlocker(
+                        code = "channel_member_add_not_allowed",
+                        requiredCapability = "add_channel_members"
+                    )
+                )
+            }
+        }
+        val result =
+            try {
+                memberRepository.addChannelMembersBatch(priority, request)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                logger(
+                    "shared_server_channel_member_batch_add_result serverId=$serverKey channelId=$channelKey " +
+                        "users=${request.userIds.size} agents=${request.agentIds.size} " +
+                        "result=exception type=${throwable::class.simpleName}"
+                )
+                return DataResult.Error(ScreenError(code = "channel_member_batch_add_exception", retryable = true))
+            }
+        if (result is DataResult.Content) {
+            if (currentChannelMembersOwner(ServerId(serverKey)) != binding) return staleChannelMembersOwnerResult()
+            val addedIds = result.data.addedUserIds + result.data.addedAgentIds
+            for (memberIdValue in addedIds) {
+                val member = currentMemberProfile(serverId, memberIdValue) ?: continue
+                patchChannelMemberSlice(binding, channelKey, member, inMentionChannel = true)
+                patchMentionChannelMemberSuggestionSlices(serverKey, channelKey, member, inMentionChannel = true)
+            }
+        }
+        return result
+    }
+
     suspend fun removeChannelMember(
         serverId: ServerId,
         request: RemoveChannelMemberRequest,
@@ -1194,6 +1506,12 @@ class SharedServerMembersStore internal constructor(
         val channelKey = request.channelId.value.trim()
         val binding = currentChannelMembersOwner(ServerId(serverKey)) ?: return authSessionRequiredResult()
         if (expectedOwner != null && !binding.matches(expectedOwner)) return staleChannelMembersOwnerResult()
+        if (expectedOwner != null && !_state.value.channelMemberSlice(binding, ChannelId(channelKey)).canRemoveMembers) {
+            return DataResult.NoPermission(PermissionBlocker(
+                code = "channel_member_remove_not_allowed",
+                requiredCapability = "remove_channel_members",
+            ))
+        }
         val result =
             try {
                 memberRepository.removeChannelMember(priority, request)
@@ -1494,6 +1812,25 @@ class SharedServerMembersStore internal constructor(
                                 profiles = snapshot.members
                             )
                             cacheProfiles(normalizedKey, snapshot.members)
+                            // task #344 evidence lane: if this roster refresh replaced a member's
+                            // concrete avatar with nothing, say which wire shape arrived. The
+                            // `roster_merge`/`cache_*` lanes catch merge-path drops; this one
+                            // catches a wholesale roster swap that carries a sparse member.
+                            val previousById =
+                                _state.value.entriesByServerId[normalizedKey]
+                                    ?.members
+                                    ?.associateBy { it.id.value.trim() }
+                                    .orEmpty()
+                            snapshot.members.forEach { next ->
+                                val prior = previousById[next.id.value.trim()] ?: return@forEach
+                                logMemberAvatarUrlDropped(
+                                    serverKey = normalizedKey,
+                                    existing = prior,
+                                    incoming = next,
+                                    merged = next,
+                                    source = "roster_swap"
+                                )
+                            }
                             putEntry(
                                 normalizedKey,
                                 SharedServerMembersEntry(
@@ -1708,7 +2045,9 @@ class SharedServerMembersStore internal constructor(
                             channelId = normalizedChannelId,
                             ownerWriteGeneration = admittedBinding.writeGeneration,
                             members = members,
+                            externalMembers = result.data.externalMembers,
                             canAddMembers = result.data.canAddMembers,
+                            canRemoveMembers = result.data.canRemoveMembers,
                             canAddMembersKnown = true,
                             status = SharedServerMembersLoadStatus.Loaded,
                             errorCode = null
@@ -1723,7 +2062,9 @@ class SharedServerMembersStore internal constructor(
                         ChannelMemberSnapshot(
                             channelId = ChannelId(normalizedChannelId),
                             members = members,
-                            canAddMembers = result.data.canAddMembers
+                            externalMembers = result.data.externalMembers,
+                            canAddMembers = result.data.canAddMembers,
+                            canRemoveMembers = result.data.canRemoveMembers
                         )
                     )
                 }

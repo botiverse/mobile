@@ -13,13 +13,21 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 
+/**
+ * Identity that owns a read receipt: environment + account + server. Every segment is REQUIRED.
+ * There is no owner-less/"legacy" receipt: the production owner validator only admits an owner
+ * equal to the live environment/session, so a constant placeholder could never be executed and
+ * would only let two unknown identities share one prediction queue (task #1121).
+ */
 data class ReadReceiptOwner(
     val environmentId: String,
     val accountId: String,
     val serverId: String
 ) {
-    companion object {
-        val Legacy = ReadReceiptOwner("legacy", "legacy", "legacy")
+    init {
+        require(environmentId.isNotBlank()) { "environmentId must not be blank" }
+        require(accountId.isNotBlank()) { "accountId must not be blank" }
+        require(serverId.isNotBlank()) { "serverId must not be blank" }
     }
 }
 
@@ -73,14 +81,6 @@ class ReadReceiptCoordinator(
     val failures = _failures.asSharedFlow()
     private val _ownerRevocations = MutableSharedFlow<ReadReceiptOwnerRevocation>(extraBufferCapacity = 16)
     val ownerRevocations = _ownerRevocations.asSharedFlow()
-
-    fun markReadToSeq(channelId: ChannelId, seq: Long) {
-        enqueue(ReadReceiptOwner.Legacy, channelId, ReadReceiptTarget.ToSeq(seq.coerceAtLeast(0L)))
-    }
-
-    fun markReadAll(channelId: ChannelId) {
-        enqueue(ReadReceiptOwner.Legacy, channelId, ReadReceiptTarget.All)
-    }
 
     fun markReadToSeq(
         owner: ReadReceiptOwner,
@@ -355,13 +355,13 @@ sealed interface ReadReceiptRequest {
     data class ToSeq(
         override val channelId: ChannelId,
         val seq: Long,
-        override val owner: ReadReceiptOwner = ReadReceiptOwner.Legacy,
+        override val owner: ReadReceiptOwner,
         override val revision: Long = 0L
     ) : ReadReceiptRequest
 
     data class All(
         override val channelId: ChannelId,
-        override val owner: ReadReceiptOwner = ReadReceiptOwner.Legacy,
+        override val owner: ReadReceiptOwner,
         override val revision: Long = 0L
     ) : ReadReceiptRequest
 }

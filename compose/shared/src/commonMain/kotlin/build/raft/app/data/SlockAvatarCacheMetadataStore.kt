@@ -1,5 +1,10 @@
 package build.raft.app.data
 
+import build.raft.app.model.MemberKind
+import build.raft.app.shared.data.local.AvatarCacheMetadataEntity
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.withContext
+
 /**
  * Binds a native response to one exact owner/subject/content request generation. The callback must
  * become false when either the owner binding or that subject's selected content generation changes.
@@ -36,6 +41,17 @@ internal enum class SlockAvatarCacheCommitResult {
 internal interface SlockAvatarCacheMetadataStore {
     suspend fun read(key: SlockAvatarCacheKey): SlockAvatarCacheStoredState
 
+    /**
+     * task #343: exact committed rows for one owner that are not suppressed by an unexpired
+     * failure, newest validation first. Used only to prewarm the in-process mounted session so a
+     * cold start can paint durable avatars on the first frame; never an authority for refresh.
+     */
+    suspend fun readCommittedForOwner(
+        owner: SlockAvatarCacheOwner,
+        nowMs: Long,
+        limit: Long
+    ): List<SlockAvatarCacheMetadata>
+
     suspend fun commitSuccess(
         metadata: SlockAvatarCacheMetadata,
         guard: SlockAvatarCacheCommitGuard
@@ -66,6 +82,65 @@ internal interface SlockAvatarCacheMetadataStore {
     suspend fun clearAll()
 }
 
+/**
+ * task #323: runs every metadata read/write of [delegate] on [dispatcher] so SQLite I/O never
+ * executes on the caller's thread (the Kuikly frame thread when reached from composition).
+ * Guards evaluated inside the delegate's transaction ([SlockAvatarCacheCommitGuard.allows]) read
+ * session state under the session lock, so they are safe to evaluate off the frame thread.
+ */
+internal class DispatchingSlockAvatarCacheMetadataStore(
+    private val delegate: SlockAvatarCacheMetadataStore,
+    private val dispatcher: CoroutineContext
+) : SlockAvatarCacheMetadataStore {
+    override suspend fun read(key: SlockAvatarCacheKey): SlockAvatarCacheStoredState =
+        withContext(dispatcher) { delegate.read(key) }
+
+    override suspend fun commitSuccess(
+        metadata: SlockAvatarCacheMetadata,
+        guard: SlockAvatarCacheCommitGuard
+    ): SlockAvatarCacheCommitResult =
+        withContext(dispatcher) { delegate.commitSuccess(metadata, guard) }
+
+    override suspend fun commitFailure(
+        failure: SlockAvatarCacheFailure,
+        retireMatchingMetadata: Boolean,
+        guard: SlockAvatarCacheCommitGuard
+    ): SlockAvatarCacheCommitResult =
+        withContext(dispatcher) { delegate.commitFailure(failure, retireMatchingMetadata, guard) }
+
+    override suspend fun restoreAfterNativeFinalizeFailure(
+        key: SlockAvatarCacheKey,
+        expectedCommittedState: SlockAvatarCacheStoredState,
+        previousState: SlockAvatarCacheStoredState,
+        guard: SlockAvatarCacheCommitGuard
+    ): SlockAvatarCacheCommitResult =
+        withContext(dispatcher) {
+            delegate.restoreAfterNativeFinalizeFailure(key, expectedCommittedState, previousState, guard)
+        }
+
+    override suspend fun clearFailure(key: SlockAvatarCacheKey) =
+        withContext(dispatcher) { delegate.clearFailure(key) }
+
+    override suspend fun clearTemporaryFailures(owner: SlockAvatarCacheOwner) =
+        withContext(dispatcher) { delegate.clearTemporaryFailures(owner) }
+
+    override suspend fun clearSubject(owner: SlockAvatarCacheOwner, subject: SlockAvatarCacheSubject) =
+        withContext(dispatcher) { delegate.clearSubject(owner, subject) }
+
+    override suspend fun clearOwner(owner: SlockAvatarCacheOwner) =
+        withContext(dispatcher) { delegate.clearOwner(owner) }
+
+    override suspend fun clearAll() =
+        withContext(dispatcher) { delegate.clearAll() }
+
+    override suspend fun readCommittedForOwner(
+        owner: SlockAvatarCacheOwner,
+        nowMs: Long,
+        limit: Long
+    ): List<SlockAvatarCacheMetadata> =
+        withContext(dispatcher) { delegate.readCommittedForOwner(owner, nowMs, limit) }
+}
+
 private object AvatarCacheCommitRevoked : RuntimeException()
 
 internal class SqlDelightSlockAvatarCacheMetadataStore(
@@ -73,6 +148,64 @@ internal class SqlDelightSlockAvatarCacheMetadataStore(
 ) : SlockAvatarCacheMetadataStore {
     override suspend fun read(key: SlockAvatarCacheKey): SlockAvatarCacheStoredState =
         readStoredState(key)
+
+    override suspend fun readCommittedForOwner(
+        owner: SlockAvatarCacheOwner,
+        nowMs: Long,
+        limit: Long
+    ): List<SlockAvatarCacheMetadata> =
+        database.queries.selectCommittedAvatarCacheMetadataForOwner(
+            environmentId = owner.environmentId,
+            accountId = owner.accountId,
+            serverId = owner.serverId,
+            nowMs = nowMs,
+            limit = limit,
+            // The NOT EXISTS subquery makes SqlDelight generate a query-specific row type; map the
+            // identical column list back onto the table entity so both reads share one mapper.
+            mapper = ::AvatarCacheMetadataEntity
+        ).executeAsList().mapNotNull { row ->
+            // A row whose subject/content no longer parses is skipped, never fatal: prewarm is an
+            // optimization and the exact mount path remains the authority.
+            val subject = slockAvatarCacheSubjectFromStorage(row.subjectKind, row.subjectId, row.memberKind)
+                ?: return@mapNotNull null
+            runCatching { row.toCacheMetadata(owner, subject) }.getOrNull()
+                ?.takeIf { it.hasExactCommitIdentity }
+        }
+
+    private fun AvatarCacheMetadataEntity.toCacheMetadata(
+        owner: SlockAvatarCacheOwner,
+        subject: SlockAvatarCacheSubject
+    ): SlockAvatarCacheMetadata {
+        val storedKey =
+            SlockAvatarCacheKey(
+                owner = owner,
+                subject = subject,
+                content =
+                    SlockAvatarContentIdentity(
+                        kind = SlockAvatarContentKind.fromStorage(contentKind),
+                        fingerprint = contentFingerprint
+                    )
+            )
+        val durableCommit =
+            slockAvatarDurableCommitOrNull(
+                commitGeneration = commitGeneration,
+                commitNonce = commitNonce,
+                modelRevision = modelRevision
+            )
+        return SlockAvatarCacheMetadata(
+            key = storedKey,
+            eTag = eTag,
+            lastModified = lastModified,
+            fetchedAtMs = fetchedAtMs,
+            validatedAtMs = validatedAtMs,
+            freshUntilMs = freshUntilMs,
+            staleUntilMs = staleUntilMs,
+            sizeBytes = sizeBytes,
+            contentType = contentType,
+            commitIdentity = durableCommit?.first,
+            modelRevision = durableCommit?.second ?: 0L
+        )
+    }
 
     private fun readStoredState(key: SlockAvatarCacheKey): SlockAvatarCacheStoredState {
         val owner = key.owner
@@ -85,37 +218,7 @@ internal class SqlDelightSlockAvatarCacheMetadataStore(
                 subjectKind = subject.subjectKind,
                 subjectId = subject.subjectId,
                 memberKind = subject.memberKind
-            ).executeAsOneOrNull()?.let { row ->
-                val storedKey =
-                    SlockAvatarCacheKey(
-                        owner = owner,
-                        subject = subject,
-                        content =
-                            SlockAvatarContentIdentity(
-                                kind = SlockAvatarContentKind.fromStorage(row.contentKind),
-                                fingerprint = row.contentFingerprint
-                            )
-                    )
-                val durableCommit =
-                    slockAvatarDurableCommitOrNull(
-                        commitGeneration = row.commitGeneration,
-                        commitNonce = row.commitNonce,
-                        modelRevision = row.modelRevision
-                    )
-                SlockAvatarCacheMetadata(
-                    key = storedKey,
-                    eTag = row.eTag,
-                    lastModified = row.lastModified,
-                    fetchedAtMs = row.fetchedAtMs,
-                    validatedAtMs = row.validatedAtMs,
-                    freshUntilMs = row.freshUntilMs,
-                    staleUntilMs = row.staleUntilMs,
-                    sizeBytes = row.sizeBytes,
-                    contentType = row.contentType,
-                    commitIdentity = durableCommit?.first,
-                    modelRevision = durableCommit?.second ?: 0L
-                )
-            }
+            ).executeAsOneOrNull()?.toCacheMetadata(owner, subject)
         val failure =
             database.queries.selectAvatarCacheFailure(
                 environmentId = owner.environmentId,
@@ -398,3 +501,22 @@ internal fun slockAvatarDurableCommitOrNull(
             ?: return null
     return identity to modelRevision
 }
+
+/** task #343: inverse of [SlockAvatarCacheSubject] storage columns; null when not representable. */
+internal fun slockAvatarCacheSubjectFromStorage(
+    subjectKind: String,
+    subjectId: String,
+    memberKind: String
+): SlockAvatarCacheSubject? =
+    runCatching {
+        when (subjectKind) {
+            "member" ->
+                when (memberKind) {
+                    "human" -> SlockAvatarCacheSubject.Member(MemberKind.Human, subjectId)
+                    "agent" -> SlockAvatarCacheSubject.Member(MemberKind.Agent, subjectId)
+                    else -> null
+                }
+            "server" -> SlockAvatarCacheSubject.Server(subjectId)
+            else -> null
+        }
+    }.getOrNull()

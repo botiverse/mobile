@@ -5,8 +5,16 @@ import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -30,6 +38,14 @@ const val ATTACHMENT_COMMENTS_FEATURE_FLAG_KEY: String = "attachment_comments_v0
 const val READ_RECEIPTS_FEATURE_FLAG_KEY: String = "read_receipts_v0"
 const val MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY: String = "mobile_thread_page_size_v0"
 const val MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY: String = "mobile_activity_stable_order_v1"
+const val WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY: String = "enable_webview_onboarding_v0"
+/**
+ * #94 Slack-aligned bottom navigation (home channels-only / dms / activity / more, order
+ * user-configurable, floating Search). Default OFF everywhere (server-unresolved evaluates
+ * false); local A/B goes through the diagnostics "Local Feature Overrides" latch. Flag off
+ * keeps the legacy home/tasks/members/settings tab model untouched.
+ */
+const val MOBILE_SLACK_NAV_FEATURE_FLAG_KEY: String = "mobile_slack_nav_v0"
 /**
  * #367 Thread first-frame render: single-paragraph light markdown path.
  * Default OFF everywhere (server-unresolved evaluates false); local A/B goes
@@ -43,8 +59,15 @@ const val THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY: String =
  * transport-off latch. Operators must provision it with `enabled=true` and `defaultEnabled=true`.
  */
 const val ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY: String = "android_reused_h2_recovery_v0"
-/** Process-wide mobile transport variant. Missing/disabled/invalid evaluates to the product default curl_h3. */
+/** Process-wide mobile transport variant. Missing/disabled/invalid evaluates to the product default curl_h2. */
 const val MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY: String = "mobile_curl_transport_v1"
+
+/**
+ * Runtime form protocol v2 for the create/edit agent forms (generic renderer). The same key the
+ * web reads (slock `RUNTIME_FORM_V2_WEB_FLAG_KEY`), so one switch turns v2 on for every client.
+ * Off, or when the v2 endpoints fail, the pinned v1 form is used unchanged.
+ */
+const val RUNTIME_FORM_V2_FEATURE_FLAG_KEY: String = "runtime_form_v2_web"
 
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
@@ -55,9 +78,12 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     READ_RECEIPTS_FEATURE_FLAG_KEY,
     MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY,
     MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY,
+    MOBILE_SLACK_NAV_FEATURE_FLAG_KEY,
+    WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY,
     THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
     ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY,
     MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY,
+    RUNTIME_FORM_V2_FEATURE_FLAG_KEY,
 )
 
 /**
@@ -82,6 +108,12 @@ private data class FeatureFlagEvaluateRequestBody(
     // encodeDefaults=true, so the default is emitted on the wire; the server treats an omitted platform as
     // all-platform, so sending "mobile" is what makes a mobile-only rollout target this client.
     val platform: String = FEATURE_FLAG_PLATFORM_MOBILE,
+    // task #1144: lets server rules require an OS and a minimum build. Null = unknown; the server treats
+    // it as "rule does not match".
+    val os: String? = null,
+    val appVersion: String? = null,
+    val buildNumber: String? = null,
+    val buildType: String? = null,
 )
 
 @Serializable
@@ -118,17 +150,27 @@ interface SlockFeatureFlagsApi {
 
 internal class SlockFeatureFlagsNetworkApi(
     private val networkClient: SlockNetworkClient,
+    private val clientContext: () -> FeatureFlagClientContext = ::currentFeatureFlagClientContext,
 ) : SlockFeatureFlagsApi {
-    override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
-        networkClient.request(
+    override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse {
+        val client = clientContext()
+        return networkClient.request(
             priority = DataRequestPriority.Background,
             path = "feature-flags/evaluate",
             method = "POST",
             serverIdOverride = serverId,
             bodyText = featureFlagsJson.encodeToString(
-                FeatureFlagEvaluateRequestBody(serverId = serverId.value, keys = keys),
+                FeatureFlagEvaluateRequestBody(
+                    serverId = serverId.value,
+                    keys = keys,
+                    os = client.os,
+                    appVersion = client.appVersion,
+                    buildNumber = client.buildNumber,
+                    buildType = client.buildType,
+                ),
             ),
         )
+    }
 }
 
 /**
@@ -137,15 +179,42 @@ internal class SlockFeatureFlagsNetworkApi(
  * [snapshotFor]/[isEnabled] are safe defaults-off reads before/without a resolve. A failed fetch leaves
  * the prior snapshot (or Unresolved) — flags default OFF, so the gated feature stays dark, never broken.
  */
+/**
+ * Process-local diagnostic override seam for the boolean reads ([SharedServerFeatureFlags.isEnabled] /
+ * [SharedServerFeatureFlags.isEnabledForAnyResolvedServer]). It receives the server-effective value and returns
+ * the final one, so the diagnostics "Local Feature Overrides" page can still show server / override / final
+ * side by side. `null` (the default, and every host that never entitles the override registry) reads the raw
+ * snapshot; [SharedServerFeatureFlags.snapshotFor] is always raw. `serverId` is null for the process-wide
+ * `isEnabledForAnyResolvedServer` shape.
+ */
+fun interface ServerFeatureFlagDiagnosticOverride {
+    fun finalEffective(serverId: ServerId?, key: String, serverEffective: Boolean): Boolean
+}
+
 class SharedServerFeatureFlags(
     private val api: SlockFeatureFlagsApi,
     private val keys: List<String> = REGISTERED_SERVER_FEATURE_FLAG_KEYS,
     private val diagnosticsLogger: ((String) -> Unit)? = null,
+    private val diagnosticOverride: ServerFeatureFlagDiagnosticOverride? = null,
+    /**
+     * Durable last-known values (task #1133). Consulted by [isEnabled] only while this process has no
+     * online evaluation for the server yet; every accepted evaluation overwrites it.
+     */
+    private val lastKnown: ServerFeatureFlagLastKnownStore? = null,
+    // Kept last so existing trailing-lambda constructions keep binding here.
     private val onEvaluation: ((ServerId, String, Boolean, String?, String?, String?, Long) -> Unit)? = null,
 ) {
     private val stateLock = SynchronizedObject()
     private val nextRequestGenerationByServer = mutableMapOf<String, Long>()
     private val acceptedGenerationByServer = mutableMapOf<String, Long>()
+    /**
+     * Feature flags are read by more than one startup owner (the selected-server
+     * collector and the Home admission host).  Keep the transport request
+     * process-owned so a lifecycle cancellation of one caller cannot leave the
+     * other caller with a second request or a permanently unresolved gate.
+     */
+    private val inFlightByServer = mutableMapOf<String, InFlightFeatureFlagRequest>()
+    private val requestScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     // Written under [stateLock], read via isEnabled on the UI thread. @Volatile + copy-on-write lets reads
     // observe a complete immutable map without taking the writer lock; the lock prevents concurrent
@@ -156,7 +225,31 @@ class SharedServerFeatureFlags(
     fun snapshotFor(serverId: ServerId?): ServerFeatureFlagSnapshot =
         serverId?.let { snapshots[it.value] } ?: ServerFeatureFlagSnapshot.Unresolved
 
-    fun isEnabled(serverId: ServerId?, key: String): Boolean = snapshotFor(serverId).isEnabled(key)
+    fun isEnabled(serverId: ServerId?, key: String): Boolean =
+        applyDiagnosticOverride(serverId, key, serverEffective(serverId, key))
+
+    /**
+     * An online evaluation from this process always decides. Before the first one lands (offline cold
+     * start, or the short window before evaluate returns) a stored last-known value decides instead.
+     */
+    private fun serverEffective(serverId: ServerId?, key: String): Boolean {
+        val online = serverId?.let { snapshots[it.value] }
+        if (online != null || serverId == null) return online?.isEnabled(key) == true
+        val stored = lastKnown?.read(serverId, key) ?: return false
+        logLastKnownUse(serverId, key, stored)
+        return stored
+    }
+
+    private val loggedLastKnownUses = mutableSetOf<String>()
+
+    private fun logLastKnownUse(serverId: ServerId, key: String, value: Boolean) {
+        val logger = diagnosticsLogger ?: return
+        val first = synchronized(stateLock) { loggedLastKnownUses.add("${serverId.value}|$key|$value") }
+        if (first) logger("feature_flags last_known_used server=${serverId.value} key=$key enabled=$value")
+    }
+
+    private fun applyDiagnosticOverride(serverId: ServerId?, key: String, serverEffective: Boolean): Boolean =
+        diagnosticOverride?.finalEffective(serverId, key, serverEffective) ?: serverEffective
 
     /**
      * True if [key] is enabled in ANY resolved server snapshot. Used by the sync-core shadow-compare gate,
@@ -165,14 +258,111 @@ class SharedServerFeatureFlags(
      * per-server, replace this with a serverId-scoped read.
      */
     fun isEnabledForAnyResolvedServer(key: String): Boolean =
-        snapshots.values.any { it.resolved && it.isEnabled(key) }
+        applyDiagnosticOverride(null, key, snapshots.values.any { it.resolved && it.isEnabled(key) })
 
     /** Evaluate the registered flags for [serverId] and cache the snapshot. Returns the resolved snapshot. */
     suspend fun prefetch(
         serverId: ServerId,
-        evaluationContext: String? = null
+        evaluationContext: String? = null,
+        forceRefresh: Boolean = false,
+    ): ServerFeatureFlagSnapshot {
+        if (forceRefresh) {
+            return prefetchUnshared(serverId, evaluationContext)
+        }
+        val selection = synchronized(stateLock) {
+            val current = inFlightByServer[serverId.value]
+            if (current != null && !current.result.isCompleted) {
+                // A collector may know the environment while the admission
+                // host does not. Preserve the richer context if the owner has
+                // not started yet; the request itself is still one per server.
+                if (current.evaluationContext == null && evaluationContext != null) {
+                    current.evaluationContext = evaluationContext
+                }
+                current.waiters += 1
+                FeatureFlagFlightSelection.Join(current)
+            } else {
+                val created =
+                    InFlightFeatureFlagRequest(
+                        result = CompletableDeferred(),
+                        waiters = 1,
+                        evaluationContext = evaluationContext,
+                    )
+                inFlightByServer[serverId.value] = created
+                FeatureFlagFlightSelection.Owner(created)
+            }
+        }
+        val flight = selection.flight
+
+        if (selection is FeatureFlagFlightSelection.Owner) {
+            // The transport owner is independent from any one Compose
+            // lifecycle. A cancelled caller only relinquishes its waiter slot;
+            // a surviving admission/collector caller can still receive the
+            // same result.
+            val ownerJob =
+                requestScope.launch(start = CoroutineStart.LAZY) {
+                    try {
+                        val context = synchronized(stateLock) { flight.evaluationContext }
+                        val snapshot =
+                            prefetchUnshared(
+                                serverId = serverId,
+                                evaluationContext = context,
+                                shouldPublish = {
+                                    synchronized(stateLock) {
+                                        flight.waiters > 0 && inFlightByServer[serverId.value] === flight
+                                    }
+                                },
+                            )
+                        flight.result.complete(snapshot)
+                    } catch (cancellation: CancellationException) {
+                        flight.result.cancel(cancellation)
+                    } catch (error: Throwable) {
+                        flight.result.completeExceptionally(error)
+                    } finally {
+                        synchronized(stateLock) {
+                            if (inFlightByServer[serverId.value] === flight) {
+                                inFlightByServer.remove(serverId.value)
+                            }
+                        }
+                    }
+                }
+            synchronized(stateLock) {
+                flight.ownerJob = ownerJob
+                if (flight.cancelWhenStarted) {
+                    ownerJob.cancel()
+                } else {
+                    ownerJob.start()
+                }
+            }
+        } else {
+            diagnosticsLogger?.invoke("feature_flags evaluate_join server=${serverId.value}")
+        }
+
+        return try {
+            flight.result.await()
+        } finally {
+            synchronized(stateLock) {
+                flight.waiters = (flight.waiters - 1).coerceAtLeast(0)
+                if (
+                    flight.waiters == 0 &&
+                    !flight.result.isCompleted &&
+                    inFlightByServer[serverId.value] === flight
+                ) {
+                    inFlightByServer.remove(serverId.value)
+                    flight.ownerJob?.cancel() ?: run { flight.cancelWhenStarted = true }
+                }
+            }
+        }
+    }
+
+    /** Performs one network evaluation. Callers normally enter through [prefetch]. */
+    private suspend fun prefetchUnshared(
+        serverId: ServerId,
+        evaluationContext: String?,
+        shouldPublish: () -> Boolean = { true },
     ): ServerFeatureFlagSnapshot {
         val globalRequestGeneration = featureFlagRequestGeneration.incrementAndGet()
+        // Captured before the request: the result is stored as last-known only for the binding that asked.
+        val lastKnownScope = lastKnown?.scopeFor(serverId)
         val requestGeneration = synchronized(stateLock) {
             (nextRequestGenerationByServer[serverId.value] ?: 0L).plus(1L).also { generation ->
                 nextRequestGenerationByServer[serverId.value] = generation
@@ -212,6 +402,7 @@ class SharedServerFeatureFlags(
                 variants = variants.toMap()
             )
         val accepted = synchronized(stateLock) {
+            if (!shouldPublish()) return@synchronized null
             val latestAcceptedGeneration = acceptedGenerationByServer[serverId.value] ?: 0L
             if (requestGeneration < latestAcceptedGeneration) {
                 false
@@ -224,6 +415,17 @@ class SharedServerFeatureFlags(
         // The snapshot uses a per-server latest-success fence. The optional observer may own a broader
         // global fact (Android's environment-wide transport kill), so it receives every decoded success
         // with the global request generation and performs its own ordering/active-selection checks.
+        if (accepted == null) return snapshotFor(serverId)
+        if (accepted && lastKnown != null) {
+            val stored = lastKnownScope?.let { scope -> lastKnown.writeIfCurrent(scope, snapshot.values) } == true
+            val persistedKeys = snapshot.values.keys.filter { it in lastKnown.keys }
+            if (persistedKeys.isNotEmpty()) {
+                diagnosticsLogger?.invoke(
+                    "feature_flags last_known_${if (stored) "stored" else "skipped"} server=${serverId.value} " +
+                        persistedKeys.joinToString(" ") { "$it=${snapshot.values[it] == true}" }
+                )
+            }
+        }
         for (evaluation in observedEvaluations.values) {
             runCatching {
                 onEvaluation?.invoke(
@@ -249,5 +451,21 @@ class SharedServerFeatureFlags(
             return snapshotFor(serverId)
         }
         return snapshot
+    }
+
+    private class InFlightFeatureFlagRequest(
+        val result: CompletableDeferred<ServerFeatureFlagSnapshot>,
+        var waiters: Int,
+        var evaluationContext: String?,
+        var ownerJob: Job? = null,
+        var cancelWhenStarted: Boolean = false,
+    )
+
+    private sealed interface FeatureFlagFlightSelection {
+        val flight: InFlightFeatureFlagRequest
+
+        data class Owner(override val flight: InFlightFeatureFlagRequest) : FeatureFlagFlightSelection
+
+        data class Join(override val flight: InFlightFeatureFlagRequest) : FeatureFlagFlightSelection
     }
 }

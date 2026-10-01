@@ -64,7 +64,7 @@ update by an installed client, even if the APK bytes changed.
 Use a `versionCode` with a build/revision component:
 
 ```text
-versionCode = x * 1_000_000 + y * 10_000 + z * 100 + build
+versionCode = x * 10_000_000 + y * 100_000 + z * 1_000 + build
 versionName = x.y.z[-suffix]
 ```
 
@@ -94,6 +94,12 @@ Build tooling should expose Gradle properties for these parts, for example:
 
 The APK's Android manifest/build config and the Hands release metadata must use
 the same computed `versionCode`.
+
+Checked-in source defaults of `versionName=1.0.0` / `versionCode=1000000` are
+the formula fallback when no Gradle property or `SLOCK_ANDROID_VERSION_*`
+input is set. Release preflight records and injects the allocated coordinates
+at CI dispatch; it does not require rewriting those placeholders into the
+frozen tree.
 
 ## SDK Integration
 
@@ -250,9 +256,8 @@ the release preflight that is easy to forget manually:
 - verifies local Slock `main` matches `origin/main`; the wrapper does not push
   Slock `main`. First merge the release candidate through a GitHub PR, then
   dispatch the release workflow from the protected remote `main` commit.
-- requires successful `Commit Sign-off` for the exact release head; the
-  `Android Release` workflow is the candidate build/test gate, so a separate
-  exact-head `Test` run is not required
+- the `Android Release` workflow is the candidate build/test gate, so a
+  separate exact-head `Test` run is not required
 - requires the computed versionCode to be higher than the active Hands version
   for the selected channel
 - dispatches `.github/workflows/android-release.yml` as a draft with the

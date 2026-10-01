@@ -17,6 +17,8 @@ import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandler
 import com.tencent.kuiklybase.markdown.model.SlockGFMFlavourDescriptor
 import com.tencent.kuiklybase.markdown.model.RaftMarkdownTokenTypes
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
+import com.tencent.kuiklybase.markdown.utils.CJK_URL_BOUNDARY_PUNCTUATION
+import com.tencent.kuiklybase.markdown.utils.isCjkTextOrWhitespace
 import com.tencent.kuiklybase.markdown.utils.MARKDOWN_TAG_IMAGE_URL
 import com.tencent.kuiklybase.markdown.utils.findChildOfTypeRecursive
 import com.tencent.kuiklybase.markdown.utils.getUnescapedTextInNode
@@ -311,11 +313,16 @@ private fun String.splitAutoLinkDestination(): Pair<String, String> {
     var angleDepth = 0
     var endExclusive = length
     for (index in indices) {
-        when (this[index]) {
-            ' ', '\t', '\n', '\r' -> {
-                endExclusive = index
-                break
-            }
+        val c = this[index]
+        if (c in " \t\n\r" || c in CJK_URL_BOUNDARY_PUNCTUATION) {
+            endExclusive = index
+            break
+        }
+        if (c == ',' && index + 1 < length && this[index + 1].isCjkTextOrWhitespace()) {
+            endExclusive = index
+            break
+        }
+        when (c) {
             '(' -> roundDepth++
             '[' -> squareDepth++
             '{' -> curlyDepth++
@@ -351,7 +358,7 @@ private fun String.splitAutoLinkDestination(): Pair<String, String> {
         }
     }
 
-    while (endExclusive > 0 && this[endExclusive - 1] in ".,;:!?") {
+    while (endExclusive > 0 && (this[endExclusive - 1] in ".,;:!?" || this[endExclusive - 1] in CJK_URL_BOUNDARY_PUNCTUATION)) {
         endExclusive--
     }
     return substring(0, endExclusive) to substring(endExclusive)

@@ -84,6 +84,38 @@ internal class SharedMembersDataSource(
     }
 
     /**
+     * Atomic batch add (task #352): one request for mixed humans + agents. The
+     * server dedupes and validates the whole batch (rollback on a later failure),
+     * so there is no partial success and no per-member fallback here.
+     */
+    suspend fun addChannelMembersBatch(
+        channelId: String,
+        userIds: List<String>,
+        agentIds: List<String>,
+        serverId: String? = null
+    ): DataResult<AddChannelMembersBatchResult> {
+        val request =
+            AddChannelMembersBatchRequest(
+                channelId = build.raft.app.model.ChannelId(channelId),
+                userIds = userIds.map { build.raft.app.model.MemberId(it) },
+                agentIds = agentIds.map { build.raft.app.model.MemberId(it) }
+            )
+        val result =
+            serverId
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?.let { cleanServerId ->
+                    serverMembersStore?.addChannelMembersBatch(
+                        serverId = build.raft.app.model.ServerId(cleanServerId),
+                        request = request,
+                        priority = DataRequestPriority.Foreground
+                    )
+                }
+                ?: memberRepository.addChannelMembersBatch(DataRequestPriority.Foreground, request)
+        return result
+    }
+
+    /**
      * List existing server join links. The first one is the canonical
      * "anyone with this link can join" link that the React
      * `InviteHumanDialog` shows.

@@ -1,6 +1,6 @@
 source 'https://cdn.cocoapods.org/'
 
-kuikly_release = '2.24.0-raft.1'
+kuikly_release = '2.24.0-raft.8'
 kuikly_binary_version = "#{kuikly_release}-2.1.21"
 kuikly_coordinate = "com.tencent.kuikly-open:core-render-ios:#{kuikly_binary_version}"
 kuikly_podspec = "../build/kuikly/core-render-ios-#{kuikly_binary_version}.podspec.json"

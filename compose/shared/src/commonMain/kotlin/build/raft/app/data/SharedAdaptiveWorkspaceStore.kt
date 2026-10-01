@@ -11,7 +11,43 @@ import kotlinx.coroutines.flow.asStateFlow
 internal data class SharedAdaptiveWorkspaceSession(
     val workspace: SlockAdaptiveWorkspaceState? = null,
     val launchPayload: WireThreadLaunchPayload? = null,
+    val detailHistory: AdaptiveDetailHistory? = null,
     val handoffRoomLeaseOwner: RealtimeRoomLeaseOwner? = null,
+    /**
+     * Outstanding standalone→pane adoption requests awaiting the destination's ready report.
+     * Keyed by request id; a second request with the same id is deduplicated, and requests whose
+     * window fact or authority was superseded are dropped here rather than inside the reducer.
+     */
+    val pendingDetailOpens: Map<String, PendingAdaptiveDetailOpen> = emptyMap(),
+    /**
+     * The freshest window fact the shell applied (whether from its own emitter or replayed from a
+     * covered-top request). Freshness comparisons live here — not inside the pure workspace
+     * reducer — so carried facts can never resurrect a superseded DualPane.
+     */
+    val lastWindowFactHostId: String? = null,
+    val lastWindowFactCapturedAtMillis: Long = 0L,
+)
+
+/** One adoption request the shell accepted and is waiting to confirm before acking. */
+internal data class PendingAdaptiveDetailOpen(
+    val requestId: String,
+    val hostId: String,
+    val identity: build.raft.app.SlockAdaptiveDetailIdentity,
+    val detailGeneration: Long,
+    /** Wall-clock capture stamp of the fact that justified this request (freshness fence). */
+    val windowFactCapturedAtMillis: Long,
+    /**
+     * True once the destination reported READY and the shell acked — the request then waits on
+     * the native commit receipt; the staged scroll anchor is consumed only on `committed`.
+     */
+    val acknowledged: Boolean = false,
+    /**
+     * Native controller identities reported by the source after a successful prepare (via
+     * `slockAdaptiveDetailPrepared`). The commit receipt is matched against these, so a stray
+     * or cross-instance result cannot settle this request.
+     */
+    val sourceControllerToken: String? = null,
+    val targetControllerToken: String? = null,
 )
 
 /**
@@ -32,7 +68,13 @@ internal class SharedAdaptiveWorkspaceStore {
         transform: (SharedAdaptiveWorkspaceSession) -> SharedAdaptiveWorkspaceSession,
     ): SharedAdaptiveWorkspaceSession =
         synchronized(lock) {
-            transform(_state.value).also { _state.value = it }
+            transform(_state.value).let { next ->
+                val history = next.detailHistory
+                val normalized = if (history != null && history.owner != next.workspace?.selection) {
+                    next.copy(detailHistory = null)
+                } else next
+                normalized.also { _state.value = it }
+            }
         }
 
     fun clear() {

@@ -28,6 +28,7 @@ export const SlockLucidePathIconNames: string[] = [
   'bell',
   'bell-off',
   'bell-ring',
+  'blend',
   'blocks',
   'bookmark',
   'bookmark-minus',
@@ -53,11 +54,14 @@ export const SlockLucidePathIconNames: string[] = [
   'clipboard-list',
   'clock',
   'clock-3',
+  'code',
   'columns-3',
   'copy',
   'credit-card',
+  'crop',
   'download',
   'ellipsis',
+  'maximize-2',
   'menu',
   'eraser',
   'external-link',
@@ -151,6 +155,7 @@ export const SlockLucidePathIconNames: string[] = [
   'mail',
   'mail-open',
   'mail-plus',
+  'map-pin',
   'message-circle',
   'message-circle-off',
   'message-circle-plus',
@@ -158,6 +163,7 @@ export const SlockLucidePathIconNames: string[] = [
   'message-square-plus',
   'monitor',
   'monitor-x',
+  'mosaic',
   'package-check',
   'package',
   'paperclip',
@@ -207,6 +213,8 @@ export const SlockLucidePathIconNames: string[] = [
   'wand',
   'waypoints',
   'x',
+  'zoom-in',
+  'zoom-out',
 ];
 
 export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
@@ -686,6 +694,33 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
     },
     {
       commands: 'M 4 2 C 2.8 3.7 2 5.7 2 8',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'blend':
+      return [
+    {
+      commands: 'M 2 9 A 7 7 0 1 0 16 9 A 7 7 0 1 0 2 9 Z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 8 15 A 7 7 0 1 0 22 15 A 7 7 0 1 0 8 15 Z',
       fillPaint: 'none',
       strokePaint: 'currentColor',
       fillOpacity: 0,
@@ -1684,6 +1719,33 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
       viewportHeight: 24,
     }
       ];
+    case 'code':
+      return [
+    {
+      commands: 'm 16 18 6 -6 -6 -6',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'm 8 6 -6 6 6 6',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
     case 'columns-3':
       return [
     {
@@ -1777,6 +1839,33 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
       viewportHeight: 24,
     }
       ];
+    case 'crop':
+      return [
+    {
+      commands: 'M 6 2 v 14 a 2 2 0 0 0 2 2 h 14',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 18 22 V 8 a 2 2 0 0 0 -2 -2 H 2',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
     case 'download':
       return [
     {
@@ -1844,6 +1933,57 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
     },
     {
       commands: 'M 4 12 A 1 1 0 1 0 6 12 A 1 1 0 1 0 4 12 Z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'maximize-2':
+      return [
+    {
+      commands: 'M 15 3 h 6 v 6',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'm 21 3 -7 7',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'm 3 21 7 -7',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 9 21 H 3 v -6',
       fillPaint: 'none',
       strokePaint: 'currentColor',
       fillOpacity: 0,
@@ -6334,6 +6474,33 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
       viewportHeight: 24,
     }
       ];
+    case 'map-pin':
+      return [
+    {
+      commands: 'M 20 10 c 0 4.993 -5.539 10.193 -7.399 11.799 a 1 1 0 0 1 -1.202 0 C 9.539 20.193 4 14.993 4 10 a 8 8 0 0 1 16 0',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 9 10 A 3 3 0 1 0 15 10 A 3 3 0 1 0 9 10 Z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
     case 'message-circle':
       return [
     {
@@ -6577,6 +6744,21 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
       fillOpacity: 0,
       strokeOpacity: 1,
       strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'mosaic':
+      return [
+    {
+      commands: 'M 20.1025 3.0049 C 20.6067 3.0562 21 3.4823 21 4 V 20 L 20.9951 20.1025 C 20.9472 20.573 20.573 20.9472 20.1025 20.9951 L 20 21 H 4 C 3.4823 21 3.0562 20.6067 3.0049 20.1025 L 3 20 V 4 C 3 3.4477 3.4477 3 4 3 H 20 L 20.1025 3.0049 Z M 5 19 H 19 V 5 H 5 V 19 Z M 9 17 H 7 V 15 H 9 V 17 Z M 13 17 H 11 V 15 H 13 V 17 Z M 17 17 H 15 V 15 H 17 V 17 Z M 11 15 H 9 V 13 H 11 V 15 Z M 15 15 H 13 V 13 H 15 V 15 Z M 9 13 H 7 V 11 H 9 V 13 Z M 13 13 H 11 V 11 H 13 V 13 Z M 17 13 H 15 V 11 H 17 V 13 Z M 11 11 H 9 V 9 H 11 V 11 Z M 15 11 H 13 V 9 H 15 V 11 Z M 9 9 H 7 V 7 H 9 V 9 Z M 13 9 H 11 V 7 H 13 V 9 Z M 17 9 H 15 V 7 H 17 V 9 Z',
+      fillPaint: 'currentColor',
+      strokePaint: 'none',
+      fillOpacity: 1,
+      strokeOpacity: 0,
+      strokeWidth: 0,
       strokeLineCap: LineCapStyle.Round,
       strokeLineJoin: LineJoinStyle.Round,
       viewportWidth: 24,
@@ -8591,6 +8773,96 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
     },
     {
       commands: 'm 6 6 12 12',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'zoom-in':
+      return [
+    {
+      commands: 'M 3 11 A 8 8 0 1 0 19 11 A 8 8 0 1 0 3 11 Z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 21 21 L 16.65 16.65',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 11 8 L 11 14',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 8 11 L 14 11',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'zoom-out':
+      return [
+    {
+      commands: 'M 3 11 A 8 8 0 1 0 19 11 A 8 8 0 1 0 3 11 Z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 21 21 L 16.65 16.65',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 8 11 L 14 11',
       fillPaint: 'none',
       strokePaint: 'currentColor',
       fillOpacity: 0,

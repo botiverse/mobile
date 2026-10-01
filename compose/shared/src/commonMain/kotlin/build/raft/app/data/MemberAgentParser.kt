@@ -1,8 +1,10 @@
 package build.raft.app.data
 
+import build.raft.app.model.isExternalAgent
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AvatarReference
+import build.raft.app.model.ChannelExternalMemberProfile
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -63,6 +65,7 @@ private data class WireServerMembersDataResponse(
 private data class WireChannelMembers(
     val humans: List<WireChannelHuman> = emptyList(),
     val agents: List<WireAgent> = emptyList(),
+    val externalMembers: List<WireChannelExternalMember> = emptyList(),
 )
 
 @Serializable
@@ -77,6 +80,21 @@ private data class WireChannelHuman(
     val gravatarHash: String? = null,
     val avatarUrl: String? = null,
     val role: String? = null,
+    val effectiveChannelRole: String? = null,
+    val channelRole: String? = null,
+    val channelAdminBasis: String? = null,
+    val canChangeChannelRole: Boolean? = null,
+    val serverRole: String? = null,
+)
+
+@Serializable
+private data class WireChannelExternalMember(
+    val id: String,
+    val provider: String? = null,
+    val displayName: String? = null,
+    val handles: List<String> = emptyList(),
+    val actorKind: String? = null,
+    val avatarUrl: String? = null,
 )
 
 @Serializable
@@ -92,7 +110,12 @@ private data class WireAgent(
     val avatarUrl: String? = null,
     val status: String = "inactive",
     val runtime: String? = null,
+    val external: Boolean? = null,
     val serverRole: String? = null,
+    val effectiveChannelRole: String? = null,
+    val channelRole: String? = null,
+    val channelAdminBasis: String? = null,
+    val canChangeChannelRole: Boolean? = null,
     val model: String? = null,
     val reasoningEffort: String? = null,
     val executionMode: String? = null,
@@ -106,6 +129,12 @@ private data class WireAgent(
     val activity: String? = null,
     val activityDetail: String? = null,
     val deletedAt: String? = null,
+    /**
+     * External agents only (server sends it on `GET /agents` when
+     * `runtime === "external"`): ISO-8601 `lastSeenAt` — the credential's
+     * last use. Drives the online window; realtime `agent:seen` supersedes it.
+     */
+    val lastSeenAt: String? = null,
     val runtimeProfile: WireAgentRuntimeProfileSummary? = null,
     val createdAgents: List<WireAgentCreatedSummary> = emptyList(),
 )
@@ -629,9 +658,23 @@ fun parseSharedChannelMemberSnapshot(
         channelId = channelId,
         members = (decoded.humans.map { it.toMemberProfile() } + decoded.agents.map { it.toMemberProfile() })
             .distinctBy { it.id.value },
-        canAddMembers = true,
+        externalMembers = decoded.externalMembers.map { it.toModel() },
+        canAddMembers = false,
     )
 }.getOrNull()
+
+private fun WireChannelExternalMember.toModel(): ChannelExternalMemberProfile {
+    val label = displayName?.takeIf { it.isNotBlank() } ?: handles.firstOrNull()?.let { "@$it" } ?: id
+    return ChannelExternalMemberProfile(
+        id = id,
+        provider = provider?.takeIf { it.isNotBlank() },
+        displayName = label,
+        handles = handles.filter { it.isNotBlank() },
+        actorKind = actorKind?.takeIf { it.isNotBlank() },
+        avatarUrl = avatarUrl,
+        avatarLabel = label.take(1).uppercase(),
+    )
+}
 
 private fun decodeServerMembers(bodyText: String): List<MemberProfile> =
     decodeCandidates(
@@ -723,8 +766,12 @@ private fun WireChannelHuman.toMemberProfile(): MemberProfile {
         serverName = serverName?.takeIf { it.isNotBlank() },
         serverSlug = serverSlug?.takeIf { it.isNotBlank() },
         description = description,
-        roleDescription = role?.toSettingsLabel(),
-        serverRole = role?.normalizedServerRoleOrNull(),
+        roleDescription = (role ?: serverRole)?.toSettingsLabel(),
+        serverRole = (serverRole ?: role)?.normalizedServerRoleOrNull(),
+        effectiveChannelRole = effectiveChannelRole?.takeIf { it.isNotBlank() },
+        channelRole = channelRole?.takeIf { it.isNotBlank() },
+        channelAdminBasis = channelAdminBasis?.takeIf { it.isNotBlank() },
+        canChangeChannelRole = canChangeChannelRole,
         gravatarHash = gravatarHash?.takeIf { it.isNotBlank() },
         avatarUrl = avatarUrl,
         avatar = AvatarReference.fromWireValue(avatarUrl),
@@ -746,7 +793,12 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         serverSlug = serverSlug?.takeIf { it.isNotBlank() },
         description = description,
         roleDescription = runtime,
+        isExternal = isExternalAgent(external, runtime),
         serverRole = serverRole?.normalizedServerRoleOrNull(),
+        effectiveChannelRole = effectiveChannelRole?.takeIf { it.isNotBlank() },
+        channelRole = channelRole?.takeIf { it.isNotBlank() },
+        channelAdminBasis = channelAdminBasis?.takeIf { it.isNotBlank() },
+        canChangeChannelRole = canChangeChannelRole,
         avatarUrl = avatarUrl,
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = label.take(1).uppercase(),
@@ -759,6 +811,8 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         agentStatus = agentStatus,
         membershipStatus = if (deletedAt.isNullOrBlank()) null else "deleted",
         agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
+        lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
+        model = firstNonBlank(model, runtimeProfile?.current?.model),
         permissionBadges = listOfNotNull(
             runtime?.takeIf { it.isNotBlank() },
             firstNonBlank(computerName, computerHostname, runtimeProfile?.current?.machineName)
@@ -808,6 +862,7 @@ private fun WireAgent.toAgentProfile(): AgentProfile {
         agentStatus = agentStatus,
         statusLabel = agentStatus?.label,
         runtime = runtime,
+        isExternal = isExternalAgent(external, runtime),
         model = model,
         reasoning = reasoningEffort,
         permissionBadges = listOfNotNull(

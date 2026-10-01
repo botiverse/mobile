@@ -88,13 +88,13 @@ private fun String.raftInlineRefRange(start: Int): IntRange? {
     }
     if (isRaftMarkdownEscaped(start) || !isRaftInlineRefBoundary(start - 1)) return null
     return when {
-        startsWith("dm:@", start, ignoreCase = true) -> raftDirectMessageThreadRange(start)
+        startsWith("dm:@", start, ignoreCase = true) -> raftDirectMessageRange(start)
         this[start] == '@' -> raftMentionRange(start)
         else -> raftHashRange(start)
     }
 }
 
-private fun String.raftDirectMessageThreadRange(start: Int): IntRange? {
+private fun String.raftDirectMessageRange(start: Int): IntRange? {
     val peerStart = start + 4
     if (peerStart >= length || !this[peerStart].isRaftAsciiWordCharacter()) return null
     var peerEnd = peerStart + 1
@@ -103,17 +103,60 @@ private fun String.raftDirectMessageThreadRange(start: Int): IntRange? {
         peerEnd++
         count++
     }
-    // A DM thread is an atomic form. A missing or malformed suffix must fall
-    // back to the ordinary @mention candidate inside it, never a partial DM ref.
-    if (peerEnd >= length || this[peerEnd] != ':') return null
-    val shortStart = peerEnd + 1
-    var shortEnd = shortStart
-    while (shortEnd < length && shortEnd - shortStart < 8 && this[shortEnd].isRaftShortIdPart()) {
-        shortEnd++
+    // `dm:@name~agent` / `dm:@name~human` pins the peer kind when a human and
+    // an agent share a name (Web `RAFT_REF_DM_PEER_PATTERN`). `~` never occurs
+    // in a name, so any other suffix is not a DM target: claim the whole
+    // malformed token so the app layer renders it as plain text instead of
+    // letting the `@name` inside it become a different target.
+    if (peerEnd < length && this[peerEnd] == '~') {
+        val kindEnd = raftDirectMessagePeerKindEnd(peerEnd)
+        if (kindEnd == null) return raftMalformedDirectMessageKindRange(start, peerEnd)
+        peerEnd = kindEnd
     }
-    val shortLength = shortEnd - shortStart
-    if (shortLength !in 6..8 || (shortEnd < length && this[shortEnd].isRaftShortIdPart())) return null
-    return start until shortEnd
+    // A peer longer than the scan cap is not a DM target at all.
+    if (peerEnd < length && (this[peerEnd].isRaftDirectMessagePeerPart() || this[peerEnd] == '~')) return null
+    // `dm:@peer:short` is the DM thread form. Without a valid short id the
+    // token is the plain DM form `dm:@peer` (Web `createRaftDmRefRegex`: the
+    // thread pass runs first, then the DM pass claims the peer part only).
+    if (peerEnd < length && this[peerEnd] == ':') {
+        val shortStart = peerEnd + 1
+        var shortEnd = shortStart
+        while (shortEnd < length && shortEnd - shortStart < 8 && this[shortEnd].isRaftShortIdPart()) {
+            shortEnd++
+        }
+        val shortLength = shortEnd - shortStart
+        if (shortLength in 6..8 && (shortEnd >= length || !this[shortEnd].isRaftShortIdPart())) {
+            return start until shortEnd
+        }
+    }
+    return start until peerEnd
+}
+
+private val RaftDirectMessagePeerKinds = listOf("agent", "human")
+
+/** End offset after a valid `~agent` / `~human` suffix starting at [tildeIndex], or null. */
+private fun String.raftDirectMessagePeerKindEnd(tildeIndex: Int): Int? {
+    val kindStart = tildeIndex + 1
+    val kind = RaftDirectMessagePeerKinds.firstOrNull { startsWith(it, kindStart) } ?: return null
+    val kindEnd = kindStart + kind.length
+    if (kindEnd < length && (this[kindEnd].isRaftDirectMessagePeerPart() || this[kindEnd] == '~')) return null
+    return kindEnd
+}
+
+/**
+ * `dm:@name~<unknown>[:short]`, mirroring Web `createRaftMalformedDmKindRefRegex`
+ * (`dm:@[\w.-]+~[\w.~-]*(?::[\da-f]{6,8})?`).
+ */
+private fun String.raftMalformedDirectMessageKindRange(start: Int, tildeIndex: Int): IntRange {
+    var end = tildeIndex + 1
+    while (end < length && (this[end].isRaftDirectMessagePeerPart() || this[end] == '~')) end++
+    if (end < length && this[end] == ':') {
+        val shortStart = end + 1
+        var shortEnd = shortStart
+        while (shortEnd < length && shortEnd - shortStart < 8 && this[shortEnd].isRaftShortIdPart()) shortEnd++
+        if (shortEnd - shortStart >= 6) end = shortEnd
+    }
+    return start until end
 }
 
 private fun String.raftMentionRange(start: Int): IntRange? {

@@ -51,6 +51,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sdk", default=None)
     parser.add_argument("--derived-data", default=None)
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON")
+    parser.add_argument(
+        "--driver",
+        default=None,
+        choices=["agent-device", "qa-loop"],
+        help="UI driver for tap/tap-text/swipe/interact (default agent-device; qa-loop is the old XCTest file protocol)",
+    )
+    parser.add_argument("--agent-device-bin", default=None, help="agent-device executable; also AGENT_DEVICE_BIN")
     sub = parser.add_subparsers(dest="command")
 
     add(sub, "doctor", cmd_doctor, "Inspect Xcode/simctl setup")
@@ -100,7 +107,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_artifact_args(screenshot)
     screenshot.add_argument("--device", default=None)
 
-    interact = add(sub, "interact", cmd_interact, "Drive UI actions through the iosAppUITests XCUITest harness")
+    interact = add(sub, "interact", cmd_interact, "Drive UI actions through agent-device (default) or --driver qa-loop")
     add_interaction_args(interact)
     interact.add_argument("--actions", default=None, help="JSON array of ios-use actions")
     interact.add_argument("--actions-file", default=None, help="Path to a JSON action array")
@@ -148,10 +155,18 @@ def add_interaction_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--derived-data", default=argparse.SUPPRESS)
     parser.add_argument("--bundle", default=argparse.SUPPRESS)
     parser.add_argument("--device", default=argparse.SUPPRESS)
+    parser.add_argument("--driver", default=argparse.SUPPRESS, choices=["agent-device", "qa-loop"])
+    parser.add_argument("--agent-device-bin", default=argparse.SUPPRESS)
 
 
 def cmd_doctor(args: argparse.Namespace, config: IosConfig) -> dict[str, object]:
-    return {"tools": config.tool_status()}
+    from .agent_device import tool_status as agent_device_status
+
+    tools = config.tool_status()
+    explicit = getattr(args, "agent_device_bin", None)
+    if explicit:
+        tools["agent_device"] = agent_device_status(explicit)
+    return {"tools": tools}
 
 
 def cmd_devices(args: argparse.Namespace, config: IosConfig) -> dict[str, object]:
@@ -260,6 +275,8 @@ def run_interaction(args: argparse.Namespace, config: IosConfig, actions: list[d
         derived_data=Path(args.derived_data).expanduser() if getattr(args, "derived_data", None) else None,
         bundle=getattr(args, "bundle", None),
         device=getattr(args, "device", None),
+        driver=getattr(args, "driver", None),
+        agent_device_bin=getattr(args, "agent_device_bin", None),
     )
 
 

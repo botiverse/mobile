@@ -2,6 +2,16 @@ package build.raft.app.shared
 
 import android.content.Intent
 import android.text.InputType
+import android.text.Selection
+import android.text.Spannable
+import android.text.Spanned
+import android.text.SpanWatcher
+import android.text.method.ArrowKeyMovementMethod
+import android.text.method.MetaKeyKeyListener
+import android.view.KeyEvent
+import android.view.MotionEvent
+import android.widget.FrameLayout
+import androidx.test.filters.SdkSuppress
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.BaseInputConnection
@@ -15,10 +25,181 @@ import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SlockMultilineTextFieldValueConnectedTest {
+    @Test
+    @SdkSuppress(minSdkVersion = 34, maxSdkVersion = 34)
+    fun android14MissingTouchAnchorCrashesEvenWithValidCurrentSelection() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val editor = selectionTestEditor(multiline = false, value = "hello")
+            editor.movementMethod = ArrowKeyMovementMethod.getInstance()
+            editor.setSelection(2)
+            editor.dispatchSelectionTouch(MotionEvent.ACTION_DOWN)
+            pressSelectionShift(editor)
+            assertEquals(2, editor.selectionStart)
+            assertEquals(2, editor.selectionEnd)
+            val failure = runCatching { editor.dispatchSelectionTouch(MotionEvent.ACTION_UP) }.exceptionOrNull()
+            assertTrue("raw Android movement must reproduce the reported failure: $failure",
+                failure is IndexOutOfBoundsException)
+            assertEquals("setSpan (-1 ... -1) starts before 0", failure?.message)
+            assertTrue(failure!!.stackTrace.any {
+                it.className == "android.text.method.ArrowKeyMovementMethod" && it.methodName == "onTouchEvent"
+            })
+        }
+    }
+
+    @Test
+    fun missingTouchAnchorPreservesDraftSelectionAndNextComposition() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            for (multiline in listOf(false, true)) {
+                for (value in listOf("", "hello")) {
+                    val editor = selectionTestEditor(multiline, value)
+                    assertTrue(editor.movementMethod === SlockArrowKeyMovementMethod)
+                    val cursor = value.length / 2
+                    editor.setSelection(cursor)
+                    val connection = editor.requireInputConnection()
+                    if (value.isNotEmpty()) assertTrue(connection.setComposingRegion(0, 1))
+                    val composingStart = BaseInputConnection.getComposingSpanStart(editor.text)
+                    val composingEnd = BaseInputConnection.getComposingSpanEnd(editor.text)
+                    assertEquals(if (value.isEmpty()) -1 else 0, composingStart)
+                    assertEquals(if (value.isEmpty()) -1 else 1, composingEnd)
+                    editor.dispatchSelectionTouch(MotionEvent.ACTION_DOWN)
+                    // No selecting DOWN was sent. A modifier arriving mid-gesture makes
+                    // Android read a missing anchor on UP, even though the cursor is valid.
+                    pressSelectionShift(editor)
+                    assertTrue(editor.dispatchSelectionTouch(MotionEvent.ACTION_UP))
+                    assertEquals(value, editor.text.toString())
+                    assertEquals(cursor, editor.selectionStart)
+                    assertEquals(cursor, editor.selectionEnd)
+                    assertTrue(editor.isFocused)
+                    assertEquals(0, MetaKeyKeyListener.getMetaState(editor.text, KeyEvent.META_SHIFT_ON))
+                    assertEquals(composingStart, BaseInputConnection.getComposingSpanStart(editor.text))
+                    assertEquals(composingEnd, BaseInputConnection.getComposingSpanEnd(editor.text))
+                    assertTrue(connection.finishComposingText())
+                    assertTrue(connection.setComposingText("中", 1))
+                    assertEquals(value.take(cursor) + "中" + value.drop(cursor), editor.text.toString())
+                    assertEquals(cursor, BaseInputConnection.getComposingSpanStart(editor.text))
+                    assertEquals(cursor + 1, BaseInputConnection.getComposingSpanEnd(editor.text))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun negativeSpanFailureInsideSelectionCallbackStillPropagates() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val editor = selectionTestEditor(multiline = false, value = "hello world")
+            editor.setSelection(editor.length())
+            pressSelectionShift(editor)
+            editor.dispatchSelectionTouch(MotionEvent.ACTION_DOWN, 2f)
+            var callbackFailure: IndexOutOfBoundsException? = null
+            val watcher = object : SpanWatcher {
+                override fun onSpanAdded(text: Spannable, what: Any, start: Int, end: Int) = Unit
+                override fun onSpanRemoved(text: Spannable, what: Any, start: Int, end: Int) = Unit
+                override fun onSpanChanged(
+                    text: Spannable, what: Any, oldStart: Int, oldEnd: Int, newStart: Int, newEnd: Int
+                ) {
+                    if (what !== Selection.SELECTION_START || callbackFailure != null) return
+                    try {
+                        text.setSpan(Any(), -1, -1, Spanned.SPAN_POINT_POINT)
+                    } catch (error: IndexOutOfBoundsException) {
+                        callbackFailure = error
+                        throw error
+                    }
+                }
+            }
+            editor.text.setSpan(watcher, 0, editor.length(), Spanned.SPAN_INCLUSIVE_INCLUSIVE)
+            val failure = try {
+                runCatching { editor.dispatchSelectionTouch(MotionEvent.ACTION_UP, 90f) }.exceptionOrNull()
+            } finally {
+                editor.text.removeSpan(watcher)
+            }
+            assertNotNull("the valid native selection must invoke the application watcher", callbackFailure)
+            assertEquals("setSpan (-1 ... -1) starts before 0", callbackFailure?.message)
+            assertSame("an application callback failure must not be treated as the missing anchor", callbackFailure, failure)
+        }
+    }
+
+    @Test
+    fun ordinaryShiftTouchSelectionAndSubsequentTapKeepNativeBehavior() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            for (multiline in listOf(false, true)) {
+                val editor = selectionTestEditor(multiline, "hello world")
+                pressSelectionShift(editor)
+                editor.dispatchSelectionTouch(MotionEvent.ACTION_DOWN, 2f)
+                val expectedStart = editor.getOffsetForPosition(2f, 10f)
+                val expectedEnd = editor.getOffsetForPosition(90f, 10f)
+                assertTrue("fixture must span distinct characters", expectedStart < expectedEnd)
+                editor.dispatchSelectionTouch(MotionEvent.ACTION_UP, 90f)
+                assertEquals(expectedStart, editor.selectionStart)
+                assertEquals(expectedEnd, editor.selectionEnd)
+                MetaKeyKeyListener.resetMetaState(editor.text)
+                // Exercise TextView's normal dispatch too; no custom touch replay is involved.
+                val down = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_DOWN, 30f, 10f, 0)
+                val up = MotionEvent.obtain(0L, 1L, MotionEvent.ACTION_UP, 30f, 10f, 0)
+                try {
+                    editor.dispatchTouchEvent(down)
+                    editor.dispatchTouchEvent(up)
+                } finally {
+                    down.recycle()
+                    up.recycle()
+                }
+                assertEquals("hello world", editor.text.toString())
+                assertTrue(editor.selectionStart in 0..editor.length())
+                assertEquals(editor.selectionStart, editor.selectionEnd)
+            }
+        }
+    }
+
+    private fun selectionTestEditor(multiline: Boolean, value: String): SlockKuiklyTextFieldView {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val editor = if (multiline) SlockKuiklyTextAreaView(context, null)
+            else SlockKuiklyTextFieldView(context, null)
+        val parent = FrameLayout(context)
+        parent.addView(editor, FrameLayout.LayoutParams(400, 120))
+        editor.setPadding(0, 0, 0, 0)
+        editor.textSize = 20f
+        editor.setText(value)
+        parent.measure(View.MeasureSpec.makeMeasureSpec(400, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(120, View.MeasureSpec.EXACTLY))
+        parent.layout(0, 0, 400, 120)
+        assertTrue(editor.requestFocus())
+        assertNotNull(editor.layout)
+        return editor
+    }
+
+    private fun pressSelectionShift(editor: EditText) {
+        val listener = object : MetaKeyKeyListener() {}
+        listener.onKeyDown(editor, editor.text, KeyEvent.KEYCODE_SHIFT_LEFT,
+            KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_SHIFT_LEFT))
+        assertEquals(1, MetaKeyKeyListener.getMetaState(editor.text, KeyEvent.META_SHIFT_ON))
+    }
+
+    private fun EditText.dispatchSelectionTouch(action: Int, x: Float = 10f): Boolean {
+        val event = MotionEvent.obtain(0L, 1L, action, x, 10f, 0)
+        return try {
+            if (action == MotionEvent.ACTION_DOWN) {
+                // requestFocus sets TextView's didTouchFocusSelect sentinel. Its real
+                // DOWN path clears that sentinel before invoking the movement method;
+                // bypassing TextView makes ArrowKeyMovementMethod skip the whole gesture.
+                dispatchTouchEvent(event).also {
+                    assertTrue("pre-focused editor must enter the movement gesture", !didTouchFocusSelect())
+                }
+            } else {
+                movementMethod.onTouchEvent(this, text, event)
+            }
+        } finally {
+            event.recycle()
+        }
+    }
+
     @Test
     fun returnKeyTypeChangesPreserveLiveSelectionWithoutTransientZeroCallback() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()

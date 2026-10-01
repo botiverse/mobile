@@ -1,5 +1,7 @@
 package build.raft.app.network
 
+import com.tencent.kmm.network.export.NetworkByteStream
+
 /**
  * Transport-neutral response for the bottom HTTP layer. Maps 1:1 onto
  * HomeNetworkResponse / AuthNetworkResponse in the data layer.
@@ -17,6 +19,14 @@ internal data class SlockHttpExecutorResponse(
 data class SlockTransferProgress(
     val bytesTransferred: Long,
     val bytesTotal: Long? = null
+)
+
+/** A one-attempt binary request body.  The stream is opened once per transport attempt. */
+internal data class SlockHttpFileBody(
+    val path: String,
+    val contentType: String,
+    val contentLength: Long,
+    val openStream: suspend () -> NetworkByteStream,
 )
 
 /**
@@ -53,4 +63,34 @@ internal interface SlockHttpExecutor {
         headers: Map<String, String>,
         onUploadProgress: ((SlockTransferProgress) -> Unit)? = null
     ): SlockHttpExecutorResponse
+
+    /** Binary in-memory request; default keeps test doubles source-compatible. */
+    suspend fun executeBytes(
+        priority: SlockRequestPriority,
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        bodyBytes: ByteArray,
+        onUploadProgress: ((SlockTransferProgress) -> Unit)? = null,
+    ): SlockHttpExecutorResponse =
+        SlockHttpExecutorResponse(
+            code = 501,
+            bodyText = null,
+            errorBodyText = "binary_request_unsupported",
+        )
+
+    /** Streaming file request; default keeps test doubles source-compatible. */
+    suspend fun executeFile(
+        priority: SlockRequestPriority,
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        body: SlockHttpFileBody,
+        onUploadProgress: ((SlockTransferProgress) -> Unit)? = null,
+    ): SlockHttpExecutorResponse =
+        SlockHttpExecutorResponse(
+            code = 501,
+            bodyText = null,
+            errorBodyText = "file_request_unsupported",
+        )
 }

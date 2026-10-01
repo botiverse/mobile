@@ -70,6 +70,7 @@ LUCIDE_ICONS = [
     "bell",
     "bell-off",
     "bell-ring",
+    "blend",
     "blocks",
     "bookmark",
     "bookmark-minus",
@@ -95,11 +96,14 @@ LUCIDE_ICONS = [
     "clipboard-list",
     "clock",
     "clock-3",
+    "code",
     "columns-3",
     "copy",
     "credit-card",
+    "crop",
     "download",
     "ellipsis",
+    "maximize-2",
     "menu",
     "eraser",
     "external-link",
@@ -193,6 +197,7 @@ LUCIDE_ICONS = [
     "mail",
     "mail-open",
     "mail-plus",
+    "map-pin",
     "message-circle",
     "message-circle-off",
     "message-circle-plus",
@@ -200,6 +205,7 @@ LUCIDE_ICONS = [
     "message-square-plus",
     "monitor",
     "monitor-x",
+    "mosaic",
     "package-check",
     "package",
     "paperclip",
@@ -249,7 +255,13 @@ LUCIDE_ICONS = [
     "wand",
     "waypoints",
     "x",
+    "zoom-in",
+    "zoom-out",
 ]
+
+CUSTOM_ICONS = {
+    "mosaic": os.path.join(BRAND_ASSET_SOURCE_DIR, "mosaic.svg"),
+}
 
 BRAND_SVGS = {
     "slock-icon": os.path.join(
@@ -542,6 +554,12 @@ def read_lucide_svg(name, version, fallback_dir=None, lucide_source_dir=None):
     if cache_key in _SVG_CACHE:
         return _SVG_CACHE[cache_key]
 
+    if normalized in CUSTOM_ICONS and os.path.exists(CUSTOM_ICONS[normalized]):
+        with open(CUSTOM_ICONS[normalized], "r", encoding="utf-8") as file:
+            svg = file.read().strip()
+            _SVG_CACHE[cache_key] = svg
+            return svg
+
     if lucide_source_dir:
         source_path = os.path.join(lucide_source_dir, "icons", f"{normalized}.svg")
         if os.path.exists(source_path):
@@ -592,7 +610,7 @@ def prefetch_lucide_svgs(icons, version, fallback_dir, lucide_source_dir, worker
 
 
 def normalize_ohos_svg(svg_text):
-    return svg_text.replace('stroke="currentColor"', 'stroke="#000000"')
+    return svg_text.replace('stroke="currentColor"', 'stroke="#000000"').replace('fill="currentColor"', 'fill="#000000"')
 
 
 def svg_for_path_parse(svg_text):
@@ -1273,9 +1291,13 @@ def android_path_catalog_source(icons, version, fallback_dir, lucide_source_dir)
         raise RuntimeError(f"Android path generation has no pinned commit for Lucide {version}")
     entries = []
     for icon in icons:
-        source_path = os.path.join(lucide_source_dir, "icons", f"{normalize_icon_name(icon)}.svg")
-        if not os.path.isfile(source_path):
-            raise RuntimeError(f"Pinned Lucide source is missing icon: {source_path}")
+        normalized = normalize_icon_name(icon)
+        if normalized in CUSTOM_ICONS and os.path.isfile(CUSTOM_ICONS[normalized]):
+            source_path = CUSTOM_ICONS[normalized]
+        else:
+            source_path = os.path.join(lucide_source_dir, "icons", f"{normalized}.svg")
+            if not os.path.isfile(source_path):
+                raise RuntimeError(f"Pinned Lucide source is missing icon: {source_path}")
         with open(source_path, encoding="utf-8") as file:
             svg = file.read().strip()
         entries.append((icon, parse_svg_strict(svg)))
@@ -1642,7 +1664,7 @@ def generate_ios(icons, version, ios_asset_catalog, lucide_source_dir):
             version,
             fallback_dir=None,
             lucide_source_dir=lucide_source_dir,
-        ).strip().replace('stroke="currentColor"', 'stroke="#000000"')
+        ).strip().replace('stroke="currentColor"', 'stroke="#000000"').replace('fill="currentColor"', 'fill="#000000"')
         filename = f"{asset_name}.svg"
         imageset_dir = os.path.join(ios_asset_catalog, f"lucide-{asset_name}.imageset")
         write_text(os.path.join(imageset_dir, filename), svg_text)

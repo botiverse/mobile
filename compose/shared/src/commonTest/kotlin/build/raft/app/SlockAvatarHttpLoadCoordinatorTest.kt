@@ -2,10 +2,45 @@ package build.raft.app
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SlockAvatarHttpLoadCoordinatorTest {
+    @Test
+    fun genericIconIsAFailureAffordanceNotALoadingPlaceholder() {
+        // task #343: cold start must go blank -> real avatar, never default icon -> real avatar.
+        assertFalse(slockAvatarHttpShowsFallback(SlockAvatarHttpLoadSnapshot()))
+        assertFalse(
+            slockAvatarHttpShowsFallback(
+                SlockAvatarHttpLoadSnapshot(
+                    cache = SlockAvatarHttpCacheState.InFlight,
+                    painter = SlockAvatarHttpPainterPhase.Loading
+                )
+            )
+        )
+        assertFalse(
+            slockAvatarHttpShowsFallback(
+                SlockAvatarHttpLoadSnapshot(
+                    cache = SlockAvatarHttpCacheState.Ready,
+                    painter = SlockAvatarHttpPainterPhase.Success
+                )
+            )
+        )
+        assertTrue(
+            slockAvatarHttpShowsFallback(SlockAvatarHttpLoadSnapshot(cache = SlockAvatarHttpCacheState.Cooldown))
+        )
+        assertTrue(
+            slockAvatarHttpShowsFallback(
+                SlockAvatarHttpLoadSnapshot(
+                    cache = SlockAvatarHttpCacheState.Ready,
+                    painter = SlockAvatarHttpPainterPhase.Error
+                )
+            )
+        )
+    }
+
     @Test
     fun sameUploadedAvatarRowsJoinOneActiveRequestAndReuseReadyCache() {
         val coordinator =
@@ -127,6 +162,35 @@ class SlockAvatarHttpLoadCoordinatorTest {
     }
 
     @Test
+    fun ownerDisposalWithRemainingObserversOrphansInsteadOfResetting() {
+        val coordinator =
+            SlockAvatarHttpLoadCoordinator(
+                failureCooldownMillis = 500L,
+                nowMillis = { 1_000L }
+            )
+        val key = uploadedAvatarKey()
+        // Two rows observing the same avatar.
+        coordinator.retain(key)
+        coordinator.retain(key)
+
+        val abandoned = assertNotNull(coordinator.tryAcquire(key))
+        coordinator.releaseOwner(key, abandoned)
+
+        // The entry stays InFlight with no owner so a surviving row can adopt the same generation
+        // instead of restarting the download from scratch.
+        val orphaned = coordinator.stateFlow(key).value
+        assertEquals(SlockAvatarHttpCacheState.InFlight, orphaned.cache)
+        assertNull(orphaned.ownerToken)
+
+        val adopter = assertNotNull(coordinator.tryAcquire(key))
+        assertEquals(abandoned.generation, adopter.generation)
+        assertEquals(adopter.ownerToken, coordinator.stateFlow(key).value.ownerToken)
+
+        coordinator.release(key)
+        coordinator.release(key)
+    }
+
+    @Test
     fun canonicalSourceChangeCreatesAnIndependentGenerationAndFencesOldCompletion() {
         val coordinator =
             SlockAvatarHttpLoadCoordinator(
@@ -173,10 +237,216 @@ class SlockAvatarHttpLoadCoordinatorTest {
         assertEquals(2, coordinator.entryCount())
     }
 
+    @Test
+    fun stuckOwnerBecomesAdoptableAfterTimeout() {
+        var nowMillis = 1_000L
+        val coordinator =
+            SlockAvatarHttpLoadCoordinator(
+                failureCooldownMillis = 500L,
+                stuckOwnerTimeoutMillis = 100L,
+                nowMillis = { nowMillis }
+            )
+        val key = uploadedAvatarKey()
+        val stuckLease = assertNotNull(coordinator.tryAcquire(key))
+
+        // Owner acquired the lease but never reports a painter phase (frozen offscreen
+        // composition). Within the timeout a sibling still joins, afterwards it adopts.
+        nowMillis += 50L
+        assertNull(coordinator.tryAcquire(key), "owner still fresh, sibling must keep joining")
+        nowMillis += 100L
+        val adopted = assertNotNull(coordinator.tryAcquire(key), "stuck owner must be adoptable")
+        assertEquals(stuckLease.generation, adopted.generation, "adoption keeps the generation")
+        assertEquals(adopted.ownerToken, coordinator.stateFlow(key).value.ownerToken)
+
+        // The fenced-off old owner can no longer write phases.
+        coordinator.reportPainterPhase(key, stuckLease, SlockAvatarHttpPainterPhase.Success)
+        assertEquals(SlockAvatarHttpCacheState.InFlight, coordinator.stateFlow(key).value.cache)
+
+        coordinator.reportPainterPhase(key, adopted, SlockAvatarHttpPainterPhase.Success)
+        assertEquals(SlockAvatarHttpCacheState.Ready, coordinator.stateFlow(key).value.cache)
+    }
+
+    @Test
+    fun ownerProgressRefreshesTheStuckTimeout() {
+        var nowMillis = 1_000L
+        val coordinator =
+            SlockAvatarHttpLoadCoordinator(
+                failureCooldownMillis = 500L,
+                stuckOwnerTimeoutMillis = 100L,
+                nowMillis = { nowMillis }
+            )
+        val key = uploadedAvatarKey()
+        val lease = assertNotNull(coordinator.tryAcquire(key))
+
+        // A live owner keeps reporting phases, so the stuck deadline keeps moving.
+        repeat(3) {
+            nowMillis += 90L
+            coordinator.reportPainterPhase(key, lease, SlockAvatarHttpPainterPhase.Loading)
+            assertNull(coordinator.tryAcquire(key), "a reporting owner is not stuck")
+        }
+        coordinator.reportPainterPhase(key, lease, SlockAvatarHttpPainterPhase.Success)
+        assertEquals(SlockAvatarHttpCacheState.Ready, coordinator.stateFlow(key).value.cache)
+    }
+
+    @Test
+    fun consecutiveFailuresDoubleTheCooldownUntilTheCap() {
+        var nowMillis = 1_000L
+        val coordinator =
+            SlockAvatarHttpLoadCoordinator(
+                failureCooldownMillis = 60_000L,
+                nowMillis = { nowMillis }
+            )
+        val key = uploadedAvatarKey()
+
+        // First failure: base cooldown (10s step) — a transient error recovers quickly.
+        val first = assertNotNull(coordinator.tryAcquire(key))
+        coordinator.reportPainterPhase(key, first, SlockAvatarHttpPainterPhase.Error) // Cdn->Api fallback
+        coordinator.reportPainterPhase(key, first, SlockAvatarHttpPainterPhase.Error) // Api fails -> cooldown
+        var cooling = coordinator.stateFlow(key).value
+        assertEquals(SlockAvatarHttpCacheState.Cooldown, cooling.cache)
+        assertEquals(
+            SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS,
+            coordinator.retryDelayMillis(cooling)
+        )
+
+        // Second failure: doubled.
+        nowMillis += SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS
+        val second = assertNotNull(coordinator.tryAcquire(key))
+        coordinator.reportPainterPhase(key, second, SlockAvatarHttpPainterPhase.Error)
+        coordinator.reportPainterPhase(key, second, SlockAvatarHttpPainterPhase.Error)
+        cooling = coordinator.stateFlow(key).value
+        assertEquals(
+            2 * SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS,
+            coordinator.retryDelayMillis(cooling)
+        )
+
+        // Failures keep doubling until they hit the configured cap, then stay there.
+        var delay = 2 * SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS
+        repeat(4) {
+            nowMillis += delay
+            val lease = assertNotNull(coordinator.tryAcquire(key))
+            coordinator.reportPainterPhase(key, lease, SlockAvatarHttpPainterPhase.Error)
+            coordinator.reportPainterPhase(key, lease, SlockAvatarHttpPainterPhase.Error)
+            delay = (delay * 2).coerceAtMost(60_000L)
+            cooling = coordinator.stateFlow(key).value
+            assertEquals(delay, coordinator.retryDelayMillis(cooling))
+        }
+    }
+
+    @Test
+    fun successResetsTheConsecutiveFailureBackoff() {
+        var nowMillis = 1_000L
+        val coordinator =
+            SlockAvatarHttpLoadCoordinator(
+                failureCooldownMillis = 60_000L,
+                nowMillis = { nowMillis }
+            )
+        val key = uploadedAvatarKey()
+
+        // Two consecutive failures -> backoff is already beyond the base step.
+        val first = assertNotNull(coordinator.tryAcquire(key))
+        coordinator.reportPainterPhase(key, first, SlockAvatarHttpPainterPhase.Error)
+        coordinator.reportPainterPhase(key, first, SlockAvatarHttpPainterPhase.Error)
+        nowMillis += SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS
+        val second = assertNotNull(coordinator.tryAcquire(key))
+        coordinator.reportPainterPhase(key, second, SlockAvatarHttpPainterPhase.Error)
+        coordinator.reportPainterPhase(key, second, SlockAvatarHttpPainterPhase.Error)
+
+        // A successful generation resets the counter; the next failure starts at the base step.
+        nowMillis += 2 * SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS
+        val third = assertNotNull(coordinator.tryAcquire(key))
+        coordinator.reportPainterPhase(key, third, SlockAvatarHttpPainterPhase.Success)
+        assertEquals(SlockAvatarHttpCacheState.Ready, coordinator.stateFlow(key).value.cache)
+
+        // A ready consumer that still errors drops the entry back into cooldown and counts
+        // as a failure. If Success reset the counter, this single failure produces the base
+        // step again — not the doubled value the two earlier failures had built up.
+        nowMillis += 1L
+        coordinator.reportReadyConsumerError(key, coordinator.stateFlow(key).value.generation)
+        assertEquals(
+            SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS,
+            coordinator.retryDelayMillis(coordinator.stateFlow(key).value)
+        )
+    }
+
+    @Test
+    fun readyConsumerErrorUsesTheSameBackoffCounter() {
+        var nowMillis = 1_000L
+        val coordinator =
+            SlockAvatarHttpLoadCoordinator(
+                failureCooldownMillis = 60_000L,
+                nowMillis = { nowMillis }
+            )
+        val key = uploadedAvatarKey()
+        val lease = assertNotNull(coordinator.tryAcquire(key))
+        coordinator.reportPainterPhase(key, lease, SlockAvatarHttpPainterPhase.Success)
+
+        // A ready consumer that still errors increments the same consecutive-failure counter.
+        coordinator.reportReadyConsumerError(key, coordinator.stateFlow(key).value.generation)
+        assertEquals(
+            SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS,
+            coordinator.retryDelayMillis(coordinator.stateFlow(key).value)
+        )
+    }
+
     private fun uploadedAvatarKey(): SlockAvatarHttpLoadKey =
         SlockAvatarHttpLoadKey(
             primarySource = "https://cdn.raft.build/avatars/agents/deadbeefdeadbeefdeadbeefdeadbeef.webp",
             primaryEndpoint = SlockAvatarHttpEndpoint.Cdn,
             apiFallbackSource = "https://api.raft.build/api/avatars/agents/deadbeefdeadbeefdeadbeefdeadbeef.webp"
         )
+    @Test
+    fun retainAfterAllObserversLeftRearmsCooldown() {
+        var nowMillis = 1_000L
+        val coordinator =
+            SlockAvatarHttpLoadCoordinator(
+                failureCooldownMillis = 60_000L,
+                nowMillis = { nowMillis }
+            )
+        val key = uploadedAvatarKey()
+
+        coordinator.retain(key)
+        val first = assertNotNull(coordinator.tryAcquire(key))
+        coordinator.reportPainterPhase(key, first, SlockAvatarHttpPainterPhase.Error)
+        coordinator.reportPainterPhase(key, first, SlockAvatarHttpPainterPhase.Error)
+        assertEquals(
+            SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS,
+            coordinator.retryDelayMillis(coordinator.stateFlow(key).value)
+        )
+        coordinator.release(key)
+        coordinator.releaseOwner(key, first)
+
+        // Every observer left (page closed). A new observer arriving during cooldown
+        // re-arms the entry for immediate retry instead of waiting out the backoff.
+        nowMillis += 1_000L
+        coordinator.retain(key)
+        assertEquals(0L, coordinator.retryDelayMillis(coordinator.stateFlow(key).value))
+        assertNotNull(coordinator.tryAcquire(key))
+    }
+
+    @Test
+    fun retainWhileObservedKeepsCooldownIntact() {
+        var nowMillis = 1_000L
+        val coordinator =
+            SlockAvatarHttpLoadCoordinator(
+                failureCooldownMillis = 60_000L,
+                nowMillis = { nowMillis }
+            )
+        val key = uploadedAvatarKey()
+
+        coordinator.retain(key)
+        val first = assertNotNull(coordinator.tryAcquire(key))
+        coordinator.reportPainterPhase(key, first, SlockAvatarHttpPainterPhase.Error)
+        coordinator.reportPainterPhase(key, first, SlockAvatarHttpPainterPhase.Error)
+        coordinator.releaseOwner(key, first)
+
+        // Another observer joins while at least one row is still watching — not a
+        // fresh page entry, so the backoff must hold.
+        coordinator.retain(key)
+        assertEquals(
+            SlockAvatarHttpLoadCoordinator.MAX_SINGLE_FAILURE_COOLDOWN_MILLIS,
+            coordinator.retryDelayMillis(coordinator.stateFlow(key).value)
+        )
+    }
+
 }

@@ -23,6 +23,7 @@ enum class SlockLucideIconName(val wireName: String) {
     Bell("bell"),
     BellOff("bell-off"),
     BellRing("bell-ring"),
+    Blend("blend"),
     Blocks("blocks"),
     Bookmark("bookmark"),
     BookmarkMinus("bookmark-minus"),
@@ -48,11 +49,14 @@ enum class SlockLucideIconName(val wireName: String) {
     ClipboardList("clipboard-list"),
     Clock("clock"),
     Clock3("clock-3"),
+    Code("code"),
     Columns3("columns-3"),
     Copy("copy"),
     CreditCard("credit-card"),
+    Crop("crop"),
     Download("download"),
     Ellipsis("ellipsis"),
+    Maximize2("maximize-2"),
     Menu("menu"),
     Eraser("eraser"),
     ExternalLink("external-link"),
@@ -146,6 +150,7 @@ enum class SlockLucideIconName(val wireName: String) {
     Mail("mail"),
     MailOpen("mail-open"),
     MailPlus("mail-plus"),
+    MapPin("map-pin"),
     MessageCircle("message-circle"),
     MessageCircleOff("message-circle-off"),
     MessageCirclePlus("message-circle-plus"),
@@ -153,6 +158,7 @@ enum class SlockLucideIconName(val wireName: String) {
     MessageSquarePlus("message-square-plus"),
     Monitor("monitor"),
     MonitorX("monitor-x"),
+    Mosaic("mosaic"),
     PackageCheck("package-check"),
     Package("package"),
     Paperclip("paperclip"),
@@ -201,7 +207,9 @@ enum class SlockLucideIconName(val wireName: String) {
     VolumeX("volume-x"),
     Wand("wand"),
     Waypoints("waypoints"),
-    X("x");
+    X("x"),
+    ZoomIn("zoom-in"),
+    ZoomOut("zoom-out");
 
     companion object {
         fun fromWireName(value: String): SlockLucideIconName? =

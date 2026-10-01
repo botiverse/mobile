@@ -359,6 +359,8 @@ private val threadComposerContentPayloadKeys =
         "placeholder",
         "enabled",
         "attachmentActionsEnabled",
+        "originalImageOptionEnabled",
+        "originalImage",
         "showAsTaskToggle",
         "composerMode",
         "statusLabel",
@@ -385,6 +387,13 @@ internal data class KuiklyThreadComposerPayload(
     val placeholder: String = "Message",
     val enabled: Boolean = true,
     val attachmentActionsEnabled: Boolean = true,
+    /** Whether this host surface owns the image policy checkbox. */
+    val originalImageOptionEnabled: Boolean = true,
+    /**
+     * Session-only preference for image attachments.  The draft persistence slice deliberately
+     * does not serialize this value; a new composer starts with compressed images by default.
+     */
+    val originalImage: Boolean = false,
     val showAsTaskToggle: Boolean = true,
     val composerMode: String = "idle",
     val statusLabel: String? = null,
@@ -471,6 +480,8 @@ internal data class ThreadComposerUiState(
     val placeholder: String = "Message",
     val enabled: Boolean = true,
     val attachmentActionsEnabled: Boolean = true,
+    val originalImageOptionEnabled: Boolean = true,
+    val originalImage: Boolean = false,
     val composerMode: String = "idle",
     val statusLabel: String? = null,
     val pendingAttachments: List<KuiklyPendingAttachmentItem> = emptyList(),
@@ -1747,6 +1758,8 @@ internal fun KuiklyThreadComposerPayload.toThreadComposerUiState(): ThreadCompos
         placeholder = placeholder,
         enabled = enabled,
         attachmentActionsEnabled = attachmentActionsEnabled,
+        originalImageOptionEnabled = originalImageOptionEnabled,
+        originalImage = originalImage,
         composerMode = composerMode,
         statusLabel = statusLabel,
         pendingAttachments = pendingAttachments,
@@ -1936,7 +1949,12 @@ internal fun ThreadComposerContent(
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
-    initialMentionActionDetailsVisible: Boolean = false
+    initialMentionActionDetailsVisible: Boolean = false,
+    /**
+     * A4 adoption (task #18): lets the host page share the native-editing reader bound to this
+     * composer's editor so a migration can read the latest value without a second UIKit walk.
+     */
+    externalNativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
 ) {
     val editorOwner = remember(state.instanceId) {
         ThreadComposerControlledEditorOwner(state.seedText, state.seedAsTask)
@@ -1973,6 +1991,7 @@ internal fun ThreadComposerContent(
         onInsertMentionConsumed = onInsertMentionConsumed,
         onSuggestionDemandChanged = onSuggestionDemandChanged,
         initialMentionActionDetailsVisible = initialMentionActionDetailsVisible,
+        externalNativeEditingStateReader = externalNativeEditingStateReader,
     )
 }
 
@@ -2003,6 +2022,7 @@ internal fun ThreadComposerContentLeaf(
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
     initialMentionActionDetailsVisible: Boolean = false,
+    externalNativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
 ) {
     // #192 trace scope extension: wrap the full composer render. IME-lift / state
     // updates / suggestion list filtering are all under this; per-phase breakdown
@@ -2011,8 +2031,9 @@ internal fun ThreadComposerContentLeaf(
     val fieldValue = editorValue
     val text = fieldValue.text
     val asTask = editorAsTask
-    val nativeEditingStateReader =
+    val ownedNativeEditingStateReader =
         remember(state.instanceId, editorSessionId) { SlockTextFieldNativeEditingStateReader() }
+    val nativeEditingStateReader = externalNativeEditingStateReader ?: ownedNativeEditingStateReader
     val sendSnapshotGate =
         remember(state.instanceId, editorSessionId) { ThreadComposerSendSnapshotGate() }
     val submittedEchoFence = remember(state.instanceId) { ThreadComposerSubmittedEchoFence() }

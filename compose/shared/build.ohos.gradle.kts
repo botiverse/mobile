@@ -166,7 +166,7 @@ kotlin {
                 implementation("build.raft.kuiklybase:datetime:0.1.0-raft.0-ohos")
                 // Unified network infra (task #12): all platforms' HTTP goes
                 // through NetworkKMM behind the SlockHttpExecutor seam.
-                implementation("com.tencent.kuiklybase:network:0.1.0-raft.35-ohos")
+                implementation("com.tencent.kuiklybase:network:0.1.0-raft.39-ohos")
             }
         }
         val commonTest by getting {
@@ -198,6 +198,17 @@ kotlin {
             kotlin.srcDir(generatedTmmResourceDir.map { it.dir("ohosArm64Main/src") })
             dependencies {
                 implementation("app.cash.sqldelight:native-driver-ohosarm64:2.1.0-KBA-001")
+                implementation("build.raft.mermaid:mermaid-core:0.1.8-ohos")
+                implementation("build.raft.mermaid:mermaid-layout-api:0.1.8-ohos")
+                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.8-ohos")
+                implementation("build.raft.mermaid:mermaid-kuikly:0.1.8-ohos")
+            }
+        }
+        val ohosArm64Test by getting {
+            dependencies {
+                implementation("build.raft.mermaid:mermaid-core:0.1.8-ohos")
+                implementation("build.raft.mermaid:mermaid-layout-api:0.1.8-ohos")
+                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.8-ohos")
             }
         }
 

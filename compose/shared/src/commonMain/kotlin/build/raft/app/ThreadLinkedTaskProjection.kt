@@ -5,6 +5,7 @@ import build.raft.app.data.SharedTasksDataStoreStatus
 import build.raft.app.data.SharedTasksProjectionSlice
 import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.TasksUiState
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 
@@ -21,6 +22,15 @@ internal fun ThreadLinkedTasksProjection.statusUpdateIntent(
     status: TaskStatus,
 ): SharedTasksRouteIntent.UpdateStatus? =
     taskById(taskId)?.let { task -> SharedTasksRouteIntent.UpdateStatus(task, status) }
+
+// Task #258: thread inline task chip opens the combined task detail panel; the
+// assignee row mutates through the same typed SharedTasksRouteIntent seam the
+// board's assignee pill uses (AssignTask with null assignee = unassigned).
+internal fun ThreadLinkedTasksProjection.assignUpdateIntent(
+    taskId: String,
+    assignee: MemberProfile?,
+): SharedTasksRouteIntent.AssignTask? =
+    taskById(taskId)?.let { task -> SharedTasksRouteIntent.AssignTask(task, assignee) }
 
 internal data class ThreadLinkedTaskReferences(
     val messageIds: Set<String>,

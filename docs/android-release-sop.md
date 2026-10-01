@@ -18,6 +18,10 @@ The versioning formula and user-facing changelog rules are defined in
 [Android Hands Release Practices](android-hands-release-practices-2026-07-02.md).
 This document defines the order of operations and the scripts that enforce it.
 
+For version closeout, branch locking, next-version selection and the required
+Notion release ledger, follow [Release closeout and Notion ledger](mobile-paired-release-sop.md#release-closeout-and-notion-ledger).
+A closed release branch must not receive further fixes or new builds.
+
 ## Roles
 
 - **Release owner** selects the candidate PRs, approves the user-facing
@@ -67,11 +71,21 @@ Once frozen:
 For example, version `1.2.2` build `0` has versionCode `1020200`:
 
 ```text
-versionCode = major * 1_000_000 + minor * 10_000 + patch * 100 + build
+versionCode = major * 10_000_000 + minor * 100_000 + patch * 1_000 + build
 ```
 
 Build `1` is required when rebuilding the same semantic version for a client
 that may already have build `0` installed.
+
+Those coordinates are **dispatch inputs**, not a source-tree requirement.
+`compose/androidApp/build.gradle.kts` computes `versionName` / `versionCode`
+from Gradle properties or `SLOCK_ANDROID_VERSION_*` environment variables,
+with formula fallbacks that produce `1.0.0` / `1000000` when no inputs are
+set. Do not treat those source defaults as a preflight blocker, and do not
+rewrite them into the frozen tree. Allocate the release coordinates, pass
+them to `android-release.yml` (`version_major` / `version_minor` /
+`version_patch` / `version_build` / `version_suffix`), then verify the signed
+artifact carries the allocated values.
 
 ## 2. Run The Preflight
 
@@ -101,14 +115,20 @@ The preflight fails closed when any of these facts is false:
    `origin/release-X.Y.Z`.
 2. Every `--required-pr` is merged and its merge commit is an ancestor of the
    release head.
-3. The release head has a successful `Commit Sign-off` workflow. The Android
-   Release workflow itself is the candidate build/test gate; do not run a
-   separate exact-head `Test` workflow for release.
+3. The Android Release workflow itself is the candidate build/test gate; do
+   not run a separate exact-head `Test` workflow for release.
 4. The pinned Kuikly release has a valid create-last manifest with the exact
    coordinate closure. The release build then resolves those coordinates
    through the standard Gradle/CocoaPods/OHPM surfaces; there is no source
-   checkout or Maven Local fallback in the release lane. Full 920-object
-   readback remains an explicit audit/recovery mode, not an ordinary build step.
+   checkout or Maven Local fallback **for those Kuikly coordinates** in the
+   release lane. Full 920-object readback remains an explicit audit/recovery
+   mode, not an ordinary build step. This Kuikly/Hands rule is enforced by
+   `exclusiveContent` routing `com.tencent.kuikly-open` and `build.hands` to
+   Raft Artifacts. Declaring `mavenLocal()` in Gradle repository lists is not
+   by itself a blocker; it remains available for unrelated local-dev and
+   shared-fork paths. Fail closed only when a pinned Kuikly/Hands coordinate
+   would resolve from mavenLocal, a gitlink, a local Pod/HAR, or a source
+   build.
 5. The OHOS Hands dependency is complete and immutable. For the current public
    OHPM package mode, `oh-package.json5` must use an exact version, the lock
    must bind that version to the official `ohpm.openharmony.cn` HAR with a
@@ -117,9 +137,10 @@ The preflight fails closed when any of these facts is false:
    Historical release branches that still use `file:./libs/hands.har` remain
    supported only when the local HAR is readable and its metadata agrees with
    the exact local manifest/lock record.
-6. The candidate versionCode is strictly greater than the active Hands version
-   returned by the public update endpoint for the selected channel and Android
-   architecture.
+6. The candidate versionCode — computed from the allocated dispatch inputs,
+   not from source-tree placeholders — is strictly greater than the active
+   Hands version returned by the public update endpoint for the selected
+   channel and Android architecture.
 
 The preflight is read-only apart from fetching remote refs and writing its
 optional report. It never uploads artifacts, creates a tag, or activates a
@@ -160,6 +181,23 @@ draft. The canonical wrapper therefore has no skip-draft switch. Reusable QA
 callers remain build-only by explicitly setting `create_hands_draft: false`;
 they cannot enter the manual draft job. See [Android Hands release input
 migration](android-hands-release-migration-2026-07-24.md).
+
+As soon as this draft (or any sibling iOS/OHOS draft for the same train) is
+dispatched, schedule a Raft interval reminder every 10 minutes on the release
+thread. Each firing fresh-reads the GitHub run, Hands draft, and artifact
+identity work still in flight, then posts status. Cancel it only when the
+train is terminal or the owner stops it. Starting a release without this
+reminder is a process defect. The reminder does not authorize activation.
+
+Release smoke is not the QA Acceptance default (login + home + one channel).
+Before activation, the exact APK (`versionName` + `versionCode` + SHA-256)
+must run image picker → Done → composer preview → send → row readback, plus
+oversize sibling admission. Identity receipts do not transfer across
+versionCodes. See [Mobile Paired Release SOP](mobile-paired-release-sop.md)
+section 6. A testbed case list is a dispatch list; it is not auto-executed.
+A hotfix may skip the full matrix only as `NOT RUN · hotfix waiver` with owner,
+scope, compensating check, and follow-up date. Identity receipts are not
+waivable.
 
 Android 1.8 production dispatches default to `dex_packaging=compressed` and
 `jni_packaging=current`. The DEX choice is admitted only with the 45 MiB APK
@@ -216,18 +254,109 @@ The release owner must approve these files before activation.
 
 ## 5. Smoke The Draft
 
-Record the draft release id, share URL, APK SHA-256, source commit, and device
-or emulator used. At minimum validate:
+Smoke is a **hard gate** before activation. Record the draft release id, share
+URL, APK SHA-256, source commit, device or emulator, and the smoke manifest
+revision used. The QA Acceptance default goal (login + home + one channel) is
+**not** release smoke; a login/home pass must never be recorded as a complete
+smoke pass.
 
-1. Fresh install and launch reach the expected app/session state.
-2. The selected user-visible changes work on the candidate package.
-3. Updating from a lower versionCode reaches the Android package installer.
-4. A device already at the candidate versionCode reports no further update.
-5. Crash/deobfuscation support artifacts exist when the build produced them.
-6. Draft visibility remains isolated from the public `main` update endpoint.
+### 5.1 Carrier identity binding (not waivable)
+
+Every identity and functional receipt is bound to the exact carrier. A PASS on
+one versionCode does not transfer to a later build of the same marketing
+version. For each APK under test record and reconcile five points so the bytes
+the owner approved are the bytes the device ran:
+
+1. Announced SHA-256 (this SOP's publish step);
+2. Independent re-download from the Hands share `/download` link;
+3. Bytes after `adb push` onto the device (re-hash, do not trust the push
+   exit code — silent truncation has shipped a half APK before);
+4. `/data/app` readback of the package Android actually installed;
+5. `dumpsys package` readback of `versionCode` / `versionName` /
+   `firstInstallTime` / `lastUpdateTime`.
+
+Bind every receipt to `versionName` + `versionCode` + source commit +
+SHA-256 + signer digests + CI run id. An upgrade cell must additionally show
+`firstInstallTime` unchanged and `lastUpdateTime` advanced.
+
+**No-adb identity surface.** The release owner does not have adb. To verify the
+installed build without `dumpsys`, the installed `versionName` carries the
+source commit as SemVer build metadata (`1.12.0+<short-sha>`, appended by
+`compose/androidApp/build.gradle.kts`) and is shown under Android Settings →
+Apps → Raft → App details. A "clean" release means no pre-release suffix
+(`1.12.0`, not `1.12.0-rc1`); the `+<short-sha>` part is always present on a
+release build. An agent/QA seat with adb still
+reconciles `versionCode` + SHA-256 + signers per the five-point chain above;
+the owner-visible `versionName` is the cross-check that the UI reports the same
+train. Never let a `versionName`-only reading stand in for the `versionCode`/
+SHA-256 half of the binding.
+
+### 5.2 The 46-cell smoke checklist
+
+Freeze a case manifest and revision per train; each cell needs a terminal
+assertion and one of `PASS` / `FAIL` / `NOT RUN` / `NOT PROVIDED` /
+`NOT COVERED` / undecided — never an inferred PASS. The checklist is grouped so
+a carrier or seat limit lands on a named cell, not on the whole gate. Cells
+the build or device structurally cannot run are `NOT COVERED` with the seat
+limitation written down, not silently dropped.
+
+- **Identity & install (8):** announced-vs-downloaded SHA-256 equality; push
+  byte-size + double-hash; `/data/app` readback equality; `versionCode`/
+  `versionName` readback; signer-digest continuity (v2/v3 + v3.1 lineage);
+  fresh install launches; in-place upgrade preserves `firstInstallTime` and
+  advances `lastUpdateTime`; `debuggable=false` (release lineage, not a debug
+  build).
+- **Session & auth (6):** cold start reaches expected session state; login
+  persists across force-stop/relaunch; logout revokes the token server-side
+  (control-arm verified — a stale token must 401 while a same-moment other
+  freshly minted token stays 200 — the positive arm proves the 401 is
+  discriminative, not an auth-plane outage); no orphaned session after
+  upgrade; auth-resume lands on
+  the right surface; server selection preserved.
+- **Core surfaces (12):** Home renders; channel list renders; open a channel;
+  thread/timeline renders with history; composer opens; send a message and
+  read it back on the row; receive a realtime message; Activity/notification
+  surface; search; saved/pinned; settings pages render; scroll a long list
+  without dropped tiles or blank cells.
+- **Attachments & upload (8):** image picker → Done → composer preview → send
+  → server/row readback (`select-and-upload-image`); upload size limits are
+  readable; an oversized sibling is dropped while remaining files upload;
+  file-attachment path is a separate cell (an image PASS does not cover it);
+  avatar loads in list + on viewport scroll; download/save an attachment;
+  attachment thumbnail/preview; retry after injected network failure.
+- **Stability & performance (8):** cold-start latency recorded as a
+  `min/median/max` range over ≥5 samples (never a single point); four core
+  pages render within the recorded magnitude band; process `pid` stable across
+  the run; zero `FATAL`/ANR; no crash on upgrade path; background→foreground
+  resume repaints correctly; memory/battery within the recorded band; no
+  watchdog/hang on a long scroll.
+- **Isolation & negative cells (4):** draft stays isolated from the public
+  `main` update endpoint until activation; a device already at the candidate
+  versionCode reports no further update; a non-member/random principal gets a
+  negative resolver; control-arm sanity (a deliberately wrong token/input
+  fails) so the probes have discriminative power.
 
 For a risky release, add the targeted regression and a fresh performance/visual
 artifact before asking for activation.
+
+### 5.3 Upload path
+
+The Hands upload chain is part of the gate, not an afterthought: the signed
+`androidApp-<variant>.apk` (never the misleading `-unsigned` intermediate),
+metadata, and native symbols must land on the same draft. The draft's recorded
+SHA-256, the announced APK SHA-256, and the §5.1 point-2 re-downloaded bytes
+are one and the same check — not three requirements. A share page is optional
+for smoke; the release must never be activated off an unverified upload. The
+`/download` link must resolve to the exact carrier bytes.
+
+### 5.4 Waiver
+
+A **hotfix** train may skip the full matrix only with a recorded owner
+exception: `release_mode=hotfix`, waiver owner, scope, expiry/follow-up date,
+skipped cells, compensating checks on the affected path, and risk. Skipped
+cells are `NOT RUN · hotfix waiver`, never PASS. The §5.1 carrier-identity
+binding and the §5.3 upload path are **not** waivable, and an affected core
+cell on the hotfix path is not silently skipped.
 
 ## 6. Activate Only On Explicit Approval
 
@@ -254,7 +383,7 @@ hands whoami
 ```
 
 Hands CLI `0.5.2` or newer is required for `HANDS_BEARER_TOKEN`. The finalizer
-falls back to `@botiverse/hands-cli@0.5.2` from the official npm registry when
+falls back to `@botiverse/hands-cli@0.5.17` from the official npm registry when
 `hands` is not installed. This avoids delayed package-mirror propagation;
 override `HANDS_NPM_REGISTRY` only for a trusted registry that already carries
 the required CLI version.
@@ -294,10 +423,11 @@ scripts/finalize_android_hands_release.sh \
 `--confirm-publish` is deliberately mandatory. It is an operator assertion
 that the owner has given the release go; it is not a replacement for that go.
 
-After the public verification passes, create the annotated `vX.Y.Z` tag only
-if the release owner wants a git audit tag. The tag must point at the verified
-source commit and must never be used to re-trigger the Android release
-workflow. iOS uses a separate platform- and build-qualified audit tag because
+After the public verification passes, create and push the annotated `vX.Y.Z`
+git audit tag. This is required, not optional (artin, 2026-09-27). The tag
+must point at the verified source commit, its message should record the
+versionCode, Hands release id, APK SHA-256 and CI run, and it must never be
+used to re-trigger the Android release workflow. iOS uses a separate platform- and build-qualified audit tag because
 its marketing version can stay fixed across TestFlight builds; follow
 [iOS Hands Release Practices](ios-hands-release-practices-2026-07-09.md#post-delivery-git-audit-tag)
 instead of reusing an Android `vX.Y.Z` tag.
@@ -311,7 +441,7 @@ history.
 After activation and public endpoint verification:
 
 1. Record the released source commit, versionCode, Hands release id, APK
-   SHA-256, approved notes, smoke evidence, and optional audit tag.
+   SHA-256, approved notes, smoke evidence, and the `vX.Y.Z` audit tag.
 2. Open a PR from `release-X.Y.Z` to `main`. Do not push directly to `main`.
 3. Review the complete merge diff. `main` may have advanced during
    stabilization, so resolve conflicts by preserving both the shipped fixes

@@ -5,6 +5,7 @@ import build.raft.app.base.Utils
 import build.raft.app.base.reduceAttachmentDownloadProgress
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.components.SlockCheckbox
 import build.raft.app.components.SlockRaftUiControlledMenu
 import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.data.DataRequestPriority
@@ -13,13 +14,17 @@ import build.raft.app.data.AttachmentPreviewContent
 import build.raft.app.data.AuthenticatedRouteAuthorityGateway
 import build.raft.app.data.AuthenticatedRouteOperationRunner
 import build.raft.app.data.AuthenticatedRouteOwner
+import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.parseSharedAttachmentPreview
+import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.DataResult
 import build.raft.app.data.NetworkSlockThreadApi
+import build.raft.app.data.PlatformFile
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedPreferenceStore
+import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.data.SlockEventBus
 import build.raft.app.data.SlockEventBuses
 import build.raft.app.data.SlockSharedStoreRegistry
@@ -30,16 +35,19 @@ import build.raft.app.data.SlockThreadApiClient
 import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadApiResult
+import build.raft.kuiklybase.datetime.Clock
 import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
 import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.model.MemberId
 import build.raft.app.model.SlockWorkspaceFilePreview
+import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.network.binaryDownloadUrlDiagnostics
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
@@ -51,6 +59,7 @@ import androidx.compose.runtime.withFrameNanos
 import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.gestures.detectDragGestures
 import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
@@ -89,6 +98,7 @@ import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.ImageBitmap
 import com.tencent.kuikly.compose.ui.graphics.StrokeCap
 import com.tencent.kuikly.compose.ui.graphics.drawscope.DrawScope
+import com.tencent.kuikly.compose.ui.graphics.drawscope.Stroke
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
@@ -124,22 +134,354 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.launch
-import kotlin.math.floor
+import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 import kotlin.random.Random
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
+import kotlin.time.Duration.Companion.milliseconds
 
 internal const val SLOCK_FILE_PREVIEW_PAGE = "compose_file_preview"
 internal const val SLOCK_COMPOSER_IMAGE_EDIT_EVENT = "slock.composerImageEdit"
+/** Stable fail-closed code shared by every host's editor-output compressor. */
+internal const val SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE =
+    "attachment_image_compression_failed"
+
+/** Source marker required on a successful native editor-output compression response. */
+internal const val SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE = "composer_image_compressor"
+
+/** Source marker for an editor result that was delivered without a JPEG compression pass. */
+internal const val SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE = "composer_image_editor"
+
+/**
+ * Resolve the source marker carried by a successful composer-image event from the explicit
+ * finalization state.  Do not infer this from a MIME string: an original JPEG and a compressor
+ * JPEG have the same MIME but different session semantics.
+ */
+internal fun slockFilePreviewComposerImageEventSource(compressed: Boolean): String =
+    if (compressed) {
+        SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE
+    } else {
+        SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE
+    }
+
+/**
+ * Validate the two fields which identify how an editor result was finalized.  The check is kept
+ * in common code so producers and consumers share one closed vocabulary.  A compressor result
+ * must be the literal JPEG representation; an uncompressed editor result must still be an image.
+ */
+internal fun slockFilePreviewComposerImageEventMetadataIsValid(
+    source: String,
+    compressed: Boolean,
+    mimeType: String
+): Boolean {
+    val cleanSource = source.trim()
+    val normalizedMimeType =
+        mimeType
+            .trim()
+            .substringBefore(';')
+            .lowercase()
+    return when (cleanSource) {
+        SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE ->
+            // Compression response admission uses the same literal wire value.  Do not let a
+            // MIME parameter or case-normalized provider value masquerade as a proven JPEG.
+            compressed && mimeType.trim() == "image/jpeg"
+        SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE ->
+            !compressed && normalizedMimeType.startsWith("image/")
+        else -> false
+    }
+}
+
+/**
+ * The wire fields shared by every composer-image event consumer.
+ *
+ * Event data crosses a native/event-bus boundary, so `optString`/`optBoolean` defaults are not
+ * safe here: a missing value must not be indistinguishable from a producer explicitly sending a
+ * default.  Keep the type and presence checks in one parser so Thread and Settings cannot drift.
+ */
+internal data class SlockFilePreviewComposerImageEventPayload(
+    val previewSessionId: String,
+    val threadKey: String,
+    val actionId: String,
+    val action: String,
+    val fileRef: String,
+    val previewUri: String,
+    val fileName: String,
+    val mimeType: String,
+    val source: String,
+    val compressed: Boolean,
+    val sizeBytes: Long?,
+    val groupId: String?,
+    val groupIndex: Int?,
+    val groupTotal: Int?,
+    /** task #286: explicit target slot when action=="replace"; blank for "complete" events. */
+    val replaceAttachmentId: String
+)
+
+private fun JSONObject.requiredComposerImageEventString(key: String): String? {
+    if (!has(key)) return null
+    return (opt(key) as? String)?.trim()?.takeIf { it.isNotBlank() }
+}
+
+private fun JSONObject.requiredComposerImageEventBoolean(key: String): Boolean? {
+    if (!has(key)) return null
+    // Do not use optBoolean: the Kuikly JSON implementation intentionally coerces strings such
+    // as "true", while this event contract requires a real JSON Boolean.
+    return opt(key) as? Boolean
+}
+
+private fun JSONObject.optionalComposerImageEventLong(key: String): Long? {
+    if (!has(key)) return null
+    val value = opt(key) as? Number ?: return null
+    val longValue = value.toLong()
+    // Producers only emit a positive integral size. Reject fractional/negative values instead of
+    // silently truncating a malformed native envelope.
+    if (value.toDouble() != longValue.toDouble() || longValue <= 0L) return null
+    return longValue
+}
+
+private fun JSONObject.optionalComposerImageEventInt(key: String): Int? {
+    if (!has(key)) return null
+    val value = opt(key) as? Number ?: return null
+    val intValue = value.toInt()
+    if (value.toDouble() != intValue.toDouble()) return null
+    return intValue
+}
+
+/**
+ * Parse and validate a composer-image event without applying a consumer-specific ownership
+ * policy.  Settings and Thread both call this function before claiming/adopting the file.
+ */
+internal fun parseSlockFilePreviewComposerImageEvent(
+    data: JSONObject,
+    requireGroup: Boolean = false
+): SlockFilePreviewComposerImageEventPayload? {
+    val previewSessionId = data.requiredComposerImageEventString("previewSessionId") ?: return null
+    val threadKey = data.requiredComposerImageEventString("threadKey") ?: return null
+    val actionId = data.requiredComposerImageEventString("actionId") ?: return null
+    val action = data.requiredComposerImageEventString("action") ?: return null
+    if (action != "complete" && action != "replace") return null
+    val replaceAttachmentId =
+        data.requiredComposerImageEventString("replaceAttachmentId").orEmpty()
+    if (action == "replace" && replaceAttachmentId.isBlank()) return null
+    val fileRef = data.requiredComposerImageEventString("fileRef") ?: return null
+    val previewUri = data.requiredComposerImageEventString("previewUri") ?: return null
+    val fileName = data.requiredComposerImageEventString("fileName") ?: return null
+    val mimeType = data.requiredComposerImageEventString("mimeType") ?: return null
+    val source = data.requiredComposerImageEventString("source") ?: return null
+    val compressed = data.requiredComposerImageEventBoolean("compressed") ?: return null
+    if (!slockFilePreviewComposerImageEventMetadataIsValid(source, compressed, mimeType)) return null
+
+    val sizeBytes =
+        if (data.has("sizeBytes")) {
+            data.optionalComposerImageEventLong("sizeBytes") ?: return null
+        } else {
+            null
+        }
+    val groupId =
+        if (data.has("groupId")) {
+            data.requiredComposerImageEventString("groupId") ?: return null
+        } else {
+            null
+        }
+    val groupIndex =
+        if (data.has("groupIndex")) {
+            data.optionalComposerImageEventInt("groupIndex") ?: return null
+        } else {
+            null
+        }
+    val groupTotal =
+        if (data.has("groupTotal")) {
+            data.optionalComposerImageEventInt("groupTotal") ?: return null
+        } else {
+            null
+        }
+    val hasAnyGroupField = groupId != null || groupIndex != null || groupTotal != null
+    if (requireGroup && (groupId == null || groupIndex == null || groupTotal == null)) return null
+    if (hasAnyGroupField && (groupId == null || groupIndex == null || groupTotal == null)) return null
+    if (groupId != null) {
+        val index = groupIndex ?: return null
+        val total = groupTotal ?: return null
+        if (index < 0 || total <= 0 || index >= total) return null
+    }
+
+    return SlockFilePreviewComposerImageEventPayload(
+        previewSessionId = previewSessionId,
+        threadKey = threadKey,
+        actionId = actionId,
+        action = action,
+        fileRef = fileRef,
+        previewUri = previewUri,
+        fileName = fileName,
+        mimeType = mimeType,
+        source = source,
+        compressed = compressed,
+        sizeBytes = sizeBytes,
+        groupId = groupId,
+        groupIndex = groupIndex,
+        groupTotal = groupTotal,
+        replaceAttachmentId = replaceAttachmentId
+    )
+}
+
+/**
+ * A page-local token for an editor/gallery compression operation.
+ *
+ * The native bridge is asynchronous and a capture callback can outlive the page that requested
+ * it.  The generation makes a late callback from an older request unmatchable even when a new
+ * request is started with the same action id.  [retire] is permanent for the page instance.
+ */
+internal data class SlockFilePreviewComposerImageOperationToken(
+    val generation: Long,
+    val requestId: String
+)
+
+internal class SlockFilePreviewComposerImageOperationGate(
+    private val requestIdFactory: (Long) -> String = { generation ->
+        "file-preview-image-compress-$generation"
+    }
+) {
+    private val lock = SynchronizedObject()
+    private var nextGeneration = 0L
+    private var active: SlockFilePreviewComposerImageOperationToken? = null
+    private var retired = false
+
+    fun begin(requestId: String = ""): SlockFilePreviewComposerImageOperationToken? =
+        synchronized(lock) {
+            if (retired || active != null) return@synchronized null
+            nextGeneration += 1L
+            val generation = nextGeneration
+            val cleanRequestId = requestId.trim().ifBlank { requestIdFactory(generation) }
+            SlockFilePreviewComposerImageOperationToken(generation, cleanRequestId).also {
+                active = it
+            }
+        }
+
+    fun isCurrent(token: SlockFilePreviewComposerImageOperationToken): Boolean =
+        synchronized(lock) { !retired && active == token }
+
+    /** Atomically consumes the operation. A duplicate/late completion returns false. */
+    fun complete(token: SlockFilePreviewComposerImageOperationToken): Boolean =
+        synchronized(lock) {
+            if (retired || active != token) return@synchronized false
+            active = null
+            true
+        }
+
+    /** Cancels one operation without retiring the page (the user may retry). */
+    fun cancel(token: SlockFilePreviewComposerImageOperationToken): Boolean =
+        synchronized(lock) {
+            if (retired || active != token) return@synchronized false
+            active = null
+            true
+        }
+
+    /** Invalidates every outstanding callback for this page instance. */
+    fun retire() = synchronized(lock) {
+        retired = true
+        active = null
+    }
+
+    fun activeToken(): SlockFilePreviewComposerImageOperationToken? = synchronized(lock) { active }
+}
+
+internal sealed interface SlockFilePreviewCompressedImageResult {
+    data class Success(val file: PlatformFile) : SlockFilePreviewCompressedImageResult
+
+    data class Failure(
+        val errorCode: String = SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE,
+        val message: String = "Unable to compress image attachment"
+    ) : SlockFilePreviewCompressedImageResult
+}
+
+/**
+ * Parse the strict shared/native compression response.  A response is accepted only when the
+ * native side returned exactly one JPEG produced by the composer compressor.  In particular,
+ * an arbitrary picker file or a missing body is never treated as a successful compression.
+ */
+internal fun parseSlockFilePreviewCompressedImageResult(
+    response: JSONObject?
+): SlockFilePreviewCompressedImageResult {
+    val code = response?.optInt("code", -1) ?: -1
+    if (code != 200) {
+        return SlockFilePreviewCompressedImageResult.Failure(
+            // Keep the product-facing failure taxonomy stable even when a host
+            // returns an unknown/malformed provider-specific code.
+            errorCode = SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE,
+            message =
+                response
+                    ?.optString("errorBodyText")
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: "Unable to compress image attachment"
+        )
+    }
+    val filesJson =
+        response?.optJSONArray("files")
+            ?: response?.optString("bodyText")
+                .orEmpty()
+                .takeIf { it.isNotBlank() }
+                ?.let { bodyText ->
+                    runCatching { JSONObject(bodyText).optJSONArray("files") }.getOrNull()
+                }
+    if (filesJson == null || filesJson.length() != 1) {
+        return SlockFilePreviewCompressedImageResult.Failure()
+    }
+    val rawFile = filesJson.optJSONObject(0) ?: return SlockFilePreviewCompressedImageResult.Failure()
+    // parseSharedThreadPickedPlatformFiles supplies compatibility defaults (for example an
+    // attachment-N file name).  Compression is stricter: every required field must be present in
+    // the native envelope itself, so a malformed response can never be promoted accidentally.
+    val rawFileRef = rawFile.optString("fileRef").trim()
+    val rawFileName = rawFile.optString("fileName").trim()
+    // MIME is an exact wire contract here.  Do not normalize case or strip
+    // parameters: a host response with anything other than literal
+    // `image/jpeg` is not proof that a JPEG was produced.
+    val rawMimeType = rawFile.optString("mimeType").trim()
+    val rawSource = rawFile.optString("source").trim()
+    if (
+        rawFileRef.isBlank() ||
+            rawFileName.isBlank() ||
+            rawMimeType != "image/jpeg" ||
+            rawSource != SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE
+    ) {
+        return SlockFilePreviewCompressedImageResult.Failure()
+    }
+    val files = parseSharedThreadPickedPlatformFiles(response)
+    if (files.size != 1) {
+        return SlockFilePreviewCompressedImageResult.Failure()
+    }
+    val file = files.single()
+    val mimeType = file.mimeType.orEmpty().trim()
+    if (
+        file.fileRef?.trim() != rawFileRef ||
+            file.fileName.trim() != rawFileName ||
+            mimeType != "image/jpeg" ||
+            file.source.trim() != rawSource
+    ) {
+        return SlockFilePreviewCompressedImageResult.Failure()
+    }
+    return SlockFilePreviewCompressedImageResult.Success(
+        file.copy(mimeType = "image/jpeg", source = SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE)
+    )
+}
+
+/** Any file refs in a malformed/failed response are still retired; they are never adopted. */
+internal fun slockFilePreviewCompressionResponseFileRefs(response: JSONObject?): Set<String> =
+    parseSharedThreadPickedPlatformFiles(response)
+        .mapNotNull { it.fileRef?.trim()?.takeIf { ref -> ref.isNotBlank() } }
+        .toSet()
 
 // task #113: whole-group edit-session result reconciliation (pure). A consumer
 // (e.g. Settings feedback draft) accumulates per-image edit events for a group and
@@ -960,13 +1302,77 @@ internal object SlockFilePreviewLaunchPayloadStore {
 }
 
 /**
+ * task #287: process-local memo for signed attachment URLs used by remote
+ * File Preview routes. The signed URL is owner-scoped, so the key carries the
+ * normalized durable owner; entries expire on a fixed TTL because the wire
+ * `expiresAt` is advisory-only today and a conservative clock window is the
+ * safer bound. Re-opening the same image inside the TTL skips both the REST
+ * round-trip and the re-download (the image cache stays warm on the same URL).
+ */
+internal data class SlockFilePreviewAttachmentUrlCacheKey(
+    val owner: AuthenticatedRouteOwner,
+    val attachmentId: String,
+    val disposition: String,
+)
+
+internal class SlockFilePreviewAttachmentUrlCache(
+    private val maxEntries: Int = 64
+) {
+    private val lock = SynchronizedObject()
+    private val entries = LinkedHashMap<SlockFilePreviewAttachmentUrlCacheKey, Pair<String, TimeMark>>()
+
+    fun get(key: SlockFilePreviewAttachmentUrlCacheKey): String? {
+        val entry =
+            synchronized(lock) {
+                entries[key] ?: return null
+            }
+        return if (!entry.second.hasPassedNow()) entry.first else null
+    }
+
+    /**
+     * @param expiresAtEpochMillis wall-clock expiry parsed from the wire `expiresAt`; when null
+     * (absent/unparseable) the URL lifetime is unknown and the entry is NOT stored.
+     * @param expirySafetyMarginMillis subtracted from `expiresAt` so a nearly-dead URL is never
+     * replayed (default 60 s). Entries that would expire inside the margin are not stored.
+     */
+    fun put(
+        key: SlockFilePreviewAttachmentUrlCacheKey,
+        url: String,
+        expiresAtEpochMillis: Long? = null,
+        expirySafetyMarginMillis: Long = 60_000L
+    ) {
+        val trimmed = url.trim()
+        if (trimmed.isEmpty()) return
+        // expiresAt absent/unparseable => lifetime unknown => never cache (Argus review on
+        // PR #2618): caching a URL of unknown TTL is exactly the case that can 403 later.
+        val serverExpiry = expiresAtEpochMillis ?: return
+        val lifetimeMillis = serverExpiry - currentEpochMillis() - expirySafetyMarginMillis
+        if (lifetimeMillis <= 0) return
+        synchronized(lock) {
+            entries[key] = trimmed to TimeSource.Monotonic.markNow().plus(lifetimeMillis.milliseconds)
+            while (entries.size > maxEntries) {
+                val oldest = entries.keys.firstOrNull() ?: break
+                entries.remove(oldest)
+            }
+        }
+    }
+
+    internal var currentEpochMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() }
+}
+
+private val ProcessSlockFilePreviewAttachmentUrlCache = SlockFilePreviewAttachmentUrlCache()
+
+internal fun slockFilePreviewAttachmentUrlCache(): SlockFilePreviewAttachmentUrlCache =
+    ProcessSlockFilePreviewAttachmentUrlCache
+
+/**
  * File Preview's route-local authenticated operation boundary. The durable
  * owner is identity-only; every network operation captures a fresh transient
  * receipt and drops a late result when environment/account/token/selection
  * authority changes while the request is in flight.
  */
 internal class SlockFilePreviewRemoteOperationScope(
-    owner: AuthenticatedRouteOwner,
+    internal val owner: AuthenticatedRouteOwner,
     gateway: AuthenticatedRouteAuthorityGateway
 ) {
     private val runner = AuthenticatedRouteOperationRunner(owner, gateway)
@@ -1017,8 +1423,66 @@ private suspend fun SlockFilePreviewRemoteOperationScope.loadPreview(
     diagnosticsLogger: (String) -> Unit,
     memberWarningLogger: (String) -> Unit,
     memberLogger: (String) -> Unit
-): DataResult<SlockFilePreviewPayload?> =
-    run { networkClient ->
+): DataResult<SlockFilePreviewPayload?> {
+    // task #287: reuse the signed image URL inside its TTL so a repeated
+    // preview open skips both the REST call and the re-download.
+    if (payload.source == SlockFilePreviewSourceThreadAttachment &&
+        payload.kind == "loading" &&
+        payload.requestedKind == "image"
+    ) {
+        val cacheKey =
+            owner.normalizedOrNull()?.let { normalizedOwner ->
+                SlockFilePreviewAttachmentUrlCacheKey(
+                    owner = normalizedOwner,
+                    attachmentId = payload.attachmentId.trim(),
+                    disposition = "inline"
+                )
+            }
+        val cachedUrl =
+            cacheKey?.takeIf { it.attachmentId.isNotBlank() }
+                ?.let(slockFilePreviewAttachmentUrlCache()::get)
+        if (cachedUrl != null) {
+            diagnosticsLogger(
+                "attachment_url cache=hit attachment=${payload.attachmentId.take(8)}"
+            )
+            return DataResult.Content(
+                payload.copy(
+                    kind = "image",
+                    titleDesc = MR.strings.file_preview_image.desc(),
+                    imageUrl = cachedUrl,
+                    message = "",
+                    messageDesc = null,
+                    error = null
+                )
+            )
+        }
+        var resolvedExpiresAt: String? = null
+        val result =
+            run { networkClient ->
+                DataResult.Content(
+                    payload.loadThreadAttachmentPreview(
+                        threadApi = filePreviewThreadApi(networkClient, diagnosticsLogger),
+                        networkClient = networkClient,
+                        truncatedPreviewHint = truncatedPreviewHint,
+                        expiresAtSink = { resolvedExpiresAt = it }
+                    )
+                )
+            }
+        val resolved = (result as? DataResult.Content)?.data
+        if (cacheKey != null && resolved?.kind == "image" && !resolved.imageUrl.isNullOrBlank()) {
+            slockFilePreviewAttachmentUrlCache().put(
+                key = cacheKey,
+                url = resolved.imageUrl.orEmpty(),
+                expiresAtEpochMillis = parseSlockTimestampEpochMillisOrNull(resolvedExpiresAt)
+            )
+            diagnosticsLogger(
+                "attachment_url cache=store attachment=${payload.attachmentId.take(8)} " +
+                    "expiresAt=${resolvedExpiresAt ?: "none"}"
+            )
+        }
+        return result
+    }
+    return run { networkClient ->
         val next =
             when (payload.source) {
                 SlockFilePreviewSourceThreadAttachment ->
@@ -1042,6 +1506,7 @@ private suspend fun SlockFilePreviewRemoteOperationScope.loadPreview(
             }
         DataResult.Content(next)
     }
+}
 
 private suspend fun SlockFilePreviewRemoteOperationScope.resolveExternalUrl(
     payload: SlockFilePreviewPayload,
@@ -1063,6 +1528,8 @@ internal data class SlockFilePreviewPayload(
     val content: String = "",
     val markdown: Boolean = false,
     val imageUrl: String? = null,
+    /** task #351: serialized [SlockFilePreviewXlsxCarrier] payload for the xlsx preview panel. */
+    val xlsxSheetsJson: String = "",
     val message: String = "",
     val messageDesc: StringDesc? = MR.strings.file_preview_no_preview.desc(),
     val error: String? = null,
@@ -1091,6 +1558,21 @@ internal data class SlockFilePreviewPayload(
     /** Cache-owned refs are kept process/persistence-local and never serialized into route data. */
     val composerImageOwnedTemporaryFileRefs: List<String> = emptyList(),
     val composerImageReplaceAttachmentId: String = "",
+    /**
+     * Whether the editor output must make a second, host-owned JPEG compression pass before it
+     * is delivered to the composer.  This is intentionally process-local and defaults to false
+     * so non-composer previews cannot accidentally invoke the compressor.
+     */
+    val composerImageCompressAfterEdit: Boolean = false,
+    /**
+     * Thread composer confirm screens may expose the Original image policy. Feedback and
+     * ordinary file previews leave this false so they cannot inherit a composer-only control.
+     */
+    val composerImageOriginalOptionEnabled: Boolean = false,
+    /** True once the currently selected composer image has a final deliverable. */
+    val composerImageEditCompleted: Boolean = false,
+    /** True only when that final deliverable is the JPEG returned by the compressor. */
+    val composerImageCompressed: Boolean = false,
     val composerImageCanComplete: Boolean = false,
     val composerImageCanEdit: Boolean = false
 )
@@ -1105,7 +1587,16 @@ internal data class SlockFilePreviewGalleryImage(
     val composerImageFileRef: String = "",
     val composerImagePreviewUri: String = "",
     val composerImageSizeBytes: Long? = null,
-    val composerImageOwnedTemporary: Boolean = false
+    val composerImageOwnedTemporary: Boolean = false,
+    /**
+     * Exact existing composer slot targeted by this editor item. Blank means a fresh picker
+     * item, whose consumer should replace its synthetic local admission id.
+     */
+    val composerImageReplaceAttachmentId: String = "",
+    /** Explicit process-local finalization state; do not infer this from MIME type. */
+    val composerImageEditCompleted: Boolean = false,
+    /** True only for a successful composer-image JPEG compression result. */
+    val composerImageCompressed: Boolean = false
 )
 
 internal fun slockFilePreviewComposerImageGalleryActionId(
@@ -1115,7 +1606,7 @@ internal fun slockFilePreviewComposerImageGalleryActionId(
 ): String = "$baseActionId-gallery-$index-$attachmentId"
 
 private fun SlockFilePreviewPayload.ephemeralComposerActionIds(): Set<String> {
-    val baseActionId = composerImageActionId.trim().takeIf(String::isNotBlank) ?: return emptySet()
+    val baseActionId = composerImageActionId.trim().takeIf { it.isNotBlank() } ?: return emptySet()
     return if (imageGallery.isEmpty()) {
         setOf(baseActionId)
     } else {
@@ -1155,6 +1646,48 @@ private fun SlockFilePreviewPayload.toEphemeralSessionRegistrationOrNull(
         actionIds = actionIds,
         ownedTemporaryFileRefs = ownedEphemeralComposerFileRefs()
     )
+}
+
+/**
+ * Build composer-image delivery events as one atomic batch.
+ *
+ * A gallery is an N/N handoff: dropping a malformed member would make the consumer observe a
+ * partial edit group and could leave the omitted temporary file without a delivery owner.  The
+ * mapper therefore returns an empty list as soon as any gallery member cannot produce an event.
+ * The single-image branch keeps the legacy no-group shape while resolving grouped single images
+ * to the explicit N=1 contract.
+ */
+internal fun <T> slockFilePreviewComposerImageEventsForPayload(
+    eventPayload: SlockFilePreviewPayload,
+    singleEvent: (groupId: String, groupIndex: Int, groupTotal: Int) -> T?,
+    galleryEvent: (
+        index: Int,
+        image: SlockFilePreviewGalleryImage,
+        groupId: String,
+        groupTotal: Int
+    ) -> T?
+): List<T> {
+    val gallery = eventPayload.imageGallery
+    val groupId = eventPayload.composerImageGroupId
+    if (gallery.isEmpty()) {
+        return listOfNotNull(
+            singleEvent(
+                groupId,
+                eventPayload.imageGalleryIndex.coerceAtLeast(0),
+                SlockImageEditGroupReconcile.resolveGroupTotal(groupId, gallery.size)
+            )
+        )
+    }
+
+    val groupTotal = gallery.size
+    return gallery.mapIndexed { index, image ->
+        galleryEvent(
+            index,
+            image,
+            groupId,
+            groupTotal
+        ) ?: return emptyList()
+    }
 }
 
 @Page(SLOCK_FILE_PREVIEW_PAGE, supportInLocal = true)
@@ -1276,6 +1809,12 @@ private fun SlockFilePreviewStandalonePageContent() {
             SlockComposerImageEditorState()
         }
     var composerImageEditSaving by remember(payload.composerImageActionId) { mutableStateOf(false) }
+    var composerImageFinalizing by remember(payload.composerImageActionId) { mutableStateOf(false) }
+    val composerImageOperationGate =
+        remember(launchPayloadTrace.sessionId, payload.composerImageActionId) {
+            SlockFilePreviewComposerImageOperationGate()
+        }
+    val activeComposerImageOperationJob = remember { mutableStateOf<Job?>(null) }
     val composerImageEditCaptureOwner =
         SlockComposerImageEditCaptureOwner(
             actionId = payload.composerImageActionId,
@@ -1375,6 +1914,7 @@ private fun SlockFilePreviewStandalonePageContent() {
             unableToDownloadAttachment = unableToDownloadAttachment,
             noAppCanOpenFile = noAppCanOpenFile,
             storageUnavailable = storageUnavailable,
+            downloadFailed = downloadFailed,
             unableToOpenAttachment = unableToOpenAttachment
         )
     val imageEditorLoading = stringResource(MR.strings.file_preview_error_editor_loading)
@@ -1888,6 +2428,32 @@ private fun SlockFilePreviewStandalonePageContent() {
             ) as? DataResult.Content
         )?.data
     }
+
+    /**
+     * task #319: a private staging copy may already exist for an attachment the user
+     * already opened/downloaded. Probe the cache before resolving a fresh signed URL —
+     * on a hit the caller can open the local file directly and skip the
+     * `attachments/{id}/url` round-trip (and the no-op download flow it used to spin up).
+     * Returns a `file://` URL for the cached file, or null when there is no usable
+     * private copy (or the payload is not a thread attachment).
+     */
+    suspend fun slockFilePreviewPrivateCachedOpenUrl(
+        payload: SlockFilePreviewPayload,
+        owner: AttachmentOwnerLease
+    ): String? {
+        if (payload.source != SlockFilePreviewSourceThreadAttachment) return null
+        val status =
+            bridge.attachmentCacheStatus(
+                attachmentId = payload.attachmentCacheId(),
+                fileName = payload.attachmentCacheFileName(),
+                owner = owner,
+                mimeType = payload.externalMimeType
+            ) ?: return null
+        if (!status.optBoolean("privateCached", false)) return null
+        val path = status.optString("privatePath").takeIf { it.isNotBlank() } ?: return null
+        return "file://$path"
+    }
+
     suspend fun openPayloadExternally(
         currentPayload: SlockFilePreviewPayload,
         policy: SlockFilePreviewExternalOpenPolicy,
@@ -1908,6 +2474,15 @@ private fun SlockFilePreviewStandalonePageContent() {
                         // Native code will fail closed before private materialization if readback misses.
                         currentPayload.externalUrl.orEmpty()
                     } else if (currentPayload.source == SlockFilePreviewSourceThreadAttachment) {
+                        // task #319: a private staging copy may already exist for an
+                        // attachment the user already opened/downloaded. Probe the cache
+                        // before resolving a fresh signed URL — on a hit we can open the
+                        // local file directly and skip the attachments/{id}/url round-trip
+                        // (and the no-op download flow it used to spin up).
+                        slockFilePreviewPrivateCachedOpenUrl(
+                            payload = currentPayload,
+                            owner = operation.owner
+                        ) ?:
                         // A URL hydrated for rendering is not durable action authority. Resolve a
                         // fresh attachment URL inside the authenticated pre/post-operation fence.
                         resolveRemoteExternalUrl(currentPayload)
@@ -1977,6 +2552,7 @@ private fun SlockFilePreviewStandalonePageContent() {
             }
             "no_app" -> slockAttachmentOpenResultMessage("no_app", attachmentOpenResultTerms)
             "storage_failed" -> slockAttachmentOpenResultMessage("storage_failed", attachmentOpenResultTerms)
+            "download_failed" -> slockAttachmentOpenResultMessage("download_failed", attachmentOpenResultTerms)
             else -> slockAttachmentOpenResultMessage("failed", attachmentOpenResultTerms)
         }
     }
@@ -2087,6 +2663,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                 } else {
                     result?.optString("message").orEmpty().ifBlank { storageUnavailable }
                 }
+            "download_failed" -> downloadFailed
             "permission_denied" -> imagePhotosPermissionDenied
             "permission_restricted" -> imagePhotosPermissionRestricted
             "unsupported_image" -> imagePhotosUnsupported
@@ -2101,6 +2678,36 @@ private fun SlockFilePreviewStandalonePageContent() {
                 }
         }
     }
+    /** task #360: hand the short-lived disposition=attachment URL to the system browser, so
+     * very large files (or files the in-app exporter cannot materialize) can still be fetched
+     * outside the app. Read-only: no download state, MediaStore write, or upload-chain change. */
+    fun requestExternalBrowserOpen() {
+        if (exportInProgress || !slockFilePreviewCanStartExternalOperation(downloadStatus)) return
+        val requestPayload = payload
+        externalOperation = "open_browser"
+        downloadMessage = ""
+        coroutineScope.launch(start = CoroutineStart.LAZY) {
+            val url =
+                try {
+                    resolveRemoteExternalUrl(requestPayload)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    null
+                }
+            if (url.isNullOrBlank()) {
+                downloadStatus = "failed"
+                downloadMessage = downloadFailed
+                externalOperation = ""
+            } else {
+                bridge.openUrl(url)
+                downloadStatus = "idle"
+                downloadMessage = ""
+                externalOperation = ""
+            }
+        }.start()
+    }
+
     fun requestExternalSave(toPhotos: Boolean = false, exportPrivateDownload: Boolean = false) {
         if (!canOpenWith || exportInProgress || !slockFilePreviewCanStartExternalOperation(downloadStatus)) return
         if (toPhotos && !payload.supportsSaveToPhotos()) return
@@ -2371,9 +2978,16 @@ private fun SlockFilePreviewStandalonePageContent() {
             bridge.retireFilePreviewTemporaryFiles(sessionId, cleanupRefs.toList())
         }
     }
-    fun trackEphemeralTemporaryFileRef(fileRef: String) {
+    /**
+     * Admit a host-created temporary ref to the currently live preview session.
+     *
+     * A false result is terminal for the caller: the session was already retired (usually page
+     * disposal) or the ref did not satisfy the session identity.  The helper retires the ref on
+     * that path so a late native result cannot continue toward delivery as an unowned file.
+     */
+    fun trackEphemeralTemporaryFileRef(fileRef: String): Boolean {
         val cleanRef = fileRef.trim()
-        if (cleanRef.isBlank()) return
+        if (cleanRef.isBlank()) return false
         val tracked =
             ephemeralActionRegistry.trackOwnedTemporaryFileRef(
                 sessionId = launchPayloadTrace.sessionId,
@@ -2385,7 +2999,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                 sessionId = launchPayloadTrace.sessionId,
                 fileRefs = listOf(cleanRef)
             )
-            return
+            return false
         }
         val evictedRefs =
             ephemeralCleanupLedger.addFileRefs(
@@ -2398,6 +3012,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                 fileRefs = evictedRefs.toList()
             )
         }
+        return true
     }
     fun composerImageEventData(
         fileRef: String,
@@ -2405,26 +3020,48 @@ private fun SlockFilePreviewStandalonePageContent() {
         actionId: String = payload.composerImageActionId,
         fileName: String = payload.composerImageFileName.ifBlank { payload.externalFileName.ifBlank { payload.name.ifBlank { "image.png" } } },
         mimeType: String = payload.composerImageMimeType.ifBlank { payload.externalMimeType.ifBlank { "image/png" } },
+        compressed: Boolean = payload.composerImageCompressed,
+        source: String = slockFilePreviewComposerImageEventSource(compressed),
         sizeBytes: Long? = payload.composerImageSizeBytes,
         replaceAttachmentId: String = payload.composerImageReplaceAttachmentId,
+        threadKey: String = payload.composerImageThreadKey,
         // task #113 whole-group contract: groupId + ordinal within the gallery + total count.
         // Blank groupId keeps legacy single-shot semantics (index/total ignored).
         // When groupId is set but this is a single image with no gallery, total must be 1
         // (single-image N=1 contract), never 0.
         groupId: String = payload.composerImageGroupId,
         groupIndex: Int = payload.imageGalleryIndex.coerceAtLeast(0),
-        groupTotal: Int = SlockImageEditGroupReconcile.resolveGroupTotal(payload.composerImageGroupId, payload.imageGallery.size)
+        groupTotal: Int = SlockImageEditGroupReconcile.resolveGroupTotal(groupId, payload.imageGallery.size)
     ): JSONObject? {
-        if (actionId.isBlank() || fileRef.isBlank()) return null
+        if (
+            actionId.isBlank() ||
+                fileRef.isBlank() ||
+                !slockFilePreviewComposerImageEventMetadataIsValid(
+                    source = source,
+                    compressed = compressed,
+                    mimeType = mimeType
+                )
+        ) {
+            return null
+        }
         return JSONObject().apply {
             put("previewSessionId", launchPayloadTrace.sessionId)
-            put("threadKey", payload.composerImageThreadKey)
+            put("threadKey", threadKey)
             put("actionId", actionId)
             put("action", if (replaceAttachmentId.isBlank()) "complete" else "replace")
             put("fileRef", fileRef)
-            put("previewUri", previewUri.orEmpty())
+            // A local picker/editor may not provide a separate thumbnail URI.  The upload handle
+            // is still a valid preview source, and the shared consumer parser requires a
+            // non-blank field; never emit an empty previewUri that would make an otherwise valid
+            // finalization event undeclarable.
+            put(
+                "previewUri",
+                previewUri?.trim()?.takeIf { it.isNotBlank() } ?: fileRef.trim()
+            )
             put("fileName", fileName)
             put("mimeType", mimeType)
+            put("source", source.trim())
+            put("compressed", compressed)
             sizeBytes?.takeIf { it > 0L }?.let { put("sizeBytes", it) }
             put("replaceAttachmentId", replaceAttachmentId)
             if (groupId.isNotBlank()) {
@@ -2436,7 +3073,8 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     fun postComposerImageEvents(
         events: List<JSONObject>,
-        closePage: Boolean = true
+        closePage: Boolean = true,
+        threadKey: String = payload.composerImageThreadKey
     ): Boolean {
         if (events.isEmpty()) return false
         val fileRefByActionId =
@@ -2447,7 +3085,7 @@ private fun SlockFilePreviewStandalonePageContent() {
         val retirement =
             ephemeralActionRegistry.prepareDeliveryBatch(
                 sessionId = launchPayloadTrace.sessionId,
-                threadKey = payload.composerImageThreadKey,
+                threadKey = threadKey,
                 fileRefByActionId = fileRefByActionId
             )
         if (retirement == null) {
@@ -2488,13 +3126,16 @@ private fun SlockFilePreviewStandalonePageContent() {
         actionId: String = payload.composerImageActionId,
         fileName: String = payload.composerImageFileName.ifBlank { payload.externalFileName.ifBlank { payload.name.ifBlank { "image.png" } } },
         mimeType: String = payload.composerImageMimeType.ifBlank { payload.externalMimeType.ifBlank { "image/png" } },
+        compressed: Boolean = payload.composerImageCompressed,
+        source: String = slockFilePreviewComposerImageEventSource(compressed),
         sizeBytes: Long? = payload.composerImageSizeBytes,
         replaceAttachmentId: String = payload.composerImageReplaceAttachmentId,
         closePage: Boolean = true,
+        threadKey: String = payload.composerImageThreadKey,
         groupId: String = payload.composerImageGroupId,
         groupIndex: Int = payload.imageGalleryIndex.coerceAtLeast(0),
-        groupTotal: Int = SlockImageEditGroupReconcile.resolveGroupTotal(payload.composerImageGroupId, payload.imageGallery.size)
-    ) {
+        groupTotal: Int = SlockImageEditGroupReconcile.resolveGroupTotal(groupId, payload.imageGallery.size)
+    ): Boolean {
         val event =
             composerImageEventData(
                 fileRef = fileRef,
@@ -2502,86 +3143,434 @@ private fun SlockFilePreviewStandalonePageContent() {
                 actionId = actionId,
                 fileName = fileName,
                 mimeType = mimeType,
+                compressed = compressed,
+                source = source,
                 sizeBytes = sizeBytes,
                 replaceAttachmentId = replaceAttachmentId,
+                threadKey = threadKey,
                 groupId = groupId,
                 groupIndex = groupIndex,
                 groupTotal = groupTotal
-            ) ?: return
-        postComposerImageEvents(listOf(event), closePage = closePage)
+            ) ?: return false
+        return postComposerImageEvents(
+            listOf(event),
+            closePage = closePage,
+            threadKey = threadKey
+        )
     }
-    fun postComposerImageSelection() {
-        val gallery = payload.imageGallery.takeIf { it.isNotEmpty() }
-        if (gallery == null) {
-            postComposerImageResult(
-                fileRef = payload.composerImageFileRef,
-                previewUri = payload.composerImagePreviewUri.ifBlank { payload.imageUrl }
+    fun cleanupComposerImageTemporaryRefs(fileRefs: Collection<String>) {
+        val refs =
+            fileRefs
+                .map(String::trim)
+                .filter(String::isNotBlank)
+                .toSet()
+        if (refs.isNotEmpty()) {
+            bridge.retireFilePreviewTemporaryFiles(
+                sessionId = launchPayloadTrace.sessionId,
+                fileRefs = refs.toList()
             )
-            return
         }
-        val events =
-            gallery.mapIndexedNotNull { index, image ->
+    }
+
+    fun composerImageOperationRequestId(
+        token: SlockFilePreviewComposerImageOperationToken,
+        index: Int
+    ): String =
+        "${token.requestId}-item-${index.coerceAtLeast(0)}"
+
+    suspend fun compressComposerImageFile(
+        source: PlatformFile,
+        token: SlockFilePreviewComposerImageOperationToken,
+        index: Int
+    ): Pair<PlatformFile?, Set<String>> {
+        val sourceRef = source.fileRef?.trim()?.takeIf { it.isNotBlank() }
+            ?: return null to emptySet()
+        val response =
+            bridge.compressThreadImage(
+                fileRef = sourceRef,
+                fileName = source.fileName.ifBlank { "image.png" },
+                mimeType = source.mimeType?.ifBlank { "image/png" } ?: "image/png",
+                requestId = composerImageOperationRequestId(token, index)
+            )
+        // A malformed host envelope may echo the input ref.  That ref is not a
+        // generated JPEG and must remain available for a user retry; only refs
+        // other than the source are eligible for cleanup on a failed attempt.
+        val responseRefs =
+            slockFilePreviewCompressionResponseFileRefs(response)
+                .filterNot { it == sourceRef }
+                .toSet()
+        if (!composerImageOperationGate.isCurrent(token)) {
+            return null to responseRefs
+        }
+        return when (val parsed = parseSlockFilePreviewCompressedImageResult(response)) {
+            is SlockFilePreviewCompressedImageResult.Success -> {
+                val outputRef = parsed.file.fileRef?.trim().orEmpty()
+                // Native must write a new object.  Reusing the source ref would make a later
+                // retry observe a partially overwritten source and is therefore fail-closed.
+                if (outputRef.isBlank() || outputRef == sourceRef) {
+                    null to (responseRefs + outputRef).filterNot { it == sourceRef }.toSet()
+                } else {
+                    if (!trackEphemeralTemporaryFileRef(outputRef)) {
+                        // The page/session may have been retired while the native bridge was
+                        // running.  Do not let an otherwise valid JPEG escape that ownership
+                        // fence; the helper has already requested ref retirement.
+                        null to (responseRefs + outputRef)
+                    } else {
+                        parsed.file to emptySet()
+                    }
+                }
+            }
+            is SlockFilePreviewCompressedImageResult.Failure -> null to responseRefs
+        }
+    }
+
+    fun composerImageEventsForPayload(
+        eventPayload: SlockFilePreviewPayload
+    ): List<JSONObject> {
+        return slockFilePreviewComposerImageEventsForPayload(
+            eventPayload = eventPayload,
+            singleEvent = { groupId, groupIndex, groupTotal ->
+                composerImageEventData(
+                    fileRef = eventPayload.composerImageFileRef,
+                    previewUri = eventPayload.composerImagePreviewUri.ifBlank { eventPayload.imageUrl },
+                    actionId = eventPayload.composerImageActionId,
+                    fileName = eventPayload.composerImageFileName.ifBlank {
+                        eventPayload.externalFileName.ifBlank { eventPayload.name.ifBlank { "image.png" } }
+                    },
+                    mimeType = eventPayload.composerImageMimeType.ifBlank {
+                        eventPayload.externalMimeType.ifBlank { "image/png" }
+                    },
+                    compressed = eventPayload.composerImageCompressed,
+                    source = slockFilePreviewComposerImageEventSource(eventPayload.composerImageCompressed),
+                    sizeBytes = eventPayload.composerImageSizeBytes,
+                    replaceAttachmentId = eventPayload.composerImageReplaceAttachmentId,
+                    threadKey = eventPayload.composerImageThreadKey,
+                    groupId = groupId,
+                    groupIndex = groupIndex,
+                    groupTotal = groupTotal
+                )
+            },
+            galleryEvent = { index, image, groupId, groupTotal ->
                 composerImageEventData(
                     fileRef = image.composerImageFileRef,
                     previewUri = image.composerImagePreviewUri.ifBlank { image.thumbnailUrl.orEmpty() },
                     actionId =
                         slockFilePreviewComposerImageGalleryActionId(
-                            baseActionId = payload.composerImageActionId,
+                            baseActionId = eventPayload.composerImageActionId,
                             attachmentId = image.attachmentId,
                             index = index
                         ),
                     fileName = image.name.ifBlank { "image.png" },
                     mimeType = image.mimeType.ifBlank { "image/png" },
+                    compressed = image.composerImageCompressed,
+                    source = slockFilePreviewComposerImageEventSource(image.composerImageCompressed),
                     sizeBytes = image.composerImageSizeBytes,
-                    replaceAttachmentId = "",
-                    groupId = payload.composerImageGroupId,
+                    // Fresh picker galleries use a blank target so Settings/Thread consumers
+                    // receive the legacy `complete` action.  A Thread editor gallery records an
+                    // explicit remote slot in composerImageReplaceAttachmentId; carry that
+                    // witness instead of deriving it from the synthetic local id.
+                    replaceAttachmentId = image.composerImageReplaceAttachmentId,
+                    threadKey = eventPayload.composerImageThreadKey,
+                    groupId = groupId,
                     groupIndex = index,
-                    groupTotal = gallery.size
+                    groupTotal = groupTotal
                 )
             }
-        if (events.size != gallery.size) {
-            // Do not tear down a pending batch if a late duplicate callback reaches
-            // this page after the first batch was already admitted.
-            retireCurrentEphemeralSession(cleanupPending = false)
-            return
-        }
-        postComposerImageEvents(events)
+        )
     }
+
+    fun postComposerImageSelection() {
+        if (composerImageFinalizing) return
+        val token =
+            composerImageOperationGate.begin(
+                requestId = "${payload.composerImageActionId.ifBlank { launchPayloadTrace.sessionId }}-done"
+            ) ?: return
+        composerImageFinalizing = true
+        val operationJob =
+            coroutineScope.launch(start = CoroutineStart.LAZY) {
+                val generatedRefs = mutableSetOf<String>()
+                try {
+                    var workingPayload = payload
+                    val compressAfterEdit = workingPayload.composerImageCompressAfterEdit
+                    if (workingPayload.imageGallery.isNotEmpty()) {
+                        for ((index, image) in workingPayload.imageGallery.withIndex()) {
+                            if (image.isComposerImageFinalized(compressAfterEdit)) continue
+                            val source = image.toComposerImagePlatformFile()
+                    val finalFileAndCleanup =
+                                if (compressAfterEdit) {
+                                    compressComposerImageFile(source, token, index)
+                                } else {
+                                    source to emptySet()
+                                }
+                            val finalFile = finalFileAndCleanup.first
+                            if (finalFile == null || !composerImageOperationGate.isCurrent(token)) {
+                                cleanupComposerImageTemporaryRefs(
+                                    generatedRefs + finalFileAndCleanup.second
+                                )
+                                if (composerImageOperationGate.isCurrent(token)) {
+                                    composerImageOperationGate.complete(token)
+                                    composerImageFinalizing = false
+                                    bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                                }
+                                return@launch
+                            }
+                            if (compressAfterEdit) {
+                                finalFile.fileRef?.trim()?.takeIf { it.isNotBlank() }?.let(generatedRefs::add)
+                            }
+                            workingPayload =
+                                workingPayload.withComposerImageGalleryFinalResult(
+                                    index = index,
+                                    file = finalFile,
+                                    compressed = compressAfterEdit
+                                )
+                        }
+                    } else if (
+                        !workingPayload.composerImageEditCompleted ||
+                            (compressAfterEdit && !workingPayload.composerImageCompressed)
+                    ) {
+                        val source = workingPayload.toComposerImagePlatformFile()
+                        val finalFileAndCleanup =
+                            if (compressAfterEdit) {
+                                compressComposerImageFile(source, token, 0)
+                            } else {
+                                source to emptySet()
+                            }
+                        val finalFile = finalFileAndCleanup.first
+                        if (finalFile == null || !composerImageOperationGate.isCurrent(token)) {
+                            cleanupComposerImageTemporaryRefs(
+                                generatedRefs + finalFileAndCleanup.second
+                            )
+                            if (composerImageOperationGate.isCurrent(token)) {
+                                composerImageOperationGate.complete(token)
+                                composerImageFinalizing = false
+                                bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                            }
+                            return@launch
+                        }
+                        if (compressAfterEdit) {
+                            finalFile.fileRef?.trim()?.takeIf { it.isNotBlank() }?.let(generatedRefs::add)
+                        }
+                        workingPayload =
+                            workingPayload.withComposerImageFinalResult(
+                                file = finalFile,
+                                compressed = compressAfterEdit
+                            )
+                    }
+                    if (!composerImageOperationGate.isCurrent(token)) {
+                        cleanupComposerImageTemporaryRefs(generatedRefs)
+                        return@launch
+                    }
+                    val events = composerImageEventsForPayload(workingPayload)
+                    if (
+                        events.isEmpty() ||
+                            (workingPayload.imageGallery.isNotEmpty() &&
+                                events.size != workingPayload.imageGallery.size)
+                    ) {
+                        cleanupComposerImageTemporaryRefs(generatedRefs)
+                        retireCurrentEphemeralSession(cleanupPending = false)
+                        composerImageOperationGate.complete(token)
+                        composerImageFinalizing = false
+                        bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                        return@launch
+                    }
+                    val posted =
+                        postComposerImageEvents(
+                            events = events,
+                            threadKey = workingPayload.composerImageThreadKey
+                        )
+                    if (!posted) {
+                        composerImageOperationGate.complete(token)
+                        composerImageFinalizing = false
+                        return@launch
+                    }
+                    // Commit page-local payload only after registry admission and event relay
+                    // both succeed. A stale/failed post may retire generated refs; writing the
+                    // working snapshot before that point would leave the UI pointing at files
+                    // that have already been cleaned up.
+                    payload = workingPayload
+                    composerImageOperationGate.complete(token)
+                    composerImageFinalizing = false
+                } catch (cancelled: CancellationException) {
+                    composerImageOperationGate.cancel(token)
+                    cleanupComposerImageTemporaryRefs(generatedRefs)
+                    throw cancelled
+                } catch (_: Throwable) {
+                    composerImageOperationGate.complete(token)
+                    cleanupComposerImageTemporaryRefs(generatedRefs)
+                    if (composerImageOperationGate.activeToken() == null) {
+                        composerImageFinalizing = false
+                        bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                    }
+                } finally {
+                    if (activeComposerImageOperationJob.value === currentCoroutineContext()[Job]) {
+                        activeComposerImageOperationJob.value = null
+                    }
+                }
+            }
+        activeComposerImageOperationJob.value = operationJob
+        operationJob.start()
+    }
+
     fun requestComposerImageEditSave() {
-        if (composerImageEditSaving) return
+        if (composerImageEditSaving || composerImageFinalizing) return
         val captureView = composerImageEditCaptureSlot.value.ref?.view
         if (captureView == null) {
             bridge.toast(imageEditorLoading)
             return
         }
+        val token =
+            composerImageOperationGate.begin(
+                requestId = "${payload.composerImageActionId.ifBlank { launchPayloadTrace.sessionId }}-save"
+            ) ?: return
         composerImageEditSaving = true
+        val captureTerminal = atomic(false)
         captureView.toImage(DeclarativeBaseView.ImageType.FILE, 1) { result ->
-            val code = result?.optInt("code", -1) ?: -1
-            val fileRef = result?.optString("data").orEmpty()
-            composerImageEditSaving = false
-            if (code == 0 && fileRef.isNotBlank()) {
-                trackEphemeralTemporaryFileRef(fileRef)
-                val currentGalleryIndex = payload.imageGalleryIndex.coerceIn(0, payload.imageGallery.lastIndex.coerceAtLeast(0))
-                val currentGalleryImage = payload.imageGallery.getOrNull(currentGalleryIndex)
-                if (payload.composerImageCanComplete && currentGalleryImage != null) {
-                    payload = payload.withComposerImageEditResult(fileRef)
-                    composerImageEditMode = false
-                } else {
-                    postComposerImageResult(
-                        fileRef = fileRef,
-                        previewUri = fileRef,
-                        fileName = payload.currentComposerImageFileName().toKuiklySnapshotPngFileName(),
-                        mimeType = KuiklySnapshotMimeType,
-                        sizeBytes = null
-                    )
+            if (!captureTerminal.compareAndSet(false, true)) return@toImage
+            val fileRef = result?.optString("data")?.trim().orEmpty()
+            // `toImage` has no cancellation handle. If the page went away while the renderer
+            // was producing its snapshot, retire the late file but never touch page state.
+            if (!composerImageOperationGate.isCurrent(token)) {
+                fileRef.takeIf { it.isNotBlank() }?.let { ref ->
+                    cleanupComposerImageTemporaryRefs(listOf(ref))
                 }
-            } else {
-                bridge.toast(result?.optString("message").orEmpty().ifBlank { imageEditorExportFailed })
+                return@toImage
             }
+            val code = result?.optInt("code", -1) ?: -1
+            if (code != 0 || fileRef.isBlank()) {
+                fileRef.takeIf { it.isNotBlank() }?.let { ref ->
+                    cleanupComposerImageTemporaryRefs(listOf(ref))
+                }
+                composerImageOperationGate.complete(token)
+                composerImageEditSaving = false
+                bridge.toast(result?.optString("message").orEmpty().ifBlank { imageEditorExportFailed })
+                return@toImage
+            }
+            if (!trackEphemeralTemporaryFileRef(fileRef)) {
+                // The session can retire between the gate check and registry admission. The
+                // helper already requested ref retirement; only reset UI while this token is
+                // still live.
+                if (composerImageOperationGate.complete(token)) {
+                    composerImageEditSaving = false
+                    bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                }
+                return@toImage
+            }
+            val editPayload = payload
+            val source =
+                PlatformFile(
+                    id = "composer-editor-${fileRef.hashCode().toUInt().toString(16)}",
+                    fileName = editPayload.currentComposerImageFileName().toKuiklySnapshotPngFileName(),
+                    mimeType = KuiklySnapshotMimeType,
+                    previewUri = fileRef,
+                    fileRef = fileRef,
+                    source = SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE
+                )
+            val operationJob =
+                coroutineScope.launch(start = CoroutineStart.LAZY) {
+                    val cleanupRefs = mutableSetOf(fileRef)
+                    try {
+                        val finalFile: PlatformFile
+                        val compressed: Boolean
+                        if (editPayload.composerImageCompressAfterEdit) {
+                            val compressedResult = compressComposerImageFile(source, token, 0)
+                            cleanupRefs += compressedResult.second
+                            finalFile = compressedResult.first ?: run {
+                                cleanupComposerImageTemporaryRefs(cleanupRefs)
+                                composerImageOperationGate.complete(token)
+                                composerImageEditSaving = false
+                                bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                                return@launch
+                            }
+                            compressed = true
+                        } else {
+                            finalFile = source
+                            compressed = false
+                        }
+                        // Keep every generated ref in the failure ledger until the delivery
+                        // relay has accepted it.  The source PNG is always tracked above; a
+                        // successful compressor adds a distinct JPEG that also needs cleanup if
+                        // the page goes stale or the immediate-send relay is rejected.
+                        finalFile.fileRef
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let(cleanupRefs::add)
+                        if (!composerImageOperationGate.isCurrent(token)) {
+                            cleanupComposerImageTemporaryRefs(cleanupRefs)
+                            return@launch
+                        }
+                        val nextPayload = editPayload.withComposerImageFinalResult(finalFile, compressed)
+                        if (!nextPayload.composerImageCanComplete) {
+                            // Immediate-send previews have no composer consumer to update after
+                            // this page closes.  Relay the exact next-payload fields first; only
+                            // after registry admission + event delivery succeeds may page-local
+                            // payload state point at the generated file.
+                            val posted =
+                                postComposerImageResult(
+                                    fileRef = nextPayload.composerImageFileRef,
+                                    previewUri = nextPayload.composerImagePreviewUri,
+                                    actionId = nextPayload.composerImageActionId,
+                                    fileName = nextPayload.composerImageFileName,
+                                    mimeType = nextPayload.composerImageMimeType,
+                                    compressed = compressed,
+                                    source = slockFilePreviewComposerImageEventSource(compressed),
+                                    sizeBytes = nextPayload.composerImageSizeBytes,
+                                    replaceAttachmentId = nextPayload.composerImageReplaceAttachmentId,
+                                    closePage = false,
+                                    threadKey = nextPayload.composerImageThreadKey,
+                                    groupId = nextPayload.composerImageGroupId,
+                                    groupIndex = nextPayload.imageGalleryIndex.coerceAtLeast(0),
+                                    groupTotal =
+                                        SlockImageEditGroupReconcile.resolveGroupTotal(
+                                            nextPayload.composerImageGroupId,
+                                            nextPayload.imageGallery.size
+                                        )
+                                )
+                            if (!posted) {
+                                // postComposerImageEvents owns failure cleanup.  In particular,
+                                // it must preserve a pending ref if a synchronous consumer
+                                // claimed it before an unrelated listener threw; deleting the
+                                // whole cleanup set here would race that consumer's transfer.
+                                composerImageOperationGate.complete(token)
+                                composerImageEditSaving = false
+                                return@launch
+                            }
+                        }
+                        // A completable session keeps the result for the caller's later Done;
+                        // an immediate-send session reaches this point only after relay success.
+                        payload = nextPayload
+                        composerImageEditMode = false
+                        composerImageEditSaving = false
+                        composerImageOperationGate.complete(token)
+                        if (!nextPayload.composerImageCanComplete) {
+                            pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+                        }
+                    } catch (cancelled: CancellationException) {
+                        composerImageOperationGate.cancel(token)
+                        cleanupComposerImageTemporaryRefs(cleanupRefs)
+                        throw cancelled
+                    } catch (_: Throwable) {
+                        composerImageOperationGate.complete(token)
+                        cleanupComposerImageTemporaryRefs(cleanupRefs)
+                        composerImageEditSaving = false
+                        bridge.toast(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                    } finally {
+                        if (activeComposerImageOperationJob.value === currentCoroutineContext()[Job]) {
+                            activeComposerImageOperationJob.value = null
+                        }
+                    }
+                }
+            activeComposerImageOperationJob.value = operationJob
+            operationJob.start()
         }
     }
     DisposableEffect(launchPayloadTrace.sessionId, launchPayloadTrace.routeKind) {
         onDispose {
+            // Invalidate callbacks before retiring the ephemeral registry. Cancellation then
+            // reaches BridgeModule's invokeOnCancellation, which asks each host to cancel its
+            // request-id keyed codec operation and remove its output.
+            composerImageOperationGate.retire()
+            activeComposerImageOperationJob.value?.cancel()
+            activeComposerImageOperationJob.value = null
             if (launchPayloadTrace.routeKind == SlockFilePreviewRouteEphemeral) {
                 retireCurrentEphemeralSession(cleanupPending = false)
             } else {
@@ -2733,6 +3722,15 @@ private fun SlockFilePreviewStandalonePageContent() {
                 SlockFilePreviewPayloadContent(
                     payload = payload,
                     onOpenUrl = {},
+                    onExternalBrowserOpen =
+                        if (
+                            payload.source == SlockFilePreviewSourceThreadAttachment &&
+                            payload.attachmentId.isNotBlank()
+                        ) {
+                            ::requestExternalBrowserOpen
+                        } else {
+                            null
+                        },
                     downloadStatusLabel =
                         when (downloadStatus) {
                             "downloading", "paused" ->
@@ -2770,9 +3768,15 @@ private fun SlockFilePreviewStandalonePageContent() {
             }
             SlockFilePreviewComposerImageActionBar(
                 payload = payload,
-                enabled = !downloadActive,
+                // Finalization is asynchronous; keep the action visibly disabled while the
+                // in-flight operation owns the session, in addition to the function-level
+                // duplicate guard.
+                enabled = !downloadActive && !composerImageFinalizing,
                 onEdit = { composerImageEditMode = true },
-                onComplete = ::postComposerImageSelection
+                onComplete = ::postComposerImageSelection,
+                onOriginalImageChange = { enabled ->
+                    payload = payload.withComposerOriginalImage(enabled)
+                },
             )
         }
         attachmentCommentsState?.let { state ->
@@ -2861,11 +3865,13 @@ internal fun SlockFilePreviewComposerImageActionBar(
     payload: SlockFilePreviewPayload,
     enabled: Boolean,
     onEdit: () -> Unit,
-    onComplete: () -> Unit
+    onComplete: () -> Unit,
+    onOriginalImageChange: (Boolean) -> Unit = {},
 ) {
     if (payload.composerImageActionId.isBlank()) return
     if (!payload.composerImageCanEdit && !payload.composerImageCanComplete) return
     val bottomSafeArea = slockBottomSafeAreaPadding()
+    val originalImageSelected = payload.composerOriginalImageSelected()
     Row(
         modifier =
             Modifier
@@ -2883,6 +3889,7 @@ internal fun SlockFilePreviewComposerImageActionBar(
         slockFilePreviewComposerImageActionSlots(
             canEdit = payload.composerImageCanEdit,
             canComplete = payload.composerImageCanComplete,
+            originalImageOptionEnabled = payload.showsComposerOriginalImageOption(),
         ).forEach { slot ->
             when (slot) {
                 SlockFilePreviewComposerImageActionSlot.Edit ->
@@ -2898,6 +3905,41 @@ internal fun SlockFilePreviewComposerImageActionBar(
                         shadowOffset = 2.dp,
                         textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 14.sp)
                     )
+                SlockFilePreviewComposerImageActionSlot.OriginalImage -> {
+                    val labelColor =
+                        if (enabled) {
+                            SlockColor.TextBlack.copy(alpha = 0.6f)
+                        } else {
+                            SlockColor.TextMutedGray
+                        }
+                    Row(
+                        modifier =
+                            Modifier
+                                .clickable(enabled = enabled) {
+                                    onOriginalImageChange(!originalImageSelected)
+                                }
+                                .heightIn(min = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        SlockCheckbox(
+                            checked = originalImageSelected,
+                            onCheckedChange = onOriginalImageChange,
+                            enabled = enabled,
+                            size = 14.dp,
+                        )
+                        Text(
+                            text = stringResource(MR.strings.thread_composer_original_image),
+                            style =
+                                SlockType.Caption
+                                    .withSlockFontWeight(FontWeight.Bold)
+                                    .copy(lineHeight = 18.sp, color = labelColor),
+                            color = labelColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 SlockFilePreviewComposerImageActionSlot.FlexibleSpacer ->
                     Box(modifier = Modifier.weight(1f))
                 SlockFilePreviewComposerImageActionSlot.Done ->
@@ -2921,6 +3963,7 @@ internal fun SlockFilePreviewComposerImageActionBar(
 
 internal enum class SlockFilePreviewComposerImageActionSlot {
     Edit,
+    OriginalImage,
     FlexibleSpacer,
     Done,
 }
@@ -2928,9 +3971,13 @@ internal enum class SlockFilePreviewComposerImageActionSlot {
 internal fun slockFilePreviewComposerImageActionSlots(
     canEdit: Boolean,
     canComplete: Boolean,
+    originalImageOptionEnabled: Boolean = false,
 ): List<SlockFilePreviewComposerImageActionSlot> =
     buildList {
         if (canEdit) add(SlockFilePreviewComposerImageActionSlot.Edit)
+        if (originalImageOptionEnabled && canComplete) {
+            add(SlockFilePreviewComposerImageActionSlot.OriginalImage)
+        }
         add(SlockFilePreviewComposerImageActionSlot.FlexibleSpacer)
         if (canComplete) add(SlockFilePreviewComposerImageActionSlot.Done)
     }
@@ -2939,6 +3986,24 @@ internal enum class SlockComposerImageEditorTool {
     Pencil,
     Text,
     Mosaic,
+    Crop,
+}
+
+internal data class SlockComposerImageCropRect(
+    val left: Float = 0f,
+    val top: Float = 0f,
+    val right: Float = 1f,
+    val bottom: Float = 1f,
+) {
+    val isUncropped: Boolean
+        get() = left <= 0.0001f && top <= 0.0001f && right >= 0.9999f && bottom >= 0.9999f
+
+    val widthFraction: Float get() = (right - left).coerceAtLeast(0.01f)
+    val heightFraction: Float get() = (bottom - top).coerceAtLeast(0.01f)
+
+    companion object {
+        val Uncropped = SlockComposerImageCropRect(0f, 0f, 1f, 1f)
+    }
 }
 
 private enum class SlockComposerImagePencilMode {
@@ -3043,6 +4108,7 @@ internal data class SlockComposerImageEditorContent(
     val mosaicTiles: Set<SlockComposerImageMosaicTile> = emptySet(),
     val textAnnotations: List<SlockComposerImageTextAnnotation> = emptyList(),
     val drawOperations: List<SlockComposerImageDrawOperation> = emptyList(),
+    val cropRect: SlockComposerImageCropRect = SlockComposerImageCropRect.Uncropped,
 )
 
 internal data class SlockComposerImageEditorHistory(
@@ -3133,11 +4199,14 @@ internal fun slockComposerImageEditorCaptureSize(
     imageHeight: Int,
     maxWidth: Float,
     maxHeight: Float,
+    cropRect: SlockComposerImageCropRect = SlockComposerImageCropRect.Uncropped,
 ): Size? {
     if (imageWidth <= 0 || imageHeight <= 0 || maxWidth <= 0f || maxHeight <= 0f) return null
-    val scale = min(maxWidth / imageWidth.toFloat(), maxHeight / imageHeight.toFloat())
+    val effectiveWidth = (imageWidth * cropRect.widthFraction).coerceAtLeast(1f)
+    val effectiveHeight = (imageHeight * cropRect.heightFraction).coerceAtLeast(1f)
+    val scale = min(maxWidth / effectiveWidth, maxHeight / effectiveHeight)
     if (!scale.isFinite() || scale <= 0f) return null
-    return Size(width = imageWidth * scale, height = imageHeight * scale)
+    return Size(width = effectiveWidth * scale, height = effectiveHeight * scale)
 }
 
 internal data class SlockComposerImageEditCaptureOwner(
@@ -3196,10 +4265,19 @@ internal fun SlockFilePreviewComposerImageEditor(
     val focusManager = LocalFocusManager.current
     val editorDensity = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
-    fun selectTool(nextTool: SlockComposerImageEditorTool) {
+    var stageSize by remember(payload.imageUrl) { mutableStateOf(Size.Zero) }
+    var transientCropRect by remember(payload.imageUrl) { mutableStateOf(state.history.content.cropRect) }
+    var activeCropHandle by remember(payload.imageUrl) { mutableStateOf(SlockCropDragHandle.None) }
+    var cropDragOriginContent by remember(payload.imageUrl) { mutableStateOf<SlockComposerImageEditorContent?>(null) }
+        fun selectTool(nextTool: SlockComposerImageEditorTool) {
         if (tool == SlockComposerImageEditorTool.Text && nextTool != SlockComposerImageEditorTool.Text) {
             focusManager.clearFocus(force = true)
             keyboardInsetDp = 0f
+        }
+        if (tool == SlockComposerImageEditorTool.Crop && nextTool != SlockComposerImageEditorTool.Crop) {
+            transientCropRect = state.history.content.cropRect
+        } else if (nextTool == SlockComposerImageEditorTool.Crop) {
+            transientCropRect = state.history.content.cropRect
         }
         pencilOptionsExpanded =
             slockFilePreviewPencilOptionsExpandedAfterToolSelection(
@@ -3280,13 +4358,47 @@ internal fun SlockFilePreviewComposerImageEditor(
         textDraft = textDraft.cleared()
         return true
     }
+    var editorFinishing by remember(payload.imageUrl) { mutableStateOf(false) }
+    LaunchedEffect(saving) {
+        if (!saving) {
+            editorFinishing = false
+        }
+    }
+    fun applyCurrentCrop(): Boolean {
+        var applied = false
+        if (mosaicImage != null && transientCropRect != state.history.content.cropRect) {
+            val nextContent = slockApplyCropToContent(
+                content = state.history.content,
+                newCrop = transientCropRect,
+                imageWidth = mosaicImage.width,
+                imageHeight = mosaicImage.height,
+                maxWidth = stageSize.width * editorDensity.density,
+                maxHeight = stageSize.height * editorDensity.density,
+            )
+            state.update(state.history.apply(nextContent))
+            applied = true
+        }
+        selectTool(SlockComposerImageEditorTool.Pencil)
+        return applied
+    }
     fun requestDone() {
+        if (editorFinishing || saving) return
+        if (tool == SlockComposerImageEditorTool.Crop) {
+            editorFinishing = true
+            applyCurrentCrop()
+            coroutineScope.launch {
+                repeat(2) { withFrameNanos { _ -> } }
+                onDone()
+            }
+            return
+        }
         if (!addTextAnnotation()) {
             onDone()
             return
         }
+        editorFinishing = true
         coroutineScope.launch {
-            withFrameNanos { _ -> }
+            repeat(2) { withFrameNanos { _ -> } }
             onDone()
         }
     }
@@ -3308,13 +4420,25 @@ internal fun SlockFilePreviewComposerImageEditor(
                     .border(SlockStroke.Default, SlockColor.BorderBlack),
             contentAlignment = Alignment.Center
         ) {
+            val committedContent = state.history.content
+            val isCropTool = tool == SlockComposerImageEditorTool.Crop
+            val currentCrop = if (isCropTool) SlockComposerImageCropRect.Uncropped else committedContent.cropRect
+            val stageWidth = maxWidth.value
+            val stageHeight = maxHeight.value
+            SideEffect {
+                val currentSize = Size(stageWidth, stageHeight)
+                if (stageSize != currentSize) {
+                    stageSize = currentSize
+                }
+            }
             val captureSize =
                 mosaicImage?.let { image ->
                     slockComposerImageEditorCaptureSize(
                         imageWidth = image.width,
                         imageHeight = image.height,
-                        maxWidth = maxWidth.value,
-                        maxHeight = maxHeight.value,
+                        maxWidth = stageWidth,
+                        maxHeight = stageHeight,
+                        cropRect = currentCrop,
                     )
                 }
             if (captureSize != null) {
@@ -3323,10 +4447,13 @@ internal fun SlockFilePreviewComposerImageEditor(
                         Modifier
                             .width(captureSize.width.dp)
                             .height(captureSize.height.dp)
+                            .clipToBounds()
                             .onGloballyPositioned { coordinates -> editorCanvasSize = coordinates.size }
                             .nativeRef { ref -> onCaptureRef(ref) }
                             .pointerInput(payload.imageUrl, tool, pencilMode, selectedPenColor) {
+                        if (tool == SlockComposerImageEditorTool.Crop) return@pointerInput
                         detectTapGestures { position ->
+                            if (saving || editorFinishing) return@detectTapGestures
                             when (tool) {
                                 SlockComposerImageEditorTool.Pencil ->
                                     if (pencilMode == SlockComposerImagePencilMode.Eraser) {
@@ -3352,13 +4479,16 @@ internal fun SlockFilePreviewComposerImageEditor(
                                         )
                                     )
                                 }
+                                SlockComposerImageEditorTool.Crop -> {}
                             }
                         }
                     }
                     .pointerInput(payload.imageUrl, tool, pencilMode, selectedPenColor) {
                         if (tool == SlockComposerImageEditorTool.Text) return@pointerInput
+                        var lastMosaicPoint = Offset.Zero
                         detectDragGestures(
                             onDragStart = { start ->
+                                if (saving || editorFinishing) return@detectDragGestures
                                 when (tool) {
                                     SlockComposerImageEditorTool.Pencil ->
                                         if (pencilMode == SlockComposerImagePencilMode.Ink) {
@@ -3375,8 +4505,20 @@ internal fun SlockFilePreviewComposerImageEditor(
                                     }
                                     SlockComposerImageEditorTool.Mosaic -> {
                                         activeMosaicTiles.clear()
+                                        lastMosaicPoint = start
                                         slockComposerImageAccumulateMosaicTiles(activeMosaicTiles, start)
                                         activeMosaicRevision += 1
+                                    }
+                                    SlockComposerImageEditorTool.Crop -> {
+                                        val canvasSize =
+                                            if (editorCanvasSize.width > 0 && editorCanvasSize.height > 0) {
+                                                Size(editorCanvasSize.width.toFloat(), editorCanvasSize.height.toFloat())
+                                            } else {
+                                                Size(captureSize.width * editorDensity.density, captureSize.height * editorDensity.density)
+                                            }
+                                        val hitRadiusPx = 36f * editorDensity.density
+                                        activeCropHandle = slockCropDetectHandle(start, transientCropRect, canvasSize, hitRadius = hitRadiusPx)
+                                        cropDragOriginContent = state.history.content
                                     }
                                 }
                             },
@@ -3418,10 +4560,16 @@ internal fun SlockFilePreviewComposerImageEditor(
                                         textGestureOrigin?.let { origin ->
                                             state.update(state.history.commitTransaction(origin))
                                         }
+                                    tool == SlockComposerImageEditorTool.Crop -> {
+                                        activeCropHandle = SlockCropDragHandle.None
+                                        cropDragOriginContent = null
+                                    }
                                 }
                                 eraseGestureOrigin = null
                                 textGestureOrigin = null
                                 activeTextAnnotationId = null
+                                activeCropHandle = SlockCropDragHandle.None
+                                cropDragOriginContent = null
                                 activeStrokePoints.clear()
                                 activeStrokeRevision += 1
                                 if (activeMosaicTiles.isNotEmpty()) {
@@ -3439,6 +4587,8 @@ internal fun SlockFilePreviewComposerImageEditor(
                                 eraseGestureOrigin = null
                                 textGestureOrigin = null
                                 activeTextAnnotationId = null
+                                activeCropHandle = SlockCropDragHandle.None
+                                cropDragOriginContent = null
                                 activeStrokePoints.clear()
                                 activeStrokeRevision += 1
                                 if (activeMosaicTiles.isNotEmpty()) {
@@ -3446,7 +4596,9 @@ internal fun SlockFilePreviewComposerImageEditor(
                                     activeMosaicRevision += 1
                                 }
                             }
-                        ) { change, _ ->
+                        ) { change, dragAmount ->
+                            change.consume()
+                            if (saving || editorFinishing) return@detectDragGestures
                             when (tool) {
                                 SlockComposerImageEditorTool.Pencil ->
                                     if (pencilMode == SlockComposerImagePencilMode.Ink) {
@@ -3456,81 +4608,100 @@ internal fun SlockFilePreviewComposerImageEditor(
                                         eraseAt(change.position, recordHistory = false)
                                     }
                                 SlockComposerImageEditorTool.Text -> textPosition = change.position
-                                SlockComposerImageEditorTool.Mosaic ->
-                                    if (slockComposerImageAccumulateMosaicTiles(activeMosaicTiles, change.position)) {
+                                SlockComposerImageEditorTool.Mosaic -> {
+                                    val changed =
+                                        slockComposerImageAccumulateMosaicTilesAlongLine(
+                                            target = activeMosaicTiles,
+                                            start = lastMosaicPoint,
+                                            end = change.position,
+                                        )
+                                    lastMosaicPoint = change.position
+                                    if (changed) {
                                         activeMosaicRevision += 1
                                     }
+                                }
+                                SlockComposerImageEditorTool.Crop -> {
+                                    if (activeCropHandle != SlockCropDragHandle.None) {
+                                        val canvasSize =
+                                            if (editorCanvasSize.width > 0 && editorCanvasSize.height > 0) {
+                                                Size(editorCanvasSize.width.toFloat(), editorCanvasSize.height.toFloat())
+                                            } else {
+                                                Size(captureSize.width * editorDensity.density, captureSize.height * editorDensity.density)
+                                            }
+                                        transientCropRect = slockCropApplyDrag(
+                                            handle = activeCropHandle,
+                                            cropRect = transientCropRect,
+                                            dragAmount = dragAmount,
+                                            canvasSize = canvasSize,
+                                        )
+                                    }
+                                }
                             }
                         }
                             },
                     contentAlignment = Alignment.Center
                 ) {
-            payload.imageUrl?.let { source ->
-                SlockAspectFitImagePreviewSurface(
-                    source = source,
-                    contentDescription = payload.name.ifBlank { payload.path },
-                    modifier = Modifier.fillMaxSize(),
-                    backgroundColor = Color(0xFF000000),
-                    borderWidth = 0.dp,
-                    zoomable = false,
-                    showLoadingIndicator = true
-                )
-            }
             val committedContent = state.history.content
-            key(committedContent) {
+            key(committedContent, currentCrop) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     // Kuikly's native Canvas is retained across ordinary snapshot invalidations.
                     // Key the committed surface by immutable editor content so Undo/Redo disposes
                     // the old native node, starts from a blank surface, and replays only the current
                     // operation stack. This mirrors Android View.invalidate() + onDraw() replay.
-                    committedContent.slockComposerImageResolvedDrawOperations().forEach { operation ->
-                        when (operation) {
-                            is SlockComposerImageDrawOperation.Mosaic ->
-                                drawSlockComposerImageMosaic(
-                                    image = mosaicImage,
-                                    tiles = operation.tiles,
-                                )
-                            is SlockComposerImageDrawOperation.Pencil ->
-                                operation.stroke.points.windowed(2).forEach { segment ->
-                                    drawLine(
-                                        color = operation.stroke.color,
-                                        start = segment[0],
-                                        end = segment[1],
-                                        strokeWidth = 6f,
-                                        cap = StrokeCap.Round
+                    drawSlockComposerBackgroundImage(
+                        image = mosaicImage,
+                        cropRect = currentCrop,
+                    )
+                    if (tool != SlockComposerImageEditorTool.Crop) {
+                        committedContent.slockComposerImageResolvedDrawOperations().forEach { operation ->
+                            when (operation) {
+                                is SlockComposerImageDrawOperation.Mosaic ->
+                                    drawSlockComposerImageMosaic(
+                                        image = mosaicImage,
+                                        tiles = operation.tiles,
+                                        cropRect = currentCrop,
                                     )
-                                }
+                                is SlockComposerImageDrawOperation.Pencil ->
+                                    operation.stroke.points.windowed(2).forEach { segment ->
+                                        drawLine(
+                                            color = operation.stroke.color,
+                                            start = segment[0],
+                                            end = segment[1],
+                                            strokeWidth = 6f,
+                                            cap = StrokeCap.Round
+                                        )
+                                    }
+                            }
                         }
                     }
                 }
             }
-            val activeMosaicSnapshot =
-                slockComposerImageActiveMosaicTiles(
-                    touchedTiles = activeMosaicTiles,
-                    committedTiles = state.history.content.mosaicTiles,
-                )
-            val activeStrokeSnapshot = activeStrokePoints.toList()
-            key(activeMosaicRevision, activeStrokeRevision, selectedPenColor) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    // Active collections mutate in place. Replace the retained native Canvas for
-                    // every explicit active revision so clearing a committed/cancelled gesture also
-                    // clears its transient pixels instead of leaving them above Undo/Redo history.
-                    drawSlockComposerImageMosaic(
-                        image = mosaicImage,
-                        tiles = activeMosaicSnapshot,
+            if (tool != SlockComposerImageEditorTool.Crop) {
+                val activeMosaicSnapshot =
+                    slockComposerImageActiveMosaicTiles(
+                        touchedTiles = activeMosaicTiles,
+                        committedTiles = state.history.content.mosaicTiles,
                     )
-                    activeStrokeSnapshot.windowed(2).forEach { segment ->
-                        drawLine(
-                            color = selectedPenColor,
-                            start = segment[0],
-                            end = segment[1],
-                            strokeWidth = 6f,
-                            cap = StrokeCap.Round,
+                val activeStrokeSnapshot = activeStrokePoints.toList()
+                key(activeMosaicRevision, activeStrokeRevision, selectedPenColor, currentCrop) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        drawSlockComposerImageMosaic(
+                            image = mosaicImage,
+                            tiles = activeMosaicSnapshot,
+                            cropRect = currentCrop,
                         )
+                        activeStrokeSnapshot.windowed(2).forEach { segment ->
+                            drawLine(
+                                color = selectedPenColor,
+                                start = segment[0],
+                                end = segment[1],
+                                strokeWidth = 6f,
+                                cap = StrokeCap.Round,
+                            )
+                        }
                     }
                 }
-            }
-                    state.history.content.textAnnotations.forEach { annotation ->
+                state.history.content.textAnnotations.forEach { annotation ->
                 Box(
                     modifier =
                         Modifier
@@ -3623,6 +4794,18 @@ internal fun SlockFilePreviewComposerImageEditor(
                     )
                 }
                     }
+            }
+                    if (tool == SlockComposerImageEditorTool.Crop) {
+                        key(transientCropRect) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                drawSlockCropOverlay(
+                                    cropRect = transientCropRect,
+                                    canvasSize = Size(size.width, size.height),
+                                    density = editorDensity.density,
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -3642,7 +4825,7 @@ internal fun SlockFilePreviewComposerImageEditor(
                 SlockFilePreviewPencilOptions(
                     mode = pencilMode,
                     selectedColor = selectedPenColor,
-                    enabled = !saving,
+                    enabled = !saving && !editorFinishing,
                     onSelectEraser = { pencilMode = SlockComposerImagePencilMode.Eraser },
                     onSelectColor = { color ->
                         selectedPenColor = color
@@ -3660,7 +4843,7 @@ internal fun SlockFilePreviewComposerImageEditor(
                 )
                 SlockFilePreviewImageEditorPrimaryControls(
                     tool = tool,
-                    saving = saving,
+                    saving = saving || editorFinishing,
                     imageAvailable = payload.imageUrl != null,
                     onSelectTool = ::selectTool,
                     onDone = ::requestDone,
@@ -3717,7 +4900,7 @@ internal fun SlockFilePreviewComposerImageEditor(
                         iconName = SlockLucideIconName.Check,
                         contentDescription = stringResource(MR.strings.common_add),
                         onClick = { addTextAnnotation() },
-                        enabled = !saving && textDraft.text.isNotBlank(),
+                        enabled = !saving && !editorFinishing && textDraft.text.isNotBlank(),
                         backgroundColor = SlockColor.BrandYellow,
                         shadowOffset = 2.dp
                     )
@@ -3725,7 +4908,59 @@ internal fun SlockFilePreviewComposerImageEditor(
                 }
                 SlockFilePreviewImageEditorPrimaryControls(
                     tool = tool,
-                    saving = saving,
+                    saving = saving || editorFinishing,
+                    imageAvailable = payload.imageUrl != null,
+                    onSelectTool = ::selectTool,
+                    onDone = ::requestDone,
+                )
+                Box(modifier = Modifier.fillMaxWidth().height(editorBottomPadding))
+            }
+        } else if (tool == SlockComposerImageEditorTool.Crop) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(
+                            slockFilePreviewEditorControlsHeight(
+                                secondaryControlsVisible = true,
+                                bottomPadding = editorBottomPadding,
+                            )
+                        )
+                        .background(SlockColor.SurfaceWhite)
+            ) {
+                SlockFilePreviewCropOptions(
+                    canReset = !transientCropRect.isUncropped || !state.history.content.cropRect.isUncropped,
+                    enabled = !saving && !editorFinishing,
+                    onReset = {
+                        transientCropRect = SlockComposerImageCropRect.Uncropped
+                        if (mosaicImage != null) {
+                            val nextContent = slockApplyCropToContent(
+                                content = state.history.content,
+                                newCrop = SlockComposerImageCropRect.Uncropped,
+                                imageWidth = mosaicImage.width,
+                                imageHeight = mosaicImage.height,
+                                maxWidth = stageSize.width * editorDensity.density,
+                                maxHeight = stageSize.height * editorDensity.density,
+                            )
+                            state.update(state.history.apply(nextContent))
+                        }
+                    },
+                    onApply = {
+                        applyCurrentCrop()
+                    },
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                start = SlockSpacing.Sm,
+                                top = 6.dp,
+                                end = SlockSpacing.Sm,
+                                bottom = SlockSpacing.Sm,
+                            ),
+                )
+                SlockFilePreviewImageEditorPrimaryControls(
+                    tool = tool,
+                    saving = saving || editorFinishing,
                     imageAvailable = payload.imageUrl != null,
                     onSelectTool = ::selectTool,
                     onDone = ::requestDone,
@@ -3747,7 +4982,7 @@ internal fun SlockFilePreviewComposerImageEditor(
             ) {
                 SlockFilePreviewImageEditorPrimaryControls(
                     tool = tool,
-                    saving = saving,
+                    saving = saving || editorFinishing,
                     imageAvailable = payload.imageUrl != null,
                     onSelectTool = ::selectTool,
                     onDone = ::requestDone,
@@ -3794,10 +5029,17 @@ private fun SlockFilePreviewImageEditorPrimaryControls(
         )
         SlockFilePreviewEditorToolButton(
             label = stringResource(MR.strings.file_preview_toolbar_mosaic),
-            icon = SlockLucideIconName.Grid3x3,
+            icon = SlockLucideIconName.Mosaic,
             selected = tool == SlockComposerImageEditorTool.Mosaic,
             enabled = !saving,
             onClick = { onSelectTool(SlockComposerImageEditorTool.Mosaic) }
+        )
+        SlockFilePreviewEditorToolButton(
+            label = stringResource(MR.strings.file_preview_toolbar_crop),
+            icon = SlockLucideIconName.Crop,
+            selected = tool == SlockComposerImageEditorTool.Crop,
+            enabled = !saving,
+            onClick = { onSelectTool(SlockComposerImageEditorTool.Crop) }
         )
         Box(modifier = Modifier.weight(1f))
         SlockFilePreviewImageEditorDoneButton(
@@ -3884,6 +5126,44 @@ private fun SlockFilePreviewColorSwatch(
 }
 
 @Composable
+private fun SlockFilePreviewCropOptions(
+    canReset: Boolean,
+    enabled: Boolean,
+    onReset: () -> Unit,
+    onApply: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SlockBrutalActionButton(
+            label = stringResource(MR.strings.file_preview_crop_reset),
+            onClick = onReset,
+            enabled = enabled && canReset,
+            backgroundColor = SlockColor.SurfaceWhite,
+            minWidth = 0.dp,
+            minHeight = 32.dp,
+            shadowOffset = 2.dp,
+            textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 14.sp),
+            modifier = Modifier.weight(1f),
+        )
+        SlockBrutalActionButton(
+            label = stringResource(MR.strings.file_preview_crop_apply),
+            onClick = onApply,
+            enabled = enabled,
+            backgroundColor = SlockColor.BrandYellow,
+            minWidth = 0.dp,
+            minHeight = 32.dp,
+            shadowOffset = 2.dp,
+            textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 14.sp),
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
 private fun SlockFilePreviewEditorToolButton(
     label: String,
     icon: SlockLucideIconName,
@@ -3892,16 +5172,39 @@ private fun SlockFilePreviewEditorToolButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    SlockFilePreviewBorderlessIconButton(
-        icon = icon,
-        label = label,
+    Button(
         onClick = onClick,
         enabled = enabled,
-        iconColor = slockFilePreviewEditorToolIconColor(selected = selected),
-        size = 40.dp,
-        iconSize = 21.dp,
-        modifier = modifier
-    )
+        pressOffset = 0.dp,
+        modifier =
+            modifier
+                .padding(horizontal = 2.dp)
+                .semantics { contentDescription = label },
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+        ) {
+            SlockLucideIcon(
+                name = icon,
+                color = if (enabled) slockFilePreviewEditorToolIconColor(selected = selected) else SlockColor.TextMutedGrayArgb,
+                modifier = Modifier.size(20.dp),
+            )
+            Box(modifier = Modifier.height(2.dp))
+            Text(
+                text = label,
+                fontSize = 11.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                color = if (enabled) {
+                    if (selected) SlockColor.TextBlack else SlockColor.TextMutedGray
+                } else {
+                    SlockColor.TextMutedGray
+                },
+                maxLines = 1,
+            )
+        }
+    }
 }
 
 @Composable
@@ -3948,7 +5251,8 @@ internal fun slockFilePreviewPencilOptionsExpandedAfterToolSelection(
                 true
             }
         SlockComposerImageEditorTool.Text,
-        SlockComposerImageEditorTool.Mosaic -> false
+        SlockComposerImageEditorTool.Mosaic,
+        SlockComposerImageEditorTool.Crop -> false
     }
 
 internal fun slockFilePreviewEditorControlsHeight(
@@ -4212,6 +5516,30 @@ internal fun slockComposerImageAccumulateMosaicTiles(
     return changed
 }
 
+internal fun slockComposerImageAccumulateMosaicTilesAlongLine(
+    target: MutableSet<SlockComposerImageMosaicTile>,
+    start: Offset,
+    end: Offset,
+    tileSizePx: Float = SlockComposerImageMosaicTileSizePx,
+    brushRadius: Int = SlockComposerImageMosaicBrushRadius,
+): Boolean {
+    if (tileSizePx <= 0f || brushRadius < 0) return false
+    val dx = end.x - start.x
+    val dy = end.y - start.y
+    val distance = sqrt(dx * dx + dy * dy)
+    val step = (tileSizePx * 0.5f).coerceAtLeast(4f)
+    var changed = slockComposerImageAccumulateMosaicTiles(target, start, tileSizePx, brushRadius)
+    if (distance > 0f) {
+        val steps = ceil(distance / step).toInt()
+        for (i in 1..steps) {
+            val t = i.toFloat() / steps.toFloat()
+            val point = Offset(start.x + dx * t, start.y + dy * t)
+            changed = slockComposerImageAccumulateMosaicTiles(target, point, tileSizePx, brushRadius) || changed
+        }
+    }
+    return changed
+}
+
 internal fun slockComposerImageMosaicSample(
     tile: SlockComposerImageMosaicTile,
     imageWidth: Int,
@@ -4219,6 +5547,7 @@ internal fun slockComposerImageMosaicSample(
     canvasWidth: Float,
     canvasHeight: Float,
     tileSizePx: Float = SlockComposerImageMosaicTileSizePx,
+    cropRect: SlockComposerImageCropRect = SlockComposerImageCropRect.Uncropped,
 ): SlockComposerImageMosaicSample? {
     if (
         imageWidth <= 0 ||
@@ -4229,10 +5558,12 @@ internal fun slockComposerImageMosaicSample(
     ) {
         return null
     }
-    val scale = min(canvasWidth / imageWidth.toFloat(), canvasHeight / imageHeight.toFloat())
+    val effectiveWidth = (imageWidth * cropRect.widthFraction).coerceAtLeast(1f)
+    val effectiveHeight = (imageHeight * cropRect.heightFraction).coerceAtLeast(1f)
+    val scale = min(canvasWidth / effectiveWidth, canvasHeight / effectiveHeight)
     if (!scale.isFinite() || scale <= 0f) return null
-    val renderedWidth = imageWidth * scale
-    val renderedHeight = imageHeight * scale
+    val renderedWidth = effectiveWidth * scale
+    val renderedHeight = effectiveHeight * scale
     val renderedLeft = (canvasWidth - renderedWidth) / 2f
     val renderedTop = (canvasHeight - renderedHeight) / 2f
     val tileLeft = tile.column * tileSizePx
@@ -4243,11 +5574,11 @@ internal fun slockComposerImageMosaicSample(
     val destinationBottom = minOf(tileTop + tileSizePx + 0.5f, renderedTop + renderedHeight)
     if (destinationRight <= destinationLeft || destinationBottom <= destinationTop) return null
     val sampleX =
-        (((destinationLeft + destinationRight) / 2f - renderedLeft) / scale)
+        (((destinationLeft + destinationRight) / 2f - renderedLeft) / scale + cropRect.left * imageWidth)
             .toInt()
             .coerceIn(0, imageWidth - 1)
     val sampleY =
-        (((destinationTop + destinationBottom) / 2f - renderedTop) / scale)
+        (((destinationTop + destinationBottom) / 2f - renderedTop) / scale + cropRect.top * imageHeight)
             .toInt()
             .coerceIn(0, imageHeight - 1)
     val destinationX = floor(destinationLeft).toInt()
@@ -4262,9 +5593,50 @@ internal fun slockComposerImageMosaicSample(
     )
 }
 
+internal fun slockComposerBackgroundImageSrcRect(
+    imageWidth: Int,
+    imageHeight: Int,
+    cropRect: SlockComposerImageCropRect = SlockComposerImageCropRect.Uncropped,
+): Pair<IntOffset, IntSize> {
+    if (imageWidth <= 0 || imageHeight <= 0) {
+        return Pair(IntOffset.Zero, IntSize.Zero)
+    }
+    val srcX = (cropRect.left * imageWidth).roundToInt().coerceIn(0, imageWidth - 1)
+    val srcY = (cropRect.top * imageHeight).roundToInt().coerceIn(0, imageHeight - 1)
+    val srcRight = (cropRect.right * imageWidth).roundToInt().coerceIn(srcX + 1, imageWidth)
+    val srcBottom = (cropRect.bottom * imageHeight).roundToInt().coerceIn(srcY + 1, imageHeight)
+    val srcWidth = (srcRight - srcX).coerceAtLeast(1)
+    val srcHeight = (srcBottom - srcY).coerceAtLeast(1)
+    return Pair(IntOffset(srcX, srcY), IntSize(srcWidth, srcHeight))
+}
+
+internal fun DrawScope.drawSlockComposerBackgroundImage(
+    image: ImageBitmap?,
+    cropRect: SlockComposerImageCropRect = SlockComposerImageCropRect.Uncropped,
+) {
+    val readyImage = image?.takeIf { it.width > 0 && it.height > 0 } ?: return
+    val (srcOffset, srcSize) =
+        slockComposerBackgroundImageSrcRect(
+            imageWidth = readyImage.width,
+            imageHeight = readyImage.height,
+            cropRect = cropRect,
+        )
+    if (srcSize.width <= 0 || srcSize.height <= 0) return
+    val dstWidth = size.width.roundToInt().coerceAtLeast(1)
+    val dstHeight = size.height.roundToInt().coerceAtLeast(1)
+    drawImage(
+        image = readyImage,
+        srcOffset = srcOffset,
+        srcSize = srcSize,
+        dstOffset = IntOffset.Zero,
+        dstSize = IntSize(dstWidth, dstHeight),
+    )
+}
+
 private fun DrawScope.drawSlockComposerImageMosaic(
     image: ImageBitmap?,
     tiles: Collection<SlockComposerImageMosaicTile>,
+    cropRect: SlockComposerImageCropRect = SlockComposerImageCropRect.Uncropped,
 ) {
     val readyImage = image?.takeIf { it.width > 0 && it.height > 0 } ?: return
     tiles.forEach { tile ->
@@ -4275,6 +5647,7 @@ private fun DrawScope.drawSlockComposerImageMosaic(
                 imageHeight = readyImage.height,
                 canvasWidth = size.width,
                 canvasHeight = size.height,
+                cropRect = cropRect,
             ) ?: return@forEach
         drawImage(
             image = readyImage,
@@ -4326,6 +5699,378 @@ private fun slockDistanceToSegmentSquared(point: Offset, start: Offset, end: Off
     val t = (((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared).coerceIn(0f, 1f)
     val projection = Offset(start.x + t * dx, start.y + t * dy)
     return point.slockDistanceSquaredTo(projection)
+}
+
+internal enum class SlockCropDragHandle {
+    TopLeft,
+    Top,
+    TopRight,
+    Right,
+    BottomRight,
+    Bottom,
+    BottomLeft,
+    Left,
+    Center,
+    None,
+}
+
+internal fun slockCropDetectHandle(
+    point: Offset,
+    cropRect: SlockComposerImageCropRect,
+    canvasSize: Size,
+    hitRadius: Float = 36f,
+): SlockCropDragHandle {
+    if (canvasSize.width <= 0f || canvasSize.height <= 0f) return SlockCropDragHandle.None
+    val rectLeft = cropRect.left * canvasSize.width
+    val rectTop = cropRect.top * canvasSize.height
+    val rectRight = cropRect.right * canvasSize.width
+    val rectBottom = cropRect.bottom * canvasSize.height
+
+    fun distanceSquared(cx: Float, cy: Float): Float {
+        val dx = point.x - cx
+        val dy = point.y - cy
+        return dx * dx + dy * dy
+    }
+    val effectiveHitRadius = minOf(hitRadius, (rectRight - rectLeft) / 3f, (rectBottom - rectTop) / 3f).coerceAtLeast(8f)
+    val r2 = effectiveHitRadius * effectiveHitRadius
+
+    // Check corners first (highest priority)
+    if (distanceSquared(rectLeft, rectTop) <= r2) return SlockCropDragHandle.TopLeft
+    if (distanceSquared(rectRight, rectTop) <= r2) return SlockCropDragHandle.TopRight
+    if (distanceSquared(rectLeft, rectBottom) <= r2) return SlockCropDragHandle.BottomLeft
+    if (distanceSquared(rectRight, rectBottom) <= r2) return SlockCropDragHandle.BottomRight
+
+    // Check edges
+    if (point.x in (rectLeft + effectiveHitRadius)..(rectRight - effectiveHitRadius) &&
+        abs(point.y - rectTop) <= effectiveHitRadius) return SlockCropDragHandle.Top
+    if (point.x in (rectLeft + effectiveHitRadius)..(rectRight - effectiveHitRadius) &&
+        abs(point.y - rectBottom) <= effectiveHitRadius) return SlockCropDragHandle.Bottom
+    if (point.y in (rectTop + effectiveHitRadius)..(rectBottom - effectiveHitRadius) &&
+        abs(point.x - rectLeft) <= effectiveHitRadius) return SlockCropDragHandle.Left
+    if (point.y in (rectTop + effectiveHitRadius)..(rectBottom - effectiveHitRadius) &&
+        abs(point.x - rectRight) <= effectiveHitRadius) return SlockCropDragHandle.Right
+
+    // Check center (moving whole box)
+    if (point.x >= rectLeft && point.x <= rectRight && point.y >= rectTop && point.y <= rectBottom) {
+        return SlockCropDragHandle.Center
+    }
+
+    return SlockCropDragHandle.None
+}
+
+internal fun slockCropApplyDrag(
+    handle: SlockCropDragHandle,
+    cropRect: SlockComposerImageCropRect,
+    dragAmount: Offset,
+    canvasSize: Size,
+    minDimensionFraction: Float = 0.1f,
+): SlockComposerImageCropRect {
+    if (canvasSize.width <= 0f || canvasSize.height <= 0f || handle == SlockCropDragHandle.None) {
+        return cropRect
+    }
+    val dLeft = dragAmount.x / canvasSize.width
+    val dTop = dragAmount.y / canvasSize.height
+
+    var newLeft = cropRect.left
+    var newTop = cropRect.top
+    var newRight = cropRect.right
+    var newBottom = cropRect.bottom
+
+    when (handle) {
+        SlockCropDragHandle.TopLeft -> {
+            newLeft = (cropRect.left + dLeft).coerceIn(0f, cropRect.right - minDimensionFraction)
+            newTop = (cropRect.top + dTop).coerceIn(0f, cropRect.bottom - minDimensionFraction)
+        }
+        SlockCropDragHandle.Top -> {
+            newTop = (cropRect.top + dTop).coerceIn(0f, cropRect.bottom - minDimensionFraction)
+        }
+        SlockCropDragHandle.TopRight -> {
+            newRight = (cropRect.right + dLeft).coerceIn(cropRect.left + minDimensionFraction, 1f)
+            newTop = (cropRect.top + dTop).coerceIn(0f, cropRect.bottom - minDimensionFraction)
+        }
+        SlockCropDragHandle.Right -> {
+            newRight = (cropRect.right + dLeft).coerceIn(cropRect.left + minDimensionFraction, 1f)
+        }
+        SlockCropDragHandle.BottomRight -> {
+            newRight = (cropRect.right + dLeft).coerceIn(cropRect.left + minDimensionFraction, 1f)
+            newBottom = (cropRect.bottom + dTop).coerceIn(cropRect.top + minDimensionFraction, 1f)
+        }
+        SlockCropDragHandle.Bottom -> {
+            newBottom = (cropRect.bottom + dTop).coerceIn(cropRect.top + minDimensionFraction, 1f)
+        }
+        SlockCropDragHandle.BottomLeft -> {
+            newLeft = (cropRect.left + dLeft).coerceIn(0f, cropRect.right - minDimensionFraction)
+            newBottom = (cropRect.bottom + dTop).coerceIn(cropRect.top + minDimensionFraction, 1f)
+        }
+        SlockCropDragHandle.Left -> {
+            newLeft = (cropRect.left + dLeft).coerceIn(0f, cropRect.right - minDimensionFraction)
+        }
+        SlockCropDragHandle.Center -> {
+            val width = cropRect.right - cropRect.left
+            val height = cropRect.bottom - cropRect.top
+            val clampedDLeft = dLeft.coerceIn(-cropRect.left, 1f - cropRect.right)
+            val clampedDTop = dTop.coerceIn(-cropRect.top, 1f - cropRect.bottom)
+            newLeft = cropRect.left + clampedDLeft
+            newRight = newLeft + width
+            newTop = cropRect.top + clampedDTop
+            newBottom = newTop + height
+        }
+        SlockCropDragHandle.None -> {}
+    }
+
+    return SlockComposerImageCropRect(
+        left = newLeft.coerceIn(0f, 1f),
+        top = newTop.coerceIn(0f, 1f),
+        right = newRight.coerceIn(0f, 1f),
+        bottom = newBottom.coerceIn(0f, 1f),
+    )
+}
+
+internal fun slockRemapPoint(
+    point: Offset,
+    oldCrop: SlockComposerImageCropRect,
+    newCrop: SlockComposerImageCropRect,
+    oldCanvasSize: Size,
+    newCanvasSize: Size,
+): Offset {
+    if (oldCanvasSize.width <= 0f || oldCanvasSize.height <= 0f ||
+        newCanvasSize.width <= 0f || newCanvasSize.height <= 0f) {
+        return point
+    }
+    val normX = oldCrop.left + (point.x / oldCanvasSize.width) * oldCrop.widthFraction
+    val normY = oldCrop.top + (point.y / oldCanvasSize.height) * oldCrop.heightFraction
+    val newRelX = (normX - newCrop.left) / newCrop.widthFraction
+    val newRelY = (normY - newCrop.top) / newCrop.heightFraction
+    return Offset(newRelX * newCanvasSize.width, newRelY * newCanvasSize.height)
+}
+
+internal fun slockRemapStroke(
+    stroke: SlockComposerImageStroke,
+    oldCrop: SlockComposerImageCropRect,
+    newCrop: SlockComposerImageCropRect,
+    oldCanvasSize: Size,
+    newCanvasSize: Size,
+): SlockComposerImageStroke {
+    val remappedPoints = stroke.points.map { pt ->
+        slockRemapPoint(pt, oldCrop, newCrop, oldCanvasSize, newCanvasSize)
+    }
+    return stroke.copy(points = remappedPoints)
+}
+
+internal fun slockRemapTextAnnotations(
+    annotations: List<SlockComposerImageTextAnnotation>,
+    oldCrop: SlockComposerImageCropRect,
+    newCrop: SlockComposerImageCropRect,
+    oldCanvasSize: Size,
+    newCanvasSize: Size,
+): List<SlockComposerImageTextAnnotation> =
+    annotations.map { ann ->
+        ann.copy(position = slockRemapPoint(ann.position, oldCrop, newCrop, oldCanvasSize, newCanvasSize))
+    }
+
+internal fun slockRemapMosaicTiles(
+    tiles: Set<SlockComposerImageMosaicTile>,
+    oldCrop: SlockComposerImageCropRect,
+    newCrop: SlockComposerImageCropRect,
+    oldCanvasSize: Size,
+    newCanvasSize: Size,
+    tileSizePx: Float = SlockComposerImageMosaicTileSizePx,
+): Set<SlockComposerImageMosaicTile> {
+    if (tiles.isEmpty() || oldCanvasSize.width <= 0f || oldCanvasSize.height <= 0f ||
+        newCanvasSize.width <= 0f || newCanvasSize.height <= 0f) {
+        return tiles
+    }
+    val remapped = mutableSetOf<SlockComposerImageMosaicTile>()
+    tiles.forEach { tile ->
+        val p1 = Offset(tile.column * tileSizePx, tile.row * tileSizePx)
+        val p2 = Offset((tile.column + 1) * tileSizePx, (tile.row + 1) * tileSizePx)
+        val r1 = slockRemapPoint(p1, oldCrop, newCrop, oldCanvasSize, newCanvasSize)
+        val r2 = slockRemapPoint(p2, oldCrop, newCrop, oldCanvasSize, newCanvasSize)
+        val minX = minOf(r1.x, r2.x)
+        val maxX = maxOf(r1.x, r2.x)
+        val minY = minOf(r1.y, r2.y)
+        val maxY = maxOf(r1.y, r2.y)
+        val startCol = floor(minX / tileSizePx).toInt().coerceAtLeast(0)
+        val endCol = floor(maxX / tileSizePx).toInt().coerceAtLeast(startCol)
+        val startRow = floor(minY / tileSizePx).toInt().coerceAtLeast(0)
+        val endRow = floor(maxY / tileSizePx).toInt().coerceAtLeast(startRow)
+        for (c in startCol..endCol) {
+            for (r in startRow..endRow) {
+                remapped.add(SlockComposerImageMosaicTile(c, r))
+            }
+        }
+    }
+    return remapped
+}
+
+internal fun slockRemapContentForCrop(
+    content: SlockComposerImageEditorContent,
+    newCrop: SlockComposerImageCropRect,
+    oldCanvasSize: Size,
+    newCanvasSize: Size,
+): SlockComposerImageEditorContent {
+    val oldCrop = content.cropRect
+    if (oldCrop == newCrop) return content
+    val newStrokes = content.strokes.map { slockRemapStroke(it, oldCrop, newCrop, oldCanvasSize, newCanvasSize) }
+    val newTexts = slockRemapTextAnnotations(content.textAnnotations, oldCrop, newCrop, oldCanvasSize, newCanvasSize)
+    val newTiles = slockRemapMosaicTiles(content.mosaicTiles, oldCrop, newCrop, oldCanvasSize, newCanvasSize)
+    val newDrawOps = content.slockComposerImageResolvedDrawOperations().map { op ->
+        when (op) {
+            is SlockComposerImageDrawOperation.Mosaic ->
+                SlockComposerImageDrawOperation.Mosaic(slockRemapMosaicTiles(op.tiles, oldCrop, newCrop, oldCanvasSize, newCanvasSize))
+            is SlockComposerImageDrawOperation.Pencil ->
+                SlockComposerImageDrawOperation.Pencil(slockRemapStroke(op.stroke, oldCrop, newCrop, oldCanvasSize, newCanvasSize))
+        }
+    }
+    return content.copy(
+        cropRect = newCrop,
+        strokes = newStrokes,
+        textAnnotations = newTexts,
+        mosaicTiles = newTiles,
+        drawOperations = newDrawOps,
+    )
+}
+
+internal fun slockApplyCropToContent(
+    content: SlockComposerImageEditorContent,
+    newCrop: SlockComposerImageCropRect,
+    imageWidth: Int,
+    imageHeight: Int,
+    maxWidth: Float,
+    maxHeight: Float,
+): SlockComposerImageEditorContent {
+    val oldCrop = content.cropRect
+    if (oldCrop == newCrop) return content
+    val oldCapture = slockComposerImageEditorCaptureSize(
+        imageWidth = imageWidth,
+        imageHeight = imageHeight,
+        maxWidth = maxWidth,
+        maxHeight = maxHeight,
+        cropRect = oldCrop,
+    ) ?: return content.copy(cropRect = newCrop)
+    val newCapture = slockComposerImageEditorCaptureSize(
+        imageWidth = imageWidth,
+        imageHeight = imageHeight,
+        maxWidth = maxWidth,
+        maxHeight = maxHeight,
+        cropRect = newCrop,
+    ) ?: return content.copy(cropRect = newCrop)
+    return slockRemapContentForCrop(
+        content = content,
+        newCrop = newCrop,
+        oldCanvasSize = oldCapture,
+        newCanvasSize = newCapture,
+    )
+}
+
+internal fun DrawScope.drawSlockCropOverlay(
+    cropRect: SlockComposerImageCropRect,
+    canvasSize: Size,
+    density: Float,
+) {
+    if (canvasSize.width <= 0f || canvasSize.height <= 0f) return
+    val rectLeft = cropRect.left * canvasSize.width
+    val rectTop = cropRect.top * canvasSize.height
+    val rectRight = cropRect.right * canvasSize.width
+    val rectBottom = cropRect.bottom * canvasSize.height
+    val rectWidth = rectRight - rectLeft
+    val rectHeight = rectBottom - rectTop
+    if (rectWidth <= 0f || rectHeight <= 0f) return
+
+    val scrimColor = Color(0x99000000)
+    if (rectTop > 0f) {
+        drawRect(
+            color = scrimColor,
+            topLeft = Offset(0f, 0f),
+            size = Size(canvasSize.width, rectTop),
+        )
+    }
+    if (rectBottom < canvasSize.height) {
+        drawRect(
+            color = scrimColor,
+            topLeft = Offset(0f, rectBottom),
+            size = Size(canvasSize.width, canvasSize.height - rectBottom),
+        )
+    }
+    if (rectLeft > 0f) {
+        drawRect(
+            color = scrimColor,
+            topLeft = Offset(0f, rectTop),
+            size = Size(rectLeft, rectHeight),
+        )
+    }
+    if (rectRight < canvasSize.width) {
+        drawRect(
+            color = scrimColor,
+            topLeft = Offset(rectRight, rectTop),
+            size = Size(canvasSize.width - rectRight, rectHeight),
+        )
+    }
+
+    val borderWidth = (1.5f * density).coerceAtLeast(1f)
+    drawRect(
+        color = Color(0xFFFFFFFF),
+        topLeft = Offset(rectLeft, rectTop),
+        size = Size(rectWidth, rectHeight),
+        style = Stroke(width = borderWidth),
+    )
+
+    val gridColor = Color(0x66FFFFFF)
+    val gridStroke = (1f * density).coerceAtLeast(1f)
+    val oneThirdW = rectWidth / 3f
+    val twoThirdW = 2f * rectWidth / 3f
+    val oneThirdH = rectHeight / 3f
+    val twoThirdH = 2f * rectHeight / 3f
+
+    drawLine(
+        color = gridColor,
+        start = Offset(rectLeft + oneThirdW, rectTop),
+        end = Offset(rectLeft + oneThirdW, rectBottom),
+        strokeWidth = gridStroke,
+    )
+    drawLine(
+        color = gridColor,
+        start = Offset(rectLeft + twoThirdW, rectTop),
+        end = Offset(rectLeft + twoThirdW, rectBottom),
+        strokeWidth = gridStroke,
+    )
+    drawLine(
+        color = gridColor,
+        start = Offset(rectLeft, rectTop + oneThirdH),
+        end = Offset(rectRight, rectTop + oneThirdH),
+        strokeWidth = gridStroke,
+    )
+    drawLine(
+        color = gridColor,
+        start = Offset(rectLeft, rectTop + twoThirdH),
+        end = Offset(rectRight, rectTop + twoThirdH),
+        strokeWidth = gridStroke,
+    )
+
+    val cornerLen = (18f * density).coerceIn(12f, minOf(rectWidth, rectHeight) / 2f)
+    val cornerThickness = (3f * density).coerceAtLeast(2f)
+    val cornerColor = Color(0xFFFFFFFF)
+
+    drawLine(cornerColor, Offset(rectLeft, rectTop), Offset(rectLeft + cornerLen, rectTop), strokeWidth = cornerThickness)
+    drawLine(cornerColor, Offset(rectLeft, rectTop), Offset(rectLeft, rectTop + cornerLen), strokeWidth = cornerThickness)
+
+    drawLine(cornerColor, Offset(rectRight, rectTop), Offset(rectRight - cornerLen, rectTop), strokeWidth = cornerThickness)
+    drawLine(cornerColor, Offset(rectRight, rectTop), Offset(rectRight, rectTop + cornerLen), strokeWidth = cornerThickness)
+
+    drawLine(cornerColor, Offset(rectLeft, rectBottom), Offset(rectLeft + cornerLen, rectBottom), strokeWidth = cornerThickness)
+    drawLine(cornerColor, Offset(rectLeft, rectBottom), Offset(rectLeft, rectBottom - cornerLen), strokeWidth = cornerThickness)
+
+    drawLine(cornerColor, Offset(rectRight, rectBottom), Offset(rectRight - cornerLen, rectBottom), strokeWidth = cornerThickness)
+    drawLine(cornerColor, Offset(rectRight, rectBottom), Offset(rectRight, rectBottom - cornerLen), strokeWidth = cornerThickness)
+
+    val edgeBarLen = (14f * density).coerceIn(8f, minOf(rectWidth, rectHeight) / 3f)
+    val edgeCenterX = rectLeft + rectWidth / 2f
+    val edgeCenterY = rectTop + rectHeight / 2f
+
+    drawLine(cornerColor, Offset(edgeCenterX - edgeBarLen / 2f, rectTop), Offset(edgeCenterX + edgeBarLen / 2f, rectTop), strokeWidth = cornerThickness)
+    drawLine(cornerColor, Offset(edgeCenterX - edgeBarLen / 2f, rectBottom), Offset(edgeCenterX + edgeBarLen / 2f, rectBottom), strokeWidth = cornerThickness)
+    drawLine(cornerColor, Offset(rectLeft, edgeCenterY - edgeBarLen / 2f), Offset(rectLeft, edgeCenterY + edgeBarLen / 2f), strokeWidth = cornerThickness)
+    drawLine(cornerColor, Offset(rectRight, edgeCenterY - edgeBarLen / 2f), Offset(rectRight, edgeCenterY + edgeBarLen / 2f), strokeWidth = cornerThickness)
 }
 
 internal data class FilePreviewLaunchPayloadTrace(
@@ -4444,8 +6189,16 @@ private fun SlockFilePreviewPayload.withFilePreviewAuthorityRejected(): SlockFil
         composerImageActionId = "",
         composerImageGroupId = "",
         composerImageFileRef = "",
+        composerImageFileName = "",
+        composerImageMimeType = "",
+        composerImageSizeBytes = null,
         composerImagePreviewUri = "",
         composerImageOwnedTemporaryFileRefs = emptyList(),
+        composerImageReplaceAttachmentId = "",
+        composerImageCompressAfterEdit = false,
+        composerImageOriginalOptionEnabled = false,
+        composerImageEditCompleted = false,
+        composerImageCompressed = false,
         composerImageCanComplete = false,
         composerImageCanEdit = false
     )
@@ -4667,7 +6420,8 @@ private fun SlockFilePreviewPayload.durableRemotePreviewKind(): String =
 
 internal fun Pager.openSlockFilePreviewPage(
     payload: SlockFilePreviewPayload,
-    sourceStoreScope: SlockShellStoreScope? = null
+    sourceStoreScope: SlockShellStoreScope? = null,
+    onEphemeralSessionRegistered: ((String) -> Boolean)? = null
 ): Boolean {
     val sourceScope = resolveSlockFilePreviewSourceStoreScope(pageData.params, sourceStoreScope)
     if (sourceScope == null) {
@@ -4723,15 +6477,8 @@ internal fun Pager.openSlockFilePreviewPage(
             fileRefs = registrationCleanupRefs.toList()
         )
     }
-    val launchPageData = slockFilePreviewLaunchPageData(launch, storeScope, targetServerId)
-    val opened =
-        openSlockPage(
-            SLOCK_FILE_PREVIEW_PAGE,
-            launchPageData,
-            storeScopeOverride = storeScope,
-            authenticatedRouteAuthorityRequired = launch.requiresAuthenticatedRouteAuthority()
-        )
-    if (!opened) {
+
+    fun retireEphemeralRegistration(): Set<String> {
         SlockFilePreviewLaunchPayloadStore.retire(sessionId)
         val cleanupRefs =
             ephemeralActionRegistry.retireActive(sessionId).cleanupFileRefs +
@@ -4742,6 +6489,53 @@ internal fun Pager.openSlockFilePreviewPage(
                 sessionId = sessionId,
                 fileRefs = cleanupRefs.toList()
             )
+        }
+        return cleanupRefs
+    }
+
+    // Notify the caller only after the registry has accepted this exact session.  A callback
+    // before registration could hand a consumer an owner token for a session that was immediately
+    // evicted/replaced by the registry's bounded-session policy.
+    if (ephemeralRegistration != null) {
+        // An ephemeral launch without a live registry row has no authority for a Done callback.
+        // This can happen when the bounded registry evicts the row between registration and this
+        // check (or when a test/configuration uses a zero-capacity registry).  Never open an
+        // ownerless preview: retire the payload, ledger and any remaining refs first.
+        if (!ephemeralActionRegistry.hasSession(sessionId)) {
+            retireEphemeralRegistration()
+            return false
+        }
+        val ownerAccepted =
+            runCatching { onEphemeralSessionRegistered?.invoke(sessionId) ?: true }
+                .getOrDefault(false)
+        if (!ownerAccepted) {
+            // The page-local owner was already disposed (or otherwise rejected this session).
+            // Do not open a preview whose callback can never be consumed; retire every registry,
+            // ledger, and launch-payload entry synchronously before returning to the caller.
+            retireEphemeralRegistration()
+            return false
+        }
+        // A concurrent preview registration may evict this bounded process-local row after the
+        // owner callback returns. Recheck immediately before opening the route so no page is
+        // launched with a session that cannot produce an admissible Done event.
+        if (!ephemeralActionRegistry.hasSession(sessionId)) {
+            retireEphemeralRegistration()
+            return false
+        }
+    }
+    val launchPageData = slockFilePreviewLaunchPageData(launch, storeScope, targetServerId)
+    val opened =
+        openSlockPage(
+            SLOCK_FILE_PREVIEW_PAGE,
+            launchPageData,
+            storeScopeOverride = storeScope,
+            authenticatedRouteAuthorityRequired = launch.requiresAuthenticatedRouteAuthority()
+        )
+    if (!opened) {
+        if (ephemeralRegistration != null) {
+            retireEphemeralRegistration()
+        } else {
+            SlockFilePreviewLaunchPayloadStore.retire(sessionId)
         }
     }
     return opened
@@ -4830,6 +6624,7 @@ internal fun KuiklyThreadAttachmentItem.toThreadAttachmentCommentsPreviewPayload
 ): SlockFilePreviewPayload? {
     if (!commentsEnabled) return null
     if (isPreviewableVideoAttachment()) return null
+    if (isPreviewableAudioAttachment()) return null
     val kind =
         when {
             isImageAttachment() -> "image"
@@ -4847,7 +6642,8 @@ internal fun SlockFilePreviewPayload.supportsAttachmentComments(): Boolean =
     source == SlockFilePreviewSourceThreadAttachment &&
         attachmentId.isNotBlank() &&
         attachmentCommentsEnabled &&
-        !slockFilePreviewIsPreviewableVideoAttachment(externalFileName, externalMimeType)
+        !slockFilePreviewIsPreviewableVideoAttachment(externalFileName, externalMimeType) &&
+        !slockFilePreviewIsAudioAttachment(externalFileName, externalMimeType)
 
 private fun SlockFilePreviewPayload.supportsSaveToPhotos(): Boolean =
     source == SlockFilePreviewSourceThreadAttachment &&
@@ -4870,7 +6666,8 @@ internal fun agentWorkspaceLazyPreviewPayload(agentId: String, path: String): Sl
 private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
     threadApi: SlockThreadApiClient,
     networkClient: SlockNetworkClient,
-    truncatedPreviewHint: String
+    truncatedPreviewHint: String,
+    expiresAtSink: ((String?) -> Unit)? = null
 ): SlockFilePreviewPayload? {
     if (source != SlockFilePreviewSourceThreadAttachment || attachmentId.isBlank() || kind != "loading") return null
     val wantsMarkdown =
@@ -4889,9 +6686,9 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
                 fileName = previewFileName,
                 mimeType = externalMimeType
             )
-    val wantsMp3Audio =
+    val wantsAudio =
         requestedKind == "audio" ||
-            slockFilePreviewIsMp3AudioAttachment(
+            slockFilePreviewIsAudioAttachment(
                 fileName = previewFileName,
                 mimeType = externalMimeType
             )
@@ -4901,19 +6698,27 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
                 fileName = previewFileName,
                 mimeType = externalMimeType
             )
+    val wantsXlsx =
+        requestedKind == "xlsx" ||
+            slockFilePreviewIsXlsxAttachment(
+                fileName = previewFileName,
+                mimeType = externalMimeType
+            )
     val wantsText =
         requestedKind == "text" ||
             (!wantsMarkdown &&
             !wantsHtml &&
+            !wantsXlsx &&
             slockFilePreviewIsTextLikeAttachment(
                 fileName = name.ifBlank { path.ifBlank { externalFileName } },
                 mimeType = externalMimeType
             ))
     return when {
         wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient, truncatedPreviewHint)
-        wantsImage -> loadThreadImageAttachmentPreview(threadApi)
+        wantsXlsx -> loadThreadXlsxAttachmentPreview(networkClient)
+        wantsImage -> loadThreadImageAttachmentPreview(threadApi, expiresAtSink)
         wantsVideo -> loadThreadVideoAttachmentPreview(threadApi)
-        wantsMp3Audio -> loadThreadVideoAttachmentPreview(threadApi, title = MR.strings.file_preview_audio.desc(), audioOnly = true)
+        wantsAudio -> loadThreadVideoAttachmentPreview(threadApi, title = MR.strings.file_preview_audio.desc(), audioOnly = true)
         wantsHtml -> loadThreadHtmlAttachmentPreview(threadApi)
         wantsText -> loadThreadTextAttachmentPreview(threadApi, networkClient, truncatedPreviewHint)
         else ->
@@ -4927,11 +6732,15 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
 }
 
 private suspend fun SlockFilePreviewPayload.loadThreadImageAttachmentPreview(
-    threadApi: SlockThreadApiClient
+    threadApi: SlockThreadApiClient,
+    expiresAtSink: ((String?) -> Unit)? = null
 ): SlockFilePreviewPayload {
     val remoteImageUrl =
         when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
-            is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
+            is ThreadApiResult.Success -> {
+                expiresAtSink?.invoke(response.data.expiresAt)
+                response.data.url.takeIf { it.isNotBlank() }
+            }
             is ThreadApiResult.Failure -> null
         }
     // Kuikly Compose image rendering already caches by source URL through
@@ -5198,6 +7007,79 @@ private suspend fun SlockFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
     )
 }
 
+/** task #351: server-parsed XLSX preview (web #7168 contract). Reuses the shared
+ * `attachments/:id/preview` endpoint; the payload carries the bounded sheets as JSON. */
+private suspend fun SlockFilePreviewPayload.loadThreadXlsxAttachmentPreview(
+    networkClient: SlockNetworkClient,
+): SlockFilePreviewPayload {
+    val serverPreview = fetchServerAttachmentPreview(networkClient, attachmentId)
+    val xlsx = serverPreview?.content as? AttachmentPreviewContent.Xlsx
+    if (xlsx != null) {
+        return copy(
+            kind = "xlsx",
+            titleDesc = MR.strings.file_preview_xlsx.desc(),
+            content = "",
+            markdown = false,
+            message = "",
+            messageDesc = null,
+            error = null,
+            xlsxSheetsJson = encodeSlockFilePreviewXlsx(xlsx),
+        )
+    }
+    return copy(
+        kind = "unsupported",
+        titleDesc = MR.strings.file_preview_title.desc(),
+        message = "",
+        messageDesc = MR.strings.file_preview_no_preview.desc(),
+        error = null,
+    )
+}
+
+@Serializable
+internal data class SlockFilePreviewXlsxSheetCarrier(
+    val name: String,
+    val headers: List<String>,
+    val rows: List<List<String>>,
+    val rowCount: Int,
+    val columnCount: Int,
+    val truncated: Boolean,
+)
+
+@Serializable
+internal data class SlockFilePreviewXlsxCarrier(
+    val sheets: List<SlockFilePreviewXlsxSheetCarrier>,
+    val sheetCount: Int,
+    val truncated: Boolean,
+)
+
+internal fun encodeSlockFilePreviewXlsx(xlsx: AttachmentPreviewContent.Xlsx): String =
+    runCatching {
+        SlockFilePreviewJson.encodeToString(
+            SlockFilePreviewXlsxCarrier.serializer(),
+            SlockFilePreviewXlsxCarrier(
+                sheets =
+                    xlsx.sheets.map { sheet ->
+                        SlockFilePreviewXlsxSheetCarrier(
+                            name = sheet.name,
+                            headers = sheet.headers,
+                            rows = sheet.rows,
+                            rowCount = sheet.rowCount,
+                            columnCount = sheet.columnCount,
+                            truncated = sheet.truncated,
+                        )
+                    },
+                sheetCount = xlsx.sheetCount,
+                truncated = xlsx.truncated,
+            )
+        )
+    }.getOrDefault("")
+
+internal fun parseSlockFilePreviewXlsx(json: String): SlockFilePreviewXlsxCarrier? =
+    runCatching {
+        SlockFilePreviewJson.decodeFromString(SlockFilePreviewXlsxCarrier.serializer(), json)
+    }.getOrNull()
+
+
 private suspend fun SlockFilePreviewPayload.threadAttachmentExternalUrl(
     threadApi: SlockThreadApiClient
 ): String? {
@@ -5266,6 +7148,16 @@ internal fun slockFilePreviewIsHtmlAttachment(fileName: String, mimeType: String
     return normalizedMime.equals("text/html", ignoreCase = true) ||
         normalizedName.endsWith(".html", ignoreCase = true) ||
         normalizedName.endsWith(".htm", ignoreCase = true)
+}
+
+/** task #351: server-parsed XLSX preview applies to the zip-based xlsx/xlsm family only
+ * (web #7168 contract; legacy .xls and ODS stay on the download fallback). */
+internal fun slockFilePreviewIsXlsxAttachment(fileName: String, mimeType: String): Boolean {
+    val normalizedMime = mimeType.substringBefore(';').trim().lowercase()
+    val normalizedName = fileName.substringBefore('?').substringBefore('#')
+    return normalizedName.endsWith(".xlsx", ignoreCase = true) ||
+        normalizedName.endsWith(".xlsm", ignoreCase = true) ||
+        normalizedMime == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 }
 
 internal enum class SlockPreviewableVideoContainer {
@@ -5373,6 +7265,44 @@ internal fun slockFilePreviewIsMp3AudioAttachment(fileName: String, mimeType: St
     if (normalizedMime.equals("audio/mpeg", ignoreCase = true)) return true
     if (normalizedMime.equals("audio/mp3", ignoreCase = true)) return true
     return fileName.substringBefore('?').substringBefore('#').endsWith(".mp3", ignoreCase = true)
+}
+
+private val SlockFilePreviewAudioMimeTypes =
+    setOf(
+        "audio/mpeg",
+        "audio/mp3",
+        "audio/wav",
+        "audio/x-wav",
+        "audio/wave",
+        "audio/aac",
+        "audio/mp4",
+        "audio/x-m4a",
+        "audio/ogg",
+        "audio/opus",
+        "audio/webm",
+        "audio/flac",
+        "audio/x-flac"
+    )
+
+private val SlockFilePreviewSupportedAudioExtensions =
+    setOf(
+        "mp3",
+        "wav",
+        "m4a",
+        "aac",
+        "ogg",
+        "oga",
+        "opus",
+        "weba",
+        "flac"
+    )
+
+internal fun slockFilePreviewIsAudioAttachment(fileName: String, mimeType: String): Boolean {
+    val normalizedMime = mimeType.substringBefore(';').trim().lowercase()
+    if (normalizedMime in SlockFilePreviewAudioMimeTypes) return true
+    val cleanName = fileName.substringBefore('?').substringBefore('#').lowercase()
+    val extension = cleanName.substringAfterLast('.', missingDelimiterValue = "")
+    return extension in SlockFilePreviewSupportedAudioExtensions
 }
 
 internal fun slockFilePreviewIsTextLikeAttachment(fileName: String, mimeType: String): Boolean {
@@ -5541,6 +7471,7 @@ internal fun SlockFilePreviewPayloadContent(
     onResumeDownload: (() -> Unit)? = null,
     onStopDownload: (() -> Unit)? = null,
     onImageGalleryIndexChange: ((Int) -> Unit)? = null,
+    onExternalBrowserOpen: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val onToggleDownload = if (downloadPaused) onResumeDownload else onPauseDownload
@@ -5607,6 +7538,41 @@ internal fun SlockFilePreviewPayloadContent(
                     showChrome = false
                 )
             }
+        "xlsx" -> {
+            val xlsxCarrier = remember(payload.xlsxSheetsJson) { parseSlockFilePreviewXlsx(payload.xlsxSheetsJson) }
+            SlockFilePreviewDownloadStatusOverlay(
+                statusLabel = downloadStatusLabel,
+                showProgress = downloadInProgress,
+                progressPercent = downloadProgressPercent,
+                downloadPaused = downloadPaused,
+                onToggleDownload = onToggleDownload,
+                onStopDownload = onStopDownload,
+                modifier = modifier.fillMaxSize()
+            ) {
+                if (xlsxCarrier != null && xlsxCarrier.sheets.isNotEmpty()) {
+                    SlockFilePreviewXlsxPanel(
+                        name = payload.name.ifBlank { payload.path },
+                        meta = payload.meta,
+                        sheets = xlsxCarrier.sheets,
+                        truncated = xlsxCarrier.truncated,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    SlockFilePreviewGenericCard(
+                        iconName = SlockLucideIconName.FileSpreadsheet,
+                        name = payload.name.ifBlank { payload.path },
+                        meta = payload.meta,
+                        message = payload.localizedMessage().ifBlank { stringResource(MR.strings.file_preview_no_preview) },
+                        secondaryActionLabel =
+                            onExternalBrowserOpen?.let { stringResource(MR.strings.file_preview_action_open_in_browser) },
+                        secondaryActionIcon = SlockLucideIconName.ExternalLink,
+                        secondaryActionEnabled = !downloadInProgress,
+                        onSecondaryAction = onExternalBrowserOpen,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+        }
         "image" ->
             SlockFilePreviewImageGallerySurface(
                 payload = payload,
@@ -5642,6 +7608,11 @@ internal fun SlockFilePreviewPayloadContent(
                         statusLabel = downloadStatusLabel,
                         showProgress = downloadInProgress,
                         progressPercent = downloadProgressPercent,
+                        secondaryActionLabel =
+                            onExternalBrowserOpen?.let { stringResource(MR.strings.file_preview_action_open_in_browser) },
+                        secondaryActionIcon = SlockLucideIconName.ExternalLink,
+                        secondaryActionEnabled = !downloadInProgress,
+                        onSecondaryAction = onExternalBrowserOpen,
                         actionLabel =
                             onDownload
                                 ?.takeIf { !downloadInProgress }
@@ -5737,6 +7708,11 @@ internal fun SlockFilePreviewPayloadContent(
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
                 progressPercent = downloadProgressPercent,
+                secondaryActionLabel =
+                    onExternalBrowserOpen?.let { stringResource(MR.strings.file_preview_action_open_in_browser) },
+                secondaryActionIcon = SlockLucideIconName.ExternalLink,
+                secondaryActionEnabled = !downloadInProgress,
+                onSecondaryAction = onExternalBrowserOpen,
                 actionLabel =
                     onDownload
                         ?.takeIf { !downloadInProgress }
@@ -6264,40 +8240,326 @@ internal fun SlockFilePreviewPayload.canCompleteComposerImageSelection(): Boolea
         composerImageFileRef.isNotBlank()
     }
 
-internal fun SlockFilePreviewPayload.withComposerImageEditResult(fileRef: String): SlockFilePreviewPayload {
-    if (fileRef.isBlank() || imageGallery.isEmpty()) return this
-    val currentIndex = imageGalleryIndex.coerceIn(0, imageGallery.lastIndex)
-    val editedFileName =
-        imageGallery[currentIndex].name
-            .ifBlank { currentComposerImageFileName() }
-            .toKuiklySnapshotPngFileName()
+internal fun SlockFilePreviewPayload.showsComposerOriginalImageOption(): Boolean =
+    composerImageOriginalOptionEnabled &&
+        composerImageCanComplete &&
+        composerImageActionId.isNotBlank()
+
+internal fun SlockFilePreviewPayload.composerOriginalImageSelected(): Boolean =
+    showsComposerOriginalImageOption() && !composerImageCompressAfterEdit
+
+internal fun SlockFilePreviewPayload.withComposerOriginalImage(enabled: Boolean): SlockFilePreviewPayload =
+    copy(composerImageCompressAfterEdit = !enabled)
+
+/**
+ * Returns whether at least one composer image still needs its final delivery representation.
+ *
+ * The source ref is deliberately not used as the completion signal: a picker ref may point at
+ * an uncompressed source, and a PNG editor snapshot may need a JPEG pass.  Callers use this
+ * predicate to start the asynchronous finalization workflow from the Done action; it must not be
+ * used to disable that action (a pending item is exactly what Done has to finalize).
+ */
+internal fun SlockFilePreviewPayload.hasPendingComposerImageFinalization(): Boolean {
+    if (!composerImageCanComplete) return false
+    return if (imageGallery.isNotEmpty()) {
+        imageGallery.any { image ->
+            !image.composerImageEditCompleted ||
+                (composerImageCompressAfterEdit && !image.composerImageCompressed)
+        }
+    } else {
+        !composerImageEditCompleted ||
+            (composerImageCompressAfterEdit && !composerImageCompressed)
+    }
+}
+
+/** Alias with a noun-oriented name for call sites that describe a gallery workflow. */
+internal fun SlockFilePreviewPayload.composerImageGalleryNeedsFinalization(): Boolean =
+    hasPendingComposerImageFinalization()
+
+internal fun SlockFilePreviewGalleryImage.isComposerImageFinalized(
+    compressAfterEdit: Boolean
+): Boolean =
+    composerImageEditCompleted && (!compressAfterEdit || composerImageCompressed)
+
+/**
+ * Marks an existing source ref as the final representation without changing its ownership.  This
+ * is used for the explicit "Original image" policy: the picker/editor ref is accepted as-is, but
+ * its completion state is still recorded so a later Done tap cannot deliver it twice.
+ */
+internal fun SlockFilePreviewPayload.markComposerImageFinalized(
+    compressed: Boolean
+): SlockFilePreviewPayload {
+    val currentIndex = imageGallery.takeIf { it.isNotEmpty() }?.let {
+        imageGalleryIndex.coerceIn(0, it.lastIndex)
+    }
     val updatedGallery =
-        imageGallery.mapIndexed { index, image ->
-            if (index == currentIndex) {
+        currentIndex?.let { index ->
+            imageGallery.mapIndexed { itemIndex, image ->
+                if (itemIndex == index) {
+                    image.copy(
+                        composerImageEditCompleted = true,
+                        composerImageCompressed = compressed
+                    )
+                } else {
+                    image
+                }
+            }
+        } ?: imageGallery
+    val selectedImage = currentIndex?.let(updatedGallery::get)
+    return copy(
+        composerImageEditCompleted = true,
+        composerImageCompressed = compressed,
+        imageGallery = updatedGallery,
+        composerImageFileRef = selectedImage?.composerImageFileRef ?: composerImageFileRef,
+        composerImageFileName = selectedImage?.name ?: composerImageFileName,
+        composerImageMimeType = selectedImage?.mimeType ?: composerImageMimeType,
+        composerImageSizeBytes = selectedImage?.composerImageSizeBytes ?: composerImageSizeBytes,
+        composerImagePreviewUri =
+            selectedImage?.composerImagePreviewUri?.ifBlank { selectedImage.thumbnailUrl.orEmpty() }
+                ?: composerImagePreviewUri
+    )
+}
+
+/** Mark one arbitrary gallery item final while preserving the current selection. */
+internal fun SlockFilePreviewPayload.markComposerImageGalleryItemFinalized(
+    index: Int,
+    compressed: Boolean
+): SlockFilePreviewPayload {
+    if (index !in imageGallery.indices) return this
+    val updatedGallery =
+        imageGallery.mapIndexed { itemIndex, image ->
+            if (itemIndex == index) {
                 image.copy(
-                    name = editedFileName,
-                    mimeType = KuiklySnapshotMimeType,
-                    sizeLabel = "",
-                    thumbnailUrl = fileRef,
-                    composerImageFileRef = fileRef,
-                    composerImagePreviewUri = fileRef,
-                    composerImageSizeBytes = null
+                    composerImageEditCompleted = true,
+                    composerImageCompressed = compressed
                 )
             } else {
                 image
             }
         }
+    val selectedIndex = imageGalleryIndex.coerceIn(0, imageGallery.lastIndex)
+    val selectedImage = updatedGallery[selectedIndex]
     return copy(
-        name = editedFileName,
-        imageUrl = fileRef,
-        externalFileName = editedFileName,
-        externalMimeType = KuiklySnapshotMimeType,
+        imageGallery = updatedGallery,
+        composerImageEditCompleted = selectedImage.composerImageEditCompleted,
+        composerImageCompressed = selectedImage.composerImageCompressed,
+        composerImageFileRef = selectedImage.composerImageFileRef,
+        composerImageFileName = selectedImage.name,
+        composerImageMimeType = selectedImage.mimeType,
+        composerImageSizeBytes = selectedImage.composerImageSizeBytes,
+        composerImagePreviewUri = selectedImage.composerImagePreviewUri
+    )
+}
+
+/** Convert an explicitly tracked gallery item back into a bridge-ready local file descriptor. */
+internal fun SlockFilePreviewGalleryImage.toComposerImagePlatformFile(): PlatformFile =
+    PlatformFile(
+        id = attachmentId.ifBlank { composerImageFileRef.ifBlank { "composer-image" } },
+        fileName = name.ifBlank { "image.png" },
+        mimeType = mimeType.takeIf { it.isNotBlank() },
+        sizeBytes = composerImageSizeBytes,
+        previewUri = composerImagePreviewUri.ifBlank { thumbnailUrl.orEmpty() }
+            .takeIf { it.isNotBlank() },
+        fileRef = composerImageFileRef.takeIf { it.isNotBlank() },
+        source = "composer_image_gallery"
+    )
+
+/** Convert a single-image payload into the same descriptor used by gallery finalization. */
+internal fun SlockFilePreviewPayload.toComposerImagePlatformFile(): PlatformFile =
+    PlatformFile(
+        id = composerImageActionId.ifBlank { composerImageFileRef.ifBlank { "composer-image" } },
+        fileName = composerImageFileName.ifBlank {
+            composerImageFileRef.substringAfterLast('/').ifBlank { "image.png" }
+        },
+        mimeType = composerImageMimeType.ifBlank { externalMimeType }.takeIf { it.isNotBlank() },
+        sizeBytes = composerImageSizeBytes,
+        previewUri = composerImagePreviewUri.ifBlank { imageUrl.orEmpty() }
+            .takeIf { it.isNotBlank() },
+        fileRef = composerImageFileRef.takeIf { it.isNotBlank() },
+        source = "composer_image_payload"
+    )
+
+/**
+ * Applies one final editor/bypass result to the process-local payload.  The caller must have
+ * already admitted the file through the native response parser when [compressed] is true.
+ * Invalid/blank refs are rejected by returning the original payload unchanged.
+ */
+internal fun SlockFilePreviewPayload.withComposerImageFinalResult(
+    file: PlatformFile,
+    compressed: Boolean
+): SlockFilePreviewPayload {
+    val fileRef = file.fileRef?.trim()?.takeIf { it.isNotBlank() } ?: return this
+    val mimeType =
+        file.mimeType
+            ?.trim()
+            ?.substringBefore(';')
+            ?.lowercase()
+            ?.takeIf { it.isNotBlank() }
+            ?: if (compressed) "image/jpeg" else KuiklySnapshotMimeType
+    if (compressed && mimeType != "image/jpeg") return this
+    val currentIndex = imageGallery.takeIf { it.isNotEmpty() }?.let {
+        imageGalleryIndex.coerceIn(0, it.lastIndex)
+    }
+    val currentImage = currentIndex?.let(imageGallery::get)
+    val fallbackName =
+        currentImage?.name
+            .orEmpty()
+            .ifBlank { currentComposerImageFileName() }
+            .ifBlank { "image.png" }
+    val fileName = file.fileName.trim().ifBlank {
+        if (compressed) fallbackName.toJpegFileName() else fallbackName.toKuiklySnapshotPngFileName()
+    }
+    val previewUri = file.previewUri?.trim()?.takeIf { it.isNotBlank() } ?: fileRef
+    val sizeBytes = file.sizeBytes?.takeIf { it > 0L }
+    val updatedGallery =
+        currentIndex?.let { index ->
+            imageGallery.mapIndexed { itemIndex, image ->
+                if (itemIndex != index) {
+                    image
+                } else {
+                    image.copy(
+                        name = fileName,
+                        mimeType = mimeType,
+                        sizeLabel = sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+                        thumbnailUrl = previewUri,
+                        composerImageFileRef = fileRef,
+                        composerImagePreviewUri = previewUri,
+                        composerImageSizeBytes = sizeBytes,
+                        composerImageOwnedTemporary = true,
+                        composerImageEditCompleted = true,
+                        composerImageCompressed = compressed
+                    )
+                }
+            }
+        } ?: imageGallery
+    val ownedRefs =
+        (composerImageOwnedTemporaryFileRefs + fileRef)
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .distinct()
+    return copy(
+        name = fileName,
+        imageUrl = previewUri,
+        externalFileName = fileName,
+        externalMimeType = mimeType,
         composerImageFileRef = fileRef,
-        composerImageFileName = editedFileName,
-        composerImageMimeType = KuiklySnapshotMimeType,
-        composerImageSizeBytes = null,
-        composerImagePreviewUri = fileRef,
+        composerImageFileName = fileName,
+        composerImageMimeType = mimeType,
+        composerImageSizeBytes = sizeBytes,
+        composerImagePreviewUri = previewUri,
+        composerImageOwnedTemporaryFileRefs = ownedRefs,
+        composerImageEditCompleted = true,
+        composerImageCompressed = compressed,
         imageGallery = updatedGallery
+    )
+}
+
+/** String-field convenience overload for native/event call sites. */
+internal fun SlockFilePreviewPayload.withComposerImageFinalResult(
+    fileRef: String,
+    fileName: String,
+    mimeType: String,
+    previewUri: String? = fileRef,
+    sizeBytes: Long? = null,
+    compressed: Boolean = false
+): SlockFilePreviewPayload =
+    withComposerImageFinalResult(
+        file =
+            PlatformFile(
+                id = "composer-final-${fileRef.hashCode().toUInt().toString(16)}",
+                fileName = fileName,
+                mimeType = mimeType,
+                sizeBytes = sizeBytes,
+                previewUri = previewUri,
+                fileRef = fileRef,
+                source = slockFilePreviewComposerImageEventSource(compressed)
+            ),
+        compressed = compressed
+    )
+
+/** Applies a result to an arbitrary gallery ordinal, preserving the selected index. */
+internal fun SlockFilePreviewPayload.withComposerImageGalleryFinalResult(
+    index: Int,
+    file: PlatformFile,
+    compressed: Boolean
+): SlockFilePreviewPayload {
+    if (imageGallery.isEmpty() || index !in imageGallery.indices) return this
+    val fileRef = file.fileRef?.trim()?.takeIf { it.isNotBlank() } ?: return this
+    val mimeType =
+        file.mimeType
+            ?.trim()
+            ?.substringBefore(';')
+            ?.lowercase()
+            ?.takeIf { it.isNotBlank() }
+            ?: if (compressed) "image/jpeg" else KuiklySnapshotMimeType
+    if (compressed && mimeType != "image/jpeg") return this
+    val sourceImage = imageGallery[index]
+    val fallbackName =
+        sourceImage.name.ifBlank {
+            if (compressed) "image.jpg" else "image.png"
+        }
+    val fileName = file.fileName.trim().ifBlank {
+        if (compressed) fallbackName.toJpegFileName() else fallbackName.toKuiklySnapshotPngFileName()
+    }
+    val previewUri = file.previewUri?.trim()?.takeIf { it.isNotBlank() } ?: fileRef
+    val sizeBytes = file.sizeBytes?.takeIf { it > 0L }
+    val updatedImage =
+        sourceImage.copy(
+            name = fileName,
+            mimeType = mimeType,
+            sizeLabel = sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+            thumbnailUrl = previewUri,
+            composerImageFileRef = fileRef,
+            composerImagePreviewUri = previewUri,
+            composerImageSizeBytes = sizeBytes,
+            composerImageOwnedTemporary = true,
+            composerImageEditCompleted = true,
+            composerImageCompressed = compressed
+        )
+    val updatedGallery = imageGallery.toMutableList().also { it[index] = updatedImage }
+    val nextOwnedRefs =
+        (composerImageOwnedTemporaryFileRefs + fileRef)
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .distinct()
+    val selectedIndex = imageGalleryIndex.coerceIn(0, imageGallery.lastIndex)
+    val selectedImage = updatedGallery[selectedIndex]
+    return copy(
+        name = selectedImage.name,
+        imageUrl = selectedImage.composerImagePreviewUri.ifBlank { selectedImage.thumbnailUrl.orEmpty() }
+            .takeIf { it.isNotBlank() },
+        externalFileName = selectedImage.name,
+        externalMimeType = selectedImage.mimeType,
+        composerImageFileRef = selectedImage.composerImageFileRef,
+        composerImageFileName = selectedImage.name,
+        composerImageMimeType = selectedImage.mimeType,
+        composerImageSizeBytes = selectedImage.composerImageSizeBytes,
+        composerImagePreviewUri = selectedImage.composerImagePreviewUri,
+        composerImageOwnedTemporaryFileRefs = nextOwnedRefs,
+        composerImageEditCompleted = selectedImage.composerImageEditCompleted,
+        composerImageCompressed = selectedImage.composerImageCompressed,
+        imageGallery = updatedGallery
+    )
+}
+
+internal fun SlockFilePreviewPayload.withComposerImageEditResult(fileRef: String): SlockFilePreviewPayload {
+    val cleanRef = fileRef.trim().takeIf { it.isNotBlank() } ?: return this
+    val editedFileName =
+        imageGallery.getOrNull(imageGalleryIndex.coerceIn(0, imageGallery.lastIndex.coerceAtLeast(0)))?.name
+            .orEmpty()
+            .ifBlank { currentComposerImageFileName() }
+            .toKuiklySnapshotPngFileName()
+    return withComposerImageFinalResult(
+        file =
+            PlatformFile(
+                id = "composer-editor-${cleanRef.hashCode().toUInt().toString(16)}",
+                fileName = editedFileName,
+                mimeType = KuiklySnapshotMimeType,
+                previewUri = cleanRef,
+                fileRef = cleanRef,
+                source = SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE
+            ),
+        compressed = false
     )
 }
 
@@ -6310,6 +8572,12 @@ private fun String.toKuiklySnapshotPngFileName(): String {
     val leaf = substringAfterLast('/').substringAfterLast('\\').ifBlank { "image" }
     val stem = leaf.substringBeforeLast('.', missingDelimiterValue = leaf).ifBlank { "image" }
     return "$stem.png"
+}
+
+private fun String.toJpegFileName(): String {
+    val leaf = substringAfterLast('/').substringAfterLast('\\').ifBlank { "image" }
+    val stem = leaf.substringBeforeLast('.', missingDelimiterValue = leaf).ifBlank { "image" }
+    return "$stem.jpg"
 }
 
 internal data class SlockFilePreviewImageGalleryResolutionState(
@@ -6612,11 +8880,15 @@ private fun SlockFilePreviewGalleryImage.toPreviewPayload(
             externalMimeType = mimeType,
             source = "",
             attachmentId = "",
+            composerImageReplaceAttachmentId = composerImageReplaceAttachmentId,
             composerImageFileRef = composerImageFileRef,
             composerImageFileName = title,
             composerImageMimeType = mimeType,
             composerImageSizeBytes = composerImageSizeBytes,
             composerImagePreviewUri = composerImagePreviewUri.ifBlank { thumbnailUrl.orEmpty() },
+            composerImageCompressAfterEdit = previous.composerImageCompressAfterEdit,
+            composerImageEditCompleted = composerImageEditCompleted,
+            composerImageCompressed = composerImageCompressed,
             imageGalleryIndex = imageGalleryIndex
         )
     }
@@ -6703,6 +8975,7 @@ internal data class SlockAttachmentOpenResultTerms(
     val unableToDownloadAttachment: String,
     val noAppCanOpenFile: String,
     val storageUnavailable: String,
+    val downloadFailed: String,
     val unableToOpenAttachment: String
 )
 
@@ -6718,13 +8991,14 @@ internal fun slockAttachmentOpenResultMessage(
         "missing" -> terms.unableToDownloadAttachment
         "no_app" -> terms.noAppCanOpenFile
         "storage_failed" -> terms.storageUnavailable
+        "download_failed" -> terms.downloadFailed
         else -> terms.unableToOpenAttachment
     }
 
 internal fun slockAttachmentOpenDiagnosticStatus(status: String?): String {
     val normalized = status?.trim()?.lowercase().orEmpty()
     return when (normalized) {
-        "opened", "cancelled", "missing", "no_app", "storage_failed", "failed" -> normalized
+        "opened", "cancelled", "missing", "no_app", "storage_failed", "download_failed", "failed" -> normalized
         "" -> "none"
         else -> "other"
     }
@@ -7013,7 +9287,7 @@ internal fun slockComposerImagePickerIsStrictImage(fileName: String, mimeType: S
     return mime.startsWith("image/") && extension in SlockFilePreviewImageExtensions
 }
 
-private val SlockFilePreviewVideoExtensions =
+internal val SlockFilePreviewVideoExtensions =
     setOf("3gp", "avi", "flv", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "webm", "wmv")
 
 private val SlockFilePreviewAudioExtensions =
@@ -7221,6 +9495,10 @@ internal fun SlockFilePreviewGenericCard(
     actionIcon: SlockLucideIconName? = null,
     actionEnabled: Boolean = true,
     onAction: (() -> Unit)? = null,
+    secondaryActionLabel: String? = null,
+    secondaryActionIcon: SlockLucideIconName? = null,
+    secondaryActionEnabled: Boolean = true,
+    onSecondaryAction: (() -> Unit)? = null,
     downloadPaused: Boolean = false,
     onToggleDownload: (() -> Unit)? = null,
     onStopDownload: (() -> Unit)? = null,
@@ -7297,6 +9575,17 @@ internal fun SlockFilePreviewGenericCard(
                 onClick = onAction,
                 enabled = actionEnabled,
                 leadingIcon = actionIcon,
+                minWidth = 132.dp,
+                minHeight = 40.dp
+            )
+        }
+        if (!showProgress && secondaryActionLabel != null && onSecondaryAction != null) {
+            Box(modifier = Modifier.height(SlockSpacing.Sm))
+            SlockBrutalActionButton(
+                label = secondaryActionLabel,
+                onClick = onSecondaryAction,
+                enabled = secondaryActionEnabled,
+                leadingIcon = secondaryActionIcon,
                 minWidth = 132.dp,
                 minHeight = 40.dp
             )
@@ -7580,6 +9869,149 @@ internal fun SlockFilePreviewTextPanel(
                 maxLines = 28,
                 overflow = TextOverflow.Ellipsis
             )
+        }
+    }
+}
+
+@Composable
+internal fun SlockFilePreviewXlsxPanel(
+    name: String,
+    meta: String,
+    sheets: List<SlockFilePreviewXlsxSheetCarrier>,
+    truncated: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    var selectedSheetName by remember(sheets) { mutableStateOf(sheets.firstOrNull()?.name.orEmpty()) }
+    val selectedSheet =
+        remember(sheets, selectedSheetName) {
+            sheets.firstOrNull { it.name == selectedSheetName } ?: sheets.firstOrNull()
+        }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+    ) {
+        SlockFilePreviewPanelHeader(
+            name = name.ifBlank { stringResource(MR.strings.file_preview_fallback_file) },
+            meta = meta,
+            statusLabel = null
+        )
+        if (sheets.size > 1) {
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .background(SlockColor.SurfaceCream)
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            ) {
+                sheets.forEach { sheet ->
+                    val selected = sheet.name == selectedSheet?.name
+                    Box(
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .background(if (selected) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
+                                .border(
+                                    width = if (selected) SlockStroke.Default else SlockStroke.Thin,
+                                    color = SlockColor.BorderBlack
+                                )
+                                .clickable { selectedSheetName = sheet.name }
+                                .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Sm)
+                    ) {
+                        Text(
+                            text = sheet.name,
+                            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        if (selectedSheet == null) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 280.dp, max = 560.dp)
+                        .background(SlockColor.SurfaceCream)
+                        .padding(SlockSpacing.Sm)
+            ) {
+                Text(
+                    text = stringResource(MR.strings.file_preview_no_preview),
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextMutedGray
+                )
+            }
+        } else {
+            val columnCount = selectedSheet.columnCount.coerceIn(1, 20)
+            LazyColumn(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 280.dp, max = 560.dp)
+                        .background(SlockColor.SurfaceCream),
+                contentPadding = PaddingValues(SlockSpacing.Sm)
+            ) {
+                item(key = "xlsx-header") {
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        repeat(columnCount) { column ->
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .weight(1f)
+                                        .background(SlockColor.SurfaceWhite)
+                                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                                        .padding(horizontal = SlockSpacing.Xs, vertical = SlockSpacing.Sm)
+                            ) {
+                                Text(
+                                    text = selectedSheet.headers.getOrNull(column).orEmpty(),
+                                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp).withSlockFontWeight(FontWeight.Bold),
+                                    color = SlockColor.TextBlack,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+                items(selectedSheet.rows.size, key = { index -> "xlsx-row-$index" }) { rowIndex ->
+                    val row = selectedSheet.rows.getOrNull(rowIndex).orEmpty()
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        repeat(columnCount) { column ->
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .weight(1f)
+                                        .background(SlockColor.SurfaceWhite)
+                                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                                        .padding(horizontal = SlockSpacing.Xs, vertical = SlockSpacing.Sm)
+                            ) {
+                                Text(
+                                    text = row.getOrNull(column).orEmpty(),
+                                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                                    color = SlockColor.TextBlack,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+                if (truncated || selectedSheet.truncated) {
+                    item(key = "xlsx-truncated-hint") {
+                        Text(
+                            text = stringResource(MR.strings.file_preview_truncated_open_with_hint),
+                            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                            color = SlockColor.TextMutedGray,
+                            modifier = Modifier.padding(top = SlockSpacing.Sm)
+                        )
+                    }
+                }
+            }
         }
     }
 }

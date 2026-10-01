@@ -43,6 +43,7 @@ class KmmResourceI18nTest {
                 MR.strings.error_server_unavailable,
                 MR.strings.error_item_not_found,
                 MR.strings.error_permission_denied,
+                MR.strings.error_edge_blocked,
                 MR.strings.error_attachment_too_large,
                 MR.strings.error_too_many_attempts,
                 MR.strings.error_response_unreadable,
@@ -81,6 +82,16 @@ class KmmResourceI18nTest {
         assertTrue(
             desc is ResourceStringDesc,
             "MR.strings.common_cancel.desc() must produce a ResourceStringDesc"
+        )
+    }
+
+    @Test
+    fun unfollowedActivityChipStringResourceIsGenerated() {
+        val resource = MR.strings.thread_row_unfollowed
+        assertNotNull(resource, "Unfollowed Activity chip must use a generated resource")
+        assertTrue(
+            resource.desc() is ResourceStringDesc,
+            "Unfollowed Activity chip must resolve through the localized resource catalog"
         )
     }
 
@@ -341,7 +352,6 @@ class KmmResourceI18nTest {
             MR.strings.member_action_save_permissions,
             MR.strings.member_hint_permissions_notifications,
             MR.strings.member_hint_permissions_cli,
-            MR.strings.member_dialog_change_avatar,
             MR.strings.member_dialog_edit_runtime_config,
             MR.strings.member_hint_chat_audit_only,
             MR.strings.member_hint_no_scheduled_reminders,
@@ -441,6 +451,7 @@ class KmmResourceI18nTest {
                 MR.strings.thread_error_reason_server_unavailable,
                 MR.strings.thread_error_reason_not_found,
                 MR.strings.thread_error_reason_attachment_too_large,
+                MR.strings.thread_error_reason_attachment_image_compression_failed,
                 MR.strings.thread_error_reason_rate_limited,
                 MR.strings.thread_error_reason_response_unreadable,
                 MR.strings.thread_error_reason_cancelled,
@@ -511,7 +522,6 @@ class KmmResourceI18nTest {
             MR.strings.settings_developer_api_environment,
             MR.strings.settings_developer_environment_save_detail,
             MR.strings.settings_diagnostics_title,
-            MR.strings.settings_diagnostics_profiler_title,
             MR.strings.settings_diagnostics_action_export_logs,
             MR.strings.settings_state_saved
         ).forEach { resource ->

@@ -205,9 +205,9 @@ class SettingsWebViewAccessTokenSyncTest {
     }
 
     @Test
-    fun fiveProductionSurfacesHaveStableDiagnosticsIdentity() {
+    fun productionSurfacesHaveStableDiagnosticsIdentity() {
         assertEquals(
-            listOf("computers", "billing", "marketplace", "administration", "release-notes"),
+            listOf("onboarding", "computers", "billing", "marketplace", "administration", "release-notes"),
             SettingsWebViewSurface.entries.map(SettingsWebViewSurface::diagnosticsName),
         )
     }

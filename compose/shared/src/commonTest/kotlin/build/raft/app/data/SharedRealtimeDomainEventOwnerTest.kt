@@ -42,7 +42,7 @@ class SharedRealtimeDomainEventOwnerTest {
         authority.advanceAuth(
             RealtimeAuthRevision(
                 generation = 1L,
-                session = RealtimeAuthoritySession("account-1", listOf("server-1")),
+                session = RealtimeAuthoritySession("account-1", listOf("server-1"), environmentId = "env-test"),
             )
         )
         val processLease = authority.register("process-realtime-host")
@@ -300,7 +300,7 @@ class SharedRealtimeDomainEventOwnerTest {
         suspend fun authenticate(accountId: String, environmentId: String = "env-1") {
             boundEnvironmentId = environmentId
             authority.advanceAuthFromCurrentSession(
-                RealtimeAuthoritySession(principalId = accountId, serverIds = listOf("server-1")),
+                RealtimeAuthoritySession(principalId = accountId, serverIds = listOf("server-1"), environmentId = "env-test"),
                 force = true,
             )
             bindingTransition(authority.snapshot.value.authRevision)
@@ -942,4 +942,105 @@ class SharedRealtimeDomainEventOwnerTest {
             timestampLabel = "now",
             body = body
         )
+    @Test
+    fun productApplyReceiptLogsOncePerConsumedDelivery() = runBlocking {
+        // task #13 subscription audit: realtime_domain_apply must witness the guarded
+        // domain-sink dispatch COMPLETING once — not merely the dedup/seq gate passing.
+        // This test asserts against a real consuming sink callback (applyHomeShell),
+        // the same sink kind SettingsHomePage wires to SharedHomeShellStore.acceptRealtimeEvent
+        // (the home/activity product-store edge). SharedThreadMessageStore itself is fed by
+        // Thread routes' activeThreadSinks which run on the same acceptGuarded fan-out.
+        val logs = mutableListOf<String>()
+        val consumed = mutableListOf<RealtimeEventRecord>()
+        val owner = SharedRealtimeDomainEventOwner(
+            runIfCurrentGrant = { _, block -> block(); true }
+        )
+        owner.registerGuardedSinks(
+            RealtimeGuardedDomainEventSinks(
+                applyHomeShell = { serverId, event -> consumed += RealtimeEventRecord(serverId, event) },
+                log = { logs += it },
+            )
+        )
+        val grant = RealtimeGrantRecord(
+            slotKey = RealtimeSlotKey("shell-1", "server-1"),
+            principalId = "user-1",
+            environmentId = "env-test",
+            authGeneration = 1L,
+            connectionFamilyId = "family-1",
+            connectionEpochId = "epoch-1",
+        )
+        val event =
+            MessageNew(
+                Message(
+                    id = MessageId("msg-apply-1"),
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    seq = 42L,
+                    author = MemberProfile(MemberId("u1"), "Artin", "artin", MemberKind.Human),
+                    timestampLabel = "now",
+                    body = "hello",
+                )
+            )
+
+        owner.accept(grant, event, source = "app_shell")
+        owner.accept(grant, event, source = "app_shell")
+
+        // First delivery consumed exactly once by the product sink; redelivery consumed zero more times.
+        assertEquals(listOf(RealtimeEventRecord("server-1", event)), consumed)
+        val applyLines = logs.filter { it.startsWith("realtime_domain_apply ") }
+        assertEquals(1, applyLines.size, "expected one product apply line, got $logs")
+        assertEquals(true, applyLines[0].contains("kind=message_new"), applyLines[0])
+        assertEquals(true, applyLines[0].contains("id=msg-apply-1"), applyLines[0])
+        assertEquals(true, applyLines[0].contains("seq=42"), applyLines[0])
+        assertEquals(true, applyLines[0].contains("serverId=server-1"), applyLines[0])
+        assertEquals(true, !applyLines[0].contains("hello"), "log must not carry content: ${applyLines[0]}")
+        assertEquals(true, logs.any { it.contains("realtime_domain_accept_skip") && it.contains("reason=duplicate") })
+    }
+
+    @Test
+    fun productApplyReceiptNotWrittenWhenSinkDispatchThrows() = runBlocking {
+        // The receipt is post-dispatch: if the consuming sink throws, the apply
+        // line must not be written — it is not a pre-gate pass marker.
+        val logs = mutableListOf<String>()
+        val owner = SharedRealtimeDomainEventOwner(
+            runIfCurrentGrant = { _, block -> block(); true }
+        )
+        owner.registerGuardedSinks(
+            RealtimeGuardedDomainEventSinks(
+                applyHomeShell = { _, _ -> throw IllegalStateException("sink blew up") },
+                log = { logs += it },
+            )
+        )
+        val grant = RealtimeGrantRecord(
+            slotKey = RealtimeSlotKey("shell-1", "server-1"),
+            principalId = "user-1",
+            environmentId = "env-test",
+            authGeneration = 1L,
+            connectionFamilyId = "family-1",
+            connectionEpochId = "epoch-1",
+        )
+        val event =
+            MessageNew(
+                Message(
+                    id = MessageId("msg-apply-2"),
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    seq = 7L,
+                    author = MemberProfile(MemberId("u1"), "Artin", "artin", MemberKind.Human),
+                    timestampLabel = "now",
+                    body = "hello",
+                )
+            )
+
+        val threw = try {
+            owner.accept(grant, event, source = "app_shell")
+            false
+        } catch (_: IllegalStateException) {
+            true
+        }
+
+        assertEquals(true, threw, "sink failure must propagate through accept")
+        assertEquals(emptyList(), logs.filter { it.startsWith("realtime_domain_apply ") })
+    }
+
 }

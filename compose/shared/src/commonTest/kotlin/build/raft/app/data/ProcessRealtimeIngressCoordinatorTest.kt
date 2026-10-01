@@ -33,7 +33,7 @@ class ProcessRealtimeIngressCoordinatorTest {
                 KeyValueRealtimeAuthRevisionStore(InMemorySlockKeyValueStore()),
                 processInstanceId = "process-ingress-test",
             )
-        val provider = RealtimeAuthorityProvider(registry, auth, auth)
+        val provider = RealtimeAuthorityProvider(registry, auth, auth, { "env-test" })
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         provider.start(scope)
         provider.registerScope("process-realtime-host", "process-owner")

@@ -80,12 +80,8 @@ Mobile repository.
 
 ## Git Sign-off
 
-Every new mobile commit must have a `Signed-off-by:` trailer with a
-`@mail.build` identity. Install the local hook once per checkout/worktree:
-
-```bash
-scripts/install_git_hooks.sh
-```
+Agent commits should carry a `Signed-off-by:` trailer with a `@mail.build`
+identity. No CI check or git hook enforces it any more.
 
 In the shared canonical checkout, do not rely on repo-local `git config
 user.name` or `user.email`; another agent may have changed it. Pass identity per
@@ -114,12 +110,6 @@ git \
   -c user.name="<YourName>" \
   -c user.email="raft-mobile-<your-name>@mail.build" \
   commit --amend -s --no-edit
-```
-
-Before reporting completion, verify the relevant range:
-
-```bash
-scripts/check-commit-signoff.sh HEAD^ HEAD
 ```
 
 ## Branch, Worktree, and Push Rules

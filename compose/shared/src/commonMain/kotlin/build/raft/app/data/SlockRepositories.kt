@@ -165,6 +165,12 @@ interface ConversationRepository {
     ): DataResult<ConversationSummary> =
         DataResult.Error(ScreenError(code = "conversation_detail_unavailable", retryable = true))
 
+    suspend fun getLatestChannelMessage(
+        channelId: ChannelId,
+        priority: DataRequestPriority = DataRequestPriority.Background,
+    ): DataResult<Message> =
+        DataResult.Empty(EmptyReason.NoMessages)
+
     suspend fun getThread(
         threadId: ThreadId,
         includeFollowedSummaries: Boolean = false,
@@ -219,6 +225,57 @@ interface ConversationRepository {
     suspend fun markThreadUndone(threadChannelId: ChannelId): DataResult<ThreadActionResult>
     suspend fun getAttachmentUploadCapabilities(): DataResult<AttachmentUploadCapabilities> =
         DataResult.Error(ScreenError(code = "attachment_upload_capabilities_unavailable", retryable = true))
+
+    /**
+     * Typed direct-session attachment operations.  These defaults deliberately fail closed so
+     * legacy/test repositories cannot accidentally be treated as an atomic Gallery uploader.
+     * The presigned URL carried by [AttachmentUploadSessionCreateResult] is process-local and
+     * must never be copied into a durable snapshot or diagnostic string.
+     */
+    suspend fun createAttachmentUploadSession(
+        request: AttachmentUploadSessionCreateRequest
+    ): DataResult<AttachmentUploadSessionCreateResult> =
+        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false))
+
+    suspend fun putAttachmentUploadBytes(
+        upload: AttachmentUploadSessionPut,
+        bytes: ByteArray,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
+    ): DataResult<Unit> =
+        DataResult.Error(ScreenError("attachment_upload_session_put_unavailable", retryable = false))
+
+    suspend fun putAttachmentUploadFile(
+        upload: AttachmentUploadSessionPut,
+        file: PlatformFile,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
+    ): DataResult<Unit> =
+        DataResult.Error(ScreenError("attachment_upload_session_put_unavailable", retryable = false))
+
+    /**
+     * Resolve a platform file's authoritative length before a direct-session create request.
+     * Implementations must reject ambiguous `fileRef` + in-memory byte inputs rather than silently
+     * choosing one source.
+     */
+    suspend fun prepareAttachmentUploadFile(
+        file: PlatformFile,
+    ): DataResult<PlatformFile> =
+        DataResult.Error(ScreenError("attachment_upload_file_prepare_unavailable", retryable = false))
+
+    suspend fun completeAttachmentUploadSession(
+        uploadId: String
+    ): DataResult<AttachmentUploadSessionCompleteResult> =
+        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false))
+
+    suspend fun cancelAttachmentUploadSession(
+        uploadId: String
+    ): DataResult<AttachmentUploadSessionView> =
+        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false))
+
+    suspend fun statusAttachmentUploadSession(
+        uploadId: String
+    ): DataResult<AttachmentUploadSessionView> =
+        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false))
+
     suspend fun uploadAttachments(request: AttachmentUploadRequest): DataResult<AttachmentUploadResult>
     suspend fun getAttachmentOpenTarget(
         attachmentId: AttachmentId
@@ -350,6 +407,17 @@ interface MemberRepository {
         priority: DataRequestPriority,
         request: AddChannelMemberRequest
     ): DataResult<ChannelMemberActionResult>
+
+    /**
+     * Atomic batch add of channel members (task #352): mixed humans + agents in
+     * one request. Default implementation is unsupported so existing fakes keep
+     * compiling; RealMemberRepository overrides it.
+     */
+    suspend fun addChannelMembersBatch(
+        priority: DataRequestPriority,
+        request: AddChannelMembersBatchRequest
+    ): DataResult<AddChannelMembersBatchResult> =
+        DataResult.Error(ScreenError(code = "channel_member_batch_unsupported"))
     suspend fun removeChannelMember(
         priority: DataRequestPriority,
         request: RemoveChannelMemberRequest
@@ -757,6 +825,36 @@ data class AddChannelMemberRequest(
     val kind: MemberKind
 )
 
+/**
+ * Atomic batch add of channel members (task #352, Web #7209).
+ *
+ * One request carries BOTH humans and agents (server dedupes, validates the
+ * whole batch, then writes; a later failure rolls back earlier members, so there
+ * is no partial success). This is the preferred path for multi-select add;
+ * [AddChannelMemberRequest] remains for single adds.
+ */
+data class AddChannelMembersBatchRequest(
+    val channelId: ChannelId,
+    val userIds: List<MemberId>,
+    val agentIds: List<MemberId>
+)
+
+/**
+ * Result of an atomic batch add. [addedUserIds]/[addedAgentIds] were newly added;
+ * [alreadyMemberUserIds]/[alreadyMemberAgentIds] were requested but already
+ * members. Re-sending the same batch is idempotent: `added` is empty and
+ * everything requested shows up under `alreadyMembers`.
+ */
+data class AddChannelMembersBatchResult(
+    val addedUserIds: List<String>,
+    val addedAgentIds: List<String>,
+    val alreadyMemberUserIds: List<String>,
+    val alreadyMemberAgentIds: List<String>
+) {
+    /** True when nothing was newly added (idempotent re-send): still a success. */
+    val addedNothing: Boolean get() = addedUserIds.isEmpty() && addedAgentIds.isEmpty()
+}
+
 data class RemoveChannelMemberRequest(
     val channelId: ChannelId,
     val memberId: MemberId,
@@ -779,7 +877,20 @@ data class AgentProfileUpdateRequest(
      * matches. This never recovers or serializes the existing write-only value.
      */
     val retainOmittedBuiltInProviderSecret: Boolean = false,
-    val runtimeResetMode: AgentResetMode? = null
+    val runtimeResetMode: AgentResetMode? = null,
+    /**
+     * kimi-sdk (task #275): the exact runtime-form ref validated against the
+     * live catalog at save time. Emitted on the wire only together with a
+     * non-null runtimeConfig (see buildSharedAgentProfileUpdateBody); a null
+     * value keeps the legacy no-ref retention path.
+     */
+    val formDefinitionRef: SharedRuntimeFormDefinitionRef? = null,
+    /**
+     * Runtime form v2 edit: `formDefinitionRef {protocolVersion:2}` + `formValues`.
+     * Use with includeRuntimeConfig = false; a blank writeOnly field (sent as "")
+     * means "keep the stored value".
+     */
+    val runtimeFormV2: build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody? = null
 )
 
 data class AgentAvatarUploadRequest(

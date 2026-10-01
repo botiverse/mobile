@@ -105,6 +105,11 @@ internal data class SelectedServerSelectionUpdate(
     val changed: Boolean,
 )
 
+internal data class SelectedServerSelectionCommit(
+    val processSession: StoredAuthSession,
+    val update: SelectedServerSelectionUpdate,
+)
+
 internal data class SelectedServerAuthoritySnapshot(
     val ownerUserId: String,
     val selection: SelectedServerSelection,
@@ -192,6 +197,11 @@ internal data class ThreadReplyCacheIdentitySnapshot(
     val serverId: String,
     val authGeneration: Long,
     val selectionGeneration: Long,
+    /**
+     * Stable process-auth binding generation. Token rotation keeps this value;
+     * logout, account, or environment replacement advances it.
+     */
+    val bindingGeneration: Long = 0L,
 )
 
 internal data class ThreadReplyCacheIdentityTransitionAnchor(
@@ -249,6 +259,25 @@ internal class SelectedServerStore internal constructor(
             selection()
         }
 
+    internal suspend fun commitSelection(
+        serverId: String?,
+        serverSlug: String?,
+        commitProcessSelection: suspend () -> Unit,
+    ): SelectedServerSelection =
+        mutex.withLock {
+            // Publish the process next-launch default before the shell value while holding the
+            // shell authority lock. Concurrent readSession().reconcile() therefore sees either
+            // the complete old pair or the complete new pair, never a shell-only intermediate.
+            commitProcessSelection()
+            val before = authorityState()
+            mutationRevision += 1L
+            selectionInitialized = true
+            setSelectedServerId(serverId?.trim()?.takeIf { it.isNotBlank() })
+            selectedServerSlug = serverSlug?.trim()?.takeIf { it.isNotBlank() }
+            advanceAuthorityIfChanged(before)
+            selection()
+        }
+
     internal suspend fun selectIfAccountMatches(
         expectedAccountId: String,
         serverId: String?,
@@ -272,6 +301,38 @@ internal class SelectedServerStore internal constructor(
             SelectedServerSelectionUpdate(
                 selection = updated,
                 changed = updated != previous,
+            )
+        }
+
+    internal suspend fun selectIfAccountAndSourceMatch(
+        expectedAccountId: String,
+        expectedServerId: String?,
+        serverId: String,
+        commitProcessSelection: suspend () -> StoredAuthSession?,
+    ): SelectedServerSelectionCommit? =
+        mutex.withLock {
+            // Keep the source comparison and process/shell commit under this shell's one
+            // canonical selection lock. A check before entering this block would leave an A→C
+            // switch window where a stale A→B intent could overwrite C.
+            if (_disposed.value) return@withLock null
+            if (ownerUserId != null && ownerUserId != expectedAccountId) return@withLock null
+            if (expectedServerId != null && selectedServerId.value != expectedServerId) return@withLock null
+            val processSession = commitProcessSelection() ?: return@withLock null
+            val target = processSession.servers.firstOrNull { it.id == serverId } ?: return@withLock null
+            val before = authorityState()
+            val previous = selection()
+            mutationRevision += 1L
+            ownerUserId = expectedAccountId
+            selectionInitialized = true
+            setSelectedServerId(target.id)
+            selectedServerSlug = target.slug
+            advanceAuthorityIfChanged(before)
+            SelectedServerSelectionCommit(
+                processSession = processSession,
+                update = SelectedServerSelectionUpdate(
+                    selection = selection(),
+                    changed = selection() != previous,
+                ),
             )
         }
 
@@ -687,6 +748,7 @@ internal class ThreadReplyCacheIdentityAuthority(
             serverId = serverId,
             authGeneration = authContext.authorityGeneration,
             selectionGeneration = selection.selectionEpoch,
+            bindingGeneration = authContext.writeGeneration,
         )
     }
 }
@@ -750,14 +812,11 @@ internal class SlockShellAuthSessionStore(
     }
 
     override suspend fun readSession(): StoredAuthSession? {
-        val session = delegate.readSession() ?: return null
-        val selection = selectedServerStore.reconcile(session)
-        return session.copy(
-            selectedServerId = selection.serverId,
-            selectedServerSlug = selection.serverSlug,
-            allowImplicitServerFallback = false
-        )
+        return selectionMutationMutex.withLock { readSessionLocked() }
     }
+
+    private suspend fun readSessionLocked(): StoredAuthSession? =
+        delegate.readSession()?.withShellSelection()
 
     override suspend fun readOrCreateAuthInstallationId(candidate: String): String =
         delegate.readOrCreateAuthInstallationId(candidate)
@@ -770,18 +829,22 @@ internal class SlockShellAuthSessionStore(
     }
 
     override suspend fun updateTokens(accessToken: String, refreshToken: String) {
-        val current = delegate.readSession() ?: return
-        delegate.rotateTokensIfMatch(
-            expectedAccessToken = current.accessToken,
-            expectedRefreshToken = current.refreshToken,
-            newAccessToken = accessToken,
-            newRefreshToken = refreshToken
-        )
+        selectionMutationMutex.withLock {
+            val current = delegate.readSession() ?: return@withLock
+            delegate.rotateTokensIfMatch(
+                expectedAccessToken = current.accessToken,
+                expectedRefreshToken = current.refreshToken,
+                newAccessToken = accessToken,
+                newRefreshToken = refreshToken
+            )
+        }
     }
 
     override suspend fun replaceAuthenticatedSession(session: StoredAuthSession) {
-        selectedServerStore.reconcile(session)
-        delegate.replaceAuthenticatedSessionPreservingSelection(session)
+        selectionMutationMutex.withLock {
+            selectedServerStore.reconcile(session)
+            delegate.replaceAuthenticatedSessionPreservingSelection(session)
+        }
     }
 
     override suspend fun rotateTokensIfMatch(
@@ -790,12 +853,14 @@ internal class SlockShellAuthSessionStore(
         newAccessToken: String,
         newRefreshToken: String
     ): StoredAuthSession? =
-        delegate.rotateTokensIfMatch(
-            expectedAccessToken = expectedAccessToken,
-            expectedRefreshToken = expectedRefreshToken,
-            newAccessToken = newAccessToken,
-            newRefreshToken = newRefreshToken
-        )?.withShellSelection()
+        selectionMutationMutex.withLock {
+            delegate.rotateTokensIfMatch(
+                expectedAccessToken = expectedAccessToken,
+                expectedRefreshToken = expectedRefreshToken,
+                newAccessToken = newAccessToken,
+                newRefreshToken = newRefreshToken
+            )?.withShellSelection()
+        }
 
     override suspend fun prepareRefreshAttemptIfMatch(
         expectedAccountId: String,
@@ -818,57 +883,64 @@ internal class SlockShellAuthSessionStore(
         newAccessToken: String,
         newRefreshToken: String,
     ): StoredAuthSession? =
-        delegate.rotateTokensAndClearRefreshAttemptIfMatch(
-            expectedAccountId = expectedAccountId,
-            expectedAccessToken = expectedAccessToken,
-            expectedRefreshToken = expectedRefreshToken,
-            expectedAttemptId = expectedAttemptId,
-            newAccessToken = newAccessToken,
-            newRefreshToken = newRefreshToken,
-        )?.withShellSelection()
+        selectionMutationMutex.withLock {
+            delegate.rotateTokensAndClearRefreshAttemptIfMatch(
+                expectedAccountId = expectedAccountId,
+                expectedAccessToken = expectedAccessToken,
+                expectedRefreshToken = expectedRefreshToken,
+                expectedAttemptId = expectedAttemptId,
+                newAccessToken = newAccessToken,
+                newRefreshToken = newRefreshToken,
+            )?.withShellSelection()
+        }
 
     override suspend fun updateMetadata(
         expectedAccountId: String?,
         transform: (StoredAuthSession) -> StoredAuthSession
     ) {
-        val shellSession = readSession() ?: return
-        delegate.updateMetadata(expectedAccountId) { processSession ->
-            val transformed =
-                transform(
-                    processSession.copy(
-                        selectedServerId = shellSession.selectedServerId,
-                        selectedServerSlug = shellSession.selectedServerSlug
+        selectionMutationMutex.withLock {
+            val shellSession = readSessionLocked() ?: return@withLock
+            delegate.updateMetadata(expectedAccountId) { processSession ->
+                val transformed =
+                    transform(
+                        processSession.copy(
+                            selectedServerId = shellSession.selectedServerId,
+                            selectedServerSlug = shellSession.selectedServerSlug
+                        )
                     )
+                transformed.copy(
+                    selectedServerId = processSession.selectedServerId,
+                    selectedServerSlug = processSession.selectedServerSlug
                 )
-            transformed.copy(
-                selectedServerId = processSession.selectedServerId,
-                selectedServerSlug = processSession.selectedServerSlug
-            )
+            }
+            delegate.readSession()?.let { selectedServerStore.reconcile(it) }
         }
-        delegate.readSession()?.let { selectedServerStore.reconcile(it) }
     }
 
     override suspend fun selectServerIfSessionMatches(
         expectedAccountId: String,
         expectedAccessToken: String,
         expectedRefreshToken: String,
+        expectedSelectedServerId: String?,
         serverId: String,
     ): StoredAuthSession? =
         selectionMutationMutex.withLock {
-            val processSession =
-                delegate.selectServerIfSessionMatches(
+            val committed =
+                selectedServerStore.selectIfAccountAndSourceMatch(
                     expectedAccountId = expectedAccountId,
-                    expectedAccessToken = expectedAccessToken,
-                    expectedRefreshToken = expectedRefreshToken,
+                    expectedServerId = expectedSelectedServerId,
                     serverId = serverId,
-                ) ?: return@withLock null
+                ) {
+                    delegate.selectServerIfSessionMatches(
+                        expectedAccountId = expectedAccountId,
+                        expectedAccessToken = expectedAccessToken,
+                        expectedRefreshToken = expectedRefreshToken,
+                        serverId = serverId,
+                    )
+                } ?: return@withLock null
+            val processSession = committed.processSession
+            val update = committed.update
             val target = processSession.servers.firstOrNull { it.id == serverId } ?: return@withLock null
-            val update =
-                selectedServerStore.selectIfAccountMatches(
-                    expectedAccountId = expectedAccountId,
-                    serverId = target.id,
-                    serverSlug = target.slug,
-                ) ?: return@withLock null
             (delegate as? SlockAuthServerSelectionMemory)?.saveRememberedServerSelection(
                 processSession.user,
                 StoredAuthServerSelection(serverId = target.id, serverSlug = target.slug),
@@ -893,15 +965,21 @@ internal class SlockShellAuthSessionStore(
     }
 
     override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) {
-        val selection = selectedServerStore.select(serverId, serverSlug)
-        emitAuthSessionEvent { generation -> AuthSessionEvent.BindingMetadataChanged(generation) }
-        // The process-level value is intentionally only the next-launch default.
-        delegate.updateSelectedServer(selection.serverId, selection.serverSlug)
+        selectionMutationMutex.withLock {
+            val selection =
+                selectedServerStore.commitSelection(serverId, serverSlug) {
+                    // The process-level value is intentionally only the next-launch default.
+                    delegate.updateSelectedServer(serverId, serverSlug)
+                }
+            emitAuthSessionEvent { generation -> AuthSessionEvent.BindingMetadataChanged(generation) }
+        }
     }
 
     override suspend fun clearSession(reason: String, source: String) {
-        selectedServerStore.clearSelection()
-        delegate.clearSession(reason, source)
+        selectionMutationMutex.withLock {
+            selectedServerStore.clearSelection()
+            delegate.clearSession(reason, source)
+        }
         onProcessSessionCleared()
     }
 
@@ -912,18 +990,16 @@ internal class SlockShellAuthSessionStore(
         reason: String,
         source: String,
     ): Boolean {
-        val cleared =
+        val cleared = selectionMutationMutex.withLock {
             delegate.clearSessionIfMatches(
                 expectedAccountId = expectedAccountId,
                 expectedAccessToken = expectedAccessToken,
                 expectedRefreshToken = expectedRefreshToken,
                 reason = reason,
                 source = source,
-            )
-        if (cleared) {
-            selectedServerStore.clearSelection()
-            onProcessSessionCleared()
+            ).also { if (it) selectedServerStore.clearSelection() }
         }
+        if (cleared) onProcessSessionCleared()
         return cleared
     }
 
@@ -934,18 +1010,16 @@ internal class SlockShellAuthSessionStore(
         reason: String,
         source: String,
     ): AuthSessionClearOutcome {
-        val outcome =
+        val outcome = selectionMutationMutex.withLock {
             delegate.clearSessionIfMatchesOutcome(
                 expectedAccountId = expectedAccountId,
                 expectedAccessToken = expectedAccessToken,
                 expectedRefreshToken = expectedRefreshToken,
                 reason = reason,
                 source = source,
-            )
-        if (outcome == AuthSessionClearOutcome.Cleared) {
-            selectedServerStore.clearSelection()
-            onProcessSessionCleared()
+            ).also { if (it == AuthSessionClearOutcome.Cleared) selectedServerStore.clearSelection() }
         }
+        if (outcome == AuthSessionClearOutcome.Cleared) onProcessSessionCleared()
         return outcome
     }
 

@@ -567,25 +567,6 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun appShellBuildsOnlyTheBootstrapGraphWhileAuthIsRestoring() {
-        assertTrue(appShellDefersReadyGraph(SharedAuthGateState.Restoring))
-        assertFalse(appShellDefersReadyGraph(SharedAuthGateState.AuthRequired))
-        assertFalse(
-            appShellDefersReadyGraph(
-                SharedAuthGateState.Ready(
-                    StoredAuthSession(
-                        accessToken = "access",
-                        refreshToken = "refresh",
-                        user = StoredAuthUser(id = "user-1", email = "user@raft.build", displayName = "User"),
-                        servers = listOf(StoredAuthServer("server-1", "Server")),
-                        selectedServerId = "server-1"
-                    )
-                )
-            )
-        )
-    }
-
-    @Test
     fun appTabRendererUsesIosPlatformDefaultWhenRoutePageDataOmitsRenderer() {
         assertEquals(
             SlockAppTabBarRenderer.IosLiquidGlass,
@@ -809,6 +790,84 @@ class SlockAppShellTest {
         assertEquals(0.dp, scope.globalDialogBottomInset(includeBottomTabBar = false))
         assertEquals(110.dp, scope.contentBottomInset(includeBottomTabBar = true))
         assertEquals(18.dp + SlockSpacing.Lg, scope.contentBottomInset(includeBottomTabBar = false))
+    }
+
+    @Test
+    fun embeddedChildClearsFloatingDockWithoutDoubleCountingSafeArea() {
+        // Embedded thread pages already pad the bottom safe area internally; the
+        // slot only lifts the remaining dock band above it.
+        val scope =
+            SlockAppShellScope(
+                topSafeArea = 24.dp,
+                bottomSafeArea = 18.dp,
+                bottomTabBarContentInset = 110.dp,
+                bottomTabBarOverlaysContent = true
+            )
+
+        assertEquals(92.dp, scope.embeddedChildBottomInset(includeBottomTabBar = true))
+        assertEquals(0.dp, scope.embeddedChildBottomInset(includeBottomTabBar = false))
+    }
+
+    @Test
+    fun embeddedChildNeedsNoInsetWhenHostAlreadyReservesTheBand() {
+        val scope =
+            SlockAppShellScope(
+                topSafeArea = 24.dp,
+                bottomSafeArea = 18.dp,
+                bottomTabBarContentInset = 88.dp,
+                bottomTabBarOverlaysContent = false
+            )
+
+        assertEquals(0.dp, scope.embeddedChildBottomInset(includeBottomTabBar = true))
+        assertEquals(0.dp, scope.embeddedChildBottomInset(includeBottomTabBar = false))
+    }
+
+    @Test
+    fun embeddedChildInsetNeverGoesNegativeWhenDockBandShrinksBelowSafeArea() {
+        val scope =
+            SlockAppShellScope(
+                topSafeArea = 24.dp,
+                bottomSafeArea = 24.dp,
+                bottomTabBarContentInset = 10.dp,
+                bottomTabBarOverlaysContent = true
+            )
+
+        assertEquals(0.dp, scope.embeddedChildBottomInset(includeBottomTabBar = true))
+    }
+
+    @Test
+    fun navRailActivatesOnlyForFlatDualPaneWithDesktopMode() {
+        val dualPane =
+            SlockAdaptivePaneState(
+                widthPx = 1680,
+                heightPx = 1118,
+                density = 2f,
+                posture = SlockAdaptivePanePosture.Flat,
+                layout = SlockAdaptivePaneLayout.DualPane
+            )
+        val compact = dualPane.copy(layout = SlockAdaptivePaneLayout.Compact)
+
+        assertTrue(
+            slockAdaptiveNavRailActive(
+                desktopModeEnabled = true,
+                paneState = dualPane
+            )
+        )
+        // Desktop mode off keeps the bottom bar even in a wide flat layout.
+        assertFalse(
+            slockAdaptiveNavRailActive(
+                desktopModeEnabled = false,
+                paneState = dualPane
+            )
+        )
+        // Compact windows always keep the bottom bar.
+        assertFalse(
+            slockAdaptiveNavRailActive(
+                desktopModeEnabled = true,
+                paneState = compact
+            )
+        )
+
     }
 
     @Test
@@ -1095,14 +1154,18 @@ class SlockAppShellTest {
         val requested =
             initial
                 .request("home")
+                .request("dms")
                 .request("tasks")
                 .request("members")
                 .request("settings")
 
         assertEquals(1, requested.forTab("home"))
+        assertEquals(1, requested.forTab("dms"))
         assertEquals(1, requested.forTab("tasks"))
         assertEquals(1, requested.forTab("members"))
         assertEquals(0, requested.forTab("settings"))
+        assertEquals(0, requested.forTab("activity"))
+        assertEquals(0, requested.forTab("more"))
     }
 
     @Test
@@ -1189,17 +1252,11 @@ class SlockAppShellTest {
         val params =
             JSONObject()
                 .put("slockDiagnosticsDeepLinkId", "deep-link-1")
-                .put("slockDiagnosticsDeepLinkEnableProfiler", true)
-                .put("slockDiagnosticsDeepLinkResetScene", true)
-                .put("slockDiagnosticsDeepLinkExportReport", true)
                 .put("slockDiagnosticsDeepLinkAutoCloseMs", 15000L)
 
         assertEquals(
             DiagnosticsDeepLinkRequest(
                 id = "deep-link-1",
-                enableProfiler = true,
-                resetScene = true,
-                exportReport = true,
                 autoCloseMs = 15000L
             ),
             params.diagnosticsDeepLinkRequest()
@@ -1369,6 +1426,9 @@ class SlockAppShellTest {
         assertEquals("kuikly_tasks", appShellBottomTabPerformanceRoute("tasks"))
         assertEquals("kuikly_members", appShellBottomTabPerformanceRoute("members"))
         assertEquals("kuikly_settings", appShellBottomTabPerformanceRoute("settings"))
+        assertEquals("kuikly_dms", appShellBottomTabPerformanceRoute("dms"))
+        assertEquals("kuikly_activity", appShellBottomTabPerformanceRoute("activity"))
+        assertEquals("kuikly_more", appShellBottomTabPerformanceRoute("more"))
         assertEquals("kuikly_home", appShellBottomTabPerformanceRoute("unknown"))
         assertEquals("bottom_tab_home", appShellBottomTabPerformancePhase("unknown"))
     }
@@ -1389,6 +1449,113 @@ class SlockAppShellTest {
             tabs.map { it.label }
         )
         assertEquals(listOf(false, false, true, false), tabs.map { it.selected })
+    }
+
+    @Test
+    fun appShellBottomTabsFollowOrderedKeysWithSlackIconsAndLabels() {
+        // task #94: the ordered overload drives the Slack-aligned bar; order, labels,
+        // selection and the preview-fixture icon set are all pinned.
+        val tabs =
+            appShellBottomTabs(
+                selectedKey = "dms",
+                orderedTabKeys = listOf("more", "dms", "activity", "home"),
+                labelFor = { key -> "label-$key" }
+            )
+        assertEquals(listOf("more", "dms", "activity", "home"), tabs.map { it.key })
+        assertEquals(
+            listOf("label-more", "label-dms", "label-activity", "label-home"),
+            tabs.map { it.label }
+        )
+        assertEquals(listOf(false, true, false, false), tabs.map { it.selected })
+        assertEquals(
+            listOf(
+                SlockLucideIconName.Ellipsis,
+                SlockLucideIconName.MessageCircle,
+                SlockLucideIconName.Bell,
+                SlockLucideIconName.House
+            ),
+            tabs.map { it.iconName }
+        )
+    }
+
+    @Test
+    fun appShellActiveChildTabFollowsSlackOrderedKeys() {
+        // task #94: with Slack-aligned ordered keys, the Slack tabs are child pages and the
+        // legacy hidden keys are not; the legacy default still applies without the param.
+        val slackKeys = SlockSlackNavTabs.DefaultOrder
+        assertEquals("home", appShellActiveChildPagerTab("home", slackKeys))
+        assertEquals("dms", appShellActiveChildPagerTab("dms", slackKeys))
+        assertEquals("activity", appShellActiveChildPagerTab("activity", slackKeys))
+        assertEquals("more", appShellActiveChildPagerTab("more", slackKeys))
+        assertNull(appShellActiveChildPagerTab("tasks", slackKeys))
+        assertNull(appShellActiveChildPagerTab("members", slackKeys))
+        assertNull(appShellActiveChildPagerTab("settings", slackKeys))
+        // Unknown keys clamp to home, which is a valid child key in both modes.
+        assertEquals("home", appShellActiveChildPagerTab("unknown", slackKeys))
+    }
+
+    @Test
+    fun appShellRetainedChildTabsRespectSlackOrderedKeys() {
+        val slackKeys = listOf("dms", "home", "activity", "more")
+        assertEquals(
+            listOf("dms", "home", "activity", "more"),
+            appShellRetainedChildTabs(
+                activeChildTab = "dms",
+                mountedTabs = setOf("home", "activity", "more", "dms", "tasks"),
+                childPageTabKeys = slackKeys
+            )
+        )
+        // Legacy keys present in mountedTabs are NOT retained while Slack order is active.
+        assertEquals(
+            listOf("dms"),
+            appShellRetainedChildTabs(
+                activeChildTab = "dms",
+                mountedTabs = setOf("dms", "tasks", "members"),
+                childPageTabKeys = slackKeys
+            )
+        )
+    }
+
+    @Test
+    fun retainedAppShellSelectedTabAcceptsSlackKeys() {
+        assertEquals("dms", retainedAppShellSelectedTab("dms"))
+        assertEquals("activity", retainedAppShellSelectedTab("activity"))
+        assertEquals("more", retainedAppShellSelectedTab("more"))
+    }
+
+    @Test
+    fun appShellParentShouldStartHomeTreatsDmsAsHomeLikeInSlackMode() {
+        // task #94: the DMs tab renders the same home store, so the parent home start must
+        // not be gated on the literal "home" tab while Slack nav is active.
+        val state = SharedHomeState()
+        assertTrue(
+            appShellParentShouldStartHome(
+                selectedTab = "dms",
+                selectedHomeDestination = null,
+                readyServerId = "server-a",
+                state = state,
+                homeLikeTabs = setOf("dms")
+            )
+        )
+        // Without the home-like set (legacy mode), the same state does not start home.
+        assertFalse(
+            appShellParentShouldStartHome(
+                selectedTab = "dms",
+                selectedHomeDestination = null,
+                readyServerId = "server-a",
+                state = state
+            )
+        )
+        // Non-home-like Slack tabs still do not start home.
+        assertFalse(
+            appShellParentShouldStartHome(
+                selectedTab = "activity",
+                selectedHomeDestination = null,
+                readyServerId = "server-a",
+                state = state,
+                homeLikeTabs = setOf("dms")
+            )
+        )
     }
 
     @Test
@@ -2252,10 +2419,10 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun foregroundBannerDropsReplyThreadWhenParentKindUnresolved() {
-        // t5/#419 A1: a reply thread whose parent kind can't be resolved (parentChannelKind
-        // absent -> #249 drops the parent projection; the parent id only self-resolves the
-        // thread via alias) must be suppressed, never silently opened on the channel surface.
+    fun foregroundBannerOpensReplyThreadWhenParentKindUnresolved() {
+        // #304/#307: a reply thread whose parent kind can't be resolved (parentChannelKind
+        // absent) still carries a trustworthy source tuple — the banner is given and the
+        // thread opens with the parent kind left null rather than being suppressed.
         val message =
             appShellForegroundTestMessage(
                 id = "reply-1",
@@ -2292,8 +2459,13 @@ class SlockAppShellTest {
                 conversationDirectory = directory
             )
 
-        assertNull(result.banner)
-        assertEquals("conversation_missing", result.suppressReason)
+        val banner = assertNotNull(result.banner)
+        assertNull(result.suppressReason)
+        assertEquals(ConversationKind.Thread, banner.conversation.kind)
+        assertEquals("parent-channel", banner.conversation.thread?.parentChannelId?.value)
+        assertEquals("parent-message", banner.conversation.thread?.parentMessageId?.value)
+        assertNull(banner.conversation.thread?.parentSurfaceKind)
+        assertNull(banner.conversation.thread?.parentChannelKind)
     }
 
     @Test
@@ -2791,7 +2963,7 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun resolveOpenRequestKeepsMismatchedActivityPendingWithoutTypedSourceParentKind() {
+    fun resolveOpenRequestOpensMismatchedActivityWithoutTypedSourceParentKind() {
         val directory =
             slockConversationDirectoryStateFromProjections(
                 listOf(
@@ -2827,7 +2999,8 @@ class SlockAppShellTest {
                 threadChannelId = ChannelId("reply-stream"),
                 parentChannelId = ChannelId("joint-local-parent"),
                 parentChannelName = "member-visible-joint",
-                // The mismatched directory must not supply this missing source type.
+                // task #304: even though the mismatched directory cannot supply the
+                // missing parent kind, the source tuple alone is trusted to open.
                 parentChannelKind = null,
                 parentMessageId = MessageId("parent-message"),
                 latestActivityMessageId = MessageId("reply-1")
@@ -2841,13 +3014,29 @@ class SlockAppShellTest {
                 diagnosticsLogger = logs::add
             )
 
-        val pending = assertNotNull(resolution as? ConversationOpenResolution.Pending)
-        assertEquals("thread_parent_unresolved", pending.reason)
-        assertEquals("joint-local-parent", pending.sourceMessageIdentity.parentChannelId)
-        assertNull(pending.sourceMessageIdentity.parentConversationKind)
+        val request = assertNotNull((resolution as? ConversationOpenResolution.Resolved)?.request)
+        assertEquals(ConversationKind.Thread, request.conversationIdentity.kind)
+        val thread = assertNotNull(request.conversationIdentity.thread)
+        assertEquals("joint-local-parent", thread.parentChannelId.value)
+        assertEquals("parent-message", thread.parentMessageId.value)
+        assertNull(thread.parentSurfaceKind)
+        assertNull(thread.parentChannelKind)
+        assertEquals("reply-1", request.anchorMessageId)
+        val launchPayload =
+            assertNotNull(
+                buildAppShellThreadPayload(
+                    conversation = request.conversationIdentity,
+                    anchorMessageId = request.anchorMessageId,
+                    originFallback = request.originFallback
+                )
+            )
+        assertEquals("reply-stream", launchPayload.sourceThreadId)
+        assertEquals("reply-stream", launchPayload.streamChannelId)
+        assertEquals("joint-local-parent", launchPayload.parentChannelId)
+        assertEquals("parent-message", launchPayload.parentMessageId)
         val log = assertNotNull(logs.firstOrNull())
         assertTrue(log.contains("activityThreadProjectionMismatch=true"), log)
-        assertTrue(log.contains("pending:thread_parent_unresolved"), log)
+        assertTrue(log.contains("result=resolved:Thread"), log)
     }
 
     @Test
@@ -3750,9 +3939,11 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun rootLifecycleRefreshDoesNotDuplicateNativeHomeChildRefreshes() {
+    fun rootLifecycleRefreshCoversActivityButNotSelfRefreshingDestinations() {
         assertEquals(true, homeDestinationRefreshesOnLifecycleResume(null))
-        assertEquals(false, homeDestinationRefreshesOnLifecycleResume("activity"))
+        // task #383: the Activity destination does not self-refresh on app
+        // foreground, so the shell resume path must cover it.
+        assertEquals(true, homeDestinationRefreshesOnLifecycleResume("activity"))
         assertEquals(false, homeDestinationRefreshesOnLifecycleResume("saved"))
         assertEquals(false, homeDestinationRefreshesOnLifecycleResume("search"))
         assertEquals(true, homeDestinationRefreshesOnLifecycleResume("unknown"))

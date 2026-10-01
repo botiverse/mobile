@@ -35,7 +35,7 @@ class SharedThreadAgentCreateActionCardTest {
         val actionsApi = RecordingActionCardApi()
         val computersApi = UnusedComputersApi()
         val dataSource = dataSource(agentsApi, actionsApi, computersApi)
-        val formRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v2")
+        val formRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
         val submit =
             SharedCreateAgentDialogSubmit(
                 name = "Noel",
@@ -71,7 +71,7 @@ class SharedThreadAgentCreateActionCardTest {
         assertEquals("deepseek/deepseek-v4-pro", runtime.getValue("model").jsonObject.getValue("id").jsonPrimitive.content)
         val ref = body.getValue("formDefinitionRef").jsonObject
         assertEquals(1, ref.getValue("protocolVersion").jsonPrimitive.content.toInt())
-        assertEquals("builtin-pi.create.v2", ref.getValue("schemaVersion").jsonPrimitive.content)
+        assertEquals("builtin-pi.create.v3", ref.getValue("schemaVersion").jsonPrimitive.content)
         assertEquals(1, actionsApi.markBodies.size)
     }
 
@@ -99,7 +99,7 @@ class SharedThreadAgentCreateActionCardTest {
                         runtime = "builtin",
                         model = RuntimeModelConfig.Preset("deepseek/deepseek-v4-pro")
                     ),
-                formDefinitionRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v2")
+                formDefinitionRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
             )
 
         val result =
@@ -124,9 +124,10 @@ class SharedThreadAgentCreateActionCardTest {
         actionsApi: RecordingActionCardApi,
         computersApi: UnusedComputersApi
     ): SharedThreadDataSource =
-        SharedThreadDataSource(
+        testSharedThreadDataSource(
             networkApi = UnusedThreadNetworkApi(),
             sessionStore = InMemorySlockAuthSessionStore(),
+            cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionsApi),
             createAgentCoordinator =
                 SharedCreateAgentCoordinator(
@@ -156,6 +157,9 @@ private class RecordingCreateAgentApi(
     override suspend fun agentWorkspaceFiles(agentId: MemberId, dirPath: String?): HomeNetworkResponse = error("unused")
     override suspend fun readAgentWorkspaceFile(agentId: MemberId, path: String): HomeNetworkResponse = error("unused")
     override suspend fun agentSkills(agentId: MemberId): HomeNetworkResponse = error("unused")
+
+    override suspend fun agentExternalStatus(agentId: MemberId): HomeNetworkResponse = error("unused")
+
     override suspend fun agentScopes(agentId: MemberId): HomeNetworkResponse = error("unused")
     override suspend fun updateAgentScopes(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
     override suspend fun resetAgentScopes(agentId: MemberId): HomeNetworkResponse = error("unused")

@@ -143,6 +143,138 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
+    fun inboxRepositoryUsesServerIsFollowingToRetainUnfollowedRowsWithoutAttention() = runBlocking {
+        val repository =
+            RealInboxRepository(
+                sampleStore(),
+                FakeInboxNetworkClient(
+                    inboxJson =
+                        """
+                        {
+                          "items": [
+                            {
+                              "kind": "thread",
+                              "threadChannelId": "thread-unfollowed",
+                              "parentMessageId": "parent-1",
+                              "parentChannelId": "channel-1",
+                              "parentChannelName": "general",
+                              "parentChannelType": "channel",
+                              "parentMessagePreview": "parent",
+                              "latestActivityPreview": "reply",
+                              "latestActivityMessageId": "reply-1",
+                              "lastActivityAt": "2026-09-01T00:00:00Z",
+                              "replyCount": 1,
+                              "unreadCount": 7,
+                              "hasMention": true,
+                              "firstUnreadMessageId": "reply-1",
+                              "isFollowing": false
+                            }
+                          ],
+                          "totalCount": 1,
+                          "totalUnreadCount": 7
+                        }
+                        """.trimIndent()
+                )
+            )
+
+        val result = repository.loadInitial(ServerId("server-1"), InboxFilter.All)
+
+        assertTrue(result is DataResult.Content)
+        val snapshot = result.data
+        val item = snapshot.items.single()
+        assertEquals(false, item.isFollowing)
+        assertEquals(0, item.unreadCount)
+        assertEquals(false, item.hasMention)
+        assertNull(item.firstUnreadMessageId)
+        assertEquals(1, snapshot.totalCount)
+        assertEquals(0, snapshot.totalUnreadCount)
+    }
+
+    @Test
+    fun attentionFiltersNeverExposeAnUnfollowedThreadRow() = runBlocking {
+        val repository =
+            RealInboxRepository(
+                sampleStore(),
+                FakeInboxNetworkClient(
+                    inboxJson =
+                        """
+                        {
+                          "items": [
+                            {
+                              "kind": "thread",
+                              "threadChannelId": "thread-unfollowed",
+                              "parentMessageId": "parent-1",
+                              "parentChannelId": "channel-1",
+                              "parentChannelName": "general",
+                              "parentChannelType": "channel",
+                              "replyCount": 1,
+                              "unreadCount": 3,
+                              "hasMention": true,
+                              "isFollowing": false
+                            }
+                          ],
+                          "totalCount": 1,
+                          "totalUnreadCount": 3
+                        }
+                        """.trimIndent()
+                )
+            )
+
+        val result = repository.loadInitial(ServerId("server-1"), InboxFilter.Unread)
+
+        when (result) {
+            is DataResult.Empty -> assertEquals(EmptyReason.NoInboxItems, result.reason)
+            is DataResult.Content -> {
+                assertTrue(result.data.items.isEmpty())
+                assertEquals(0, result.data.totalCount)
+                assertEquals(0, result.data.totalUnreadCount)
+            }
+            is DataResult.Error,
+            is DataResult.NoPermission -> error("attention filter should not fail: $result")
+        }
+    }
+
+    @Test
+    fun projectedAttentionPageAdvancesByRawServerRowsWhenEveryRowIsSuppressed() = runBlocking {
+        val repository =
+            RealInboxRepository(
+                sampleStore(),
+                FakeInboxNetworkClient(
+                    inboxJson =
+                        """
+                        {
+                          "items": [
+                            {
+                              "kind": "thread",
+                              "threadChannelId": "thread-unfollowed",
+                              "parentMessageId": "parent-1",
+                              "parentChannelId": "channel-1",
+                              "parentChannelName": "general",
+                              "parentChannelType": "channel",
+                              "replyCount": 1,
+                              "unreadCount": 4,
+                              "hasMention": true,
+                              "isFollowing": false
+                            }
+                          ],
+                          "hasMore": true,
+                          "totalCount": 2,
+                          "totalUnreadCount": 4
+                        }
+                        """.trimIndent()
+                )
+            )
+
+        val result = repository.loadMore(ServerId("server-1"), InboxFilter.Unread, offset = 30, limit = 30)
+
+        assertTrue(result is DataResult.Content)
+        assertTrue(result.data.items.isEmpty())
+        assertEquals(true, result.data.hasMore)
+        assertEquals(31, result.data.nextOffset)
+        assertEquals(0, result.data.totalUnreadCount)
+    }
+
+    @Test
     fun inboxRepositoryMapsBoundedReplyPreviewIdentityWithoutChangingAuthoritativeCount() = runBlocking {
         val repository =
             RealInboxRepository(

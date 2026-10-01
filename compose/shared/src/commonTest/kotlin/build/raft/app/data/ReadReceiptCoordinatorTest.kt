@@ -14,9 +14,13 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class ReadReceiptCoordinatorTest {
+    // Owner-less markRead overloads were deleted (#1121): every receipt names its owner.
+    private val testOwner = ReadReceiptOwner("production", "user-1", "server-1")
+
     @Test
     fun onResultPreservesAuthoritativeAckPairAfterOptimisticPrediction() = runBlocking {
         val ack = ReadReceiptResult(ChannelId("channel-ack"), seq = 40, readStateVersion = 7, maxReadSeq = 41)
@@ -32,7 +36,7 @@ class ReadReceiptCoordinatorTest {
                 onResult = { _, result -> results += result },
             )
 
-        coordinator.markReadToSeq(ChannelId("channel-ack"), 40)
+        coordinator.markReadToSeq(testOwner, ChannelId("channel-ack"), 40)
         repository.completeNext()
 
         assertEquals(ReadReceiptTarget.ToSeq(40), predictions.single().target)
@@ -55,12 +59,12 @@ class ReadReceiptCoordinatorTest {
             )
         val channelId = ChannelId("channel-1")
 
-        coordinator.markReadToSeq(channelId, 10L)
+        coordinator.markReadToSeq(testOwner, channelId, 10L)
         assertEquals(listOf<ReadCall>(ReadCall.ToSeq(channelId, 10L)), repository.calls)
 
-        coordinator.markReadToSeq(channelId, 9L)
-        coordinator.markReadToSeq(channelId, 10L)
-        coordinator.markReadToSeq(channelId, 12L)
+        coordinator.markReadToSeq(testOwner, channelId, 9L)
+        coordinator.markReadToSeq(testOwner, channelId, 10L)
+        coordinator.markReadToSeq(testOwner, channelId, 12L)
         assertEquals(1, repository.calls.size, "only the first request should be in flight")
 
         repository.completeNext()
@@ -73,8 +77,8 @@ class ReadReceiptCoordinatorTest {
         assertEquals(listOf(channelId, channelId), optimisticReads)
         assertEquals(
             listOf<ReadReceiptRequest>(
-                ReadReceiptRequest.ToSeq(channelId, 10L, revision = 1L),
-                ReadReceiptRequest.ToSeq(channelId, 12L, revision = 2L)
+                ReadReceiptRequest.ToSeq(channelId, 10L, testOwner, revision = 1L),
+                ReadReceiptRequest.ToSeq(channelId, 12L, testOwner, revision = 2L)
             ),
             results
         )
@@ -94,10 +98,10 @@ class ReadReceiptCoordinatorTest {
             )
         val channelId = ChannelId("channel-dedupe")
 
-        coordinator.markReadToSeq(channelId, 42L)
+        coordinator.markReadToSeq(testOwner, channelId, 42L)
         repository.completeNext()
-        coordinator.markReadToSeq(channelId, 42L)
-        coordinator.markReadToSeq(channelId, 41L)
+        coordinator.markReadToSeq(testOwner, channelId, 42L)
+        coordinator.markReadToSeq(testOwner, channelId, 41L)
 
         assertEquals(listOf<ReadCall>(ReadCall.ToSeq(channelId, 42L)), repository.calls)
         assertEquals(listOf(channelId), optimisticReads)
@@ -111,9 +115,9 @@ class ReadReceiptCoordinatorTest {
         val coordinator = ReadReceiptCoordinator(scope = scope, repository = repository)
         val channelId = ChannelId("channel-retry")
 
-        coordinator.markReadToSeq(channelId, 42L)
+        coordinator.markReadToSeq(testOwner, channelId, 42L)
         repository.completeNext(DataResult.Error(ScreenError(code = "read_failed")))
-        coordinator.markReadToSeq(channelId, 42L)
+        coordinator.markReadToSeq(testOwner, channelId, 42L)
 
         assertEquals(
             listOf<ReadCall>(ReadCall.ToSeq(channelId, 42L), ReadCall.ToSeq(channelId, 42L)),
@@ -135,9 +139,9 @@ class ReadReceiptCoordinatorTest {
             )
         val channelId = ChannelId("channel-empty-success")
 
-        coordinator.markReadToSeq(channelId, 3L)
+        coordinator.markReadToSeq(testOwner, channelId, 3L)
         repository.completeNext()
-        coordinator.markReadToSeq(channelId, 3L)
+        coordinator.markReadToSeq(testOwner, channelId, 3L)
 
         assertEquals(listOf<ReadCall>(ReadCall.ToSeq(channelId, 3L)), repository.calls)
         assertEquals(emptyList(), failures)
@@ -157,11 +161,11 @@ class ReadReceiptCoordinatorTest {
             )
         val channelId = ChannelId("channel-2")
 
-        coordinator.markReadToSeq(channelId, 3L)
+        coordinator.markReadToSeq(testOwner, channelId, 3L)
         repository.completeNext()
 
         assertEquals(
-            listOf<ReadReceiptRequest>(ReadReceiptRequest.ToSeq(channelId, 3L, revision = 1L)),
+            listOf<ReadReceiptRequest>(ReadReceiptRequest.ToSeq(channelId, 3L, testOwner, revision = 1L)),
             failures
         )
         scope.cancel()
@@ -174,7 +178,7 @@ class ReadReceiptCoordinatorTest {
         val coordinator = ReadReceiptCoordinator(scope = scope, repository = repository)
         val channelId = ChannelId("channel-3")
 
-        coordinator.markReadToSeq(channelId, 0L)
+        coordinator.markReadToSeq(testOwner, channelId, 0L)
         repository.completeNext()
 
         assertEquals(listOf<ReadCall>(ReadCall.All(channelId)), repository.calls)
@@ -197,11 +201,11 @@ class ReadReceiptCoordinatorTest {
             )
         val channelId = ChannelId("channel-4")
 
-        coordinator.markReadToSeq(channelId, 7L)
+        coordinator.markReadToSeq(testOwner, channelId, 7L)
         repository.completeNext()
 
         assertEquals(
-            listOf<ReadReceiptRequest>(ReadReceiptRequest.ToSeq(channelId, 7L, revision = 1L)),
+            listOf<ReadReceiptRequest>(ReadReceiptRequest.ToSeq(channelId, 7L, testOwner, revision = 1L)),
             runnerRequests
         )
         scope.cancel()
@@ -347,6 +351,17 @@ class ReadReceiptCoordinatorTest {
         assertEquals(listOf(ownerA), revoked)
         assertEquals(listOf(ownerB), results.map { it.owner })
         scope.cancel()
+    }
+
+    @Test
+    fun readReceiptOwnerRejectsBlankIdentitySegmentsInsteadOfLegacyBucket() {
+        // Positive control: a fully named owner is constructible.
+        assertEquals("server-1", ReadReceiptOwner("production", "user-1", "server-1").serverId)
+
+        // No segment may be blank: there is no owner-less "legacy" receipt owner any more (#1121).
+        assertFailsWith<IllegalArgumentException> { ReadReceiptOwner("", "user-1", "server-1") }
+        assertFailsWith<IllegalArgumentException> { ReadReceiptOwner("production", " ", "server-1") }
+        assertFailsWith<IllegalArgumentException> { ReadReceiptOwner("production", "user-1", "") }
     }
 
     private class FakeReadReceiptRepository(

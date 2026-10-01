@@ -3,7 +3,6 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -15,9 +14,7 @@ import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueLocalePreferenceStore
-import build.raft.app.data.SharedSettingsDestination
-import build.raft.app.data.SharedSettingsIntent
-import build.raft.app.data.SharedSettingsViewModel
+import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.resources.MR
@@ -46,7 +43,6 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
-import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import com.tencent.tmm.kmmresource.compose.stringResource
 
 const val SETTINGS_WEB_VIEW_PAGE = "compose_settings_webview"
@@ -148,6 +144,7 @@ private fun SettingsWebViewScreen() {
         }
     val computerSpec = remember(computerTarget) { computerTarget?.let(::settingsComputerWebViewSpec) }
     when (surface) {
+        SettingsWebViewSurface.Onboarding -> SettingsWebViewInvalidRoute(pager)
         SettingsWebViewSurface.Computers ->
             StandaloneSettingsWebViewPage(
                 pager = pager,
@@ -209,12 +206,13 @@ private fun SettingsWebViewInvalidRoute(pager: Pager) {
 
 /**
  * Product-specific parameters for a standalone Settings Web surface. Route/pageData continues to
- * carry only shell identity; canonical environment, auth, and product state are resolved by the
- * shared host from the shell stores.
+ * carry only shell identity; canonical environment and auth bootstrap are resolved by the shared
+ * host from the shell stores, while product state remains owned by the embedded Web app. There is
+ * deliberately no [build.raft.app.data.SharedSettingsDestination] here: a Web surface must not
+ * start a second native Settings store load for content that the SPA is already fetching.
  */
 internal data class StandaloneSettingsWebViewSpec(
     val surface: SettingsWebViewSurface,
-    val destination: SharedSettingsDestination,
     val includeLocaleQuery: Boolean = false,
     val headerFollowsDocumentTitle: Boolean = false,
     val allowedNavigationSchemes: Set<String> = setOf("http", "https"),
@@ -234,6 +232,7 @@ internal fun StandaloneSettingsWebViewPage(
     title: String,
     iconName: SlockLucideIconName,
     spec: StandaloneSettingsWebViewSpec,
+    isComputerDetail: Boolean = false,
 ) {
     SettingsWebViewPageScaffold(
         pager = pager,
@@ -247,6 +246,7 @@ internal fun StandaloneSettingsWebViewPage(
             spec = spec,
             controller = controller,
             onNavigationStateChange = onNavigationStateChange,
+            isComputerDetail = isComputerDetail,
         )
     }
 }
@@ -403,28 +403,39 @@ private fun StandaloneSettingsWebViewBody(
     spec: StandaloneSettingsWebViewSpec,
     controller: SlockWebViewController,
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit,
+    isComputerDetail: Boolean = false,
 ) {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val sharedStores = remember(bridge) { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
-    val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
+    // The Web settings surfaces own their product data in the embedded SPA. Keep this host path
+    // limited to shell identity, canonical environment, and auth bootstrap; constructing a full
+    // native SharedSettingsDataSource here would only prepare repositories that this page cannot
+    // render or mutate.
+    val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
+        pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+    }
     val authStore =
-        remember(sharedStores, environment.storeScope) {
-            sharedStores.authStore(environment.storeScope)
+        remember(sharedStores, storeScope) {
+            sharedStores.authStore(storeScope)
         }
     val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, sharedStores.authStore)
-    val settingsViewModel: SharedSettingsViewModel =
-        viewModel(key = "standalone-settings-${spec.surface.diagnosticsName}") {
-            SharedSettingsViewModel(environment.dataSource)
+    val webBaseUrl = standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore)
+    LaunchedEffect(spec.surface, spec) {
+        // Computers opens two distinct pages (list vs machine detail) that share one
+        // surface name; tagging the target keeps the diagnostic unambiguous (#336).
+        val targetTag = when {
+            spec.surface != SettingsWebViewSurface.Computers -> null
+            isComputerDetail -> "detail"
+            else -> "list"
         }
-    val settingsState by settingsViewModel.state.collectAsState()
-    LaunchedEffect(spec.surface, spec.destination) {
-        bridge.log("settings_${spec.surface.diagnosticsName}_open")
-        settingsViewModel.dispatch(SharedSettingsIntent.LoadPageContent(spec.destination))
+        bridge.log(
+            "settings_${spec.surface.diagnosticsName}_open" +
+                (targetTag?.let { " target=$it" } ?: "")
+        )
     }
-    StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     StandaloneSettingsWebViewContent(
         authSnapshot = authSnapshot,
-        webBaseUrl = environment.webBaseUrl,
+        webBaseUrl = webBaseUrl,
         spec = spec,
         controller = controller,
         accessTokenSyncLogger = bridge::log,
@@ -509,6 +520,7 @@ internal fun SettingsWebViewContent(
     url: String,
     modifier: Modifier = Modifier,
     allowedNavigationSchemes: Set<String> = setOf("http", "https"),
+    allowNavigation: Boolean = true,
     bottomContentPadding: Dp = 0.dp,
     injectedJavaScript: String = "",
     controller: SlockWebViewController = rememberSlockWebViewController(),
@@ -517,6 +529,7 @@ internal fun SettingsWebViewContent(
     onLoadSuccess: () -> Unit = {},
     onUrlChange: (String) -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
+    onNavigationBlocked: (String) -> Unit = {},
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit = {},
     onDocumentReadyChange: (Boolean) -> Unit = {},
 ) {
@@ -574,7 +587,7 @@ internal fun SettingsWebViewContent(
                             .background(SlockColor.SurfaceCream)
                             .padding(bottom = bottomContentPadding)
                             .alpha(if (contentVisible) 1f else 0f),
-                    allowNavigation = true,
+                    allowNavigation = allowNavigation,
                     allowedNavigationSchemes = allowedNavigationSchemes,
                     domStorageEnabled = true,
                     cacheEnabled = true,
@@ -597,6 +610,7 @@ internal fun SettingsWebViewContent(
                         loadError = reason
                         onLoadFailure(reason)
                     },
+                    onNavigationBlocked = onNavigationBlocked,
                     onNavigationStateChange = { state ->
                         if (navigationAuthority.accepts(navigationOwner)) {
                             navigationState = state
@@ -630,7 +644,7 @@ internal fun SettingsWebViewLoadingCover() {
 }
 
 @Composable
-private fun SettingsWebViewErrorContent(
+internal fun SettingsWebViewErrorContent(
     actionLabel: String,
     actionIcon: SlockLucideIconName,
     onAction: () -> Unit,
@@ -672,7 +686,7 @@ internal fun settingsWebViewFrameIsReady(
     positionY: Float,
     width: Int,
     height: Int,
-): Boolean = positionY > 0f && width > 0 && height > 0
+): Boolean = positionY.isFinite() && positionY >= 0f && width > 0 && height > 0
 
 private const val SETTINGS_WEB_VIEW_HEADER_SETTLE_FRAMES = 1
 internal const val SETTINGS_WEB_VIEW_HEADER_Z_INDEX = 1f

@@ -2467,6 +2467,45 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowMdMermaidFlowchart() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-mermaid-flowchart",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-mermaid-flowchart")
+                    .put("visualFixture", "md_mermaid_flowchart"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdMermaidSequence() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-mermaid-sequence",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-mermaid-sequence")
+                    .put("visualFixture", "md_mermaid_sequence"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdMermaidInvalidFallback() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-mermaid-invalid-fallback",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-mermaid-invalid-fallback")
+                    .put("visualFixture", "md_mermaid_invalid"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowMdTable() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.md-table",
@@ -3353,6 +3392,60 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    // task #535: Computer-row oracle states (web AgentDetailPanel.tsx blob
+    // c549c316acf5 :771-772 / :2053-2084). Expected: computer-offline = gray dot +
+    // Offline; computer-missing / no-computer = "No computer assigned", no dot.
+    // Android's rendering of these states is task #259; until it lands these
+    // captures record the current (wrong) behaviour as the before-frame.
+    @Test
+    fun captureMembersAgentDetailProfileComputerOfflineScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.profile.computer-offline",
+            tab = "profile",
+            memberId = "agent-computer-offline"
+        )
+    }
+
+    @Test
+    fun captureMembersAgentDetailProfileComputerMissingScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.profile.computer-missing",
+            tab = "profile",
+            memberId = "agent-computer-missing"
+        )
+    }
+
+    @Test
+    fun captureMembersAgentDetailProfileNoComputerScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.profile.no-computer",
+            tab = "profile",
+            memberId = "agent-no-computer"
+        )
+    }
+
+    // task #537: a machine name that cannot fit one 390dp line, so the wrap /
+    // silent-truncate / overflow outcome is observable at all.
+    @Test
+    fun captureMembersAgentDetailProfileLongMachineNameScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.profile.long-machine-name",
+            tab = "profile",
+            memberId = "agent-long-machine"
+        )
+    }
+
+    // task #259: a bare daemon (isComputer=false) with no computer version:
+    // web shows Connected · daemon vX, never a computer version.
+    @Test
+    fun captureMembersAgentDetailProfileDaemonOnlyScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.profile.daemon-only",
+            tab = "profile",
+            memberId = "agent-daemon-only"
+        )
+    }
+
     @Test
     fun captureMembersAgentDetailChatScreen() {
         captureMembersAgentDetailScreen(
@@ -3410,12 +3503,13 @@ class KmpVisualScreenshotCaptureTest {
 
     private fun captureMembersAgentDetailScreen(
         caseId: String,
-        tab: String
+        tab: String,
+        memberId: String = "agent-product-ux"
     ) {
         val pageData =
             memberDetailVisualPageData(
-                instanceId = "visual-members-agent-$tab",
-                memberId = "agent-product-ux",
+                instanceId = "visual-members-agent-$tab-$memberId",
+                memberId = memberId,
                 memberKind = "agent",
                 initialAgentTab = tab
             )

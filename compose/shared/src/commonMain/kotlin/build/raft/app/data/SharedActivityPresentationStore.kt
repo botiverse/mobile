@@ -129,7 +129,10 @@ internal data class SharedActivityPresentationCheckpoint(
     val presentedItems: List<InboxItem>,
     val updateTracking: ActivityUpdateTrackingState,
     val presentationGeneration: Int = 0,
-    val pullRefreshInFlight: Boolean = false
+    val pullRefreshInFlight: Boolean = false,
+    // task #45 follow-up: the selected row highlight is user-visible state; it must
+    // survive the panel being unmounted while an inline destination covers it.
+    val selectedItemKey: String? = null
 )
 
 /**

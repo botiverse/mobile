@@ -123,3 +123,11 @@ internal expect fun slockSlugSlashCenteringOffsetDp(): Float
 // stay at the largest size every platform SDK can actually deliver; OHOS still
 // reads one ArrayBuffer, so all three targets are capped at 50MB until it streams.
 internal expect fun slockFeedbackAttachmentMaxBytes(): Long
+
+/**
+ * task #232: start-edge region (in dp) a [build.raft.app.components.TabPager]
+ * must leave to the platform's own edge gesture. iOS injects its interactive
+ * edge-back width; platforms without a competing start-edge gesture return 0.
+ * The shared component never hardcodes a platform's back-gesture geometry.
+ */
+internal expect fun slockPlatformTabPagerStartEdgeInsetDp(): Float

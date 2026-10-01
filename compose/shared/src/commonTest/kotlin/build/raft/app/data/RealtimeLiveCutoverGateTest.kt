@@ -278,7 +278,7 @@ class RealtimeLiveCutoverGateTest {
                 processInstanceId = process,
             )
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val provider = RealtimeAuthorityProvider(registry, auth, auth)
+        val provider = RealtimeAuthorityProvider(registry, auth, auth, { "env-test" })
         provider.start(scope)
         provider.registerScope("shell", registrationId = "mount")
         val writes = mutableListOf<String>()

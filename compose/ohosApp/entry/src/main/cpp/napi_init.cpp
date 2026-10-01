@@ -117,10 +117,18 @@ static void RegisterSlockLogAdapter() {
 
 }  // namespace
 
-static napi_value InitKuikly(napi_env env, napi_callback_info /*info*/) {
+static napi_value InitKuikly(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value argv[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    napi_valuetype callback_type = napi_undefined;
+    if (argc > 0) {
+        napi_typeof(env, argv[0], &callback_type);
+    }
+    napi_value diagnostic_callback = callback_type == napi_function ? argv[0] : nullptr;
     RegisterSlockLogAdapter();
     RegisterSlockFontAdapters();
-    RegisterSlockOhosImageAdapter(env);
+    RegisterSlockOhosImageAdapter(env, diagnostic_callback);
     auto api = libshared_symbols();
     int handler = api->kotlin.root.raftInitKuikly();
     napi_value result;

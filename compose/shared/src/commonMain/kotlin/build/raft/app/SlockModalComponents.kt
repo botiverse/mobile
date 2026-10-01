@@ -29,6 +29,7 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.RowScope
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
@@ -327,6 +328,10 @@ internal fun SlockModalLayer(
 internal fun SlockUnifiedDialog(
     title: String,
     onDismiss: () -> Unit,
+    // Task #258 successor (artin msg=a493a371/7cfc6fb7): small muted identifier
+    // line rendered above the title (e.g. "#all · 任务 #5") so the channel/task
+    // label never renders as the oversized title. Null/blank = no overline.
+    overline: String? = null,
     modifier: Modifier = Modifier,
     dismissEnabled: Boolean = true,
     overlayAlpha: Float = 0.60f,
@@ -356,6 +361,7 @@ internal fun SlockUnifiedDialog(
         Modal(onWillDismiss = { if (dismissEnabled) onDismiss() }) {
             SlockUnifiedDialogSurface(
                 title = title,
+                overline = overline,
                 onDismiss = onDismiss,
                 modifier = modifier,
                 dismissEnabled = dismissEnabled,
@@ -389,6 +395,7 @@ internal fun SlockUnifiedDialog(
             Modal(onWillDismiss = { if (dismissEnabled) onDismiss() }) {
                 SlockUnifiedDialogSurface(
                     title = title,
+                    overline = overline,
                     onDismiss = onDismiss,
                     modifier = modifier,
                     dismissEnabled = dismissEnabled,
@@ -424,6 +431,7 @@ internal fun SlockUnifiedDialog(
 @Composable
 private fun SlockUnifiedDialogSurface(
     title: String,
+    overline: String?,
     onDismiss: () -> Unit,
     modifier: Modifier,
     dismissEnabled: Boolean,
@@ -515,19 +523,35 @@ private fun SlockUnifiedDialogSurface(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = title,
-                        style =
-                            SlockType.PageTitle.copy(
-                                fontSize = titleFontSize.sp,
-                                lineHeight = titleLineHeight.sp,
-                                color = SlockColor.TextBlack
-                            ),
-                        color = SlockColor.TextBlack,
-                        modifier = Modifier.weight(1f),
-                        maxLines = titleMaxLines,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        overline?.takeIf { it.isNotBlank() }?.let { overlineText ->
+                            Text(
+                                text = overlineText,
+                                style = SlockType.Caption.copy(
+                                    fontSize = 11.sp,
+                                    lineHeight = 14.sp,
+                                    letterSpacing = 0.6.sp
+                                ),
+                                color = SlockColor.TextMutedGray,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(bottom = 4.dp).fillMaxWidth()
+                            )
+                        }
+                        Text(
+                            text = title,
+                            style =
+                                SlockType.PageTitle.copy(
+                                    fontSize = titleFontSize.sp,
+                                    lineHeight = titleLineHeight.sp,
+                                    color = SlockColor.TextBlack
+                                ),
+                            color = SlockColor.TextBlack,
+                            modifier = Modifier.fillMaxWidth(),
+                            maxLines = titleMaxLines,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     SlockBrutalIconButton(
                         enabled = dismissEnabled,
                         iconName = SlockLucideIconName.X,
@@ -674,6 +698,7 @@ internal fun SlockModalSquareActionButton(
     color: Color = SlockColor.SurfaceWhite,
     enabled: Boolean = true,
     size: Dp = 28.dp,
+    iconColor: String = "#FF000000",
     iconSpinning: Boolean = icon == SlockLucideIconName.Loader || icon == SlockLucideIconName.LoaderCircle
 ) {
     SlockBrutalIconButton(
@@ -684,6 +709,8 @@ internal fun SlockModalSquareActionButton(
         backgroundColor = color,
         size = size,
         shadowOffset = 3.dp,
+        iconColor = iconColor,
+        disabledIconColor = iconColor,
         iconSpinning = iconSpinning
     )
 }
@@ -718,6 +745,11 @@ internal fun SlockModalCompactMemberRow(
     trailingText: String = "",
     trailingIcon: SlockLucideIconName? = null,
     onTrailingClick: (() -> Unit)? = null,
+    // Greys out the trailing affordance (e.g. a cross-server follower's
+    // remove-X) while keeping it tappable — the click still fires so the
+    // caller can surface a hint. Distinct from `enabled`, which gates clicks.
+    trailingMuted: Boolean = false,
+    roleBadgeLabel: String? = null,
     cacheSubject: build.raft.app.data.SlockAvatarCacheSubject? = null,
     cacheServerId: String? = null,
     onClick: () -> Unit = {}
@@ -737,8 +769,58 @@ internal fun SlockModalCompactMemberRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SlockAvatarWithStatus(
+        // Task #258 (artin msg=ed597ee6): the same member-row visuals are reused by
+        // the task detail assignee popover (inside a native Button for dispatch).
+        SlockModalCompactMemberRowContent(
+            title = title,
+            subtitle = subtitle,
+            avatarWireValue = avatarWireValue,
+            avatarLabel = avatarLabel,
             statusColor = statusColor,
+            statusPulsing = statusPulsing,
+            avatarSize = avatarSize,
+            sourceBadgeLabel = sourceBadgeLabel,
+            enabled = enabled,
+            selected = selected,
+            trailingText = trailingText,
+            trailingIcon = trailingIcon,
+            onTrailingClick = onTrailingClick,
+            trailingMuted = trailingMuted,
+            roleBadgeLabel = roleBadgeLabel,
+            cacheSubject = cacheSubject,
+            cacheServerId = cacheServerId
+        )
+    }
+}
+
+/**
+ * Row children of SlockModalCompactMemberRow (avatar + texts + trailing) so the
+ * exact channel add-member visuals can be embedded in other row shells (e.g. a
+ * native Button for the task detail assignee popover, where plain-`clickable`
+ * rows lose to the outer dismiss barrier).
+ */
+@Composable
+internal fun RowScope.SlockModalCompactMemberRowContent(
+    title: String,
+    subtitle: String,
+    avatarWireValue: String?,
+    avatarLabel: String,
+    statusColor: Color?,
+    statusPulsing: Boolean,
+    avatarSize: Dp,
+    sourceBadgeLabel: String?,
+    enabled: Boolean,
+    selected: Boolean,
+    trailingText: String,
+    trailingIcon: SlockLucideIconName?,
+    onTrailingClick: (() -> Unit)?,
+    trailingMuted: Boolean = false,
+    roleBadgeLabel: String? = null,
+    cacheSubject: build.raft.app.data.SlockAvatarCacheSubject?,
+    cacheServerId: String?
+) {
+    SlockAvatarWithStatus(
+        statusColor = statusColor,
             avatarSize = avatarSize,
             statusSize = if (avatarSize >= 40.dp) 10.dp else 8.dp,
             statusPulsing = statusPulsing
@@ -794,41 +876,53 @@ internal fun SlockModalCompactMemberRow(
                 )
             }
         }
+        roleBadgeLabel?.takeIf { it.isNotBlank() }?.let { label ->
+            Box(Modifier.background(SlockColor.SurfaceCream).padding(horizontal = 5.dp, vertical = 2.dp)) {
+                Text(text = label, style = SlockType.Caption, color = SlockColor.TextMutedGray,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
         when {
             trailingIcon != null && onTrailingClick != null -> {
                 if (trailingIcon == SlockLucideIconName.X) {
                     SlockModalMemberRemoveButton(
                         icon = trailingIcon,
                         onClick = onTrailingClick,
-                        enabled = enabled
+                        enabled = enabled,
+                        muted = trailingMuted
                     )
                 } else {
                     SlockModalSquareActionButton(
                         icon = trailingIcon,
                         onClick = onTrailingClick,
                         color = if (selected) SlockColor.SurfaceWhite else Color(0xFFFFF2F2),
-                        enabled = enabled
+                        enabled = enabled,
+                        iconColor = if (trailingMuted) "#FF777777" else "#FF000000"
                     )
                 }
             }
-            trailingIcon != null -> SlockLucideIcon(trailingIcon, modifier = Modifier.size(15.dp), color = "#FF000000")
+            trailingIcon != null -> SlockLucideIcon(
+                trailingIcon,
+                modifier = Modifier.size(15.dp),
+                color = if (trailingMuted) "#FF777777" else "#FF000000"
+            )
             trailingText.isNotBlank() -> Text(text = trailingText, style = SlockType.Caption, color = SlockColor.TextMutedGray)
             else -> Spacer(modifier = Modifier.size(0.dp))
         }
     }
-}
 
 @Composable
 private fun SlockModalMemberRemoveButton(
     icon: SlockLucideIconName,
     onClick: () -> Unit,
-    enabled: Boolean
+    enabled: Boolean,
+    muted: Boolean = false
 ) {
     Box(
         modifier =
             Modifier
                 .size(24.dp)
-                .background(if (enabled) Color(0xFFFFE5E5) else SlockColor.SurfaceCream)
+                .background(if (enabled && !muted) Color(0xFFFFE5E5) else SlockColor.SurfaceCream)
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
                 .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
@@ -836,7 +930,7 @@ private fun SlockModalMemberRemoveButton(
         SlockLucideIcon(
             icon,
             modifier = Modifier.size(12.dp),
-            color = if (enabled) "#FF000000" else "#FF777777"
+            color = if (enabled && !muted) "#FF000000" else "#FF777777"
         )
     }
 }

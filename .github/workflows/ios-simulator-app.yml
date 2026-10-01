@@ -1,0 +1,179 @@
+# task #232/#233: on-demand installable iOS Simulator app for acceptance.
+#
+# Why this exists: runtime acceptance (Jony's seat) needs an installable
+# `.app` bound to an exact commit, but the repo had no per-exact publishing
+# channel — the compile gate produces no app, and qa-acceptance-ios.yml only
+# CONSUMES a frozen `ios-simulator-app-<run>` artifact from an earlier run.
+# This workflow is that producer: dispatch it on any ref, download the
+# artifact, install in a Simulator. The artifact name matches the
+# `ios-simulator-app-<run_id>` convention qa-acceptance-ios.yml pins, so its
+# runs can also consume these directly via `app_run_id` (task #247 added the
+# metadata.json its pinned-app validator requires).
+#
+# Build steps mirror qa-acceptance-ios.yml's proven build phase (KSP hygiene,
+# dummy framework, pod install, build-for-testing) minus simulator boot and
+# the agent loop — build only, no tests, no signing.
+name: iOS Simulator app (on demand)
+
+on:
+  workflow_dispatch:
+    inputs:
+      archs:
+        description: "Simulator slices to build (xcodebuild ARCHS). Default arm64 — see the ARCHS note on the build step before widening."
+        required: false
+        type: string
+        default: "arm64"
+  # workflow_dispatch only registers once this file reaches the default
+  # branch; until then, pushing an edit of THIS FILE on a branch is the
+  # trigger (scoped so ordinary source pushes never burn a macOS runner).
+  push:
+    paths:
+      - ".github/workflows/ios-simulator-app.yml"
+
+concurrency:
+  group: ios-simulator-app-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-app:
+    name: Build installable Simulator app
+    runs-on: blacksmith-6vcpu-macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Verify complete immutable Kuikly release
+        run: scripts/ci/verify_kuikly_release_manifest.sh
+
+      # Same guard as qa-acceptance-ios.yml: stale KSP incremental caches on a
+      # reused runner produce the FIR RAW_FIR->STATUS cast failure.
+      - name: KSP incremental cache hygiene
+        shell: bash
+        run: |
+          rm -rf "$GITHUB_WORKSPACE/compose/shared/build/generated/ksp" \
+                 "$GITHUB_WORKSPACE/compose/shared/build/kotlin"
+
+      - name: Generate shared framework placeholder
+        working-directory: compose
+        run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain --stacktrace
+
+      - name: Pod install
+        working-directory: compose/iosApp
+        run: pod install
+
+      # ARCHS is pinned (default arm64) because the generic Simulator destination
+      # alone builds arm64 AND x86_64, and the CocoaPods "Build shared" phase then
+      # links BOTH Kotlin/Native frameworks in one Gradle invocation under the
+      # 4 GiB heap from compose/gradle.properties. Read from the uploaded logs of
+      # main run 33805615758 (OOM: "Execution failed for task
+      # ':shared:linkPodDebugFrameworkIosX64' ... java.lang.OutOfMemoryError:
+      # Java heap space", BUILD FAILED in 55m 57s) and run 33805224692 (same
+      # "Daemon will expire after running out of JVM heap space" during the
+      # arm64 link, then a GC stall to the 60-minute timeout). qa-acceptance-ios
+      # builds with a UDID destination, i.e. arm64 only, and finishes in ~12 min;
+      # the arm64 slice is also the only one any of our Simulator seats execute
+      # (task #246 seam measurement: executed arm64 slices byte-identical between
+      # the fat producer build and the thin consumer build). Widen via the
+      # `archs` input only for an Intel host, and expect the memory cost.
+      - name: Build app for Simulator
+        working-directory: compose/iosApp
+        env:
+          ARCHS_INPUT: ${{ inputs.archs }}
+        run: |
+          log="$GITHUB_WORKSPACE/xcodebuild-ios.log"
+          archs="${ARCHS_INPUT:-arm64}"
+          echo "ARCHS=$archs"
+          set +e
+          xcodebuild \
+            -workspace iosApp.xcworkspace \
+            -scheme iosAppUITests \
+            -configuration Debug \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath build/DerivedData \
+            ARCHS="$archs" \
+            CODE_SIGNING_ALLOWED=NO \
+            build-for-testing > "$log" 2>&1
+          status=$?
+          tail -60 "$log"
+          if [ "$status" -ne 0 ]; then
+            echo "===== iOS build FAILED (status=$status) — extracted errors ====="
+            # `e: ` alone also matches every "Using response file: ..." line xcodebuild
+            # prints, and `tail -100` then keeps only those — run 33781925404 failed with
+            # status 65 and this block showed nothing but TEST BUILD FAILED. Anchor the
+            # Kotlin `e: ` pattern and drop the response-file noise so the real errors
+            # survive the tail; the full log is uploaded below for anything else.
+            grep -nE "(^|[[:space:]])e: |: error:|error: |Unresolved|FAILURE:|Execution failed|BUILD FAILED|following build commands failed|PhaseScriptExecution" "$log" \
+              | grep -v "Using response file" | tail -100 || true
+          fi
+          exit "$status"
+
+      # `failure()` alone misses the timeout case: main run 33799197240 hit the
+      # job's 60-minute limit inside the same "Build shared" phase and was
+      # cancelled, and a cancelled job does not satisfy failure(), so the one
+      # log that could explain the stall was never uploaded. Whether a job-level
+      # timeout also makes cancelled() true for the remaining steps is not
+      # documented unambiguously (@LiBai review), so this is always(): a few MB
+      # of artifact on green runs buys a log that is never missing again, and
+      # removes "why is there no log this time" as a question.
+      - name: Upload xcodebuild log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-simulator-app-build-log-${{ github.run_id }}
+          path: xcodebuild-ios.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # task #247: the artifact must carry the metadata.json shape that
+      # qa-acceptance-ios.yml's `app_run_id` consumer validates
+      # (scripts/qa/prepare_pinned_ios_app.sh) — a zip with only a free-form
+      # PROVENANCE.txt fails closed there. One script owns that shape and its
+      # fail-closed identity checks (Simulator slice, real HandsBuildCommit);
+      # PROVENANCE.txt stays as the human-readable twin.
+      - name: Package app with source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          staging="$RUNNER_TEMP/ios-simulator-app"
+          bash scripts/qa/export_ios_simulator_app.sh \
+            "compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator" \
+            "$staging" "$GITHUB_SHA" "$GITHUB_RUN_ID"
+          {
+            echo "source_commit=$GITHUB_SHA"
+            echo "ref=$GITHUB_REF_NAME"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } | tee "$staging/PROVENANCE.txt"
+          sha=$(awk '{print $1}' "$staging/raft-ios-simulator.app.zip.sha256")
+          {
+            echo "## Installable iOS Simulator carrier"
+            echo '```json'
+            cat "$staging/metadata.json"
+            echo '```'
+            echo "Pin it in qa-acceptance-ios.yml with: app_run_id=${GITHUB_RUN_ID} artifact_sha256=${sha}"
+            echo ""
+            echo "artifact_sha256/artifact_size describe the EXTRACTED raft-ios-simulator.app.zip,"
+            echo "not the outer archive GitHub shows for the artifact."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "STAGING=$staging" >> "$GITHUB_ENV"
+
+      - name: Upload Simulator app artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-simulator-app-${{ github.run_id }}
+          path: ${{ env.STAGING }}
+          if-no-files-found: error
+          retention-days: 14

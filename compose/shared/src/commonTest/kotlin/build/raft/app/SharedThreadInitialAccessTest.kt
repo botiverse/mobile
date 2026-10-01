@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -68,6 +70,7 @@ class SharedThreadInitialAccessTest {
             SharedThreadDataSource(
                 networkApi = ReplyThreadAccessNetworkApi,
                 sessionStore = sessionStore,
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = channelRepository,
                 homeSnapshotProvider = { requestedServerId ->
                     assertEquals(serverId, requestedServerId)
@@ -116,9 +119,10 @@ class SharedThreadInitialAccessTest {
         val store =
             SharedThreadStore(
                 dataSource =
-                    SharedThreadDataSource(
+                    testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
                                 replyResult = DataResult.Content(replyThreadAccessSnapshot(body = "network reply"))
@@ -170,9 +174,10 @@ class SharedThreadInitialAccessTest {
         val store =
             SharedThreadStore(
                 dataSource =
-                    SharedThreadDataSource(
+                    testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
                                 replyResult = DataResult.Content(replyThreadAccessSnapshot())
@@ -233,9 +238,10 @@ class SharedThreadInitialAccessTest {
         val store =
             SharedThreadStore(
                 dataSource =
-                    SharedThreadDataSource(
+                    testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
                                 replyResult =
@@ -329,6 +335,7 @@ class SharedThreadInitialAccessTest {
                     SharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(owner.value.session),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository = conversationRepository,
                         channelRepository = channelRepository,
                         replyCacheIdentityAuthority = { owner.value },
@@ -392,9 +399,10 @@ class SharedThreadInitialAccessTest {
         val store =
             SharedThreadStore(
                 dataSource =
-                    SharedThreadDataSource(
+                    testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
                                 replyResult = DataResult.Content(replyThreadAccessSnapshot())
@@ -449,9 +457,10 @@ class SharedThreadInitialAccessTest {
         val store =
             SharedThreadStore(
                 dataSource =
-                    SharedThreadDataSource(
+                    testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
                                 replyResult = DataResult.Content(replyThreadAccessSnapshot())
@@ -519,9 +528,10 @@ class SharedThreadInitialAccessTest {
         val store =
             SharedThreadStore(
                 dataSource =
-                    SharedThreadDataSource(
+                    testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
                                 replyResult = DataResult.Content(replyThreadAccessSnapshot())
@@ -595,9 +605,10 @@ class SharedThreadInitialAccessTest {
         val store =
             SharedThreadStore(
                 dataSource =
-                    SharedThreadDataSource(
+                    testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
                         sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
                                 replyResult = DataResult.Content(replyThreadAccessSnapshot())
@@ -667,6 +678,280 @@ class SharedThreadInitialAccessTest {
         }.first()
         assertEquals(ReplyParentAuthorityStatus.Writable, store.state.value.replyParentAuthority)
         assertTrue(store.state.value.writeActionsEnabled)
+        scope.cancel()
+    }
+
+    @Test
+    fun authoritativeParentAbsenceMarksParentDeletedAndNonAuthoritativeAbsenceStaysUnknown() =
+        runBlocking {
+            // task #339: opening a reply thread inside a deleted channel (e.g.
+            // from Saved) must not sit on "checking permissions" forever. Only
+            // a network-authoritative directory snapshot may attest the parent
+            // is gone; a cache/refresh-pending miss stays Unknown.
+            //
+            // CI watchdog note: same shape as parentDeletedRecomputesToWritable
+            // - injected lookup deadline plus bounded waits that dump state on
+            // timeout, so a regression fails fast and readably.
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val lookupDeadline = CompletableDeferred<Unit>()
+            // The directory-lookup apply pass must run AFTER the canonical
+            // reply refresh applies: it never recomputes replyParentAuthority
+            // itself, and hints are gated on canonicalAccessResolved. Releasing
+            // the lookup only once canonical access is resolved mirrors the
+            // ordering hintsForOtherParentsOrBeforeLookupCompletionAreIgnored
+            // relies on; the deadline stays injected as a backstop only.
+            val releaseLookup = CompletableDeferred<Unit>()
+            var firstLookupCall = true
+            val diagnostics = mutableListOf<String>()
+            val route = replyThreadInitialAccessPayload()
+            val home = replyThreadAccessHomeSnapshot(joined = true, canSend = true)
+            val channelRepository =
+                FakeChannelRepository(
+                    channelsResult = { serverId ->
+                        if (firstLookupCall) {
+                            firstLookupCall = false
+                            releaseLookup.await()
+                        }
+                        DataResult.Content(
+                            ChannelSnapshot(
+                                server = ServerSummary(id = serverId, name = "One"),
+                                channels = emptyList(),
+                            )
+                        )
+                    },
+                )
+            val store =
+                SharedThreadStore(
+                    dataSource =
+                        testSharedThreadDataSource(
+                            networkApi = ReplyThreadAccessNetworkApi,
+                            sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                            cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                            conversationRepository =
+                                ReplyThreadAccessConversationRepositoryRecorder(
+                                    replyResult = DataResult.Content(replyThreadAccessSnapshot())
+                                ),
+                            channelRepository = channelRepository,
+                        ),
+                    scope = scope,
+                    diagnosticsLogger = { diagnostics.add(it) },
+                    initialAccessLookupDeadline = { lookupDeadline.await() },
+                )
+
+            fun dumpState(reason: String): Nothing {
+                val s = store.state.value
+                throw AssertionError(
+                    "$reason\nlastState: authority=${s.replyParentAuthority} " +
+                        "lookupComplete=${s.initialHomeAccessLookupComplete} " +
+                        "canonicalResolved=${s.canonicalAccessResolved} " +
+                        "accessResolution=${s.accessResolution} " +
+                        "parentChannelId=${s.payload.parentChannelId} " +
+                        "parentMessageId=${s.payload.parentMessageId} " +
+                        "joined=${s.payload.joined} canSend=${s.payload.canSend} " +
+                        "composerEnabled=${s.payload.composer.enabled} " +
+                        "writeActions=${s.writeActionsEnabled}\n" +
+                        "diagnostics:\n" + diagnostics.joinToString("\n") { "  $it" }
+                )
+            }
+            suspend fun awaitAuthority(
+                expected: ReplyParentAuthorityStatus,
+                requireLookupComplete: Boolean = false,
+            ) {
+                try {
+                    withTimeout(10_000) {
+                        store.state.filter { state ->
+                            (!requireLookupComplete || state.initialHomeAccessLookupComplete) &&
+                                state.replyParentAuthority == expected
+                        }.first()
+                    }
+                } catch (_: TimeoutCancellationException) {
+                    dumpState("timed out waiting for authority=$expected")
+                }
+            }
+
+            suspend fun awaitCanonicalResolved() {
+                try {
+                    withTimeout(10_000) {
+                        store.state.filter { it.canonicalAccessResolved }.first()
+                    }
+                } catch (_: TimeoutCancellationException) {
+                    dumpState("timed out waiting for canonicalAccessResolved")
+                }
+            }
+
+            store.accept(SharedThreadIntent.Start(route))
+            lookupDeadline.complete(Unit)
+            // The directory lookup parks inside getChannels until canonical
+            // reply access resolves; only then is the lookup released so the
+            // apply pass (and every hint gate after it) sees the real order.
+            awaitCanonicalResolved()
+            releaseLookup.complete(Unit)
+            // Directory read completed but has no parent row and no candidate:
+            // canonical reply content is readable, so authority is Unknown.
+            awaitAuthority(ReplyParentAuthorityStatus.Unknown, requireLookupComplete = true)
+            assertFalse(store.state.value.writeActionsEnabled)
+
+            // A missing row in a non-authoritative snapshot (durable identity
+            // cache or refresh pending) cannot upgrade anything.
+            store.accept(
+                SharedThreadIntent.ApplyParentDirectoryHint(
+                    parentChannelId = "channel-1",
+                    parentMessageId = "m1",
+                    present = false,
+                    joined = false,
+                    canSend = false,
+                    authoritative = false,
+                )
+            )
+            assertEquals(ReplyParentAuthorityStatus.Unknown, store.state.value.replyParentAuthority)
+            assertFalse(store.state.value.writeActionsEnabled)
+
+            // A missing row in a network-authoritative snapshot means the
+            // channel was deleted.
+            store.accept(
+                SharedThreadIntent.ApplyParentDirectoryHint(
+                    parentChannelId = "channel-1",
+                    parentMessageId = "m1",
+                    present = false,
+                    joined = false,
+                    canSend = false,
+                    authoritative = true,
+                )
+            )
+            awaitAuthority(ReplyParentAuthorityStatus.ParentDeleted)
+            assertFalse(store.state.value.writeActionsEnabled)
+            assertFalse(store.state.value.payload.composer.enabled)
+            scope.cancel()
+        }
+
+    @Test
+    fun parentDeletedRecomputesToWritableWhenParentRowReappears() = runBlocking {
+        // task #339 follow-through: ParentDeleted is not a dead end - if the
+        // directory row reappears (restored/recreated channel, or the deletion
+        // notice raced a live snapshot), authority recomputes like any other
+        // candidate-derived state.
+        //
+        // CI watchdog note: the lookup deadline is injected as a barrier so no
+        // real wall-clock wait can park the runBlocking dispatcher, and each
+        // state wait carries an explicit timeout that dumps the last observed
+        // state plus the diagnostics trail. If a pass regresses this case the
+        // failure is a readable assertion, not a 60s JVM kill. Parking the
+        // first directory lookup until canonical access is resolved mirrors
+        // the ordering hintsForOtherParentsOrBeforeLookupCompletionAreIgnored
+        // relies on; the deadline stays injected as a backstop only.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val lookupDeadline = CompletableDeferred<Unit>()
+        val releaseLookup = CompletableDeferred<Unit>()
+        var firstLookupCall = true
+        val diagnostics = mutableListOf<String>()
+        val route = replyThreadInitialAccessPayload()
+        val channelRepository =
+            FakeChannelRepository(
+                channelsResult = { serverId ->
+                    if (firstLookupCall) {
+                        firstLookupCall = false
+                        releaseLookup.await()
+                    }
+                    DataResult.Content(
+                        ChannelSnapshot(
+                            server = ServerSummary(id = serverId, name = "One"),
+                            channels = emptyList(),
+                        )
+                    )
+                },
+            )
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    testSharedThreadDataSource(
+                        networkApi = ReplyThreadAccessNetworkApi,
+                        sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                        conversationRepository =
+                            ReplyThreadAccessConversationRepositoryRecorder(
+                                replyResult = DataResult.Content(replyThreadAccessSnapshot())
+                            ),
+                        channelRepository = channelRepository,
+                    ),
+                scope = scope,
+                diagnosticsLogger = { diagnostics.add(it) },
+                initialAccessLookupDeadline = { lookupDeadline.await() },
+            )
+
+        fun dumpState(reason: String): Nothing {
+            val s = store.state.value
+            throw AssertionError(
+                "$reason\nlastState: authority=${s.replyParentAuthority} " +
+                    "lookupComplete=${s.initialHomeAccessLookupComplete} " +
+                    "canonicalResolved=${s.canonicalAccessResolved} " +
+                    "accessResolution=${s.accessResolution} " +
+                    "parentChannelId=${s.payload.parentChannelId} " +
+                    "parentMessageId=${s.payload.parentMessageId} " +
+                    "joined=${s.payload.joined} canSend=${s.payload.canSend} " +
+                    "composerEnabled=${s.payload.composer.enabled} " +
+                    "writeActions=${s.writeActionsEnabled}\n" +
+                    "diagnostics:\n" + diagnostics.joinToString("\n") { "  $it" }
+            )
+        }
+        suspend fun awaitAuthority(
+            expected: ReplyParentAuthorityStatus,
+            requireLookupComplete: Boolean = false,
+        ) {
+            try {
+                withTimeout(10_000) {
+                    store.state.filter { state ->
+                        (!requireLookupComplete || state.initialHomeAccessLookupComplete) &&
+                            state.replyParentAuthority == expected
+                    }.first()
+                }
+            } catch (_: TimeoutCancellationException) {
+                dumpState("timed out waiting for authority=$expected")
+            }
+        }
+        suspend fun awaitCanonicalResolved() {
+            try {
+                withTimeout(10_000) {
+                    store.state.filter { it.canonicalAccessResolved }.first()
+                }
+            } catch (_: TimeoutCancellationException) {
+                dumpState("timed out waiting for canonicalAccessResolved")
+            }
+        }
+
+        store.accept(SharedThreadIntent.Start(route))
+        lookupDeadline.complete(Unit)
+        // The directory lookup parks inside getChannels until canonical
+        // reply access resolves; only then is the lookup released so the
+        // apply pass (and every hint gate after it) sees the real order.
+        awaitCanonicalResolved()
+        releaseLookup.complete(Unit)
+        // Directory read completed but has no parent row and no candidate:
+        // canonical reply content is readable, so authority is Unknown.
+        awaitAuthority(ReplyParentAuthorityStatus.Unknown, requireLookupComplete = true)
+        store.accept(
+            SharedThreadIntent.ApplyParentDirectoryHint(
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                present = false,
+                joined = false,
+                canSend = false,
+                authoritative = true,
+            )
+        )
+        awaitAuthority(ReplyParentAuthorityStatus.ParentDeleted)
+
+        store.accept(
+            SharedThreadIntent.ApplyParentDirectoryHint(
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                present = true,
+                joined = true,
+                canSend = true,
+            )
+        )
+        awaitAuthority(ReplyParentAuthorityStatus.Writable)
+        assertTrue(store.state.value.writeActionsEnabled)
+        assertTrue(store.state.value.payload.composer.enabled)
         scope.cancel()
     }
 }

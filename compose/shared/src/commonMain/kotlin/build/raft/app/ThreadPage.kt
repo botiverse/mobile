@@ -1,9 +1,14 @@
 package build.raft.app
 
+import build.raft.app.data.navigateDetail
+import build.raft.app.data.shouldOpenWithinAdaptiveDetail
+
 import build.raft.app.components.SlockAnchoredMetaChip
 import build.raft.app.components.SlockAttachmentPreviewCard
 import build.raft.app.components.SlockAttachmentPreviewCardWidth
 import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.SlockBrutalInputField
+import build.raft.app.components.SlockExternalBridgeBadge
 import build.raft.app.components.SlockChipLoadingIndicator
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalSearchField
@@ -11,6 +16,7 @@ import build.raft.app.components.SlockBrutalTextField
 import build.raft.app.components.SlockRaftUiBanner
 import build.raft.app.components.SlockRaftUiBannerSize
 import build.raft.app.components.SlockRaftUiBannerStatus
+import build.raft.app.components.SlockRaftUiSuccessBanner
 import build.raft.app.components.SlockRaftUiControlledMenu
 import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.components.SlockSwitchButton
@@ -20,7 +26,9 @@ import build.raft.app.base.Utils
 import build.raft.app.base.putIfAbsent
 import build.raft.app.base.bridgeModule
 import build.raft.app.base.reduceAttachmentDownloadProgress
+import build.raft.app.data.KuiklyHostNetworkEvents
 import build.raft.app.data.PlatformFile
+import build.raft.app.data.ThreadPendingSendInFlightRegistry
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
 import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.realtime.RealtimeEventMapper
@@ -29,6 +37,9 @@ import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AgentSkillsSnapshot
 import build.raft.app.data.AddChannelMemberRequest
 import build.raft.app.data.AuthLossSignal
+import build.raft.app.data.ForwardMessageBatchExecuteRequest
+import build.raft.app.data.ForwardMessageBatchResult
+import build.raft.app.data.ForwardMessageDestination
 import build.raft.app.data.ForwardMessageExecuteRequest
 import build.raft.app.data.ForwardMessageSendMode
 import build.raft.app.data.ForwardMessageTarget
@@ -52,7 +63,14 @@ import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SlockEventBus
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.DataResult
+import build.raft.app.data.DirectAttachmentUploadOperation
+import build.raft.app.data.ThreadComposerDirectUploadDecision
+import build.raft.app.data.ThreadComposerDirectUploadPhase
+import build.raft.app.data.resolveThreadComposerDirectUpload
+import build.raft.app.data.ThreadComposerDirectUploadClientRequestIds
+import build.raft.app.data.newAttachmentUploadClientRequestId
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.KeyValueThreadReadAnchorStore
@@ -109,6 +127,8 @@ import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksDataStoreStatus
 import build.raft.app.data.SharedTasksEvent
 import build.raft.app.data.SharedTasksRouteIntent
+import build.raft.app.data.TasksUnassignedAssigneeFilterId
+import build.raft.app.data.tasksIdentityFilterId
 import build.raft.app.data.SharedTasksProjectionSlice
 import build.raft.app.data.SharedTasksScope
 import build.raft.app.data.SharedTaskReferenceResolution
@@ -116,6 +136,8 @@ import build.raft.app.data.SharedTaskReferenceResolutionSource
 import build.raft.app.data.TaskSnapshot
 import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.SharedAdaptiveScrollAnchor
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
@@ -134,6 +156,7 @@ import build.raft.app.data.TasksUiState
 import build.raft.app.data.resolveSharedTaskReference
 import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.data.isAuthSessionErrorCode
+import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.data.actionCardFromMessageMetadata
 import build.raft.app.data.authLossTokenFingerprint
 import build.raft.app.data.canonicalServerMembersMentionHandle
@@ -145,6 +168,7 @@ import build.raft.app.data.messageBodyFontSizeOwnerKey
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.ExternalMessageAuthor
 import build.raft.app.model.ForwardMessageAttachment
 import build.raft.app.model.ForwardMessageBundle
 import build.raft.app.model.ForwardMessageItem
@@ -153,7 +177,11 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
+import build.raft.app.model.preferredAvatarWireValue
+import build.raft.app.model.providerLabel
 import build.raft.app.markdown.LocalSlockMessagePermalinkLabelResolver
+import build.raft.app.markdown.RaftDirectMessagePeerKindSeparator
+import build.raft.app.markdown.formatRaftDirectMessagePeerRef
 import build.raft.app.markdown.LocalSlockMarkdownRenderConfig
 import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.markdown.LocalSlockMarkdownPlainCandidateSession
@@ -177,10 +205,13 @@ import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskStatus
+import build.raft.app.components.SlockAnchorPlacement
+import build.raft.app.model.TaskId
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.formatSlockTimestampEpochMillis
 import build.raft.app.model.formatSlockTimestampLabel
+import build.raft.app.network.SlockRequestTimeoutException
 import build.raft.app.network.sync.ThreadRepliesReadModel
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
@@ -191,6 +222,7 @@ import build.raft.app.model.SlockTimeFormat24Hour
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
+import build.raft.app.model.isInternalJointStorageIdentity
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -202,6 +234,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -297,6 +330,7 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.manager.PagerManager
 import com.tencent.kuikly.core.module.PerformanceModule
 import com.tencent.kuikly.core.module.RouterModule
+import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
@@ -307,6 +341,7 @@ import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -322,8 +357,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -333,10 +372,13 @@ import kotlinx.serialization.Transient
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlin.coroutines.resume
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.random.Random
 import kotlin.time.TimeMark
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import kotlin.time.TimeSource
 
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
@@ -353,6 +395,12 @@ private const val ThreadComposerMentionActionRemoveDelayMs = 750L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 private const val ThreadSendSilentRetryDelayMs = 900L
 private const val ThreadSendMaxSilentRetries = 2
+
+// task #1134: a send request whose socket stays open without a response beyond this bound is
+// treated as a timeout so the row converges to failed + retry instead of hanging in "发送中"
+// forever. Client-side cancellation may still leave a committed server request; the journaled
+// randomId makes the follow-up retry idempotent server-side.
+private const val ThreadSendRequestTimeoutMs = 30_000L
 private const val ThreadLocalizedFeedbackPlaceholder = "__RAFT_VALUE__"
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 internal const val ThreadRelativeTimestampSlotWidthDp = 112f
@@ -505,6 +553,401 @@ internal fun resolveThreadPickedAttachmentComposerAction(
             ThreadPickedAttachmentComposerAction.OpenImageAnnotation
         else -> ThreadPickedAttachmentComposerAction.UploadToComposer
     }
+}
+
+/**
+ * Decision returned by the composer remove boundary.
+ *
+ * Removing a tile and retiring its native temporary bytes are two different operations.  The
+ * reducer owns the former; this helper only decides whether the request belongs to the currently
+ * mounted draft and, when the row is a cache-owned local image, which ref may be retired.  A
+ * server-owned/remote row is still removable, but its URL/ref is never handed to the native
+ * retirement bridge.
+ */
+internal data class ThreadComposerAttachmentRemoval(
+    val accepted: Boolean,
+    val reason: String = "",
+    val fileRefToRetire: String? = null
+)
+
+private val ThreadComposerImageFileExtensions =
+    setOf("avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "svg", "webp")
+
+/**
+ * Normalize a local file handle for ownership comparisons without turning it into a new source of
+ * truth.  Native retirement performs the final cache-root check; this boundary only admits the
+ * two representations emitted by our hosts (an absolute path or a host-less file URI) and rejects
+ * ambiguous URI/path forms before they can reach that bridge.
+ */
+private fun normalizeThreadComposerOwnedFileRef(fileRef: String): Pair<String, String>? {
+    val raw = fileRef.trim()
+    if (raw.isBlank() || raw.any(Char::isISOControl) || '?' in raw || '#' in raw || '\\' in raw) {
+        return null
+    }
+    val path =
+        when {
+            raw.startsWith("/") -> raw
+            raw.startsWith("file://", ignoreCase = true) -> {
+                val authorityAndPath = raw.substring(7)
+                // `file://host/path` is not local to this app.  A valid file URI has an empty
+                // authority and therefore starts with '/'.
+                if (!authorityAndPath.startsWith("/")) return null
+                authorityAndPath
+            }
+            else -> return null
+        }
+    if (path.length <= 1 || path.endsWith('/')) return null
+    val lower = path.lowercase()
+    // Reject encoded separators/dot segments as well as their literal forms.  Other percent
+    // escapes (for example a space in a user filename) remain valid and are left untouched.
+    if (lower.contains("%2e") || lower.contains("%2f") || lower.contains("%5c")) return null
+    val segments = path.split('/')
+    // An absolute path has exactly one leading empty segment.  Any additional empty segment
+    // would be a doubled separator which native path canonicalization may collapse; reject it so
+    // the ownership comparison cannot be bypassed with an alternate spelling.  Dot segments are
+    // rejected for the same reason (the bridge must receive an already-canonical local handle).
+    if (segments.drop(1).any { it == ".." || it == "." || it.isEmpty() }) return null
+    return raw to path
+}
+
+private fun threadComposerAttachmentExtension(value: String): String {
+    val candidate = value.trim()
+    if (candidate.isBlank()) return ""
+    return candidate.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+}
+
+private fun threadComposerAttachmentNameIsSafe(fileName: String): Boolean =
+    fileName.isNotBlank() &&
+        fileName.none(Char::isISOControl) &&
+        '/' !in fileName &&
+        '\\' !in fileName
+
+internal fun resolveThreadComposerAttachmentRemoval(
+    attachments: List<SharedThreadComposerAttachment>,
+    removedAttachmentIds: Set<String>,
+    attachmentId: String,
+    draftKey: String?
+): ThreadComposerAttachmentRemoval {
+    val normalizedId = attachmentId.trim().takeIf { it.isNotBlank() }
+        ?: return ThreadComposerAttachmentRemoval(accepted = false, reason = "blank_attachment_id")
+    val normalizedDraftKey = normalizeThreadAttachmentUploadDraftKey(draftKey)
+        ?: return ThreadComposerAttachmentRemoval(accepted = false, reason = "missing_draft_key")
+    // Keep the draft identity in the decision even though the current return value does not
+    // expose it.  This explicit read prevents callers from accidentally removing an unscoped row
+    // while migrating to the composite upload identity.
+    if (normalizedDraftKey.isBlank()) {
+        return ThreadComposerAttachmentRemoval(accepted = false, reason = "missing_draft_key")
+    }
+    if (removedAttachmentIds.any { it.trim() == normalizedId }) {
+        return ThreadComposerAttachmentRemoval(accepted = false, reason = "already_removed")
+    }
+    val attachment = attachments.firstOrNull { it.id.trim() == normalizedId }
+        ?: return ThreadComposerAttachmentRemoval(accepted = false, reason = "attachment_not_found")
+
+    val source = attachment.source?.trim().orEmpty()
+    val fileRef = attachment.fileRef?.trim()?.takeIf { it.isNotBlank() }
+    if (source !in ThreadComposerOwnedTemporarySources) {
+        // Removing a visible server/remote/external row is a reducer operation, not a native-file
+        // retirement operation.  Those rows are valid to remove from the mounted draft, but this
+        // helper must never hand their URL/URI to the local retirement bridge because the composer
+        // does not own those bytes.
+        return ThreadComposerAttachmentRemoval(accepted = true)
+    }
+    if (fileRef == null) {
+        return ThreadComposerAttachmentRemoval(accepted = false, reason = "missing_file_ref")
+    }
+    val normalizedRef =
+        normalizeThreadComposerOwnedFileRef(fileRef)
+            ?: return ThreadComposerAttachmentRemoval(accepted = false, reason = "invalid_file_ref")
+    if (!threadComposerAttachmentNameIsSafe(attachment.fileName.trim())) {
+        return ThreadComposerAttachmentRemoval(accepted = false, reason = "invalid_file_name")
+    }
+
+    val normalizedMime = attachment.mimeType.orEmpty().substringBefore(';').trim().lowercase()
+    if (normalizedMime.isBlank()) {
+        return ThreadComposerAttachmentRemoval(accepted = false, reason = "missing_mime_type")
+    }
+    if (normalizedMime.any(Char::isISOControl)) {
+        return ThreadComposerAttachmentRemoval(accepted = false, reason = "invalid_mime_type")
+    }
+    val nameExtension = threadComposerAttachmentExtension(attachment.fileName)
+    val refExtension = threadComposerAttachmentExtension(normalizedRef.second)
+    val extensions = listOf(nameExtension, refExtension).filter(String::isNotBlank)
+    val hasVideoExtension = extensions.any { it in SlockFilePreviewVideoExtensions }
+    val hasImageExtension = extensions.any { it in ThreadComposerImageFileExtensions }
+    val hasKnownNonImageExtension =
+        extensions.any { it !in ThreadComposerImageFileExtensions && it !in SlockFilePreviewVideoExtensions }
+    val isVideoMime = normalizedMime.startsWith("video/")
+    val isImageMime = normalizedMime.startsWith("image/")
+
+    // A tuple that disagrees about its media type is not safe to retire.  In particular, do not
+    // trust an image MIME/name when the actual ref ends in a video suffix (or the reverse).
+    if ((isImageMime && hasVideoExtension) || (isVideoMime && hasImageExtension)) {
+        return ThreadComposerAttachmentRemoval(accepted = false, reason = "media_type_conflict")
+    }
+    if (
+        (isImageMime && hasKnownNonImageExtension) ||
+            (isVideoMime && hasKnownNonImageExtension) ||
+            (!isImageMime && !isVideoMime && (hasImageExtension || hasVideoExtension))
+    ) {
+        return ThreadComposerAttachmentRemoval(accepted = false, reason = "media_type_conflict")
+    }
+
+    // Videos and non-image files may be removed from the draft, but they never qualify for the
+    // image temporary-file retirement bridge.
+    if (isVideoMime || hasVideoExtension || !isImageMime) {
+        return ThreadComposerAttachmentRemoval(accepted = true)
+    }
+
+    // A sibling row can still own the same physical object.  Removing this tile is valid, but
+    // retiring the ref would strand the sibling; compare canonical paths rather than raw URI
+    // spelling so `/cache/x.jpg` and `file:///cache/x.jpg` cannot bypass the fence.
+    val siblingOwnsRef =
+        attachments.any { sibling ->
+            if (sibling.id.trim() == normalizedId) {
+                false
+            } else {
+                val siblingRawRef = sibling.fileRef?.trim()?.takeIf { it.isNotBlank() }
+                // A malformed sibling spelling is conservatively treated as a holder when it is
+                // byte-for-byte the same ref.  Otherwise compare canonical paths; URI/path
+                // aliases cannot evade the shared-physical-file fence.
+                siblingRawRef == normalizedRef.first ||
+                    siblingRawRef?.let(::normalizeThreadComposerOwnedFileRef)?.second == normalizedRef.second
+            }
+        }
+    if (siblingOwnsRef) {
+        return ThreadComposerAttachmentRemoval(accepted = true)
+    }
+    return ThreadComposerAttachmentRemoval(accepted = true, fileRefToRetire = normalizedRef.first)
+}
+
+/** Identity of one cross-process composer-image event batch. */
+internal data class ThreadComposerImageEventBatchKey(
+    val sessionId: String,
+    val threadKey: String,
+    val groupId: String
+)
+
+/** Parsed event retained by the batch accumulator until the whole N/N group is present. */
+internal data class ThreadComposerImageEventBatchItem(
+    val eventData: JSONObject,
+    val payload: SlockFilePreviewComposerImageEventPayload,
+    val replaceAttachmentId: String? = null
+) {
+    val actionId: String
+        get() = payload.actionId
+    val fileRef: String
+        get() = payload.fileRef
+    val groupIndex: Int
+        get() = payload.groupIndex ?: 0
+
+    /** All fields which affect ownership/upload semantics, excluding JSONObject object identity. */
+    internal val contentKey: String
+        get() =
+            listOf(
+                payload.previewSessionId,
+                payload.threadKey,
+                payload.action,
+                payload.fileRef,
+                payload.previewUri,
+                payload.fileName,
+                payload.mimeType,
+                payload.source,
+                payload.compressed.toString(),
+                payload.sizeBytes?.toString().orEmpty(),
+                payload.groupId.orEmpty(),
+                payload.groupIndex?.toString().orEmpty(),
+                payload.groupTotal?.toString().orEmpty(),
+                replaceAttachmentId.orEmpty()
+            ).joinToString("\u0000")
+}
+
+internal sealed interface ThreadComposerImageEventBatchOffer {
+    data object Added : ThreadComposerImageEventBatchOffer
+    data object Duplicate : ThreadComposerImageEventBatchOffer
+    data object Rejected : ThreadComposerImageEventBatchOffer
+    data class Complete(val events: List<ThreadComposerImageEventBatchItem>) : ThreadComposerImageEventBatchOffer
+}
+
+/**
+ * Pure N/N event accumulator used by the Thread consumer.
+ *
+ * It freezes session/thread/group identity and expected count at construction.  No caller may
+ * upload or claim a member until [offer] returns [Complete].  Same-index replays with identical
+ * content are idempotent; index/action/ref conflicts poison the whole accumulator.
+ */
+internal class ThreadComposerImageEventBatchAccumulator(
+    val key: ThreadComposerImageEventBatchKey,
+    val expectedCount: Int
+) {
+    private val itemsByIndex = linkedMapOf<Int, ThreadComposerImageEventBatchItem>()
+    private val actionIds = mutableSetOf<String>()
+    private val fileRefs = mutableSetOf<String>()
+    private var rejected = false
+
+    val isRejected: Boolean
+        get() = rejected
+
+    val isComplete: Boolean
+        get() = !rejected && itemsByIndex.size == expectedCount &&
+            (0 until expectedCount).all(itemsByIndex::containsKey)
+
+    fun offer(item: ThreadComposerImageEventBatchItem): ThreadComposerImageEventBatchOffer {
+        if (rejected || expectedCount <= 0) return ThreadComposerImageEventBatchOffer.Rejected
+        val payload = item.payload
+        val actualKey =
+            ThreadComposerImageEventBatchKey(
+                sessionId = payload.previewSessionId.trim(),
+                threadKey = payload.threadKey.trim(),
+                groupId = payload.groupId.orEmpty().trim()
+            )
+        val actualTotal = payload.groupTotal ?: 1
+        val actualIndex = payload.groupIndex ?: 0
+        if (
+            actualKey != key ||
+                actualTotal != expectedCount ||
+                actualIndex !in 0 until expectedCount ||
+                item.actionId.isBlank() ||
+                item.fileRef.isBlank()
+        ) {
+            rejected = true
+            return ThreadComposerImageEventBatchOffer.Rejected
+        }
+
+        val existing = itemsByIndex[actualIndex]
+        if (existing != null) {
+            return if (existing.contentKey == item.contentKey) {
+                ThreadComposerImageEventBatchOffer.Duplicate
+            } else {
+                rejected = true
+                ThreadComposerImageEventBatchOffer.Rejected
+            }
+        }
+        if (item.actionId in actionIds || item.fileRef in fileRefs) {
+            rejected = true
+            return ThreadComposerImageEventBatchOffer.Rejected
+        }
+        itemsByIndex[actualIndex] = item
+        actionIds += item.actionId
+        fileRefs += item.fileRef
+        return if (isComplete) {
+            ThreadComposerImageEventBatchOffer.Complete(
+                events = (0 until expectedCount).mapNotNull(itemsByIndex::get)
+            )
+        } else {
+            ThreadComposerImageEventBatchOffer.Added
+        }
+    }
+
+    fun eventsInIndexOrder(): List<ThreadComposerImageEventBatchItem> =
+        if (isComplete) (0 until expectedCount).mapNotNull(itemsByIndex::get) else emptyList()
+
+    fun abort() {
+        rejected = true
+        itemsByIndex.clear()
+        actionIds.clear()
+        fileRefs.clear()
+    }
+}
+
+/**
+ * File picks never compress images and never surface the original-image toggle. 1.11 added
+ * native JPEG compression on the generic attachFile path; product rolled that back so a File
+ * JPEG stays its source bytes and hits the shared size gate. Image/camera picks still skip
+ * compression here: they enter the editor first and are finalized after confirmation.
+ * [action] and [originalImage] stay on the signature so the picker-admission freeze call site
+ * does not change; neither argument can enable compression anymore.
+ */
+@Suppress("UNUSED_PARAMETER")
+internal fun shouldCompressThreadAttachmentPickerImages(
+    action: String,
+    originalImage: Boolean,
+): Boolean = false
+
+/**
+ * A generic picker can return a readable subset together with a compression error (HTTP-like
+ * `206`).  Compression is an all-or-nothing policy: accepting that subset would silently send
+ * some images compressed and leave the failed image out of the user's selection.  Keep the
+ * response inspection pure so every host envelope (top-level fields or `bodyText`) follows the
+ * same fail-closed rule.
+ */
+internal fun threadAttachmentPickerHasCompressionFailure(response: JSONObject?): Boolean {
+    if (response == null) return false
+
+    fun hasCompressionError(entries: JSONArray?): Boolean {
+        if (entries == null) return false
+        for (index in 0 until entries.length()) {
+            val entry = entries.optJSONObject(index) ?: continue
+            if (entry.optString("errorCode").trim() == SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE) {
+                return true
+            }
+        }
+        return false
+    }
+
+    if (response.optString("errorCode").trim() == SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE ||
+        hasCompressionError(response.optJSONArray("errors"))
+    ) {
+        return true
+    }
+    val body =
+        response.optString("bodyText")
+            .trim()
+            .takeIf { it.isNotBlank() }
+            ?.let { raw -> runCatching { JSONObject(raw) }.getOrNull() }
+            ?: return false
+    return body.optString("errorCode").trim() == SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE ||
+        hasCompressionError(body.optJSONArray("errors"))
+}
+
+/**
+ * Collect every temporary ref a native picker exposed in a failed compression envelope.  Hosts
+ * normally put successful subset refs in `files`; a failed item may also carry a ref in `errors`
+ * or a compatibility `fileRefs` array.  The native retirement bridge performs the cache-root
+ * admission check, so this helper deliberately does not trust the ref's scheme/path here.
+ */
+internal fun threadAttachmentPickerCompressionFailureFileRefs(response: JSONObject?): Set<String> {
+    if (response == null) return emptySet()
+    val refs = linkedSetOf<String>()
+
+    fun collectArray(array: JSONArray?) {
+        if (array == null) return
+        for (index in 0 until array.length()) {
+            val entry = array.optJSONObject(index)
+            if (entry != null) {
+                listOf("fileRef", "temporaryFileRef", "sourceFileRef")
+                    .forEach { key ->
+                        entry.optString(key).trim().takeIf { it.isNotBlank() }?.let(refs::add)
+                    }
+                // A few hosts wrap the actual item under `file`; retain that compatibility shape
+                // without recursively walking arbitrary payload objects.
+                entry.optJSONObject("file")?.optString("fileRef")
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(refs::add)
+            } else {
+                array.optString(index)?.trim()?.takeIf { it.isNotBlank() }?.let(refs::add)
+            }
+        }
+    }
+
+    fun collectEnvelope(envelope: JSONObject) {
+        collectArray(envelope.optJSONArray("files"))
+        collectArray(envelope.optJSONArray("errors"))
+        collectArray(envelope.optJSONArray("fileRefs"))
+        listOf("fileRef", "temporaryFileRef", "sourceFileRef")
+            .forEach { key ->
+                envelope.optString(key).trim().takeIf { it.isNotBlank() }?.let(refs::add)
+            }
+    }
+
+    collectEnvelope(response)
+    response.optString("bodyText")
+        .trim()
+        .takeIf { it.isNotBlank() }
+        ?.let { raw -> runCatching { JSONObject(raw) }.getOrNull() }
+        ?.let(::collectEnvelope)
+    return refs
 }
 
 internal fun slockComposerImagePickerFilesAreStrictImages(files: List<PlatformFile>): Boolean =
@@ -727,8 +1170,10 @@ internal fun threadFeatureOwnerMountPlan(
     return ThreadFeatureOwnerMountPlan(
         mountChatTimeline = mountChat,
         mountComposer = mountComposer,
-        mountTasksOwner = normalizedTab == "tasks",
-        mountFilesOwner = normalizedTab == "files",
+        // keepItemAlive pre-composes inactive tabs, so both owners must stay
+        // mounted regardless of the selected tab; each VM keeps its store lazy.
+        mountTasksOwner = true,
+        mountFilesOwner = true,
         mountMemberSuggestionsOwner = mountComposer && suggestionDemand == ThreadComposerSuggestionDemand.Members,
         mountChannelSuggestionsOwner = mountComposer && suggestionDemand == ThreadComposerSuggestionDemand.Channels
     )
@@ -764,6 +1209,7 @@ internal fun threadEventRequiresWriteAccess(action: String): Boolean =
             "removeMember",
             "convertMessageToTask",
             "setTaskStatus",
+            "setTaskAssignee",
             "markTaskDone",
             "reopenTask",
             "joinChannel",
@@ -772,6 +1218,53 @@ internal fun threadEventRequiresWriteAccess(action: String): Boolean =
             "deleteLocalFailedSend"
         ) || (action == "settingsAction")
 
+// Task #258: pure selection rules for the inline task chip's combined detail
+// panel, extracted so the fail-closed fallback and the assignee ordering contract
+// (unassigned sentinel first, humans before agents, System excluded, display-name
+// search) are unit-testable without a Composable host.
+internal fun threadTaskDetailPanelUseLegacy(linkedTask: TaskSummary?): Boolean = linkedTask == null
+
+/** artin 2026-09-01/02: task assignee picker scope = current channel, never server.
+ *  Before the channel member slice loads, reuse the synchronous channel roster
+ *  carried by the thread payload (no server-wide flash). */
+internal fun taskAssigneeIdentityOptions(
+    channelMembers: List<MemberProfile>,
+    channelMembersLoaded: Boolean,
+    payloadMembers: List<MemberProfile>
+): List<MemberProfile> = if (channelMembersLoaded) channelMembers else payloadMembers
+
+internal fun threadTaskAssigneeRows(
+    assigneeOptions: List<MemberProfile>,
+    search: String
+): List<MemberProfile?> {
+    val normalized = search.trim()
+    return (listOf<MemberProfile?>(null) + assigneeOptions)
+        .filter { row -> row == null || (row.kind != MemberKind.System && row.kind != MemberKind.External) }
+        .filter { row -> row == null || normalized.isEmpty() || row.displayName.contains(normalized, ignoreCase = true) }
+        .sortedWith(
+            Comparator<MemberProfile?> { a, b ->
+                val aUnassigned = a == null
+                val bUnassigned = b == null
+                when {
+                    aUnassigned != bUnassigned -> if (aUnassigned) -1 else 1
+                    aUnassigned -> 0
+                    (a!!.kind == MemberKind.Human) != (b!!.kind == MemberKind.Human) ->
+                        if (a.kind == MemberKind.Human) -1 else 1
+                    else -> a.displayName.lowercase().compareTo(b.displayName.lowercase())
+                }
+            }
+        )
+}
+
+internal fun threadTaskAssigneeRowId(row: MemberProfile?): String =
+    row?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
+
+internal fun resolveThreadTaskAssignee(
+    selectionId: String,
+    options: List<MemberProfile>
+): MemberProfile? =
+    options.firstOrNull { it.tasksIdentityFilterId() == selectionId }
+
 internal fun threadComposerEventRequiresWriteAccess(action: String): Boolean =
     action in
         setOf(
@@ -779,10 +1272,52 @@ internal fun threadComposerEventRequiresWriteAccess(action: String): Boolean =
             "inviteMention",
             "notifyMention",
             "attachImage",
+            "toggleOriginalImage",
             "attachFile",
             "removeAttachment",
             "retryAttachments"
         )
+
+/** Joint channel billing notice (contract #contracts:97dbd451 v0.3 §18.8). */
+internal enum class JointBillingNotice { None, Grace, Locked }
+
+/**
+ * Resolve the joint over-limit state for the rendered surface. Reply threads
+ * inherit the notice from their parent joint channel (thread projections carry
+ * no billing metadata). `parentChannelId` takes precedence for reply threads;
+ * a channel surface falls back to any joint projection among its lookup ids.
+ */
+internal fun jointBillingNoticeState(
+    surfaceKind: String?,
+    parentChannelId: String?,
+    lookupIds: List<String>,
+    projections: Map<String, SharedConversationDirectoryProjection>,
+    nowEpochMillis: Long? = null
+): JointBillingNotice {
+    fun noticeFor(id: String?): JointBillingNotice {
+        val projection = id?.let { projections[it] } ?: return JointBillingNotice.None
+        if (projection.conversationKind != ConversationKind.Joint) return JointBillingNotice.None
+        if (projection.jointBillingLocked == true) return JointBillingNotice.Locked
+        val graceEndsAt = projection.jointOverLimitGraceEndsAt?.takeIf { it.isNotBlank() }
+            ?: return JointBillingNotice.None
+        // §18.8: "now >= graceEndsAt" means the grace period has ended and the
+        // channel is read-only — fall back to Locked even if the server has not
+        // flipped jointBillingLocked yet. When no clock is available, keep the
+        // deadline-agnostic Grace (fail-open for an unknown now is safer than
+        // wrongly locking a still-writable channel).
+        val deadlineMillis = parseSlockTimestampEpochMillisOrNull(graceEndsAt, 0)
+        if (nowEpochMillis != null && deadlineMillis != null && nowEpochMillis >= deadlineMillis) {
+            return JointBillingNotice.Locked
+        }
+        return JointBillingNotice.Grace
+    }
+    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+        val parent = noticeFor(parentChannelId)
+        if (parent != JointBillingNotice.None) return parent
+    }
+    return lookupIds.firstNotNullOfOrNull { noticeFor(it).takeIf { n -> n != JointBillingNotice.None } }
+        ?: JointBillingNotice.None
+}
 
 internal fun threadEventAllowed(writeActionsEnabled: Boolean, action: String): Boolean =
     writeActionsEnabled || !threadEventRequiresWriteAccess(action)
@@ -1172,6 +1707,14 @@ internal fun threadHeaderDisplayTitle(
 
 @Page(THREAD_PAGE, supportInLocal = true)
 internal class ComposeThreadPage : AuthenticatedProductPager(AuthenticatedProductRoute.Thread) {
+    /**
+     * Latest host window fact (A4 adoption, task #18). Standalone thread pages are the only
+     * initiation source: the fact is captured here at the pager boundary and reduced by the
+     * screen so a DualPane arrival can trigger one guarded prepare/commit transaction.
+     */
+    private var adaptivePaneState by mutableStateOf(SlockAdaptivePaneState())
+    private var adaptivePaneEvent by mutableStateOf<SlockAdaptivePaneEvent?>(null)
+
     override fun willInit() {
         super.willInit()
         setAuthenticatedContent {
@@ -1179,11 +1722,19 @@ internal class ComposeThreadPage : AuthenticatedProductPager(AuthenticatedProduc
                 Box(modifier = focusDismissModifier.fillMaxSize()) {
                     ThreadPageScreen(
                         pageVisibleTick = slockPageVisibleResumeTick,
-                        pageVisible = slockPageVisible
+                        pageVisible = slockPageVisible,
+                        adaptivePaneState = adaptivePaneState,
+                        adaptivePaneEvent = adaptivePaneEvent,
                     )
                 }
             }
         }
+    }
+
+    override fun onSlockAdaptivePaneChanged(eventData: JSONObject) {
+        val event = eventData.toSlockAdaptivePaneEventOrNull() ?: return
+        adaptivePaneState = reduceSlockAdaptivePane(adaptivePaneState, event)
+        adaptivePaneEvent = event
     }
 }
 
@@ -1202,6 +1753,18 @@ internal data class KuiklyThreadScreenPayload(
     val subtitle: String? = null,
     val status: String = "loading",
     val backgroundRefreshing: Boolean = false,
+    /**
+     * True while `messages` come from the durable last-known frame (offline cache read entry,
+     * task #1123) rather than from a network response. Cleared by the first network content
+     * slice; the frame is a first-frame stand-in, never an authority for paging or reactions.
+     */
+    val durableLastKnown: Boolean = false,
+    /**
+     * True while the last main timeline load (not a page of older/newer messages) failed transiently —
+     * a network error or an unusable answer. Set and cleared only by the refresh result, so recovery
+     * never mistakes a paging failure or a permission answer for it (LiBai #2782).
+     */
+    val mainLoadFailed: Boolean = false,
     val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
     val channelKind: String = "channel",
     val sourceThreadId: String? = null,
@@ -1240,6 +1803,7 @@ internal data class KuiklyThreadScreenPayload(
     val olderMessagesStatus: String = "idle",
     val newerMessagesStatus: String = "idle",
     val errorCode: String? = null,
+    val errorServerMessage: String? = null,
     val emptyTitle: String = "No messages yet",
     val emptyDetail: String = "This conversation has no messages yet.",
     val composer: KuiklyThreadComposerPayload = KuiklyThreadComposerPayload(),
@@ -1544,6 +2108,7 @@ internal fun KuiklyThreadScreenPayload.threadConversationPinTarget(
             MemberKind.Agent -> "agent"
             MemberKind.Human -> "human"
             MemberKind.System -> return null
+            MemberKind.External -> return null
         }
     return ThreadConversationPinTarget(
         conversationId = conversationId,
@@ -1694,6 +2259,112 @@ internal fun threadComposerReplacementSlotId(
     localAttachmentId: String
 ): String = replaceAttachmentId?.takeIf { it.isNotBlank() } ?: localAttachmentId
 
+/**
+ * Validate the exact post-state receipt for a direct-upload Gallery commit.
+ *
+ * The reducer is the first ownership fence; this second check is the handoff boundary for the
+ * caller which still owns the server reservations.  It compares the set of newly introduced
+ * rows with the completed batch, rejects missing/subset/duplicate/unexpected ids, and verifies
+ * that every unrelated row present before the commit survives unchanged.
+ */
+internal fun threadComposerAggregateReceiptIsValid(
+    accepted: Boolean,
+    before: SharedThreadComposerDraftState,
+    after: SharedThreadComposerDraftState,
+    expectedDraftKey: String,
+    readyAttachments: List<SharedThreadComposerAttachment>,
+    expectedLocalAttachmentIds: Collection<String>,
+    expectedReplacementAttachmentIds: Collection<String>
+): Boolean {
+    if (!accepted) return false
+    val normalizedExpectedKey = normalizeThreadAttachmentUploadDraftKey(expectedDraftKey) ?: return false
+    if (normalizeThreadAttachmentUploadDraftKey(after.draftKey) != normalizedExpectedKey) return false
+
+    val expectedIds = readyAttachments.map { attachment -> attachment.id.trim() }
+    if (
+        expectedIds.isEmpty() ||
+            expectedIds.any(String::isBlank) ||
+            expectedIds.toSet().size != expectedIds.size ||
+            readyAttachments.any { attachment ->
+                attachment.status != "ready" || attachment.errorCode != null
+            }
+    ) {
+        return false
+    }
+    val expectedIdSet = expectedIds.toSet()
+    val localIds = expectedLocalAttachmentIds.map(String::trim)
+    val replacementIds = expectedReplacementAttachmentIds.map(String::trim)
+    if (
+        localIds.isEmpty() ||
+            localIds.any(String::isBlank) ||
+            localIds.toSet().size != localIds.size ||
+            replacementIds.isEmpty() ||
+            replacementIds.any(String::isBlank) ||
+            replacementIds.toSet().size != replacementIds.size ||
+            replacementIds.size != localIds.size
+    ) {
+        return false
+    }
+    val localIdSet = localIds.toSet()
+    val replacementIdSet = replacementIds.toSet()
+    val retiredIdSet = localIdSet + replacementIdSet
+
+    val beforeIds = before.uploadedAttachments.map { attachment -> attachment.id.trim() }
+    val afterIds = after.uploadedAttachments.map { attachment -> attachment.id.trim() }
+    // Do not use associateBy/filter as a receipt parser: duplicate or blank rows are malformed
+    // even when one copy happens to have an expected id.
+    if (
+        beforeIds.any(String::isBlank) ||
+            beforeIds.toSet().size != beforeIds.size ||
+            afterIds.any(String::isBlank) ||
+            afterIds.toSet().size != afterIds.size
+    ) {
+        return false
+    }
+    val beforeIdSet = beforeIds.toSet()
+    val afterIdSet = afterIds.toSet()
+    val removedIds = after.removedAttachmentIds.map(String::trim).toSet()
+    if (
+        !retiredIdSet.all { id -> id in beforeIdSet } ||
+            replacementIdSet.any { id -> id in afterIdSet } ||
+            localIdSet.any { id -> id in afterIdSet && id !in removedIds }
+    ) {
+        return false
+    }
+
+    // Every new row must be one of the exact server ids returned by this batch.  This rejects a
+    // forged/extra server id while allowing unrelated pre-existing remote rows to remain.
+    if (afterIdSet - beforeIdSet != expectedIdSet) return false
+    if (expectedIdSet intersect beforeIdSet != emptySet<String>()) return false
+
+    val afterRowsById = after.uploadedAttachments.associateBy { attachment -> attachment.id.trim() }
+    if (
+        expectedIdSet.any { id ->
+            val row = afterRowsById[id] ?: return@any true
+            row.status != "ready" || row.errorCode != null
+        }
+    ) {
+        return false
+    }
+
+    // The reducer records both the admitted local rows and their exact replacement slots as
+    // removed identities.  Requiring that witness in the receipt prevents an append-only or
+    // wrong-slot implementation from being mistaken for a successful replacement.
+    if (!removedIds.containsAll(retiredIdSet)) return false
+
+    val beforeRowsById = before.uploadedAttachments.associateBy { attachment -> attachment.id.trim() }
+    val unaffectedIds = beforeIdSet - retiredIdSet
+    if (
+        unaffectedIds.any { id ->
+            val afterRow = afterRowsById[id] ?: return@any true
+            afterRow != beforeRowsById[id]
+        }
+    ) {
+        return false
+    }
+    return true
+}
+
 internal fun KuiklyThreadScreenPayload.toThreadMemberDetailPageData(
     identity: MemberDetailIdentity
 ): JSONObject? {
@@ -1742,12 +2413,29 @@ internal fun KuiklyThreadScreenPayload.resolveReplyParentConversationOpenRequest
 ): HomeMessageOpenRequest? {
     val routeIdentity = resolveThreadRouteIdentity()
     if (routeIdentity.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
+    val parentKind = routeIdentity.parentConversationKind ?: return null
     val parentId = parentChannelId?.trim()?.takeIf { it.isNotBlank() } ?: return null
     val server = threadParentNavigationServerId(serverId)?.let(::ServerId) ?: return null
+    // The directory is a candidate projection and may be cold when Activity opens a reply
+    // thread. The route's paired parent id + typed kind is sufficient to rebuild the parent
+    // identity; if a projection is present, it must still agree with that typed kind.
     val parentProjection = conversationIdentityProvider?.resolveProjection(server, parentId)
     if (
-        routeIdentity.parentConversationKind == ConversationKind.Joint &&
-        parentProjection?.conversationKind != ConversationKind.Joint
+        parentProjection != null &&
+        parentProjection.serverId.isNotBlank() &&
+        parentProjection.serverId != server.value
+    ) {
+        return null
+    }
+    if (
+        parentKind == ConversationKind.Joint &&
+        isInternalJointStorageIdentity(parentId)
+    ) {
+        return null
+    }
+    if (
+        parentProjection != null &&
+        parentProjection.conversationKind != parentKind
     ) {
         return null
     }
@@ -1759,7 +2447,7 @@ internal fun KuiklyThreadScreenPayload.resolveReplyParentConversationOpenRequest
             source = ConversationOpenSource.ParentConversation,
             messageId = null,
             channelId = parentId,
-            conversationKind = routeIdentity.parentConversationKind
+            conversationKind = parentKind
         )
     return (resolveOpenRequest(server.value, sourceIdentity, directory) as? ConversationOpenResolution.Resolved)
         ?.request
@@ -1895,12 +2583,16 @@ private fun KuiklyThreadMemberItem.memberDetailIdentity(): MemberDetailIdentity?
         source = MemberDetailIdentitySource.ThreadMember
     )
 
-private fun KuiklyThreadMessageItem.memberDetailIdentity(): MemberDetailIdentity? =
-    memberDetailIdentityFromWire(
+private fun KuiklyThreadMessageItem.memberDetailIdentity(): MemberDetailIdentity? {
+    // External authors are never member-detail identities; short-circuit before the
+    // Identity contract rejects "external" with a diagnostic on every tap.
+    if (externalAuthor != null) return null
+    return memberDetailIdentityFromWire(
         memberId = authorId,
         kindWireValue = authorKind,
         source = MemberDetailIdentitySource.ThreadMessageAuthor
     )
+}
 
 internal fun KuiklyThreadMessageItem.threadAuthorGestureIdentity(): String =
     "${id.trim()}|${authorId.trim()}|${authorKind.trim().lowercase()}"
@@ -1909,7 +2601,7 @@ private fun MemberProfile.toThreadCandidateAgentDetailSnapshot(): AgentDetailSna
     if (kind != MemberKind.Agent) return null
     val name = handle.ifBlank { displayName.ifBlank { id.value } }
     val label = displayName.ifBlank { name }
-    val avatarWireValue = avatar?.wireValue ?: avatarUrl
+    val avatarWireValue = preferredAvatarWireValue(avatar, avatarUrl)
     return AgentDetailSnapshot(
         agentId = id,
         summary =
@@ -1943,6 +2635,8 @@ internal data class KuiklyThreadMessageItem(
     val isOwn: Boolean = false,
     val avatarLabel: String = "",
     val avatarWireValue: String? = null,
+    /** Slack-bridge external sender attribution (senderType=external_projection). */
+    val externalAuthor: ExternalMessageAuthor? = null,
     val senderMembershipStatus: String? = null,
     val authorDeletedAt: String? = null,
     val timestampLabel: String = "",
@@ -2005,16 +2699,32 @@ internal data class KuiklyThreadPendingSendContext(
     val randomId: String? = null
 )
 
+/**
+ * Process-local files which the composer is allowed to retire after a pending send reaches a
+ * terminal state.  Editor and compressor outputs are included alongside picker/camera results;
+ * remote attachments and external-share handles are intentionally excluded.
+ */
+internal val ThreadComposerOwnedTemporarySources =
+    setOf(
+        "platform_picker",
+        "platform_camera",
+        "composer_image_editor",
+        "composer_image_compressor"
+    )
+
 internal fun threadPendingSendOwnedTemporaryFileRefs(
     attachments: List<SharedThreadComposerAttachment>,
     attachmentIds: Collection<String>
 ): List<String> {
     val acceptedIds = attachmentIds.toSet()
-    val ownedTemporarySources = setOf("platform_picker", "platform_camera")
     return attachments
         .asSequence()
         .filter { attachment -> attachment.id in acceptedIds }
-        .filter { attachment -> attachment.source in ownedTemporarySources }
+        // This is the generic pending-send ownership boundary, not the image-compression
+        // classifier.  Videos and ordinary files also receive process-local picker/camera/editor
+        // handles and must be retired after a terminal send; media-type exclusion belongs only in
+        // image admission helpers such as `isComposerImageOwnedTemporary`.
+        .filter { attachment -> attachment.source in ThreadComposerOwnedTemporarySources }
         .mapNotNull { attachment -> attachment.fileRef?.trim()?.takeIf(String::isNotBlank) }
         .distinct()
         .toList()
@@ -2275,7 +2985,7 @@ private data class ThreadAttachmentOpenResult(
 
 internal fun slockThreadAttachmentOpenStatus(nativeStatus: String): String =
     when (nativeStatus) {
-        "opened", "cancelled", "save_cancelled", "missing", "no_app", "storage_failed" -> nativeStatus
+        "opened", "cancelled", "save_cancelled", "missing", "no_app", "storage_failed", "download_failed" -> nativeStatus
         else -> "failed"
     }
 
@@ -2350,7 +3060,8 @@ internal data class KuiklyThreadMemberItem(
     val kind: String = "human",
     val sourceServerId: String? = null,
     val sourceServerLabel: String? = null,
-    val canRemove: Boolean = true
+    val canRemove: Boolean = true,
+    val effectiveChannelRole: String? = null
 )
 
 @Serializable
@@ -2438,10 +3149,27 @@ internal fun KuiklyThreadScreenPayload.toKnownMarkdownMentionNameSet(): Set<Stri
         }
     }
 
-internal fun KuiklyThreadScreenPayload.toKnownMarkdownDirectMessagePeerNameSet(): Set<String> =
-    buildSet {
-        knownMarkdownDirectMessagePeerNames.forEach { name -> addKnownThreadMentionValue(name) }
-    }
+internal fun KuiklyThreadScreenPayload.toKnownMarkdownDirectMessagePeerNameSet(): Set<String> {
+    val homeNames = buildSet { knownMarkdownDirectMessagePeerNames.forEach { name -> addKnownThreadMentionValue(name) } }
+    val names =
+        buildSet {
+            addAll(homeNames)
+            dmPeerName?.let { addKnownThreadMentionValue(it) }
+            dmPeerIdentity?.let { identity ->
+                addKnownThreadMentionValue(identity.memberId.value)
+                dmPeerName?.let { name -> addKnownThreadMentionValue(formatRaftDirectMessagePeerRef(name, identity.kind)) }
+            }
+            if (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
+                parentSurfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
+                channelKind == "dm" ||
+                parentChannelKind == "dm"
+            ) {
+                members.forEach { member -> addKnownThreadMentionValues(member) }
+                memberCandidates.forEach { member -> addKnownThreadMentionValues(member) }
+            }
+        }
+    return names
+}
 
 internal fun KuiklyThreadScreenPayload.toKnownMarkdownTaskNumberSetOrNull(): Set<Int>? =
     knownMarkdownTaskNumbers.takeIf { it.isNotEmpty() }
@@ -2490,6 +3218,8 @@ internal fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
         ThreadMarkdownTagKind.DirectMessageThread ->
             directMessagePeerName.orEmpty().normalizedThreadMentionLookupKey() in knownDirectMessagePeerNames &&
                 !threadShortId.isNullOrBlank()
+        ThreadMarkdownTagKind.DirectMessage ->
+            directMessagePeerName.orEmpty().normalizedThreadMentionLookupKey() in knownDirectMessagePeerNames
         ThreadMarkdownTagKind.Channel,
         ThreadMarkdownTagKind.ChannelThread -> {
             val key =
@@ -2525,6 +3255,7 @@ internal fun KuiklyThreadScreenPayload.resolveTaskAssigneeDisplayName(
 internal data class ThreadTimelineRenderConfig(
     val backgroundRefreshing: Boolean,
     val errorCode: String?,
+    val errorServerMessage: String? = null,
     val originPreview: String?,
     val originErrorCode: String?,
     val timeContext: SlockTimeContext,
@@ -2535,6 +3266,7 @@ internal fun KuiklyThreadScreenPayload.toThreadTimelineRenderConfig(): ThreadTim
     ThreadTimelineRenderConfig(
         backgroundRefreshing = backgroundRefreshing,
         errorCode = errorCode,
+        errorServerMessage = errorServerMessage,
         originPreview = originPreview,
         originErrorCode = originErrorCode,
         timeContext = toSlockTimeContext(),
@@ -3034,10 +3766,13 @@ private fun KuiklyThreadTab.toSlockTabSpec(): SlockTabSpec<KuiklyThreadTab> =
         iconName = icon
     )
 
+@OptIn(ExperimentalUuidApi::class)
 @Composable
 private fun ThreadPageScreen(
     pageVisibleTick: Int,
-    pageVisible: Boolean
+    pageVisible: Boolean,
+    adaptivePaneState: SlockAdaptivePaneState = SlockAdaptivePaneState(),
+    adaptivePaneEvent: SlockAdaptivePaneEvent? = null,
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
@@ -3084,10 +3819,103 @@ private fun ThreadPageScreen(
     val storeScope = remember(params.toString(), pager.pagerId) {
         params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
-    val hasExplicitShellScope = remember(params.toString()) {
-        params.slockShellStoreScopeOrNull() != null
-    }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+
+    // A4 adoption (task #18): only a standalone (native-stack) page initiates. The embedded
+    // detail child is identified by SLOCK_EMBEDDED_CHILD_PAGE_PARAM, injected by
+    // slockEmbeddedChildPageData for every SlockKuiklyChildPage mount — not by shell scope
+    // presence, which every openSlockPage-pushed page also carries.
+    val isStandaloneThreadPage =
+        adaptiveCloseRequest == null &&
+            !params.optBoolean(SLOCK_EMBEDDED_CHILD_PAGE_PARAM, false)
+    val adaptiveInitiationEnabled =
+        params.optBoolean(SLOCK_ADAPTIVE_INITIATION_ENABLED, false)
+    val adaptiveInitiationCaptureHolder =
+        remember { ThreadAdaptiveInitiationCaptureHolder() }
+    val adaptiveNativeEditingStateReader =
+        remember { SlockTextFieldNativeEditingStateReader() }
+    val adaptiveDetailOpenInitiator =
+        remember(storeScope.shellInstanceId, pager.pagerId, isStandaloneThreadPage) {
+            if (!isStandaloneThreadPage) return@remember null
+            SlockAdaptiveDetailOpenInitiator(
+                shellInstanceId = storeScope.shellInstanceId,
+                hostId = "pager:${pager.pagerId}",
+                anchorStore = sharedStores.adaptiveScrollAnchorStore(storeScope),
+                eventBus = sharedStores.eventBus,
+                nowEpochMillis = { defaultNowMillis() },
+                nativeAdaptiveNavigation = { action, requestId, token, expectedRefTag, expectedText ->
+                    bridge.adaptiveNavigation(
+                        action = action,
+                        requestId = requestId,
+                        token = token,
+                        // Caller-cancelled prepare still owns its nonce: a late prepared
+                        // reply must retire the accepted transaction, not orphan it into
+                        // request_in_progress.
+                        onLateReply = { reply ->
+                            val lateToken = reply.optString("token").trim()
+                            if (
+                                action == "prepare" &&
+                                reply.optString("status") == "prepared" &&
+                                lateToken.isNotBlank()
+                            ) {
+                                bridge.dispatchAdaptiveCancel(requestId, lateToken)
+                            }
+                        },
+                        expectedEditorRefTag = expectedRefTag,
+                        expectedEditorText = expectedText,
+                    )
+                },
+                dispatchAdaptiveCommit = { requestId, token ->
+                    bridge.dispatchAdaptiveCommit(requestId, token)
+                },
+                dispatchAdaptiveCancel = { requestId, token ->
+                    bridge.dispatchAdaptiveCancel(requestId, token)
+                },
+                captureLatestDraft = captureLatestDraftForAdoption@{ requestId ->
+                    val capture =
+                        adaptiveInitiationCaptureHolder.captureLatestDraft
+                            ?: return@captureLatestDraftForAdoption null
+                    capture(requestId)
+                },
+                captureAnchor = captureAnchorForAdoption@{ requestId ->
+                    adaptiveInitiationCaptureHolder.captureAnchor?.invoke(requestId)
+                },
+                log = { message -> bridge.log("adaptive_initiate $message") },
+                logWarn = { message -> bridge.logWarn("adaptive_initiate $message") },
+            )
+        }
+    LaunchedEffect(adaptivePaneEvent, adaptiveInitiationEnabled, isStandaloneThreadPage) {
+        val event = adaptivePaneEvent ?: return@LaunchedEffect
+        if (!adaptiveInitiationEnabled || !isStandaloneThreadPage) return@LaunchedEffect
+        val initiator = adaptiveDetailOpenInitiator ?: return@LaunchedEffect
+        if (reduceSlockAdaptivePane(adaptivePaneState, event).layout !=
+            SlockAdaptivePaneLayout.DualPane
+        ) {
+            return@LaunchedEffect
+        }
+        val launchPayload =
+            parsedPayload.toWireThreadLaunchPayloadOrNull() ?: return@LaunchedEffect
+        val identity =
+            launchPayload.toSlockAdaptiveDetailIdentity(
+                serverId =
+                    threadParentNavigationServerId(null)
+                        ?: storeScope.initialServerId
+                        ?: run {
+                            bridge.logWarn(
+                                "adaptive_initiate_skip reason=no_server_id pager=${pager.pagerId}"
+                            )
+                            return@LaunchedEffect
+                        }
+            ) ?: return@LaunchedEffect
+        val outcome =
+            initiator.initiate(
+                identity = identity,
+                launchPayload = launchPayload,
+                windowFact = event.toSlockAdaptiveOpenWindowFact(defaultNowMillis()),
+                requestId = "adopt-${pager.pagerId}-${Uuid.random()}",
+            )
+        bridge.log("adaptive_initiate_outcome outcome=$outcome identity=${identity.key}")
+    }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val sharedHomeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
@@ -3225,6 +4053,9 @@ private fun ThreadPageScreen(
                 cacheEnvironmentIdProvider = {
                     sharedStores.apiEnvironmentStore.current().apiBaseUrl
                 },
+                apiEnvironmentIdProvider = {
+                    sharedStores.apiEnvironmentStore.current().apiBaseUrl
+                },
                 replyCacheIdentityAuthority = {
                     sharedStores.captureThreadReplyCacheIdentity(storeScope)
                 },
@@ -3235,6 +4066,8 @@ private fun ThreadPageScreen(
                     sharedStores.publishCanonicalConversationIdentity(storeScope, provenance, detail)
                 },
                 payloadStore = sharedStores.threadPayloadStore,
+                durableLastKnownReader = sharedStores.threadDurableLastKnownReader,
+                enteredScopeSnapshotLoader = sharedStores.threadEnteredScopeSnapshotLoader,
                 agentsApiClient = SlockAgentsApiClient(
                     transport = SlockAgentsNetworkApi(networkClient),
                     diagnosticsLogger = { message -> bridge.log("thread_agents_api $message") }
@@ -3284,7 +4117,24 @@ private fun ThreadPageScreen(
                 initialServerId = threadParentNavigationServerId(serverIdOverride) ?: storeScope.initialServerId
             )
         val openPage = {
-            pager.openSlockPage(
+            val workspaceStore = sharedStores.adaptiveWorkspaceStore(storeScope)
+            val source = adaptiveCloseRequest
+            val pane = workspaceStore.snapshot().workspace
+            if (shouldOpenWithinAdaptiveDetail(
+                    source = source,
+                    workspace = pane,
+                    desktopModeEnabled = KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore()).readDesktopModeOnLargeScreenSync(),
+                    targetServerId = targetStoreScope.initialServerId,
+                ) && source != null && pane != null
+            ) {
+                val next = workspaceStore.update { current ->
+                    current.navigateDetail(source, launchPayload, pane.serverId)
+                }
+                if (next.launchPayload != launchPayload) {
+                    bridge.toast(unableToOpenThreadLabel)
+                    bridge.logWarn("thread_open_skip reason=stale_adaptive_source")
+                }
+            } else pager.openSlockPage(
                 pageName = THREAD_PAGE,
                 pageData = launchPayload.toThreadPageData(),
                 storeScopeOverride = targetStoreScope,
@@ -3311,6 +4161,10 @@ private fun ThreadPageScreen(
         }
         openPage()
     }
+    CompositionLocalProvider(
+        LocalThreadAdaptiveInitiationCapture provides adaptiveInitiationCaptureHolder,
+        LocalThreadAdaptiveNativeEditingReader provides adaptiveNativeEditingStateReader,
+    ) {
     SharedThreadRouteContent(
         initialPayload = payload,
         timeContextProvider = liveTimeContextProvider,
@@ -3466,6 +4320,7 @@ private fun ThreadPageScreen(
             )
         }
     )
+    }
 }
 
 @Composable
@@ -3579,10 +4434,12 @@ private fun ThreadMembersPageScreen() {
     LaunchedEffect(serverMembersStore, liveOwner, routeOwner, route.serverId, route.channelId) {
         if (liveOwner == routeOwner) refreshMembers()
     }
-    val members = remember(channelMembersSlice.members, route.serverId) {
+    val members = remember(channelMembersSlice.members, channelMembersSlice.canRemoveMembers, route.serverId) {
         channelMembersSlice.members
             .distinctBy { it.threadMemberKey }
-            .map { it.toKuiklyThreadMemberItem(route.serverId) }
+            .map { it.toKuiklyThreadMemberItem(route.serverId).let { row ->
+                row.copy(canRemove = row.canRemove && channelMembersSlice.canRemoveMembers)
+            } }
     }
     val memberKeys = remember(members) { members.map { it.memberKey }.toSet() }
     val candidates = remember(serverMembersEntry.members, route.serverId, memberKeys) {
@@ -3599,6 +4456,16 @@ private fun ThreadMembersPageScreen() {
             serverId = route.serverId.value,
             diagnosticsLogger = { message -> bridge.log("thread_members_pager_avatar $message") },
         )
+    }
+    var rosterQuery by remember(route) { mutableStateOf(TextFieldValue()) }
+    var humansExpanded by remember(route) { mutableStateOf(true) }
+    var agentsExpanded by remember(route) { mutableStateOf(true) }
+    var externalExpanded by remember(route) { mutableStateOf(true) }
+    val filteredMembers = filterThreadAddMemberCandidates(rosterQuery.text, members)
+    val filteredExternal = channelMembersSlice.externalMembers.filter { member ->
+        val query = rosterQuery.text.trim().removePrefix("@").lowercase()
+        query.isBlank() || member.displayName.lowercase().contains(query) ||
+            member.handles.any { it.lowercase().contains(query) }
     }
     var addDialogVisible by remember { mutableStateOf(false) }
     var addMemberStatus by remember { mutableStateOf("idle") }
@@ -3663,6 +4530,7 @@ private fun ThreadMembersPageScreen() {
     }
 
     fun requestRemoveMember(member: KuiklyThreadMemberItem) {
+        if (authorityRejected || !channelMembersSlice.canRemoveMembers || !member.canRemove) return
         val confirmation =
             threadMemberRemovalConfirmation(
                 member = member,
@@ -3746,7 +4614,7 @@ private fun ThreadMembersPageScreen() {
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(modifier = Modifier.fillMaxSize()) {
             SlockTopPageHeader(
-                title = stringResource(MR.strings.thread_members_title, members.size),
+                title = stringResource(MR.strings.thread_members_title, members.size + channelMembersSlice.externalMembers.size),
                 iconName = SlockLucideIconName.Users,
                 backgroundColor = SlockColor.SurfaceWhite,
                 refreshing =
@@ -3758,18 +4626,15 @@ private fun ThreadMembersPageScreen() {
                         onClick = { router.closePage() }
                     )
                 },
-                trailingContent =
-                    if (canAddMembers) {
-                        {
-                            SlockTopPageHeaderAction(
-                                icon = SlockLucideIconName.UserPlus,
-                                onClick = { addDialogVisible = true }
-                            )
-                        }
-                    } else {
-                        null
-                    }
             )
+            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                SlockBrutalSearchField(
+                    value = rosterQuery,
+                    placeholder = stringResource(MR.strings.thread_add_member_name_placeholder),
+                    leadingIcon = SlockLucideIconName.Search,
+                    onValueChange = { rosterQuery = it },
+                )
+            }
             if (removalGate.failure != null) {
                 Text(
                     text =
@@ -3813,7 +4678,7 @@ private fun ThreadMembersPageScreen() {
                             detail = "",
                         )
                     }
-                } else if (members.isEmpty()) {
+                } else if (filteredMembers.isEmpty() && filteredExternal.isEmpty()) {
                     item {
                         ThreadModalEmptyState(
                             title = stringResource(MR.strings.thread_state_no_members),
@@ -3821,11 +4686,14 @@ private fun ThreadMembersPageScreen() {
                         )
                     }
                 } else {
-                    val agents = members.filter { it.kind.equals("agent", ignoreCase = true) }
-                    val humans = members.filterNot { it.kind.equals("agent", ignoreCase = true) }
+                    val agents = filteredMembers.filter { it.kind.equals("agent", ignoreCase = true) }
+                    val humans = filteredMembers.filterNot { it.kind.equals("agent", ignoreCase = true) }
                     if (agents.isNotEmpty()) {
-                        item { SlockModalSectionHeader(stringResource(MR.strings.thread_members_agents)) }
-                        items(agents.size, key = { agents[it].memberKey }) { index ->
+                        item { SlockCollapsibleSectionHeader(
+                            label = stringResource(MR.strings.thread_members_agents), count = agents.size,
+                            expanded = agentsExpanded, onExpandedChange = { agentsExpanded = it },
+                        ) }
+                        if (agentsExpanded) items(agents.size, key = { agents[it].memberKey }) { index ->
                             ThreadMembersPagerRow(
                                 member = agents[index],
                                 agentStatusResolver = agentStatusResolver,
@@ -3837,8 +4705,11 @@ private fun ThreadMembersPageScreen() {
                         }
                     }
                     if (humans.isNotEmpty()) {
-                        item { SlockModalSectionHeader(stringResource(MR.strings.thread_members_humans)) }
-                        items(humans.size, key = { humans[it].memberKey }) { index ->
+                        item { SlockCollapsibleSectionHeader(
+                            label = stringResource(MR.strings.thread_members_humans), count = humans.size,
+                            expanded = humansExpanded, onExpandedChange = { humansExpanded = it },
+                        ) }
+                        if (humansExpanded) items(humans.size, key = { humans[it].memberKey }) { index ->
                             ThreadMembersPagerRow(
                                 member = humans[index],
                                 agentStatusResolver = agentStatusResolver,
@@ -3849,59 +4720,88 @@ private fun ThreadMembersPageScreen() {
                             )
                         }
                     }
-                }
-            }
-        }
-        if (addDialogVisible) {
-            ThreadAddMemberModal(
-                members = members,
-                candidates = candidates,
-                canAddMembers = canAddMembers,
-                agentStatusResolver = agentStatusResolver,
-                memberAvatarResolver = memberAvatarResolver,
-                addMemberStatus = addMemberStatus,
-                addMemberErrorCode = addMemberErrorCode,
-                onDismiss = { addDialogVisible = false },
-                onSubmit = { member ->
-                    val profile = member.toMemberProfile() ?: return@ThreadAddMemberModal
-                    if (addMemberStatus == "adding") return@ThreadAddMemberModal
-                    addMemberStatus = "adding"
-                    addMemberErrorCode = null
-                    memberScope.launch {
-                        when (
-                            val result =
-                                serverMembersStore.addChannelMember(
-                                    owner = routeOwner,
-                                    request =
-                                        AddChannelMemberRequest(
-                                            channelId = route.channelId,
-                                            memberId = profile.id,
-                                            kind = profile.kind
-                                        ),
-                                    priority = DataRequestPriority.Foreground
-                                )
-                        ) {
-                            is DataResult.Content -> {
-                                addMemberStatus = "idle"
-                                addMemberErrorCode = null
-                                addDialogVisible = false
-                            }
-                            is DataResult.NoPermission -> {
-                                addMemberStatus = "no_permission"
-                                addMemberErrorCode = result.blocker.code
-                            }
-                            is DataResult.Error -> {
-                                addMemberStatus = "failed"
-                                addMemberErrorCode = result.error.code
-                            }
-                            is DataResult.Empty -> {
-                                addMemberStatus = "failed"
-                                addMemberErrorCode = result.reason.name
-                            }
+                    if (filteredExternal.isNotEmpty()) {
+                        item { SlockCollapsibleSectionHeader(
+                            label = stringResource(MR.strings.thread_members_external), count = filteredExternal.size,
+                            expanded = externalExpanded, onExpandedChange = { externalExpanded = it },
+                        ) }
+                        if (externalExpanded) items(filteredExternal.size, key = { "external:${filteredExternal[it].id}" }) { index ->
+                            val member = filteredExternal[index]
+                            SlockModalCompactMemberRow(
+                                title = member.displayName,
+                                subtitle = member.handles.joinToString(" · ") { "@${it.removePrefix("@")}" },
+                                avatarWireValue = member.avatarUrl, avatarLabel = member.avatarLabel,
+                                statusColor = null, sourceBadgeLabel = member.provider, clickEnabled = false,
+                            )
                         }
                     }
                 }
-            )
+            }
+            if (canAddMembers) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    SlockBrutalActionButton(
+                        label = stringResource(if (addDialogVisible) MR.strings.common_cancel else MR.strings.thread_action_add_member),
+                        leadingIcon = if (addDialogVisible) SlockLucideIconName.X else SlockLucideIconName.Plus,
+                        onClick = { addDialogVisible = !addDialogVisible },
+                        enabled = addMemberStatus != "adding",
+                    )
+                }
+            }
+            if (addDialogVisible && canAddMembers) {
+                ThreadAddMemberModal(
+                    inline = true,
+                    members = members,
+                    candidates = candidates,
+                    canAddMembers = canAddMembers,
+                    agentStatusResolver = agentStatusResolver,
+                    memberAvatarResolver = memberAvatarResolver,
+                    addMemberStatus = addMemberStatus,
+                    addMemberErrorCode = addMemberErrorCode,
+                    onDismiss = { addDialogVisible = false },
+                    onSubmit = { member ->
+                        val profile = member.toMemberProfile() ?: return@ThreadAddMemberModal
+                        if (addMemberStatus == "adding") return@ThreadAddMemberModal
+                        addMemberStatus = "adding"
+                        addMemberErrorCode = null
+                        memberScope.launch {
+                            when (
+                                val result =
+                                    serverMembersStore.addChannelMember(
+                                        owner = routeOwner,
+                                        request =
+                                            AddChannelMemberRequest(
+                                                channelId = route.channelId,
+                                                memberId = profile.id,
+                                                kind = profile.kind
+                                            ),
+                                        priority = DataRequestPriority.Foreground
+                                    )
+                            ) {
+                                is DataResult.Content -> {
+                                    addMemberStatus = "idle"
+                                    addMemberErrorCode = null
+                                    addDialogVisible = false
+                                }
+                                is DataResult.NoPermission -> {
+                                    addMemberStatus = "no_permission"
+                                    addMemberErrorCode = result.blocker.code
+                                }
+                                is DataResult.Error -> {
+                                    addMemberStatus = "failed"
+                                    addMemberErrorCode = result.error.code
+                                }
+                                is DataResult.Empty -> {
+                                    addMemberStatus = "failed"
+                                    addMemberErrorCode = result.reason.name
+                                }
+                            }
+                        }
+                    }
+                )
+            }
+        }
+        SlockBackHandler(enabled = addDialogVisible, label = "thread_members_inline_add") {
+            if (addMemberStatus != "adding") addDialogVisible = false
         }
         removalGate.pending?.let { confirmation ->
             ThreadRemoveMemberConfirmationDialog(
@@ -4026,6 +4926,7 @@ internal fun Task797ThreadHeaderVisualScreen() {
                 status = AgentStatus.Working,
                 presence = Presence.Active,
                 statusLabel = "Measuring safe-area alignment and action centerlines",
+                external = false,
             )
         }
     val activityResolver: SlockAgentStatusResolver = remember(activityState) { { flowOf(activityState) } }
@@ -4086,7 +4987,8 @@ internal fun ThreadDmAgentActivityHeaderVisualScreen() {
             slockAgentStatusIndicatorState(
                 status = AgentStatus.Working,
                 presence = Presence.Active,
-                statusLabel = "Reviewing release readiness and visual diffs"
+                statusLabel = "Reviewing release readiness and visual diffs",
+                external = false
             )
         }
     val activityResolver: SlockAgentStatusResolver = remember(activityState) { { flowOf(activityState) } }
@@ -4522,7 +5424,8 @@ private fun ThreadMessageVisualCard(
             ) {
                 ThreadMessageStaticAvatar(
                     avatarLabel = message.avatarLabel,
-                    avatarWireValue = avatarWireValue,
+                    avatarWireValue =
+                        if (message.externalAuthor != null) message.avatarWireValue else avatarWireValue,
                     status = null,
                     cacheSubject =
                         slockMemberAvatarCacheSubject(
@@ -4609,6 +5512,90 @@ private fun ThreadMessageVisualCard(
 }
 }
 
+/**
+ * release/1.12.0 vc 1120118 hotfix: payload classes for [SharedThreadRouteContent].
+ * The flat 27-parameter composable body pushed past the Android ART dex verifier
+ * threshold (VerifyError on release builds); grouping into data + callbacks keeps the
+ * implementation frame small enough to verify. Same shape as task #346's
+ * ThreadPageContentData/ThreadPageContentCallbacks and PR #2453.
+ */
+/**
+ * Indirection between the A4 initiator (constructed at the standalone ThreadPageScreen level)
+ * and the thread surface internals that only exist deep inside composition: the native editor
+ * reader, the message list state and the composer draft store. The deep surface registers
+ * providers once those objects exist; the initiator invokes them per requestId. Keeping the
+ * holder reference-stable across recomposition means the in-flight initiator always reaches
+ * the *current* providers rather than a stale closure.
+ */
+internal class ThreadAdaptiveInitiationCaptureHolder {
+    // Returns the persisted draft identity snapshot (text + draft key + instance) the
+    // pre-commit fence compares against — equal text across different draft/session
+    // identities is NOT a match. Null = the read/persist barrier failed.
+    var captureLatestDraft: (suspend (requestId: String) -> SharedThreadComposerDraftSnapshot?)? = null
+    var captureAnchor: ((requestId: String) -> SharedAdaptiveScrollAnchor?)? = null
+}
+
+/**
+ * Identity-bearing capture of what the adoption actually persisted: the live editor text
+ * bound to a specific draft key on a specific composer instance. A later capture equal in
+ * every field proves no edit/draft-switch landed in the ACK/READY window; any difference
+ * (including same text under a different draftKey or instanceId) is drift.
+ */
+internal data class SharedThreadComposerDraftSnapshot(
+    val text: String,
+    val draftKey: String?,
+    val instanceId: String,
+    // Kuikly nativeRef of the resolved AutoHeightTextAreaView the read came from; -1 when
+    // the binding could not attribute one (then the capture is rejected at prepare).
+    val editorNativeRef: Int,
+)
+
+/** Present only inside a standalone thread page wired for A4 adoption. */
+internal val LocalThreadAdaptiveInitiationCapture =
+    compositionLocalOf<ThreadAdaptiveInitiationCaptureHolder?> { null }
+
+/**
+ * Native-editing reader shared between the page-level adoption initiator and the composer
+ * leaf so "latest draft" reads go through the same binding the editor writes — no second
+ * UIKit walk, no stale value. Null outside an A4-wired standalone page.
+ */
+internal val LocalThreadAdaptiveNativeEditingReader =
+    compositionLocalOf<SlockTextFieldNativeEditingStateReader?> { null }
+
+private data class SharedThreadRouteContentData(
+    val initialPayload: KuiklyThreadScreenPayload,
+    val timeContextProvider: SlockTimeContextProvider,
+    val bridge: build.raft.app.base.BridgeModule,
+    val dataSource: SharedThreadDataSource,
+    val forwardTargetRepository: ForwardMessageTargetRepository?,
+    val threadSendScope: CoroutineScope,
+    val authStore: SlockAuthSessionStore,
+    val tasksDataSource: SharedTasksDataSource,
+    val tasksDataStore: SharedTasksDataStore?,
+    val computersStore: SharedComputersStore?,
+    val membersStore: SharedMembersStore?,
+    val serverMembersStore: SharedServerMembersStore?,
+    val conversationIdentityProvider: SharedConversationIdentityProvider?,
+    val storeScope: SlockShellStoreScope,
+    val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
+    val eventBus: SlockEventBus,
+    val active: Boolean,
+    val adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest?,
+)
+
+/** Callback payload of [SharedThreadRouteContent]. See SharedThreadRouteContentData. */
+private class SharedThreadRouteContentCallbacks(
+    val onBack: () -> Unit,
+    val onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit,
+    val onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit,
+    val onOpenParentThread: (KuiklyThreadScreenPayload, String?) -> Boolean,
+    val onAuthRequired: (String) -> Unit,
+    val onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit,
+    val onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit,
+    val onOpenMembersPager: (KuiklyThreadScreenPayload, ServerId, ChannelId, SlockShellStoreScope) -> Unit,
+    val onOpenChannelSettings: (ServerId, ChannelId, SlockShellStoreScope) -> Unit,
+)
+
 @Composable
 internal fun SharedThreadRouteContent(
     initialPayload: KuiklyThreadScreenPayload,
@@ -4639,8 +5626,85 @@ internal fun SharedThreadRouteContent(
     onOpenMembersPager: (KuiklyThreadScreenPayload, ServerId, ChannelId, SlockShellStoreScope) -> Unit = { _, _, _, _ -> },
     onOpenChannelSettings: (ServerId, ChannelId, SlockShellStoreScope) -> Unit = { _, _, _ -> }
 ) {
+    SharedThreadRouteContentContent(
+        data =
+            SharedThreadRouteContentData(
+                initialPayload = initialPayload,
+                timeContextProvider = timeContextProvider,
+                bridge = bridge,
+                dataSource = dataSource,
+                forwardTargetRepository = forwardTargetRepository,
+                threadSendScope = threadSendScope,
+                authStore = authStore,
+                tasksDataSource = tasksDataSource,
+                tasksDataStore = tasksDataStore,
+                computersStore = computersStore,
+                membersStore = membersStore,
+                serverMembersStore = serverMembersStore,
+                conversationIdentityProvider = conversationIdentityProvider,
+                storeScope = storeScope,
+                composerDraftPersistSlice = composerDraftPersistSlice,
+                eventBus = eventBus,
+                active = active,
+                adaptiveCloseRequest = adaptiveCloseRequest,
+            ),
+        callbacks =
+            SharedThreadRouteContentCallbacks(
+                onBack = onBack,
+                onOpenThreadPayload = onOpenThreadPayload,
+                onReplaceThreadPayload = onReplaceThreadPayload,
+                onOpenParentThread = onOpenParentThread,
+                onAuthRequired = onAuthRequired,
+                onResolvedAuxiliaryThreadIdChanged = onResolvedAuxiliaryThreadIdChanged,
+                onOpenMemberProfile = onOpenMemberProfile,
+                onOpenMembersPager = onOpenMembersPager,
+                onOpenChannelSettings = onOpenChannelSettings,
+            ),
+    )
+}
+
+@Composable
+private fun SharedThreadRouteContentContent(
+    data: SharedThreadRouteContentData,
+    callbacks: SharedThreadRouteContentCallbacks,
+) {
+    val initialPayload = data.initialPayload
+    val timeContextProvider = data.timeContextProvider
+    val bridge = data.bridge
+    val dataSource = data.dataSource
+    val forwardTargetRepository = data.forwardTargetRepository
+    val threadSendScope = data.threadSendScope
+    val authStore = data.authStore
+    val tasksDataSource = data.tasksDataSource
+    val tasksDataStore = data.tasksDataStore
+    val computersStore = data.computersStore
+    val membersStore = data.membersStore
+    val serverMembersStore = data.serverMembersStore
+    val conversationIdentityProvider = data.conversationIdentityProvider
+    val storeScope = data.storeScope
+    val composerDraftPersistSlice = data.composerDraftPersistSlice
+    val eventBus = data.eventBus
+    val active = data.active
+    val adaptiveCloseRequest = data.adaptiveCloseRequest
+    val onBack = callbacks.onBack
+    val onOpenThreadPayload = callbacks.onOpenThreadPayload
+    val onReplaceThreadPayload = callbacks.onReplaceThreadPayload
+    val onOpenParentThread = callbacks.onOpenParentThread
+    val onAuthRequired = callbacks.onAuthRequired
+    val onResolvedAuxiliaryThreadIdChanged = callbacks.onResolvedAuxiliaryThreadIdChanged
+    val onOpenMemberProfile = callbacks.onOpenMemberProfile
+    val onOpenMembersPager = callbacks.onOpenMembersPager
+    val onOpenChannelSettings = callbacks.onOpenChannelSettings
     val pager = LocalActivity.current.getPager() as Pager
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
+    val externalAuthorHintTemplate =
+        stringResource(MR.strings.thread_external_author_hint, ThreadLocalizedFeedbackPlaceholder)
+    // task #395: external (Slack-bridge) authors have no member profile; the avatar/name
+    // tap surfaces a provider identity hint instead of silently doing nothing.
+    val onExternalAuthorHint: (KuiklyThreadMessageItem) -> Unit = { message ->
+        val provider = message.externalAuthor?.providerLabel() ?: "external"
+        bridge.toast(externalAuthorHintTemplate.replace(ThreadLocalizedFeedbackPlaceholder, provider))
+    }
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val messageBodyFontSizeState by sharedStores.messageBodyFontSizeStore.state.collectAsState()
     val messageBodySettingsNetworkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
@@ -4737,8 +5801,8 @@ internal fun SharedThreadRouteContent(
             payload.parentMessageId?.takeIf { it.isNotBlank() }
                 ?: payload.originParentMessageId?.takeIf { it.isNotBlank() }
                 ?: return@LaunchedEffect
-        val snapshot =
-            (sharedHomeState.content as? SharedHomeContentState.Content)?.baseSnapshot
+        val homeContent = sharedHomeState.content as? SharedHomeContentState.Content
+        val snapshot = homeContent?.baseSnapshot
         val parentRow =
             snapshot?.channels?.firstOrNull { it.channelId?.value == parentChannelId }
                 ?: snapshot?.directMessages?.firstOrNull { it.channelId?.value == parentChannelId }
@@ -4749,6 +5813,13 @@ internal fun SharedThreadRouteContent(
                 present = parentRow != null,
                 joined = parentRow?.joined == true && parentRow.archived == false,
                 canSend = parentRow?.permissions?.canSend == true,
+                // Only a live network snapshot (not the durable identity cache,
+                // and not one still awaiting refresh) may attest that a missing
+                // parent row means the channel was deleted.
+                authoritative =
+                    homeContent != null &&
+                        !homeContent.isDurableIdentityCache &&
+                        !homeContent.needsNetworkRefresh,
             )
         )
     }
@@ -4829,6 +5900,19 @@ internal fun SharedThreadRouteContent(
         currentSession = producerContext?.session
         replyCacheProvenanceOwner = producerContext?.provenance
         currentServerSlug = producerContext?.session?.currentServerSlug()
+        // task #1153: the captured session snapshot can precede server-roster
+        // population, leaving the slug permanently null and silently disabling
+        // quoted permalink cards for the whole thread session. Re-read the
+        // (freshly captured) session for a bounded window until it resolves.
+        if (currentServerSlug == null) {
+            currentServerSlug =
+                resolveThreadServerSlugWithRetry {
+                    dataSource
+                        .captureReplyCacheProducerContext()
+                        ?.session
+                        ?.currentServerSlug()
+                }
+        }
     }
     LaunchedEffect(initialPayload, initialThreadInstanceKey) {
         if (!initialRouteIdentity.canRetainThreadPageFor(incomingRouteIdentity)) {
@@ -4917,6 +6001,13 @@ internal fun SharedThreadRouteContent(
                 diagnosticsLogger = { message -> bridge.log("thread_avatar_member $message") }
             )
         }
+    val memberModelLabelResolver =
+        remember(serverMembersStore, headerProjectionServerId) {
+            slockMemberModelLabelResolver(
+                serverMembersStore = serverMembersStore,
+                serverId = headerProjectionServerId?.value,
+            )
+        }
     val initialDirectoryConversationProjections =
         remember(
             conversationIdentityProvider,
@@ -4981,6 +6072,55 @@ internal fun SharedThreadRouteContent(
                     }
                 }
         }
+    // Unfiltered directory projections (header owner drops non-display rows, but a
+    // reply thread's joint billing state lives on its parent channel projection).
+    val billingDirectoryProjections by directoryConversationProjectionFlow.collectAsState(
+        initialDirectoryConversationProjections
+    )
+    var jointBillingDeadlineTick by remember(payload.instanceId) { mutableStateOf(0) }
+    val jointBillingNotice =
+        remember(
+            billingDirectoryProjections,
+            payload.surfaceKind,
+            payload.parentChannelId,
+            conversationDirectoryLookupIds,
+            jointBillingDeadlineTick
+        ) {
+            jointBillingNoticeState(
+                surfaceKind = payload.surfaceKind,
+                parentChannelId = payload.parentChannelId,
+                lookupIds = conversationDirectoryLookupIds,
+                projections = billingDirectoryProjections,
+                nowEpochMillis =
+                    payload.nowEpochMillis
+                        ?: build.raft.kuiklybase.datetime.Clock.System.now().toEpochMilliseconds()
+            )
+        }
+    val jointGraceDeadlineLabel =
+        remember(billingDirectoryProjections, conversationDirectoryLookupIds) {
+            (listOfNotNull(payload.parentChannelId) + conversationDirectoryLookupIds)
+                .firstNotNullOfOrNull { id ->
+                    billingDirectoryProjections[id]
+                        ?.takeIf { it.conversationKind == ConversationKind.Joint }
+                        ?.jointOverLimitGraceEndsAt
+                }
+        }
+    // §18.8: flip Grace -> Locked locally at the deadline without waiting for a
+    // new server snapshot. Recompute `jointBillingNotice` via a state bump.
+    LaunchedEffect(jointGraceDeadlineLabel, payload.instanceId) {
+        val deadline =
+            jointGraceDeadlineLabel?.let { parseSlockTimestampEpochMillisOrNull(it, 0) }
+        if (deadline != null) {
+            val remaining =
+                deadline -
+                    (payload.nowEpochMillis
+                        ?: build.raft.kuiklybase.datetime.Clock.System.now().toEpochMilliseconds())
+            if (remaining > 0) {
+                delay(remaining)
+                jointBillingDeadlineTick++
+            }
+        }
+    }
     var lastAcceptedHeaderProjection by remember(headerProjectionInput) {
         mutableStateOf<SharedConversationDirectoryProjection?>(null)
     }
@@ -5106,6 +6246,79 @@ internal fun SharedThreadRouteContent(
         sharedStores.activityUnreadSummaryStore.ensure(ServerId(serverId), reason = "thread_route_attach")
     }
     val latestCurrentSession by rememberUpdatedState(currentSession)
+    // An offline stand-in (durable last-known frame whose refresh failed) is only replaced by a network
+    // answer; nothing re-asked after the network came back, so it stayed until the channel was re-entered
+    // (HuaTuo, alpha 71). The host's authoritative online signal now re-requests it in place. A signal
+    // that lands while a refresh is still running is remembered (LiBai #2782): that refresh was issued
+    // offline and may fail back to the stand-in, so the retry fires once it settles.
+    val offlineStandInRecovery = remember(threadViewModel) { OfflineStandInRecoveryGate() }
+    // (the gate and attempt counter are per view model, so a new conversation starts clean)
+    fun refreshOfflineStandIn(reason: String, current: KuiklyThreadScreenPayload) {
+        bridge.log(
+            "thread_offline_standin_refresh reason=$reason " +
+                "threadId=${current.sourceThreadId.orEmpty()} status=${current.status}"
+        )
+        threadViewModel.dispatch(SharedThreadIntent.Refresh)
+    }
+    // Two recovery signals share one gate: the realtime transport reconnecting (the server is reachable
+    // again — the one that matters; the system can report "online" while the server is not, and a
+    // per-app block never changes the system state, HuaTuo alpha 74) and the host's authoritative
+    // online signal as a supplement.
+    DisposableEffect(threadViewModel, sharedStores.eventBus, realtimeEvents) {
+        fun onRecovered(reason: String) {
+            val current = threadViewModel.state.value.payload
+            val refresh = offlineStandInRecovery.onNetworkRecovered(current)
+            bridge.log(
+                "thread_offline_recovery_signal reason=$reason action=${offlineStandInRecoveryAction(current)} " +
+                    "refresh=$refresh status=${current.status} durable=${current.durableLastKnown} " +
+                    "mainLoadFailed=${current.mainLoadFailed} error=${current.errorCode ?: "none"} " +
+                    "refreshing=${current.backgroundRefreshing}"
+            )
+            if (refresh) refreshOfflineStandIn(reason, current)
+        }
+        val hostNetworkEvents = KuiklyHostNetworkEvents(sharedStores.eventBus)
+        val networkSubscription = hostNetworkEvents.addAuthoritativeOnlineListener { onRecovered("network_recovered") }
+        val realtimeSubscription =
+            realtimeEvents.addListener { eventData ->
+                if (isRealtimeTransportConnectedEvent(eventData, latestCurrentSession?.currentServerId)) {
+                    onRecovered("realtime_connected")
+                }
+            }
+        onDispose {
+            hostNetworkEvents.removeListener(networkSubscription)
+            realtimeEvents.removeListener(realtimeSubscription)
+        }
+    }
+    LaunchedEffect(
+        offlineStandInRecovery,
+        payload.durableLastKnown,
+        payload.backgroundRefreshing,
+        payload.status,
+        payload.errorCode
+    ) {
+        val current = threadViewModel.state.value.payload
+        if (offlineStandInRecovery.onPayloadSettled(current)) refreshOfflineStandIn("network_recovered_deferred", current)
+    }
+    // Signals are not enough on their own: Android never publishes the realtime reconnect to pages, and a
+    // per-app block never changes the system network state (HuaTuo alpha 78 logs). While the visible page
+    // shows a failed load, it also re-asks on a backoff; a successful answer stops it.
+    var offlineRecoveryRetryAttempt by remember(threadViewModel) { mutableStateOf(0) }
+    val offlineRecoveryAction = offlineStandInRecoveryAction(payload)
+    // Keyed on the view model and the attempt too: a switch to another failed conversation, or a failure
+    // that returns within one frame, must restart the timer (LiBai #2782).
+    LaunchedEffect(threadViewModel, offlineRecoveryAction, active, offlineRecoveryRetryAttempt) {
+        if (offlineRecoveryAction == OfflineStandInRecoveryAction.None) {
+            offlineRecoveryRetryAttempt = 0
+            return@LaunchedEffect
+        }
+        if (offlineRecoveryAction != OfflineStandInRecoveryAction.Refresh || !active) return@LaunchedEffect
+        delay(offlineRecoveryRetryDelayMs(offlineRecoveryRetryAttempt))
+        val current = threadViewModel.state.value.payload
+        if (offlineStandInRecoveryAction(current) == OfflineStandInRecoveryAction.Refresh) {
+            offlineRecoveryRetryAttempt += 1
+            refreshOfflineStandIn("retry_backoff_$offlineRecoveryRetryAttempt", current)
+        }
+    }
     val threadVisibleResumeGate = remember(threadInstanceKey, storeScope.shellInstanceId) {
         ThreadVisibleResumeGate()
     }
@@ -5173,10 +6386,16 @@ internal fun SharedThreadRouteContent(
         }
     }
 
-    LaunchedEffect(active, threadVisibleResumeGate) {
+    LaunchedEffect(active, threadVisibleResumeGate, threadVisibleResumeGate.pendingVisibleResume) {
         if (active) {
             threadVisibleResumeGate.onRouteBecameVisible()
-                ?.let(::applyThreadVisibleResumePlan)
+                ?.let {
+                    bridge.log(
+                        "thread_lifecycle_resume_drained refresh=${it.refreshVisibleConversation} " +
+                            "rejoin=${it.rejoinVisibleRooms} shell=${storeScope.shellInstanceId}"
+                    )
+                    applyThreadVisibleResumePlan(it)
+                }
         }
     }
 
@@ -5215,15 +6434,23 @@ internal fun SharedThreadRouteContent(
                         event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
                         event == SlockRealtimeNotifyContract.LifecycleVisibleShow
                     ) {
-                        threadVisibleResumeGate
-                            .onLifecycleVisibleResume(latestRouteActive)
-                            ?.let {
-                                bridge.log(
-                                    "thread_lifecycle_refresh_dispatch refresh=${it.refreshVisibleConversation} " +
-                                        "rejoin=${it.rejoinVisibleRooms}"
-                                )
-                                applyThreadVisibleResumePlan(it)
-                            }
+                        // Foreground is a drainer trigger: re-evaluate journaled sends whose
+                        // network may have returned while the app was backgrounded.
+                        threadViewModel.triggerPendingSendDrain("foreground_$event")
+                        val resumePlan =
+                            threadVisibleResumeGate.onLifecycleVisibleResume(latestRouteActive)
+                        if (resumePlan == null) {
+                            bridge.log(
+                                "thread_lifecycle_resume_latched event=$event " +
+                                    "routeActive=$latestRouteActive shell=${storeScope.shellInstanceId}"
+                            )
+                        } else {
+                            bridge.log(
+                                "thread_lifecycle_refresh_dispatch refresh=${resumePlan.refreshVisibleConversation} " +
+                                    "rejoin=${resumePlan.rejoinVisibleRooms}"
+                            )
+                            applyThreadVisibleResumePlan(resumePlan)
+                        }
                     }
                 }
             }
@@ -5444,11 +6671,27 @@ internal fun SharedThreadRouteContent(
     var inlineVideoPreviewStates by remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadInlineVideoPreviewUiState>>(emptyMap())
     }
+    var inlineAudioPreviewStates by remember(threadInstanceKey) {
+        mutableStateOf<Map<String, ThreadInlineAudioPreviewUiState>>(emptyMap())
+    }
     val attachmentUploadOrchestrator = remember(threadInstanceKey, threadSendScope) {
         ThreadAttachmentUploadOrchestrator(threadSendScope)
     }
     var attachmentUploadFilesByLocalId by remember(threadInstanceKey) {
-        mutableStateOf<Map<String, PlatformFile>>(emptyMap())
+        mutableStateOf<Map<ThreadAttachmentUploadAttemptIdentity, PlatformFile>>(emptyMap())
+    }
+    val threadDirectUploadClientRequestIds = remember(threadInstanceKey) {
+        ThreadComposerDirectUploadClientRequestIds()
+    }
+    // Rows restored from the durable draft are tracked separately from files admitted by the
+    // currently mounted composer.  When a reused Thread instance moves to another draft key we
+    // may retire only the previous restoration batch; blindly clearing this map would race an
+    // upload which is still owned by the process-level orchestrator.
+    var restoredAttachmentUploadDraftKey by remember(threadInstanceKey) {
+        mutableStateOf<String?>(null)
+    }
+    var restoredAttachmentUploadFileIds by remember(threadInstanceKey) {
+        mutableStateOf<Set<ThreadAttachmentUploadAttemptIdentity>>(emptySet())
     }
     var externalShareSendRequested by remember(threadInstanceKey) { mutableStateOf(false) }
     val pendingMentionActionBatchRequestGate =
@@ -5460,6 +6703,71 @@ internal fun SharedThreadRouteContent(
         Semaphore(ThreadAttachmentUploadConcurrencyLimit)
     }
     var composerImageActionCounter by remember(threadInstanceKey) { mutableStateOf(0) }
+    // Cross-process editor callbacks may arrive out of order and on separate event-bus turns.
+    // Keep one process-local accumulator per mounted Thread and serialize offers/claims so a
+    // duplicate cannot race the complete N/N handoff.
+    val composerImageEventBatchMutex = remember(threadInstanceKey, eventBus) { Mutex() }
+    val composerImageEventBatches =
+        remember(threadInstanceKey, eventBus) {
+            mutableMapOf<ThreadComposerImageEventBatchKey, ThreadComposerImageEventBatchAccumulator>()
+        }
+    val composerImageEventSessionTracker = remember(threadInstanceKey, eventBus) {
+        ThreadComposerImageEventSessionTracker()
+    }
+    fun openTrackedComposerImagePreview(payload: SlockFilePreviewPayload): Boolean {
+        var registeredSessionId = ""
+        var registrationRejected = false
+        val opened =
+            pager.openSlockFilePreviewPage(
+                payload,
+                onEphemeralSessionRegistered = { sessionId ->
+                    registeredSessionId = sessionId
+                    val accepted = registerThreadComposerImagePreviewSession(
+                        sessionId = sessionId,
+                        tracker = composerImageEventSessionTracker,
+                        abort = { rejectedSessionId ->
+                            registrationRejected = true
+                            // The preview opener may race page disposal between registry admission
+                            // and its callback. Retire the process-owned row immediately; returning
+                            // false alone is not enough if the opener has already crossed its open
+                            // boundary.
+                            val cleanupRefs = slockFilePreviewAbortComposerImageEventSession(rejectedSessionId)
+                            if (cleanupRefs.isNotEmpty()) {
+                                bridge.retireFilePreviewTemporaryFiles(
+                                    sessionId = rejectedSessionId,
+                                    fileRefs = cleanupRefs.toList()
+                                )
+                            }
+                        }
+                    )
+                    accepted
+                }
+            )
+        if ((registrationRejected || !opened) && registeredSessionId.isNotBlank()) {
+            // The preview opener retires its registry/ledger on a failed route open; this page
+            // still owns the local tracker witness and must release it as well.
+            composerImageEventSessionTracker.release(registeredSessionId)
+        }
+        if (opened && registeredSessionId.isNotBlank() &&
+            composerImageEventSessionTracker.isClosed() &&
+            !composerImageEventSessionTracker.owns(registeredSessionId) &&
+            !composerImageEventSessionTracker.isHandoffStarted(registeredSessionId)
+        ) {
+            // Disposal can close the tracker immediately after the opener callback returns but
+            // before the router reports success. Do a second ownership check after the boundary
+            // so a successfully opened preview can never retain an ownerless registry row.
+            val cleanupRefs = slockFilePreviewAbortComposerImageEventSession(registeredSessionId)
+            if (cleanupRefs.isNotEmpty()) {
+                bridge.retireFilePreviewTemporaryFiles(
+                    sessionId = registeredSessionId,
+                    fileRefs = cleanupRefs.toList()
+                )
+            }
+            composerImageEventSessionTracker.release(registeredSessionId)
+            return false
+        }
+        return opened
+    }
     val chatLayoutPreferenceStore =
         remember(pager) {
             KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
@@ -5497,6 +6805,7 @@ internal fun SharedThreadRouteContent(
             unableToDownloadAttachment = unableToDownloadAttachmentLabel,
             noAppCanOpenFile = stringResource(MR.strings.file_preview_error_no_app),
             storageUnavailable = stringResource(MR.strings.file_preview_error_storage_unavailable),
+            downloadFailed = stringResource(MR.strings.file_preview_download_failed),
             unableToOpenAttachment = unableToOpenAttachmentLabel
         )
     val attachmentSavedToDownloadsLabel = stringResource(MR.strings.file_preview_download_saved)
@@ -6011,12 +7320,19 @@ internal fun SharedThreadRouteContent(
                 references = taskProjectionReferences
             )
         }
+    val taskAssigneeOptions =
+        taskAssigneeIdentityOptions(
+            channelMembers = threadChannelMembersSlice.members,
+            channelMembersLoaded =
+                threadChannelMembersSlice.status == SharedServerMembersLoadStatus.Loaded,
+            payloadMembers = threadMembersProjection.members.mapNotNull { it.toMemberProfile() }
+        )
     val renderedPayload =
         remember(baseRenderedPayload, threadMembersProjection) {
             baseRenderedPayload.withThreadMembersProjection(threadMembersProjection)
         }
-    val renderedThread = renderedPayload.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled)
-    val renderedTimelineSlice = timelineSlice.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled)
+    val renderedThread = renderedPayload.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && jointBillingNotice != JointBillingNotice.Locked)
+    val renderedTimelineSlice = timelineSlice.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && jointBillingNotice != JointBillingNotice.Locked)
     val emptyMemberSuggestionSliceFlow = remember { MutableStateFlow(SharedMembersMemberSuggestionSlice()) }
     val memberSuggestionsFlow =
         remember(
@@ -6077,29 +7393,145 @@ internal fun SharedThreadRouteContent(
             composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
         }
     }
+    // A4 adoption (task #18): register the draft-persist barrier + viewport anchor providers
+    // with the holder the page-level initiator calls. Registration is keyed on the objects
+    // themselves so a rotated detail never serves a stale provider.
+    val adaptiveNativeEditingStateReader = LocalThreadAdaptiveNativeEditingReader.current
+    val adaptiveInitiationCaptureHolder = LocalThreadAdaptiveInitiationCapture.current
+    DisposableEffect(
+        adaptiveInitiationCaptureHolder,
+        adaptiveNativeEditingStateReader,
+        composerDraftViewModel,
+        threadInstanceKey,
+    ) {
+        val holder = adaptiveInitiationCaptureHolder
+        val reader = adaptiveNativeEditingStateReader
+        if (holder != null && reader != null) {
+            holder.captureLatestDraft = captureLatestDraft@{ _ ->
+                // Unavailable must abort the migration — proceeding with only the stale shared
+                // draft would silently lose whatever is in the live editor (bridge contract).
+                val identityBefore = composerDraftViewModel.state.value
+                val nativeRead =
+                    suspendCancellableCoroutine<SlockTextFieldNativeEditingStateReadResult.Available?> {
+                            continuation ->
+                        reader.readCurrentValue { readResult ->
+                            continuation.resume(
+                                readResult as? SlockTextFieldNativeEditingStateReadResult.Available
+                            )
+                        }
+                    } ?: return@captureLatestDraft null
+                val nativeText = nativeRead.value.text
+                // The draft the native value belongs to is pinned by the state read above;
+                // a composer draft switch/rebind mid-read would attribute the persisted text
+                // to the wrong conversation.
+                val identityAfterRead = composerDraftViewModel.state.value
+                if (
+                    identityAfterRead.draftKey != identityBefore.draftKey ||
+                    identityAfterRead.instanceId != identityBefore.instanceId
+                ) {
+                    return@captureLatestDraft null
+                }
+                val changeReceipt =
+                    runCatchingPreservingCancellation {
+                        composerDraftViewModel.acceptQueued(
+                            SharedThreadComposerDraftIntent.Change(seedText = nativeText)
+                        )
+                    }.getOrElse { return@captureLatestDraft null }
+                // The receipt state must still carry the same draft identity we started from.
+                // A rejected (accepted=false) receipt is a satisfied no-op only when the
+                // serialized lane proves the store already carries the exact native text —
+                // MviFoundation reports an equivalent-state transition as not-accepted with
+                // state=previous. Any other rejection means the draft projection did not
+                // accept our text, and persisting would durably store the wrong content.
+                if (
+                    changeReceipt.state.draftKey != identityBefore.draftKey ||
+                    changeReceipt.state.instanceId != identityBefore.instanceId
+                ) {
+                    return@captureLatestDraft null
+                }
+                val changeSatisfied =
+                    changeReceipt.accepted ||
+                        changeReceipt.state.seedText == nativeText
+                if (!changeSatisfied) {
+                    return@captureLatestDraft null
+                }
+                val flushReceipt =
+                    runCatchingPreservingCancellation {
+                        composerDraftViewModel.acceptQueued(
+                            SharedThreadComposerDraftIntent.Flush
+                        )
+                    }.getOrElse { return@captureLatestDraft null }
+                if (
+                    !flushReceipt.accepted ||
+                    flushReceipt.state.draftKey != identityBefore.draftKey ||
+                    flushReceipt.state.instanceId != identityBefore.instanceId
+                ) {
+                    return@captureLatestDraft null
+                }
+                // Identity-bearing snapshot: the pre-commit fence compares a later capture
+                // field-for-field — same text under a different draft/instance is drift.
+                SharedThreadComposerDraftSnapshot(
+                    text = nativeText,
+                    draftKey = identityBefore.draftKey,
+                    instanceId = identityBefore.instanceId,
+                    editorNativeRef = nativeRead.editorNativeRef,
+                )
+            }
+        }
+        onDispose {
+            if (holder != null && holder.captureLatestDraft != null) {
+                holder.captureLatestDraft = null
+            }
+        }
+    }
     LaunchedEffect(composerDraftViewModel, threadInstanceKey) {
         composerDraftViewModel.state.collect { draftState ->
-            val restoredExternalShareFiles =
+            val draftKey = normalizeThreadAttachmentUploadDraftKey(draftState.draftKey)
+            val previousRestoredKey = restoredAttachmentUploadDraftKey
+            if (draftKey != null && previousRestoredKey != null && draftKey != previousRestoredKey) {
+                // A reused Thread surface may keep the process-owned orchestrator alive while its
+                // composer store moves from draft A to draft B. Retire A before touching restored
+                // file bookkeeping so a late transport callback cannot publish into B.
+                attachmentUploadOrchestrator.retireDraft(previousRestoredKey)
+                // The map key is the complete (draft,id) identity.  Retire every handle owned by
+                // the old draft; a same-named local id admitted by the new draft is a different
+                // key and therefore remains untouched.  This also prevents a late old-job
+                // cleanup from deleting or shadowing the new draft's handle.
+                attachmentUploadFilesByLocalId =
+                    attachmentUploadFilesByLocalId.filterKeys { key -> key.draftKey != previousRestoredKey }
+                restoredAttachmentUploadFileIds =
+                    restoredAttachmentUploadFileIds.filter { key -> key.draftKey != previousRestoredKey }.toSet()
+            }
+
+            // A transient null key can be emitted while a route is being rebound.  Keep the last
+            // non-empty key so the first real key after an initial null does not clear an active
+            // session, while a genuine A -> B transition still retires the old restoration batch.
+            if (draftKey == null) return@collect
+            if (draftKey != previousRestoredKey) {
+                restoredAttachmentUploadDraftKey = draftKey
+            }
+
+            val restoredFiles =
                 draftState.uploadedAttachments
-                    .filter { attachment ->
-                        attachment.source == "external_share" &&
-                            attachment.status in setOf("queued", "uploading", "failed") &&
-                            !attachment.fileRef.isNullOrBlank()
+                    .mapNotNull { attachment ->
+                        attachment.toRestoredThreadComposerPlatformFile()?.let { file ->
+                            attachment.id to file
+                        }
                     }
-                    .associate { attachment ->
-                        attachment.id to
-                            PlatformFile(
-                                id = attachment.id,
-                                fileName = attachment.fileName,
-                                mimeType = attachment.mimeType,
-                                sizeBytes = attachment.sizeBytes.takeIf { it > 0L },
-                                previewUri = attachment.previewUri,
-                                fileRef = attachment.fileRef,
-                                source = "external_share"
-                            )
-                    }
-            if (restoredExternalShareFiles.isNotEmpty()) {
-                attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId + restoredExternalShareFiles
+                    .toMap()
+            if (restoredFiles.isNotEmpty()) {
+                val activeUploadIds = attachmentUploadOrchestrator.activeAttemptIds(draftKey)
+                val safeRestoredFiles = restoredFiles.filterKeys { id -> id !in activeUploadIds }
+                if (safeRestoredFiles.isNotEmpty()) {
+                    val keyedFiles =
+                        safeRestoredFiles.mapNotNull { (id, file) ->
+                            threadAttachmentUploadAttemptIdentity(id, draftKey)?.let { identity ->
+                                identity to file
+                            }
+                        }.toMap()
+                    attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId + keyedFiles
+                    restoredAttachmentUploadFileIds = restoredAttachmentUploadFileIds + keyedFiles.keys
+                }
             }
         }
     }
@@ -6738,7 +8170,13 @@ internal fun SharedThreadRouteContent(
                                 message = result.message,
                                 downloadId = downloadId
                             ))
-                    bridge.toast(result.message.ifBlank { unableToDownloadAttachmentLabel })
+                    bridge.toast(
+                        when (result.status) {
+                            "download_failed" -> attachmentOpenResultTerms.downloadFailed
+                            "storage_failed" -> attachmentOpenResultTerms.storageUnavailable
+                            else -> result.message.ifBlank { unableToDownloadAttachmentLabel }
+                        }
+                    )
                     attachmentOperationTokens = attachmentOperationTokens - attachment.id
                 }
             }
@@ -6752,6 +8190,7 @@ internal fun SharedThreadRouteContent(
                 attachment.isMarkdownAttachment() -> "markdown"
                 attachment.isTextLikeAttachment() || attachment.isHtmlAttachment() -> "text"
                 attachment.isPreviewableVideoAttachment() -> "video"
+                attachment.isPreviewableAudioAttachment() -> "audio"
                 else -> "file"
             }
         pager.openSlockFilePreviewPage(
@@ -6760,6 +8199,41 @@ internal fun SharedThreadRouteContent(
                 attachmentCommentsEnabled = attachmentCommentsEnabled
             )
         )
+    }
+    fun requestInlineAudioPreview(attachmentId: String, force: Boolean = false) {
+        if (attachmentId.isBlank()) return
+        if (inlineAudioPreviewStates[attachmentId]?.status == ThreadInlineAudioPreviewStatus.Loading) return
+        if (!force && !inlineAudioPreviewStates.canRequestInlineAudioPreview(attachmentId)) return
+        inlineAudioPreviewStates =
+            inlineAudioPreviewStates +
+                (attachmentId to ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Loading))
+        coroutineScope.launch {
+            when (val response = dataSource.attachmentUrl(attachmentId, disposition = "inline")) {
+                is ThreadApiResult.Success -> {
+                    val url = response.data.url.trim()
+                    inlineAudioPreviewStates =
+                        inlineAudioPreviewStates +
+                            (attachmentId to
+                                if (url.isNotBlank()) {
+                                    ThreadInlineAudioPreviewUiState(
+                                        status = ThreadInlineAudioPreviewStatus.Ready,
+                                        url = url,
+                                        expiresAt = response.data.expiresAt
+                                    )
+                                } else {
+                                    ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Error)
+                                })
+                }
+                is ThreadApiResult.Failure -> {
+                    inlineAudioPreviewStates =
+                        inlineAudioPreviewStates +
+                            (attachmentId to ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Error))
+                    if (response.code == 401) {
+                        routeAuthRequired("auth_required")
+                    }
+                }
+            }
+        }
     }
     fun requestInlineVideoPreview(attachmentId: String, force: Boolean = false) {
         if (attachmentId.isBlank()) return
@@ -6798,7 +8272,9 @@ internal fun SharedThreadRouteContent(
     }
 
     fun openComposerAttachmentPreview(attachmentId: String) {
-        val attachment = currentComposerPayload().pendingAttachments.firstOrNull { it.id == attachmentId } ?: return
+        val composerPayload = currentComposerPayload()
+        val attachment = composerPayload.pendingAttachments.firstOrNull { it.id == attachmentId } ?: return
+        val currentDraftState = composerDraftViewModel.state.value
         val name = attachment.fileName.ifBlank { "Attachment" }
         val meta = attachment.displaySizeLabel()
         if (!attachment.isReadyThreadAttachmentForSend()) {
@@ -6842,28 +8318,117 @@ internal fun SharedThreadRouteContent(
                 sizeBytes = attachment.sizeBytes,
                 thumbnailUrl = attachment.previewUri
         )
-        val composerImageGroup = currentComposerPayload().pendingAttachments.composerPendingImageAttachmentGroup(attachmentId)
+        val composerImageGroup = composerPayload.pendingAttachments.composerPendingImageAttachmentGroup(attachmentId)
+        // KuiklyPendingAttachmentItem is intentionally a render-only projection and therefore
+        // does not carry the platform file handle. Resolve each gallery item back to the
+        // session-owned draft/upload descriptor before opening an editable preview; otherwise
+        // the gallery payload would contain only thumbnails and the Done/session registry could
+        // never admit the resulting events.
+        val draftAttachmentsById = currentDraftState.uploadedAttachments.associateBy { it.id }
+        val currentDraftKey = normalizeThreadAttachmentUploadDraftKey(currentDraftState.draftKey)
+        fun composerImageFileFor(id: String): PlatformFile? =
+            attachmentUploadFilesByLocalId.threadAttachmentUploadFile(id, currentDraftKey)
+                ?.takeIf { file -> !file.fileRef.isNullOrBlank() }
+                ?: draftAttachmentsById[id]
+                    ?.toComposerImagePlatformFile()
+                    ?.takeIf { file -> !file.fileRef.isNullOrBlank() }
         if (composerImageGroup != null && composerImageGroup.images.size > 1) {
-            pager.openSlockFilePreviewPage(
+            val galleryFiles =
+                composerImageGroup.images.mapNotNull { image -> composerImageFileFor(image.id) }
+            // A ready tile without a local file ref is not safely editable. Keep it as an
+            // ordinary preview rather than creating a composer session whose Done action can
+            // never produce a deliverable event.
+            if (galleryFiles.size != composerImageGroup.images.size || galleryFiles.isEmpty()) {
+                pager.openSlockFilePreviewPage(
+                    threadAttachment.toThreadAttachmentLazyPreviewPayload(
+                        kind = "image",
+                        imageGallery = composerImageGroup.images,
+                        imageGalleryIndex = composerImageGroup.currentIndex
+                    ).copy(imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() })
+                )
+                return
+            }
+            val selectedIndex = composerImageGroup.currentIndex.coerceIn(0, galleryFiles.lastIndex)
+            val selectedFile = galleryFiles[selectedIndex]
+            composerImageActionCounter += 1
+            val baseActionId =
+                "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${attachmentId.take(12)}"
+            val groupId = "$baseActionId-group"
+            val galleryImages =
+                galleryFiles.mapIndexed { index, file ->
+                    file.toComposerImageGalleryImage().copy(
+                        // This is an editor opened from the already-uploaded composer row. Keep
+                        // the remote row id as an explicit replacement witness; the local file
+                        // id is only the source/admission identity.
+                        composerImageReplaceAttachmentId =
+                            composerImageGroup.images.getOrNull(index)?.id.orEmpty()
+                    )
+                }
+            openTrackedComposerImagePreview(
                 threadAttachment.toThreadAttachmentLazyPreviewPayload(
                     kind = "image",
                     imageGallery = composerImageGroup.images,
                     imageGalleryIndex = composerImageGroup.currentIndex
                 ).copy(
-                    imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() }
+                    imageUrl = selectedFile.composerLocalPreviewUri()?.takeIf { it.isNotBlank() },
+                    externalFileName = selectedFile.fileName.ifBlank { name },
+                    externalMimeType = selectedFile.mimeType.orEmpty(),
+                    imageGallery = galleryImages,
+                    composerImageThreadKey = threadInstanceKey,
+                    composerImageActionId = baseActionId,
+                    composerImageGroupId = groupId,
+                    composerImageFileRef = selectedFile.fileRef.orEmpty(),
+                    composerImageFileName = selectedFile.fileName.ifBlank { name },
+                    composerImageMimeType = selectedFile.mimeType.orEmpty(),
+                    composerImageSizeBytes = selectedFile.sizeBytes,
+                    composerImagePreviewUri = selectedFile.composerLocalPreviewUri().orEmpty(),
+                    composerImageOwnedTemporaryFileRefs =
+                        galleryFiles
+                            .filter(PlatformFile::isComposerImageOwnedTemporary)
+                            .mapNotNull(PlatformFile::fileRef),
+                    composerImageCompressAfterEdit = !currentDraftState.originalImage,
+                    composerImageOriginalOptionEnabled = true,
+                    composerImageCanComplete = true,
+                    composerImageCanEdit = true
                 )
             )
         } else if (threadAttachment.isImageAttachment()) {
             composerImageActionCounter += 1
             val composerImageActionId = "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${threadAttachment.id.take(12)}"
-            pager.openSlockFilePreviewPage(
+            val composerImageFile = composerImageFileFor(attachment.id)
+            // A server-ready tile can still be previewable after its local picker ref has been
+            // retired.  It is not safely editable/compressible in that state, so keep it a plain
+            // read-only preview instead of creating a Done session that can never emit an event.
+            if (composerImageFile == null) {
+                pager.openSlockFilePreviewPage(
+                    threadAttachment.toThreadAttachmentLazyPreviewPayload(
+                        kind = "image"
+                    ).copy(imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() })
+                )
+                return
+            }
+            openTrackedComposerImagePreview(
                 threadAttachment.toThreadAttachmentLazyPreviewPayload(kind = "image").copy(
-                    imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() },
+                    imageUrl = composerImageFile.composerLocalPreviewUri()?.takeIf { it.isNotBlank() },
+                    externalFileName = composerImageFile.fileName.ifBlank { name },
+                    externalMimeType = composerImageFile.mimeType.orEmpty(),
                     composerImageThreadKey = threadInstanceKey,
                     composerImageActionId = composerImageActionId,
-                    composerImageFileName = name,
-                    composerImageMimeType = attachment.mimeType.orEmpty(),
+                    composerImageFileRef = composerImageFile.fileRef.orEmpty(),
+                    composerImageFileName = composerImageFile.fileName.ifBlank { name },
+                    composerImageMimeType = composerImageFile.mimeType.orEmpty(),
+                    composerImageSizeBytes = composerImageFile.sizeBytes,
+                    composerImagePreviewUri = composerImageFile.composerLocalPreviewUri().orEmpty(),
+                    composerImageOwnedTemporaryFileRefs =
+                        listOfNotNull(
+                            composerImageFile
+                                .takeIf(PlatformFile::isComposerImageOwnedTemporary)
+                                ?.fileRef
+                        ),
                     composerImageReplaceAttachmentId = attachment.id,
+                    composerImageCompressAfterEdit = !currentDraftState.originalImage,
+                    composerImageOriginalOptionEnabled = true,
+                    composerImageCanComplete = true,
                     composerImageCanEdit = true
                 )
             )
@@ -6917,6 +8482,13 @@ internal fun SharedThreadRouteContent(
     // task #232: rendered visible tail reported by the messages list; the read
     // marker must track what the user sees, not the loaded payload tail.
     var visibleReadTailIndex by remember(threadInstanceKey) { mutableStateOf<Int?>(null) }
+    LaunchedEffect(visibleReadTailIndex) {
+        bridge.log(
+            "thread_read_tail index=${visibleReadTailIndex?.toString() ?: "null"} " +
+                "firstMessageListItemIndex=${renderedTimelineSlice.firstMessageListItemIndex()} " +
+                "messageCount=${renderedTimelineSlice.messages.size}"
+        )
+    }
     val visibleReadMarkerKey =
         remember(
             renderedThread.sourceThreadId,
@@ -6975,9 +8547,13 @@ internal fun SharedThreadRouteContent(
                     "bodyLength" to context.body.length.toString()
                 )
         )
+        // Registers this send's randomId with the process-wide in-flight fence BEFORE the job
+        // starts, so the pending-send drainer never treats a journaled row as orphaned while an
+        // attempt owns it. invokeOnCompletion covers every return/cancellation path.
+        ThreadPendingSendInFlightRegistry.begin(context.randomId)
         threadSendScope.launch {
             fun sendAuthorityStillCurrent(): Boolean =
-                dataSource.isCurrentReplyCacheProvenance(sendProvenance) &&
+                dataSource.isCurrentReplyCacheProvenanceForLocalSend(sendProvenance) &&
                     threadViewModel.state.value.payload
                         .resolveThreadRouteIdentity()
                         .isPendingSendEquivalentTo(sendRoute)
@@ -7005,15 +8581,15 @@ internal fun SharedThreadRouteContent(
                 }
             }
 
-            fun keepSendingUnconfirmed(result: String, errorCode: String?, httpCode: Int? = null) {
+            suspend fun keepSendingUnconfirmed(result: String, errorCode: String?, httpCode: Int? = null) {
                 bridge.logWarn(
                     "thread_send_unconfirmed localMessageId=$localMessageId " +
                         "channelId=${context.channelId} result=$result code=${errorCode.orEmpty()} " +
-                        "httpCode=${httpCode?.toString().orEmpty()} action=keep_sending"
+                        "httpCode=${httpCode?.toString().orEmpty()} action=mark_failed"
                 )
-                // The request may already have committed server-side. The durable journal remains
-                // the authority until a canonical randomId echo consumes it or the user retries
-                // explicitly with that same idempotency key. Never auto-resend after recreation.
+                // The request may already have committed server-side. A retry uses the same
+                // randomId, so the server-side idempotency key prevents a duplicate message.
+                markFailed(errorCode, "Delivery could not be confirmed. Tap retry to try again.")
             }
 
             val sendAttemptState =
@@ -7032,13 +8608,18 @@ internal fun SharedThreadRouteContent(
                 val attempt = sendAttemptState.attempt
                 val sendResult =
                     runCatchingPreservingCancellation {
-                        dataSource.sendMessage(
-                            channelId = context.channelId,
-                            body = context.body,
-                            asTask = context.asTask,
-                            attachmentIds = context.attachmentIds,
-                            randomId = sendAttemptState.randomId
-                        )
+                        withTimeoutOrNull(ThreadSendRequestTimeoutMs) {
+                            dataSource.sendMessage(
+                                channelId = context.channelId,
+                                body = context.body,
+                                asTask = context.asTask,
+                                attachmentIds = context.attachmentIds,
+                                randomId = sendAttemptState.randomId
+                            )
+                        }
+                            ?: throw SlockRequestTimeoutException(
+                                "send request exceeded ${ThreadSendRequestTimeoutMs}ms"
+                            )
                     }
                 val sendException = sendResult.exceptionOrNull()
                 if (sendException != null) {
@@ -7186,14 +8767,20 @@ internal fun SharedThreadRouteContent(
                             }
                     }
                 }
-                if (!sendAuthorityStillCurrent()) return@launch
-                if (startedFromComposer) {
-                    composerDraftViewModel.dispatch(
-                        SharedThreadComposerDraftIntent.CompleteSend(pendingMentionActions = pendingMentionActions)
-                    )
+                if (sendAuthorityStillCurrent()) {
+                    if (startedFromComposer) {
+                        composerDraftViewModel.dispatch(
+                            SharedThreadComposerDraftIntent.CompleteSend(pendingMentionActions = pendingMentionActions)
+                        )
+                    } else {
+                        composerDraftViewModel.dispatch(
+                            SharedThreadComposerDraftIntent.ApplyPendingMentionActions(pendingMentionActions)
+                        )
+                    }
                 } else {
-                    composerDraftViewModel.dispatch(
-                        SharedThreadComposerDraftIntent.ApplyPendingMentionActions(pendingMentionActions)
+                    bridge.logWarn(
+                        "thread_send_success_terminal_projection_dropped localMessageId=$localMessageId " +
+                            "channelId=${context.channelId} reason=owner_changed_after_response"
                     )
                 }
                 if (context.ownedTemporaryFileRefs.isNotEmpty()) {
@@ -7204,15 +8791,43 @@ internal fun SharedThreadRouteContent(
                 }
                 return@launch
             }
-        }
+        }.invokeOnCompletion { ThreadPendingSendInFlightRegistry.end(context.randomId) }
     }
-    fun handleAttachmentUploadFailure(errorCode: String, attachmentIds: Set<String> = emptySet()) {
-        val terminalAttachmentIds = attachmentUploadOrchestrator.failActive(attachmentIds)
+    fun handleAttachmentUploadFailure(
+        errorCode: String,
+        attachmentIds: Set<String> = emptySet(),
+        ownerDraftKey: String? = null,
+        expectedAdmissions: Map<String, SharedThreadComposerAttachmentAdmission> = emptyMap(),
+    ) {
+        val draftKey =
+            normalizeThreadAttachmentUploadDraftKey(ownerDraftKey)
+                ?: normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
+        val terminalAttachmentIds = attachmentUploadOrchestrator.failActive(draftKey, attachmentIds)
         if (terminalAttachmentIds.isNotEmpty()) {
-            composerDraftViewModel.dispatch(
+            // A current-state lookup is not a safe fallback here: after an A→B remount the
+            // callback may carry A's local id while the state map now belongs to B.  Production
+            // callers must provide the admission captured at launch; without it, retire the
+            // orchestrator token but leave the reducer untouched rather than risking B's row.
+            if (expectedAdmissions.isEmpty()) {
+                bridge.logWarn(
+                    "thread_composer_attachment_failure_dropped reason=missing_admission_witness " +
+                        "draftKey=${draftKey.orEmpty()} ids=${terminalAttachmentIds.joinToString(",")}"
+                )
+                bridge.toast(
+                    localizedAttachmentUploadFailedDetail(
+                        userFacingErrorLabels.forErrorCode(errorCode) ?: genericThreadErrorLabel
+                    )
+                )
+                return
+            }
+            composerDraftViewModel.accept(
                 SharedThreadComposerDraftIntent.MarkAttachmentsFailed(
                     attachmentIds = terminalAttachmentIds,
-                    errorCode = errorCode
+                    errorCode = errorCode,
+                    expectedDraftKey = draftKey,
+                    expectedAdmissions =
+                        terminalAttachmentIds.mapNotNull { id -> expectedAdmissions[id] }
+                            .associateBy { admission -> admission.localAttachmentId }
                 )
             )
         }
@@ -7222,9 +8837,14 @@ internal fun SharedThreadRouteContent(
             )
         )
     }
-    suspend fun admittedComposerAttachmentFiles(files: List<PlatformFile>): List<PlatformFile> {
+    suspend fun admittedComposerAttachmentFiles(
+        files: List<PlatformFile>,
+        maxBytesOverride: Long? = null,
+        skipClientSizeGate: Boolean = false,
+    ): List<PlatformFile> {
+        if (skipClientSizeGate) return files
         val maxBytes =
-            when (val capability = dataSource.attachmentUploadMaxBytes()) {
+            maxBytesOverride ?: when (val capability = dataSource.attachmentUploadMaxBytes()) {
                 is DataResult.Content -> capability.data
                 is DataResult.NoPermission -> {
                     routeAuthRequired(capability)
@@ -7250,29 +8870,103 @@ internal fun SharedThreadRouteContent(
     }
     suspend fun uploadComposerAttachmentFiles(
         files: List<PlatformFile>,
-        replaceAttachmentId: String? = null
+        replaceAttachmentId: String? = null,
+        requireAllFiles: Boolean = false,
+        replaceAttachmentIdsByLocalId: Map<String, String> = emptyMap()
     ): Boolean {
+        // Upload callbacks must retain the store-owned draft identity they were admitted under.
+        // A route can remain mounted while the composer store transitions to another key; using
+        // the key captured here makes every progress/success/failure publication fail closed.
+        val draftKey = normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
+            ?: return false
         val channelId = composerSurface.sendChannelId
         if (channelId == null) {
             bridge.toast(attachmentPickerUnavailableLabel)
             return false
         }
-        val admittedFiles = admittedComposerAttachmentFiles(files)
-        if (admittedFiles.isEmpty()) return false
+        // Capture one complete authority witness for the all-files/direct-session path and reuse
+        // it for capabilities, upload, and compensation. This prevents a session/account/server
+        // switch between those calls from silently falling back to an unbound repository.
+        val directUploadOperation =
+            dataSource.captureDirectAttachmentUploadOperation { message -> bridge.log(message) }
+        if (requireAllFiles && directUploadOperation == null) {
+            bridge.logWarn("thread_composer_attachment_batch_rejected reason=authority_unavailable")
+            return false
+        }
+        val capabilitiesProbe =
+            if (directUploadOperation != null) {
+                directUploadOperation.capabilities()
+            } else {
+                null
+            }
+        if (capabilitiesProbe is DataResult.NoPermission) {
+            routeAuthRequired(capabilitiesProbe)
+            if (requireAllFiles) {
+                bridge.toast(attachmentLimitUnavailableLabel)
+                return false
+            }
+        }
+        val capabilitiesCancelled =
+            (capabilitiesProbe as? DataResult.Error)?.error?.code.equals("cancelled", ignoreCase = true)
+        if (capabilitiesCancelled) {
+            return false
+        }
+        val directCapabilities =
+            (capabilitiesProbe as? DataResult.Content)?.data
+        // Per-file Thread path fail-opens to multipart when capabilities cannot be read.
+        // Gallery N/N remains fail-closed: it cannot compensate without an explicit capability.
+        if (requireAllFiles && directCapabilities == null) {
+            bridge.toast(attachmentLimitUnavailableLabel)
+            return false
+        }
+        val admittedFiles = admittedComposerAttachmentFiles(
+            files = files,
+            maxBytesOverride = directCapabilities?.maxBytes,
+            // Caller sizeBytes is an untrusted hint. Direct and fail-open paths
+            // decide TooLarge/threshold only after authority-bound prepare/stat
+            // (or skip the gate entirely when capabilities cannot be read).
+            skipClientSizeGate = true,
+        )
+        if (admittedFiles.isEmpty() || (requireAllFiles && admittedFiles.size != files.size)) {
+            if (requireAllFiles && admittedFiles.size != files.size) {
+                bridge.logWarn(
+                    "thread_composer_attachment_batch_rejected reason=size_gate " +
+                        "expected=${files.size} admitted=${admittedFiles.size}"
+                )
+            }
+            return false
+        }
+        if (requireAllFiles && admittedFiles.any { file -> file.id.isBlank() }) {
+            bridge.logWarn("thread_composer_attachment_batch_rejected reason=blank_local_id")
+            return false
+        }
         val activeUploadFileRefs =
-            attachmentUploadOrchestrator.activeAttemptIds
-                .filter(attachmentUploadOrchestrator::isActive)
-                .mapNotNull { id -> attachmentUploadFilesByLocalId[id]?.fileRef?.takeIf { it.isNotBlank() } }
+            attachmentUploadOrchestrator.activeAttemptIds(draftKey)
+                .filter { id -> attachmentUploadOrchestrator.isActive(id, draftKey) }
+                .mapNotNull {
+                    id -> attachmentUploadFilesByLocalId.threadAttachmentUploadFile(id, draftKey)?.fileRef?.takeIf { it.isNotBlank() }
+                }
                 .toSet()
+        val activeUploadIds = attachmentUploadOrchestrator.activeAttemptIds(draftKey)
         val acceptedFileRefs = mutableSetOf<String>()
+        val acceptedLocalIds = mutableSetOf<String>()
         val acceptedFiles =
             admittedFiles.filter { file ->
                 val fileRef = file.fileRef?.takeIf { it.isNotBlank() }
                 val isDuplicate =
+                    file.id in activeUploadIds ||
+                        !acceptedLocalIds.add(file.id) ||
                     fileRef != null &&
                         (fileRef in activeUploadFileRefs || !acceptedFileRefs.add(fileRef))
                 !isDuplicate
             }
+        if (requireAllFiles && acceptedFiles.size != admittedFiles.size) {
+            bridge.logWarn(
+                "thread_composer_attachment_batch_rejected reason=duplicate_or_active " +
+                    "expected=${admittedFiles.size} accepted=${acceptedFiles.size}"
+            )
+            return false
+        }
         if (acceptedFiles.size != admittedFiles.size) {
             bridge.log(
                 "thread_composer_attachment_duplicate_skip skipped=${admittedFiles.size - acceptedFiles.size} " +
@@ -7311,23 +9005,439 @@ internal fun SharedThreadRouteContent(
                             uploadBytesTotal = file.sizeBytes?.takeIf { it > 0L }
                         )
                 }
-        if (localAttachments.isNotEmpty()) {
-            attachmentUploadFilesByLocalId =
-                attachmentUploadFilesByLocalId +
-                    acceptedFiles
-                        .filter { file -> file.id.isNotBlank() }
-                        .associateBy { file -> file.id }
-            composerDraftViewModel.dispatch(
-                SharedThreadComposerDraftIntent.AddLocalAttachments(localAttachments)
+        if (requireAllFiles && localAttachments.size != acceptedFiles.size) {
+            bridge.logWarn(
+                "thread_composer_attachment_batch_rejected reason=local_projection " +
+                    "expected=${acceptedFiles.size} actual=${localAttachments.size}"
             )
+            return false
+        }
+        val replacementSlotsByLocalId =
+            acceptedFiles.associate { file ->
+                file.id to
+                    threadComposerReplacementSlotId(
+                        replaceAttachmentId =
+                            replaceAttachmentIdsByLocalId[file.id] ?: replaceAttachmentId,
+                        localAttachmentId = file.id
+                    )
+            }
+        var admittedLocalAdmissions: Map<String, SharedThreadComposerAttachmentAdmission> = emptyMap()
+        if (localAttachments.isNotEmpty()) {
+            val keyedFiles =
+                acceptedFiles
+                    .filter { file -> file.id.isNotBlank() }
+                    .mapNotNull { file ->
+                        threadAttachmentUploadAttemptIdentity(file.id, draftKey)?.let { identity ->
+                            identity to file
+                        }
+                    }
+                    .toMap()
+            attachmentUploadFilesByLocalId =
+                attachmentUploadFilesByLocalId + keyedFiles
+            val admissionReceipt =
+                try {
+                    withContext(NonCancellable) {
+                        composerDraftViewModel.acceptQueued(
+                            SharedThreadComposerDraftIntent.AddLocalAttachments(
+                                attachments = localAttachments,
+                                expectedDraftKey = draftKey,
+                                replacementAttachmentIdsByLocalId = replacementSlotsByLocalId
+                            )
+                        )
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Throwable) {
+                    bridge.logWarn(
+                        "thread_composer_attachment_admission_exception " +
+                            "error=${error::class.simpleName.orEmpty()}"
+                    )
+                    null
+                }
+            val admitted =
+                admissionReceipt?.accepted == true &&
+                    normalizeThreadAttachmentUploadDraftKey(admissionReceipt.state.draftKey) == draftKey &&
+                    threadComposerAttachmentAdmissionReceiptIsValid(
+                        accepted = admissionReceipt.accepted,
+                        before = admissionReceipt.previousState,
+                        after = admissionReceipt.state,
+                        expectedDraftKey = draftKey,
+                        localAttachments = localAttachments,
+                        replacementAttachmentIdsByLocalId = replacementSlotsByLocalId
+                    ) &&
+                    localAttachments.all { expected ->
+                        admissionReceipt.state.attachmentAdmissionsByLocalId[expected.id]
+                            ?.replacementAttachmentId
+                            ?.trim()
+                            ?.ifBlank { expected.id } == replacementSlotsByLocalId[expected.id]
+                    } &&
+                    localAttachments.all { expected ->
+                        admissionReceipt.state.uploadedAttachments.any { actual ->
+                            actual.id == expected.id &&
+                                actual.status == "uploading" &&
+                                actual.fileRef?.trim() == expected.fileRef?.trim() &&
+                                actual.source?.trim() == expected.source?.trim()
+                        }
+                    } &&
+                    localAttachments.none { expected ->
+                        expected.id in admissionReceipt.state.removedAttachmentIds
+                    }
+            if (!admitted) {
+                attachmentUploadFilesByLocalId =
+                    attachmentUploadFilesByLocalId.filterKeys { identity ->
+                        !(identity.draftKey == draftKey && identity.localAttachmentId in acceptedLocalIds)
+                    }
+                bridge.logWarn(
+                    "thread_composer_attachment_batch_rejected reason=admission_receipt " +
+                        "draftKey=$draftKey"
+                )
+                return false
+            }
+            admittedLocalAdmissions =
+                localAttachments
+                    .mapNotNull { attachment ->
+                        admissionReceipt.state.attachmentAdmissionsByLocalId[attachment.id]
+                            ?.let { admission -> attachment.id to admission }
+                    }
+                    .toMap()
             bridge.log(
                 "thread_composer_attachment_local_queue fileCount=${localAttachments.size} " +
                     "ids=${localAttachments.joinToString(",") { it.id }}"
             )
         }
-        acceptedFiles.forEach { file ->
-            val localAttachmentId = file.id.takeIf { it.isNotBlank() } ?: return@forEach
-            attachmentUploadOrchestrator.launch(localAttachmentId) { uploadAttemptToken ->
+
+        if (requireAllFiles) {
+            // Gallery handoff is an atomic N/N surface.  Do not launch one legacy multipart
+            // attempt per file: a sibling can fail after an earlier server attachment has been
+            // published, and the legacy route has no retract contract.  The direct-session
+            // coordinator stages every member, compensates every created session on any failure,
+            // and returns ready attachments only after the whole batch is complete.
+            // Gallery on this train calls with requireAllFiles=false, so this branch stays dormant.
+            val acceptedLocalIds = acceptedFiles.map(PlatformFile::id).toSet()
+            suspend fun markGalleryBatchFailed(errorCode: String): Boolean {
+                val currentFailureState = composerDraftViewModel.state.value
+                val markableIds =
+                    acceptedLocalIds
+                        .filter { id ->
+                            normalizeThreadAttachmentUploadDraftKey(currentFailureState.draftKey) == draftKey &&
+                                id !in currentFailureState.removedAttachmentIds &&
+                                currentFailureState.attachmentAdmissionsByLocalId[id] == admittedLocalAdmissions[id] &&
+                                currentFailureState.uploadedAttachments.any { attachment ->
+                                    attachment.id == id && attachment.status == "uploading"
+                                }
+                        }
+                        .toSet()
+                val markableAdmissions =
+                    markableIds.mapNotNull { id -> admittedLocalAdmissions[id]?.let { id to it } }.toMap()
+                val receipt =
+                    if (markableIds.isEmpty()) {
+                        null
+                    } else try {
+                        withContext(NonCancellable) {
+                            composerDraftViewModel.acceptQueued(
+                                SharedThreadComposerDraftIntent.MarkAttachmentsFailed(
+                                    attachmentIds = markableIds,
+                                    errorCode = errorCode,
+                                    expectedDraftKey = draftKey,
+                                    expectedAdmissions = markableAdmissions
+                                )
+                            )
+                        }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Throwable) {
+                        bridge.logWarn(
+                            "thread_composer_attachment_batch_failure_projection_exception " +
+                                "error=${error::class.simpleName.orEmpty()}"
+                        )
+                        null
+                    }
+                val receiptState = receipt?.state
+                val accepted =
+                    markableIds.isEmpty() ||
+                        (
+                                receipt?.accepted == true &&
+                                normalizeThreadAttachmentUploadDraftKey(receiptState?.draftKey) == draftKey &&
+                                markableIds.all { id ->
+                                    receiptState?.uploadedAttachments.orEmpty().any { attachment ->
+                                        attachment.id == id && attachment.status == "failed" &&
+                                            attachment.errorCode == errorCode
+                                    }
+                                }
+                        )
+                if (!accepted) {
+                    bridge.logWarn(
+                        "thread_composer_attachment_batch_failure_projection_rejected " +
+                            "draftKey=$draftKey"
+                    )
+                }
+                bridge.toast(
+                    localizedAttachmentUploadFailedDetail(
+                        userFacingErrorLabels.forErrorCode(errorCode) ?: genericThreadErrorLabel
+                    )
+                )
+                return accepted
+            }
+
+            suspend fun compensateGalleryBatch(
+                batch: build.raft.app.data.DirectAttachmentUploadBatch,
+                reason: String,
+            ): Boolean {
+                val compensated =
+                    try {
+                        withContext(NonCancellable) {
+                            requireNotNull(directUploadOperation).compensate(batch)
+                        }
+                    } catch (cancelled: CancellationException) {
+                        bridge.logWarn(
+                            "thread_composer_attachment_batch_compensation_cancelled " +
+                                "reason=$reason"
+                        )
+                        false
+                    } catch (error: Throwable) {
+                        bridge.logWarn(
+                            "thread_composer_attachment_batch_compensation_exception " +
+                                "reason=$reason error=${error::class.simpleName.orEmpty()}"
+                        )
+                        false
+                    }
+                if (!compensated) {
+                    bridge.logWarn(
+                        "thread_composer_attachment_batch_compensation_failed reason=$reason"
+                    )
+                }
+                return compensated
+            }
+
+            val batchResult =
+                try {
+                    withContext(Dispatchers.Default) {
+                        attachmentUploadSemaphore.withPermit {
+                            requireNotNull(directUploadOperation).upload(
+                                channelId = ChannelId(channelId),
+                                files = acceptedFiles,
+                                admittedCapabilities = requireNotNull(directCapabilities),
+                            )
+                        }
+                    }
+                } catch (cancelled: CancellationException) {
+                    withContext(NonCancellable) {
+                        markGalleryBatchFailed("attachment_upload_batch_cancelled")
+                    }
+                    throw cancelled
+                } catch (error: Throwable) {
+                    bridge.logWarn(
+                        "thread_composer_attachment_batch_upload_exception " +
+                            "error=${error::class.simpleName.orEmpty()}"
+                    )
+                    markGalleryBatchFailed("attachment_upload_batch_failed")
+                    return false
+                }
+
+            val batch =
+                when (batchResult) {
+                    is DataResult.Content -> batchResult.data
+                    is DataResult.NoPermission -> {
+                        routeAuthRequired(batchResult)
+                        markGalleryBatchFailed(batchResult.blocker.code)
+                        return false
+                    }
+                    is DataResult.Error -> {
+                        markGalleryBatchFailed(batchResult.error.code)
+                        return false
+                    }
+                    is DataResult.Empty -> {
+                        markGalleryBatchFailed("attachment_upload_batch_empty")
+                        return false
+                    }
+                }
+
+            val uploads = batch.uploads
+            val uploadIds = uploads.map { upload -> upload.uploadId }
+            val uploadedAttachmentIds = uploads.map { upload -> upload.attachment.id.value }
+            val batchContractValid =
+                uploads.size == acceptedFiles.size &&
+                    uploads.map { upload -> upload.localId }.toSet() == acceptedLocalIds &&
+                    uploads.map { upload -> upload.localId }.size == acceptedLocalIds.size &&
+                    uploadIds.toSet().size == uploadIds.size &&
+                    batch.sessionIds.toSet() == uploadIds.toSet() &&
+                    uploadedAttachmentIds.all { id -> id.isNotBlank() } &&
+                    uploadedAttachmentIds.toSet().size == uploadedAttachmentIds.size
+            if (!batchContractValid) {
+                bridge.logWarn(
+                    "thread_composer_attachment_batch_rejected reason=contract " +
+                        "expected=${acceptedFiles.size} actual=${uploads.size}"
+                )
+                // Compensation is cleanup evidence only. Preserve the primary contract failure
+                // even when a cancel/status operation is incomplete; replacing it with a generic
+                // cleanup code would hide the operation that actually rejected the batch.
+                compensateGalleryBatch(batch, reason = "contract")
+                markGalleryBatchFailed("attachment_upload_session_contract_invalid")
+                return false
+            }
+
+            val fileByLocalId = acceptedFiles.associateBy(PlatformFile::id)
+            val admittedAttachmentsById = localAttachments.associateBy { attachment -> attachment.id }
+            val readyAttachments =
+                uploads.mapNotNull { upload ->
+                    val file = fileByLocalId[upload.localId] ?: return@mapNotNull null
+                    val sourceAttachment = admittedAttachmentsById[upload.localId]
+                    val serverAttachment = upload.attachment
+                    SharedThreadComposerAttachment(
+                        id = serverAttachment.id.value,
+                        fileName = serverAttachment.name,
+                        sizeLabel = serverAttachment.sizeLabel,
+                        sizeBytes = serverAttachment.sizeBytes,
+                        mimeType = serverAttachment.mimeType.takeIf { it.isNotBlank() },
+                        previewUri = file.composerLocalPreviewUri(),
+                        status = "ready",
+                        fileRef =
+                            sourceAttachment
+                                ?.takeIf { source -> source.source in ThreadComposerOwnedTemporarySources }
+                                ?.fileRef,
+                        source = sourceAttachment?.source ?: file.source,
+                        externalShareToken = sourceAttachment?.externalShareToken,
+                        externalShareAccountId = sourceAttachment?.externalShareAccountId,
+                        externalShareServerId = sourceAttachment?.externalShareServerId,
+                        uploadBytesTransferred =
+                            sourceAttachment?.uploadBytesTotal
+                                ?: sourceAttachment?.uploadBytesTransferred
+                                ?: file.sizeBytes
+                                ?: 0L,
+                        uploadBytesTotal = sourceAttachment?.uploadBytesTotal ?: file.sizeBytes
+                    )
+                }
+            if (readyAttachments.size != acceptedFiles.size) {
+                bridge.logWarn(
+                    "thread_composer_attachment_batch_rejected reason=local_mapping " +
+                        "expected=${acceptedFiles.size} actual=${readyAttachments.size}"
+                )
+                compensateGalleryBatch(batch, reason = "local_mapping")
+                markGalleryBatchFailed("attachment_upload_batch_incomplete")
+                return false
+            }
+
+            val replacementsByUploadedId =
+                uploads.associate { upload ->
+                    upload.attachment.id.value to
+                        threadComposerReplacementSlotId(
+                            replaceAttachmentId =
+                                replaceAttachmentIdsByLocalId[upload.localId]
+                                    ?: replaceAttachmentId,
+                            localAttachmentId = upload.localId
+                        )
+                }
+            val expectedReplacementAttachmentIdsByLocalId =
+                acceptedLocalIds.associateWith { localId ->
+                    threadComposerReplacementSlotId(
+                        replaceAttachmentId =
+                            replaceAttachmentIdsByLocalId[localId]
+                                ?: replaceAttachmentId,
+                        localAttachmentId = localId
+                    )
+                }
+            val expectedServerAttachmentIdsByLocalId =
+                uploads
+                    .groupBy { upload -> upload.localId }
+                    .mapValues { (_, localUploads) ->
+                        localUploads.map { upload -> upload.attachment.id.value }.toSet()
+                    }
+            // This is the sole Gallery projection/ownership publication.  No per-file callback
+            // may transfer a temporary ref before this aggregate commit point.
+            val commitReceipt =
+                try {
+                    composerDraftViewModel.acceptQueued(
+                        SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                            attachments = readyAttachments,
+                            replacedAttachmentIds = acceptedLocalIds,
+                            replacedAttachmentIdsByUploadedId = replacementsByUploadedId,
+                            expectedDraftKey = draftKey,
+                            expectedAdmissions = admittedLocalAdmissions,
+                            expectedServerAttachmentIdsByLocalId = expectedServerAttachmentIdsByLocalId,
+                            expectedReplacementAttachmentIdsByLocalId = expectedReplacementAttachmentIdsByLocalId
+                        )
+                    )
+                } catch (cancelled: CancellationException) {
+                    compensateGalleryBatch(batch, reason = "aggregate_cancelled")
+                    markGalleryBatchFailed("attachment_upload_batch_failed")
+                    throw cancelled
+                } catch (error: Throwable) {
+                    bridge.logWarn(
+                        "thread_composer_attachment_batch_projection_exception " +
+                            "error=${error::class.simpleName.orEmpty()}"
+                    )
+                    compensateGalleryBatch(batch, reason = "aggregate_projection")
+                    markGalleryBatchFailed("attachment_upload_batch_failed")
+                    return false
+                }
+            val receiptState = commitReceipt.state
+            val receiptPostconditionHolds =
+                threadComposerAggregateReceiptIsValid(
+                    accepted = commitReceipt.accepted,
+                    before = commitReceipt.previousState,
+                    after = receiptState,
+                    expectedDraftKey = draftKey,
+                    readyAttachments = readyAttachments,
+                    expectedLocalAttachmentIds = acceptedLocalIds,
+                    expectedReplacementAttachmentIds = expectedReplacementAttachmentIdsByLocalId.values
+                )
+            if (!receiptPostconditionHolds) {
+                bridge.logWarn(
+                    "thread_composer_attachment_batch_rejected reason=aggregate_receipt " +
+                        "accepted=${commitReceipt.accepted} expected=${readyAttachments.size} " +
+                        "actual=${receiptState.uploadedAttachments.size}"
+                )
+                compensateGalleryBatch(batch, reason = "aggregate_receipt")
+                markGalleryBatchFailed("attachment_upload_batch_failed")
+                return false
+            }
+            // The receipt is the exact serialized commit boundary.  Once accepted, a later draft
+            // switch cannot retroactively make this projection rejectable; compensating here
+            // would retract server reservations already referenced by committed durable state.
+            // Ownership is retired only after this aggregate commit and there is no per-file
+            // transfer/deletion callback on the Gallery path.
+            attachmentUploadFilesByLocalId =
+                attachmentUploadFilesByLocalId.filterKeys { identity ->
+                    !(identity.draftKey == draftKey && identity.localAttachmentId in acceptedLocalIds)
+                }
+            runCatching {
+                bridge.log(
+                    "thread_composer_attachment_batch_upload_committed fileCount=${readyAttachments.size} " +
+                        "ids=${readyAttachments.joinToString(",") { attachment -> attachment.id }}"
+                )
+            }
+            return true
+        }
+
+        // Gallery on this train calls with requireAllFiles=false, so this remaining
+        // per-file multipart path is the 1.10.0-shaped uploader. The aggregate
+        // direct-session branch above stays dormant.
+        var launchedCount = 0
+        for (file in acceptedFiles) {
+            val localAttachmentId = file.id.takeIf { it.isNotBlank() } ?: continue
+            val admission = admittedLocalAdmissions[localAttachmentId] ?: continue
+            val admittedSourceAttachment = localAttachments.firstOrNull { it.id == localAttachmentId }
+            val identity = threadAttachmentUploadAttemptIdentity(localAttachmentId, draftKey)
+            val clientRequestId =
+                if (identity != null) {
+                    threadDirectUploadClientRequestIds.idFor(identity)
+                } else {
+                    newAttachmentUploadClientRequestId()
+                }
+            val attemptToken =
+                attachmentUploadOrchestrator.launch(
+                    localAttachmentId = localAttachmentId,
+                    draftKey = draftKey
+                ) { uploadAttemptToken ->
+                    var uploadSucceeded = false
+                    fun publishTerminalFailure(errorCode: String) {
+                        handleAttachmentUploadFailure(
+                            errorCode = errorCode,
+                            attachmentIds = setOf(localAttachmentId),
+                            ownerDraftKey = draftKey,
+                            expectedAdmissions = mapOf(localAttachmentId to admission)
+                        )
+                    }
                     try {
                         bridge.log(
                             "thread_composer_attachment_upload_start attachmentId=$localAttachmentId fileName=${file.fileName}"
@@ -7335,36 +9445,175 @@ internal fun SharedThreadRouteContent(
                         val uploadResult =
                             withContext(Dispatchers.Default) {
                                 attachmentUploadSemaphore.withPermit {
-                                    dataSource.uploadAttachments(
-                                        channelId = channelId,
-                                        files = listOf(file),
-                                        onProgress = { progress ->
-                                            coroutineScope.launch {
-                                                attachmentUploadOrchestrator.publishIfAccepted(
-                                                    localAttachmentId,
-                                                    uploadAttemptToken
-                                                ) {
-                                                    composerDraftViewModel.dispatch(
-                                                        SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
-                                                            attachmentId = localAttachmentId,
-                                                            bytesTransferred = progress.bytesTransferred,
-                                                            bytesTotal = progress.bytesTotal
-                                                        )
+                                    val resolvedUpload =
+                                        when (
+                                            val resolved =
+                                                resolveThreadComposerDirectUpload(
+                                                    file = file,
+                                                    capabilities = directCapabilities,
+                                                    cancelled = false,
+                                                    prepare = { candidate ->
+                                                        val operation = directUploadOperation
+                                                        if (operation == null) {
+                                                            DataResult.Error(
+                                                                ScreenError(
+                                                                    code = "attachment_size_unavailable",
+                                                                    retryable = true,
+                                                                )
+                                                            )
+                                                        } else {
+                                                            operation.prepare(candidate)
+                                                        }
+                                                    },
+                                                )
+                                        ) {
+                                            is DataResult.Content -> resolved.data
+                                            is DataResult.Error ->
+                                                return@withPermit resolved
+                                            is DataResult.NoPermission ->
+                                                return@withPermit resolved
+                                            is DataResult.Empty ->
+                                                return@withPermit DataResult.Error(
+                                                    ScreenError(
+                                                        code = "attachment_size_unavailable",
+                                                        retryable = false,
                                                     )
+                                                )
+                                        }
+                                    val uploadFile = resolvedUpload.file
+                                    val decision = resolvedUpload.decision
+                                    fun publishPhaseProgress(phase: ThreadComposerDirectUploadPhase) {
+                                        val transferred =
+                                            when (phase) {
+                                                ThreadComposerDirectUploadPhase.Creating -> 1L
+                                                ThreadComposerDirectUploadPhase.Putting -> 2L
+                                                ThreadComposerDirectUploadPhase.Verifying -> 3L
+                                            }
+                                        coroutineScope.launch {
+                                            attachmentUploadOrchestrator.publishIfAccepted(
+                                                localAttachmentId,
+                                                draftKey,
+                                                uploadAttemptToken
+                                            ) {
+                                                composerDraftViewModel.accept(
+                                                    SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
+                                                        attachmentId = localAttachmentId,
+                                                        bytesTransferred = transferred,
+                                                        bytesTotal = 3L,
+                                                        expectedDraftKey = draftKey,
+                                                        expectedAdmission = admission
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    }
+                                    when (decision) {
+                                        ThreadComposerDirectUploadDecision.Cancelled ->
+                                            DataResult.Error(ScreenError(code = "cancelled", retryable = false))
+                                        ThreadComposerDirectUploadDecision.TooLarge ->
+                                            DataResult.Error(
+                                                ScreenError(code = "UPLOAD_TOO_LARGE", retryable = false)
+                                            )
+                                        ThreadComposerDirectUploadDecision.Direct -> {
+                                            val operation = directUploadOperation
+                                            if (operation == null) {
+                                                dataSource.uploadAttachments(
+                                                    channelId = channelId,
+                                                    files = listOf(uploadFile),
+                                                    onProgress = { progress ->
+                                                        coroutineScope.launch {
+                                                            attachmentUploadOrchestrator.publishIfAccepted(
+                                                                localAttachmentId,
+                                                                draftKey,
+                                                                uploadAttemptToken
+                                                            ) {
+                                                                composerDraftViewModel.accept(
+                                                                    SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
+                                                                        attachmentId = localAttachmentId,
+                                                                        bytesTransferred = progress.bytesTransferred,
+                                                                        bytesTotal = progress.bytesTotal,
+                                                                        expectedDraftKey = draftKey,
+                                                                        expectedAdmission = admission
+                                                                    )
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                )
+                                            } else {
+                                                when (
+                                                    val one =
+                                                        operation.uploadOneThreadFile(
+                                                            channelId = ChannelId(channelId),
+                                                            file = uploadFile,
+                                                            clientRequestId = clientRequestId,
+                                                            onPhase = ::publishPhaseProgress,
+                                                            onUploadProgress = { progress ->
+                                                                coroutineScope.launch {
+                                                                    attachmentUploadOrchestrator.publishIfAccepted(
+                                                                        localAttachmentId,
+                                                                        draftKey,
+                                                                        uploadAttemptToken
+                                                                    ) {
+                                                                        composerDraftViewModel.accept(
+                                                                            SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
+                                                                                attachmentId = localAttachmentId,
+                                                                                bytesTransferred = progress.bytesTransferred,
+                                                                                bytesTotal = progress.bytesTotal,
+                                                                                expectedDraftKey = draftKey,
+                                                                                expectedAdmission = admission
+                                                                            )
+                                                                        )
+                                                                    }
+                                                                }
+                                                            },
+                                                        )
+                                                ) {
+                                                    is DataResult.Content ->
+                                                        DataResult.Content(AttachmentUploadResult(listOf(one.data)))
+                                                    is DataResult.Error -> one
+                                                    is DataResult.NoPermission -> one
+                                                    is DataResult.Empty -> one
                                                 }
                                             }
                                         }
-                                    )
+                                        ThreadComposerDirectUploadDecision.LegacyMultipart ->
+                                            dataSource.uploadAttachments(
+                                                channelId = channelId,
+                                                files = listOf(uploadFile),
+                                                onProgress = { progress ->
+                                                    coroutineScope.launch {
+                                                        attachmentUploadOrchestrator.publishIfAccepted(
+                                                            localAttachmentId,
+                                                            draftKey,
+                                                            uploadAttemptToken
+                                                        ) {
+                                                            composerDraftViewModel.accept(
+                                                                SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
+                                                                    attachmentId = localAttachmentId,
+                                                                    bytesTransferred = progress.bytesTransferred,
+                                                                    bytesTotal = progress.bytesTotal,
+                                                                    expectedDraftKey = draftKey,
+                                                                    expectedAdmission = admission
+                                                                )
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            )
+                                    }
                                 }
                             }
                         val published =
-                            attachmentUploadOrchestrator.publishIfAccepted(localAttachmentId, uploadAttemptToken) {
+                            attachmentUploadOrchestrator.publishIfAccepted(
+                                localAttachmentId,
+                                draftKey,
+                                uploadAttemptToken
+                            ) {
                                 when (uploadResult) {
                                     is DataResult.Content -> {
                                         val previewUri = file.composerLocalPreviewUri()
-                                        val sourceAttachment =
-                                            composerDraftViewModel.state.value.uploadedAttachments
-                                                .firstOrNull { attachment -> attachment.id == localAttachmentId }
+                                        val sourceAttachment = admittedSourceAttachment
                                         val uploaded =
                                             uploadResult.data.attachments.map { attachment ->
                                                 SharedThreadComposerAttachment(
@@ -7378,8 +9627,7 @@ internal fun SharedThreadRouteContent(
                                                     fileRef =
                                                         sourceAttachment
                                                             ?.takeIf { source ->
-                                                                source.source in
-                                                                    setOf("platform_picker", "platform_camera")
+                                                                source.source in ThreadComposerOwnedTemporarySources
                                                             }
                                                             ?.fileRef,
                                                     source = sourceAttachment?.source,
@@ -7399,32 +9647,49 @@ internal fun SharedThreadRouteContent(
                                                 attachment.id.isNotBlank() && !attachment.id.startsWith("picked-")
                                             }
                                         ) {
-                                            handleAttachmentUploadFailure("empty_upload_result", setOf(localAttachmentId))
+                                            publishTerminalFailure("empty_upload_result")
                                         } else {
                                             val replacementSlotId =
                                                 threadComposerReplacementSlotId(
-                                                    replaceAttachmentId = replaceAttachmentId,
+                                                    replaceAttachmentId =
+                                                        replaceAttachmentIdsByLocalId[localAttachmentId]
+                                                            ?: replaceAttachmentId,
                                                     localAttachmentId = localAttachmentId
                                                 )
-                                            composerDraftViewModel.dispatch(
+                                            val projectionReceipt = composerDraftViewModel.acceptWithState(
                                                 SharedThreadComposerDraftIntent.AddUploadedAttachments(
                                                     attachments = uploaded,
                                                     replacedAttachmentIds = setOf(localAttachmentId),
                                                     replacedAttachmentIdsByUploadedId =
-                                                        uploaded.associate { attachment -> attachment.id to replacementSlotId }
+                                                        uploaded.associate { attachment -> attachment.id to replacementSlotId },
+                                                    expectedDraftKey = draftKey,
+                                                    expectedAdmissions = mapOf(localAttachmentId to admission),
+                                                    expectedServerAttachmentIdsByLocalId =
+                                                        mapOf(localAttachmentId to uploaded.map { it.id }.toSet()),
+                                                    expectedReplacementAttachmentIdsByLocalId =
+                                                        mapOf(localAttachmentId to replacementSlotId)
                                                 )
                                             )
-                                            attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId - localAttachmentId
+                                            if (projectionReceipt.accepted) {
+                                                attachmentUploadFilesByLocalId =
+                                                    attachmentUploadFilesByLocalId.withoutThreadAttachmentUploadFile(
+                                                        localAttachmentId,
+                                                        draftKey
+                                                    )
+                                                uploadSucceeded = true
+                                            } else {
+                                                publishTerminalFailure("attachment_upload_projection_rejected")
+                                            }
                                         }
                                     }
                                     is DataResult.Error ->
-                                        handleAttachmentUploadFailure(uploadResult.error.code, setOf(localAttachmentId))
+                                        publishTerminalFailure(uploadResult.error.code)
                                     is DataResult.NoPermission -> {
                                         routeAuthRequired(uploadResult)
-                                        handleAttachmentUploadFailure(uploadResult.blocker.code, setOf(localAttachmentId))
+                                        publishTerminalFailure(uploadResult.blocker.code)
                                     }
                                     is DataResult.Empty ->
-                                        handleAttachmentUploadFailure("empty_upload_result", setOf(localAttachmentId))
+                                        publishTerminalFailure("empty_upload_result")
                                 }
                             }
                         if (!published) {
@@ -7435,10 +9700,22 @@ internal fun SharedThreadRouteContent(
                         }
                     } catch (_: CancellationException) {
                         // The user removed this uploading tile; RemoveAttachment already hid it.
+                        // A gallery caller still receives a false completion below, so its
+                        // session cannot be committed as if cancellation were a transfer.
+                    } catch (error: Throwable) {
+                        bridge.logWarn(
+                            "thread_composer_attachment_upload_exception " +
+                                "attachmentId=$localAttachmentId " +
+                                "error=${error::class.simpleName.orEmpty()}"
+                        )
+                        publishTerminalFailure("attachment_upload_failed")
                     }
                 }
+            if (attemptToken != null) {
+                launchedCount += 1
+            }
         }
-        return acceptedFiles.isNotEmpty()
+        return acceptedFiles.isNotEmpty() && acceptedFiles.size == files.size && launchedCount == acceptedFiles.size
     }
     fun performComposerSend(): Boolean {
         val currentComposer = currentComposerPayload()
@@ -7543,6 +9820,14 @@ internal fun SharedThreadRouteContent(
             return false
         }
         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+        // The journal row now owns crash protection for this send (restart adoption,
+        // failed row with retry), so the persisted composer draft must be cleared at
+        // admission — otherwise a mid-send process kill leaves a second copy of the same
+        // text that reloads into the composer and invites a duplicate send (#1134 cell 3,
+        // Argus ruling). Journal-write failure keeps the draft because admission already
+        // returned false above. CompleteSend only clears the durable record; the send
+        // completion below still dispatches its own CompleteSend for mention actions.
+        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
         sendPendingLocalMessage(
             localMessageId = localMessageId,
             context = pendingContext,
@@ -7599,7 +9884,10 @@ internal fun SharedThreadRouteContent(
                 if (queuedExternalAttachments.isNotEmpty()) {
                     val files =
                         queuedExternalAttachments.mapNotNull { attachment ->
-                            attachmentUploadFilesByLocalId[attachment.id]
+                            attachmentUploadFilesByLocalId.threadAttachmentUploadFile(
+                                attachment.id,
+                                normalizeThreadAttachmentUploadDraftKey(currentDraftState.draftKey)
+                            )
                         }
                     if (files.size != queuedExternalAttachments.size) {
                         externalShareSendRequested = false
@@ -7668,135 +9956,377 @@ internal fun SharedThreadRouteContent(
     }
     fun openComposerImageAnnotation(files: List<PlatformFile>) {
         val firstFile = files.firstOrNull() ?: return
+        val currentDraftState = composerDraftViewModel.state.value
         composerImageActionCounter += 1
         val actionId = "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${firstFile.id.take(12)}"
-        val previewUri = firstFile.composerLocalPreviewUri().orEmpty()
-        pager.openSlockFilePreviewPage(
-            SlockFilePreviewPayload(
-                kind = "image",
-                title = "Image preview",
-                subtitle = firstFile.fileName,
-                name = firstFile.fileName,
-                path = firstFile.fileName,
-                meta =
-                    listOf(
-                        firstFile.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
-                        firstFile.mimeType.orEmpty()
-                    ).filter { it.isNotBlank() }.joinToString(" · "),
-                imageUrl = previewUri.takeIf { it.isNotBlank() },
-                message = if (previewUri.isBlank()) "Image preview is unavailable." else "",
-                externalFileName = firstFile.fileName,
-                externalMimeType = firstFile.mimeType.orEmpty(),
-                imageGallery = files.map { file -> file.toComposerImageGalleryImage() },
-                composerImageThreadKey = threadInstanceKey,
-                composerImageActionId = actionId,
-                composerImageFileRef = firstFile.fileRef.orEmpty(),
-                composerImageFileName = firstFile.fileName,
-                composerImageMimeType = firstFile.mimeType.orEmpty(),
-                composerImageSizeBytes = firstFile.sizeBytes,
-                composerImagePreviewUri = previewUri,
-                composerImageOwnedTemporaryFileRefs =
-                    files.filter(PlatformFile::isComposerImageOwnedTemporary)
-                        .mapNotNull(PlatformFile::fileRef),
-                composerImageCanComplete = true,
-                composerImageCanEdit = true
-            )
+        openTrackedComposerImagePreview(
+            threadComposerImageAnnotationPayload(
+                threadInstanceKey = threadInstanceKey,
+                actionId = actionId,
+                files = files,
+                originalImage = currentDraftState.originalImage,
+            ) ?: return
         )
     }
     DisposableEffect(eventBus, threadInstanceKey) {
-        val subscription =
-            eventBus.observe(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
-                val eventDataSnapshot = data?.toString() ?: return@observe
-                coroutineScope.launch {
-                    val eventData = runCatching { JSONObject(eventDataSnapshot) }.getOrNull() ?: return@launch
-                    if (eventData.optString("threadKey").trim() != threadInstanceKey) return@launch
-                    val previewSessionId = eventData.optString("previewSessionId").trim()
-                    val fileRef = eventData.optString("fileRef").takeIf { it.isNotBlank() }
-                    val actionId = eventData.optString("actionId").takeIf { it.isNotBlank() }
-                    if (fileRef == null || actionId == null) {
-                        val cleanupRefs = slockFilePreviewAbortComposerImageEventSession(previewSessionId)
-                        if (cleanupRefs.isNotEmpty()) {
-                            bridge.retireFilePreviewTemporaryFiles(
-                                sessionId = previewSessionId,
-                                fileRefs = cleanupRefs.toList()
+        // Event-bus callbacks can be re-entrant and may be dispatched from different host turns.
+        // Keep the callback side-effect-free: one sequential consumer owns parsing, accumulation,
+        // registry admission, upload handoff and terminal cleanup.  In particular, a malformed
+        // replay queued behind an already admitted gallery cannot abort that in-flight batch.
+        val eventMailbox = Channel<String>(Channel.UNLIMITED)
+
+        /**
+         * Remove every in-flight accumulator for one preview session while the same mutex also
+         * retires the registry session.  A malformed/conflicting member must poison the whole
+         * N/N handoff; leaving a sibling accumulator alive would let a later callback claim an
+         * otherwise orphaned temporary ref.
+         */
+        fun abortBatchSessionLocked(sessionId: String): Set<String> {
+            val normalizedSessionId = sessionId.trim()
+            // Once the complete batch has crossed into the process-owned uploader, a late
+            // malformed/conflicting replay must not tear down the refs that uploader is reading.
+            // Its NonCancellable handoff owns the terminal finish path instead.
+            if (composerImageEventSessionTracker.isHandoffStarted(normalizedSessionId)) {
+                return emptySet()
+            }
+            composerImageEventSessionTracker.release(normalizedSessionId)
+            composerImageEventBatches.keys
+                .filter { key ->
+                    key.sessionId == normalizedSessionId && key.threadKey == threadInstanceKey
+                }
+                .forEach { key ->
+                    composerImageEventBatches.remove(key)?.abort()
+                }
+            return slockFilePreviewAbortComposerImageEventSession(normalizedSessionId)
+        }
+
+        suspend fun abortBatchSession(sessionId: String, reason: String): Set<String> {
+            val cleanupRefs =
+                composerImageEventBatchMutex.withLock {
+                    abortBatchSessionLocked(sessionId)
+                }
+            if (cleanupRefs.isNotEmpty()) {
+                bridge.retireFilePreviewTemporaryFiles(
+                    sessionId = sessionId.trim(),
+                    fileRefs = cleanupRefs.toList()
+                )
+            }
+            bridge.logWarn(
+                "composer_image_event_batch_aborted sessionId=${sessionId.trim()} " +
+                    "reason=$reason cleanupRefs=${cleanupRefs.size}"
+            )
+            return cleanupRefs
+        }
+
+        data class ComposerImageBatchHandoff(
+            val items: List<ThreadComposerImageEventBatchItem> = emptyList(),
+            val admissions: List<SlockFilePreviewComposerImageEventAdmission.Accepted> = emptyList(),
+            val ready: Boolean = false,
+            val cleanupRefs: Set<String> = emptySet()
+        )
+
+        suspend fun processComposerImageEvent(eventDataSnapshot: String) {
+                    val eventData = runCatching { JSONObject(eventDataSnapshot) }.getOrNull() ?: return
+                    // Parse through the shared wire-contract validator before applying this
+                    // ThreadPage's session/ownership policy.  This keeps malformed callbacks
+                    // from reaching the registry and ensures metadata semantics match Settings.
+                    val parsed = parseSlockFilePreviewComposerImageEvent(eventData)
+                    val rawThreadKey = eventData.optString("threadKey").trim()
+                    if (parsed == null) {
+                        // Event-bus delivery is process-wide.  Only retire an invalid event's
+                        // session when its raw thread key identifies this page; an unrelated
+                        // page must not abort a live session before its owner can consume it.
+                        val previewSessionId = eventData.optString("previewSessionId").trim()
+                        if (
+                            rawThreadKey != threadInstanceKey ||
+                                !composerImageEventSessionTracker.owns(previewSessionId)
+                        ) {
+                            return
+                        }
+                        abortBatchSession(previewSessionId, reason = "malformed")
+                        return
+                    }
+                    if (
+                        parsed.threadKey != threadInstanceKey ||
+                            !composerImageEventSessionTracker.owns(parsed.previewSessionId)
+                    ) {
+                        return
+                    }
+                    val previewSessionId = parsed.previewSessionId.trim()
+                    val groupId = parsed.groupId.orEmpty().trim()
+                    val expectedCount = parsed.groupTotal ?: 1
+                    val replaceAttachmentId =
+                        eventData.optString("replaceAttachmentId").trim().takeIf { it.isNotBlank() }
+                    val item =
+                        ThreadComposerImageEventBatchItem(
+                            eventData = eventData,
+                            payload = parsed,
+                            replaceAttachmentId = replaceAttachmentId
+                        )
+                    val handoff =
+                        composerImageEventBatchMutex.withLock {
+                            val key =
+                                ThreadComposerImageEventBatchKey(
+                                    sessionId = previewSessionId,
+                                    threadKey = threadInstanceKey,
+                                    groupId = groupId
+                                )
+                            // A page can be disposed after an event has entered the mailbox but
+                            // before this serialized offer runs.  Do not create a fresh
+                            // accumulator after the tracker has closed; otherwise a late event
+                            // could still claim a registry row from a page which no longer owns
+                            // it.
+                            if (!composerImageEventSessionTracker.owns(previewSessionId)) {
+                                // This session belongs to another mounted page (or has already
+                                // been disposed).  Ignore the process-wide replay; aborting by
+                                // thread key alone could retire that other page's registry/ref.
+                                ComposerImageBatchHandoff()
+                            } else {
+                                val accumulator =
+                                    composerImageEventBatches[key]
+                                        ?: ThreadComposerImageEventBatchAccumulator(
+                                            key = key,
+                                            expectedCount = expectedCount
+                                        ).also { created ->
+                                            composerImageEventBatches[key] = created
+                                        }
+                            when (val offer = accumulator.offer(item)) {
+                                ThreadComposerImageEventBatchOffer.Added,
+                                ThreadComposerImageEventBatchOffer.Duplicate ->
+                                    ComposerImageBatchHandoff()
+
+                                ThreadComposerImageEventBatchOffer.Rejected ->
+                                    ComposerImageBatchHandoff(
+                                        ready = false,
+                                        cleanupRefs = abortBatchSessionLocked(previewSessionId)
+                                    )
+
+                                is ThreadComposerImageEventBatchOffer.Complete -> {
+                                    val items = offer.events
+                                    val files =
+                                        items.map { batchItem ->
+                                            PlatformFile(
+                                                id = "edited-${batchItem.actionId}",
+                                                fileName = batchItem.payload.fileName,
+                                                mimeType = batchItem.payload.mimeType,
+                                                sizeBytes = batchItem.payload.sizeBytes,
+                                                previewUri = batchItem.payload.previewUri,
+                                                fileRef = batchItem.payload.fileRef,
+                                                source = batchItem.payload.source
+                                            )
+                                        }
+                                    val fileIds = files.map(PlatformFile::id)
+                                    val fileRefs = files.mapNotNull(PlatformFile::fileRef)
+                                    val filesValid =
+                                        files.size == expectedCount &&
+                                            files.all { file ->
+                                                file.id.isNotBlank() &&
+                                                    !file.fileRef.isNullOrBlank() &&
+                                                    file.isComposerImageOwnedTemporary()
+                                            } &&
+                                            fileIds.toSet().size == fileIds.size &&
+                                            fileRefs.toSet().size == fileRefs.size
+                                    if (!filesValid) {
+                                        ComposerImageBatchHandoff(
+                                            cleanupRefs = abortBatchSessionLocked(previewSessionId)
+                                        )
+                                    } else {
+                                        val claimedAdmissions =
+                                            items.map { batchItem ->
+                                                slockFilePreviewClaimComposerImageEvent(
+                                                    eventData = batchItem.eventData,
+                                                    expectedThreadKey = threadInstanceKey
+                                                )
+                                            }
+                                        val acceptedAdmissions =
+                                            claimedAdmissions.mapNotNull { admission ->
+                                                admission as? SlockFilePreviewComposerImageEventAdmission.Accepted
+                                            }
+                                        val claimComplete =
+                                            acceptedAdmissions.size == items.size &&
+                                                acceptedAdmissions.lastOrNull()?.sessionComplete == true &&
+                                                acceptedAdmissions.dropLast(1).none { admission ->
+                                                    admission.sessionComplete
+                                                }
+                                        if (!claimComplete) {
+                                            ComposerImageBatchHandoff(
+                                                cleanupRefs = abortBatchSessionLocked(previewSessionId)
+                                            )
+                                        } else if (!composerImageEventSessionTracker.markHandoffStarted(previewSessionId)) {
+                                            ComposerImageBatchHandoff(
+                                                cleanupRefs = abortBatchSessionLocked(previewSessionId)
+                                            )
+                                        } else {
+                                            // Keep the started session in the tracker until the
+                                            // upload handoff's finally block.  Disposal needs to
+                                            // distinguish this in-flight owner from a partial
+                                            // accumulator and perform a post-join sweep.
+                                            ComposerImageBatchHandoff(
+                                                items = items,
+                                                admissions = acceptedAdmissions,
+                                                ready = true
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (handoff.cleanupRefs.isNotEmpty()) {
+                        bridge.retireFilePreviewTemporaryFiles(
+                            sessionId = previewSessionId,
+                            fileRefs = handoff.cleanupRefs.toList()
+                        )
+                    }
+                    if (!handoff.ready) return
+
+                    val files =
+                        handoff.items.map { batchItem ->
+                            PlatformFile(
+                                id = "edited-${batchItem.actionId}",
+                                fileName = batchItem.payload.fileName,
+                                mimeType = batchItem.payload.mimeType,
+                                sizeBytes = batchItem.payload.sizeBytes,
+                                previewUri = batchItem.payload.previewUri,
+                                fileRef = batchItem.payload.fileRef,
+                                source = batchItem.payload.source
                             )
                         }
-                        return@launch
-                    }
-                    val file =
-                        PlatformFile(
-                            id = "edited-$actionId",
-                            fileName = eventData.optString("fileName").takeIf { it.isNotBlank() } ?: "image.png",
-                            mimeType = eventData.optString("mimeType").takeIf { it.isNotBlank() } ?: "image/png",
-                            sizeBytes = eventData.optLong("sizeBytes", 0L).takeIf { it > 0L },
-                            previewUri = eventData.optString("previewUri").takeIf { it.isNotBlank() } ?: fileRef,
-                            fileRef = fileRef,
-                            source = "composer_image_editor"
-                        )
-                    val replaceAttachmentId = eventData.optString("replaceAttachmentId").takeIf { it.isNotBlank() }
-                    when (
-                        val admission =
-                            slockFilePreviewClaimComposerImageEvent(
-                                eventData = eventData,
-                                expectedThreadKey = threadInstanceKey
-                            )
-                    ) {
-                        is SlockFilePreviewComposerImageEventAdmission.Rejected -> {
-                            if (admission.orphanedTemporaryFileRefs.isNotEmpty()) {
-                                bridge.retireFilePreviewTemporaryFiles(
-                                    sessionId = admission.sessionId,
-                                    fileRefs = admission.orphanedTemporaryFileRefs.toList()
+                    val replaceAttachmentIdsByLocalId =
+                        handoff.items.mapNotNull { batchItem ->
+                            batchItem.replaceAttachmentId
+                                ?.trim()
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { replacement ->
+                                    "edited-${batchItem.actionId}" to replacement
+                                }
+                        }.toMap()
+                    var transferred = false
+                    try {
+                        transferred =
+                            // Attempts run on the process send scope, so page teardown must not
+                            // cancel this waiter before those attempts publish their outcomes.
+                            // Otherwise the `finally` below would retire ownership while a real
+                            // network transfer was still in flight.
+                            withContext(NonCancellable) {
+                                uploadComposerAttachmentFiles(
+                                    files = files,
+                                    // Per-file admission: one oversize or failed image must not
+                                    // reject the rest. Direct vs multipart is chosen per file.
+                                    requireAllFiles = false,
+                                    replaceAttachmentIdsByLocalId = replaceAttachmentIdsByLocalId
                                 )
                             }
-                            bridge.logWarn(
-                                "composer_image_event_rejected cleanupRefs=${admission.orphanedTemporaryFileRefs.size}"
-                            )
-                        }
-                        is SlockFilePreviewComposerImageEventAdmission.Accepted -> {
-                            val transferred =
-                                uploadComposerAttachmentFiles(
-                                    files = listOf(file),
-                                    replaceAttachmentId = replaceAttachmentId
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Throwable) {
+                        bridge.logWarn(
+                            "composer_image_event_batch_upload_failed " +
+                                "sessionId=$previewSessionId error=${error::class.simpleName.orEmpty()}"
+                        )
+                    } finally {
+                        // Disposal cancels this consumer while the upload handoff is unwinding.
+                        // Mutex.withLock is cancellable, so the terminal registry transition must
+                        // be protected just like the upload itself; otherwise a cancellation can
+                        // strand the pending session and its native temporary refs.
+                        withContext(NonCancellable) {
+                            val cleanupRefs =
+                                composerImageEventBatchMutex.withLock {
+                                // The accumulator remains present during the async upload so
+                                // identical replays are harmless. Remove it only at terminal
+                                // handoff, while finishing the registry under the same lock.
+                                composerImageEventBatches.keys
+                                    .filter { key ->
+                                        key.sessionId == previewSessionId &&
+                                            key.threadKey == threadInstanceKey
+                                    }
+                                    .forEach { key ->
+                                        composerImageEventBatches.remove(key)?.abort()
+                                    }
+                                slockFilePreviewFinishComposerImageEventSession(
+                                    sessionId = previewSessionId,
+                                    transferred = transferred
                                 )
-                            val transferRecorded =
-                                transferred &&
-                                    slockFilePreviewMarkComposerImageEventTransferred(admission)
-                            if (transferred && !transferRecorded) {
-                                bridge.logWarn(
-                                    "composer_image_event_transfer_unrecorded actionId=${admission.actionId}"
+                                }
+                            composerImageEventSessionTracker.release(previewSessionId)
+                            if (cleanupRefs.isNotEmpty()) {
+                                bridge.retireFilePreviewTemporaryFiles(
+                                    sessionId = previewSessionId,
+                                    fileRefs = cleanupRefs.toList()
                                 )
                             }
                             if (!transferred) {
-                                val cleanupRefs =
-                                    slockFilePreviewFinishComposerImageEventSession(
-                                        sessionId = admission.sessionId,
-                                        transferred = transferred
-                                    )
-                                if (cleanupRefs.isNotEmpty()) {
-                                    bridge.retireFilePreviewTemporaryFiles(
-                                        sessionId = admission.sessionId,
-                                        fileRefs = cleanupRefs.toList()
-                                    )
-                                }
-                            } else if (admission.sessionComplete && transferRecorded) {
-                                val cleanupRefs =
-                                    slockFilePreviewFinishComposerImageEventSession(
-                                        sessionId = admission.sessionId,
-                                        transferred = true
-                                    )
-                                if (cleanupRefs.isNotEmpty()) {
-                                    bridge.retireFilePreviewTemporaryFiles(
-                                        sessionId = admission.sessionId,
-                                        fileRefs = cleanupRefs.toList()
-                                    )
-                                }
+                                bridge.logWarn(
+                                    "composer_image_event_batch_rejected sessionId=$previewSessionId " +
+                                        "reason=upload_handoff_failed cleanupRefs=${cleanupRefs.size}"
+                                )
                             }
                         }
                     }
+        }
+
+        val consumerJob =
+            coroutineScope.launch {
+                for (eventDataSnapshot in eventMailbox) {
+                    try {
+                        processComposerImageEvent(eventDataSnapshot)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Throwable) {
+                        bridge.logWarn(
+                            "composer_image_event_consumer_failed " +
+                                "error=${error::class.simpleName.orEmpty()}"
+                        )
+                    }
                 }
+            }
+        val subscription =
+            eventBus.observe(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
+                val eventDataSnapshot = data?.toString() ?: return@observe
+                eventMailbox.trySend(eventDataSnapshot)
             }
         onDispose {
             subscription.close()
+            eventMailbox.close()
+            // Close admission before requesting consumer cancellation.  Cancellation is
+            // cooperative; if the consumer is in a non-suspending reducer step, it can still
+            // finish that step after `cancel()` returns.  The closed tracker makes such a late
+            // step fail its ownership check instead of admitting a new batch during teardown.
+            val closeResult = composerImageEventSessionTracker.close()
+            consumerJob.cancel()
+            threadSendScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                withContext(NonCancellable) {
+                    // The consumer may already be inside the process-owned NonCancellable upload
+                    // handoff.  Wait for that handoff's finally block before sweeping its refs;
+                    // aborting it first could delete a file while the uploader still reads it.
+                    try {
+                        consumerJob.cancelAndJoin()
+                    } catch (_: CancellationException) {
+                        // The enclosing NonCancellable cleanup remains authoritative even if the
+                        // child reports its own cancellation while joining.
+                    } catch (_: Throwable) {
+                        // A failed join must not suppress the final registry/ledger sweep below.
+                    }
+                    val sessionIds = closeResult.abortSessionIds + closeResult.inFlightSessionIds
+                    try {
+                        composerImageEventBatchMutex.withLock {
+                            abortThreadComposerImageEventSessions(
+                                sessionIds = sessionIds,
+                                threadKey = threadInstanceKey,
+                                batches = composerImageEventBatches,
+                                retire = { sessionId, refs ->
+                                    bridge.retireFilePreviewTemporaryFiles(
+                                        sessionId = sessionId,
+                                        fileRefs = refs.toList()
+                                    )
+                                }
+                            )
+                        }
+                    } finally {
+                        sessionIds.forEach(composerImageEventSessionTracker::release)
+                    }
+                }
+            }
         }
     }
     suspend fun refreshComposerMemberSuggestions(reason: String) {
@@ -7888,6 +10418,11 @@ internal fun SharedThreadRouteContent(
                         states = inlineVideoPreviewStates,
                         requestPreview = ::requestInlineVideoPreview
                     ),
+                LocalThreadInlineAudioPreviewHost provides
+                    ThreadInlineAudioPreviewHost(
+                        states = inlineAudioPreviewStates,
+                        requestPreview = ::requestInlineAudioPreview
+                    ),
                 LocalThreadInlineImageFallbackHost provides
                     ThreadInlineImageFallbackHost(
                         state = inlineImageFallbackState,
@@ -7907,6 +10442,17 @@ internal fun SharedThreadRouteContent(
         )
         CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
+            agentFollowersHeader = {
+                if (renderedThread.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+                    ThreadAgentFollowersRoute(
+                        threadId = renderedThread.streamChannelId,
+                        serverId = currentServerId,
+                        accountId = currentSession?.user?.id,
+                        storeScope = storeScope,
+                        active = active && threadHostForeground,
+                    )
+                }
+            },
             scaffold = movableThreadRouteScaffold,
             threadInstanceKey = threadInstanceKey,
             threadReadAnchorOwner = threadReadAnchorOwner,
@@ -7919,8 +10465,12 @@ internal fun SharedThreadRouteContent(
             timelineSlice = renderedTimelineSlice,
             accessResolution = renderSlice.accessResolution,
             canonicalAccessResolved = renderSlice.canonicalAccessResolved,
+            initialHomeAccessLookupComplete = renderSlice.initialHomeAccessLookupComplete,
+            lastRefreshResultReason = renderSlice.lastRefreshResultReason,
             replyParentAuthority = renderSlice.replyParentAuthority,
             writeActionsEnabled = renderSlice.writeActionsEnabled,
+            jointBillingNotice = jointBillingNotice,
+            jointGraceDeadlineLabel = jointGraceDeadlineLabel,
             channelProfileUpdateStatus = renderSlice.channelProfileUpdateStatus,
             channelProfileUpdateErrorCode = renderSlice.channelProfileUpdateErrorCode,
             replyMetadataByParentId = replyMetadataByParentId,
@@ -7932,7 +10482,12 @@ internal fun SharedThreadRouteContent(
             resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
             tasksViewModel = tasksViewModel,
             taskChannelId = taskChannelId,
-            taskIdentityOptions = threadServerMembersEntry.members,
+            // artin 2026-09-01/02: the task assignee picker must list CURRENT CHANNEL
+            // members, never the server roster. Channel member slice once loaded;
+            // before that, reuse the channel roster the thread payload already
+            // carries (baseRenderedPayload.members via threadMembersProjection)
+            // — synchronous, so the picker never flashes server-wide names.
+            taskIdentityOptions = taskAssigneeOptions,
             linkedTasksProjection = linkedTasksProjection,
             filesViewModel = filesViewModel,
             memberSuggestionsFlow = memberSuggestionsFlow,
@@ -7991,9 +10546,11 @@ internal fun SharedThreadRouteContent(
             },
             onDownloadFilesAttachment = { attachment -> saveAttachmentExternally(attachment) },
             onOpenMemberProfile = { identity -> onOpenMemberProfile(renderedThread, renderedTimelineSlice, identity) },
+            onExternalAuthor = onExternalAuthorHint,
             highlightedMentions = highlightedMentions,
             agentStatusResolver = agentStatusResolver,
             memberAvatarResolver = memberAvatarResolver,
+            memberModelLabelResolver = memberModelLabelResolver,
             diagnosticsLogger = { bridge.log(it) },
             onLayoutGeneration = { width, height ->
                 performanceGenerationCounter.nextLayout(width, height)?.let { generation ->
@@ -8026,7 +10583,6 @@ internal fun SharedThreadRouteContent(
             pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
             markdownReferencePendingActionId = markdownReferencePending.active?.actionId,
             attachmentOpenStates = attachmentOpenStates,
-            attachmentCommentsEnabled = attachmentCommentsEnabled && renderSlice.writeActionsEnabled,
             composerSendKeyEnabled = composerSendKeyEnabled,
             newDesignSettingsEnabled = chatLayoutPreferenceStore::readNewDesignSettingsEnabledSync,
             longMessageCollapseEnabled = longMessageCollapseEnabled,
@@ -8066,6 +10622,9 @@ internal fun SharedThreadRouteContent(
             },
             onVisibleReadTailChange = { index -> visibleReadTailIndex = index },
             visibleReadTailIndex = visibleReadTailIndex,
+            adaptiveCloseRequest = adaptiveCloseRequest,
+            adaptiveStoreScope = storeScope,
+            adaptiveEventBus = eventBus,
             onLoadNewer = {
                 threadViewModel.loadNewerPage()
             },
@@ -8088,6 +10647,32 @@ internal fun SharedThreadRouteContent(
             },
             onClearChannelProfileUpdateStatus = {
                 threadViewModel.dispatch(SharedThreadIntent.ClearChannelProfileUpdateStatus)
+            },
+            onForwardMessagesDelivered = { result ->
+                applyForwardMessageDeliveries(
+                    result = result,
+                    messageStore = sharedStores.threadMessageStore,
+                    onHomeRefresh = { sharedHomeStore?.dispatch(SharedHomeIntent.ForegroundRefresh) }
+                )
+            },
+            onOpenForwardDestination = { banner ->
+                val conversation = banner.forwardSuccessConversationIdentity()
+                val bannerPayload =
+                    conversation?.let {
+                        buildAppShellThreadPayload(
+                            conversation = it,
+                            timeContext = renderedPayload.toSlockTimeCapabilities().staticContext(),
+                            alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
+                            compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
+                            anchorMessageId = banner.messageId.value,
+                            onWarn = bridge::logWarn
+                        )
+                    }
+                if (bannerPayload == null) {
+                    bridge.logWarn("thread_forward_success_open_rejected reason=identity_unresolved")
+                } else {
+                    onOpenThreadPayload(bannerPayload)
+                }
             },
             onThreadEvent = ThreadEventHandler(dispatch = ThreadPageContent@{ action, itemId, attachmentId, tab, markdownActionId ->
                 if (handleThreadStoreRetryEvent(action, threadViewModel::dispatch)) {
@@ -8793,16 +11378,49 @@ internal fun SharedThreadRouteContent(
                         }
                     }
                 }
-                action == "openMarkdownChannel" && !itemId.isNullOrBlank() -> {
+                (action == "openMarkdownChannel" || action == "openMarkdownDirectMessage") && !itemId.isNullOrBlank() -> {
                     val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
                     if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
+                    val openDirectMessage = action == "openMarkdownDirectMessage"
                     coroutineScope.launch {
                         try {
-                            val loadingPayload = dataSource.markdownChannelLaunchPayload(renderedThread, itemId)
+                            val loadingPayload =
+                                dataSource.markdownChannelLaunchPayload(
+                                    currentPayload = renderedThread,
+                                    channelLabel = itemId,
+                                    requiredKind =
+                                        if (openDirectMessage) {
+                                            ConversationKind.DirectMessage
+                                        } else {
+                                            null
+                                        }
+                                )
                             if (loadingPayload == null) {
-                                bridge.toast(localizedUnableToOpenTarget("#${itemId.removePrefix("#").take(31)}"))
+                                bridge.toast(
+                                    localizedUnableToOpenTarget(
+                                        if (openDirectMessage) {
+                                            "dm:@${itemId.take(28)}"
+                                        } else {
+                                            "#${itemId.removePrefix("#").take(31)}"
+                                        }
+                                    )
+                                )
                             } else {
-                                onOpenThreadPayload(loadingPayload)
+                                val currentRouteIdentity = renderedThread.resolveThreadRouteIdentity()
+                                val targetRouteIdentity = loadingPayload.resolveThreadRouteIdentity()
+                                if (currentRouteIdentity.canRetainThreadPageFor(targetRouteIdentity)) {
+                                    val targetFocusedMessageId = loadingPayload.focusedMessageId
+                                    if (!targetFocusedMessageId.isNullOrBlank()) {
+                                        threadViewModel.dispatch(
+                                            SharedThreadIntent.FocusMessage(
+                                                messageId = targetFocusedMessageId,
+                                                switchToTab = loadingPayload.selectedTab
+                                            )
+                                        )
+                                    }
+                                } else {
+                                    onOpenThreadPayload(loadingPayload)
+                                }
                             }
                         } finally {
                             finishMarkdownReferencePending(markdownPendingToken)
@@ -8831,7 +11449,7 @@ internal fun SharedThreadRouteContent(
                                         threadShortId = tab,
                                         requiredParentKind =
                                             if (action == "openMarkdownDirectMessageThreadRef") {
-                                                build.raft.app.model.ConversationKind.DirectMessage
+                                                ConversationKind.DirectMessage
                                             } else {
                                                 null
                                             }
@@ -8845,7 +11463,21 @@ internal fun SharedThreadRouteContent(
                                             "threadId=${result.data.streamChannelId.orEmpty()} " +
                                             "focusedMessageId=${result.data.focusedMessageId.orEmpty()}"
                                     )
-                                    onOpenThreadPayload(result.data)
+                                    val currentRouteIdentity = renderedThread.resolveThreadRouteIdentity()
+                                    val targetRouteIdentity = result.data.resolveThreadRouteIdentity()
+                                    if (currentRouteIdentity.canRetainThreadPageFor(targetRouteIdentity)) {
+                                        val targetFocusedMessageId = result.data.focusedMessageId
+                                        if (!targetFocusedMessageId.isNullOrBlank()) {
+                                            threadViewModel.dispatch(
+                                                SharedThreadIntent.FocusMessage(
+                                                    messageId = targetFocusedMessageId,
+                                                    switchToTab = result.data.selectedTab
+                                                )
+                                            )
+                                        }
+                                    } else {
+                                        onOpenThreadPayload(result.data)
+                                    }
                                 }
                                 is DataResult.Empty -> {
                                     bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
@@ -9032,6 +11664,27 @@ internal fun SharedThreadRouteContent(
                         return@ThreadPageContent
                     }
                     val intent = linkedTasksProjection.statusUpdateIntent(itemId, status)
+                    if (tasksViewModel == null || intent == null) {
+                        bridge.toast(unableToUpdateTaskLabel)
+                        return@ThreadPageContent
+                    }
+                    tasksViewModel.dispatch(intent)
+                }
+                // Task #258: inline task detail panel assignee row. tab carries the
+                // assignee filter id ("unassigned" sentinel or member filter id);
+                // resolve against the same current-channel options rendered by the picker.
+                action == "setTaskAssignee" && !itemId.isNullOrBlank() && !tab.isNullOrBlank() -> {
+                    val assignee =
+                        if (tab == TasksUnassignedAssigneeFilterId) {
+                            null
+                        } else {
+                            resolveThreadTaskAssignee(tab, taskAssigneeOptions)
+                        }
+                    if (assignee == null && tab != TasksUnassignedAssigneeFilterId) {
+                        bridge.toast(unableToUpdateTaskLabel)
+                        return@ThreadPageContent
+                    }
+                    val intent = linkedTasksProjection.assignUpdateIntent(itemId, assignee)
                     if (tasksViewModel == null || intent == null) {
                         bridge.toast(unableToUpdateTaskLabel)
                         return@ThreadPageContent
@@ -9269,6 +11922,16 @@ internal fun SharedThreadRouteContent(
                         SharedThreadComposerDraftIntent.Change(seedAsTask = asTask)
                     )
                 }
+                "toggleOriginalImage" -> {
+                    val enabled = asTask ?: !currentDraftState.originalImage
+                    bridge.log(
+                        "thread_composer_toggle_original_image instanceId=$composerInstanceId " +
+                            "originalImage=$enabled draftKey=${currentDraftState.draftKey.orEmpty()}"
+                    )
+                    composerDraftViewModel.dispatch(
+                        SharedThreadComposerDraftIntent.SetOriginalImage(enabled)
+                    )
+                }
                 "send" -> {
                     handleComposerSendRequest(
                         ThreadComposerSendRequest(
@@ -9404,6 +12067,14 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 ThreadComposerAttachImageAction, ThreadComposerCaptureImageAction, "attachFile" -> {
+                    // Freeze the session's image policy at picker admission.  The picker may
+                    // complete after a recomposition (or a new toggle event), but its result must
+                    // retain the policy that was visible when the user opened it.
+                    val compressPickerImages =
+                        shouldCompressThreadAttachmentPickerImages(
+                            action = action,
+                            originalImage = currentDraftState.originalImage
+                        )
                     coroutineScope.launch {
                         val channelId = composerSurface.sendChannelId
                         if (channelId == null) {
@@ -9415,6 +12086,12 @@ internal fun SharedThreadRouteContent(
                                 channelId = channelId,
                                 imageOnly = action != "attachFile",
                                 capture = action == ThreadComposerCaptureImageAction,
+                                // Image picker/camera results enter the annotation editor first.
+                                // Do not encode before the editor decision: picker JPEG -> editor
+                                // PNG -> JPEG would incur two lossy generations. Generic file
+                                // picks also stay uncompressed so a JPEG remains source bytes
+                                // and the shared size gate sees the real file.
+                                compressImages = compressPickerImages,
                             )
                         val files = parseSharedThreadPickedPlatformFiles(response)
                         bridge.log(
@@ -9422,6 +12099,33 @@ internal fun SharedThreadRouteContent(
                                 "files=${files.size} errorCode=${response?.optString("errorCode").orEmpty()} " +
                                 "bodyBytes=${response?.optString("bodyText").orEmpty().encodeToByteArray().size}"
                         )
+                        // Native generic pickers may finish a mixed selection with a readable
+                        // subset and a compression error (code 206).  Never upload that subset:
+                        // doing so would silently drop the failed image while the user believes
+                        // the whole selection was admitted.  Retire every ref exposed by the
+                        // envelope before returning, including refs from successful files and
+                        // any future error/fileRefs compatibility fields.
+                        if (threadAttachmentPickerHasCompressionFailure(response)) {
+                            val cleanupRefs = threadAttachmentPickerCompressionFailureFileRefs(response)
+                            if (cleanupRefs.isNotEmpty()) {
+                                bridge.retireFilePreviewTemporaryFiles(
+                                    sessionId = "thread-picker-compression-$threadInstanceKey",
+                                    fileRefs = cleanupRefs.toList()
+                                )
+                            }
+                            bridge.logWarn(
+                                "thread_attachment_picker_rejected reason=image_compression_failed " +
+                                    "cleanupRefs=${cleanupRefs.size}"
+                            )
+                            bridge.toast(
+                                localizedAttachmentUploadFailedDetail(
+                                    userFacingErrorLabels.forErrorCode(
+                                        SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE
+                                    ) ?: genericThreadErrorLabel
+                                )
+                            )
+                            return@launch
+                        }
                         if (files.isEmpty()) {
                             val errorCode = response?.optString("errorCode")?.takeIf { it.isNotBlank() }
                             when {
@@ -9454,9 +12158,10 @@ internal fun SharedThreadRouteContent(
                             )
                         ) {
                             ThreadPickedAttachmentComposerAction.OpenImageAnnotation ->
-                                admittedComposerAttachmentFiles(files)
-                                    .takeIf { admitted -> admitted.isNotEmpty() }
-                                    ?.let(::openComposerImageAnnotation)
+                                // The picker-reported bytes are the source image, not the final
+                                // editor output.  Defer the server-size gate until the confirmed
+                                // PNG/original or compressor-produced JPEG reaches upload.
+                                openComposerImageAnnotation(files)
                             ThreadPickedAttachmentComposerAction.UploadToComposer -> uploadComposerAttachmentFiles(files)
                             ThreadPickedAttachmentComposerAction.None -> Unit
                         }
@@ -9464,14 +12169,41 @@ internal fun SharedThreadRouteContent(
                 }
                 "removeAttachment" -> {
                     attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
-                        attachmentUploadOrchestrator.remove(id)
-                        attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId - id
+                        val draftKey = normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
+                        val removal =
+                            resolveThreadComposerAttachmentRemoval(
+                                attachments = composerDraftViewModel.state.value.uploadedAttachments,
+                                removedAttachmentIds = composerDraftViewModel.state.value.removedAttachmentIds,
+                                attachmentId = id,
+                                draftKey = draftKey
+                            )
+                        if (!removal.accepted) {
+                            bridge.logWarn(
+                                "thread_composer_attachment_remove_rejected attachmentId=$id reason=${removal.reason}"
+                            )
+                            return@ThreadPageContent
+                        }
+                        attachmentUploadOrchestrator.remove(id, draftKey)
+                        attachmentUploadFilesByLocalId =
+                            attachmentUploadFilesByLocalId.withoutThreadAttachmentUploadFile(id, draftKey)
                         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment(id))
+                        if (removal.fileRefToRetire != null) {
+                            bridge.retireFilePreviewTemporaryFiles(
+                                sessionId = "thread-composer-${draftKey.orEmpty()}",
+                                fileRefs = listOf(removal.fileRefToRetire)
+                            )
+                        }
                     }
                 }
                 "retryAttachments" -> {
                     attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
-                        val file = attachmentUploadFilesByLocalId[id]
+                        val draftKey = normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
+                        if (draftKey == null) {
+                            bridge.log("thread_composer_attachment_retry result=missing_draft_key attachmentId=$id")
+                            bridge.toast(attachmentRetryUnavailableLabel)
+                            return@ThreadPageContent
+                        }
+                        val file = attachmentUploadFilesByLocalId.threadAttachmentUploadFile(id, draftKey)
                         if (file == null) {
                             bridge.log(
                                 "thread_composer_attachment_retry result=missing_file_ref attachmentId=$id"
@@ -9479,7 +12211,7 @@ internal fun SharedThreadRouteContent(
                             bridge.toast(attachmentRetryUnavailableLabel)
                             return@ThreadPageContent
                         }
-                        if (attachmentUploadOrchestrator.isActive(id)) {
+                        if (attachmentUploadOrchestrator.isActive(id, draftKey)) {
                             bridge.log(
                                 "thread_composer_attachment_retry result=already_uploading attachmentId=$id"
                             )
@@ -9488,8 +12220,22 @@ internal fun SharedThreadRouteContent(
                         bridge.log(
                             "thread_composer_attachment_retry result=start attachmentId=$id fileName=${file.fileName}"
                         )
+                        // Preserve an editor's remote replacement slot across a failed attempt.
+                        // RetryAttachment clears the old admission so the next AddLocal mint gets
+                        // a fresh generation; capture the slot before that clear, otherwise a
+                        // successful retry would append beside the original remote row.
+                        val replacementSlot =
+                            composerDraftViewModel.state.value.attachmentAdmissionsByLocalId[id]
+                                ?.replacementAttachmentId
+                                ?.trim()
+                                ?.takeIf { it.isNotBlank() && it != id }
                         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RetryAttachment(id))
-                        coroutineScope.launch { uploadComposerAttachmentFiles(listOf(file)) }
+                        coroutineScope.launch {
+                            uploadComposerAttachmentFiles(
+                                files = listOf(file),
+                                replaceAttachmentId = replacementSlot
+                            )
+                        }
                     }
                 }
                 "previewAttachment" -> {
@@ -9997,6 +12743,11 @@ private suspend fun saveSharedThreadAttachment(
                         status = "storage_failed",
                         message = nativeResult?.optString("message").orEmpty().ifBlank { "Storage unavailable" }
                     )
+                "download_failed" ->
+                    ThreadAttachmentOpenResult(
+                        status = "download_failed",
+                        message = nativeResult?.optString("message").orEmpty()
+                    )
                 else ->
                     ThreadAttachmentOpenResult(
                         status = "failed",
@@ -10020,7 +12771,7 @@ internal fun String.toSlockThreadWebLinkTarget(): SlockThreadWebLinkTarget? {
             channelId = target.channelId.value,
             messageId = target.messageId.value,
             routeKind =
-                if (target.routeKind == build.raft.app.model.ConversationKind.DirectMessage) {
+                if (target.routeKind == ConversationKind.DirectMessage) {
                     KuiklyThreadSurfaceKind.DirectMessage
                 } else {
                     KuiklyThreadSurfaceKind.Channel
@@ -10837,23 +13588,28 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
     renderedPayload: KuiklyThreadScreenPayload,
     resolvedAuxiliaryThreadId: String?
 ): KuiklyThreadComposerPayload {
+    val projectedPendingAttachments = pendingAttachments.map { attachment ->
+        SharedThreadComposerAttachment(
+            id = attachment.id,
+            fileName = attachment.fileName,
+            sizeLabel = attachment.sizeLabel,
+            sizeBytes = attachment.sizeBytes,
+            mimeType = attachment.mimeType,
+            previewUri = attachment.previewUri,
+            status = attachment.status,
+            errorCode = attachment.errorCode,
+            source = attachment.source,
+            externalShareToken = attachment.externalShareToken,
+            externalShareAccountId = attachment.externalShareAccountId,
+            externalShareServerId = attachment.externalShareServerId
+        )
+    }
+    // The render-only pending item intentionally has no platform file handle.  Prefer the
+    // draft-store row for duplicate ids so a recomposition cannot shadow its real `fileRef`
+    // with a projection that only carries a thumbnail/status.  Route-projected rows that are
+    // not yet in the store are retained after the canonical session rows.
     val pendingAttachments =
-        (pendingAttachments.map { attachment ->
-            SharedThreadComposerAttachment(
-                id = attachment.id,
-                fileName = attachment.fileName,
-                sizeLabel = attachment.sizeLabel,
-                sizeBytes = attachment.sizeBytes,
-                mimeType = attachment.mimeType,
-                previewUri = attachment.previewUri,
-                status = attachment.status,
-                errorCode = attachment.errorCode,
-                source = attachment.source,
-                externalShareToken = attachment.externalShareToken,
-                externalShareAccountId = attachment.externalShareAccountId,
-                externalShareServerId = attachment.externalShareServerId
-            )
-        } + draftState.uploadedAttachments)
+        (draftState.uploadedAttachments + projectedPendingAttachments)
             .distinctBy { attachment -> attachment.id }
             .filterNot { attachment -> attachment.id in draftState.removedAttachmentIds }
     val pendingAttachmentItems =
@@ -10878,6 +13634,7 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
         instanceId = instanceId.ifBlank { renderedPayload.instanceId },
         seedText = draftState.seedText,
         seedAsTask = draftState.seedAsTask,
+        originalImage = draftState.originalImage,
         syncNonce = draftState.syncNonce,
         editorCommand = draftState.editorCommand,
         focusRequestNonce = draftState.focusRequestNonce,
@@ -10920,15 +13677,16 @@ private class ThreadRouteScaffoldSlots(
 private fun ThreadRouteScaffold(
     slots: ThreadRouteScaffoldSlots
 ) {
+    val surfaceColor = SlockColor.SurfaceWhite
     key(slots.scaffoldPlan.rootIdentity) {
         Box(
             modifier =
                 slots.rootModifier
                     .fillMaxSize()
-                    .background(SlockColor.SurfaceWhite)
+                    .background(surfaceColor)
         ) {
             Column(
-                modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
+                modifier = Modifier.fillMaxSize().background(surfaceColor)
             ) {
                 slots.header()
                 slots.body(this)
@@ -10999,8 +13757,115 @@ private class ThreadEventHandler(
     }
 }
 
-@Composable
-private fun ThreadPageContent(
+/**
+ * task #346: state payload of [ThreadPageContent]. See SlockStructuralHomeShellData for why
+ * the flat parameter list had to be grouped (Android dex verifier rejects the
+ * un-minified giant composable frame on API 34/36 builds).
+ */
+private data class ThreadPageContentData(
+    val agentFollowersHeader: @Composable () -> Unit,
+    val threadInstanceKey: String,
+    val threadReadAnchorOwner: ThreadReadAnchorOwner?,
+    val threadReadAnchorStore: ThreadReadAnchorStore,
+    val threadReadAnchorSessionGeneration: Long,
+    val routeActive: Boolean,
+    val hostForeground: Boolean,
+    val payload: KuiklyThreadScreenPayload,
+    val messageBodyTextStyle: TextStyle,
+    val timelineSlice: ThreadTimelineSlice,
+    val accessResolution: ThreadAccessResolution,
+    val canonicalAccessResolved: Boolean,
+    val initialHomeAccessLookupComplete: Boolean,
+    val lastRefreshResultReason: String?,
+    val replyParentAuthority: ReplyParentAuthorityStatus,
+    val writeActionsEnabled: Boolean,
+    val jointBillingNotice: JointBillingNotice = JointBillingNotice.None,
+    val jointGraceDeadlineLabel: String? = null,
+    val channelProfileUpdateStatus: ChannelProfileUpdateStatus,
+    val channelProfileUpdateErrorCode: String?,
+    val replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
+    val headerDisplay: ThreadHeaderDisplayModel,
+    val composerSurface: ThreadComposerSurface,
+    val baseComposerState: KuiklyThreadComposerPayload,
+    val composerDraftViewModel: SharedThreadComposerDraftViewModel,
+    val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
+    val resolvedAuxiliaryThreadId: String?,
+    val tasksViewModel: SharedTasksViewModel?,
+    val taskChannelId: ChannelId?,
+    val taskIdentityOptions: List<MemberProfile>,
+    val linkedTasksProjection: ThreadLinkedTasksProjection,
+    val filesViewModel: SharedThreadFilesViewModel?,
+    val memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
+    val channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
+    val selectedTab: KuiklyThreadTab,
+    val availableTabs: List<KuiklyThreadTab>,
+    val activityMuteState: ThreadActivityMuteUiState?,
+    val activityMutedIndicatorVisible: Boolean,
+    val conversationPinState: ThreadConversationPinUiState?,
+    val forwardServerId: ServerId?,
+    val forwardTargetRepository: ForwardMessageTargetRepository?,
+    val contentExtrasVisible: Boolean,
+    val highlightedMentions: Set<String>,
+    val pendingActionCardIds: Set<String>,
+    val pendingTaskConvertMessageIds: Set<String>,
+    val markdownReferencePendingActionId: String?,
+    val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
+    val composerSendKeyEnabled: Boolean,
+    val longMessageCollapseEnabled: Boolean,
+    val singleTapOpensThreadEnabled: Boolean,
+    val threadUnreadJumpEnabled: Boolean,
+    val newMessageMenuEnabled: Boolean,
+    val currentServerSlug: String?,
+    val translationStore: SharedMessageTranslationStore?,
+    val visibleReadTailIndex: Int?,
+    /** A4 destination contract (task #18, spec §9): non-null when hosted as a detail pane. */
+    val adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest?,
+    val adaptiveStoreScope: SlockShellStoreScope,
+    val adaptiveEventBus: SlockEventBus,
+    val onThreadEvent: ThreadEventHandler,
+)
+
+/** task #346: callback payload of [ThreadPageContent]. See ThreadPageContentData. */
+private class ThreadPageContentCallbacks(
+    val scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
+    val onSelectedTabChanged: (KuiklyThreadTab) -> Unit,
+    val onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit,
+    val onToggleActivityMute: (() -> Unit)?,
+    val onToggleConversationPin: (() -> Unit)?,
+    val onOpenTaskSummary: (TaskSummary, String) -> Unit,
+    val onTasksIntent: (SharedTasksRouteIntent) -> Unit,
+    val onFilesAuthRequired: (String?) -> Unit,
+    val onOpenFilesAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
+    val onDownloadFilesAttachment: (KuiklyThreadAttachmentItem) -> Unit,
+    val onOpenMemberProfile: (MemberDetailIdentity) -> Unit,
+    val onExternalAuthor: (KuiklyThreadMessageItem) -> Unit,
+    val agentStatusResolver: SlockAgentStatusResolver,
+    val memberAvatarResolver: SlockMemberAvatarResolver,
+    val memberModelLabelResolver: SlockMemberModelLabelResolver,
+    val diagnosticsLogger: (String) -> Unit,
+    val onLayoutGeneration: (width: Int, height: Int) -> Unit,
+    val onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit,
+    val onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject?,
+    val newDesignSettingsEnabled: () -> Boolean,
+    val mentionHandleResolver: (KuiklyThreadMessageItem) -> String?,
+    val onExportShareImage: suspend (ThreadShareCaptureRect?) -> JSONObject?,
+    val onSaveShareImage: suspend (String) -> JSONObject?,
+    val onFirstContentReady: () -> Unit,
+    val onVisibleReadTailChange: (Int?) -> Unit,
+    val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
+    val onJumpToLatest: suspend () -> Boolean,
+    val onBack: () -> Unit,
+    val onUpdateChannelProfile: (String, String, String, String, String) -> Unit,
+    val onClearChannelProfileUpdateStatus: () -> Unit,
+    val onForwardMessagesDelivered: (ForwardMessageBatchResult) -> Unit,
+    val onOpenForwardDestination: (ThreadForwardSuccessBanner) -> Unit,
+    val onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
+    val onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+)
+
+private @Composable
+fun ThreadPageContent(
+    agentFollowersHeader: @Composable () -> Unit = {},
     scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
     threadInstanceKey: String,
     threadReadAnchorOwner: ThreadReadAnchorOwner?,
@@ -11013,8 +13878,12 @@ private fun ThreadPageContent(
     timelineSlice: ThreadTimelineSlice,
     accessResolution: ThreadAccessResolution,
     canonicalAccessResolved: Boolean,
+    initialHomeAccessLookupComplete: Boolean = false,
+    lastRefreshResultReason: String? = null,
     replyParentAuthority: ReplyParentAuthorityStatus = ReplyParentAuthorityStatus.Resolving,
     writeActionsEnabled: Boolean,
+    jointBillingNotice: JointBillingNotice = JointBillingNotice.None,
+    jointGraceDeadlineLabel: String? = null,
     channelProfileUpdateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     channelProfileUpdateErrorCode: String? = null,
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
@@ -11049,9 +13918,11 @@ private fun ThreadPageContent(
     onOpenFilesAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
     onDownloadFilesAttachment: (KuiklyThreadAttachmentItem) -> Unit,
     onOpenMemberProfile: (MemberDetailIdentity) -> Unit,
+    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
     diagnosticsLogger: (String) -> Unit = {},
     onLayoutGeneration: (width: Int, height: Int) -> Unit = { _, _ -> },
     onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit = { _, _ -> },
@@ -11060,7 +13931,6 @@ private fun ThreadPageContent(
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     markdownReferencePendingActionId: String? = null,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
-    attachmentCommentsEnabled: Boolean = false,
     composerSendKeyEnabled: Boolean = false,
     newDesignSettingsEnabled: () -> Boolean = { false },
     longMessageCollapseEnabled: Boolean = false,
@@ -11075,15 +13945,223 @@ private fun ThreadPageContent(
     onFirstContentReady: () -> Unit = {},
     visibleReadTailIndex: Int? = null,
     onVisibleReadTailChange: (Int?) -> Unit = {},
+    adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest? = null,
+    adaptiveStoreScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
+    adaptiveEventBus: SlockEventBus,
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     onJumpToLatest: suspend () -> Boolean,
     onBack: () -> Unit,
     onUpdateChannelProfile: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
     onClearChannelProfileUpdateStatus: () -> Unit = {},
+    onForwardMessagesDelivered: (ForwardMessageBatchResult) -> Unit = {},
+    onOpenForwardDestination: (ThreadForwardSuccessBanner) -> Unit = {},
     onThreadEvent: ThreadEventHandler,
     onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
+)
+ {
+    ThreadFollowersOverlayHost {
+    ThreadPageContentContent(
+        modifier = Modifier,
+        data =
+            ThreadPageContentData(
+                agentFollowersHeader = agentFollowersHeader,
+                threadInstanceKey = threadInstanceKey,
+                threadReadAnchorOwner = threadReadAnchorOwner,
+                threadReadAnchorStore = threadReadAnchorStore,
+                threadReadAnchorSessionGeneration = threadReadAnchorSessionGeneration,
+                routeActive = routeActive,
+                hostForeground = hostForeground,
+                payload = payload,
+                messageBodyTextStyle = messageBodyTextStyle,
+                timelineSlice = timelineSlice,
+                accessResolution = accessResolution,
+                canonicalAccessResolved = canonicalAccessResolved,
+                initialHomeAccessLookupComplete = initialHomeAccessLookupComplete,
+                lastRefreshResultReason = lastRefreshResultReason,
+                replyParentAuthority = replyParentAuthority,
+                writeActionsEnabled = writeActionsEnabled,
+                jointBillingNotice = jointBillingNotice,
+                jointGraceDeadlineLabel = jointGraceDeadlineLabel,
+                channelProfileUpdateStatus = channelProfileUpdateStatus,
+                channelProfileUpdateErrorCode = channelProfileUpdateErrorCode,
+                replyMetadataByParentId = replyMetadataByParentId,
+                headerDisplay = headerDisplay,
+                composerSurface = composerSurface,
+                baseComposerState = baseComposerState,
+                composerDraftViewModel = composerDraftViewModel,
+                composerDraftPersistSlice = composerDraftPersistSlice,
+                resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
+                tasksViewModel = tasksViewModel,
+                taskChannelId = taskChannelId,
+                taskIdentityOptions = taskIdentityOptions,
+                linkedTasksProjection = linkedTasksProjection,
+                filesViewModel = filesViewModel,
+                memberSuggestionsFlow = memberSuggestionsFlow,
+                channelSuggestionsFlow = channelSuggestionsFlow,
+                selectedTab = selectedTab,
+                availableTabs = availableTabs,
+                activityMuteState = activityMuteState,
+                activityMutedIndicatorVisible = activityMutedIndicatorVisible,
+                conversationPinState = conversationPinState,
+                forwardServerId = forwardServerId,
+                forwardTargetRepository = forwardTargetRepository,
+                contentExtrasVisible = contentExtrasVisible,
+                highlightedMentions = highlightedMentions,
+                pendingActionCardIds = pendingActionCardIds,
+                pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
+                markdownReferencePendingActionId = markdownReferencePendingActionId,
+                attachmentOpenStates = attachmentOpenStates,
+                composerSendKeyEnabled = composerSendKeyEnabled,
+                longMessageCollapseEnabled = longMessageCollapseEnabled,
+                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                threadUnreadJumpEnabled = threadUnreadJumpEnabled,
+                newMessageMenuEnabled = newMessageMenuEnabled,
+                currentServerSlug = currentServerSlug,
+                translationStore = translationStore,
+                visibleReadTailIndex = visibleReadTailIndex,
+                adaptiveCloseRequest = adaptiveCloseRequest,
+                adaptiveStoreScope = adaptiveStoreScope,
+                adaptiveEventBus = adaptiveEventBus,
+                onThreadEvent = onThreadEvent,
+            ),
+        callbacks =
+            ThreadPageContentCallbacks(
+                scaffold = scaffold,
+                onSelectedTabChanged = onSelectedTabChanged,
+                onSuggestionDemandChanged = onSuggestionDemandChanged,
+                onToggleActivityMute = onToggleActivityMute,
+                onToggleConversationPin = onToggleConversationPin,
+                onOpenTaskSummary = onOpenTaskSummary,
+                onTasksIntent = onTasksIntent,
+                onFilesAuthRequired = onFilesAuthRequired,
+                onOpenFilesAttachment = onOpenFilesAttachment,
+                onDownloadFilesAttachment = onDownloadFilesAttachment,
+                onOpenMemberProfile = onOpenMemberProfile,
+                onExternalAuthor = onExternalAuthor,
+                agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver,
+                memberModelLabelResolver = memberModelLabelResolver,
+                diagnosticsLogger = diagnosticsLogger,
+                onLayoutGeneration = onLayoutGeneration,
+                onComposerLayoutProbe = onComposerLayoutProbe,
+                onComposerPixelProbe = onComposerPixelProbe,
+                newDesignSettingsEnabled = newDesignSettingsEnabled,
+                mentionHandleResolver = mentionHandleResolver,
+                onExportShareImage = onExportShareImage,
+                onSaveShareImage = onSaveShareImage,
+                onFirstContentReady = onFirstContentReady,
+                onVisibleReadTailChange = onVisibleReadTailChange,
+                onLoadNewer = onLoadNewer,
+                onJumpToLatest = onJumpToLatest,
+                onBack = onBack,
+                onUpdateChannelProfile = onUpdateChannelProfile,
+                onClearChannelProfileUpdateStatus = onClearChannelProfileUpdateStatus,
+                onForwardMessagesDelivered = onForwardMessagesDelivered,
+                onOpenForwardDestination = onOpenForwardDestination,
+                onComposerSendRequest = onComposerSendRequest,
+                onComposerEvent = onComposerEvent,
+            ),
+    )
+}
+}
+
+@Composable
+private fun ThreadPageContentContent(
+    modifier: Modifier = Modifier,
+    data: ThreadPageContentData,
+    callbacks: ThreadPageContentCallbacks,
 ) {
+    val scaffold = callbacks.scaffold
+    val threadInstanceKey = data.threadInstanceKey
+    val threadReadAnchorOwner = data.threadReadAnchorOwner
+    val threadReadAnchorStore = data.threadReadAnchorStore
+    val threadReadAnchorSessionGeneration = data.threadReadAnchorSessionGeneration
+    val routeActive = data.routeActive
+    val hostForeground = data.hostForeground
+    val payload = data.payload
+    val messageBodyTextStyle = data.messageBodyTextStyle
+    val timelineSlice = data.timelineSlice
+    val accessResolution = data.accessResolution
+    val canonicalAccessResolved = data.canonicalAccessResolved
+    val replyParentAuthority = data.replyParentAuthority
+    val writeActionsEnabled = data.writeActionsEnabled
+    val jointBillingNotice = data.jointBillingNotice
+    val jointGraceDeadlineLabel = data.jointGraceDeadlineLabel
+    val channelProfileUpdateStatus = data.channelProfileUpdateStatus
+    val channelProfileUpdateErrorCode = data.channelProfileUpdateErrorCode
+    val replyMetadataByParentId = data.replyMetadataByParentId
+    val headerDisplay = data.headerDisplay
+    val composerSurface = data.composerSurface
+    val baseComposerState = data.baseComposerState
+    val composerDraftViewModel = data.composerDraftViewModel
+    val composerDraftPersistSlice = data.composerDraftPersistSlice
+    val resolvedAuxiliaryThreadId = data.resolvedAuxiliaryThreadId
+    val tasksViewModel = data.tasksViewModel
+    val taskChannelId = data.taskChannelId
+    val taskIdentityOptions = data.taskIdentityOptions
+    val linkedTasksProjection = data.linkedTasksProjection
+    val filesViewModel = data.filesViewModel
+    val memberSuggestionsFlow = data.memberSuggestionsFlow
+    val channelSuggestionsFlow = data.channelSuggestionsFlow
+    val selectedTab = data.selectedTab
+    val availableTabs = data.availableTabs
+    val onSelectedTabChanged = callbacks.onSelectedTabChanged
+    val onSuggestionDemandChanged = callbacks.onSuggestionDemandChanged
+    val activityMuteState = data.activityMuteState
+    val activityMutedIndicatorVisible = data.activityMutedIndicatorVisible
+    val onToggleActivityMute = callbacks.onToggleActivityMute
+    val conversationPinState = data.conversationPinState
+    val onToggleConversationPin = callbacks.onToggleConversationPin
+    val forwardServerId = data.forwardServerId
+    val forwardTargetRepository = data.forwardTargetRepository
+    val contentExtrasVisible = data.contentExtrasVisible
+    val onOpenTaskSummary = callbacks.onOpenTaskSummary
+    val onTasksIntent = callbacks.onTasksIntent
+    val onFilesAuthRequired = callbacks.onFilesAuthRequired
+    val onOpenFilesAttachment = callbacks.onOpenFilesAttachment
+    val onDownloadFilesAttachment = callbacks.onDownloadFilesAttachment
+    val onOpenMemberProfile = callbacks.onOpenMemberProfile
+    val onExternalAuthor = callbacks.onExternalAuthor
+    val highlightedMentions = data.highlightedMentions
+    val agentStatusResolver = callbacks.agentStatusResolver
+    val memberAvatarResolver = callbacks.memberAvatarResolver
+    val memberModelLabelResolver = callbacks.memberModelLabelResolver
+    val diagnosticsLogger = callbacks.diagnosticsLogger
+    val onLayoutGeneration = callbacks.onLayoutGeneration
+    val onComposerLayoutProbe = callbacks.onComposerLayoutProbe
+    val onComposerPixelProbe = callbacks.onComposerPixelProbe
+    val pendingActionCardIds = data.pendingActionCardIds
+    val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
+    val markdownReferencePendingActionId = data.markdownReferencePendingActionId
+    val attachmentOpenStates = data.attachmentOpenStates
+    val composerSendKeyEnabled = data.composerSendKeyEnabled
+    val newDesignSettingsEnabled = callbacks.newDesignSettingsEnabled
+    val longMessageCollapseEnabled = data.longMessageCollapseEnabled
+    val singleTapOpensThreadEnabled = data.singleTapOpensThreadEnabled
+    val threadUnreadJumpEnabled = data.threadUnreadJumpEnabled
+    val newMessageMenuEnabled = data.newMessageMenuEnabled
+    val currentServerSlug = data.currentServerSlug
+    val translationStore = data.translationStore
+    val mentionHandleResolver = callbacks.mentionHandleResolver
+    val onExportShareImage = callbacks.onExportShareImage
+    val onSaveShareImage = callbacks.onSaveShareImage
+    val onFirstContentReady = callbacks.onFirstContentReady
+    val visibleReadTailIndex = data.visibleReadTailIndex
+    val adaptiveCloseRequest = data.adaptiveCloseRequest
+    val adaptiveStoreScope = data.adaptiveStoreScope
+    val adaptiveEventBus = data.adaptiveEventBus
+    val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
+    val onLoadNewer = callbacks.onLoadNewer
+    val onJumpToLatest = callbacks.onJumpToLatest
+    val onBack = callbacks.onBack
+    val onUpdateChannelProfile = callbacks.onUpdateChannelProfile
+    val onClearChannelProfileUpdateStatus = callbacks.onClearChannelProfileUpdateStatus
+    val onForwardMessagesDelivered = callbacks.onForwardMessagesDelivered
+    val onOpenForwardDestination = callbacks.onOpenForwardDestination
+    val onThreadEvent = data.onThreadEvent
+    val onComposerSendRequest = callbacks.onComposerSendRequest
+    val onComposerEvent = callbacks.onComposerEvent
     val inlineReplyParticipantsById =
         remember(payload.members, payload.memberCandidates) {
             (payload.members + payload.memberCandidates)
@@ -11130,6 +14208,10 @@ private fun ThreadPageContent(
                 "hasOriginMessage=${timelineSlice.originMessage != null} " +
                 "hasOriginPreview=${!payload.originPreview.isNullOrBlank()} " +
                 "renderEarlyLoadingShell=$renderEarlyLoadingShell " +
+                "accessResolution=${accessResolution.name} " +
+                "canonicalAccessResolved=$canonicalAccessResolved " +
+                "initialHomeAccessLookupComplete=${data.initialHomeAccessLookupComplete} " +
+                "lastRefreshResult=${data.lastRefreshResultReason ?: "none"} " +
                 "branch=${if (renderEarlyLoadingShell) "early_loading" else "tab_content"}"
         )
     }
@@ -11181,11 +14263,15 @@ private fun ThreadPageContent(
     var forwardPickerFlow by remember(threadInstanceKey) { mutableStateOf(SlockForwardPickerFlowState()) }
     var forwardSending by remember(threadInstanceKey) { mutableStateOf(false) }
     var forwardSourceServerId by remember(threadInstanceKey) { mutableStateOf<ServerId?>(null) }
-    var forwardSelectedReceipt by remember(threadInstanceKey) { mutableStateOf<ThreadForwardDestinationReceipt?>(null) }
+    var forwardSelectedReceipts by remember(threadInstanceKey) {
+        mutableStateOf<List<ThreadForwardDestinationReceipt>>(emptyList())
+    }
+    var forwardRequestId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var forwardDirectoryGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     var forwardDirectoryNextCursor by remember(threadInstanceKey) { mutableStateOf<ForwardMessageTargetDirectoryCursor?>(null) }
     var forwardOperationNonce by remember(threadInstanceKey) { mutableStateOf(0) }
     var forwardNote by remember(threadInstanceKey) { mutableStateOf(TextFieldValue()) }
+    var forwardSuccessBanner by remember(threadInstanceKey) { mutableStateOf<ThreadForwardSuccessBanner?>(null) }
     var insertMentionRequestNonce by remember(threadInstanceKey) { mutableStateOf(0) }
     var insertMentionRequest by remember(threadInstanceKey) { mutableStateOf<ThreadComposerInsertMentionRequest?>(null) }
     val shareSelectionActive = selectedShareMessageIds.isNotEmpty() && selectedTab == KuiklyThreadTab.Chat
@@ -11272,7 +14358,9 @@ private fun ThreadPageContent(
                 query = query,
                 generation = requestGeneration
             )
-        if (query.isNotBlank() && !append) delay(180)
+        // Debounce search so normal typing does not fire one request per
+        // keystroke; the field itself stays interactive while loading.
+        if (query.isNotBlank() && !append) delay(300)
         if (!requestIdentity.accepts(
                 serverId = forwardServerId?.value.orEmpty(),
                 sessionKey = forwardPickerFlow.sessionKey ?: return@LaunchedEffect,
@@ -11402,7 +14490,7 @@ private fun ThreadPageContent(
             )
         forwardTargets = emptyList()
         forwardDirectoryNextCursor = null
-        forwardSelectedReceipt = null
+        forwardSelectedReceipts = emptyList()
         forwardNote = TextFieldValue()
         activeModal = "forwardTargets"
     }
@@ -11562,6 +14650,7 @@ private fun ThreadPageContent(
         )
     val showComposerForSelectedTab =
         primaryFooterReady &&
+        jointBillingNotice != JointBillingNotice.Locked &&
         shouldShowThreadComposerForReadyContent(
             joined = payload.joined,
             showComposer = payload.showComposer,
@@ -11610,6 +14699,14 @@ private fun ThreadPageContent(
                     markdownActionId = actionId
                 )
             }
+            ThreadMarkdownTagKind.DirectMessage -> {
+                onThreadEvent(
+                    "openMarkdownDirectMessage",
+                    tag.directMessagePeerName ?: tag.label,
+                    tab = tag.kind.name,
+                    markdownActionId = actionId
+                )
+            }
             ThreadMarkdownTagKind.DirectMessageThread -> {
                 onThreadEvent(
                     "openMarkdownDirectMessageThreadRef",
@@ -11632,7 +14729,17 @@ private fun ThreadPageContent(
             payload.toKnownMarkdownMentionNameSet()
         }
     val knownMarkdownDirectMessagePeerNames =
-        remember(payload.knownMarkdownDirectMessagePeerNames) {
+        remember(
+            payload.knownMarkdownDirectMessagePeerNames,
+            payload.dmPeerName,
+            payload.dmPeerIdentity,
+            payload.surfaceKind,
+            payload.parentSurfaceKind,
+            payload.channelKind,
+            payload.parentChannelKind,
+            payload.members,
+            payload.memberCandidates
+        ) {
             payload.toKnownMarkdownDirectMessagePeerNameSet()
         }
     val knownMarkdownTaskNumbers =
@@ -11679,6 +14786,7 @@ private fun ThreadPageContent(
         remember(
             payload.backgroundRefreshing,
             payload.errorCode,
+            payload.errorServerMessage,
             payload.originPreview,
             payload.originErrorCode,
             payload.localOffsetMinutes,
@@ -11697,7 +14805,8 @@ private fun ThreadPageContent(
         onThreadEvent("selectTab", null, null, tab.wireValue)
     }
     var threadHeaderScrollToTopRequest by remember(threadInstanceKey) { mutableStateOf(0) }
-    val renderThreadTabContent: @Composable (KuiklyThreadTab, Modifier) -> Unit = { tab, contentModifier ->
+    val renderThreadTabContent: @Composable (KuiklyThreadTab, Modifier, Boolean) -> Unit =
+        { tab, contentModifier, tabActive ->
         Box(
             modifier = contentModifier
                 .fillMaxWidth()
@@ -11721,8 +14830,16 @@ private fun ThreadPageContent(
                 )
             } else if (accessResolution == ThreadAccessResolution.NoPermission) {
                 ThreadStateMessage(
-                    stringResource(MR.strings.thread_state_no_permission),
-                    stringResource(MR.strings.thread_error_no_permission)
+                    if (payload.errorServerMessage.isEdgeBlockedMarker()) {
+                        stringResource(MR.strings.thread_state_edge_blocked)
+                    } else {
+                        stringResource(MR.strings.thread_state_no_permission)
+                    },
+                    if (payload.errorServerMessage.isEdgeBlockedMarker()) {
+                        stringResource(MR.strings.error_edge_blocked)
+                    } else {
+                        stringResource(MR.strings.thread_error_no_permission)
+                    }
                 )
             } else if (renderEarlyLoadingShell) {
                 ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
@@ -11733,7 +14850,7 @@ private fun ThreadPageContent(
                         readAnchorOwner = threadReadAnchorOwner,
                         readAnchorStore = threadReadAnchorStore,
                         readAnchorSessionGeneration = threadReadAnchorSessionGeneration,
-                        routeActive = routeActive,
+                        routeActive = routeActive && tabActive,
                         hostForeground = hostForeground,
                         renderConfig = timelineRenderConfig,
                         messageBodyTextStyle = messageBodyTextStyle,
@@ -11742,14 +14859,15 @@ private fun ThreadPageContent(
                         composerDraftPersistSlice = composerDraftPersistSlice,
                         composerKeyboardInsetDp = composerKeyboardInsetDp,
                         linkedTasksProjection = linkedTasksProjection,
+                        taskAssigneeOptions = taskIdentityOptions,
                         highlightedMentions = highlightedMentions,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
+                        memberModelLabelResolver = memberModelLabelResolver,
                         inlineReplyParticipantsById = inlineReplyParticipantsById,
                         pendingActionCardIds = pendingActionCardIds,
                         pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                         attachmentOpenStates = attachmentOpenStates,
-                        attachmentCommentsEnabled = attachmentCommentsEnabled,
                         writeActionsEnabled = writeActionsEnabled,
                         currentServerSlug = currentServerSlug,
                         contentExtrasVisible = contentExtrasVisible,
@@ -11766,6 +14884,7 @@ private fun ThreadPageContent(
                         onLoadNewer = onLoadNewer,
                         onJumpToLatest = onJumpToLatest,
                         onOpenMember = onOpenMemberProfile,
+                        onExternalAuthor = onExternalAuthor,
                         onMentionAuthor = { message ->
                             val handle = mentionHandleResolver(message)
                             if (showComposerForSelectedTab && handle != null) {
@@ -11843,7 +14962,10 @@ private fun ThreadPageContent(
                         translationStore = translationStore,
                         onThreadContentReady = onFirstContentReady,
                         onVisibleReadTailChange = onVisibleReadTailChange,
-                        visibleReadTailIndex = visibleReadTailIndex
+                        visibleReadTailIndex = visibleReadTailIndex,
+                        adaptiveCloseRequest = adaptiveCloseRequest,
+                        adaptiveStoreScope = adaptiveStoreScope,
+                        adaptiveEventBus = adaptiveEventBus
                     )
                 KuiklyThreadTab.Tasks ->
                     ThreadTasksTab(
@@ -11861,7 +14983,8 @@ private fun ThreadPageContent(
                         threadInstanceKey = threadInstanceKey,
                         basePayload = payload,
                         filesStartKey = resolvedAuxiliaryThreadId,
-                        filesViewModel = checkNotNull(filesViewModel),
+                        filesViewModel = filesViewModel,
+                        active = tab == selectedTab,
                         attachmentOpenStates = attachmentOpenStates,
                         onAuthRequired = onFilesAuthRequired,
                         onOpenAttachment = onOpenFilesAttachment,
@@ -11882,6 +15005,7 @@ private fun ThreadPageContent(
                 },
             header = {
                 ThreadPageHeader(
+                    agentFollowersHeader = data.agentFollowersHeader,
                     payload = payload,
                     headerDisplay = headerDisplay,
                     activityMutedIndicatorVisible = activityMutedIndicatorVisible,
@@ -11925,6 +15049,28 @@ private fun ThreadPageContent(
                 )
             },
             body = {
+            if (jointBillingNotice != JointBillingNotice.None) {
+                val deadlineLabel = jointGraceDeadlineLabel?.takeIf { it.isNotBlank() }
+                SlockRaftUiBanner(
+                    status =
+                        if (jointBillingNotice == JointBillingNotice.Locked) SlockRaftUiBannerStatus.Destructive
+                        else SlockRaftUiBannerStatus.Warning,
+                    title =
+                        stringResource(
+                            if (jointBillingNotice == JointBillingNotice.Locked) MR.strings.joint_billing_locked_title
+                            else MR.strings.joint_over_limit_grace_title
+                        ),
+                    description =
+                        if (jointBillingNotice == JointBillingNotice.Locked) {
+                            stringResource(MR.strings.joint_billing_locked_detail)
+                        } else {
+                            stringResource(MR.strings.joint_over_limit_grace_detail, deadlineLabel ?: "")
+                        },
+                    size = SlockRaftUiBannerSize.Medium,
+                    iconName = SlockLucideIconName.TriangleAlert,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
             if (payload.showModeTabs) {
                 SlockTabbedScaffold(
                     tabs = availableTabs.map { it.toSlockTabSpec() },
@@ -11937,7 +15083,8 @@ private fun ThreadPageContent(
             } else {
                 renderThreadTabContent(
                     selectedTab,
-                    Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)
+                    Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite),
+                    true
                 )
             }
             if (!primaryFooterReady) {
@@ -11948,12 +15095,15 @@ private fun ThreadPageContent(
             } else if (
                 !writeActionsEnabled &&
                 payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
-                replyParentAuthority == ReplyParentAuthorityStatus.Unknown
+                (replyParentAuthority == ReplyParentAuthorityStatus.Unknown ||
+                    replyParentAuthority == ReplyParentAuthorityStatus.ParentDeleted)
             ) {
                 // Task #228 successor direction B: "authority undetermined" is
                 // never rendered as a silently vanished composer - the user
                 // gets an explicit explanation and the state upgrades itself
                 // event-driven when the parent directory row arrives.
+                // Task #339: an authoritative directory miss says the channel
+                // was deleted instead of implying permissions are resolving.
                 Column(
                     modifier =
                         Modifier.fillMaxWidth()
@@ -11962,7 +15112,14 @@ private fun ThreadPageContent(
                             .padding(horizontal = 12.dp, vertical = 10.dp)
                 ) {
                     Text(
-                        text = stringResource(MR.strings.thread_parent_authority_resolving),
+                        text =
+                            stringResource(
+                                when (replyParentAuthority) {
+                                    ReplyParentAuthorityStatus.ParentDeleted ->
+                                        MR.strings.thread_parent_channel_deleted_composer
+                                    else -> MR.strings.thread_parent_authority_resolving
+                                }
+                            ),
                         style = SlockType.Body.copy(
                             fontSize = 13.sp,
                             lineHeight = 18.sp,
@@ -12113,7 +15270,9 @@ private fun ThreadPageContent(
                                     if (nextInset != composerKeyboardInsetDp) {
                                         composerKeyboardInsetDp = nextInset
                                     }
-                                }
+                                },
+                                adaptiveNativeEditingStateReader =
+                                    LocalThreadAdaptiveNativeEditingReader.current
                             )
                         }
                     }
@@ -12123,18 +15282,25 @@ private fun ThreadPageContent(
             overlays = {
         ThreadComposerSuggestionPortalHost(composerSuggestionPortal)
         val visibleForwardPickerSession = forwardPickerFlow.sessionKey
+        val forwardPickerBottomSafeArea = slockBottomSafeAreaPadding()
         if ((activeModal == "forwardTargets" || activeModal == "forwardNote") && visibleForwardPickerSession != null) {
                 SlockForwardTargetPicker(
                     messageCount = forwardMessageSelection.forwardableMessages.size,
                     skippedCount = forwardMessageSelection.skippedCount,
                     nestedForwardCount = forwardMessageSelection.nestedForwardCount,
                     taskLinkedCount = forwardMessageSelection.taskLinkedCount,
+                    // Keep the search field composed while results load: swapping it
+                    // for the read-only placeholder destroys the focused field and
+                    // closes the IME on every keystroke (verify feedback #255).
+                    searchInputInteractive = forwardPickerFlow.step == SlockForwardPickerStep.Targets,
+                    bottomSafeArea = forwardPickerBottomSafeArea,
                     state =
                         SlockForwardTargetPickerUiState(
                             sessionKey = visibleForwardPickerSession,
                             query = forwardPickerFlow.query,
                             items = forwardTargetItems,
                             selectedKey = forwardPickerFlow.selectedKey,
+                            selectedItems = forwardSelectedReceipts.map { it.target.toSlockForwardTargetPickerItem() },
                             loadState = forwardPickerFlow.loadState,
                             errorCode = forwardPickerFlow.errorCode,
                             canLoadMore = forwardDirectoryNextCursor != null,
@@ -12177,8 +15343,29 @@ private fun ThreadPageContent(
                                 forwardMessageIds = emptySet()
                                 activeModal = null
                             }
-                            SlockForwardTargetPickerIntent.Continue,
-                            is SlockForwardTargetPickerIntent.RemoveSelection -> Unit
+                            SlockForwardTargetPickerIntent.Continue -> {
+                                val nextFlow = forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.Continue)
+                                forwardPickerFlow = nextFlow
+                                if (nextFlow.step == SlockForwardPickerStep.Note) {
+                                    if (forwardRequestId == null) {
+                                        forwardRequestId = newThreadForwardRequestId()
+                                    }
+                                    activeModal = "forwardNote"
+                                }
+                            }
+                            is SlockForwardTargetPickerIntent.RemoveSelection -> {
+                                forwardPickerFlow =
+                                    forwardPickerFlow.reduce(
+                                        SlockForwardPickerFlowEvent.TargetSelected(
+                                            stableKey = intent.stableKey,
+                                            renderGeneration = forwardPickerFlow.requestGeneration
+                                        )
+                                    )
+                                forwardSelectedReceipts = forwardSelectedReceipts.filterNot {
+                                    it.target.threadForwardSelectionKey() == intent.stableKey
+                                }
+                                forwardRequestId = null
+                            }
                             is SlockForwardTargetPickerIntent.TargetSelected -> {
                                 val nextFlow =
                                     forwardPickerFlow.reduce(
@@ -12187,22 +15374,33 @@ private fun ThreadPageContent(
                                             renderGeneration = intent.renderGeneration
                                         )
                                     )
-                                val selectionAccepted =
-                                    forwardPickerFlow.step == SlockForwardPickerStep.Targets &&
-                                        nextFlow.step == SlockForwardPickerStep.Note &&
-                                        nextFlow.selectedKey == intent.item.stableKey
                                 val sourceServerId = forwardSourceServerId
-                                if (selectionAccepted && sourceServerId != null) {
+                                forwardRequestId = forwardRequestIdAfterSelectionChange(
+                                    previousKeys = forwardPickerFlow.selectedKeys,
+                                    nextKeys = nextFlow.selectedKeys,
+                                    currentRequestId = forwardRequestId
+                                )
+                                if (
+                                    sourceServerId != null &&
+                                    nextFlow.selectedKeys.contains(intent.item.stableKey)
+                                ) {
                                     forwardPickerFlow = nextFlow
-                                    val selected = intent.item.payload
                                     forwardOperationNonce += 1
-                                    forwardSelectedReceipt =
-                                        selected.toThreadForwardDestinationReceipt(
+                                    val receipt =
+                                        intent.item.payload.toThreadForwardDestinationReceipt(
                                             operationId = "$threadInstanceKey-fwd-$forwardOperationNonce",
                                             sourceServerId = sourceServerId,
                                             directoryGeneration = forwardDirectoryGeneration
                                         )
-                                    activeModal = "forwardNote"
+                                    forwardSelectedReceipts =
+                                        (forwardSelectedReceipts + receipt).distinctBy {
+                                            it.target.threadForwardSelectionKey()
+                                        }
+                                } else {
+                                    forwardPickerFlow = nextFlow
+                                    forwardSelectedReceipts = forwardSelectedReceipts.filterNot {
+                                        it.target.threadForwardSelectionKey() == intent.item.stableKey
+                                    }
                                 }
                             }
                         }
@@ -12212,7 +15410,7 @@ private fun ThreadPageContent(
         if (activeModal == "forwardNote") {
                 ThreadForwardNoteDialog(
                     messageCount = forwardMessageSelection.forwardableMessages.size,
-                    selectedTarget = forwardSelectedReceipt?.target,
+                    selectedTargetLabel = forwardSelectedReceipts.joinToString(", ") { it.displayedTitle },
                     note = forwardNote,
                     sending = forwardSending,
                     onNoteChange = { forwardNote = it },
@@ -12229,50 +15427,85 @@ private fun ThreadPageContent(
                         // already inside the receipt.
                         val liveServerId = forwardServerId
                         val sourceChannelId = forwardSourceChannelId
-                        val selectedReceipt = forwardSelectedReceipt
+                        val selectedReceipts = forwardSelectedReceipts
                         when {
                             repository == null ->
                                 onThreadEvent("forwardMessagesFailed", "Forward API unavailable", null, null)
                             sourceChannelId == null ->
                                 onThreadEvent("forwardMessagesFailed", "Source conversation unavailable", null, null)
-                            selectedReceipt == null ->
+                            selectedReceipts.isEmpty() ->
                                 onThreadEvent("forwardMessagesFailed", "Forward target unavailable", null, null)
                             !forwardSending -> {
                                 forwardSending = true
                                 shareExportScope.launch {
                                     try {
                                         val outcome =
-                                            executeThreadForward(
+                                            executeThreadForwardBatch(
                                                 repository = repository,
                                                 liveSourceServerId = liveServerId,
                                                 sourceChannelId = sourceChannelId,
-                                                receipt = selectedReceipt,
+                                                receipts = selectedReceipts,
                                                 currentDirectoryGeneration = forwardDirectoryGeneration,
                                                 messageIds = forwardMessageSelection.forwardableMessages.map { it.id },
                                                 mode = activeForwardSelectionMode.toForwardMessageSendMode(),
-                                                note = forwardNote.text
+                                                note = forwardNote.text,
+                                                requestId = forwardRequestId ?: newThreadForwardRequestId()
                                             )
-                                        if (outcome.failureCode == null) {
+                                        outcome.result
+                                            ?.takeIf { it.deliveries.isNotEmpty() }
+                                            ?.let { result ->
+                                                onForwardMessagesDelivered(result)
+                                                if (result.deliveries.size == 1 && result.failures.isEmpty()) {
+                                                    val delivery = result.deliveries.single()
+                                                    val receipt = selectedReceipts.singleOrNull()
+                                                    if (receipt != null) {
+                                                        forwardSuccessBanner =
+                                                            ThreadForwardSuccessBanner(
+                                                                target = receipt.target,
+                                                                destination = delivery.destination,
+                                                                messageId = delivery.message.id
+                                                            )
+                                                    }
+                                                }
+                                            }
+                                        if (outcome.failureCode == null && outcome.result != null && outcome.result.failures.isEmpty()) {
                                             activeModal = null
                                             forwardPickerFlow.sessionKey?.let { session ->
                                                 forwardTargetRepository?.releaseDirectorySnapshot(session.directorySessionId())
                                             }
                                             forwardPickerFlow =
                                                 forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.Dismiss)
-                                            forwardSelectedReceipt = null
+                                            forwardSelectedReceipts = emptyList()
+                                            forwardRequestId = null
                                             forwardMessageIds = emptySet()
                                             forwardNote = TextFieldValue()
                                             clearShareSelection()
-                                            onThreadEvent(
-                                                "forwardMessagesSent",
-                                                selectedReceipt.displayedTitle,
-                                                null,
-                                                activeForwardSelectionMode.wireValue
-                                            )
+                                            if (outcome.result.deliveries.size != 1 || forwardSuccessBanner == null) {
+                                                onThreadEvent(
+                                                    "forwardMessagesSent",
+                                                    selectedReceipts.joinToString(", ") { it.displayedTitle },
+                                                    null,
+                                                    activeForwardSelectionMode.wireValue
+                                                )
+                                            }
                                         } else {
+                                            outcome.result?.let { result ->
+                                                if (outcome.failedReceipts.isNotEmpty()) {
+                                                    val failedKeys = outcome.failedReceipts
+                                                        .map { it.target.threadForwardSelectionKey() }
+                                                        .toSet()
+                                                    forwardPickerFlow = forwardPickerFlow.reduce(
+                                                        SlockForwardPickerFlowEvent.ClearSelected(
+                                                            stableKeys = forwardPickerFlow.selectedKeys - failedKeys
+                                                        )
+                                                    )
+                                                    forwardSelectedReceipts = outcome.failedReceipts
+                                                    forwardRequestId = null
+                                                }
+                                            }
                                             onThreadEvent(
                                                 "forwardMessagesFailed",
-                                                outcome.failureCode.threadForwardErrorMessage(),
+                                                (outcome.failureCode ?: "forward_partial_failure").threadForwardErrorMessage(),
                                                 null,
                                                 null
                                             )
@@ -12285,6 +15518,16 @@ private fun ThreadPageContent(
                         }
                     }
                 )
+        }
+        forwardSuccessBanner?.let { banner ->
+            ThreadForwardSuccessBannerView(
+                banner = banner,
+                onViewInChat = {
+                    forwardSuccessBanner = null
+                    onOpenForwardDestination(banner)
+                },
+                onDismiss = { forwardSuccessBanner = null }
+            )
         }
         when (activeModal) {
             "settings" -> {
@@ -12366,7 +15609,8 @@ private fun ThreadPageContent(
 }
 
 @Composable
-private fun ThreadPageHeader(
+internal fun ThreadPageHeader(
+    agentFollowersHeader: @Composable () -> Unit = {},
     payload: KuiklyThreadScreenPayload,
     headerDisplay: ThreadHeaderDisplayModel = payload.threadHeaderFallbackDisplayModel(),
     activityMutedIndicatorVisible: Boolean = payload.threadActivityMutedIndicatorVisible(null),
@@ -12404,7 +15648,8 @@ private fun ThreadPageHeader(
     val showHeaderActions =
         showActions &&
             (
-                payload.threadHeaderSearchAction() != null ||
+                headerDisplay.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
+                    payload.threadHeaderSearchAction() != null ||
                     threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind) ||
                     payload.showMembersAction ||
                     payload.threadHeaderOpenInParentActionVisible()
@@ -12459,6 +15704,9 @@ private fun ThreadPageHeader(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
+                    if (headerDisplay.surfaceKind == KuiklyThreadSurfaceKind.Channel) {
+                        SlockExternalBridgeBadge(headerDisplay.bridgeProvider)
+                    }
                     if (activityMutedIndicatorVisible) {
                         ThreadActivityMutedBadge()
                     }
@@ -12482,6 +15730,7 @@ private fun ThreadPageHeader(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(ThreadHeaderActionGroupSpacing)
                 ) {
+                    agentFollowersHeader()
                     if (payload.threadHeaderSearchAction() != null) {
                         ThreadHeaderIconButton(icon = SlockLucideIconName.Search, onClick = onOpenSearch)
                     }
@@ -12492,7 +15741,7 @@ private fun ThreadPageHeader(
                         ThreadMembersHeaderButton(count = payload.membersCount, onClick = onShowMembers)
                     }
                     if (payload.threadHeaderOpenInParentActionVisible()) {
-                        ThreadHeaderIconButton(icon = SlockLucideIconName.ExternalLink, onClick = onOpenInChannel)
+                        ThreadHeaderIconButton(icon = SlockLucideIconName.MapPin, onClick = onOpenInChannel)
                     }
                 }
                 }
@@ -12658,7 +15907,8 @@ private fun ThreadComposerRoute(
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
     composerSendKeyEnabled: Boolean = false,
-    onKeyboardHeightChange: (Float) -> Unit
+    onKeyboardHeightChange: (Float) -> Unit,
+    adaptiveNativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
 ) {
     val composerDraftState by composerDraftViewModel.state.collectAsState()
     val expectedDraftKey = remember(surface) { surface.threadComposerDraftKey() }
@@ -12696,7 +15946,8 @@ private fun ThreadComposerRoute(
         composerSendKeyEnabled = composerSendKeyEnabled,
         onKeyboardHeightChange = onKeyboardHeightChange,
         contentPaddingTop = 0.dp,
-        contentPaddingBottom = 0.dp
+        contentPaddingBottom = 0.dp,
+        adaptiveNativeEditingStateReader = adaptiveNativeEditingStateReader,
     )
 }
 
@@ -12735,7 +15986,8 @@ private fun ThreadComposerContentWithSuggestions(
     composerSendKeyEnabled: Boolean = false,
     onKeyboardHeightChange: (Float) -> Unit,
     contentPaddingTop: Dp,
-    contentPaddingBottom: Dp
+    contentPaddingBottom: Dp,
+    adaptiveNativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
 ) {
     val memberSuggestionSlice by memberSuggestionsFlow.collectAsState(SharedMembersMemberSuggestionSlice())
     val channelSuggestionSlice by channelSuggestionsFlow.collectAsState(SharedMembersChannelSuggestionSlice())
@@ -12826,6 +16078,7 @@ private fun ThreadComposerContentWithSuggestions(
         onInsertMentionConsumed = onInsertMentionConsumed,
         onSuggestionDemandChanged = onSuggestionDemandChanged,
         composerSendKeyEnabled = composerSendKeyEnabled,
+        externalNativeEditingStateReader = adaptiveNativeEditingStateReader,
     )
 }
 
@@ -12941,45 +16194,47 @@ private fun ThreadMembersHeaderButton(count: Int, onClick: () -> Unit) {
 }
 
 @Composable
+internal fun ThreadHeaderActionButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    minWidth: Dp = ThreadHeaderActionSize,
+    horizontalPadding: Dp = 0.dp,
+    content: @Composable () -> Unit,
+) {
+    Box(modifier = modifier.padding(end = ThreadHeaderActionShadowOffset, bottom = ThreadHeaderActionShadowOffset)) {
+        Box(Modifier.matchParentSize()
+            .offset(x = ThreadHeaderActionShadowOffset, y = ThreadHeaderActionShadowOffset)
+            .background(SlockColor.ShadowBlack))
+        Button(
+            onClick = onClick,
+            modifier = Modifier.heightIn(min = ThreadHeaderActionSize).widthIn(min = minWidth)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(horizontal = horizontalPadding),
+            content = content,
+        )
+    }
+}
+
+@Composable
 private fun ThreadHeaderCompactAction(
     icon: SlockLucideIconName,
     onClick: () -> Unit,
     label: String? = null
 ) {
-    Box(modifier = Modifier.padding(end = ThreadHeaderActionShadowOffset, bottom = ThreadHeaderActionShadowOffset)) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .offset(x = ThreadHeaderActionShadowOffset, y = ThreadHeaderActionShadowOffset)
-                .background(SlockColor.ShadowBlack)
-        )
-        Button(
-            onClick = onClick,
-            modifier = Modifier
-                .heightIn(min = ThreadHeaderActionSize)
-                .widthIn(min = if (label == null) ThreadHeaderActionSize else ThreadHeaderActionLabelMinWidth)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = if (label == null) 0.dp else SlockSpacing.Xs)
+    ThreadHeaderActionButton(
+        onClick = onClick,
+        minWidth = if (label == null) ThreadHeaderActionSize else ThreadHeaderActionLabelMinWidth,
+        horizontalPadding = if (label == null) 0.dp else SlockSpacing.Xs,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs, Alignment.CenterHorizontally)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs, Alignment.CenterHorizontally)
-            ) {
-                SlockLucideIcon(
-                    name = icon,
-                    modifier = Modifier.size(ThreadHeaderActionIconSize),
-                    color = "#FF000000"
-                )
-                label?.takeIf { it.isNotBlank() }?.let {
-                    Text(
-                        text = it,
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+            SlockLucideIcon(icon, Modifier.size(ThreadHeaderActionIconSize), color = "#FF000000")
+            label?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -13038,8 +16293,87 @@ internal fun consumeThreadHeaderScrollToTopRequest(
         threadHeaderScrollToTopTargetIndex(lazyItemCount) != null &&
         fence.consume(request)
 
-@Composable
-private fun ThreadChatTab(
+/**
+ * task #346: state payload of [ThreadChatTab]. See SlockStructuralHomeShellData for why
+ * the flat parameter list had to be grouped (Android dex verifier rejects the
+ * un-minified giant composable frame on API 34/36 builds).
+ */
+private data class ThreadChatTabData(
+    val threadInstanceKey: String,
+    val readAnchorOwner: ThreadReadAnchorOwner?,
+    val readAnchorStore: ThreadReadAnchorStore,
+    val readAnchorSessionGeneration: Long,
+    val routeActive: Boolean,
+    val hostForeground: Boolean,
+    val renderConfig: ThreadTimelineRenderConfig,
+    val messageBodyTextStyle: TextStyle,
+    val timelineSlice: ThreadTimelineSlice,
+    val replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
+    val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
+    val composerKeyboardInsetDp: Float,
+    val linkedTasksProjection: ThreadLinkedTasksProjection, // Task #258: pass-through to ThreadMessagesList's task detail panel.,
+    val taskAssigneeOptions: List<MemberProfile>,
+    val highlightedMentions: Set<String>,
+    val inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem>,
+    val pendingActionCardIds: Set<String>,
+    val pendingTaskConvertMessageIds: Set<String>,
+    val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
+    val writeActionsEnabled: Boolean,
+    val currentServerSlug: String?,
+    val contentExtrasVisible: Boolean,
+    val longMessageCollapseEnabled: Boolean,
+    val singleTapOpensThreadEnabled: Boolean,
+    val threadUnreadJumpEnabled: Boolean,
+    val newMessageMenuEnabled: Boolean,
+    val inlineSearchVisible: Boolean,
+    val markdownTagContextSignature: String,
+    val activeMarkdownTagKey: String?,
+    val onThreadEvent: ThreadEventHandler,
+    val shareSelectionActive: Boolean,
+    val shareSelectionCaptureActive: Boolean,
+    val shareSelectionCaptureAnchorMessageId: String?,
+    val shareSelectionCaptureAnchorBeforeTarget: Boolean,
+    val shareSelectionCaptureTailPaddingActive: Boolean,
+    val shareSelectionCaptureScrollOffsetPx: Int,
+    val headerScrollToTopRequest: Int,
+    val selectedShareMessageIds: Set<String>,
+    val translationStore: SharedMessageTranslationStore?,
+    val visibleReadTailIndex: Int?,
+    /** A4 destination contract (task #18, spec §9): non-null when hosted as a detail pane. */
+    val adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest?,
+    val adaptiveStoreScope: SlockShellStoreScope,
+    val adaptiveEventBus: SlockEventBus,
+)
+
+/** task #346: callback payload of [ThreadChatTab]. See ThreadChatTabData. */
+private class ThreadChatTabCallbacks(
+    val agentStatusResolver: SlockAgentStatusResolver,
+    val memberAvatarResolver: SlockMemberAvatarResolver,
+    val memberModelLabelResolver: SlockMemberModelLabelResolver,
+    val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
+    val resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
+    val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
+    val onJumpToLatest: suspend () -> Boolean,
+    val onOpenMember: (MemberDetailIdentity) -> Unit,
+    val onExternalAuthor: (KuiklyThreadMessageItem) -> Unit,
+    val onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
+    val onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
+    val onOpenMarkdownUrl: (String) -> Unit,
+    val quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)?,
+    val diagnosticsLogger: (String) -> Unit,
+    val onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit,
+    val onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject?,
+    val onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit,
+    val onEnterShareSelection: (String) -> Unit,
+    val onForwardMessage: (String) -> Unit,
+    val onToggleShareSelection: (String) -> Unit,
+    val onOpenForwardBundle: (String) -> Unit,
+    val onThreadContentReady: () -> Unit,
+    val onVisibleReadTailChange: (Int?) -> Unit,
+)
+
+private @Composable
+fun ThreadChatTab(
     threadInstanceKey: String,
     readAnchorOwner: ThreadReadAnchorOwner?,
     readAnchorStore: ThreadReadAnchorStore,
@@ -13053,14 +16387,16 @@ private fun ThreadChatTab(
     composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     composerKeyboardInsetDp: Float,
     linkedTasksProjection: ThreadLinkedTasksProjection,
+    // Task #258: pass-through to ThreadMessagesList's task detail panel.
+    taskAssigneeOptions: List<MemberProfile> = emptyList(),
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
     inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
-    attachmentCommentsEnabled: Boolean = false,
     writeActionsEnabled: Boolean = true,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
@@ -13077,6 +16413,7 @@ private fun ThreadChatTab(
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     onJumpToLatest: suspend () -> Boolean,
     onOpenMember: (MemberDetailIdentity) -> Unit,
+    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
@@ -13100,8 +16437,242 @@ private fun ThreadChatTab(
     translationStore: SharedMessageTranslationStore? = null,
     onThreadContentReady: () -> Unit = {},
     visibleReadTailIndex: Int? = null,
-    onVisibleReadTailChange: (Int?) -> Unit = {}
+    onVisibleReadTailChange: (Int?) -> Unit = {},
+    adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest? = null,
+    adaptiveStoreScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
+    adaptiveEventBus: SlockEventBus,
+)
+ {
+    ThreadChatTabContent(
+        modifier = Modifier,
+        data =
+            ThreadChatTabData(
+                threadInstanceKey = threadInstanceKey,
+                readAnchorOwner = readAnchorOwner,
+                readAnchorStore = readAnchorStore,
+                readAnchorSessionGeneration = readAnchorSessionGeneration,
+                routeActive = routeActive,
+                hostForeground = hostForeground,
+                renderConfig = renderConfig,
+                messageBodyTextStyle = messageBodyTextStyle,
+                timelineSlice = timelineSlice,
+                replyMetadataByParentId = replyMetadataByParentId,
+                composerDraftPersistSlice = composerDraftPersistSlice,
+                composerKeyboardInsetDp = composerKeyboardInsetDp,
+                linkedTasksProjection = linkedTasksProjection,
+                taskAssigneeOptions = taskAssigneeOptions,
+                highlightedMentions = highlightedMentions,
+                inlineReplyParticipantsById = inlineReplyParticipantsById,
+                pendingActionCardIds = pendingActionCardIds,
+                pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
+                attachmentOpenStates = attachmentOpenStates,
+                writeActionsEnabled = writeActionsEnabled,
+                currentServerSlug = currentServerSlug,
+                contentExtrasVisible = contentExtrasVisible,
+                longMessageCollapseEnabled = longMessageCollapseEnabled,
+                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                threadUnreadJumpEnabled = threadUnreadJumpEnabled,
+                newMessageMenuEnabled = newMessageMenuEnabled,
+                inlineSearchVisible = inlineSearchVisible,
+                markdownTagContextSignature = markdownTagContextSignature,
+                activeMarkdownTagKey = activeMarkdownTagKey,
+                onThreadEvent = onThreadEvent,
+                shareSelectionActive = shareSelectionActive,
+                shareSelectionCaptureActive = shareSelectionCaptureActive,
+                shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
+                shareSelectionCaptureAnchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget,
+                shareSelectionCaptureTailPaddingActive = shareSelectionCaptureTailPaddingActive,
+                shareSelectionCaptureScrollOffsetPx = shareSelectionCaptureScrollOffsetPx,
+                headerScrollToTopRequest = headerScrollToTopRequest,
+                selectedShareMessageIds = selectedShareMessageIds,
+                translationStore = translationStore,
+                visibleReadTailIndex = visibleReadTailIndex,
+                adaptiveCloseRequest = adaptiveCloseRequest,
+                adaptiveStoreScope = adaptiveStoreScope,
+                adaptiveEventBus = adaptiveEventBus,
+            ),
+        callbacks =
+            ThreadChatTabCallbacks(
+                agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver,
+                memberModelLabelResolver = memberModelLabelResolver,
+                isMarkdownTagValid = isMarkdownTagValid,
+                resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                onLoadNewer = onLoadNewer,
+                onJumpToLatest = onJumpToLatest,
+                onOpenMember = onOpenMember,
+                onExternalAuthor = onExternalAuthor,
+                onMentionAuthor = onMentionAuthor,
+                onOpenMarkdownTag = onOpenMarkdownTag,
+                onOpenMarkdownUrl = onOpenMarkdownUrl,
+                quotedPermalinkLoader = quotedPermalinkLoader,
+                diagnosticsLogger = diagnosticsLogger,
+                onComposerLayoutProbe = onComposerLayoutProbe,
+                onComposerPixelProbe = onComposerPixelProbe,
+                onShareSelectionBounds = onShareSelectionBounds,
+                onEnterShareSelection = onEnterShareSelection,
+                onForwardMessage = onForwardMessage,
+                onToggleShareSelection = onToggleShareSelection,
+                onOpenForwardBundle = onOpenForwardBundle,
+                onThreadContentReady = onThreadContentReady,
+                onVisibleReadTailChange = onVisibleReadTailChange,
+            ),
+    )
+}
+
+@Composable
+private fun ThreadChatTabContent(
+    modifier: Modifier = Modifier,
+    data: ThreadChatTabData,
+    callbacks: ThreadChatTabCallbacks,
 ) {
+    val threadInstanceKey = data.threadInstanceKey
+    val readAnchorOwner = data.readAnchorOwner
+    val readAnchorStore = data.readAnchorStore
+    val readAnchorSessionGeneration = data.readAnchorSessionGeneration
+    val routeActive = data.routeActive
+    val hostForeground = data.hostForeground
+    val renderConfig = data.renderConfig
+    val messageBodyTextStyle = data.messageBodyTextStyle
+    val timelineSlice = data.timelineSlice
+    val replyMetadataByParentId = data.replyMetadataByParentId
+    val composerDraftPersistSlice = data.composerDraftPersistSlice
+    val composerKeyboardInsetDp = data.composerKeyboardInsetDp
+    val linkedTasksProjection = data.linkedTasksProjection
+    val taskAssigneeOptions = data.taskAssigneeOptions
+    val highlightedMentions = data.highlightedMentions
+    val agentStatusResolver = callbacks.agentStatusResolver
+    val memberAvatarResolver = callbacks.memberAvatarResolver
+    val memberModelLabelResolver = callbacks.memberModelLabelResolver
+    val inlineReplyParticipantsById = data.inlineReplyParticipantsById
+    val pendingActionCardIds = data.pendingActionCardIds
+    val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
+    val attachmentOpenStates = data.attachmentOpenStates
+    val writeActionsEnabled = data.writeActionsEnabled
+    val currentServerSlug = data.currentServerSlug
+    val contentExtrasVisible = data.contentExtrasVisible
+    val longMessageCollapseEnabled = data.longMessageCollapseEnabled
+    val singleTapOpensThreadEnabled = data.singleTapOpensThreadEnabled
+    val threadUnreadJumpEnabled = data.threadUnreadJumpEnabled
+    val newMessageMenuEnabled = data.newMessageMenuEnabled
+    val inlineSearchVisible = data.inlineSearchVisible
+    val isMarkdownTagValid = callbacks.isMarkdownTagValid
+    val markdownTagContextSignature = data.markdownTagContextSignature
+    val resolveMarkdownTagLabel = callbacks.resolveMarkdownTagLabel
+    val activeMarkdownTagKey = data.activeMarkdownTagKey
+    val onThreadEvent = data.onThreadEvent
+    val onLoadNewer = callbacks.onLoadNewer
+    val onJumpToLatest = callbacks.onJumpToLatest
+    val onOpenMember = callbacks.onOpenMember
+    val onExternalAuthor = callbacks.onExternalAuthor
+    val onMentionAuthor = callbacks.onMentionAuthor
+    val onOpenMarkdownTag = callbacks.onOpenMarkdownTag
+    val onOpenMarkdownUrl = callbacks.onOpenMarkdownUrl
+    val quotedPermalinkLoader = callbacks.quotedPermalinkLoader
+    val diagnosticsLogger = callbacks.diagnosticsLogger
+    val onComposerLayoutProbe = callbacks.onComposerLayoutProbe
+    val onComposerPixelProbe = callbacks.onComposerPixelProbe
+    val shareSelectionActive = data.shareSelectionActive
+    val shareSelectionCaptureActive = data.shareSelectionCaptureActive
+    val shareSelectionCaptureAnchorMessageId = data.shareSelectionCaptureAnchorMessageId
+    val shareSelectionCaptureAnchorBeforeTarget = data.shareSelectionCaptureAnchorBeforeTarget
+    val shareSelectionCaptureTailPaddingActive = data.shareSelectionCaptureTailPaddingActive
+    val shareSelectionCaptureScrollOffsetPx = data.shareSelectionCaptureScrollOffsetPx
+    val headerScrollToTopRequest = data.headerScrollToTopRequest
+    val selectedShareMessageIds = data.selectedShareMessageIds
+    val onShareSelectionBounds = callbacks.onShareSelectionBounds
+    val onEnterShareSelection = callbacks.onEnterShareSelection
+    val onForwardMessage = callbacks.onForwardMessage
+    val onToggleShareSelection = callbacks.onToggleShareSelection
+    val onOpenForwardBundle = callbacks.onOpenForwardBundle
+    val translationStore = data.translationStore
+    val onThreadContentReady = callbacks.onThreadContentReady
+    val visibleReadTailIndex = data.visibleReadTailIndex
+    val adaptiveCloseRequest = data.adaptiveCloseRequest
+    val adaptiveStoreScope = data.adaptiveStoreScope
+    val adaptiveEventBus = data.adaptiveEventBus
+    val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
+    // A4 destination side (task #18, spec §9): READY must post for EVERY resolved branch —
+    // including empty_state, which renders ThreadStateMessage below and never mounts
+    // ThreadMessagesList (Jony's 8th QA: real empty status is "empty", not "success", and
+    // it bypasses the list entirely). The restore leg for non-empty payloads still lives
+    // inside the list where listState exists; both share this flag so READY can't double.
+    val closeReq = adaptiveCloseRequest
+    val adaptivePager = LocalActivity.current.getPager() as Pager
+    val adaptiveSharedStores = remember(adaptivePager) {
+        SlockSharedStoreRegistry.get(Utils.bridgeModule(adaptivePager.pagerId))
+    }
+    val adaptiveReadyPosted = remember(threadInstanceKey) { mutableStateOf(false) }
+    fun postDetailReadyTrace(hop: String, extra: JSONObject.() -> Unit = {}) {
+        val request = closeReq ?: return
+        val extraJson = JSONObject().apply(extra).toString()
+        diagnosticsLogger(
+            formatAdaptiveTraceLine(
+                side = "detail",
+                hop = hop,
+                identityKey = request.identityKey,
+                generation = request.generation,
+                extra =
+                    "routeActive=$routeActive status=${timelineSlice.status} " +
+                        "messagesCount=${timelineSlice.messages.size}" +
+                        if (extraJson == "{}") "" else " extra=$extraJson",
+            ),
+        )
+        adaptiveEventBus?.postAdaptiveTrace(
+            side = "detail",
+            hop = hop,
+            identityKey = request.identityKey,
+            generation = request.generation,
+        ) {
+            put("routeActive", routeActive)
+            put("status", timelineSlice.status)
+            put("messagesCount", timelineSlice.messages.size)
+            extra()
+        }
+    }
+    LaunchedEffect(closeReq, timelineSlice.status, timelineSlice.messages.size) {
+        val request = closeReq ?: return@LaunchedEffect
+        if (adaptiveReadyPosted.value) return@LaunchedEffect
+        postDetailReadyTrace("effect_enter")
+        when (evaluateSlockAdaptiveReadyGate(
+            adaptiveReadyPosted.value,
+            timelineSlice.status,
+            timelineSlice.messages.size,
+        )) {
+            SlockAdaptiveReadyGate.AlreadyPosted -> return@LaunchedEffect
+            SlockAdaptiveReadyGate.StatusBlocked -> {
+                postDetailReadyTrace("status_gate")
+                return@LaunchedEffect
+            }
+            // Non-empty resolved payload: the list owns anchor restore + READY.
+            SlockAdaptiveReadyGate.RestoreThenReady -> return@LaunchedEffect
+            SlockAdaptiveReadyGate.ReadyImmediately -> Unit
+        }
+        adaptiveSharedStores
+            .adaptiveWorkspaceStore(adaptiveStoreScope)
+            .snapshot()
+            .workspace
+            ?.selection
+            ?.takeIf { sel -> sel.identity.key == request.identityKey }
+            ?: run {
+                postDetailReadyTrace("selection_miss")
+                adaptiveReadyPosted.value = true
+                return@LaunchedEffect
+            }
+        adaptiveReadyPosted.value = true
+        val eventBus = adaptiveEventBus ?: return@LaunchedEffect
+        postDetailReadyTrace("ready_post")
+        eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+            eventData =
+                JSONObject()
+                    .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, request.shellInstanceId)
+                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, request.generation.toDouble()),
+            crossProcess = true,
+            source = "adaptive_detail_ready",
+        )
+    }
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
     val activeReplyDraftParentMessageIds =
@@ -13148,14 +16719,15 @@ private fun ThreadChatTab(
                     activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
                     linkedTasksProjection = linkedTasksProjection,
+                    taskAssigneeOptions = taskAssigneeOptions,
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
+                    memberModelLabelResolver = memberModelLabelResolver,
                     inlineReplyParticipantsById = inlineReplyParticipantsById,
                     pendingActionCardIds = pendingActionCardIds,
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                     attachmentOpenStates = attachmentOpenStates,
-                    attachmentCommentsEnabled = attachmentCommentsEnabled,
                     writeActionsEnabled = writeActionsEnabled,
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
@@ -13172,6 +16744,7 @@ private fun ThreadChatTab(
                     onLoadNewer = onLoadNewer,
                     onJumpToLatest = onJumpToLatest,
                     onOpenMember = onOpenMember,
+                    onExternalAuthor = onExternalAuthor,
                     onMentionAuthor = onMentionAuthor,
                     onOpenMarkdownTag = onOpenMarkdownTag,
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
@@ -13193,7 +16766,11 @@ private fun ThreadChatTab(
                     onToggleShareSelection = onToggleShareSelection,
                     onOpenForwardBundle = onOpenForwardBundle,
                     translationStore = translationStore,
-                    onThreadContentReady = onThreadContentReady
+                    onThreadContentReady = onThreadContentReady,
+                    adaptiveCloseRequest = adaptiveCloseRequest,
+                    adaptiveStoreScope = adaptiveStoreScope,
+                    adaptiveEventBus = adaptiveEventBus,
+                    adaptiveReadyPosted = adaptiveReadyPosted,
                 )
             } else {
                 ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
@@ -13209,8 +16786,16 @@ private fun ThreadChatTab(
             )
         "no_permission" ->
             ThreadStateMessage(
-                stringResource(MR.strings.thread_state_no_permission),
-                stringResource(MR.strings.thread_error_no_permission)
+                if (renderConfig.errorServerMessage.isEdgeBlockedMarker()) {
+                    stringResource(MR.strings.thread_state_edge_blocked)
+                } else {
+                    stringResource(MR.strings.thread_state_no_permission)
+                },
+                if (renderConfig.errorServerMessage.isEdgeBlockedMarker()) {
+                    stringResource(MR.strings.error_edge_blocked)
+                } else {
+                    stringResource(MR.strings.thread_error_no_permission)
+                }
             )
         "empty" ->
             if (timelineSlice.originStatus != "none") {
@@ -13228,14 +16813,15 @@ private fun ThreadChatTab(
                     activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
                     linkedTasksProjection = linkedTasksProjection,
+                    taskAssigneeOptions = taskAssigneeOptions,
                     highlightedMentions = highlightedMentions,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
+                    memberModelLabelResolver = memberModelLabelResolver,
                     inlineReplyParticipantsById = inlineReplyParticipantsById,
                     pendingActionCardIds = pendingActionCardIds,
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                     attachmentOpenStates = attachmentOpenStates,
-                    attachmentCommentsEnabled = attachmentCommentsEnabled,
                     writeActionsEnabled = writeActionsEnabled,
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
@@ -13252,6 +16838,7 @@ private fun ThreadChatTab(
                     onLoadNewer = onLoadNewer,
                     onJumpToLatest = onJumpToLatest,
                     onOpenMember = onOpenMember,
+                    onExternalAuthor = onExternalAuthor,
                     onMentionAuthor = onMentionAuthor,
                     onOpenMarkdownTag = onOpenMarkdownTag,
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
@@ -13273,16 +16860,34 @@ private fun ThreadChatTab(
                     onToggleShareSelection = onToggleShareSelection,
                     onOpenForwardBundle = onOpenForwardBundle,
                     translationStore = translationStore,
-                    onThreadContentReady = onThreadContentReady
+                    onThreadContentReady = onThreadContentReady,
+                    adaptiveCloseRequest = adaptiveCloseRequest,
+                    adaptiveStoreScope = adaptiveStoreScope,
+                    adaptiveEventBus = adaptiveEventBus,
+                    adaptiveReadyPosted = adaptiveReadyPosted,
                 )
             } else {
                 LaunchedEffect(threadInstanceKey, timelineSlice.status) {
                     onThreadContentReady()
                 }
-                ThreadStateMessage(
-                    localizedThreadStateTitle(timelineSlice.emptyTitle),
-                    localizedThreadStateDetail(timelineSlice.emptyDetail)
-                )
+                val emptyOfflineChrome =
+                    threadOfflineLastKnownChrome(
+                        durableLastKnown = timelineSlice.durableLastKnown,
+                        status = timelineSlice.status,
+                        backgroundRefreshing = renderConfig.backgroundRefreshing
+                    )
+                Box(modifier = Modifier.fillMaxSize()) {
+                    ThreadStateMessage(
+                        localizedThreadStateTitle(timelineSlice.emptyTitle),
+                        localizedThreadStateDetail(timelineSlice.emptyDetail)
+                    )
+                    // Task #1137: the empty last-known channel carries the same offline tip as a non-empty one.
+                    if (emptyOfflineChrome.tipVisible) {
+                        ThreadOfflineLastKnownTip(
+                            modifier = Modifier.align(Alignment.TopCenter).zIndex(ThreadOfflineLastKnownTipZIndex)
+                        )
+                    }
+                }
             }
         else ->
             ThreadMessagesList(
@@ -13299,14 +16904,15 @@ private fun ThreadChatTab(
                 activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
                 composerKeyboardInsetDp = composerKeyboardInsetDp,
                 linkedTasksProjection = linkedTasksProjection,
+                taskAssigneeOptions = taskAssigneeOptions,
                 highlightedMentions = highlightedMentions,
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
+                memberModelLabelResolver = memberModelLabelResolver,
                 inlineReplyParticipantsById = inlineReplyParticipantsById,
                 pendingActionCardIds = pendingActionCardIds,
                 pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 attachmentOpenStates = attachmentOpenStates,
-                attachmentCommentsEnabled = attachmentCommentsEnabled,
                 writeActionsEnabled = writeActionsEnabled,
                 currentServerSlug = currentServerSlug,
                 contentExtrasVisible = contentExtrasVisible,
@@ -13322,6 +16928,7 @@ private fun ThreadChatTab(
                 onLoadNewer = onLoadNewer,
                 onJumpToLatest = onJumpToLatest,
                 onOpenMember = onOpenMember,
+                onExternalAuthor = onExternalAuthor,
                 onMentionAuthor = onMentionAuthor,
                 onOpenMarkdownTag = onOpenMarkdownTag,
                 onOpenMarkdownUrl = onOpenMarkdownUrl,
@@ -13345,7 +16952,11 @@ private fun ThreadChatTab(
                 translationStore = translationStore,
                 onThreadContentReady = onThreadContentReady,
                 onVisibleReadTailChange = onVisibleReadTailChange,
-                visibleReadTailIndex = visibleReadTailIndex
+                visibleReadTailIndex = visibleReadTailIndex,
+                adaptiveCloseRequest = adaptiveCloseRequest,
+                adaptiveStoreScope = adaptiveStoreScope,
+                adaptiveEventBus = adaptiveEventBus,
+                adaptiveReadyPosted = adaptiveReadyPosted
             )
     }
 }
@@ -13598,8 +17209,89 @@ private fun emptyThreadMarkdownVisiblePreparsePlan(): ThreadMarkdownVisiblePrepa
 
 private const val ThreadOriginListItemIndex = 0
 
-@Composable
-private fun ThreadMessagesList(
+/**
+ * task #346: state payload of [ThreadMessagesList]. See SlockStructuralHomeShellData for why
+ * the flat parameter list had to be grouped (Android dex verifier rejects the
+ * un-minified giant composable frame on API 34/36 builds).
+ */
+private data class ThreadMessagesListData(
+    val threadInstanceKey: String,
+    val readAnchorOwner: ThreadReadAnchorOwner?,
+    val readAnchorStore: ThreadReadAnchorStore,
+    val readAnchorSessionGeneration: Long,
+    val routeActive: Boolean,
+    val hostForeground: Boolean,
+    val renderConfig: ThreadTimelineRenderConfig,
+    val messageBodyTextStyle: TextStyle,
+    val timelineSlice: ThreadTimelineSlice,
+    val replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
+    val activeReplyDraftParentMessageIds: Set<String>,
+    val composerKeyboardInsetDp: Float,
+    val linkedTasksProjection: ThreadLinkedTasksProjection, // Task #258: server-scoped identity directory for the inline task detail // panel's assignee row (same pool the thread Tasks tab filters use).,
+    val taskAssigneeOptions: List<MemberProfile>,
+    val highlightedMentions: Set<String>,
+    val inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem>,
+    val pendingActionCardIds: Set<String>,
+    val pendingTaskConvertMessageIds: Set<String>,
+    val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
+    val writeActionsEnabled: Boolean,
+    val currentServerSlug: String?,
+    val contentExtrasVisible: Boolean,
+    val longMessageCollapseEnabled: Boolean,
+    val singleTapOpensThreadEnabled: Boolean,
+    val threadUnreadJumpEnabled: Boolean,
+    val newMessageMenuEnabled: Boolean,
+    val inlineSearchVisible: Boolean,
+    val markdownTagContextSignature: String,
+    val activeMarkdownTagKey: String?,
+    val onThreadEvent: ThreadEventHandler,
+    val shareSelectionActive: Boolean,
+    val shareSelectionCaptureActive: Boolean,
+    val shareSelectionCaptureAnchorMessageId: String?,
+    val shareSelectionCaptureAnchorBeforeTarget: Boolean,
+    val shareSelectionCaptureTailPaddingActive: Boolean,
+    val shareSelectionCaptureScrollOffsetPx: Int,
+    val headerScrollToTopRequest: Int,
+    val selectedShareMessageIds: Set<String>,
+    val translationStore: SharedMessageTranslationStore?,
+    val visibleReadTailIndex: Int?,
+    /** A4 destination contract: non-null marks this list as a detail-pane child. */
+    val adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest?,
+    val adaptiveStoreScope: SlockShellStoreScope,
+    val adaptiveEventBus: SlockEventBus?,
+    /** Shared READY-posted flag owned by ThreadChatTabContent (A4 detail contract). */
+    val adaptiveReadyPosted: MutableState<Boolean>?,
+)
+
+/** task #346: callback payload of [ThreadMessagesList]. See ThreadMessagesListData. */
+private class ThreadMessagesListCallbacks(
+    val agentStatusResolver: SlockAgentStatusResolver,
+    val memberAvatarResolver: SlockMemberAvatarResolver,
+    val memberModelLabelResolver: SlockMemberModelLabelResolver,
+    val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
+    val resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
+    val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
+    val onJumpToLatest: suspend () -> Boolean,
+    val onOpenMember: (MemberDetailIdentity) -> Unit,
+    val onExternalAuthor: (KuiklyThreadMessageItem) -> Unit,
+    val onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
+    val onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
+    val onOpenMarkdownUrl: (String) -> Unit,
+    val quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)?,
+    val diagnosticsLogger: (String) -> Unit,
+    val onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit,
+    val onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject?,
+    val onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit,
+    val onEnterShareSelection: (String) -> Unit,
+    val onForwardMessage: (String) -> Unit,
+    val onToggleShareSelection: (String) -> Unit,
+    val onOpenForwardBundle: (String) -> Unit,
+    val onThreadContentReady: () -> Unit,
+    val onVisibleReadTailChange: (Int?) -> Unit,
+)
+
+private @Composable
+fun ThreadMessagesList(
     threadInstanceKey: String,
     readAnchorOwner: ThreadReadAnchorOwner?,
     readAnchorStore: ThreadReadAnchorStore,
@@ -13613,14 +17305,17 @@ private fun ThreadMessagesList(
     activeReplyDraftParentMessageIds: Set<String>,
     composerKeyboardInsetDp: Float,
     linkedTasksProjection: ThreadLinkedTasksProjection,
+    // Task #258: server-scoped identity directory for the inline task detail
+    // panel's assignee row (same pool the thread Tasks tab filters use).
+    taskAssigneeOptions: List<MemberProfile> = emptyList(),
     highlightedMentions: Set<String>,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
     inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
-    attachmentCommentsEnabled: Boolean = false,
     writeActionsEnabled: Boolean = true,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
@@ -13637,6 +17332,7 @@ private fun ThreadMessagesList(
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     onJumpToLatest: suspend () -> Boolean,
     onOpenMember: (MemberDetailIdentity) -> Unit,
+    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
@@ -13660,8 +17356,232 @@ private fun ThreadMessagesList(
     translationStore: SharedMessageTranslationStore? = null,
     onThreadContentReady: () -> Unit = {},
     visibleReadTailIndex: Int? = null,
-    onVisibleReadTailChange: (Int?) -> Unit = {}
+    onVisibleReadTailChange: (Int?) -> Unit = {},
+    adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest? = null,
+    adaptiveStoreScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
+    adaptiveEventBus: SlockEventBus? = null,
+    adaptiveReadyPosted: MutableState<Boolean>? = null
+)
+ {
+    ThreadMessagesListContent(
+        modifier = Modifier,
+        data =
+            ThreadMessagesListData(
+                threadInstanceKey = threadInstanceKey,
+                readAnchorOwner = readAnchorOwner,
+                readAnchorStore = readAnchorStore,
+                readAnchorSessionGeneration = readAnchorSessionGeneration,
+                routeActive = routeActive,
+                hostForeground = hostForeground,
+                renderConfig = renderConfig,
+                messageBodyTextStyle = messageBodyTextStyle,
+                timelineSlice = timelineSlice,
+                replyMetadataByParentId = replyMetadataByParentId,
+                activeReplyDraftParentMessageIds = activeReplyDraftParentMessageIds,
+                composerKeyboardInsetDp = composerKeyboardInsetDp,
+                linkedTasksProjection = linkedTasksProjection,
+                taskAssigneeOptions = taskAssigneeOptions,
+                highlightedMentions = highlightedMentions,
+                inlineReplyParticipantsById = inlineReplyParticipantsById,
+                pendingActionCardIds = pendingActionCardIds,
+                pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
+                attachmentOpenStates = attachmentOpenStates,
+                writeActionsEnabled = writeActionsEnabled,
+                currentServerSlug = currentServerSlug,
+                contentExtrasVisible = contentExtrasVisible,
+                longMessageCollapseEnabled = longMessageCollapseEnabled,
+                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                threadUnreadJumpEnabled = threadUnreadJumpEnabled,
+                newMessageMenuEnabled = newMessageMenuEnabled,
+                inlineSearchVisible = inlineSearchVisible,
+                markdownTagContextSignature = markdownTagContextSignature,
+                activeMarkdownTagKey = activeMarkdownTagKey,
+                onThreadEvent = onThreadEvent,
+                shareSelectionActive = shareSelectionActive,
+                shareSelectionCaptureActive = shareSelectionCaptureActive,
+                shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
+                shareSelectionCaptureAnchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget,
+                shareSelectionCaptureTailPaddingActive = shareSelectionCaptureTailPaddingActive,
+                shareSelectionCaptureScrollOffsetPx = shareSelectionCaptureScrollOffsetPx,
+                headerScrollToTopRequest = headerScrollToTopRequest,
+                selectedShareMessageIds = selectedShareMessageIds,
+                translationStore = translationStore,
+                visibleReadTailIndex = visibleReadTailIndex,
+                adaptiveCloseRequest = adaptiveCloseRequest,
+                adaptiveStoreScope = adaptiveStoreScope,
+                adaptiveEventBus = adaptiveEventBus,
+                adaptiveReadyPosted = adaptiveReadyPosted,
+            ),
+        callbacks =
+            ThreadMessagesListCallbacks(
+                agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver,
+                memberModelLabelResolver = memberModelLabelResolver,
+                isMarkdownTagValid = isMarkdownTagValid,
+                resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                onLoadNewer = onLoadNewer,
+                onJumpToLatest = onJumpToLatest,
+                onOpenMember = onOpenMember,
+                onExternalAuthor = onExternalAuthor,
+                onMentionAuthor = onMentionAuthor,
+                onOpenMarkdownTag = onOpenMarkdownTag,
+                onOpenMarkdownUrl = onOpenMarkdownUrl,
+                quotedPermalinkLoader = quotedPermalinkLoader,
+                diagnosticsLogger = diagnosticsLogger,
+                onComposerLayoutProbe = onComposerLayoutProbe,
+                onComposerPixelProbe = onComposerPixelProbe,
+                onShareSelectionBounds = onShareSelectionBounds,
+                onEnterShareSelection = onEnterShareSelection,
+                onForwardMessage = onForwardMessage,
+                onToggleShareSelection = onToggleShareSelection,
+                onOpenForwardBundle = onOpenForwardBundle,
+                onThreadContentReady = onThreadContentReady,
+                onVisibleReadTailChange = onVisibleReadTailChange,
+            ),
+    )
+}
+
+@Composable
+private fun ThreadMessagesListContent(
+    modifier: Modifier = Modifier,
+    data: ThreadMessagesListData,
+    callbacks: ThreadMessagesListCallbacks,
 ) {
+    val threadInstanceKey = data.threadInstanceKey
+    val readAnchorOwner = data.readAnchorOwner
+    val readAnchorStore = data.readAnchorStore
+    val readAnchorSessionGeneration = data.readAnchorSessionGeneration
+    val routeActive = data.routeActive
+    val hostForeground = data.hostForeground
+    val renderConfig = data.renderConfig
+    val messageBodyTextStyle = data.messageBodyTextStyle
+    val timelineSlice = data.timelineSlice
+    val replyMetadataByParentId = data.replyMetadataByParentId
+    val activeReplyDraftParentMessageIds = data.activeReplyDraftParentMessageIds
+    val composerKeyboardInsetDp = data.composerKeyboardInsetDp
+    val linkedTasksProjection = data.linkedTasksProjection
+    val taskAssigneeOptions = data.taskAssigneeOptions
+    val highlightedMentions = data.highlightedMentions
+    val agentStatusResolver = callbacks.agentStatusResolver
+    val memberAvatarResolver = callbacks.memberAvatarResolver
+    val memberModelLabelResolver = callbacks.memberModelLabelResolver
+    val inlineReplyParticipantsById = data.inlineReplyParticipantsById
+    val pendingActionCardIds = data.pendingActionCardIds
+    val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
+    val attachmentOpenStates = data.attachmentOpenStates
+    val writeActionsEnabled = data.writeActionsEnabled
+    val currentServerSlug = data.currentServerSlug
+    val contentExtrasVisible = data.contentExtrasVisible
+    val longMessageCollapseEnabled = data.longMessageCollapseEnabled
+    val singleTapOpensThreadEnabled = data.singleTapOpensThreadEnabled
+    val threadUnreadJumpEnabled = data.threadUnreadJumpEnabled
+    val newMessageMenuEnabled = data.newMessageMenuEnabled
+    val inlineSearchVisible = data.inlineSearchVisible
+    val isMarkdownTagValid = callbacks.isMarkdownTagValid
+    val markdownTagContextSignature = data.markdownTagContextSignature
+    val resolveMarkdownTagLabel = callbacks.resolveMarkdownTagLabel
+    val activeMarkdownTagKey = data.activeMarkdownTagKey
+    val onThreadEvent = data.onThreadEvent
+    val onLoadNewer = callbacks.onLoadNewer
+    val onJumpToLatest = callbacks.onJumpToLatest
+    val onOpenMember = callbacks.onOpenMember
+    val onExternalAuthor = callbacks.onExternalAuthor
+    val onMentionAuthor = callbacks.onMentionAuthor
+    val onOpenMarkdownTag = callbacks.onOpenMarkdownTag
+    val onOpenMarkdownUrl = callbacks.onOpenMarkdownUrl
+    val quotedPermalinkLoader = callbacks.quotedPermalinkLoader
+    val diagnosticsLogger = callbacks.diagnosticsLogger
+    val onComposerLayoutProbe = callbacks.onComposerLayoutProbe
+    val onComposerPixelProbe = callbacks.onComposerPixelProbe
+    val shareSelectionActive = data.shareSelectionActive
+    val shareSelectionCaptureActive = data.shareSelectionCaptureActive
+    val shareSelectionCaptureAnchorMessageId = data.shareSelectionCaptureAnchorMessageId
+    val shareSelectionCaptureAnchorBeforeTarget = data.shareSelectionCaptureAnchorBeforeTarget
+    val shareSelectionCaptureTailPaddingActive = data.shareSelectionCaptureTailPaddingActive
+    val shareSelectionCaptureScrollOffsetPx = data.shareSelectionCaptureScrollOffsetPx
+    val headerScrollToTopRequest = data.headerScrollToTopRequest
+    val selectedShareMessageIds = data.selectedShareMessageIds
+    val onShareSelectionBounds = callbacks.onShareSelectionBounds
+    val onEnterShareSelection = callbacks.onEnterShareSelection
+    val onForwardMessage = callbacks.onForwardMessage
+    val onToggleShareSelection = callbacks.onToggleShareSelection
+    val onOpenForwardBundle = callbacks.onOpenForwardBundle
+    val translationStore = data.translationStore
+    val onThreadContentReady = callbacks.onThreadContentReady
+    val visibleReadTailIndex = data.visibleReadTailIndex
+    val adaptiveCloseRequest = data.adaptiveCloseRequest
+    val adaptiveStoreScope = data.adaptiveStoreScope
+    val adaptiveEventBus = data.adaptiveEventBus
+    val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
+    // A4 destination side (task #18, spec §9): the ReadyImmediately leg lives in
+    // ThreadChatTabContent (empty-state branch never reaches this list); this level owns
+    // the RestoreThenReady leg — anchor restore against the real list state, then READY.
+    // Both share the same posted flag so READY cannot fire twice.
+    val closeReq = adaptiveCloseRequest
+    val adaptivePager = LocalActivity.current.getPager() as Pager
+    val adaptiveSharedStores = remember(adaptivePager) {
+        SlockSharedStoreRegistry.get(Utils.bridgeModule(adaptivePager.pagerId))
+    }
+    var localAdaptiveReadyPosted by remember(threadInstanceKey) { mutableStateOf(false) }
+    val adaptiveReadyPosted = data.adaptiveReadyPosted
+    // A4 restore (task #18): while a staged viewport anchor is pending for this destination,
+    // the initial bottom-anchor loop must not dispatch FollowLatest — it races the restore and
+    // re-pins the viewport to the latest item after scrollToItem already ran (v14 non-empty
+    // counterexample: restored mid-list then snapped to A4FX-probe/001). The flag is seeded
+    // synchronously at composition — the anchor is staged before the open request posts, so it
+    // is already visible to the destination's first frame and the bottom-anchor effect's first
+    // iteration sees the restore as in-flight rather than racing it.
+    var adaptiveAnchorRestoreInFlight by remember(threadInstanceKey) {
+        mutableStateOf(
+            run {
+                val request = adaptiveCloseRequest ?: return@run false
+                val identity =
+                    adaptiveSharedStores
+                        .adaptiveWorkspaceStore(adaptiveStoreScope)
+                        .snapshot()
+                        .workspace
+                        ?.selection
+                        ?.takeIf { sel -> sel.identity.key == request.identityKey }
+                        ?.identity
+                        ?: return@run false
+                adaptiveSharedStores
+                    .adaptiveScrollAnchorStore(adaptiveStoreScope)
+                    .peek(adaptiveStoreScope.shellInstanceId, identity)
+                    ?.let { !it.atLatest }
+                    ?: false
+            }
+        )
+    }
+    fun postDetailReadyTrace(hop: String, extra: JSONObject.() -> Unit = {}) {
+        val request = closeReq ?: return
+        // Hop extras must reach the device diagnostics line too — the event-bus trace has no
+        // on-disk subscription, so a hop that carries its fields only via `extra` shows its
+        // name in the JSONL but not the values (Jony's v14 review point).
+        val extraJson = JSONObject().apply(extra).toString()
+        diagnosticsLogger(
+            formatAdaptiveTraceLine(
+                side = "detail",
+                hop = hop,
+                identityKey = request.identityKey,
+                generation = request.generation,
+                extra =
+                    "routeActive=$routeActive status=${timelineSlice.status} " +
+                        "messagesCount=${timelineSlice.messages.size}" +
+                        if (extraJson == "{}") "" else " extra=$extraJson",
+            ),
+        )
+        adaptiveEventBus?.postAdaptiveTrace(
+            side = "detail",
+            hop = hop,
+            identityKey = request.identityKey,
+            generation = request.generation,
+        ) {
+            put("routeActive", routeActive)
+            put("status", timelineSlice.status)
+            put("messagesCount", timelineSlice.messages.size)
+            extra()
+        }
+    }
     if (timelineSlice.messages.isEmpty() && timelineSlice.originStatus == "none") {
         LaunchedEffect(threadInstanceKey, timelineSlice.status) {
             onThreadContentReady()
@@ -13716,6 +17636,13 @@ private fun ThreadMessagesList(
             timelineSlice.focusedMessageTargetSignature()
         }
     val renderPayload = timelineSlice
+    // Task #1125: offline stand-in chrome (top inset + tip overlay), see threadOfflineLastKnownChrome.
+    val offlineLastKnownChrome =
+        threadOfflineLastKnownChrome(
+            durableLastKnown = renderPayload.durableLastKnown,
+            status = renderPayload.status,
+            backgroundRefreshing = renderConfig.backgroundRefreshing
+        )
     val showReplyLoadingSkeleton = renderPayload.status == "loading" && renderPayload.messages.isEmpty()
     val showReplyEmptyState =
         renderPayload.messages.isEmpty() && renderPayload.originStatus != "none" && !showReplyLoadingSkeleton
@@ -13780,7 +17707,10 @@ private fun ThreadMessagesList(
         readAnchorOwner,
         renderPayload.messages,
         visibleReadTailIndex,
+        routeActive,
+        hostForeground,
     ) {
+        if (!routeActive || !hostForeground) return@LaunchedEffect
         val anchor =
             visibleReadTailIndex
                 ?.takeIf { it in renderPayload.messages.indices }
@@ -13793,6 +17723,10 @@ private fun ThreadMessagesList(
         if (anchor != null) {
             val advanced = advanceThreadReadAnchorFrontier(latestVisibleReadAnchor, anchor)
             if (advanced != latestVisibleReadAnchor) {
+                diagnosticsLogger(
+                    "thread_read_anchor_frontier seq=${advanced?.seq} id=${advanced?.messageId} " +
+                        "prevSeq=${latestVisibleReadAnchor?.seq}"
+                )
                 latestVisibleReadAnchor = advanced
             }
         }
@@ -13818,10 +17752,49 @@ private fun ThreadMessagesList(
     // The durable anchor remains lifecycle-persisted, while the route-local frontier advances on
     // every visible-window change. This makes the pill converge as the user reads and prevents a
     // locally-sent row that is already on screen from being counted as unread.
+    var allowBottomAutoAnchor by remember(threadInstanceKey) {
+        mutableStateOf(true)
+    }
+    var initialBottomAnchorReady by remember(threadInstanceKey) {
+        mutableStateOf(false)
+    }
+    // Non-empty destination path (continues the READY chain opened above): restore the
+    // staged viewport anchor against this page's message ordering, then post READY. The
+    // staged record is deliberately NOT consumed here: the shell consumes it only when the
+    // native commit receipt reports `committed`, so a rejected or failed transfer keeps the
+    // anchor available for a retry.
+
+    val unreadJumpAtCanonicalBottom =
+        threadUnreadJumpAtCanonicalBottom(
+            canLoadMoreAfter = renderPayload.canLoadMoreAfter,
+            canScrollTowardBottom = listState.canScrollForward,
+            latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex),
+        )
+    val latestCanonicalReadAnchor =
+        renderPayload.messages
+            .asReversed()
+            .firstOrNull { message -> (message.seq ?: 0L) > 0L }
+            ?.let { message -> ThreadReadAnchor(seq = message.seq!!, messageId = message.id) }
     val sessionReadAnchor =
-        remember(frozenReadAnchor, latestVisibleReadAnchor) {
-            advanceThreadReadAnchorFrontier(frozenReadAnchor, latestVisibleReadAnchor)
+        consumeUnreadJumpFrontierAtCanonicalBottom(
+            sessionAnchor =
+                advanceThreadReadAnchorFrontier(frozenReadAnchor, latestVisibleReadAnchor),
+            latestCanonicalMessage = latestCanonicalReadAnchor,
+            atCanonicalBottom = unreadJumpAtCanonicalBottom,
+        )
+    LaunchedEffect(unreadJumpAtCanonicalBottom, latestCanonicalReadAnchor, routeActive, hostForeground) {
+        if (!routeActive || !hostForeground) return@LaunchedEffect
+        if (!unreadJumpAtCanonicalBottom) return@LaunchedEffect
+        val advanced =
+            consumeUnreadJumpFrontierAtCanonicalBottom(
+                sessionAnchor = latestVisibleReadAnchor,
+                latestCanonicalMessage = latestCanonicalReadAnchor,
+                atCanonicalBottom = true,
+            )
+        if (advanced != latestVisibleReadAnchor) {
+            latestVisibleReadAnchor = advanced
         }
+    }
     val unreadJumpProjection =
         remember(sessionReadAnchor, renderPayload.messages, renderPayload.gapRefillMessageIds) {
             projectThreadUnreadJump(
@@ -13854,6 +17827,241 @@ private fun ThreadMessagesList(
         }.first { (epoch, pendingId) ->
             epoch != commandId.epoch || pendingId == null
         }
+    }
+    LaunchedEffect(closeReq, renderPayload.status, renderPayload.messages.size) {
+        val request = closeReq ?: return@LaunchedEffect
+        val posted = adaptiveReadyPosted?.value ?: localAdaptiveReadyPosted
+        if (posted) return@LaunchedEffect
+        if (
+            evaluateSlockAdaptiveReadyGate(
+                posted,
+                renderPayload.status,
+                renderPayload.messages.size,
+            ) != SlockAdaptiveReadyGate.RestoreThenReady
+        ) {
+            return@LaunchedEffect
+        }
+        postDetailReadyTrace("effect_enter")
+        val identity =
+            adaptiveSharedStores
+                .adaptiveWorkspaceStore(adaptiveStoreScope)
+                .snapshot()
+                .workspace
+                ?.selection
+                ?.takeIf { sel -> sel.identity.key == request.identityKey }
+                ?.identity
+            ?: run {
+                postDetailReadyTrace("selection_miss")
+                if (adaptiveReadyPosted != null) {
+                    adaptiveReadyPosted.value = true
+                } else {
+                    localAdaptiveReadyPosted = true
+                }
+                return@LaunchedEffect
+            }
+        val anchorStore = adaptiveSharedStores.adaptiveScrollAnchorStore(adaptiveStoreScope)
+        val anchor = anchorStore.peek(adaptiveStoreScope.shellInstanceId, identity)
+        // Success = the target message's item is visible AND sits at the staged
+        // viewport-relative offset (item.offset, negative when scrolled above the top edge).
+        // Comparing the target's own rendered offset — not firstVisibleItemIndex — keeps the
+        // contract in one coordinate space and stays correct when the anchor is a partially
+        // visible row above the top edge or a fully-visible row below it.
+        fun verifyAnchorRestore(
+            targetMessageId: String,
+            targetIndex: Int,
+            expectedItemOffsetPx: Int,
+        ): Boolean {
+            val settledIntent = viewportControllerState.intent as? LazyViewportIntent.Anchored
+            if (settledIntent == null ||
+                settledIntent.target != LazyViewportAnchorTarget.Message(targetMessageId)
+            ) {
+                postDetailReadyTrace("restore_rejected") {
+                    put("anchorMessageId", targetMessageId)
+                    put("reason", "intent_not_anchored")
+                    put("intent", viewportControllerState.intent.logTag())
+                }
+                return false
+            }
+            val renderedItem =
+                listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
+            if (renderedItem == null) {
+                postDetailReadyTrace("restore_rejected") {
+                    put("anchorMessageId", targetMessageId)
+                    put("reason", "position_mismatch")
+                    put("firstVisible", listState.firstVisibleItemIndex.toDouble())
+                    put("targetIndex", targetIndex.toDouble())
+                }
+                return false
+            }
+            // 4px matches the focused-anchor session drift tolerance.
+            if (kotlin.math.abs(renderedItem.offset - expectedItemOffsetPx) > 4) {
+                postDetailReadyTrace("restore_rejected") {
+                    put("anchorMessageId", targetMessageId)
+                    put("reason", "offset_mismatch")
+                    put("firstVisibleOffset", renderedItem.offset.toDouble())
+                    put("expectedOffsetPx", expectedItemOffsetPx.toDouble())
+                }
+                return false
+            }
+            return true
+        }
+        if (anchor != null && !anchor.atLatest) {
+            adaptiveAnchorRestoreInFlight = true
+            val firstMessageIndex = renderPayload.firstMessageListItemIndex()
+            val locatedIndex =
+                anchor.messageId
+                    ?.let { id -> renderPayload.messages.indexOfFirst { m -> m.id == id } }
+                    ?.takeIf { it >= 0 }
+                    ?.let { it + firstMessageIndex }
+            if (locatedIndex != null) {
+                postDetailReadyTrace("layout_wait_begin") {
+                    put("anchorMessageId", anchor.messageId)
+                    put("locatedIndex", locatedIndex.toDouble())
+                }
+                listState.awaitThreadMessagesLayoutFrame()
+                postDetailReadyTrace("layout_wait_end")
+                // Take viewport ownership through the controller, not a bare scroll: with intent
+                // left at FollowingLatest, the next composer_inset_relayout replays
+                // Mutation.InsetChange and yanks the restored viewport back to bottom. Anchored
+                // (ExactOffset) makes later relayouts re-assert this message+offset instead.
+                // Offset contract: anchor.messageOffsetPx is the captured LazyList item.offset
+                // (viewport-relative, negative when scrolled above the top edge). The command
+                // executor runs scrollToItem(index, -target.offset), so the event must carry the
+                // raw item.offset — negating here would scroll the target BELOW the top and
+                // surface the previous row as firstVisible (Jony r18: staged -37 → readback 17).
+                viewportLayoutGeneration += 1L
+                dispatchViewportEvent(
+                    LazyViewportEvent.Anchor(
+                        target = LazyViewportAnchorTarget.Message(requireNotNull(anchor.messageId)),
+                        offset = anchor.messageOffsetPx,
+                        layoutGeneration = viewportLayoutGeneration,
+                        placement = LazyViewportAnchorPlacement.ExactOffset,
+                        fallback = LazyViewportAnchorFallback.Free
+                    )
+                )
+                viewportControllerState.pendingCommand?.id?.let { awaitViewportCommandSettlement(it) }
+                // Settlement returning is not proof of success: AnchorUnavailable settles too
+                // (epoch bump + pending cleared, intent degrades to UserDragging). Gate READY on
+                // intent still Anchored on the target and the readback actually showing it.
+                // firstVisibleItemScrollOffset is always non-negative = -item.offset.
+                if (
+                    !verifyAnchorRestore(
+                        requireNotNull(anchor.messageId),
+                        locatedIndex,
+                        anchor.messageOffsetPx,
+                    )
+                ) {
+                    return@LaunchedEffect
+                }
+                postDetailReadyTrace("restore_applied") {
+                    put("firstVisible", listState.firstVisibleItemIndex.toDouble())
+                    put("firstVisibleOffset", listState.firstVisibleItemScrollOffset.toDouble())
+                    put("anchorOffsetPx", anchor.messageOffsetPx.toDouble())
+                    put("visibleItems", listState.layoutInfo.visibleItemsInfo.size.toDouble())
+                    put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
+                }
+            } else if (
+                anchor.fallbackIndex >= 0 &&
+                anchor.fallbackIndex < (listState.layoutInfo.totalItemsCount.takeIf { it > 0 } ?: Int.MAX_VALUE)
+            ) {
+                postDetailReadyTrace("layout_wait_begin") {
+                    put("anchorMessageId", "miss")
+                    put("fallbackIndex", anchor.fallbackIndex.toDouble())
+                }
+                listState.awaitThreadMessagesLayoutFrame()
+                postDetailReadyTrace("layout_wait_end")
+                val fallbackMessageId =
+                    renderPayload.messages
+                        .getOrNull(anchor.fallbackIndex - firstMessageIndex)
+                        ?.id
+                if (fallbackMessageId != null) {
+                    // Same ownership transfer as the located branch: intent must leave
+                    // FollowingLatest or a later inset relayout replays Latest and yanks the
+                    // restored viewport to bottom.
+                    viewportLayoutGeneration += 1L
+                    dispatchViewportEvent(
+                        LazyViewportEvent.Anchor(
+                            target = LazyViewportAnchorTarget.Message(fallbackMessageId),
+                            offset = anchor.messageOffsetPx,
+                            layoutGeneration = viewportLayoutGeneration,
+                            placement = LazyViewportAnchorPlacement.ExactOffset,
+                            fallback = LazyViewportAnchorFallback.Free
+                        )
+                    )
+                    viewportControllerState.pendingCommand?.id?.let { awaitViewportCommandSettlement(it) }
+                    if (
+                        !verifyAnchorRestore(
+                            fallbackMessageId,
+                            anchor.fallbackIndex,
+                            anchor.messageOffsetPx,
+                        )
+                    ) {
+                        return@LaunchedEffect
+                    }
+                } else {
+                    // No durable message identity at the fallback index — a bare scroll would
+                    // leave intent at FollowingLatest and the next inset relayout would yank
+                    // the viewport to bottom. Hold READY (same contract as restore_skipped):
+                    // readyTimeout cancels the adoption and keeps source + anchor for retry.
+                    postDetailReadyTrace("restore_skipped") {
+                        put("anchorMessageId", anchor.messageId ?: "null")
+                        put("fallbackIndex", anchor.fallbackIndex.toDouble())
+                        put("reason", "no_message_at_fallback_index")
+                        put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
+                    }
+                    return@LaunchedEffect
+                }
+                postDetailReadyTrace("restore_applied") {
+                    put("restoreBasis", "fallback_index")
+                    put("firstVisible", listState.firstVisibleItemIndex.toDouble())
+                    put("firstVisibleOffset", listState.firstVisibleItemScrollOffset.toDouble())
+                    put("anchorOffsetPx", anchor.messageOffsetPx.toDouble())
+                    put("visibleItems", listState.layoutInfo.visibleItemsInfo.size.toDouble())
+                    put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
+                }
+            } else {
+                // Jony's v15 boundary: a staged anchor whose message is absent AND whose
+                // fallback is out of range means the destination cannot honor the transfer —
+                // READY would lie ("restored") and authorize the native commit that pops the
+                // source. Hold READY; the caller's readyTimeout cancels the adoption and keeps
+                // the source page + staged anchor for an explicit retry. Leave
+                // adaptiveAnchorRestoreInFlight set so the bottom-anchor loop cannot claim the
+                // viewport while the handoff is still pending.
+                postDetailReadyTrace("restore_skipped") {
+                    put("anchorMessageId", anchor.messageId ?: "null")
+                    put("fallbackIndex", anchor.fallbackIndex.toDouble())
+                    put("totalItems", listState.layoutInfo.totalItemsCount.toDouble())
+                }
+                return@LaunchedEffect
+            }
+            // The restore owns the viewport now: mark the initial bottom anchor settled and
+            // disable auto-bottom so no in-loop FollowLatest or later auto-correction re-pins
+            // the viewport to latest (in-flight coroutine exits on the next iteration).
+            initialBottomAnchorReady = true
+            allowBottomAutoAnchor = false
+            adaptiveAnchorRestoreInFlight = false
+        } else if (anchor != null) {
+            // atLatest=true means the staged anchor sits at the bottom already — the default
+            // bottom-anchor path can own the viewport without fighting the restore.
+            adaptiveAnchorRestoreInFlight = false
+        }
+        if (adaptiveReadyPosted != null) {
+            adaptiveReadyPosted.value = true
+        } else {
+            localAdaptiveReadyPosted = true
+        }
+        val eventBus = adaptiveEventBus ?: return@LaunchedEffect
+        postDetailReadyTrace("ready_post")
+        eventBus.post(
+            eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+            eventData =
+                JSONObject()
+                    .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, request.shellInstanceId)
+                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, request.generation.toDouble()),
+            crossProcess = true,
+            source = "adaptive_detail_ready",
+        )
     }
     var measuredThreadViewportHeightDp by remember(threadInstanceKey) { mutableStateOf(0f) }
     val viewportMeasurementReady = threadViewportMeasurementReady(measuredThreadViewportHeightDp)
@@ -13899,11 +18107,17 @@ private fun ThreadMessagesList(
     var classicMenuOverrideMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     // task #569: long-press on a reaction chip shows who reacted.
     var reactionDetails by remember(threadInstanceKey) { mutableStateOf<ThreadReactionDetailsRequest?>(null) }
+    var authorDescriptionPopover by remember(threadInstanceKey) {
+        mutableStateOf<ThreadAuthorDescriptionPopoverRequest?>(null)
+    }
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            authorDescriptionPopover = null
+        }
+    }
     var taskStatusMenuMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var taskStatusMenuAnchor by remember(threadInstanceKey) { mutableStateOf<SlockPopoverAnchor?>(null) }
-    var allowBottomAutoAnchor by remember(threadInstanceKey) {
-        mutableStateOf(true)
-    }
+
     var expandedLongMessageIds by remember(threadInstanceKey) {
         mutableStateOf<Set<String>>(emptySet())
     }
@@ -13951,9 +18165,7 @@ private fun ThreadMessagesList(
             }
         }
     }
-    var initialBottomAnchorReady by remember(threadInstanceKey) {
-        mutableStateOf(false)
-    }
+
     var backToBottomInteractionGuardActive by remember(threadInstanceKey) {
         mutableStateOf(false)
     }
@@ -13963,6 +18175,44 @@ private fun ThreadMessagesList(
     var latestLocalSendBottomAnchorActiveKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     val userScrollGeneration = remember(threadInstanceKey) { ThreadUserScrollGeneration() }
+    // A4 adoption (task #18): the viewport anchor provider is registered here — the only
+    // place listState/timelineSlice/userScrollGeneration coexist. The page-level initiator
+    // calls it under the request fence; a null holder (embedded detail child, or A4 gate
+    // off upstream) leaves this a no-op.
+    val adaptiveInitiationCaptureHolder = LocalThreadAdaptiveInitiationCapture.current
+    // timelineSlice recomposes per frame; the provider must always see the latest slice.
+    val latestTimelineSlice by rememberUpdatedState(timelineSlice)
+    DisposableEffect(adaptiveInitiationCaptureHolder, threadInstanceKey) {
+        val holder = adaptiveInitiationCaptureHolder
+        if (holder != null) {
+            holder.captureAnchor = anchor@{ requestId ->
+                val first =
+                    listState.threadFirstVisibleMessageAnchor(
+                        timelineSlice = latestTimelineSlice,
+                        userScrollGeneration = userScrollGeneration.value,
+                    ) ?: return@anchor null
+                // atLatest must reflect the viewport's settled intent, not instantaneous
+                // geometry: during a resize/rotation frame `canScrollForward` can read
+                // transiently in EITHER direction — true while FollowingLatest at bottom
+                // (Jony r19 atLatest miss), or false while Anchored mid-list (which would
+                // wrongly upgrade a mid anchor to follow-latest). The controller intent is
+                // the only stable signal for both directions.
+                val atLatest =
+                    viewportControllerState.intent is LazyViewportIntent.FollowingLatest
+                SharedAdaptiveScrollAnchor(
+                    requestId = requestId,
+                    messageId = first.messageId,
+                    messageOffsetPx = first.offset,
+                    fallbackIndex = listState.firstVisibleItemIndex,
+                    atLatest = atLatest,
+                    capturedAtMillis = defaultNowMillis(),
+                )
+            }
+        }
+        onDispose {
+            if (holder != null) holder.captureAnchor = null
+        }
+    }
     var lastComposerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(composerKeyboardInsetDp) }
     // task #990 kill-switch: the kill-switch gates run inside long-lived
     // coroutines (the focused session's watch loop, the origin correction's
@@ -14181,7 +18431,9 @@ private fun ThreadMessagesList(
             }
     }
     val initialBottomAnchorPending =
-        !initialBottomAnchorReady && latestItemIndex >= 0 && !revealLatestLocalSendBeforeInitialAnchor
+        !initialBottomAnchorReady && latestItemIndex >= 0 &&
+            !revealLatestLocalSendBeforeInitialAnchor &&
+            !adaptiveAnchorRestoreInFlight
     LaunchedEffect(
         threadInstanceKey,
         renderPayload.status,
@@ -14453,6 +18705,7 @@ private fun ThreadMessagesList(
                 "visible=${listState.layoutInfo.visibleItemsInfo.joinToString(",") { it.index.toString() }}"
         )
     }
+    var pendingOlderPageAnchor by remember(threadInstanceKey) { mutableStateOf<ThreadVisibleMessageAnchor?>(null) }
     var previousOlderMessagesStatus by remember(threadInstanceKey) { mutableStateOf(renderPayload.olderMessagesStatus) }
     var olderPageCycleActive by remember(threadInstanceKey) { mutableStateOf(false) }
     var olderPageSettledUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
@@ -14625,15 +18878,18 @@ private fun ThreadMessagesList(
     }
     // task #232: report the rendered visible tail so the read marker tracks
     // actual visibility instead of the loaded payload tail.
-    LaunchedEffect(threadInstanceKey) {
+    // The key must include the payload window: a bare threadInstanceKey key
+    // captures firstMessageListItemIndex/messageCount from the entry payload,
+    // so newer messages fall outside the [firstMessageListItemIndex,
+    // firstMessageListItemIndex + messageCount) window and the tail index never
+    // advances (task #1139 — the ↓ x new count froze at the entry value).
+    LaunchedEffect(threadInstanceKey, renderPayload.messages, renderPayload.firstMessageListItemIndex()) {
         snapshotFlow {
-            val visibleItems = listState.layoutInfo.visibleItemsInfo
-            val firstMessageItemIndex = renderPayload.firstMessageListItemIndex()
-            visibleItems
-                .lastOrNull()
-                ?.index
-                ?.minus(firstMessageItemIndex)
-                ?.takeIf { it in renderPayload.messages.indices }
+            threadVisibleReadTailMessageIndex(
+                visibleListItemIndexes = listState.layoutInfo.visibleItemsInfo.map { item -> item.index },
+                firstMessageListItemIndex = renderPayload.firstMessageListItemIndex(),
+                messageCount = renderPayload.messages.size,
+            )
         }
             .distinctUntilChanged()
             .collect { index -> onVisibleReadTailChange(index) }
@@ -14817,14 +19073,54 @@ private fun ThreadMessagesList(
         val previousStatus = previousOlderMessagesStatus
         if (renderPayload.olderMessagesStatus == "loading" && previousStatus != "loading") {
             olderPageCycleActive = true
+            pendingOlderPageAnchor =
+                listState.threadFirstVisibleMessageAnchor(
+                    timelineSlice = renderPayload,
+                    userScrollGeneration = userScrollGeneration.value
+                )
             allowBottomAutoAnchor = false
+            pendingOlderPageAnchor?.let { anchor ->
+                diagnosticsLogger(
+                    "thread_older_anchor_capture messageId=${anchor.messageId} offset=${anchor.offset} " +
+                        "userScrollGeneration=${anchor.userScrollGeneration} " +
+                        "isScrollInProgress=${listState.isScrollInProgress}"
+                )
+            }
             diagnosticsLogger(
                 "thread_older_page_cycle result=loading " +
                     "viewportIntent=${viewportControllerState.intent} " +
                     "isScrollInProgress=${listState.isScrollInProgress}"
             )
         } else if (previousStatus == "loading" && renderPayload.olderMessagesStatus != "loading") {
+            val anchor = pendingOlderPageAnchor
+            pendingOlderPageAnchor = null
             allowBottomAutoAnchor = false
+            if (anchor != null) {
+                listState.awaitThreadMessagesLayoutFrame()
+            }
+            if (
+                anchor != null &&
+                shouldRestoreThreadOlderPageAnchor(
+                    capturedUserScrollGeneration = anchor.userScrollGeneration,
+                    currentUserScrollGeneration = userScrollGeneration.value
+                )
+            ) {
+                val targetIndex = renderPayload.threadMessageListItemIndex(anchor.messageId)
+                if (targetIndex >= 0) {
+                    listState.scrollToItem(targetIndex, -anchor.offset)
+                    diagnosticsLogger(
+                        "thread_older_anchor_restore result=restored messageId=${anchor.messageId} " +
+                            "targetIndex=$targetIndex offset=${anchor.offset} " +
+                            "userScrollGeneration=${userScrollGeneration.value}"
+                    )
+                }
+            } else if (anchor != null) {
+                diagnosticsLogger(
+                    "thread_older_anchor_restore result=skipped_user_moved messageId=${anchor.messageId} " +
+                        "capturedUserScrollGeneration=${anchor.userScrollGeneration} " +
+                        "currentUserScrollGeneration=${userScrollGeneration.value}"
+                )
+            }
             diagnosticsLogger(
                 "thread_older_page_cycle result=settled " +
                     "viewportIntent=${viewportControllerState.intent} " +
@@ -14873,14 +19169,18 @@ private fun ThreadMessagesList(
     LaunchedEffect(
         threadInstanceKey,
         latestLocalSendBottomAnchorKey,
-        latestItemIndex,
         newerPageCycleActive
     ) {
         if (newerPageCycleActive) {
             allowBottomAutoAnchor = false
             return@LaunchedEffect
         }
-        if (!shouldAnchorLatestLocalSendToBottom(latestLocalSendBottomAnchorKey, latestItemIndex)) {
+        if (
+            !shouldAnchorLatestLocalSendToBottom(
+                latestLocalSendBottomAnchorKey,
+                currentLatestItemIndexState.value
+            )
+        ) {
             return@LaunchedEffect
         }
         latestLocalSendBottomAnchorStartUserScrollGeneration = userScrollGeneration.value
@@ -15353,6 +19653,12 @@ private fun ThreadMessagesList(
         }
         if (!initialBottomAnchorReady) {
             while (!initialBottomAnchorReady) {
+                if (adaptiveAnchorRestoreInFlight) {
+                    // A4 restore owns the viewport (task #18): yield this frame rather than
+                    // dispatching FollowLatest on top of an in-flight staged-anchor scroll.
+                    delay(ThreadInitialBottomAnchorRetryDelayMs)
+                    continue
+                }
                 if (listState.isScrollInProgress) {
                     initialBottomAnchorReady = true
                     return@LaunchedEffect
@@ -15949,6 +20255,13 @@ private fun ThreadMessagesList(
             LaunchedEffect(threadInstanceKey, maxHeight) {
                 measuredThreadViewportHeightDp = maxHeight.value
             }
+            if (offlineLastKnownChrome.tipVisible) {
+                // Absolute overlay, out of the list's flow (artin, task #1125); the list reserves an
+                // equal top inset below so the tip never hides the first row when scrolled to the top.
+                ThreadOfflineLastKnownTip(
+                    modifier = Modifier.align(Alignment.TopCenter).zIndex(ThreadOfflineLastKnownTipZIndex)
+                )
+            }
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize()
@@ -16039,6 +20352,8 @@ private fun ThreadMessagesList(
                         )
                     ),
                 verticalArrangement = Arrangement.Bottom,
+                contentPadding =
+                    PaddingValues(top = if (offlineLastKnownChrome.insetActive) ThreadOfflineLastKnownTipHeight else 0.dp),
                 beyondBoundsItemCount = activeListBeyondBoundsItems
             ) {
             if (renderPayload.hasThreadOriginItem()) {
@@ -16060,7 +20375,6 @@ private fun ThreadMessagesList(
                         highlightedMentions = highlightedMentions,
                         pendingActionCardIds = pendingActionCardIds,
                         attachmentOpenStates = attachmentOpenStates,
-                        attachmentCommentsEnabled = attachmentCommentsEnabled,
                         currentServerSlug = currentServerSlug,
                         contentExtrasVisible = contentExtrasVisible,
                         isMarkdownTagValid = isMarkdownTagValid,
@@ -16070,12 +20384,20 @@ private fun ThreadMessagesList(
                         diagnosticsLogger = diagnosticsLogger,
                         onThreadEvent = onThreadEvent,
                         onOpenMember = onOpenMember,
+                        onExternalAuthor = onExternalAuthor,
                         onShowReactionDetails = { reaction, anchor ->
                             reactionDetails =
                                 ThreadReactionDetailsRequest(
                                     emoji = reaction.emoji,
                                     names = reaction.reactorNames,
                                     count = reaction.count,
+                                    anchor = anchor
+                                )
+                        },
+                        onShowAuthorDescription = { description, anchor ->
+                            authorDescriptionPopover =
+                                ThreadAuthorDescriptionPopoverRequest(
+                                    description = description,
                                     anchor = anchor
                                 )
                         },
@@ -16092,6 +20414,7 @@ private fun ThreadMessagesList(
                         onMentionAuthor = onMentionAuthor,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
+                        memberModelLabelResolver = memberModelLabelResolver,
                         onOpenMarkdownTag = onOpenMarkdownTag,
                         onOpenMarkdownUrl = onOpenMarkdownUrl,
                         shareSelectionActive = shareSelectionActive,
@@ -16320,6 +20643,7 @@ private fun ThreadMessagesList(
                                 highlightedMentions = highlightedMentions,
                                 agentStatusResolver = agentStatusResolver,
                                 memberAvatarResolver = memberAvatarResolver,
+                                memberModelLabelResolver = memberModelLabelResolver,
                                 inlineReplyParticipantsById = inlineReplyParticipantsById,
                                 focused = activeFocusedMessageId == message.id || activeInlineSearchMessageId == message.id,
                                 shareSelectionActive = shareSelectionActive,
@@ -16330,6 +20654,7 @@ private fun ThreadMessagesList(
                                 // card boundary invalidates every visible message while anchoring.
                                 isMessageListScrolling = { listState.isScrollInProgress },
                                 alignOwnMessageRight = renderPayload.alignOwnMessagesRight && message.isOwn,
+                                messageAlignmentModeEnabled = renderPayload.alignOwnMessagesRight,
                                 compactConsecutiveMessages = renderPayload.compactConsecutiveMessages,
                                 suppressRepeatedAuthor = suppressRepeatedAuthor,
                                 showReplyAction = renderPayload.showReplyActions,
@@ -16350,6 +20675,7 @@ private fun ThreadMessagesList(
                                     }
                                 },
                                 onOpenMember = onOpenMember,
+                                onExternalAuthor = onExternalAuthor,
                                 onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
                                 onOpenTask = { onThreadEvent("openTask", it, null, null) },
                                 onOpenTaskStatusMenu = { anchor ->
@@ -16366,14 +20692,19 @@ private fun ThreadMessagesList(
                                             anchor = anchor
                                         )
                                 },
+                                onShowAuthorDescription = { description, anchor ->
+                                    authorDescriptionPopover =
+                                        ThreadAuthorDescriptionPopoverRequest(
+                                            description = description,
+                                            anchor = anchor
+                                        )
+                                },
                                 showReactionAddAction = renderPayload.showReactionActions && !message.hasLocalSendState(),
                                 onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
                                 timestampLabel = message.timestampLabel,
                                 compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message),
                                 onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                                 onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },
-                                attachmentCommentsEnabled = attachmentCommentsEnabled,
-                                onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", message.id, it, null) },
                                 onRetryLocalSend = { onThreadEvent("retryLocalSend", message.id, null, null) },
                                 onCopyLocalSendFailureDetails = {
                                     onThreadEvent("copyLocalSendFailureDetails", message.id, null, null)
@@ -16475,6 +20806,7 @@ private fun ThreadMessagesList(
                 unreadCount = unreadJumpProjection.unreadCount,
                 targetMessageId = unreadJumpProjection.targetMessageId,
                 inlineSearchVisible = inlineSearchVisible,
+                atCanonicalBottom = unreadJumpAtCanonicalBottom,
             )
         if (
             !shareSelectionCaptureActive &&
@@ -16635,6 +20967,12 @@ private fun ThreadMessagesList(
                 onDismiss = { reactionDetails = null }
             )
         }
+        authorDescriptionPopover?.let { request ->
+            ThreadAuthorDescriptionPopover(
+                request = request,
+                onDismiss = { authorDescriptionPopover = null }
+            )
+        }
         actionMessageId?.let { messageId ->
             val resolvedActionAnchor =
                 actionMenuAnchor?.takeIf { it.belongsTo(threadMessageMenuOwnerIdentity(messageId)) }
@@ -16792,20 +21130,54 @@ private fun ThreadMessagesList(
                     ?: return@let
             renderPayload.threadActionMessage(messageId, linkedTasksProjection)?.let { message ->
                 val selectedStatus = message.taskStatus.threadTaskStatusOption()
-                SlockTaskStatusMenuOverlay(
-                    anchor = resolvedTaskStatusAnchor,
-                    items = ThreadTaskStatusMenuItems,
-                    selectedId = selectedStatus.key,
-                    onDismiss = { taskStatusMenuMessageId = null },
-                    onSelect = { selectedId ->
-                        taskStatusMenuMessageId = null
-                        val taskId = message.taskId?.takeIf { it.isNotBlank() }
-                        val status = selectedId.toSharedThreadTaskStatus()
-                        if (taskId != null && status != null && status.name != selectedStatus.key) {
-                            onThreadEvent("setTaskStatus", taskId, null, selectedId)
+                // Task #258 (artin msg=bd6a3a0b): the inline task chip opens the
+                // combined task detail panel — description + status + assignee —
+                // instead of the status-only menu. Fail closed to the legacy status
+                // menu when the linked task summary (title/description) isn't loaded.
+                val linkedTask = message.taskId?.let { linkedTasksProjection.taskById(it) }
+                if (linkedTask == null || threadTaskDetailPanelUseLegacy(linkedTask)) {
+                    SlockTaskStatusMenuOverlay(
+                        anchor = resolvedTaskStatusAnchor,
+                        items = ThreadTaskStatusMenuItems,
+                        selectedId = selectedStatus.key,
+                        onDismiss = { taskStatusMenuMessageId = null },
+                        onSelect = { selectedId ->
+                            taskStatusMenuMessageId = null
+                            val taskId = message.taskId?.takeIf { it.isNotBlank() }
+                            val status = selectedId.toSharedThreadTaskStatus()
+                            if (taskId != null && status != null && status.name != selectedStatus.key) {
+                                onThreadEvent("setTaskStatus", taskId, null, selectedId)
+                            }
                         }
-                    }
-                )
+                    )
+                } else {
+                    ThreadTaskDetailDialog(
+                        task = linkedTask,
+                        assigneeOptions = taskAssigneeOptions,
+                        agentStatusResolver = agentStatusResolver,
+                        onDismiss = { taskStatusMenuMessageId = null },
+                        onStatusSelect = { selectedId ->
+                            taskStatusMenuMessageId = null
+                            val taskId = linkedTask.id.value
+                            val status = selectedId.toSharedThreadTaskStatus()
+                            if (taskId.isNotBlank() && status != null && status.name != selectedStatus.key) {
+                                onThreadEvent("setTaskStatus", taskId, null, selectedId)
+                            }
+                        },
+                        onAssigneeSelect = { assignee ->
+                            taskStatusMenuMessageId = null
+                            val taskId = linkedTask.id.value
+                            if (taskId.isNotBlank()) {
+                                onThreadEvent(
+                                    "setTaskAssignee",
+                                    taskId,
+                                    null,
+                                    assignee?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
+                                )
+                            }
+                        }
+                    )
+                }
             }
         }
     }
@@ -16954,6 +21326,7 @@ internal fun String.threadForwardErrorMessage(): String =
         "unsupported_source_message" -> ThreadUnsupportedSourceMessage
         "forward_source_target_forbidden" -> ThreadForwardSourceTargetForbiddenMessage
         "forward_cross_server_target_unsupported",
+        "forward_cross_server_batch_unsupported",
         "forward_joint_projection_unavailable" -> ThreadForwardCrossServerUnavailableMessage
         "forward_source_server_unauthorized",
         "forward_target_server_unauthorized",
@@ -17009,18 +21382,132 @@ internal fun threadOlderMessagesStatusSpec(payload: KuiklyThreadScreenPayload): 
 internal fun threadOlderMessagesStatusSpec(timelineSlice: ThreadTimelineSlice): ThreadHistoryStatusSpec =
     threadOlderMessagesStatusSpec(
         canLoadMoreBefore = timelineSlice.canLoadMoreBefore,
-        secondaryLabel = timelineSlice.beginningReplyCountLabel
+        secondaryLabel = timelineSlice.beginningReplyCountLabel,
+        durableLastKnown = timelineSlice.durableLastKnown
     )
 
 internal fun threadOlderMessagesStatusSpec(
     canLoadMoreBefore: Boolean,
-    secondaryLabel: String? = null
+    secondaryLabel: String? = null,
+    durableLastKnown: Boolean = false
 ): ThreadHistoryStatusSpec =
-    if (canLoadMoreBefore) {
-        ThreadHistoryStatusSpec(label = MR.strings.thread_state_loading_older.desc())
-    } else {
-        ThreadHistoryStatusSpec(label = MR.strings.thread_state_beginning_conversation.desc(), secondaryLabel = secondaryLabel)
+    when {
+        // Task #1125: an offline stand-in frame has paging closed, but it is NOT the beginning of the
+        // conversation. Say what is true instead of claiming a boundary the frame cannot prove.
+        durableLastKnown -> ThreadHistoryStatusSpec(label = MR.strings.thread_offline_older_unavailable.desc())
+        canLoadMoreBefore -> ThreadHistoryStatusSpec(label = MR.strings.thread_state_loading_older.desc())
+        else -> ThreadHistoryStatusSpec(label = MR.strings.thread_state_beginning_conversation.desc(), secondaryLabel = secondaryLabel)
     }
+
+/**
+ * Task #1125: chrome around a durable last-known (offline stand-in) frame.
+ *
+ * - [insetActive]: the list reserves the tip's height at its top for as long as the frame is the
+ *   stand-in, so the tip can appear later without pushing content (no jump) and never covers the
+ *   first row when scrolled to the top.
+ * - [tipVisible]: the tip itself shows only once the background refresh has ended without
+ *   replacing the frame (transient failure). A canonical answer clears `durableLastKnown` and
+ *   both go away together with the content replacement.
+ */
+/**
+ * The realtime transport for this page's server (re)connected — that server is reachable again. An
+ * event for another server, or with no server, is not this page's recovery (LiBai #2782).
+ */
+internal fun isRealtimeTransportConnectedEvent(eventData: JSONObject, currentServerId: String?): Boolean {
+    if (eventData.optString(SlockRealtimeNotifyContract.KeyAction) != SlockRealtimeNotifyContract.ActionPresenceTransportConnected) {
+        return false
+    }
+    val serverId = currentServerId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    return eventData.optString(SlockRealtimeNotifyContract.KeyServerId).trim() == serverId
+}
+
+/** Retry spacing for a visible page stuck on a failed load: 10 s, 20 s, 40 s, then every 60 s. */
+internal fun offlineRecoveryRetryDelayMs(attempt: Int): Long =
+    (10_000L shl attempt.coerceIn(0, 3)).coerceAtMost(60_000L)
+
+internal enum class OfflineStandInRecoveryAction { Refresh, Defer, None }
+
+/**
+ * What a recovered network does to the thread on screen. Anything the last load left behind as a failure
+ * is re-asked: the offline stand-in, a memory copy kept after a failed refresh (HuaTuo alpha 78: warm
+ * re-entry shows that, not the stand-in), or the error page. A load still running is remembered, since it
+ * may yet fail; a permission answer is final and is not retried.
+ */
+internal fun offlineStandInRecoveryAction(payload: KuiklyThreadScreenPayload): OfflineStandInRecoveryAction {
+    if (payload.status == "no_permission") return OfflineStandInRecoveryAction.None
+    if (payload.backgroundRefreshing || payload.status == "loading") return OfflineStandInRecoveryAction.Defer
+    val failed = payload.durableLastKnown || payload.mainLoadFailed
+    return if (failed) OfflineStandInRecoveryAction.Refresh else OfflineStandInRecoveryAction.None
+}
+
+/**
+ * Per-page memory of a network recovery (LiBai #2782): the host de-duplicates repeated online signals,
+ * so one that lands while a refresh is running must be kept until that refresh settles. Each call
+ * answers whether a refresh should be dispatched now.
+ */
+internal class OfflineStandInRecoveryGate {
+    private var pending = false
+
+    fun onNetworkRecovered(payload: KuiklyThreadScreenPayload): Boolean = decide(payload)
+
+    /** Called whenever the stand-in / refresh state changes; acts only on a remembered recovery. */
+    fun onPayloadSettled(payload: KuiklyThreadScreenPayload): Boolean = pending && decide(payload)
+
+    private fun decide(payload: KuiklyThreadScreenPayload): Boolean =
+        when (offlineStandInRecoveryAction(payload)) {
+            OfflineStandInRecoveryAction.Refresh -> { pending = false; true }
+            OfflineStandInRecoveryAction.Defer -> { pending = true; false }
+            OfflineStandInRecoveryAction.None -> { pending = false; false }
+        }
+}
+
+internal data class ThreadOfflineLastKnownChrome(
+    val insetActive: Boolean,
+    val tipVisible: Boolean
+)
+
+internal fun threadOfflineLastKnownChrome(
+    durableLastKnown: Boolean,
+    status: String,
+    backgroundRefreshing: Boolean
+): ThreadOfflineLastKnownChrome {
+    // Task #1137: a channel that was empty when last seen is a stand-in too.
+    val standIn = durableLastKnown && (status == "content" || status == "empty")
+    return ThreadOfflineLastKnownChrome(insetActive = standIn, tipVisible = standIn && !backgroundRefreshing)
+}
+
+internal fun threadOfflineLastKnownChrome(payload: KuiklyThreadScreenPayload): ThreadOfflineLastKnownChrome =
+    threadOfflineLastKnownChrome(
+        durableLastKnown = payload.durableLastKnown,
+        status = payload.status,
+        backgroundRefreshing = payload.backgroundRefreshing
+    )
+
+/** Fixed so the list's top inset equals the overlay's height exactly (two caption lines + padding). */
+internal val ThreadOfflineLastKnownTipHeight = 40.dp
+private const val ThreadOfflineLastKnownTipZIndex = 3f
+
+@Composable
+private fun ThreadOfflineLastKnownTip(modifier: Modifier = Modifier) {
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(ThreadOfflineLastKnownTipHeight)
+                .background(SlockColor.SurfaceCream)
+                .padding(horizontal = SlockSpacing.Md, vertical = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = stringResource(MR.strings.thread_offline_last_known_tip),
+            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
 
 internal fun threadNewerMessagesActionSpec(newerMessagesStatus: String): ThreadInlineActionSpec =
     when (newerMessagesStatus) {
@@ -17979,7 +22466,11 @@ internal fun threadVisibleResumePlan(routeActive: Boolean): ThreadVisibleResumeP
     }
 
 internal class ThreadVisibleResumeGate {
-    private var pendingVisibleResume = false
+    // Snapshot state: a pending resume must itself re-trigger the drain effect,
+    // because the lifecycle listener can latch it after `active` already
+    // became true (the listener reads a stale rememberUpdatedState snapshot).
+    var pendingVisibleResume by mutableStateOf(false)
+        private set
 
     fun onLifecycleVisibleResume(routeActive: Boolean): ThreadVisibleResumePlan? {
         if (!routeActive) {
@@ -18056,6 +22547,11 @@ private fun LazyListState.threadFirstVisibleMessageAnchor(
         userScrollGeneration = userScrollGeneration
     )
 }
+
+internal fun shouldRestoreThreadOlderPageAnchor(
+    capturedUserScrollGeneration: Int,
+    currentUserScrollGeneration: Int
+): Boolean = capturedUserScrollGeneration == currentUserScrollGeneration
 
 internal fun ThreadTimelineSlice.visibleThreadReadAnchor(
     visibleListItemIndexes: List<Int>,
@@ -18433,23 +22929,55 @@ internal fun shouldShowThreadUnreadJumpButton(
     unreadCount: Int,
     targetMessageId: String?,
     inlineSearchVisible: Boolean,
+    atCanonicalBottom: Boolean = false,
 ): Boolean =
     preferenceEnabled &&
         routeActive &&
         hostForeground &&
         unreadCount > 0 &&
         !targetMessageId.isNullOrBlank() &&
-        !inlineSearchVisible
+        !inlineSearchVisible &&
+        !atCanonicalBottom
+
+internal fun threadUnreadJumpAtCanonicalBottom(
+    canLoadMoreAfter: Boolean,
+    canScrollTowardBottom: Boolean,
+    latestItemOffBottom: Boolean,
+): Boolean = !canLoadMoreAfter && !canScrollTowardBottom && !latestItemOffBottom
+
+internal fun threadVisibleReadTailMessageIndex(
+    visibleListItemIndexes: List<Int>,
+    firstMessageListItemIndex: Int,
+    messageCount: Int,
+): Int? {
+    if (messageCount <= 0) return null
+    val lastMessageListItemIndex = firstMessageListItemIndex + messageCount - 1
+    return visibleListItemIndexes
+        .asSequence()
+        .filter { index -> index in firstMessageListItemIndex..lastMessageListItemIndex }
+        .maxOrNull()
+        ?.minus(firstMessageListItemIndex)
+}
+
+internal fun consumeUnreadJumpFrontierAtCanonicalBottom(
+    sessionAnchor: ThreadReadAnchor?,
+    latestCanonicalMessage: ThreadReadAnchor?,
+    atCanonicalBottom: Boolean,
+): ThreadReadAnchor? =
+    if (atCanonicalBottom) {
+        advanceThreadReadAnchorFrontier(sessionAnchor, latestCanonicalMessage)
+    } else {
+        sessionAnchor
+    }
 
 private const val ThreadBackToBottomReleaseGuardMillis = 64L
 private const val ThreadUnreadJumpButtonZIndex = 5f
 
 /**
- * Task #232 a11y contract: floating thread pill buttons must meet the project
- * action-button touch-target norm (40-44dp, see MembersPage/SettingsAccountPage);
- * the previous 30dp was below standard.
+ * Compact floating thread pills (back-to-bottom and unread-jump).
+ * artin 2026-09-02: nothing in this family needs the 42.dp action-button target.
  */
-internal val ThreadFloatingPillButtonMinHeight = 42.dp
+internal val ThreadFloatingPillButtonMinHeight = 28.dp
 private const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 12
@@ -18755,8 +23283,88 @@ private fun ThreadQuotedPermalinkCard(
     }
 }
 
-@Composable
-internal fun ThreadMessageCard(
+/**
+ * task #346: state payload of [ThreadMessageCard]. See SlockStructuralHomeShellData for why
+ * the flat parameter list had to be grouped (Android dex verifier rejects the
+ * un-minified giant composable frame on API 34/36 builds).
+ */
+private data class ThreadMessageCardData(
+    val message: KuiklyThreadMessageItem,
+    val messageBodyTextStyle: TextStyle,
+    val replyMetadata: ThreadReplyMetadata,
+    val hasReplyDraft: Boolean,
+    val actionCard: ThreadActionCard?,
+    val messageIndex: Int,
+    val highlightedMentions: Set<String>,
+    val alignOwnMessageRight: Boolean,
+    val messageAlignmentModeEnabled: Boolean,
+    val compactConsecutiveMessages: Boolean,
+    val suppressRepeatedAuthor: Boolean,
+    val showReplyAction: Boolean,
+    val singleTapOpensThreadEnabled: Boolean,
+    val resolvedTaskAssigneeName: String?,
+    val markdownTagContextSignature: String,
+    val taskOpenEnabled: Boolean,
+    val taskStatusActionsEnabled: Boolean,
+    val showSaveAction: Boolean,
+    val showReactionAddAction: Boolean,
+    val activeMarkdownTagKey: String?,
+    val timestampLabel: String,
+    val compactTimestampLabel: String,
+    val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
+    val pendingActionCardIds: Set<String>,
+    val writeActionsEnabled: Boolean,
+    val currentServerSlug: String?,
+    val richContentEnabled: Boolean,
+    val focused: Boolean,
+    val inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem>,
+    val shareSelectionActive: Boolean,
+    val selectedForShare: Boolean,
+    val translation: ThreadMessageTranslationUi?,
+    val longMessageCollapseEnabled: Boolean,
+    val longMessageExpanded: Boolean,
+    val longPressGestureInstanceKey: Any,
+    val outerPadding: com.tencent.kuikly.compose.ui.unit.Dp,
+)
+
+/** task #346: callback payload of [ThreadMessageCard]. See ThreadMessageCardData. */
+private class ThreadMessageCardCallbacks(
+    val diagnosticsLogger: (String) -> Unit,
+    val agentStatusResolver: SlockAgentStatusResolver,
+    val resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
+    val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
+    val onShowActions: (SlockPopoverAnchor) -> Unit,
+    val onOpenMember: (MemberDetailIdentity) -> Unit,
+    val onExternalAuthor: (KuiklyThreadMessageItem) -> Unit,
+    val onOpenThread: (String) -> Unit,
+    val onOpenTask: (String) -> Unit,
+    val onOpenTaskStatusMenu: (SlockPopoverAnchor) -> Unit,
+    val onToggleReaction: (String) -> Unit,
+    val onShowReactionDetails: ((KuiklyThreadReactionItem, SlockPopoverAnchor) -> Unit)?,
+    val onOpenCommentHost: (KuiklyThreadMessageCommentRef) -> Unit,
+    val onOpenAttachment: (String) -> Unit,
+    val onDownloadAttachment: (String) -> Unit,
+    val onRetryLocalSend: () -> Unit,
+    val onCopyLocalSendFailureDetails: () -> Unit,
+    val onCommitActionCard: (String) -> Unit,
+    val onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
+    val onOpenMarkdownUrl: (String) -> Unit,
+    val onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
+    val isMessageListScrolling: () -> Boolean,
+    val memberAvatarResolver: SlockMemberAvatarResolver,
+    val memberModelLabelResolver: SlockMemberModelLabelResolver,
+    val onToggleShareSelection: () -> Unit,
+    val onToggleTranslationOriginal: () -> Unit,
+    val onRetryTranslation: () -> Unit,
+    val onOpenForwardBundle: (String) -> Unit,
+    val onToggleLongMessage: () -> Unit,
+    val onLongPressInputReady: ((String) -> Unit)?,
+    val quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)?,
+    val onShowAuthorDescription: ((String, SlockPopoverAnchor) -> Unit)? = null,
+)
+
+internal @Composable
+fun ThreadMessageCard(
     message: KuiklyThreadMessageItem,
     messageBodyTextStyle: TextStyle,
     replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
@@ -18767,6 +23375,7 @@ internal fun ThreadMessageCard(
     highlightedMentions: Set<String> = emptySet(),
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     alignOwnMessageRight: Boolean = false,
+    messageAlignmentModeEnabled: Boolean = alignOwnMessageRight,
     compactConsecutiveMessages: Boolean = false,
     suppressRepeatedAuthor: Boolean = false,
     showReplyAction: Boolean = true,
@@ -18784,6 +23393,7 @@ internal fun ThreadMessageCard(
     compactTimestampLabel: String = timestampLabel,
     onShowActions: (SlockPopoverAnchor) -> Unit,
     onOpenMember: (MemberDetailIdentity) -> Unit,
+    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     onOpenThread: (String) -> Unit,
     onOpenTask: (String) -> Unit,
     onOpenTaskStatusMenu: (SlockPopoverAnchor) -> Unit,
@@ -18792,8 +23402,6 @@ internal fun ThreadMessageCard(
     onOpenCommentHost: (KuiklyThreadMessageCommentRef) -> Unit = {},
     onOpenAttachment: (String) -> Unit,
     onDownloadAttachment: (String) -> Unit = {},
-    attachmentCommentsEnabled: Boolean = false,
-    onOpenAttachmentComments: (String) -> Unit = {},
     onRetryLocalSend: () -> Unit = {},
     onCopyLocalSendFailureDetails: () -> Unit = {},
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
@@ -18808,6 +23416,7 @@ internal fun ThreadMessageCard(
     focused: Boolean = false,
     isMessageListScrolling: () -> Boolean = { false },
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
     inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
     shareSelectionActive: Boolean = false,
     selectedForShare: Boolean = false,
@@ -18822,19 +23431,186 @@ internal fun ThreadMessageCard(
     onLongPressInputReady: ((String) -> Unit)? = null,
     longPressGestureInstanceKey: Any = message.id,
     quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)? = null,
+    onShowAuthorDescription: ((String, SlockPopoverAnchor) -> Unit)? = null,
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
+)
+ {
+    ThreadMessageCardContent(
+        modifier = Modifier,
+        data =
+            ThreadMessageCardData(
+                message = message,
+                messageBodyTextStyle = messageBodyTextStyle,
+                replyMetadata = replyMetadata,
+                hasReplyDraft = hasReplyDraft,
+                actionCard = actionCard,
+                messageIndex = messageIndex,
+                highlightedMentions = highlightedMentions,
+                alignOwnMessageRight = alignOwnMessageRight,
+                messageAlignmentModeEnabled = messageAlignmentModeEnabled,
+                compactConsecutiveMessages = compactConsecutiveMessages,
+                suppressRepeatedAuthor = suppressRepeatedAuthor,
+                showReplyAction = showReplyAction,
+                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                resolvedTaskAssigneeName = resolvedTaskAssigneeName,
+                markdownTagContextSignature = markdownTagContextSignature,
+                taskOpenEnabled = taskOpenEnabled,
+                taskStatusActionsEnabled = taskStatusActionsEnabled,
+                showSaveAction = showSaveAction,
+                showReactionAddAction = showReactionAddAction,
+                activeMarkdownTagKey = activeMarkdownTagKey,
+                timestampLabel = timestampLabel,
+                compactTimestampLabel = compactTimestampLabel,
+                attachmentOpenStates = attachmentOpenStates,
+                pendingActionCardIds = pendingActionCardIds,
+                writeActionsEnabled = writeActionsEnabled,
+                currentServerSlug = currentServerSlug,
+                richContentEnabled = richContentEnabled,
+                focused = focused,
+                inlineReplyParticipantsById = inlineReplyParticipantsById,
+                shareSelectionActive = shareSelectionActive,
+                selectedForShare = selectedForShare,
+                translation = translation,
+                longMessageCollapseEnabled = longMessageCollapseEnabled,
+                longMessageExpanded = longMessageExpanded,
+                longPressGestureInstanceKey = longPressGestureInstanceKey,
+                outerPadding = outerPadding,
+            ),
+        callbacks =
+            ThreadMessageCardCallbacks(
+                diagnosticsLogger = diagnosticsLogger,
+                agentStatusResolver = agentStatusResolver,
+                resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                isMarkdownTagValid = isMarkdownTagValid,
+                onShowActions = onShowActions,
+                onOpenMember = onOpenMember,
+                onExternalAuthor = onExternalAuthor,
+                onOpenThread = onOpenThread,
+                onOpenTask = onOpenTask,
+                onOpenTaskStatusMenu = onOpenTaskStatusMenu,
+                onToggleReaction = onToggleReaction,
+                onShowReactionDetails = onShowReactionDetails,
+                onOpenCommentHost = onOpenCommentHost,
+                onOpenAttachment = onOpenAttachment,
+                onDownloadAttachment = onDownloadAttachment,
+                onRetryLocalSend = onRetryLocalSend,
+                onCopyLocalSendFailureDetails = onCopyLocalSendFailureDetails,
+                onCommitActionCard = onCommitActionCard,
+                onOpenMarkdownTag = onOpenMarkdownTag,
+                onOpenMarkdownUrl = onOpenMarkdownUrl,
+                onMentionAuthor = onMentionAuthor,
+                isMessageListScrolling = isMessageListScrolling,
+                memberAvatarResolver = memberAvatarResolver,
+                memberModelLabelResolver = memberModelLabelResolver,
+                onToggleShareSelection = onToggleShareSelection,
+                onToggleTranslationOriginal = onToggleTranslationOriginal,
+                onRetryTranslation = onRetryTranslation,
+                onOpenForwardBundle = onOpenForwardBundle,
+                onToggleLongMessage = onToggleLongMessage,
+                onLongPressInputReady = onLongPressInputReady,
+                quotedPermalinkLoader = quotedPermalinkLoader,
+                onShowAuthorDescription = onShowAuthorDescription,
+            ),
+    )
+}
+
+@Composable
+private fun ThreadMessageCardContent(
+    modifier: Modifier = Modifier,
+    data: ThreadMessageCardData,
+    callbacks: ThreadMessageCardCallbacks,
 ) {
+    val message = data.message
+    val messageBodyTextStyle = data.messageBodyTextStyle
+    val replyMetadata = data.replyMetadata
+    val hasReplyDraft = data.hasReplyDraft
+    val actionCard = data.actionCard
+    val messageIndex = data.messageIndex
+    val diagnosticsLogger = callbacks.diagnosticsLogger
+    val highlightedMentions = data.highlightedMentions
+    val agentStatusResolver = callbacks.agentStatusResolver
+    val alignOwnMessageRight = data.alignOwnMessageRight
+    val messageAlignmentModeEnabled = data.messageAlignmentModeEnabled
+    val compactConsecutiveMessages = data.compactConsecutiveMessages
+    val suppressRepeatedAuthor = data.suppressRepeatedAuthor
+    val showReplyAction = data.showReplyAction
+    val singleTapOpensThreadEnabled = data.singleTapOpensThreadEnabled
+    val resolvedTaskAssigneeName = data.resolvedTaskAssigneeName
+    val resolveMarkdownTagLabel = callbacks.resolveMarkdownTagLabel
+    val markdownTagContextSignature = data.markdownTagContextSignature
+    val taskOpenEnabled = data.taskOpenEnabled
+    val taskStatusActionsEnabled = data.taskStatusActionsEnabled
+    val showSaveAction = data.showSaveAction
+    val showReactionAddAction = data.showReactionAddAction
+    val isMarkdownTagValid = callbacks.isMarkdownTagValid
+    val activeMarkdownTagKey = data.activeMarkdownTagKey
+    val timestampLabel = data.timestampLabel
+    val compactTimestampLabel = data.compactTimestampLabel
+    val onShowActions = callbacks.onShowActions
+    val onOpenMember = callbacks.onOpenMember
+    val onExternalAuthor = callbacks.onExternalAuthor
+    val onOpenThread = callbacks.onOpenThread
+    val onOpenTask = callbacks.onOpenTask
+    val onOpenTaskStatusMenu = callbacks.onOpenTaskStatusMenu
+    val onToggleReaction = callbacks.onToggleReaction
+    val onShowReactionDetails = callbacks.onShowReactionDetails
+    val onOpenCommentHost = callbacks.onOpenCommentHost
+    val onOpenAttachment = callbacks.onOpenAttachment
+    val onDownloadAttachment = callbacks.onDownloadAttachment
+    val onRetryLocalSend = callbacks.onRetryLocalSend
+    val onCopyLocalSendFailureDetails = callbacks.onCopyLocalSendFailureDetails
+    val attachmentOpenStates = data.attachmentOpenStates
+    val pendingActionCardIds = data.pendingActionCardIds
+    val writeActionsEnabled = data.writeActionsEnabled
+    val onCommitActionCard = callbacks.onCommitActionCard
+    val currentServerSlug = data.currentServerSlug
+    val onOpenMarkdownTag = callbacks.onOpenMarkdownTag
+    val onOpenMarkdownUrl = callbacks.onOpenMarkdownUrl
+    val onMentionAuthor = callbacks.onMentionAuthor
+    val richContentEnabled = data.richContentEnabled
+    val focused = data.focused
+    val isMessageListScrolling = callbacks.isMessageListScrolling
+    val memberAvatarResolver = callbacks.memberAvatarResolver
+    val memberModelLabelResolver = callbacks.memberModelLabelResolver
+    val inlineReplyParticipantsById = data.inlineReplyParticipantsById
+    val shareSelectionActive = data.shareSelectionActive
+    val selectedForShare = data.selectedForShare
+    val onToggleShareSelection = callbacks.onToggleShareSelection
+    val translation = data.translation
+    val onToggleTranslationOriginal = callbacks.onToggleTranslationOriginal
+    val onRetryTranslation = callbacks.onRetryTranslation
+    val onOpenForwardBundle = callbacks.onOpenForwardBundle
+    val longMessageCollapseEnabled = data.longMessageCollapseEnabled
+    val longMessageExpanded = data.longMessageExpanded
+    val onToggleLongMessage = callbacks.onToggleLongMessage
+    val onLongPressInputReady = callbacks.onLongPressInputReady
+    val longPressGestureInstanceKey = data.longPressGestureInstanceKey
+    val quotedPermalinkLoader = callbacks.quotedPermalinkLoader
+    val outerPadding = data.outerPadding
     val localizedAuthorName =
         if (message.isOwn && message.authorName == "You") {
             stringResource(MR.strings.thread_author_you)
         } else {
             message.authorName
         }
+    // task #392 (port of Web PR #7545): agent model label, resolved live from
+    // the members directory — the message wire carries no model. `null` for
+    // humans, agents without a model, and while the roster is still loading.
+    val authorModelLabel =
+        if (message.isThreadAgentAuthor()) {
+            rememberSlockMemberModelLabel(memberModelLabelResolver, message.authorId)
+        } else {
+            null
+        }
     val pointerSessionKey = LocalThreadMessagePointerSessionKey.current
     val horizontalArrangement =
         if (alignOwnMessageRight) Arrangement.spacedBy(12.dp, Alignment.End) else Arrangement.spacedBy(12.dp)
     val contentAlignment = if (alignOwnMessageRight) Alignment.End else Alignment.Start
-    val messageMaxWidthFraction = if (alignOwnMessageRight) 0.82f else 1f
+    // task #278: in the left/right conversation layout both sides are capped to the same
+    // fraction of the row's content width, so the other party's messages leave the right
+    // side free just as own messages leave the left. Outside that mode every message keeps
+    // the full width, as before.
+    val messageMaxWidthFraction = if (messageAlignmentModeEnabled) 0.82f else 1f
     val geometryTints = LocalThreadMessageGeometryTints.current
     val agentStatus =
         if (message.showsAgentStatusIndicator()) {
@@ -18851,7 +23627,21 @@ internal fun ThreadMessageCard(
         quotedPermalinkState.value = null
         quotedPermalinkTarget = null
         val loader = quotedPermalinkLoader ?: return@LaunchedEffect
-        val target = message.body.extractFirstQuotedMessagePermalink(currentServerSlug) ?: return@LaunchedEffect
+        val target = message.body.extractFirstQuotedMessagePermalink(currentServerSlug)
+        if (target == null) {
+            // task #1153: quoted permalink cards used to fail silently. This
+            // event only proves extraction returned null — it does not
+            // distinguish "no quoted permalink" from external links, code /
+            // Markdown links, or slug mismatch. serverSlug=null is a useful
+            // signal, but a non-null slug does not prove a slug mismatch.
+            if (message.body.contains("http")) {
+                diagnosticsLogger(
+                    "thread_quoted_permalink_skip messageId=${message.id} " +
+                        "serverSlug=${currentServerSlug ?: "null"}"
+                )
+            }
+            return@LaunchedEffect
+        }
         quotedPermalinkTarget = target
         quotedPermalinkState.value = ThreadQuotedPermalinkUiState.Loading
         quotedPermalinkState.value =
@@ -18899,6 +23689,10 @@ internal fun ThreadMessageCard(
                 "authorId=${message.authorId} authorKind=${message.authorKind} " +
                 "targetMemberId=${authorProfileIdentity?.memberId?.value.orEmpty()}"
         )
+        if (authorProfileIdentity == null && message.externalAuthor != null) {
+            onExternalAuthor(message)
+            return
+        }
         authorProfileIdentity?.let(onOpenMember)
     }
     val authorBadgeLabel = message.threadAuthorBadgeLabel()
@@ -19050,8 +23844,10 @@ internal fun ThreadMessageCard(
                         timestampAlignment = Alignment.TopStart,
                         timestampTextAlign = TextAlign.Start,
                         avatarLabel = message.avatarLabel,
-                        avatarWireValue = avatarWireValue,
+                        avatarWireValue =
+                            if (message.externalAuthor != null) message.avatarWireValue else avatarWireValue,
                         avatarDiagnostics = avatarDiagnostics,
+                        external = message.externalAuthor != null,
                         cacheSubject =
                             slockMemberAvatarCacheSubject(
                                 message.authorKind.projectedMemberKindOrNull(),
@@ -19111,12 +23907,51 @@ internal fun ThreadMessageCard(
                                                 .widthIn(max = 220.dp)
                                                 .clickable { openAuthorProfile("author_name") }
                                     )
+                                    // task #392 (port of Web PR #7545): agent
+                                    // model name, 11sp mono at 40% opacity,
+                                    // after the name, before badge/subtitle.
+                                    authorModelLabel?.let { modelLabel ->
+                                        Text(
+                                            text = modelLabel,
+                                            style =
+                                                SlockType.Caption.copy(
+                                                    fontFamily = SlockMonoFamily,
+                                                    fontSize = 11.sp,
+                                                    color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                                                ),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
                                     authorBadgeLabel?.let { label ->
                                         ThreadMessageAuthorBadge(label)
                                     }
                                     message.authorDescription?.let { description ->
+                                        val subtitleAnchor =
+                                            remember(message.id) {
+                                                SlockLiveRootAnchorRef(
+                                                    identity = "thread_author_subtitle:${message.id}"
+                                                )
+                                            }
+                                        val onShowDescription = callbacks.onShowAuthorDescription
+                                        val handleSubtitleClick: (() -> Unit)? =
+                                            if (onShowDescription != null && !shareSelectionActive && description.isNotBlank()) {
+                                                {
+                                                    tapMovementGate.rejectChildAction("author_subtitle")
+                                                    diagnosticsLogger("thread_author_subtitle_tap messageId=${message.id}")
+                                                    subtitleAnchor
+                                                        .resolve(SlockPopoverLocalPoint.BottomStart)
+                                                        ?.let { anchor ->
+                                                            onShowDescription(description, anchor)
+                                                        }
+                                                }
+                                            } else {
+                                                null
+                                            }
                                         ThreadMessageAuthorSubtitle(
-                                            description,
+                                            description = description,
+                                            rootAnchor = subtitleAnchor,
+                                            onClick = handleSubtitleClick,
                                             modifier = Modifier.weight(1f, fill = false)
                                         )
                                     }
@@ -19143,6 +23978,18 @@ internal fun ThreadMessageCard(
                                 onCommit = { onCommitActionCard(message.id) }
                             )
                         } else if (richContentEnabled && forwardBundle != null) {
+                            // Web MessageItem parity: the server stores the forward
+                            // note as the message content; render it above the card
+                            // unless it is the generated placeholder itself.
+                            val forwardNoteBody = threadForwardNoteBody(message.body, forwardBundle.displayCount())
+                            if (forwardNoteBody != null) {
+                                SlockMarkdownBody(
+                                    body = forwardNoteBody,
+                                    textStyle = messageBodyTextStyle,
+                                    onOpenUrl = onOpenMarkdownUrl,
+                                    modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)
+                                )
+                            }
                             ThreadForwardBundleCard(
                                 bundle = forwardBundle,
                                 messageBodyTextStyle = messageBodyTextStyle,
@@ -19289,8 +24136,6 @@ internal fun ThreadMessageCard(
                                     attachments = message.attachments,
                                     alignEnd = alignOwnMessageRight,
                                     attachmentOpenStates = attachmentOpenStates,
-                                    commentsEnabled = attachmentCommentsEnabled,
-                                    onOpenComments = onOpenAttachmentComments,
                                     onOpenAttachment = onOpenAttachment,
                                     onDownloadAttachment = onDownloadAttachment
                                 )
@@ -19365,8 +24210,10 @@ internal fun ThreadMessageCard(
                         timestampAlignment = Alignment.TopEnd,
                         timestampTextAlign = TextAlign.End,
                         avatarLabel = message.avatarLabel,
-                        avatarWireValue = avatarWireValue,
+                        avatarWireValue =
+                            if (message.externalAuthor != null) message.avatarWireValue else avatarWireValue,
                         avatarDiagnostics = avatarDiagnostics,
+                        external = message.externalAuthor != null,
                         cacheSubject =
                             slockMemberAvatarCacheSubject(
                                 message.authorKind.projectedMemberKindOrNull(),
@@ -20744,6 +25591,118 @@ private val ThreadReactionDetailsHorizontalPadding = 8.dp
 // popover for viewport clamping; the row itself wraps its real content.
 private val ThreadReactionDetailsLabelCharWidth = 7.dp
 
+internal data class ThreadAuthorDescriptionPopoverRequest(
+    val description: String,
+    val anchor: SlockPopoverAnchor
+)
+
+internal const val ThreadAuthorDescriptionPopoverMaxWidthDp = 280f
+internal const val ThreadAuthorDescriptionPopoverMinWidthDp = 120f
+internal const val ThreadAuthorDescriptionPopoverHorizontalPaddingDp = 10f
+internal const val ThreadAuthorDescriptionPopoverVerticalPaddingDp = 8f
+internal const val ThreadAuthorDescriptionPopoverApproxCharWidthDp = 7.5f
+internal const val ThreadAuthorDescriptionPopoverLineHeightDp = 16f
+
+internal data class ThreadAuthorDescriptionPopoverDimensions(
+    val width: Dp,
+    val height: Dp
+)
+
+internal fun threadAuthorDescriptionPopoverDimensions(
+    description: String,
+    maxWidth: Dp = ThreadAuthorDescriptionPopoverMaxWidthDp.dp
+): ThreadAuthorDescriptionPopoverDimensions {
+    val clean = description.trim()
+    if (clean.isEmpty()) {
+        return ThreadAuthorDescriptionPopoverDimensions(
+            width = ThreadAuthorDescriptionPopoverMinWidthDp.dp,
+            height = 36.dp
+        )
+    }
+    val shadowOffset = SlockShadow.BrutalSmall
+    val strokeExtra = SlockStroke.Default * 2
+    val horizontalPadding = (ThreadAuthorDescriptionPopoverHorizontalPaddingDp * 2).dp
+    val verticalPadding = (ThreadAuthorDescriptionPopoverVerticalPaddingDp * 2).dp
+    val availableTextWidth = (maxWidth - horizontalPadding - strokeExtra).value.coerceAtLeast(60f)
+    val approxCharsPerLine = (availableTextWidth / ThreadAuthorDescriptionPopoverApproxCharWidthDp).toInt().coerceAtLeast(1)
+    val estimatedLines = ((clean.length + approxCharsPerLine - 1) / approxCharsPerLine).coerceAtLeast(1)
+
+    val estimatedWidth = if (estimatedLines == 1) {
+        val singleLineWidth = (clean.length * ThreadAuthorDescriptionPopoverApproxCharWidthDp).dp + horizontalPadding + strokeExtra + shadowOffset
+        singleLineWidth.coerceIn(ThreadAuthorDescriptionPopoverMinWidthDp.dp, maxWidth + shadowOffset)
+    } else {
+        maxWidth + shadowOffset
+    }
+    val estimatedHeight = (estimatedLines * ThreadAuthorDescriptionPopoverLineHeightDp).dp + verticalPadding + strokeExtra + shadowOffset
+    return ThreadAuthorDescriptionPopoverDimensions(
+        width = estimatedWidth,
+        height = estimatedHeight.coerceIn(36.dp, 320.dp)
+    )
+}
+
+@Composable
+private fun ThreadAuthorDescriptionPopover(
+    request: ThreadAuthorDescriptionPopoverRequest,
+    onDismiss: () -> Unit
+) {
+    val density = LocalDensity.current
+    val dimensions = threadAuthorDescriptionPopoverDimensions(request.description)
+    val estimatedSize =
+        with(density) {
+            Size(
+                width = dimensions.width.toPx(),
+                height = dimensions.height.toPx()
+            )
+        }
+    SlockAnchoredPopover(
+        anchor = request.anchor,
+        contentSize = estimatedSize,
+        onDismiss = onDismiss,
+        horizontalAutoFlip = true,
+        verticalPlacement = SlockFloatingVerticalPlacement.Auto,
+        dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis,
+        outsidePointerMode = SlockFloatingOverlayOutsidePointerMode.Dismiss
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .padding(end = SlockShadow.BrutalSmall, bottom = SlockShadow.BrutalSmall)
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .offset(x = SlockShadow.BrutalSmall, y = SlockShadow.BrutalSmall)
+                        .background(SlockColor.ShadowBlack)
+            )
+            Box(
+                modifier =
+                    Modifier
+                        .widthIn(min = ThreadAuthorDescriptionPopoverMinWidthDp.dp, max = ThreadAuthorDescriptionPopoverMaxWidthDp.dp)
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .slockFloatingContentClickTarget()
+                        .padding(
+                            horizontal = ThreadAuthorDescriptionPopoverHorizontalPaddingDp.dp,
+                            vertical = ThreadAuthorDescriptionPopoverVerticalPaddingDp.dp
+                        )
+            ) {
+                Text(
+                    text = request.description,
+                    style =
+                        SlockType.Caption.copy(
+                            fontFamily = SlockMonoFamily,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
+                            color = SlockColor.TextBlack
+                        ),
+                    color = SlockColor.TextBlack
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun ThreadReactionAddChipChrome() {
     val hoverInteractionSource = remember { MutableInteractionSource() }
@@ -21011,10 +25970,20 @@ internal fun Modifier.threadMessageLongPressActions(
                     val gestureToken = gestureOwner.tapMovementGate.currentGestureToken()
                     val compositionLease =
                         gestureOwner.captureActiveLease(gestureToken.compositionGeneration)
-                            ?: return@detectTapGestures
+                            ?: run {
+                                diagnosticsLogger(
+                                    "thread_message_long_press_no_lease messageId=$messageId"
+                                )
+                                return@detectTapGestures
+                            }
                     val callbacks =
                         gestureOwner.callbacksSnapshot(compositionLease)
-                            ?: return@detectTapGestures
+                            ?: run {
+                                diagnosticsLogger(
+                                    "thread_message_long_press_no_callbacks messageId=$messageId"
+                                )
+                                return@detectTapGestures
+                            }
                     val movementDecision = gestureOwner.tapMovementGate.decision(gestureToken)
                     val directPointerMovementDetected =
                         movementDecision.reason == "movement" || movementDecision.reason == "multi_touch"
@@ -22892,7 +27861,6 @@ private fun ThreadOriginCard(
     highlightedMentions: Set<String>,
     pendingActionCardIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
-    attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
@@ -22902,12 +27870,15 @@ private fun ThreadOriginCard(
     diagnosticsLogger: (String) -> Unit = {},
     onThreadEvent: ThreadEventHandler,
     onOpenMember: (MemberDetailIdentity) -> Unit,
+    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     onShowActions: (KuiklyThreadMessageItem, SlockPopoverAnchor) -> Unit,
     onOpenTaskStatusMenu: (KuiklyThreadMessageItem, SlockPopoverAnchor) -> Unit,
     onShowReactionDetails: ((KuiklyThreadReactionItem, SlockPopoverAnchor) -> Unit)? = null,
+    onShowAuthorDescription: ((String, SlockPopoverAnchor) -> Unit)? = null,
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     shareSelectionActive: Boolean = false,
@@ -22975,6 +27946,7 @@ private fun ThreadOriginCard(
                             highlightedMentions = highlightedMentions,
                             agentStatusResolver = agentStatusResolver,
                             memberAvatarResolver = memberAvatarResolver,
+                            memberModelLabelResolver = memberModelLabelResolver,
                             shareSelectionActive = shareSelectionActive,
                             selectedForShare = origin.id in selectedShareMessageIds,
                             onToggleShareSelection = { onToggleShareSelection(origin.id) },
@@ -22994,18 +27966,18 @@ private fun ThreadOriginCard(
                             isMarkdownTagValid = isMarkdownTagValid,
                             onShowActions = { anchor -> onShowActions(origin, anchor) },
                             onOpenMember = onOpenMember,
+                            onExternalAuthor = onExternalAuthor,
                             onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
                             onOpenTask = { onThreadEvent("openTask", it, null, null) },
                             onOpenTaskStatusMenu = { anchor -> onOpenTaskStatusMenu(origin, anchor) },
                             onToggleReaction = { emoji -> onThreadEvent("toggleReaction", origin.id, null, emoji) },
                             onShowReactionDetails = onShowReactionDetails,
+                            onShowAuthorDescription = onShowAuthorDescription,
                             showReactionAddAction = timelineSlice.showReactionActions && contentExtrasVisible,
                             onOpenCommentHost = { onThreadEvent("openCommentHost", origin.id, null, null) },
                             timestampLabel = origin.timestampLabel,
                             onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                             onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },
-                            attachmentCommentsEnabled = attachmentCommentsEnabled,
-                            onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", origin.id, it, null) },
                             attachmentOpenStates = if (contentExtrasVisible) attachmentOpenStates else emptyMap(),
                             pendingActionCardIds = if (contentExtrasVisible) pendingActionCardIds else emptySet(),
                             onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
@@ -23036,8 +28008,26 @@ private fun ThreadOriginCard(
 
 // React parity: MessageItem's senderSubtitle — 12px mono at 40% black,
 // truncating flexibly between the name/badge and the timestamp.
+// Tapping truncated description opens Brutal Anchored Popover to display full description.
 @Composable
-private fun ThreadMessageAuthorSubtitle(description: String, modifier: Modifier = Modifier) {
+private fun ThreadMessageAuthorSubtitle(
+    description: String,
+    modifier: Modifier = Modifier,
+    rootAnchor: SlockLiveRootAnchorRef? = null,
+    onClick: (() -> Unit)? = null
+) {
+    val clickableModifier =
+        if (onClick != null) {
+            modifier.clickable(onClick = onClick)
+        } else {
+            modifier
+        }
+    val anchoredModifier =
+        if (rootAnchor != null) {
+            clickableModifier.slockCaptureLiveRootAnchor(rootAnchor)
+        } else {
+            clickableModifier
+        }
     Text(
         text = description,
         style =
@@ -23048,7 +28038,7 @@ private fun ThreadMessageAuthorSubtitle(description: String, modifier: Modifier 
         color = SlockColor.TextBlack.copy(alpha = 0.4f),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        modifier = modifier
+        modifier = anchoredModifier
     )
 }
 
@@ -23097,6 +28087,7 @@ private fun ThreadMessageAvatarSlot(
     status: SlockAgentStatusIndicatorState?,
     statusPulsing: () -> Boolean = { true },
     muted: Boolean = false,
+    external: Boolean = false,
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
 ) {
@@ -23119,6 +28110,7 @@ private fun ThreadMessageAvatarSlot(
                         status = status,
                         statusPulsing = statusPulsing,
                         muted = muted,
+                        external = external,
                         onClick = onClick,
                         onLongPress = onLongPress
                     )
@@ -23156,6 +28148,7 @@ private fun ThreadMessageAvatar(
     status: SlockAgentStatusIndicatorState?,
     statusPulsing: () -> Boolean = { true },
     muted: Boolean = false,
+    external: Boolean = false,
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
 ) {
@@ -23199,6 +28192,9 @@ private fun ThreadMessageAvatar(
             statusPulsing = status?.pulsing == true && statusPulsing()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
+                if (external && avatarSource == null) {
+                    ThreadExternalAuthorAvatarFallback(muted = muted)
+                } else {
                 SlockAvatar(
                     avatarWireValue = avatarSource,
                     label = avatarLabel,
@@ -23208,6 +28204,7 @@ private fun ThreadMessageAvatar(
                     borderWidth = SlockStroke.Default,
                     cacheSubject = cacheSubject
                 )
+                }
                 if (muted) {
                     Box(
                         modifier =
@@ -23218,6 +28215,22 @@ private fun ThreadMessageAvatar(
                 }
             }
         }
+    }
+}
+
+/** Distinct fallback for external (Slack-bridge) authors with no avatar on the wire. */
+@Composable
+private fun ThreadExternalAuthorAvatarFallback(muted: Boolean) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.AccentCyan)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .alpha(if (muted) 0.62f else 1f),
+        contentAlignment = Alignment.Center
+    ) {
+        SlockLucideIcon(SlockLucideIconName.Link, modifier = Modifier.size(20.dp), color = SlockColor.TextBlackArgb)
     }
 }
 
@@ -23532,6 +28545,9 @@ internal fun KuiklyThreadAttachmentItem.isMarkdownAttachment(): Boolean =
 internal fun KuiklyThreadAttachmentItem.isTextLikeAttachment(): Boolean =
     !isMarkdownAttachment() && slockFilePreviewIsTextLikeAttachment(fileName = name, mimeType = mimeType)
 
+internal fun KuiklyThreadAttachmentItem.isPreviewableAudioAttachment(): Boolean =
+    slockFilePreviewIsAudioAttachment(fileName = name, mimeType = mimeType)
+
 internal fun KuiklyThreadAttachmentItem.isPreviewableVideoAttachment(): Boolean =
     slockFilePreviewIsPreviewableVideoAttachment(fileName = name, mimeType = mimeType)
 
@@ -23544,7 +28560,7 @@ internal fun KuiklyThreadAttachmentItem.isHtmlAttachment(): Boolean =
     normalizedMimeType() == "text/html" || name.endsWith(".html", ignoreCase = true) || name.endsWith(".htm", ignoreCase = true)
 
 private fun KuiklyThreadAttachmentItem.threadAttachmentUsesPreviewAffordance(): Boolean =
-    isPreviewableDocumentAttachment() || isHtmlAttachment() || isPreviewableVideoAttachment()
+    isPreviewableDocumentAttachment() || isHtmlAttachment() || isPreviewableVideoAttachment() || isPreviewableAudioAttachment()
 
 internal fun KuiklyThreadAttachmentItem.genericAttachmentMetaLine(): String =
     displaySizeLabel()
@@ -23567,6 +28583,7 @@ internal fun KuiklyThreadAttachmentItem.threadAttachmentChipMetaLine(htmlPreview
 
 internal fun KuiklyThreadAttachmentItem.threadAttachmentSummaryLine(): StringDesc? =
     when {
+        isPreviewableAudioAttachment() -> MR.strings.file_preview_audio.desc()
         isPreviewableVideoAttachment() -> MR.strings.file_preview_video.desc()
         isTextLikeAttachment() || isHtmlAttachment() -> MR.strings.file_preview_text.desc()
         isPreviewableDocumentAttachment() -> MR.strings.file_preview_document.desc()
@@ -23576,6 +28593,57 @@ internal fun KuiklyThreadAttachmentItem.threadAttachmentSummaryLine(): StringDes
 /** UI-bound formatting: raw bytes win; sizeLabel exists only for compatibility snapshots. */
 internal fun KuiklyThreadAttachmentItem.displaySizeLabel(): String =
     sizeBytes.takeIf { it > 0L }?.let(::formatAttachmentSizeLabel) ?: sizeLabel
+
+/** Group identity for the initial Thread image editor's N/N event stream. */
+internal fun threadComposerImageAnnotationGroupId(actionId: String, fileCount: Int): String =
+    actionId.trim().takeIf { it.isNotBlank() && fileCount > 1 }?.let { "$it-group" }.orEmpty()
+
+/**
+ * Builds the production initial-picker preview payload. Keeping this construction
+ * in a pure helper makes the group identity and the gallery cardinality directly
+ * testable without mounting a pager or an event bus.
+ */
+internal fun threadComposerImageAnnotationPayload(
+    threadInstanceKey: String,
+    actionId: String,
+    files: List<PlatformFile>,
+    originalImage: Boolean,
+): SlockFilePreviewPayload? {
+    val firstFile = files.firstOrNull() ?: return null
+    val previewUri = firstFile.composerLocalPreviewUri().orEmpty()
+    return SlockFilePreviewPayload(
+        kind = "image",
+        title = "Image preview",
+        subtitle = firstFile.fileName,
+        name = firstFile.fileName,
+        path = firstFile.fileName,
+        meta =
+            listOf(
+                firstFile.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+                firstFile.mimeType.orEmpty()
+            ).filter { it.isNotBlank() }.joinToString(" · "),
+        imageUrl = previewUri.takeIf { it.isNotBlank() },
+        message = if (previewUri.isBlank()) "Image preview is unavailable." else "",
+        externalFileName = firstFile.fileName,
+        externalMimeType = firstFile.mimeType.orEmpty(),
+        imageGallery = files.map { file -> file.toComposerImageGalleryImage() },
+        composerImageThreadKey = threadInstanceKey,
+        composerImageActionId = actionId,
+        composerImageGroupId = threadComposerImageAnnotationGroupId(actionId, files.size),
+        composerImageFileRef = firstFile.fileRef.orEmpty(),
+        composerImageFileName = firstFile.fileName,
+        composerImageMimeType = firstFile.mimeType.orEmpty(),
+        composerImageSizeBytes = firstFile.sizeBytes,
+        composerImagePreviewUri = previewUri,
+        composerImageCompressAfterEdit = !originalImage,
+        composerImageOriginalOptionEnabled = true,
+        composerImageOwnedTemporaryFileRefs =
+            files.filter(PlatformFile::isComposerImageOwnedTemporary)
+                .mapNotNull(PlatformFile::fileRef),
+        composerImageCanComplete = true,
+        composerImageCanEdit = true
+    )
+}
 
 private fun KuiklyThreadAttachmentItem.toThreadAttachmentPreviewPayload(
     kind: String,
@@ -23610,6 +28678,61 @@ internal fun PlatformFile.composerLocalPreviewUri(): String? =
     previewUri?.takeIf { it.isNotBlank() }
         ?: fileRef?.takeIf { it.isNotBlank() }
 
+/**
+ * Rehydrate a persisted composer attachment into the platform-file descriptor used by the
+ * editable preview.  The preview URI and upload handle are deliberately kept as separate fields:
+ * a remote/local thumbnail must never be promoted to a fileRef merely because it is renderable.
+ */
+internal fun SharedThreadComposerAttachment.toComposerImagePlatformFile(): PlatformFile =
+    PlatformFile(
+        id = id,
+        fileName = fileName,
+        mimeType = mimeType,
+        sizeBytes = sizeBytes.takeIf { it > 0L },
+        previewUri = previewUri?.trim()?.takeIf { it.isNotBlank() }
+            ?: fileRef?.trim()?.takeIf { it.isNotBlank() },
+        fileRef = fileRef?.trim()?.takeIf { it.isNotBlank() },
+        source = source.orEmpty()
+    )
+
+/**
+ * Rehydrate only a still-sendable local draft row into the platform-file descriptor used by the
+ * upload/retry path. Durable draft rows may also contain server-owned ready attachments and
+ * render-only projections; those are deliberately not promoted to a local upload handle.
+ *
+ * `previewUri` is presentation-only. A remote thumbnail must never be copied into
+ * [PlatformFile.fileRef] just because it is non-empty. The original source and fileRef are kept
+ * (apart from surrounding whitespace) so a process-restored retry uses the same provider handle
+ * that was persisted by the owning picker/editor bridge.
+ */
+internal fun SharedThreadComposerAttachment.toRestoredThreadComposerPlatformFile(): PlatformFile? {
+    val normalizedStatus = status.trim().lowercase()
+    if (normalizedStatus !in setOf("queued", "uploading", "failed")) return null
+
+    val normalizedId = id.trim().takeIf { it.isNotBlank() } ?: return null
+    val normalizedRef = fileRef?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val normalizedSource = source?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    if (
+        normalizedSource != "external_share" &&
+            normalizedSource !in ThreadComposerOwnedTemporarySources
+    ) {
+        return null
+    }
+
+    val normalizedName = fileName.trim().takeIf { it.isNotBlank() } ?: return null
+    val normalizedPreview = previewUri?.trim()?.takeIf { it.isNotBlank() }
+    val normalizedMime = mimeType?.trim()?.takeIf { it.isNotBlank() }
+    return PlatformFile(
+        id = normalizedId,
+        fileName = normalizedName,
+        mimeType = normalizedMime,
+        sizeBytes = sizeBytes.takeIf { it > 0L },
+        previewUri = normalizedPreview,
+        fileRef = normalizedRef,
+        source = normalizedSource
+    )
+}
+
 internal fun PlatformFile.toComposerImageGalleryImage(): SlockFilePreviewGalleryImage =
     SlockFilePreviewGalleryImage(
         attachmentId = id,
@@ -23623,21 +28746,27 @@ internal fun PlatformFile.toComposerImageGalleryImage(): SlockFilePreviewGallery
         composerImageOwnedTemporary = isComposerImageOwnedTemporary()
     )
 
-internal fun PlatformFile.isComposerImageOwnedTemporary(): Boolean =
-    !fileRef.isNullOrBlank() && source in setOf("platform_picker", "platform_camera")
-
-internal fun KuiklyThreadAttachmentItem.threadAttachmentCommentCountLabel(): String? =
-    commentCount
-        .takeIf { it > 0 && !isImageAttachment() && !isPdfAttachment() }
-        ?.let { count -> "$count ${if (count == 1) "comment" else "comments"}" }
+internal fun PlatformFile.isComposerImageOwnedTemporary(): Boolean {
+    if (fileRef.isNullOrBlank() || source !in ThreadComposerOwnedTemporarySources) return false
+    val normalizedMime = mimeType.orEmpty().substringBefore(';').trim().lowercase()
+    val hasVideoExtension =
+        sequenceOf(fileName, fileRef.orEmpty()).any { candidate ->
+            val extension =
+                candidate
+                    .substringBefore('?')
+                    .substringBefore('#')
+                    .substringAfterLast('.', missingDelimiterValue = "")
+                    .lowercase()
+            extension in SlockFilePreviewVideoExtensions
+        }
+    return !normalizedMime.startsWith("video/") && !hasVideoExtension
+}
 
 @Composable
 private fun ThreadMessageAttachments(
     attachments: List<KuiklyThreadAttachmentItem>,
     alignEnd: Boolean,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
-    commentsEnabled: Boolean = false,
-    onOpenComments: (String) -> Unit = {},
     onOpenAttachment: (String) -> Unit,
     onDownloadAttachment: (String) -> Unit = {}
 ) {
@@ -23673,10 +28802,8 @@ private fun ThreadMessageAttachments(
             ThreadAttachmentChip(
                 attachment = attachment,
                 openState = attachmentOpenStates[attachment.id],
-                commentsEnabled = commentsEnabled,
                 onOpen = { onOpenAttachment(attachment.id) },
-                onDownload = { onDownloadAttachment(attachment.id) },
-                onOpenComments = { onOpenComments(attachment.id) }
+                onDownload = { onDownloadAttachment(attachment.id) }
             )
         }
     }
@@ -23726,22 +28853,24 @@ private fun ThreadImageAttachmentTile(
 private fun ThreadAttachmentChip(
     attachment: KuiklyThreadAttachmentItem,
     openState: ThreadAttachmentOpenUiState?,
-    commentsEnabled: Boolean = false,
     onOpen: () -> Unit,
-    onDownload: () -> Unit = {},
-    onOpenComments: () -> Unit = {}
+    onDownload: () -> Unit = {}
 ) {
     if (attachment.isPreviewableVideoAttachment()) {
         ThreadInlineVideoAttachmentCard(
             attachment = attachment,
-            commentsEnabled = commentsEnabled,
-            onDownload = onDownload,
-            onOpenComments = onOpenComments
+            onDownload = onDownload
+        )
+        return
+    }
+    if (attachment.isPreviewableAudioAttachment()) {
+        ThreadInlineAudioAttachmentCard(
+            attachment = attachment,
+            onDownload = onDownload
         )
         return
     }
     val isOpening = openState.threadAttachmentIsOpening()
-    val canOpenComments = commentsEnabled && !attachment.isImageAttachment() && !attachment.isPdfAttachment()
     val meta = attachment.threadAttachmentChipMetaLine(stringResource(MR.strings.file_preview_html))
     val statusLabel = openState.localizedThreadAttachmentStatusLabel()
     val summaryLabel = statusLabel ?: attachment.threadAttachmentSummaryLine()?.localized()
@@ -23759,19 +28888,6 @@ private fun ThreadAttachmentChip(
             loading = isOpening,
             onClick = if (isOpening) ({}) else onOpen
         )
-        if (canOpenComments) {
-            SlockBrutalActionButton(
-                label = attachment.threadAttachmentCommentCountLabel() ?: "Comments",
-                onClick = onOpenComments,
-                modifier = Modifier.fillMaxWidth(),
-                backgroundColor = SlockColor.SurfaceCream,
-                minWidth = 0.dp,
-                minHeight = 30.dp,
-                leadingIcon = SlockLucideIconName.MessageCircle,
-                shadowOffset = 0.dp,
-                textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack)
-            )
-        }
     }
 }
 
@@ -24166,31 +29282,39 @@ private fun ThreadFilesTab(
     threadInstanceKey: String,
     basePayload: KuiklyThreadScreenPayload,
     filesStartKey: String?,
-    filesViewModel: SharedThreadFilesViewModel,
+    filesViewModel: SharedThreadFilesViewModel?,
+    active: Boolean,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     onAuthRequired: (String?) -> Unit,
     onOpenAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
     onDownloadAttachment: (KuiklyThreadAttachmentItem) -> Unit,
     onOpenFileSource: (KuiklyThreadFileItem) -> Unit
 ) {
+    if (filesViewModel == null) {
+        ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
+        return
+    }
+    val vm = filesViewModel
     LaunchedEffect(
         threadInstanceKey,
         filesStartKey,
         basePayload.sourceThreadId,
         basePayload.streamChannelId,
-        basePayload.instanceId
+        basePayload.instanceId,
+        active
     ) {
+        if (!active) return@LaunchedEffect
         if (filesStartKey == null) return@LaunchedEffect
-        filesViewModel.dispatch(
+        vm.dispatch(
             SharedThreadFilesIntent.Start(
                 basePayload = basePayload
             )
         )
-        if (filesViewModel.state.value.payload.shouldFetchInitialFiles()) {
-            filesViewModel.dispatch(SharedThreadFilesIntent.Refresh("initial_tab"))
+        if (vm.state.value.payload.shouldFetchInitialFiles()) {
+            vm.dispatch(SharedThreadFilesIntent.Refresh("initial_tab"))
         }
     }
-    val filesState by filesViewModel.state.collectAsState()
+    val filesState by vm.state.collectAsState()
     val payload = filesState.payload
     LaunchedEffect(payload.status, payload.errorCode) {
         if (payload.status == "no_permission" || payload.status == "error") {
@@ -24218,8 +29342,8 @@ private fun ThreadFilesTab(
                 val fileItem = payload.items.firstOrNull { it.attachmentId == cleanAttachmentId } ?: return@ThreadFilesContent
                 onOpenFileSource(fileItem)
             }
-            "loadMore" -> filesViewModel.dispatch(SharedThreadFilesIntent.LoadMore("load_more"))
-            "retry" -> filesViewModel.dispatch(SharedThreadFilesIntent.Refresh("retry"))
+            "loadMore" -> vm.dispatch(SharedThreadFilesIntent.LoadMore("load_more"))
+            "retry" -> vm.dispatch(SharedThreadFilesIntent.Refresh("retry"))
         }
     }
 }
@@ -24504,6 +29628,21 @@ private fun ForwardMessageBundle.localizedForwardTitle(): String =
 private fun ForwardMessageBundle.displayCount(): Int =
     totalCount?.takeIf { it > 0 } ?: messages.size
 
+// Mirrors web MessageItem: the server stores the forward note as the message
+// content and falls back to this generated placeholder when no note was given.
+// The placeholder is card chrome, not body text, so it is never rendered as
+// the note above the bundle card.
+private fun threadForwardGeneratedPlaceholder(count: Int): String =
+    "Forwarded $count message${if (count == 1) "" else "s"}"
+
+// Web forwardedBundleBodyContent parity: the note is the bundle message's body
+// unless the body is exactly the generated placeholder.
+internal fun threadForwardNoteBody(body: String, displayCount: Int): String? =
+    body
+        .trim()
+        .takeUnless { it == threadForwardGeneratedPlaceholder(displayCount) }
+        ?.takeIf { it.isNotEmpty() }
+
 private fun ForwardMessageItem.forwardPreviewLine(): String {
     val text = body.trim().ifBlank { forwardAttachmentLabel() }
     return "${authorName.ifBlank { "Unknown" }}: $text"
@@ -24545,6 +29684,141 @@ private fun ThreadForwardSelectionMode.toForwardMessageSendMode(): ForwardMessag
 internal data class ThreadForwardOutcome(
     val failureCode: String? = null
 )
+
+internal data class ThreadForwardSuccessBanner(
+    val target: ForwardMessageTarget,
+    val destination: ForwardMessageDestination,
+    val messageId: MessageId
+)
+
+internal fun ForwardMessageTarget.forwardSuccessDisplayTitle(): String =
+    when (channelKind) {
+        ConversationKind.DirectMessage -> title.trim().ifBlank { "DM" }
+        else -> title.trim().removePrefix("#").takeIf { it.isNotBlank() }?.let { "#$it" } ?: "#channel"
+    }
+
+internal fun ThreadForwardSuccessBanner.forwardSuccessConversationIdentity(): ThreadLaunchConversationIdentity? {
+    val resolvedChannelId = destination.channelId.value.trim().takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return null
+    val resolvedKind = destination.channelKind.takeUnless { it == ConversationKind.Thread } ?: ConversationKind.Channel
+    if (resolvedKind == ConversationKind.DirectMessage && target.memberId == null) return null
+    return buildThreadLaunchConversationIdentity(
+        kind = resolvedKind,
+        channelId = resolvedChannelId,
+        channelType = target.channelType,
+        dmPeerIdentity =
+            target.memberId?.let { member ->
+                MemberDetailIdentity(
+                    memberId = member,
+                    kind =
+                        when (target.kind) {
+                            ForwardMessageTargetKind.AgentDirectMessageCandidate -> MemberKind.Agent
+                            else -> MemberKind.Human
+                        },
+                    sourceServerId = target.serverId
+                )
+            }
+    )
+}
+
+internal data class ThreadForwardBatchOutcome(
+    val failureCode: String? = null,
+    val result: ForwardMessageBatchResult? = null,
+    val failedReceipts: List<ThreadForwardDestinationReceipt> = emptyList()
+)
+
+internal fun forwardRequestIdAfterSelectionChange(
+    previousKeys: Set<String>,
+    nextKeys: Set<String>,
+    currentRequestId: String?
+): String? =
+    currentRequestId.takeIf { previousKeys == nextKeys }
+
+internal fun applyForwardMessageDeliveries(
+    result: ForwardMessageBatchResult,
+    messageStore: SharedThreadMessageStore,
+    onHomeRefresh: () -> Unit
+) {
+    result.deliveries.forEach { delivery ->
+        messageStore.upsert(
+            serverId = delivery.destination.serverId,
+            channelId = delivery.destination.channelId,
+            message = delivery.message
+        )
+    }
+    if (result.deliveries.isNotEmpty()) onHomeRefresh()
+}
+
+@OptIn(ExperimentalUuidApi::class)
+private fun newThreadForwardRequestId(): String = Uuid.random().toString()
+
+internal suspend fun executeThreadForwardBatch(
+    repository: ForwardMessageTargetRepository,
+    liveSourceServerId: ServerId?,
+    sourceChannelId: ChannelId,
+    receipts: List<ThreadForwardDestinationReceipt>,
+    currentDirectoryGeneration: Int,
+    messageIds: List<String>,
+    mode: ForwardMessageSendMode,
+    note: String,
+    requestId: String
+): ThreadForwardBatchOutcome {
+    if (receipts.isEmpty()) return ThreadForwardBatchOutcome(failureCode = "forward_target_unavailable")
+    val preResolveFailure = receipts
+        .mapNotNull {
+            it.preResolveFailureCode(
+                liveSourceServerId = liveSourceServerId,
+                currentDirectoryGeneration = currentDirectoryGeneration
+            )
+        }
+        .firstOrNull()
+    if (preResolveFailure != null) return ThreadForwardBatchOutcome(failureCode = preResolveFailure)
+    val frozenSourceServerId = receipts.first().sourceServerId
+    val resolved = receipts.map { receipt ->
+        receipt to repository.resolveTargetChannel(frozenSourceServerId, receipt.target)
+    }
+    val destinations = mutableListOf<ForwardMessageDestination>()
+    resolved.forEach { (receipt, result) ->
+        val destination = (result as? DataResult.Content)?.data
+            ?: return ThreadForwardBatchOutcome(
+                failureCode = result.threadForwardFailureCode("forward_target_unavailable")
+            )
+        receipt.postResolveFailureCode(destination)?.let {
+            return ThreadForwardBatchOutcome(failureCode = it)
+        }
+        if (destination.channelId == sourceChannelId && destination.serverId == frozenSourceServerId) {
+            return ThreadForwardBatchOutcome(failureCode = "forward_source_target_forbidden")
+        }
+        destinations += destination
+    }
+    val destinationServer = destinations.first().serverId
+    if (destinations.any { it.serverId != destinationServer }) {
+        return ThreadForwardBatchOutcome(failureCode = "forward_cross_server_batch_unsupported")
+    }
+    if (messageIds.isEmpty()) return ThreadForwardBatchOutcome(failureCode = "forward_no_selected_messages")
+    return when (val result = repository.forwardMessagesBatch(
+        ForwardMessageBatchExecuteRequest(
+            sourceServerId = frozenSourceServerId,
+            sourceChannelId = sourceChannelId,
+            destinations = destinations,
+            messageIds = messageIds,
+            mode = mode,
+            note = note,
+            requestId = requestId
+        )
+    )) {
+        is DataResult.Content -> {
+            val batch = result.data
+            val failedKeys = batch.failures.map { it.destination.channelId }.toSet()
+            ThreadForwardBatchOutcome(
+                result = batch,
+                failedReceipts = receipts.zip(destinations).mapNotNull { (receipt, destination) ->
+                    receipt.takeIf { destination.channelId in failedKeys }
+                }
+            )
+        }
+        else -> ThreadForwardBatchOutcome(failureCode = result.threadForwardFailureCode("forward_failed"))
+    }
+}
 
 internal fun ForwardMessageTarget.threadForwardSelectionKey(): String = "${serverId.value}:${kind.name}:$id"
 
@@ -25284,7 +30558,7 @@ internal fun <T> SlockForwardTargetPicker(
 @Composable
 internal fun ThreadForwardNoteDialog(
     messageCount: Int,
-    selectedTarget: ForwardMessageTarget?,
+    selectedTargetLabel: String,
     note: TextFieldValue,
     sending: Boolean,
     onNoteChange: (TextFieldValue) -> Unit,
@@ -25304,7 +30578,7 @@ internal fun ThreadForwardNoteDialog(
             color = SlockColor.TextMutedGray
         )
         Text(
-            text = selectedTarget?.title.orEmpty(),
+            text = selectedTargetLabel,
             style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 19.sp),
             color = SlockColor.TextBlack,
             maxLines = 2,
@@ -25345,7 +30619,7 @@ internal fun ThreadForwardNoteDialog(
                 icon = if (sending) SlockLucideIconName.RefreshCw else SlockLucideIconName.Send,
                 onClick = onSend,
                 color = SlockColor.AccentPink,
-                enabled = selectedTarget != null && !sending
+                enabled = selectedTargetLabel.isNotBlank() && !sending
             )
         }
     }
@@ -25751,12 +31025,12 @@ private fun ThreadMembersPagerRow(
     val subtitle =
         threadMembersRosterSubtitle(
             memberKind = member.kind,
-            liveActivityLabel = status?.label,
+            liveActivityLabel = status?.localizedMemberStatusLabel(),
             humanRoleLabel =
                 if (member.kind.equals("agent", ignoreCase = true)) {
                     ""
                 } else {
-                    member.localizedModalRoleLabel()
+                    member.description
                 }
         )
     val avatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, member.id)
@@ -25765,6 +31039,12 @@ private fun ThreadMembersPagerRow(
         title = member.displayName,
         subtitle = subtitle,
         sourceBadgeLabel = member.sourceServerLabel,
+        roleBadgeLabel = when (member.effectiveChannelRole) {
+            "owner" -> stringResource(MR.strings.channel_member_role_owner)
+            "admin" -> stringResource(MR.strings.channel_member_role_admin)
+            "guest" -> stringResource(MR.strings.channel_member_role_guest)
+            else -> null
+        },
         avatarWireValue = avatarWireValue,
         avatarLabel = member.modalAvatarLabel(),
         cacheSubject = slockMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
@@ -25790,6 +31070,7 @@ private fun ThreadAddMemberModal(
     addMemberErrorCode: String?,
     initialSelectedId: String? = null,
     showSelectedCheckmark: Boolean = true,
+    inline: Boolean = false,
     onDismiss: () -> Unit,
     onSubmit: (KuiklyThreadMemberItem) -> Unit
 ) {
@@ -25820,15 +31101,7 @@ private fun ThreadAddMemberModal(
                         ?: genericErrorLabel).uppercase()
             else -> null
         }
-    SlockUnifiedDialog(
-        title = stringResource(MR.strings.thread_action_add_member),
-        onDismiss = onDismiss,
-        minWidth = 356.dp,
-        maxWidth = 356.dp,
-        contentPadding = 24.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22
-    ) {
+    val content: @Composable () -> Unit = {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (!errorText.isNullOrBlank()) {
                 Text(
@@ -25855,7 +31128,7 @@ private fun ThreadAddMemberModal(
                     }
                 }
             )
-            SlockModalListShell(height = threadMemberListHeight(agentCandidates.size, humanCandidates.size).dp) {
+            SlockModalListShell(height = threadMemberListHeight(agentCandidates.size, humanCandidates.size, maxHeight = if (inline) 200 else 288).dp) {
                 if (filteredCandidates.isEmpty()) {
                     item {
                         ThreadModalEmptyState(
@@ -25956,9 +31229,20 @@ private fun ThreadAddMemberModal(
             }
         }
     }
+    if (inline) {
+        Box(Modifier.fillMaxWidth().heightIn(max = 320.dp).padding(horizontal = 16.dp, vertical = 8.dp)) {
+            content()
+        }
+    } else {
+        SlockUnifiedDialog(
+            title = stringResource(MR.strings.thread_action_add_member), onDismiss = onDismiss,
+            minWidth = 356.dp, maxWidth = 356.dp, contentPadding = 24.dp,
+            titleFontSize = 18, titleLineHeight = 22,
+        ) { content() }
+    }
 }
 
-private fun threadMemberListHeight(agentCount: Int, humanCount: Int, maxHeight: Int = 288): Int {
+internal fun threadMemberListHeight(agentCount: Int, humanCount: Int, maxHeight: Int = 288): Int {
     val sectionCount = listOf(agentCount, humanCount).count { it > 0 }
     val rowCount = agentCount + humanCount
     return (sectionCount * 30 + rowCount * 58 + 8).coerceIn(108, maxHeight)
@@ -26055,6 +31339,7 @@ private fun MemberProfile.toKuiklyThreadMemberItem(localServerId: ServerId? = nu
                     MemberKind.Agent -> "Agent"
                     MemberKind.Human -> "Member"
                     MemberKind.System -> "System"
+                    MemberKind.External -> "External"
                 },
         description = normalizedThreadMemberDescription(description),
         avatarUrl = avatarWireValueForAvatarSlot(),
@@ -26062,7 +31347,8 @@ private fun MemberProfile.toKuiklyThreadMemberItem(localServerId: ServerId? = nu
         kind = kind.name.lowercase(),
         sourceServerId = serverId?.value,
         sourceServerLabel = remoteSourceServerLabel(localServerId),
-        canRemove = isLocalToServer(localServerId)
+        canRemove = isLocalToServer(localServerId),
+        effectiveChannelRole = effectiveChannelRole
     )
 
 private fun MemberProfile.isLocalToServer(localServerId: ServerId?): Boolean {
@@ -26657,6 +31943,36 @@ private fun ThreadStateMessage(title: String, detail: String?) {
 }
 
 @Composable
+private fun ThreadForwardSuccessBannerView(
+    banner: ThreadForwardSuccessBanner,
+    onViewInChat: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val targetLabel = banner.target.forwardSuccessDisplayTitle()
+    val successLabel = stringResource(MR.strings.thread_forward_success_banner, targetLabel)
+    val viewInChatLabel = stringResource(MR.strings.thread_forward_view_in_chat)
+    LaunchedEffect(banner) {
+        delay(5_000)
+        onDismiss()
+    }
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .zIndex(SlockFloatingOverlayHostZIndex + 20f)
+                .padding(start = 12.dp, top = slockTopSafeAreaPadding() + 8.dp, end = 12.dp),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        SlockRaftUiSuccessBanner(
+            description = successLabel,
+            actionLabel = viewInChatLabel,
+            onAction = onViewInChat,
+            modifier = Modifier.widthIn(max = 760.dp)
+        )
+    }
+}
+
+@Composable
 private fun ThreadStateActionMessage(
     title: String,
     detail: String?,
@@ -26687,3 +32003,213 @@ private fun ThreadStateActionMessage(
         }
     }
 }
+
+// Task #258 (artin msg=bd6a3a0b): the channel/thread inline task chip opens this
+// combined panel — task description + status switcher + assignee switcher — so
+// assignee editing is reachable from conversation context, not only the board.
+// Status rows mirror TasksStatusDialog (#250); the assignee list mirrors the
+// board assignee pill's rules (task #244 / web ruling stdrc msg=4c357cb1):
+// "unassigned" sentinel always first and never filtered, humans before agents,
+// search matches the visible display name.
+@Composable
+@OptIn(com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi::class)
+private fun ThreadTaskDetailDialog(
+    task: TaskSummary,
+    assigneeOptions: List<MemberProfile>,
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    onDismiss: () -> Unit,
+    onStatusSelect: (String) -> Unit,
+    onAssigneeSelect: (MemberProfile?) -> Unit
+) {
+    val statusLabel = stringResource(MR.strings.tasks_label_status)
+    val assigneeLabel = stringResource(MR.strings.tasks_chip_assignee)
+    val creatorLabel = stringResource(MR.strings.tasks_chip_creator)
+    val unassignedLabel = stringResource(MR.strings.tasks_assignee_unassigned)
+    val searchPlaceholder = stringResource(MR.strings.tasks_search_assignees)
+    // Task #258 (artin msg=6f430fed/9c943070/909777d9): status and assignee pills
+    // reuse the task-card SlockAnchoredMetaChip (i18n, vertical centering) and are
+    // tap-to-open-menu controls — the status pill opens the exact same menu as the
+    // thread inline chip (SlockTaskStatusMenuOverlay). Creator shows read-only.
+    // Task #258 successor (artin "修窄一点", Mahua/Nathan ruling msg=a2232561/ed8b7d79):
+    // the assignee pill toggles an IN-DIALOG expanding section instead of the
+    // Tasks-page SlockFilterPopover. The popover opens a second Kuikly native Modal
+    // window stacked on the dialog window, and its plain-`clickable` rows are
+    // swallowed by the outer dismiss barrier (row taps dismissed the whole stack
+    // without selecting; the Tasks page main window is unaffected). Keeping the
+    // picker inside the dialog's own window avoids nested-Modal dispatch entirely;
+    // the status menu stays on the shared overlay because its Button rows win
+    // native dispatch (SlockMenu.kt contract) and already work.
+    var statusMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    // Task #258 successor (artin msg=f65282d2): assignee picker is a standalone
+    // centered modal, so the flag only tracks open/closed (no popover anchor).
+    var assigneeMenuOpen by remember { mutableStateOf<Boolean?>(null) }
+    var assigneeMenuSearch by remember { mutableStateOf(TextFieldValue("")) }
+    val assigneeRows = threadTaskAssigneeRows(assigneeOptions, assigneeMenuSearch.text)
+    val selectedAssigneeId = task.assignee?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
+    val statusMeta = task.status.sharedTaskStatusChipMeta()
+    // Task #258 successor (artin msg=478e8978, web ref): the header shows only
+    // the channel identifier (small muted line) and the localized task number —
+    // never the task title, which can be too long for the header. The task title
+    // and description render inside the body instead.
+    val taskNumberLabel = task.taskNumber?.let { number ->
+        stringResource(MR.strings.tasks_detail_task_identifier, number)
+    }
+    val headerOverline = task.taskNumber?.let { task.channelName?.takeIf { name -> name.isNotBlank() }?.let { "#$it" } }
+    SlockUnifiedDialog(
+        title = taskNumberLabel ?: task.channelName.orEmpty(),
+        overline = headerOverline,
+        titleFontSize = 14,
+        titleLineHeight = 18,
+        titleMaxLines = 1,
+        onDismiss = onDismiss,
+        contentSpacing = SlockSpacing.Sm
+    ) {
+        // Task title now lives in the body (header is identifier-only).
+        Text(
+            text = task.tasksMeaningfulDisplayTitle(),
+            style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis
+        )
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            // Task #258 (artin msg=9c943070/909777d9): reuse the exact task-card
+            // status/assignee chips (SlockAnchoredMetaChip, i18n labels) with the
+            // label outside the pill, each pair as one wrap unit so labels stay
+            // vertically centered with their chip.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = statusLabel,
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextMutedGray
+                )
+                SlockAnchoredMetaChip(
+                    label = task.status.localizedLabel(),
+                    iconName = null,
+                    color = task.status.sharedTaskStatusChipMeta().color,
+                    onClick = { anchor -> statusMenuAnchor = anchor },
+                    anchorOwnerIdentity = threadTaskDetailMenuOwnerIdentity(task.id, "status"),
+                    modifier = Modifier.padding(start = 6.dp),
+                    trailingIconName = SlockLucideIconName.Pencil,
+                    minHeight = 24.dp,
+                    horizontalPadding = 8.dp,
+                    labelFontSize = 12.sp,
+                    labelLineHeight = 16.sp,
+                    borderWidth = SlockStroke.Default,
+                    anchorPlacement = SlockAnchorPlacement.BottomEnd
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = assigneeLabel,
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextMutedGray
+                )
+                SlockAnchoredMetaChip(
+                    label = task.assignee?.displayName?.let { "@$it" }
+                        ?: unassignedLabel,
+                    iconName = null,
+                    color = SlockColor.SurfaceWhite,
+                    onClick = { _ -> assigneeMenuOpen = true },
+                    anchorOwnerIdentity = threadTaskDetailMenuOwnerIdentity(task.id, "assignee"),
+                    modifier = Modifier
+                        .padding(start = 6.dp)
+                        .widthIn(max = 160.dp),
+                    trailingIconName = SlockLucideIconName.Pencil,
+                    minHeight = 24.dp,
+                    horizontalPadding = 8.dp,
+                    labelFontSize = 12.sp,
+                    labelLineHeight = 16.sp,
+                    borderWidth = SlockStroke.Default,
+                    anchorPlacement = SlockAnchorPlacement.BottomEnd
+                )
+            }
+            task.creator?.let { creator ->
+                // Same 24dp chip height as the status/assignee rows above so all
+                // three wrap units center-align on a shared FlowRow line.
+                Row(
+                    modifier = Modifier.height(24.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = creatorLabel,
+                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextMutedGray
+                    )
+                    Text(
+                        text = creator.displayName,
+                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
+                            .withSlockFontWeight(FontWeight.Bold),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 6.dp)
+                    )
+                }
+            }
+        }
+        task.description?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
+            Text(
+                text = description,
+                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = SlockColor.TextBlack.copy(alpha = 0.65f),
+                maxLines = 6,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+    statusMenuAnchor?.let { anchor ->
+        SlockTaskStatusMenuOverlay(
+            anchor = anchor,
+            items = ThreadTaskStatusMenuItems,
+            selectedId = statusMeta.key,
+            onDismiss = { statusMenuAnchor = null },
+            onSelect = { selectedId ->
+                statusMenuAnchor = null
+                onStatusSelect(selectedId)
+            }
+        )
+    }
+    assigneeMenuOpen?.let { open ->
+        // Task #258 successor (artin msg=ed597ee6/f65282d2): standalone centered
+        // assignee modal reusing the channel add-member interaction code. Row
+        // shaping (unassigned sentinel first, then agents/humans sections) stays
+        // here; search value resets when the modal closes or a row applies.
+        SlockTaskAssigneeMenuOverlay(
+            open = open,
+            onDismiss = { assigneeMenuOpen = null },
+            rows = assigneeRows,
+            selectedId = selectedAssigneeId,
+            agentStatusResolver = agentStatusResolver,
+            searchValue = assigneeMenuSearch,
+            onSearchValueChange = { assigneeMenuSearch = it },
+            searchPlaceholder = searchPlaceholder,
+            modalTitle = stringResource(MR.strings.tasks_assignee_picker_title),
+            unassignedLabel = unassignedLabel,
+            humansHeaderLabel = stringResource(MR.strings.thread_members_humans),
+            agentsHeaderLabel = stringResource(MR.strings.thread_members_agents),
+            onSelect = { selectedId ->
+                assigneeMenuOpen = null
+                assigneeMenuSearch = TextFieldValue("")
+                if (selectedId != selectedAssigneeId) {
+                    // No member matches the unassigned sentinel → onAssigneeSelect(null).
+                    onAssigneeSelect(
+                        assigneeOptions.firstOrNull { it.tasksIdentityFilterId() == selectedId }
+                    )
+                }
+            }
+        )
+    }
+}
+
+internal fun threadTaskDetailMenuOwnerIdentity(taskId: TaskId, slot: String): String =
+    "thread_task_detail:${taskId.value}:$slot"
+
+/**
+ * Stable anchor-owner identity for the task detail dialog's status/assignee
+ * popover anchors, so multiple concurrent overlays stay scoped per task slot.
+ */

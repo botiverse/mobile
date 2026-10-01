@@ -23,10 +23,13 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.Heartbeat
+import build.raft.app.data.WireExternalAuthor
+import build.raft.app.data.toExternalMessageAuthor
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.providerLabel
 import build.raft.app.model.Message
 import build.raft.app.model.MessageCommentHostSource
 import build.raft.app.model.MessageCommentRef
@@ -61,6 +64,7 @@ import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadId
+import build.raft.app.model.ThreadFollowersUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.canonical.message.CanonicalMessageCarry
@@ -192,6 +196,9 @@ class RealtimeEventMapper(
                     ?.withRealtimeReactionsClearedIfExplicitNull(element)
                     ?.let { mapped -> MessageUpdated(mapped, observeShadow(eventName, element, mapped)) }
             RealtimeSocketEvents.DirectMessageNew -> decodeDirectMessageNew(element)
+            RealtimeSocketEvents.ThreadFollowersUpdated ->
+                decodeOrNull(ThreadFollowersUpdatedDto.serializer(), element)
+                    ?.threadChannelId?.takeIf { it.isNotBlank() }?.let { ThreadFollowersUpdated(ChannelId(it)) }
             RealtimeSocketEvents.ThreadUpdated ->
                 decodeOrNull(ThreadUpdatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.ChannelUpdated ->
@@ -204,6 +211,8 @@ class RealtimeEventMapper(
                 decodeOrNull(TaskUpdatedDto.serializer(), element)?.toDomain(diagnosticsLogger)
             RealtimeSocketEvents.TaskDeleted ->
                 decodeOrNull(TaskDeletedDto.serializer(), element)?.let { TaskDeleted(TaskId(it.taskId)) }
+            RealtimeSocketEvents.AgentSeen ->
+                decodeOrNull(AgentSeenDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.AgentActivity ->
                 decodeOrNull(AgentActivityDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.AgentSession ->
@@ -388,6 +397,8 @@ private data class MessageWireDto(
     val commentRef: CommentRefWireDto? = null,
     val forwardBundle: WireForwardMessageBundle? = null,
     val conversationContext: ConversationContextWireDto? = null,
+    /** Slack-bridge external sender attribution (present iff senderType=external_projection). */
+    val externalAuthor: WireExternalAuthor? = null,
 )
 
 /**
@@ -442,6 +453,9 @@ private data class CommentRefWireDto(
     val hostSource: CommentHostSourceWireDto? = null,
     val anchorLabel: String? = null,
 )
+
+@Serializable
+private data class ThreadFollowersUpdatedDto(val threadChannelId: String)
 
 @Serializable
 private data class ThreadUpdatedDto(
@@ -548,6 +562,12 @@ private data class TaskUpdatedDto(
 private data class TaskDeletedDto(
     val channelId: String? = null,
     val taskId: String,
+)
+
+@Serializable
+private data class AgentSeenDto(
+    val agentId: String,
+    val lastSeenAt: String,
 )
 
 @Serializable
@@ -681,16 +701,24 @@ private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
         senderType.strictMemberKindOrNull(
             source = "realtime_message_sender",
             diagnostics = diagnostics,
-            contract = MemberKindWireContract.InternalActor,
+            contract = MemberKindWireContract.MessageSender,
         ) ?: return null
+    val external = senderKind == MemberKind.External
+    if (external && externalAuthor == null) {
+        diagnostics("projection_value_rejected source=realtime_message_sender field=externalAuthor value=missing messageId=$id")
+        return null
+    }
+    val resolvedExternalAuthor =
+        if (external) externalAuthor?.toExternalMessageAuthor(senderName) else null
     val authorKind = if (resolvedMessageType == MessageType.System) MemberKind.System else senderKind
     val author = MemberProfile(
         id = MemberId(authorId),
-        displayName = senderName ?: authorId,
+        displayName = resolvedExternalAuthor?.displayName ?: senderName ?: authorId,
         handle = senderName ?: authorId,
         kind = authorKind,
-        description = senderDescription,
-        avatarLabel = (senderName ?: authorId).take(1).uppercase(),
+        description = resolvedExternalAuthor?.providerLabel() ?: senderDescription,
+        avatarUrl = resolvedExternalAuthor?.avatarUrl,
+        avatarLabel = (resolvedExternalAuthor?.displayName ?: senderName ?: authorId).take(1).uppercase(),
         presence = Presence.Offline,
     )
     val channelIdValue = channelId
@@ -724,6 +752,7 @@ private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
         commentRef = commentRef?.toDomain(),
         forwardBundle = forwardBundle.toForwardMessageBundle() ?: actionMetadata.toForwardMessageBundle(),
         conversationContext = conversationContext?.toDomain(),
+        externalAuthor = resolvedExternalAuthor,
     )
 }
 
@@ -919,6 +948,19 @@ private fun TaskInfoWireDto.toDomain(
         channelName = channelName,
         updatedAtLabel = updatedAt ?: createdAt.orEmpty(),
         canClaim = true,
+    )
+}
+
+private fun AgentSeenDto.toDomain(): MemberPresenceUpdated? {
+    val cleanId = agentId.trim().takeIf { it.isNotBlank() } ?: return null
+    val seen = lastSeenAt.trim().takeIf { it.isNotBlank() } ?: return null
+    return MemberPresenceUpdated(
+        memberId = MemberId(cleanId),
+        // The server emits agent:seen only for external agents; presence is
+        // derived — Active means "seen", not a runtime state.
+        presence = Presence.Active,
+        kind = MemberKind.Agent,
+        lastSeenAt = seen
     )
 }
 
@@ -1448,7 +1490,7 @@ private fun NotificationPushDto.toDomainOrNull(
             cleanSenderType.strictMemberKindOrNull(
                 source = "notification_push_sender",
                 diagnostics = diagnostics,
-                contract = MemberKindWireContract.InternalActor,
+                contract = MemberKindWireContract.MessageSender,
             )
         } else {
             null

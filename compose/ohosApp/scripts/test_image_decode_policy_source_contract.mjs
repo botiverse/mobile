@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, '../../..');
-const release = '2.24.0-raft.1';
+const release = '2.24.0-raft.8';
 const version = `${release}-2.0.21-ohos`;
 const coordinate = `com.tencent.kuikly-open:core-render-ohos:${version}`;
 const expectedHarSpec = `file:../../build/kuikly/core-render-ohos-${version}.har`;
@@ -140,7 +140,7 @@ const editor = functionBody(
 );
 assertContract(
   editor.includes('rememberAsyncImageBitmap(payload.imageUrl)') &&
-    editor.includes('SlockAspectFitImagePreviewSurface('),
+    (editor.includes('drawSlockComposerBackgroundImage(') || editor.includes('SlockAspectFitImagePreviewSurface(')),
   'editor image path must remain on the shared Kuikly image-cache surface'
 );
 const widgetsSource = read('compose/shared/src/commonMain/kotlin/build/raft/app/BasicWidget.kt');

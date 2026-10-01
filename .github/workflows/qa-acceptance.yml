@@ -94,8 +94,7 @@ env:
   DEFAULT_GOAL: >-
     Log into the app with the provided test account: if a login/welcome screen shows,
     enter the email and password and submit. If a server picker appears choose
-    'OranixSlockTest'. If a server named 'Raft Android' appears, do NOT choose it under
-    any circumstances -- it is the production server. If 'OranixSlockTest' is not present,
+    'OranixSlockTest'. If 'OranixSlockTest' is not present,
     fail and report it; never substitute the closest-looking name.
     Then verify BOTH: (1) the home screen loads
     showing a channel list (rows with # channel names), and (2) tapping one channel opens
@@ -126,6 +125,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Apply Gradle cache policy
         uses: ./.github/actions/gradle-cache-policy
@@ -218,6 +219,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Download APK
         if: ${{ inputs.apk_run_id == '' && inputs.apk_url == '' }}

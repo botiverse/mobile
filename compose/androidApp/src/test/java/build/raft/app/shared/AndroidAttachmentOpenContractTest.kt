@@ -151,4 +151,51 @@ class AndroidAttachmentOpenContractTest {
             sizeBytes = 25L,
             durableCache = kind == AndroidAttachmentOpenSourceKind.PublicDownload
         )
+
+    @Test
+    fun privateCacheHitWithoutPublicCommitReportsCachedFalse() {
+        // task #319: a private staging copy must never flip `cached` to true — `cached`
+        // is strictly "public download committed" and drives the Download-vs-Open-with UI.
+        val payload =
+            attachmentCacheStatusPayload(
+                committed = null,
+                privateCached = true,
+                privatePath = "/cache/private/attachment-1"
+            )
+
+        assertEquals("ok", payload["status"])
+        assertEquals(false, payload["cached"])
+        assertEquals(true, payload["privateCached"])
+        assertEquals("/cache/private/attachment-1", payload["privatePath"])
+        assertEquals(-1L, payload["recordVersion"])
+        assertEquals(0L, payload["sizeBytes"])
+        assertEquals("", payload["uri"])
+    }
+
+    @Test
+    fun privateCacheHitWithPublicCommitReportsCachedTrueAndPrivatePath() {
+        val committed =
+            AndroidAttachmentPublicRecord(
+                identityKey = "principal:attachment-1",
+                generation = 7L,
+                phase = AndroidAttachmentPublicRecordPhase.Committed,
+                uri = "content://media/downloads/42",
+                displayName = "report.txt",
+                mimeType = "text/plain",
+                sizeBytes = 1234L
+            )
+        val payload =
+            attachmentCacheStatusPayload(
+                committed = committed,
+                privateCached = true,
+                privatePath = "/cache/private/attachment-1"
+            )
+
+        assertEquals(true, payload["cached"])
+        assertEquals(true, payload["privateCached"])
+        assertEquals("/cache/private/attachment-1", payload["privatePath"])
+        assertEquals(7L, payload["recordVersion"])
+        assertEquals(1234L, payload["sizeBytes"])
+        assertEquals("content://media/downloads/42", payload["uri"])
+    }
 }

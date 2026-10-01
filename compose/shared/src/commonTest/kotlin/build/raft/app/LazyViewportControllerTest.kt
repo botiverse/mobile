@@ -309,6 +309,76 @@ class LazyViewportControllerTest {
     }
 
     @Test
+    fun adaptiveAnchorRestore_insetChangeReassertsAnchorInsteadOfReplayingLatest() {
+        // A4 restore regression (task #18): the destination pane used to scrollToItem directly
+        // while the controller intent stayed FollowingLatest, so the first composer_inset_relayout
+        // ContentMutated(InsetChange) replayed a Latest command and yanked the restored viewport
+        // back to bottom. Restore now transfers intent to Anchored(ExactOffset) via the
+        // controller, so the same mutation must re-assert the restored anchor.
+        val restored =
+            reduceLazyViewport(
+                LazyViewportControllerState(),
+                LazyViewportEvent.Anchor(
+                    target = LazyViewportAnchorTarget.Message("A4FX-025"),
+                    offset = -0,
+                    layoutGeneration = 1L,
+                    placement = LazyViewportAnchorPlacement.ExactOffset,
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
+        val consumed =
+            reduceLazyViewport(
+                restored,
+                LazyViewportEvent.CommandConsumed(restored.pendingCommand!!.id)
+            )
+        val afterInset =
+            reduceLazyViewport(
+                consumed,
+                LazyViewportEvent.ContentMutated(LazyViewportMutation.InsetChange)
+            )
+
+        val intent = assertIs<LazyViewportIntent.Anchored>(afterInset.intent)
+        assertEquals(LazyViewportAnchorTarget.Message("A4FX-025"), intent.target)
+        assertEquals(
+            LazyViewportCommandTarget.Anchor(
+                target = LazyViewportAnchorTarget.Message("A4FX-025"),
+                offset = -0,
+                layoutGeneration = 1L,
+                placement = LazyViewportAnchorPlacement.ExactOffset
+            ),
+            afterInset.pendingCommand?.target
+        )
+        assertTrue(afterInset.accepts(afterInset.pendingCommand!!))
+        assertNotEquals(LazyViewportCommandTarget.Latest, afterInset.pendingCommand?.target)
+    }
+
+    @Test
+    fun anchorCommand_exactOffsetNegatesOffsetForScrollToItem() {
+        // Coordinate contract (task #18): LazyViewportEvent.Anchor.offset carries the captured
+        // LazyList item.offset (viewport-relative, negative when the row is scrolled above the
+        // top edge). The executor runs scrollToItem(index, -target.offset), so a captured -37
+        // must become scrollOffset=+37 — the row sits 37px above the viewport top. Dispatching
+        // the negated value would invert it twice and land the row below the top edge, surfacing
+        // the previous item as firstVisible (Jony r18).
+        val anchored =
+            reduceLazyViewport(
+                LazyViewportControllerState(),
+                LazyViewportEvent.Anchor(
+                    target = LazyViewportAnchorTarget.Message("A4FX-019"),
+                    offset = -37,
+                    layoutGeneration = 3L,
+                    placement = LazyViewportAnchorPlacement.ExactOffset,
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
+        val command = assertIs<LazyViewportCommandTarget.Anchor>(anchored.pendingCommand?.target)
+        assertEquals(-37, command.offset)
+        assertEquals(LazyViewportAnchorPlacement.ExactOffset, command.placement)
+        // scrollToItem receives -command.offset = +37 — documented here as the pairing contract.
+        assertEquals(37, -command.offset)
+    }
+
+    @Test
     fun renderedTailInvalidation_ignoresNonMatchingCommandId() {
         val anchored =
             reduceLazyViewport(

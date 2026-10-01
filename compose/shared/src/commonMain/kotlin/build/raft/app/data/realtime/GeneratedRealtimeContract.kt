@@ -74,6 +74,7 @@ object GeneratedRealtimeContract {
         const val TaskUpdated = "task:updated"
         const val TaskDeleted = "task:deleted"
         const val AgentActivity = "agent:activity"
+        const val AgentSeen = "agent:seen"
         const val AgentSession = "agent:session"
         const val AgentCreated = "agent:created"
         const val AgentDeleted = "agent:deleted"
@@ -106,6 +107,7 @@ object GeneratedRealtimeContract {
             TaskUpdated,
             TaskDeleted,
             AgentActivity,
+            AgentSeen,
             AgentSession,
             AgentCreated,
             AgentDeleted,

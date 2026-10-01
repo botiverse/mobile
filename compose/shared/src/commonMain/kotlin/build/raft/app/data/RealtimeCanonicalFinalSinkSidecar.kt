@@ -376,12 +376,7 @@ internal class RealtimeCanonicalFinalSinkSidecar(
         envelope: RealtimeCanonicalFinalSinkEnvelope,
     ): Boolean =
         reservation.grant == envelope.grant &&
-            envelope.partition ==
-            DurablePartitionKey(
-                serverId = reservation.grant.serverId,
-                principalId = reservation.grant.principalId,
-                consumerId = SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID,
-            )
+            envelope.partition == reservation.grant.durablePartition(SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID)
 
     private fun terminalBeforeFinalizing(
         reservation: RealtimeCanonicalFinalSinkReservation,

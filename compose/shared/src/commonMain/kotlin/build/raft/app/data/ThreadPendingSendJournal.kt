@@ -136,15 +136,52 @@ internal class ThreadPendingSendJournal(
         admitted
     }
 
+    /**
+     * Restore is the drain/render visibility path: durable rows belong to the stable
+     * identity (environment, account, server). Generation and owner-scope columns only
+     * fence in-process concurrent writes — a journaled orphan must stay visible after a
+     * process restart, a server re-selection (selection epoch bump), or an auth
+     * rotation, otherwise it becomes an unadoptable zombie.
+     */
     fun restore(
         provenance: ReplyCacheProvenance,
         route: ThreadRouteIdentity,
     ): List<KuiklyThreadMessageItem> = synchronized(lock) {
-        val ownerScopeId = provenance.threadPendingSendOwnerScopeId ?: return@synchronized emptyList()
         runCatching {
-            candidateRows(provenance, ownerScopeId)
+            stableIdentityRows(provenance)
                 .mapNotNull { row -> decodeAndValidate(row, route) }
         }.getOrElse { emptyList() }
+    }
+
+    /**
+     * Drain-path failure marking with stable-identity visibility (same reasoning as
+     * [restore]): the drainer only calls this once no live attempt owns the row, so the
+     * in-process write fence must not hide cross-generation orphans. Live send-failure
+     * marking keeps using the generation-fenced [markFailed].
+     */
+    fun markFailedForDrain(
+        provenance: ReplyCacheProvenance,
+        route: ThreadRouteIdentity,
+        localId: String,
+        errorCode: String?,
+        errorMessage: String?,
+    ): Boolean = synchronized(lock) {
+        runCatching {
+            val row =
+                stableIdentityRows(provenance)
+                    .filter { candidate -> candidate.localId == localId && candidate.matchesRoute(route) }
+                    .singleOrNull()
+                    ?: return@runCatching false
+            database.queries.updateThreadPendingSendFailureForStableIdentity(
+                lastErrorCode = errorCode,
+                lastErrorMessage = errorMessage,
+                environmentId = provenance.environmentId,
+                principalId = provenance.principalId,
+                serverId = provenance.serverId,
+                routeInstanceKey = row.routeInstanceKey,
+                localId = localId,
+            ).value == 1L
+        }.getOrDefault(false)
     }
 
     fun markFailed(
@@ -217,27 +254,26 @@ internal class ThreadPendingSendJournal(
         val cleanRandomId =
             randomId.trim().takeIf { it.isNotBlank() }
                 ?: return@synchronized ConsumeResult.NotFound
-        val ownerScopeId =
-            provenance.threadPendingSendOwnerScopeId
-                ?: return@synchronized ConsumeResult.Failed
+        // Canonical echoes are authoritative for the stable identity: a journaled row
+        // written under an older generation/scope must still be consumed, otherwise the
+        // echo leaves a zombie that later sends would duplicate (server dedupes by
+        // randomId, so a stable-identity delete is safe).
+        if (!provenance.hasCompleteStableIdentity()) return@synchronized ConsumeResult.Failed
         if (failureInjector?.rejectDeleteSafely() == true) return@synchronized ConsumeResult.Failed
         var result = ConsumeResult.NotFound
         runCatching {
             database.transactionBlocking {
                 val row =
-                    candidateRows(provenance, ownerScopeId)
+                    stableIdentityRows(provenance)
                         .filter { candidate ->
                             candidate.randomId == cleanRandomId && candidate.matchesRoute(route)
                         }
                         .singleOrNull()
                         ?: return@transactionBlocking
-                val deleted = database.queries.deleteThreadPendingSendByRandomId(
+                val deleted = database.queries.deleteThreadPendingSendByRandomIdForStableIdentity(
                     environmentId = provenance.environmentId,
                     principalId = provenance.principalId,
                     serverId = provenance.serverId,
-                    ownerScopeId = ownerScopeId,
-                    authGeneration = provenance.authGeneration,
-                    selectionGeneration = provenance.selectionGeneration,
                     routeInstanceKey = row.routeInstanceKey,
                     randomId = cleanRandomId,
                 ).value
@@ -263,6 +299,70 @@ internal class ThreadPendingSendJournal(
                 authGeneration = authGeneration,
             )
         }.isSuccess
+    }
+
+    /**
+     * Same-binding token rotation (401 -> silent refresh, authGeneration+1 with the binding
+     * unchanged): move the principal's rows from the retired auth revision into the successor
+     * revision instead of deleting them, so a journaled pending send stays reachable for
+     * restore, drain, and terminal cleanup. This mirrors
+     * [ReplyCacheProvenance.isCurrentOrSuccessorForLocalSend]: environment/principal are the
+     * binding identity here, each row keeps its own serverId/selectionGeneration fence, and a
+     * principal/server switch still goes through [clearForAuthRevision] (delete semantics).
+     *
+     * ownerScopeId embeds authGeneration, so every rehomed row gets a freshly joined scope id
+     * from its own columns. Returns the number of rehomed rows (0 on any failure).
+     */
+    fun rehomeAuthRevision(
+        environmentId: String,
+        principalId: String,
+        fromAuthGeneration: Long,
+        toAuthGeneration: Long,
+    ): Int = synchronized(lock) {
+        if (
+            environmentId.isBlank() || principalId.isBlank() ||
+            fromAuthGeneration <= 0L || toAuthGeneration <= fromAuthGeneration
+        ) {
+            return@synchronized 0
+        }
+        var rehomed = 0
+        val succeeded =
+            runCatching {
+                database.transactionBlocking {
+                    val rows =
+                        database.queries.selectThreadPendingSendsForAuthRevision(
+                            environmentId = environmentId,
+                            principalId = principalId,
+                            authGeneration = fromAuthGeneration,
+                        ).executeAsList()
+                    rows.forEach { row ->
+                        val newOwnerScopeId =
+                            listOf(
+                                row.environmentId,
+                                row.principalId,
+                                row.serverId,
+                                toAuthGeneration.toString(),
+                                row.selectionGeneration.toString()
+                            ).joinToString("\u001f")
+                        database.queries.rehomeThreadPendingSendAuthRevision(
+                            newAuthGeneration = toAuthGeneration,
+                            newOwnerScopeId = newOwnerScopeId,
+                            environmentId = row.environmentId,
+                            principalId = row.principalId,
+                            serverId = row.serverId,
+                            oldOwnerScopeId = row.ownerScopeId,
+                            oldAuthGeneration = fromAuthGeneration,
+                            selectionGeneration = row.selectionGeneration,
+                            routeInstanceKey = row.routeInstanceKey,
+                            localId = row.localId,
+                        )
+                        rehomed += 1
+                    }
+                }
+            }.isSuccess
+        // The count is only meaningful when the transaction committed; a rolled-back
+        // transaction rehomed nothing.
+        if (succeeded) rehomed else 0
     }
 
     /**
@@ -304,6 +404,23 @@ internal class ThreadPendingSendJournal(
                 selectionGeneration = provenance.selectionGeneration,
             )
             .executeAsList()
+
+    /** Blank stable-identity keys fail closed, exactly like the fenced paths. */
+    private fun ReplyCacheProvenance.hasCompleteStableIdentity(): Boolean =
+        environmentId.isNotBlank() && principalId.isNotBlank() && serverId.isNotBlank()
+
+    private fun stableIdentityRows(provenance: ReplyCacheProvenance): List<ThreadPendingSendEntity> =
+        if (!provenance.hasCompleteStableIdentity()) {
+            emptyList()
+        } else {
+            database.queries
+            .selectThreadPendingSendForStableIdentity(
+                environmentId = provenance.environmentId,
+                principalId = provenance.principalId,
+                serverId = provenance.serverId,
+            )
+            .executeAsList()
+        }
 
     private fun ThreadPendingSendEntity.matchesRoute(route: ThreadRouteIdentity): Boolean =
         persistedRouteOrNull()?.isPendingSendEquivalentTo(route) == true

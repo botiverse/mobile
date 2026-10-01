@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.base.BridgeModule
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loader
 import build.raft.app.SharedThreadComposerDraftPersistSlice
 import build.raft.app.SharedThreadComposerDraftPersistence
 import build.raft.app.CoroutineThreadComposerDraftPersistenceScheduler
@@ -54,6 +55,8 @@ import build.raft.app.network.sync.CanonicalMessageFoldInput
 import build.raft.app.network.sync.CanonicalMessageFoldKind
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
 import build.raft.app.network.sync.CanonicalMessageV2CanaryOutcome
+import build.raft.app.network.sync.CanonicalMessageV2DurableLastKnownReader
+import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
@@ -64,10 +67,12 @@ import build.raft.app.network.sync.PreparedCurrentGrantMessageCommitDisposition
 import build.raft.app.network.sync.SqlDelightFoldPersistStore
 import build.raft.app.network.sync.SqlDelightFoldPersistTransactionRunner
 import build.raft.app.network.sync.SqlDelightCanonicalMessageV2Store
+import build.raft.app.network.sync.ThreadDurableLastKnownReader
 import build.raft.app.network.sync.SqlDelightStrictMessageScopeSnapshotReader
 import build.raft.app.network.sync.ReadStateV1ProductionCanary
 import build.raft.app.network.sync.ReadStateV1DestinationPublication
 import build.raft.app.network.sync.ProcessReadStateV1DiagnosticOverride
+import build.raft.app.network.sync.DiagnosticFeatureFlagScope
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.network.sync.SqlDelightReadStateV1Store
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
@@ -168,6 +173,7 @@ internal fun createSharedRealtimeAuthorityProvider(
     registry: RealtimeAuthorityRegistry,
     authStore: SlockAuthSessionStore,
     authEvents: SlockAuthSessionEventSource,
+    currentEnvironmentId: () -> String,
     diagnosticsLogger: (String) -> Unit = {},
     canonicalFinalIntegration: RealtimeCanonicalFinalSinkIntegrationSeam? = null,
     // REQUIRED at the production creation seam: a provider that can publish
@@ -180,6 +186,7 @@ internal fun createSharedRealtimeAuthorityProvider(
         registry = registry,
         authStore = authStore,
         authEvents = authEvents,
+        currentEnvironmentId = currentEnvironmentId,
         diagnosticsLogger = diagnosticsLogger,
         canonicalFinalIntegration = canonicalFinalIntegration,
         onAuthRevisionAdvanced = onAuthRevisionAdvanced,
@@ -390,6 +397,10 @@ internal class SlockSharedStoreProvider private constructor(
     val messageBodyFontSizeStore: SharedMessageBodyFontSizeStore,
     val threadMessageStore: SharedThreadMessageStore,
     val threadPayloadStore: SharedThreadPayloadStore,
+    /** Offline cache read entry (task #1123): durable V2 last-known frame for thread screens. */
+    internal val threadDurableLastKnownReader: ThreadDurableLastKnownReader,
+    /** Offline cache write entry (task #1124): entered channel's REST page → V2 baseline. */
+    internal val threadEnteredScopeSnapshotLoader: ThreadEnteredScopeSnapshotLoader,
     internal val threadPendingSendJournal: ThreadPendingSendJournal,
     val channelSettingsSnapshotCache: ChannelSettingsSnapshotCache,
     val foregroundReconciler: SharedForegroundReconciler,
@@ -418,6 +429,8 @@ internal class SlockSharedStoreProvider private constructor(
         SlockShellScopedStoreCache<SharedRealtimeRoomLeaseRegistry>()
     private val shellAdaptiveWorkspaceStores =
         SlockShellScopedStoreCache<SharedAdaptiveWorkspaceStore>()
+    private val shellAdaptiveScrollAnchorStores =
+        SlockShellScopedStoreCache<SharedAdaptiveScrollAnchorStore>()
     private val processReadReceiptLock = SynchronizedObject()
     private var processReadReceiptCoordinator: ReadReceiptCoordinator? = null
     private val processReadReceiptRepositories = mutableMapOf<ReadReceiptOwner, RealReadReceiptRepository>()
@@ -617,6 +630,13 @@ internal class SlockSharedStoreProvider private constructor(
                     // account, environment, or successor generation.
                 }
             if (committed) {
+                // task #329: memoized per-member read flows are owner-bound recipes;
+                // drop them on auth-terminal cleanup so a successor generation never
+                // inherits cross-account member read edges.
+                serverMembersStore.clearScopedReadCaches()
+                shellServerMembersStores.entries().forEach { (_, store) ->
+                    store.clearScopedReadCaches()
+                }
                 shellConversationIdentityHubs.entries().forEach { (_, hub) -> hub.clear() }
                 clearActiveServerSelectionsIfUnchanged(selectionReceipts)
             }
@@ -1105,7 +1125,14 @@ internal class SlockSharedStoreProvider private constructor(
                         )
                     }
                 },
-                logger = sharedInfoLogger("SlockCreateAgentForm", "shared_create_agent_form_store")
+                logger = sharedInfoLogger("SlockCreateAgentForm", "shared_create_agent_form_store"),
+                runtimeFormV2Loader = RuntimeFormV2Loader(
+                    computers = SlockComputersNetworkApi(networkClient(scope)),
+                    agents = SlockAgentsNetworkApi(networkClient(scope))
+                ),
+                runtimeFormV2Enabled = { serverId ->
+                    serverFeatureFlags.isEnabled(serverId, RUNTIME_FORM_V2_FEATURE_FLAG_KEY)
+                }
             ).also { store ->
                 (shellAuthStore as? SlockAuthSessionEventSource)?.let { events ->
                     shellCreateAgentFormOwnerJobs.getOrPut(scope) {
@@ -1138,6 +1165,9 @@ internal class SlockSharedStoreProvider private constructor(
 
     fun adaptiveWorkspaceStore(scope: SlockShellStoreScope): SharedAdaptiveWorkspaceStore =
         shellAdaptiveWorkspaceStores.getOrPut(scope) { SharedAdaptiveWorkspaceStore() }
+
+    fun adaptiveScrollAnchorStore(scope: SlockShellStoreScope): SharedAdaptiveScrollAnchorStore =
+        shellAdaptiveScrollAnchorStores.getOrPut(scope) { SharedAdaptiveScrollAnchorStore() }
 
     fun createAuthDataSourceForCurrentEnvironment(
         avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache
@@ -1279,6 +1309,7 @@ internal class SlockSharedStoreProvider private constructor(
         readReceiptRepository: ReadReceiptRepository,
         conversationRepository: ConversationRepository,
         memberRepository: MemberRepository? = null,
+        channelRepository: ChannelRepository? = null,
         prewarmReplyThread: (suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit>)? = null,
         onUnreadCountsChanged: (() -> Unit)? = null,
         diagnosticsLogger: ((String) -> Unit)? = null
@@ -1293,6 +1324,7 @@ internal class SlockSharedStoreProvider private constructor(
                     memberRepository = memberRepository,
                     serverMembersStore = serverMembersStore,
                     tasksDataStore = tasksDataStore,
+                    channelRepository = channelRepository,
                     persistSlices = listOf(activityPersistSlice),
                     readReceiptCoordinator = processReadReceiptCoordinator(),
                     readReceiptOwnerFactory = ::readReceiptOwner,
@@ -1315,6 +1347,7 @@ internal class SlockSharedStoreProvider private constructor(
                 memberRepository = memberRepository,
                 serverMembersStore = serverMembersStore(scope),
                 tasksDataStore = tasksDataStore,
+                channelRepository = channelRepository,
                 perReceiverStateVersionStore = PerReceiverStateVersionStore(sharedPreferenceStore),
                 readReceiptCoordinator = processReadReceiptCoordinator(),
                 readReceiptOwnerFactory = ::readReceiptOwner,
@@ -1352,18 +1385,14 @@ internal class SlockSharedStoreProvider private constructor(
         return ReadReceiptCoordinator(
             scope = threadSendScope,
             repository = repository,
-            requestRunner = { request, defaultRequest ->
-                if (request.owner == ReadReceiptOwner.Legacy) {
-                    defaultRequest()
-                } else {
-                    val serverId = ServerId(request.owner.serverId)
-                    val ownerRepository = processReadReceiptRepository(request.owner)
-                    when (request) {
-                        is ReadReceiptRequest.ToSeq ->
-                            ownerRepository.markChannelReadToSeq(serverId, request.channelId, request.seq)
-                        is ReadReceiptRequest.All ->
-                            ownerRepository.markChannelReadAll(serverId, request.channelId)
-                    }
+            requestRunner = { request, _ ->
+                val serverId = ServerId(request.owner.serverId)
+                val ownerRepository = processReadReceiptRepository(request.owner)
+                when (request) {
+                    is ReadReceiptRequest.ToSeq ->
+                        ownerRepository.markChannelReadToSeq(serverId, request.channelId, request.seq)
+                    is ReadReceiptRequest.All ->
+                        ownerRepository.markChannelReadAll(serverId, request.channelId)
                 }
             },
             ownerValidator = { owner ->
@@ -1387,7 +1416,7 @@ internal class SlockSharedStoreProvider private constructor(
             },
             onResult = { request, result ->
                 val content = result as? DataResult.Content
-                if (request.owner != ReadReceiptOwner.Legacy && content != null) {
+                if (content != null) {
                     threadSendScope.launch {
                         processReadStateV1Canary.applyMutationAck(
                             owner = request.owner.toReadStateV1ProductionOwner(),
@@ -1408,7 +1437,7 @@ internal class SlockSharedStoreProvider private constructor(
                 )
             },
             onOwnerRevoked = { owner ->
-                if (owner != ReadReceiptOwner.Legacy) processReadStateV1Canary.revoke(owner.toReadStateV1ProductionOwner())
+                processReadStateV1Canary.revoke(owner.toReadStateV1ProductionOwner())
             },
             onFailure = { request, result ->
                 activityUnreadSummaryStore.invalidate(
@@ -1461,7 +1490,7 @@ internal class SlockSharedStoreProvider private constructor(
         }
         if (coordinator != null) {
             coordinator.revoke(owner)
-        } else if (owner != ReadReceiptOwner.Legacy) {
+        } else {
             processReadStateV1Canary.revoke(owner.toReadStateV1ProductionOwner())
         }
     }
@@ -1503,7 +1532,17 @@ internal class SlockSharedStoreProvider private constructor(
         shellAdaptiveWorkspaceStores.remove(scope)?.clear()
         realtimeAuthorityRegistrations.remove(scope)?.let { registrationId ->
             threadSendScope.launch {
-                realtimeAuthorityProvider.releaseScope(scope.shellInstanceId, registrationId)
+                val released =
+                    realtimeAuthorityProvider.releaseScope(scope.shellInstanceId, registrationId)
+                // Evidence line for the subscription-holding audit: emitted at the point the
+                // authority registry actually cleared the lease, not at call time. A missing
+                // registration (already dead or never registered) reports result=missed.
+                runCatching {
+                    sharedInfoLogger("RealtimeAuthority", "realtime_authority")(
+                        "realtime_authority_release result=${if (released) "ok" else "missed"} " +
+                            "scope=${scope.shellInstanceId}"
+                    )
+                }
             }
         }
         selectedServerStores.get(scope)?.dispose()
@@ -1513,7 +1552,7 @@ internal class SlockSharedStoreProvider private constructor(
         homeActivityStoreScopes.remove(scope)?.cancel()
         shellNetworkClients.remove(scope)
         shellAuthStores.remove(scope)
-        shellServerMembersStores.remove(scope)
+        shellServerMembersStores.remove(scope)?.clearScopedReadCaches()
         shellRealtimeDomainEventOwners.remove(scope)
         shellAgentDetailStores.remove(scope)
         shellComputersStores.remove(scope)?.dispatch(SharedComputersIntent.Clear)
@@ -1665,7 +1704,12 @@ internal class SlockSharedStoreProvider private constructor(
                 "shared_network_file_resolver",
                 "storage_scope=${platformFileResolverBinding.scope}"
             )
-            val avatarCacheMetadataStore = SqlDelightSlockAvatarCacheMetadataStore(database)
+            // task #323: keep avatar metadata SQLite I/O off the Kuikly frame thread.
+            val avatarCacheMetadataStore =
+                DispatchingSlockAvatarCacheMetadataStore(
+                    delegate = SqlDelightSlockAvatarCacheMetadataStore(database),
+                    dispatcher = SlockAvatarDbDispatcher
+                )
             val avatarCacheCoordinator =
                 SlockAvatarCacheCoordinator(avatarCacheMetadataStore, ::defaultNowMillis)
             val avatarOwnerResolver: suspend (String?) -> SlockAvatarCacheOwner? = { requestedServerId ->
@@ -1678,7 +1722,15 @@ internal class SlockSharedStoreProvider private constructor(
             val avatarMountedBinding =
                 SlockAvatarMountedBinding(
                     coordinator = avatarCacheCoordinator,
-                    currentOwner = avatarOwnerResolver
+                    currentOwner = avatarOwnerResolver,
+                    diagnostics =
+                        { message ->
+                            if ("result=ok" in message) {
+                                slockLogInfo("SlockAvatar", "avatar_mounted_binding $message")
+                            } else {
+                                slockLogWarn("SlockAvatar", "avatar_mounted_binding $message")
+                            }
+                        }
                 )
             val avatarCacheRuntime =
                 SlockAvatarCacheRuntime(
@@ -1687,6 +1739,25 @@ internal class SlockSharedStoreProvider private constructor(
                     mountedBinding = avatarMountedBinding,
                     logger = sharedWarnLogger("SlockAvatarCache", "avatar_cache_runtime")
                 )
+            // task #343: seed the mounted session from durable rows once the owner resolves, so a
+            // cold start paints cached avatars on the first frame instead of waiting per-row mounts.
+            // Re-attempted on auth changes (login, server/binding switch); one run per owner.
+            CoroutineScope(SupervisorJob()).launch {
+                runCatchingPreservingCancellation {
+                    avatarMountedBinding.prewarmOwner(authStore.readSession()?.currentServerId)
+                }
+                authStore.authSessionEvents.collect { event ->
+                    when (event) {
+                        is AuthSessionEvent.Authenticated,
+                        is AuthSessionEvent.BindingMetadataChanged ->
+                            runCatchingPreservingCancellation {
+                                avatarMountedBinding.prewarmOwner(authStore.readSession()?.currentServerId)
+                            }
+                        is AuthSessionEvent.Cleared,
+                        is AuthSessionEvent.TokensRotated -> Unit
+                    }
+                }
+            }
             val authDataSource =
                 createSharedAuthDataSourceForCurrentEnvironment(
                     apiEnvironmentStore = apiEnvironmentStore,
@@ -1854,6 +1925,13 @@ internal class SlockSharedStoreProvider private constructor(
             // registry writeGeneration always come from ONE coordinated
             // transition — a second writer here could interleave and publish
             // a torn (authority generation, registry generation) pair.
+            // task #1133: last server evaluation of the offline-cache flag, so an offline cold start gates
+            // like the last online session. Keyed by (environment, account, server) — not by token.
+            val serverFeatureFlagLastKnown =
+                ServerFeatureFlagLastKnownStore(
+                    store = sharedPreferenceStore,
+                    currentBinding = { presenceAuthContext.value?.toServerFeatureFlagLastKnownBinding() },
+                )
             CoroutineScope(SupervisorJob()).launch {
                 authStore.authSessionEvents.collect { event ->
                     when (event) {
@@ -1865,6 +1943,7 @@ internal class SlockSharedStoreProvider private constructor(
                             }
                         is AuthSessionEvent.Cleared ->
                             {
+                                serverFeatureFlagLastKnown.clearAll()
                                 ProcessDiagnosticFeatureFlagOverrides.registry.clearObservations()
                                 processServerMembersCore.invalidateAll(reason = "cleared")
                                 activityUnreadSummaryStore.invalidateAll(reason = "cleared")
@@ -1878,6 +1957,29 @@ internal class SlockSharedStoreProvider private constructor(
                 SharedServerFeatureFlags(
                     api = SlockFeatureFlagsNetworkApi(networkClient),
                     diagnosticsLogger = sharedInfoLogger("SlockFeatureFlags", "feature_flags"),
+                    // Diagnostics "Local Feature Overrides" seam for `sync_core_messages_v0` ONLY: internal
+                    // builds can ForceOn/ForceOff the whole offline-cache line on one binary. Not entitled
+                    // (release, or the page never opened) => the registry returns the server value unchanged.
+                    diagnosticOverride = { serverId, key, serverEffective ->
+                        if (key != SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY) {
+                            serverEffective
+                        } else {
+                            val auth = presenceAuthContext.value
+                            ProcessDiagnosticFeatureFlagOverrides.registry
+                                .decide(
+                                    key = key,
+                                    serverEffective = serverEffective,
+                                    scope =
+                                        DiagnosticFeatureFlagScope(
+                                            environmentId = auth?.environmentId.orEmpty(),
+                                            accountId = auth?.accountId.orEmpty(),
+                                            serverId = serverId?.value.orEmpty(),
+                                        ),
+                                )
+                                .finalEffective
+                        }
+                    },
+                    lastKnown = serverFeatureFlagLastKnown,
                     onEvaluation = { serverId, key, enabled, reason, variant, environmentId, evaluationGeneration ->
                         if (key == ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY && environmentId != null) {
                             SlockNetworkKmmRecoveryRemoteFlagBridge
@@ -1917,10 +2019,11 @@ internal class SlockSharedStoreProvider private constructor(
                     },
                 )
             val attachmentCommentsReadCacheV2 = AttachmentCommentsReadCacheV2()
+            val canonicalMessageV2Store = SqlDelightCanonicalMessageV2Store(database, now = ::defaultNowMillis)
             val canonicalMessageV2GenerationEngine =
                 CanonicalMessageV2GenerationEngine(
                     coordinator = CanonicalMessageV2BaselineCoordinator(),
-                    store = SqlDelightCanonicalMessageV2Store(database, now = ::defaultNowMillis),
+                    store = canonicalMessageV2Store,
                     snapshotCommitObserver =
                         CanonicalMessageV2SnapshotCommitObserver(attachmentCommentsReadCacheV2::invalidateParent),
                 )
@@ -1934,6 +2037,19 @@ internal class SlockSharedStoreProvider private constructor(
                     },
                     generationEngine = canonicalMessageV2GenerationEngine,
                     logger = sharedInfoLogger("CanonicalMessageV2Canary", "canonical_v2_canary"),
+                )
+            // Read side of the same partition the canary writes: same store instance, same per-server
+            // flag, no baseline-coordinator side effects (task #1123).
+            val threadDurableLastKnownReader =
+                CanonicalMessageV2DurableLastKnownReader(
+                    store = canonicalMessageV2Store,
+                    isEnabledForServer = { serverId ->
+                        serverFeatureFlags.isEnabled(
+                            ServerId(serverId),
+                            SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
+                        )
+                    },
+                    logger = sharedInfoLogger("ThreadDurableLastKnown", "thread_durable_last_known"),
                 )
             val threadSendScope = CoroutineScope(SupervisorJob())
             val realtimeAuthorityDiagnosticsLogger =
@@ -1979,6 +2095,9 @@ internal class SlockSharedStoreProvider private constructor(
                     registry = realtimeAuthorityRegistry,
                     authStore = authStore,
                     authEvents = authStore,
+                    currentEnvironmentId = {
+                        apiEnvironmentStore.current().apiBaseUrl.normalizedEnvironmentId()
+                    },
                     diagnosticsLogger = realtimeAuthorityDiagnosticsLogger,
                     canonicalFinalIntegration = canonicalFinalIntegration,
                     // Presence binding readiness (task #136): the ONE writer of
@@ -2027,6 +2146,28 @@ internal class SlockSharedStoreProvider private constructor(
                                             "authGeneration=${bound.authorityGeneration}"
                                     )
                                 }
+                            },
+                            // Same-binding token rotation (401 -> silent refresh): rehome the
+                            // principal's journaled pending sends into the successor auth
+                            // revision instead of retiring them, so an offline send admitted
+                            // before the refresh stays reachable for drain/restore. Binding
+                            // changes (logout/account switch) keep delete semantics via
+                            // onBindingRetired above.
+                            onBindingAuthRevisionRotated = { retired, bound ->
+                                val rehomed = threadPendingSendJournal.rehomeAuthRevision(
+                                    environmentId = retired.environmentId,
+                                    principalId = retired.accountId,
+                                    fromAuthGeneration = retired.authorityGeneration,
+                                    toAuthGeneration = bound.authorityGeneration,
+                                )
+                                realtimeAuthorityDiagnosticsLogger(
+                                    "thread_pending_send_auth_revision_rehomed " +
+                                        "environmentId=${retired.environmentId} " +
+                                        "principalId=${retired.accountId} " +
+                                        "fromAuthGeneration=${retired.authorityGeneration} " +
+                                        "toAuthGeneration=${bound.authorityGeneration} " +
+                                        "rehomed=$rehomed"
+                                )
                             },
                         ),
                 )
@@ -2091,6 +2232,26 @@ internal class SlockSharedStoreProvider private constructor(
                     },
                     scope = CoroutineScope(SupervisorJob()),
                     diagnosticsLogger = sharedInfoLogger("SlockForegroundReconcile", "shared_foreground_reconcile")
+                )
+            // Write side of the same partition (task #1124): same canary (for "is this scope yours"),
+            // same engine, same per-server flag, the process-level network client the canary's own
+            // snapshot loads use.
+            val threadEnteredScopeSnapshotLoader =
+                CanonicalMessageV2EnteredScopeLoader(
+                    canary = canonicalMessageV2Canary,
+                    generationEngine = canonicalMessageV2GenerationEngine,
+                    fetcher =
+                        CanonicalMessageV2RestSnapshotFetcher(
+                            networkClient = networkClient,
+                            logger = sharedInfoLogger("CanonicalMessageV2EnterSnapshot", "canonical_v2_enter_snapshot"),
+                        ),
+                    isEnabledForServer = { serverId ->
+                        serverFeatureFlags.isEnabled(
+                            ServerId(serverId),
+                            SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
+                        )
+                    },
+                    logger = sharedInfoLogger("CanonicalMessageV2EnterSnapshot", "canonical_v2_enter_snapshot"),
                 )
             provider = SlockSharedStoreProvider(
                 bridge = bridge,
@@ -2190,6 +2351,8 @@ internal class SlockSharedStoreProvider private constructor(
                 messageBodyFontSizeStore = messageBodyFontSizeStore,
                 threadMessageStore = SharedThreadMessageStore(),
                 threadPayloadStore = SharedThreadPayloadStore(CoroutineScope(SupervisorJob())),
+                threadDurableLastKnownReader = threadDurableLastKnownReader,
+                threadEnteredScopeSnapshotLoader = threadEnteredScopeSnapshotLoader,
                 threadPendingSendJournal = threadPendingSendJournal,
                 channelSettingsSnapshotCache = ChannelSettingsSnapshotCache(),
                 foregroundReconciler = foregroundReconciler,
@@ -2815,6 +2978,26 @@ internal class SharedRealtimeDomainEventOwner(
                 return@forEach
             }
             deliverGuardedAppShellDomainFinal(resolvedServerId, acceptedEvent, source, activeSinks, admission)
+            // Product-side apply receipt for the subscription audit (task #13): logged once per
+            // event AFTER the guarded domain-sink dispatch returned — i.e. after applyHomeShell /
+            // applyHomeUnreadProjection and the member/presence writes completed without throwing.
+            // A duplicate redelivery is dropped upstream at rememberAcceptedKey
+            // (realtime_domain_accept_skip) and never reaches this line, and a sink failure
+            // propagates before it, so one line per (id, seq) is the applied-once witness on the
+            // product store edge — not merely a pre-dispatch gate pass.
+            when (acceptedEvent) {
+                is MessageNew ->
+                    activeSinks?.log?.invoke(
+                        "realtime_domain_apply source=$source serverId=$resolvedServerId " +
+                            "kind=message_new id=${acceptedEvent.message.id.value} seq=${acceptedEvent.message.seq ?: -1L}"
+                    )
+                is MessageUpdated ->
+                    activeSinks?.log?.invoke(
+                        "realtime_domain_apply source=$source serverId=$resolvedServerId " +
+                            "kind=message_updated id=${acceptedEvent.message.id.value} seq=${acceptedEvent.message.seq ?: -1L}"
+                    )
+                else -> Unit
+            }
         }
     }
 
@@ -3106,8 +3289,10 @@ private fun RealtimeEvent.realtimeDomainKey(serverId: String): String? =
             // agent:activity serverSeq is monotonic per agent, not per server.
             // Include memberId so different agents with the same seq do not
             // suppress each other's presence updates in the app-shell fanout.
+            // agent:seen is seq-less; lastSeenAt is the key so a new
+            // observation is never deduped away.
             serverSeq?.let { "member:presence:$serverId:${memberId.value}:$it" }
-                ?: "member:presence:$serverId:${memberId.value}:${presence.name}:${agentStatus?.name.orEmpty()}:${statusLabel.orEmpty()}"
+                ?: "member:presence:$serverId:${memberId.value}:${presence.name}:${agentStatus?.name.orEmpty()}:${statusLabel.orEmpty()}:${lastSeenAt.orEmpty()}"
         // task #136: refresh hints are idempotent TRIGGERS, not facts, and the
         // event carries no seq — a stable key made the accepted-key ledger
         // swallow every later identical hint (artin's device logs:

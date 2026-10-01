@@ -58,6 +58,20 @@ interface SlockComputersApi {
         ref: SharedRuntimeFormDefinitionRef,
         sourceId: String
     ): HomeNetworkResponse = error("runtimeFormOptionSource is not implemented")
+    /** Runtime form protocol v2: `GET …/runtime-forms/v2/:runtimeId`, the current form with no schemaVersion pin. */
+    suspend fun runtimeFormV2(
+        serverId: ServerId,
+        machineId: String,
+        runtimeId: String
+    ): HomeNetworkResponse = error("runtimeFormV2 is not implemented")
+    /** [refresh] (`option_source.status` retry): `?refresh=1`, the server bypasses any cached probe. */
+    suspend fun runtimeFormV2OptionSource(
+        serverId: ServerId,
+        machineId: String,
+        runtimeId: String,
+        sourceId: String,
+        refresh: Boolean = false
+    ): HomeNetworkResponse = error("runtimeFormV2OptionSource is not implemented")
     suspend fun runtimeModels(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse
     suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse
 }
@@ -150,6 +164,33 @@ internal class SlockComputersNetworkApi(
                 "servers/${serverId.value}/machines/${machineId.trim()}/runtime-form-definitions/" +
                     "${ref.runtimeId}/option-sources/${sourceId.trim()}",
             query = listOf("schemaVersion" to ref.schemaVersion),
+            serverIdOverride = serverId
+        )
+
+    override suspend fun runtimeFormV2(
+        serverId: ServerId,
+        machineId: String,
+        runtimeId: String
+    ): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-forms/v2/${runtimeId.trim()}",
+            serverIdOverride = serverId
+        )
+
+    override suspend fun runtimeFormV2OptionSource(
+        serverId: ServerId,
+        machineId: String,
+        runtimeId: String,
+        sourceId: String,
+        refresh: Boolean
+    ): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path =
+                "servers/${serverId.value}/machines/${machineId.trim()}/runtime-forms/v2/" +
+                    "${runtimeId.trim()}/option-sources/${sourceId.trim()}",
+            query = if (refresh) listOf("refresh" to "1") else emptyList(),
             serverIdOverride = serverId
         )
 
@@ -268,7 +309,7 @@ internal class SlockComputersApiClient(
         ref: SharedRuntimeFormDefinitionRef
     ): DataResult<SharedAgentCreateFormDefinition> {
         val normalizedMachineId = machineId.trim()
-        if (normalizedMachineId.isBlank() || !ref.isSupportedBuiltInPi) {
+        if (normalizedMachineId.isBlank() || !ref.isSupportedRuntimeForm) {
             return runtimeFormContractError("runtime_form_ref_unsupported")
         }
         val response = transport.runtimeFormDefinition(serverId, normalizedMachineId, ref)
@@ -289,7 +330,7 @@ internal class SlockComputersApiClient(
         val normalizedMachineId = machineId.trim()
         if (
             normalizedMachineId.isBlank() ||
-            !ref.isSupportedBuiltInPi ||
+            !ref.isSupportedRuntimeForm ||
             sourceRef.ref != ref ||
             sourceRef.sourceId.isBlank()
         ) {
@@ -852,24 +893,54 @@ private fun AgentCreateFormDefinitionDto.toDomain(
 ): SharedAgentCreateFormDefinition? {
     val actualRef = RuntimeFormDefinitionRefDto(protocolVersion, runtimeId, schemaVersion).toDomain()
     if (actualRef != expectedRef) return null
+    return when {
+        expectedRef.isSupportedBuiltInPi -> toBuiltInPiDomain(expectedRef)
+        expectedRef.isSupportedKimiSdk -> toKimiSdkDomain(expectedRef)
+        else -> null
+    }
+}
+
+private fun SharedAgentCreateFieldSchema?.matchesIgnoringTitle(
+    expected: SharedAgentCreateFieldSchema
+): Boolean =
+    when (expected) {
+        is SharedAgentCreateFieldSchema.StringField ->
+            this is SharedAgentCreateFieldSchema.StringField &&
+                minLength == expected.minLength &&
+                format == expected.format &&
+                writeOnly == expected.writeOnly
+        is SharedAgentCreateFieldSchema.StringMapField ->
+            this is SharedAgentCreateFieldSchema.StringMapField
+        is SharedAgentCreateFieldSchema.BooleanField ->
+            this is SharedAgentCreateFieldSchema.BooleanField
+    }
+
+private fun AgentCreateFormDefinitionDto.toBuiltInPiDomain(
+    expectedRef: SharedRuntimeFormDefinitionRef
+): SharedAgentCreateFormDefinition? {
     if (dataSchema.type != "object" || dataSchema.additionalProperties) return null
     val properties = dataSchema.properties.mapValues { (_, field) -> field.toDomain() ?: return null }
-    if (properties.keys != setOf("providerId", "apiKey", "baseUrl", "supportsImageInput", "model", "envVars")) return null
-    if (properties["providerId"] != SharedAgentCreateFieldSchema.StringField("Provider", 1, null, false)) return null
-    if (properties["apiKey"] != SharedAgentCreateFieldSchema.StringField("API Key", 1, null, true)) return null
-    if (properties["baseUrl"] != SharedAgentCreateFieldSchema.StringField("Base URL", 1, "uri", false)) return null
-    if (properties["supportsImageInput"] != SharedAgentCreateFieldSchema.BooleanField("Image input")) return null
-    if (properties["model"] != SharedAgentCreateFieldSchema.StringField("Model", 1, null, false)) return null
-    if (properties["envVars"] != SharedAgentCreateFieldSchema.StringMapField("Environment Variables")) return null
+    if (properties.keys != setOf("providerId", "apiKey", "baseUrl", "supportsImageInput", "model", "loadLocalPlugins", "envVars")) return null
+    // Field titles are display copy owned by the server (e.g. the 09-24 "Load
+    // local Pi plugins" -> "extensions" rename) and are already covered by
+    // uiSchema.localization below; compare structure only so copy changes do
+    // not knock the whole form out.
+    if (!properties["providerId"].matchesIgnoringTitle(SharedAgentCreateFieldSchema.StringField("", 1, null, false))) return null
+    if (!properties["apiKey"].matchesIgnoringTitle(SharedAgentCreateFieldSchema.StringField("", 1, null, true))) return null
+    if (!properties["baseUrl"].matchesIgnoringTitle(SharedAgentCreateFieldSchema.StringField("", 1, "uri", false))) return null
+    if (!properties["supportsImageInput"].matchesIgnoringTitle(SharedAgentCreateFieldSchema.BooleanField(""))) return null
+    if (!properties["loadLocalPlugins"].matchesIgnoringTitle(SharedAgentCreateFieldSchema.BooleanField(""))) return null
+    if (!properties["model"].matchesIgnoringTitle(SharedAgentCreateFieldSchema.StringField("", 1, null, false))) return null
+    if (!properties["envVars"].matchesIgnoringTitle(SharedAgentCreateFieldSchema.StringMapField(""))) return null
     val required = dataSchema.required.map { it.trim() }
     if (required.any { it.isBlank() || it !in properties } || required.distinct().size != required.size) return null
     if (required.toSet() != setOf("providerId", "apiKey", "model")) return null
     val order = uiSchema.order.map { it.trim() }
     if (order.any { it.isBlank() } || order.distinct().size != order.size || order.toSet() != properties.keys) return null
-    if (order != listOf("providerId", "apiKey", "baseUrl", "supportsImageInput", "model", "envVars")) return null
+    if (order != listOf("providerId", "apiKey", "baseUrl", "supportsImageInput", "model", "loadLocalPlugins", "envVars")) return null
     val advancedPointers = uiSchema.layout.advanced.map { it.trim() }
     if (advancedPointers.any { !it.isPropertyPointerTo(properties.keys) }) return null
-    if (advancedPointers != listOf("/envVars")) return null
+    if (advancedPointers != listOf("/loadLocalPlugins", "/envVars")) return null
     val visibility =
         uiSchema.visibility.map { rule ->
             val pointer = rule.pointer.trim()
@@ -935,6 +1006,87 @@ private fun AgentCreateFormDefinitionDto.toDomain(
     )
 }
 
+/**
+ * kimi-sdk.create.v1 shape (server: botiverse/slock #7147): fields are exactly
+ * `model` (required string), `reasoningEffort` (optional string), `envVars`
+ * (string map); the only option source is the flat `model` select. Structural
+ * invariants mirror the Built-in Pi branch; reasoning-effort values are never
+ * read from this form — live per-model catalogs stay the only authority.
+ */
+private fun AgentCreateFormDefinitionDto.toKimiSdkDomain(
+    expectedRef: SharedRuntimeFormDefinitionRef
+): SharedAgentCreateFormDefinition? {
+    if (dataSchema.type != "object" || dataSchema.additionalProperties) return null
+    val properties = dataSchema.properties.mapValues { (_, field) -> field.toDomain() ?: return null }
+    if (properties.keys != setOf("model", "reasoningEffort", "envVars")) return null
+    val modelField = properties["model"] as? SharedAgentCreateFieldSchema.StringField ?: return null
+    if (modelField.writeOnly) return null
+    val effortField = properties["reasoningEffort"] as? SharedAgentCreateFieldSchema.StringField ?: return null
+    if (effortField.writeOnly) return null
+    if (properties["envVars"] !is SharedAgentCreateFieldSchema.StringMapField) return null
+    val required = dataSchema.required.map { it.trim() }
+    if (required.any { it.isBlank() || it !in properties } || required.distinct().size != required.size) return null
+    if (required.toSet() != setOf("model")) return null
+    val order = uiSchema.order.map { it.trim() }
+    if (order.any { it.isBlank() } || order.distinct().size != order.size || order.toSet() != properties.keys) return null
+    val advancedPointers = uiSchema.layout.advanced.map { it.trim() }
+    if (advancedPointers.any { !it.isPropertyPointerTo(properties.keys) }) return null
+    val visibility =
+        uiSchema.visibility.map { rule ->
+            val pointer = rule.pointer.trim()
+            val dependsOn = rule.condition.pointer.trim()
+            val values = rule.condition.allowedValues.map { it.trim() }.toSet()
+            if (
+                !pointer.isPropertyPointerTo(properties.keys) ||
+                !dependsOn.isPropertyPointerTo(properties.keys) ||
+                values.isEmpty() ||
+                values.any { it.isBlank() }
+            ) {
+                return null
+            }
+            SharedAgentCreateVisibilityRule(pointer, dependsOn, values)
+        }
+    if (uiSchema.localization.keys != properties.keys) return null
+    val localization =
+        uiSchema.localization.mapValues { (_, copy) ->
+            val label = copy.label.trim()
+            if (label.isBlank()) return null
+            SharedAgentCreateFieldCopy(
+                label = label,
+                hint = copy.hint?.takeIf { it.isNotBlank() },
+                placeholder = copy.placeholder?.takeIf { it.isNotBlank() }
+            )
+        }
+    val providerKinds = capabilities.providerKinds.map { it.trim() }.toSet()
+    if (providerKinds.any { it.isBlank() }) return null
+    val writeOnlyPointers = capabilities.writeOnlyPointers.map { it.trim() }.toSet()
+    val forbiddenPointers = capabilities.forbiddenPointers.map { it.trim() }.toSet()
+    if (
+        writeOnlyPointers.any { !it.isPropertyPointerTo(properties.keys) } ||
+        writeOnlyPointers.intersect(forbiddenPointers).isNotEmpty()
+    ) {
+        return null
+    }
+    val schemaWriteOnlyPointers =
+        properties.mapNotNull { (name, field) ->
+            name.takeIf { (field as? SharedAgentCreateFieldSchema.StringField)?.writeOnly == true }?.let { "/$it" }
+        }.toSet()
+    if (schemaWriteOnlyPointers != writeOnlyPointers) return null
+    val optionSources =
+        optionSources.mapValues { (key, source) ->
+            source.toDomain(expectedRef)?.takeIf { it.sourceId == key } ?: return null
+        }
+    if (optionSources.keys != setOf("model")) return null
+    if (optionSources["model"] != SharedAgentCreateFormOptionSourceRef.Select(expectedRef, "model", "/model")) return null
+    return SharedAgentCreateFormDefinition(
+        ref = expectedRef,
+        dataSchema = SharedAgentCreateDataSchema(required.toSet(), properties),
+        uiSchema = SharedAgentCreateUiSchema(order, advancedPointers.toSet(), visibility, localization),
+        capabilities = SharedAgentCreateFormCapabilities(providerKinds, writeOnlyPointers, forbiddenPointers),
+        optionSources = optionSources
+    )
+}
+
 private fun AgentCreateFormOptionSourceRefDto.toDomain(
     expectedRef: SharedRuntimeFormDefinitionRef
 ): SharedAgentCreateFormOptionSourceRef? {
@@ -963,7 +1115,13 @@ private fun AgentCreateFormOptionSourceRefDto.toDomain(
 private data class AgentCreateFormOptionDto(
     val value: String,
     val label: String,
-    val providerKind: String? = null
+    val providerKind: String? = null,
+    // Wire-tolerant: the kimi-sdk model source may annotate entries with
+    // reasoning metadata. Parsed so strict decoding does not reject them, but
+    // deliberately NOT mapped into the domain — reasoning-effort authority is
+    // the live runtime-models catalog only (see kimiSdkLiveReasoningCapability).
+    val supportedReasoningEfforts: List<String>? = null,
+    val defaultReasoningEffort: String? = null
 )
 
 private fun AgentCreateFormOptionDto.toDomain(): SharedAgentCreateFormOption? {

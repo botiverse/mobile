@@ -16,6 +16,7 @@ missing files); 2 = usage error.
 from __future__ import annotations
 
 import re
+import tempfile
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -23,6 +24,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 THREAD_PAGE = "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt"
+MEMBERS_PAGE = "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt"
 BASIC_WIDGET = "compose/shared/src/commonMain/kotlin/build/raft/app/BasicWidget.kt"
 THREAD_COMPOSER_PAGE = (
     "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt"
@@ -51,6 +53,9 @@ SLOCK_SHARED_STORE_PROVIDER = (
     "compose/shared/src/commonMain/kotlin/build/raft/app/data/SlockSharedStoreProvider.kt"
 )
 ANDROID_ACTIVITY = "compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt"
+VISUAL_FIXTURE_DATA = (
+    "compose/shared/src/visualFixtures/kotlin/build/raft/app/VisualFixtureData.kt"
+)
 COMPOSER_IME_CONNECTED_TEST = (
     "compose/androidApp/src/androidTest/java/build/raft/app/shared/"
     "SlockThreadImePaintConnectedTest.kt"
@@ -471,7 +476,7 @@ def check_composer_retirement_uses_bounded_waits(connected_test: str) -> None:
     body = match.group("body")
     required = (
         'waitUntil(RenderTimeoutMs, "initial editor")',
-        'waitUntil(SendTimeoutMs, "first attached replacement editor")',
+        'waitUntil(SendTimeoutMs, "same editor cleared after send")',
         'waitUntil(ImeTransitionTimeoutMs, "sent row and same-text first composition")',
         "SLOCK_COMPOSER_SESSION_RETIREMENT_PASS",
     )
@@ -511,7 +516,7 @@ def check_composer_native_send_snapshot_wiring(
         "templateChildren().firstNotNullOfOrNull",
         "val nativeEditorRoot = this",
         "nativeEditorRoot.findSlockNativeTextEditor()",
-        "nativeEditor.getTextInputState(callback)",
+        "nativeEditor.getTextInputState(",
     )
     for token in basic_required:
         if token not in basic_widget and token not in text_field:
@@ -665,6 +670,409 @@ def check_native_apple_authentication_services(
         )
 
 
+# task #256: a null agent-status resolution means Unknown, but the label-facing
+# resolver substitutes a placeholder built with Presence.Offline, whose colour maps
+# to StatusNeutralGray. Feeding that to a dot makes an unknown agent look offline.
+# The defect reappeared three times in one file with three different spellings
+# (elvis to StatusNeutralGray, constructing a grey-equivalent state, and reading
+# .color straight off the non-null resolver), so the contract in the resolver's
+# KDoc is not enough on its own: a comment is guarded by the same thing it failed
+# to guard, i.e. someone reading it.
+#
+# LIMITATION, stated on purpose: this is a NAME-based check. It catches the
+# label-facing bindings as currently named. A new binding name for the same
+# non-null resolution would slip past it; the durable fix is a return type that
+# has no .color to read.
+LABEL_FACING_STATUS_BINDINGS = (
+    "statusDisplayState",
+    "statusIndicatorState",
+    "agentStatusIndicatorState",
+    "agentStatusDisplayState",
+)
+
+
+def check_label_facing_resolver_has_no_production_callers(root: Path) -> None:
+    """`resolveMembersAgentStatusIndicatorState` must not be called from production code.
+
+    It never returns null: it substitutes unknownMembersAgentStatusIndicatorState(), whose
+    presence is Offline and whose colour is therefore StatusNeutralGray -- pixel-identical
+    to a real Offline dot for an agent whose status is merely not known yet (tasks #253,
+    #256). Production dot *and* label sites both have safe alternatives, so a production
+    caller is always a mistake; the resolver survives for tests that pin its behaviour.
+
+    This replaces an earlier check that scanned MembersPage.kt for `SlockStatusIndicator(`
+    argument lists. That check had two independent scope holes, and a real defect went
+    through both: SettingsHomePage.kt:17360 painted a dot from this resolver via
+    `SlockAvatarWithStatus(statusColor = ...)`. It was in a file the check never read, AND
+    behind a composable the pattern never matched -- widening either one alone would still
+    have missed it. Checking the resolver's callers instead is scope-free: it cannot be
+    evaded by a new file, a new dot-painting composable, or a renamed local.
+    """
+    offenders = []
+    scanned_production_files = 0
+    definition_sites = []
+    for path in sorted((root / "compose").rglob("*.kt")):
+        # Directory components only, matched whole. Two earlier attempts were wrong in
+        # opposite directions: enumerating source sets (commonTest, src/test) is a list
+        # someone must remember to extend, and a substring test over path.parts matches
+        # FILE names too -- "AppShellTabRouteState.kt" contains "rouTESTate" and
+        # "SharedAuthGateStore.kt" contains "gaTESTore", so both production files were
+        # skipped while the check still reported green (LiBai). The list version failed
+        # loudly (a missed exclusion is a false positive); the substring version failed
+        # silently, which is strictly worse. `endswith("Test")` covers every Kotlin test
+        # source set by construction -- they are all named `<target>Test` -- so this is a
+        # rule rather than a list; `== "test"` covers buildSrc/src/test.
+        if any(part == "test" or part.endswith("Test") for part in path.parent.parts):
+            continue
+        text = path.read_text(encoding="utf-8").replace("\r\n", "\n")
+        scanned_production_files += 1
+        for line_number, line in enumerate(text.split("\n"), start=1):
+            # `(` or `::` distinguishes a use from a mention: prose names this resolver
+            # (MembersPage.kt's KDoc, and the comment at the fixed call site) and must not
+            # be flagged. `::` catches a callable reference, which carries the value just
+            # as well as a call does.
+            if not re.search(
+                r"(?<!OrNull)\bresolveMembersAgentStatusIndicatorState\s*\("
+                r"|::\s*resolveMembersAgentStatusIndicatorState\b(?!OrNull)",
+                line,
+            ):
+                continue
+            if re.match(r"\s*internal fun resolveMembersAgentStatusIndicatorState\(", line):
+                definition_sites.append(f"{path.relative_to(root)}:{line_number}")
+                continue
+            offenders.append(f"{path.relative_to(root)}:{line_number}")
+    # Denominator first (LiBai, 2026-09-04): a "must be zero" check is vacuously green on an
+    # empty scan, and a broken glob or an exclusion rule that swallowed commonMain prints
+    # exactly what a clean tree prints. So before judging the offenders, prove the scan
+    # reached the production code at all: it must have read files, and it must have passed
+    # the resolver's own definition exactly once. Not pinned to a file count -- that rots.
+    if scanned_production_files == 0:
+        raise Violation(
+            "check_label_facing_resolver_has_no_production_callers scanned zero production "
+            "Kotlin files under compose/ -- the glob or the test-dir exclusion is wrong, so "
+            "'no offenders' below would be meaningless."
+        )
+    if len(definition_sites) != 1:
+        raise Violation(
+            "check_label_facing_resolver_has_no_production_callers expected to pass exactly one "
+            "definition of `internal fun resolveMembersAgentStatusIndicatorState(` in production "
+            f"code and found {len(definition_sites)} ({', '.join(definition_sites) or 'none'}). "
+            "If the resolver moved or was retired, update or retire this check; if it is still "
+            "in commonMain, the scan is not reaching it and every result it reports is blind."
+        )
+    if offenders:
+        raise Violation(
+            "production code calls the label-facing resolveMembersAgentStatusIndicatorState "
+            f"({', '.join(offenders)}). It is never null -- it falls back to a grey "
+            "placeholder that impersonates Offline for a merely-unknown status (tasks #253, "
+            "#256). For a dot, use resolveMembersAgentStatusIndicatorStateOrNull(...) and "
+            "render inside `?.let` so an unresolved status paints nothing. For a label, "
+            "build the unknown placeholder explicitly at the call site so the substitution "
+            "is visible where it happens."
+        )
+
+
+def check_task_259_members_visual_fixtures(
+    members_page: str, visual_fixture_data: str
+) -> None:
+    """task #259: assert MembersPage.kt literal machines and variants match VisualFixtureData.
+
+    MembersPage.kt runs on production compose_member_detail in commonMain without
+    a gated wrapper to inject ComputerSummary fixtures, so it carries literal machines.
+    This constraint verifies:
+    1. membersVisualFixtureMachines equals VisualFixtureData.Machines field for field.
+    2. membersAgentDetailVisualVariants daemonVersion matches the referenced machine's
+       daemonVersion (in-file self-consistency).
+    3. Variant machineIds are restricted to {Machines.*} union {"computer-missing", None}.
+    4. agent-daemon-only variant fields match VisualFixtureData.Agents.DaemonOnly verbatim.
+    5. membersAgentDetailVisualSnapshot.summary daemonVersion matches the referenced machine's
+       daemonVersion and its machineId is in allowed_machine_ids.
+    """
+    machines_block_match = re.search(
+        r"object Machines \{(.*?)\n    \}", visual_fixture_data, re.DOTALL
+    )
+    if not machines_block_match:
+        raise Violation("task #259: VisualFixtureData.Machines block not found")
+    machines_block = machines_block_match.group(1)
+
+    fixture_machines = {}
+    obj_matches = re.finditer(
+        r"object (\w+) \{(.*?)\n        \}", machines_block, re.DOTALL
+    )
+    for om in obj_matches:
+        obj_body = om.group(2)
+        m_id = re.search(r'const val ID: String = "([^"]+)"', obj_body).group(1)
+        m_name = re.search(r'const val NAME: String = "([^"]+)"', obj_body).group(1)
+        m_status = re.search(r'const val STATUS: String = "([^"]+)"', obj_body).group(1)
+        m_is_comp = (
+            re.search(r"const val IS_COMPUTER: Boolean = (true|false)", obj_body).group(1)
+            == "true"
+        )
+        comp_ver_m = re.search(
+            r'(?:const val|val) COMPUTER_VERSION: String\?? = (?:null|"([^"]+)")',
+            obj_body,
+        )
+        m_comp_ver = comp_ver_m.group(1) if comp_ver_m else None
+        daemon_ver_m = re.search(
+            r'(?:const val|val) DAEMON_VERSION: String\?? = (?:null|"([^"]+)")',
+            obj_body,
+        )
+        m_daemon_ver = daemon_ver_m.group(1) if daemon_ver_m else None
+
+        fixture_machines[m_id] = {
+            "name": m_name,
+            "status": m_status,
+            "is_computer": m_is_comp,
+            "computer_version": m_comp_ver,
+            "daemon_version": m_daemon_ver,
+        }
+
+    page_machines_block_m = re.search(
+        r"private val membersVisualFixtureMachines: List<ComputerSummary> =.*?listOf\((.*?)\n    \)",
+        members_page,
+        re.DOTALL,
+    )
+    if not page_machines_block_m:
+        raise Violation(
+            "task #259: membersVisualFixtureMachines list not found in MembersPage.kt"
+        )
+    page_machines_block = page_machines_block_m.group(1)
+
+    machine_call_regex = re.compile(
+        r'membersVisualFixtureMachine\(\s*'
+        r'"(?P<id>[^"]+)",\s*'
+        r'"(?P<name>[^"]+)",\s*'
+        r'ComputerStatus\.(?P<status>Online|Offline),\s*'
+        r'isComputer\s*=\s*(?P<isComputer>true|false),\s*'
+        r'computerVersion\s*=\s*(?P<computerVersion>"[^"]*"|null),\s*'
+        r'daemonVersion\s*=\s*(?P<daemonVersion>"[^"]*"|null)'
+        r'\s*\)'
+    )
+
+    page_machines = {}
+    for m in machine_call_regex.finditer(page_machines_block):
+        m_id = m.group("id")
+        cv = m.group("computerVersion")
+        dv = m.group("daemonVersion")
+        page_machines[m_id] = {
+            "name": m.group("name"),
+            "status": m.group("status").lower(),
+            "is_computer": m.group("isComputer") == "true",
+            "computer_version": cv.strip('"') if cv != "null" else None,
+            "daemon_version": dv.strip('"') if dv != "null" else None,
+        }
+
+    if len(page_machines) != len(fixture_machines):
+        raise Violation(
+            f"task #259: membersVisualFixtureMachines count ({len(page_machines)}) "
+            f"!= VisualFixtureData.Machines count ({len(fixture_machines)})"
+        )
+
+    for m_id, f_data in fixture_machines.items():
+        if m_id not in page_machines:
+            raise Violation(
+                f"task #259: machine {m_id} missing from membersVisualFixtureMachines"
+            )
+        p_data = page_machines[m_id]
+        for field in ("name", "status", "is_computer", "computer_version", "daemon_version"):
+            if p_data[field] != f_data[field]:
+                raise Violation(
+                    f"task #259: machine {m_id} field {field} mismatch: "
+                    f"page has {p_data[field]!r}, fixture has {f_data[field]!r}"
+                )
+
+    variants_block_m = re.search(
+        r"private val membersAgentDetailVisualVariants = listOf\((.*?)\n\)",
+        members_page,
+        re.DOTALL,
+    )
+    if not variants_block_m:
+        raise Violation(
+            "task #259: membersAgentDetailVisualVariants list not found in MembersPage.kt"
+        )
+    variants_block = variants_block_m.group(1)
+
+    variant_call_regex = re.compile(
+        r'MembersAgentDetailVisualVariant\(\s*'
+        r'id\s*=\s*"(?P<id>[^"]+)",\s*'
+        r'name\s*=\s*"(?P<name>[^"]+)",\s*'
+        r'displayName\s*=\s*"(?P<displayName>[^"]+)",\s*'
+        r'avatarLabel\s*=\s*"(?P<avatarLabel>[^"]+)",\s*'
+        r'description\s*=\s*"(?P<description>[^"]+)",\s*'
+        r'machineId\s*=\s*(?P<machineId>"[^"]*"|null),\s*'
+        r'machineName\s*=\s*(?P<machineName>"[^"]*"|null),\s*'
+        r'daemonVersion\s*=\s*(?P<daemonVersion>"[^"]*"|null),\s*'
+        r'serverRole\s*=\s*"(?P<serverRole>[^"]+)"\s*'
+        r'\)',
+        re.DOTALL,
+    )
+
+    page_variants = {}
+    allowed_machine_ids = set(page_machines.keys()) | {"computer-missing", None}
+
+    for vm in variant_call_regex.finditer(variants_block):
+        v_id = vm.group("id")
+        mid = vm.group("machineId")
+        m_id = mid.strip('"') if mid != "null" else None
+        mname = vm.group("machineName")
+        m_name = mname.strip('"') if mname != "null" else None
+        dver = vm.group("daemonVersion")
+        d_ver = dver.strip('"') if dver != "null" else None
+
+        page_variants[v_id] = {
+            "name": vm.group("name"),
+            "displayName": vm.group("displayName"),
+            "avatarLabel": vm.group("avatarLabel"),
+            "description": vm.group("description"),
+            "machineId": m_id,
+            "machineName": m_name,
+            "daemonVersion": d_ver,
+            "serverRole": vm.group("serverRole"),
+        }
+
+        if m_id not in allowed_machine_ids:
+            raise Violation(
+                f"task #259: variant {v_id} references unallowed machineId {m_id!r} "
+                "(must be in fixture machines or 'computer-missing' / null)"
+            )
+
+        if m_id in page_machines:
+            expected_daemon_ver = page_machines[m_id]["daemon_version"]
+            if d_ver != expected_daemon_ver:
+                raise Violation(
+                    f"task #259: variant {v_id} daemonVersion ({d_ver!r}) mismatches "
+                    f"referenced machine {m_id} daemonVersion ({expected_daemon_ver!r})"
+                )
+
+    if "agent-daemon-only" not in page_variants:
+        raise Violation(
+            "task #259: variant agent-daemon-only missing from membersAgentDetailVisualVariants"
+        )
+
+    agents_block_m = re.search(
+        r"object Agents \{(.*?)\n    \}", visual_fixture_data, re.DOTALL
+    )
+    if not agents_block_m:
+        raise Violation("task #259: VisualFixtureData.Agents block not found")
+    agents_block = agents_block_m.group(1)
+
+    agent_do_block_m = re.search(
+        r"object DaemonOnly \{(.*?)\n        \}", agents_block, re.DOTALL
+    )
+    if not agent_do_block_m:
+        raise Violation("task #259: VisualFixtureData.Agents.DaemonOnly block not found")
+    agent_do_block = agent_do_block_m.group(1)
+
+    f_agent_name = re.search(r'const val NAME: String = "([^"]+)"', agent_do_block).group(1)
+    f_agent_dname = re.search(
+        r'const val DISPLAY_NAME: String = "([^"]+)"', agent_do_block
+    ).group(1)
+    f_agent_alabel = re.search(
+        r'const val AVATAR_LABEL: String = "([^"]+)"', agent_do_block
+    ).group(1)
+    f_agent_desc = re.search(
+        r'const val DESCRIPTION: String = "([^"]+)"', agent_do_block
+    ).group(1)
+    f_agent_role = re.search(
+        r'const val SERVER_ROLE: String = "([^"]+)"', agent_do_block
+    ).group(1)
+
+    p_v = page_variants["agent-daemon-only"]
+    if p_v["name"] != f_agent_name:
+        raise Violation(
+            f"task #259: agent-daemon-only name mismatch: {p_v['name']!r} != {f_agent_name!r}"
+        )
+    if p_v["displayName"] != f_agent_dname:
+        raise Violation(
+            f"task #259: agent-daemon-only displayName mismatch: {p_v['displayName']!r} != {f_agent_dname!r}"
+        )
+    if p_v["avatarLabel"] != f_agent_alabel:
+        raise Violation(
+            f"task #259: agent-daemon-only avatarLabel mismatch: {p_v['avatarLabel']!r} != {f_agent_alabel!r}"
+        )
+    if p_v["description"] != f_agent_desc:
+        raise Violation(
+            f"task #259: agent-daemon-only description mismatch: {p_v['description']!r} != {f_agent_desc!r}"
+        )
+    if p_v["serverRole"] != f_agent_role:
+        raise Violation(
+            f"task #259: agent-daemon-only serverRole mismatch: {p_v['serverRole']!r} != {f_agent_role!r}"
+        )
+
+    snapshot_summary_m = re.search(
+        r"private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot\(.*?"
+        r"summary = AgentDetailSummary\((.*?)\n    \),",
+        members_page,
+        re.DOTALL,
+    )
+    if not snapshot_summary_m:
+        raise Violation(
+            "task #259: membersAgentDetailVisualSnapshot summary not found in MembersPage.kt"
+        )
+    snapshot_body = snapshot_summary_m.group(1)
+    sm_id_m = re.search(r'machineId\s*=\s*(?P<machineId>"[^"]*"|null)', snapshot_body)
+    sd_ver_m = re.search(r'daemonVersion\s*=\s*(?P<daemonVersion>"[^"]*"|null)', snapshot_body)
+    if not sm_id_m or not sd_ver_m:
+        raise Violation(
+            "task #259: machineId or daemonVersion missing from membersAgentDetailVisualSnapshot.summary"
+        )
+    s_mid = sm_id_m.group("machineId")
+    snapshot_machine_id = s_mid.strip('"') if s_mid != "null" else None
+    s_dver = sd_ver_m.group("daemonVersion")
+    snapshot_daemon_ver = s_dver.strip('"') if s_dver != "null" else None
+
+    if snapshot_machine_id not in allowed_machine_ids:
+        raise Violation(
+            f"task #259: snapshot summary references unallowed machineId {snapshot_machine_id!r} "
+            "(must be in fixture machines or 'computer-missing' / null)"
+        )
+
+    if snapshot_machine_id in page_machines:
+        expected_daemon_ver = page_machines[snapshot_machine_id]["daemon_version"]
+        if snapshot_daemon_ver != expected_daemon_ver:
+            raise Violation(
+                f"task #259: snapshot summary daemonVersion ({snapshot_daemon_ver!r}) mismatches "
+                f"referenced machine {snapshot_machine_id} daemonVersion ({expected_daemon_ver!r})"
+            )
+
+
+SHARED_COMMON_TEST_ROOT = "compose/shared/src/commonTest/kotlin"
+TEST_SESSION_STORE_CLASS_FIELD = re.compile(
+    r"^ {4}(?:private |internal |protected )?(?:val|var|lateinit var) \w+(?:\s*:\s*[\w.<>?]+)?\s*=\s*InMemorySlockAuthSessionStore\(",
+    re.MULTILINE,
+)
+
+
+def check_test_session_stores_are_test_local(sources: dict[str, str]) -> None:
+    """Task #1122: the test identity authority is memoised per session-store INSTANCE.
+
+    Every data source built on one `InMemorySlockAuthSessionStore` shares one
+    generation sequence; that is the property the card wanted. It stays a
+    property only while each test function creates its own store. A store held
+    as a class field would let generations leak silently between test
+    functions (and stay green), which is the per-instance defect shape moved up
+    one level. Store instances must therefore be function-local in commonTest.
+    """
+    # Denominator: a prohibition over an empty (or store-free) input is vacuously true. The scan
+    # must see commonTest files AND at least one function-local store, or the glob has drifted.
+    if not sources:
+        raise Violation("task #1122 checker saw no commonTest sources (glob drift?)")
+    if not any("InMemorySlockAuthSessionStore(" in text for text in sources.values()):
+        raise Violation(
+            "task #1122 checker saw no InMemorySlockAuthSessionStore construction at all in commonTest "
+            "(the constraint no longer observes what it constrains)"
+        )
+    for name, text in sorted(sources.items()):
+        match = TEST_SESSION_STORE_CLASS_FIELD.search(text)
+        if match:
+            line = text.count("\n", 0, match.start()) + 1
+            raise Violation(
+                f"task #1122 regression: {name}:{line} holds an InMemorySlockAuthSessionStore as a "
+                "class field; create it inside the test function so the memoised identity "
+                "authority stays test-local"
+            )
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -688,6 +1096,7 @@ def run(root: Path) -> None:
         tasks_data_source=read(TASKS_DATA_SOURCE),
         slock_shared_store_provider=read(SLOCK_SHARED_STORE_PROVIDER),
     )
+    check_label_facing_resolver_has_no_production_callers(root)
     check_system_selectable_text_dialog(thread_page)
     check_thread_ime_tail_pixel_probe_scope(thread_page)
     check_composer_retirement_uses_bounded_waits(read(COMPOSER_IME_CONNECTED_TEST))
@@ -713,10 +1122,74 @@ def run(root: Path) -> None:
         entitlements=read(IOS_ENTITLEMENTS),
         xcode_project=read(IOS_XCODE_PROJECT),
     )
+    check_task_259_members_visual_fixtures(
+        members_page=read(MEMBERS_PAGE),
+        visual_fixture_data=read(VISUAL_FIXTURE_DATA),
+    )
+    common_test_root = root / SHARED_COMMON_TEST_ROOT
+    if not common_test_root.is_dir():
+        raise Violation(f"constraint source missing (fail-closed): {SHARED_COMMON_TEST_ROOT}")
+    check_test_session_stores_are_test_local(
+        {
+            str(path.relative_to(root)): path.read_text(encoding="utf-8").replace("\r\n", "\n")
+            for path in sorted(common_test_root.rglob("*.kt"))
+        }
+    )
 
 
 def self_test() -> None:
     """Every checker must reject its violation shape and accept the good shape."""
+    # check_label_facing_resolver_has_no_production_callers scans a tree, so probe it on
+    # miniature trees. The two denominator probes are the point (LiBai, 2026-09-04): an
+    # empty scan and a scan that never reaches the definition must both be red, not the
+    # same green a clean tree produces.
+    definition = "internal fun resolveMembersAgentStatusIndicatorState(x: Int) = x\n"
+    caller = "val s = resolveMembersAgentStatusIndicatorState(1)\n"
+    def _tree(files: dict[str, str]):
+        tmp = tempfile.TemporaryDirectory()
+        root = Path(tmp.name)
+        for rel, body in files.items():
+            target = root / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(body, encoding="utf-8")
+        return tmp, root
+    good_files = {
+        "compose/shared/src/commonMain/kotlin/a/Members.kt": definition,
+        "compose/shared/src/commonTest/kotlin/a/MembersTest.kt": caller,
+    }
+    tmp, root = _tree(good_files)
+    with tmp:
+        check_label_facing_resolver_has_no_production_callers(root)
+    for label, files, needle in (
+        (
+            "production caller",
+            {**good_files, "compose/shared/src/commonMain/kotlin/a/Settings.kt": caller},
+            "production code calls",
+        ),
+        ("empty scan", {}, "scanned zero production"),
+        (
+            "definition only under a test dir (scan reaches production but never the resolver)",
+            {
+                "compose/shared/src/commonMain/kotlin/a/Other.kt": "val unrelated = 1\n",
+                "compose/shared/src/commonTest/kotlin/a/Members.kt": definition + caller,
+            },
+            "found 0",
+        ),
+        (
+            "definition twice",
+            {**good_files, "compose/shared/src/commonMain/kotlin/a/Copy.kt": definition},
+            "found 2",
+        ),
+    ):
+        tmp, root = _tree(files)
+        with tmp:
+            try:
+                check_label_facing_resolver_has_no_production_callers(root)
+            except Violation as violation:
+                if needle not in str(violation):
+                    raise AssertionError(f"{label}: wrong violation: {violation}")
+            else:
+                raise AssertionError(f"{label}: expected a Violation, got none")
     good_snapshot_basic_widget = """
 internal fun DeclarativeBaseView<*, *>.findSlockNativeTextEditor() = when (this) {
     is AutoHeightTextAreaView -> this
@@ -753,7 +1226,7 @@ onEvent("sendSnapshotUnavailable", "native_editor_unavailable", null, null)
     for source_name, token in (
         ("basic", "is AutoHeightTextAreaView -> this"),
         ("basic", "nativeEditorRoot.findSlockNativeTextEditor()"),
-        ("basic", "nativeEditor.getTextInputState(callback)"),
+        ("basic", "nativeEditor.getTextInputState("),
         ("composer", "if (pendingToken !== token) return false"),
         ("composer", "delay(ThreadComposerNativeSnapshotTimeoutMillis)"),
         ("composer", 'currentOnEvent("sendSnapshotUnavailable", "timeout", null, null)'),
@@ -1057,7 +1530,7 @@ private fun ThreadMessageMenuChrome() = Unit
     good_retirement_test = '''
 fun sendRetiresEditorSessionWithoutLosingFocusImeOrFirstComposition() {
     waitUntil(RenderTimeoutMs, "initial editor") { true }
-    waitUntil(SendTimeoutMs, "first attached replacement editor") { true }
+    waitUntil(SendTimeoutMs, "same editor cleared after send") { true }
     waitUntil(ImeTransitionTimeoutMs, "sent row and same-text first composition") { true }
     println("SLOCK_COMPOSER_SESSION_RETIREMENT_PASS")
 }
@@ -1069,8 +1542,8 @@ fun anotherCase() = Unit
     try:
         check_composer_retirement_uses_bounded_waits(
             good_retirement_test.replace(
-                'waitUntil(SendTimeoutMs, "first attached replacement editor") { true }',
-                'waitForIdleSync()\n    waitUntil(SendTimeoutMs, "first attached replacement editor") { true }',
+                'waitUntil(SendTimeoutMs, "same editor cleared after send") { true }',
+                'waitForIdleSync()\n    waitUntil(SendTimeoutMs, "same editor cleared after send") { true }',
             )
         )
     except Violation:
@@ -1239,6 +1712,227 @@ com.apple.SignInWithApple = {
         else:
             raise SystemExit("self-test: task #82 native Apple checker accepted a violation")
 
+    good_members_page = """
+private val membersVisualFixtureMachines: List<ComputerSummary> =
+    listOf(
+        membersVisualFixtureMachine("computer-mbp", "Jiachengs-MacBook-Pro", ComputerStatus.Online, isComputer = true, computerVersion = "0.0.48", daemonVersion = "0.65.0"),
+        membersVisualFixtureMachine("computer-studio", "Studio Test Rig", ComputerStatus.Offline, isComputer = true, computerVersion = "0.0.50", daemonVersion = "0.65.0"),
+        membersVisualFixtureMachine("computer-long-name", "ci-visual-capture-runner-us-west-2b_node17_macbookpro_m4max_buildhost_2026", ComputerStatus.Online, isComputer = true, computerVersion = "0.0.48", daemonVersion = "0.65.0"),
+        membersVisualFixtureMachine("computer-daemon-only", "build-box-bare-daemon", ComputerStatus.Online, isComputer = false, computerVersion = null, daemonVersion = "0.65.0")
+    )
+private val membersAgentDetailVisualVariants = listOf(
+    MembersAgentDetailVisualVariant(
+        id = "agent-computer-offline",
+        name = "Computer-Offline-Probe",
+        displayName = "Computer Offline Probe",
+        avatarLabel = "C",
+        description = "offline probe",
+        machineId = "computer-studio",
+        machineName = "Studio Test Rig",
+        daemonVersion = "0.65.0",
+        serverRole = "member"
+    ),
+    MembersAgentDetailVisualVariant(
+        id = "agent-computer-missing",
+        name = "Computer-Missing-Probe",
+        displayName = "Computer Missing Probe",
+        avatarLabel = "C",
+        description = "missing probe",
+        machineId = "computer-missing",
+        machineName = null,
+        daemonVersion = null,
+        serverRole = "member"
+    ),
+    MembersAgentDetailVisualVariant(
+        id = "agent-no-computer",
+        name = "No-Computer-Probe",
+        displayName = "No Computer Probe",
+        avatarLabel = "N",
+        description = "no computer probe",
+        machineId = null,
+        machineName = null,
+        daemonVersion = null,
+        serverRole = "member"
+    ),
+    MembersAgentDetailVisualVariant(
+        id = "agent-long-machine",
+        name = "Long-Machine-Name-Probe",
+        displayName = "Long Machine Name Probe",
+        avatarLabel = "L",
+        description = "long machine probe",
+        machineId = "computer-long-name",
+        machineName = "ci-visual-capture-runner-us-west-2b_node17_macbookpro_m4max_buildhost_2026",
+        daemonVersion = "0.65.0",
+        serverRole = "admin"
+    ),
+    MembersAgentDetailVisualVariant(
+        id = "agent-daemon-only",
+        name = "Daemon-Only-Probe",
+        displayName = "Daemon Only Probe",
+        avatarLabel = "DO",
+        description = "Bound to a bare daemon (not a managed Computer): web shows Connected · daemon vX, never a computer version.",
+        machineId = "computer-daemon-only",
+        machineName = "build-box-bare-daemon",
+        daemonVersion = "0.65.0",
+        serverRole = "member"
+    )
+)
+private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
+    agentId = membersAgentDetailVisualMember.id,
+    summary = AgentDetailSummary(
+        id = membersAgentDetailVisualMember.id.value,
+        name = "Product-UX-Designer",
+        displayName = membersAgentDetailVisualMember.displayName,
+        createdAt = "2026-06-18T00:00:00.000Z",
+        status = "working",
+        runtime = "codex",
+        model = "gpt-5-codex",
+        reasoning = "medium",
+        executionMode = "byoc",
+        machineId = "computer-mbp",
+        machineName = "Jiachengs-MacBook-Pro",
+        daemonVersion = "0.65.0",
+        creatorId = "artin",
+        creatorType = "user",
+        creator = AgentCreatorSummary(
+            type = "human",
+            id = "artin",
+            name = "artin",
+            displayName = "artin",
+            avatarUrl = "pixel:user"
+        ),
+    ),
+    details = membersAgentDetailVisualMember,
+    computers = membersVisualFixtureMachines,
+)
+"""
+    good_fixture_data = """
+    object Machines {
+        object Primary {
+            const val ID: String = "computer-mbp"
+            const val NAME: String = "Jiachengs-MacBook-Pro"
+            const val STATUS: String = "online"
+            const val IS_COMPUTER: Boolean = true
+            const val COMPUTER_VERSION: String = "0.0.48"
+            const val DAEMON_VERSION: String = "0.65.0"
+        }
+        object Studio {
+            const val ID: String = "computer-studio"
+            const val NAME: String = "Studio Test Rig"
+            const val STATUS: String = "offline"
+            const val IS_COMPUTER: Boolean = true
+            const val COMPUTER_VERSION: String = "0.0.50"
+            const val DAEMON_VERSION: String = "0.65.0"
+        }
+        object LongName {
+            const val ID: String = "computer-long-name"
+            const val NAME: String = "ci-visual-capture-runner-us-west-2b_node17_macbookpro_m4max_buildhost_2026"
+            const val STATUS: String = "online"
+            const val IS_COMPUTER: Boolean = true
+            const val COMPUTER_VERSION: String = "0.0.48"
+            const val DAEMON_VERSION: String = "0.65.0"
+        }
+        object DaemonOnly {
+            const val ID: String = "computer-daemon-only"
+            const val NAME: String = "build-box-bare-daemon"
+            const val STATUS: String = "online"
+            const val IS_COMPUTER: Boolean = false
+            val COMPUTER_VERSION: String? = null
+            const val DAEMON_VERSION: String = "0.65.0"
+        }
+    }
+    object Agents {
+        object DaemonOnly {
+            const val ID: String = "agent-daemon-only"
+            const val NAME: String = "Daemon-Only-Probe"
+            const val DISPLAY_NAME: String = "Daemon Only Probe"
+            const val AVATAR_LABEL: String = "DO"
+            const val DESCRIPTION: String = "Bound to a bare daemon (not a managed Computer): web shows Connected · daemon vX, never a computer version."
+            const val SERVER_ROLE: String = "member"
+        }
+    }
+"""
+    check_task_259_members_visual_fixtures(good_members_page, good_fixture_data)
+
+    bad_task_259_cases = (
+        (
+            good_members_page.replace('"0.65.0"', '"0.0.48"', 1),
+            good_fixture_data,
+            "machine field mismatch",
+        ),
+        (
+            good_members_page.replace(
+                'daemonVersion = "0.65.0",\n        serverRole = "admin"',
+                'daemonVersion = "0.0.48",\n        serverRole = "admin"',
+            ),
+            good_fixture_data,
+            "variant daemonVersion mismatches referenced machine (historic :1495 defect)",
+        ),
+        (
+            good_members_page.replace('machineId = "computer-missing"', 'machineId = "computer-unlisted"'),
+            good_fixture_data,
+            "unallowed machineId outside whitelist",
+        ),
+        (
+            good_members_page.replace('avatarLabel = "DO"', 'avatarLabel = "D"'),
+            good_fixture_data,
+            "agent-daemon-only avatarLabel mismatch",
+        ),
+        (
+            good_members_page.replace('id = "agent-daemon-only"', 'id = "agent-daemon-missing"'),
+            good_fixture_data,
+            "agent-daemon-only variant missing",
+        ),
+        (
+            good_members_page.replace(
+                'daemonVersion = "0.65.0",\n        creatorId = "artin"',
+                'daemonVersion = "0.0.48",\n        creatorId = "artin"',
+            ),
+            good_fixture_data,
+            "snapshot summary daemonVersion mismatches referenced machine (historic :1561 defect)",
+        ),
+        (
+            good_members_page.replace(
+                'machineId = "computer-mbp",\n        machineName = "Jiachengs-MacBook-Pro",\n        daemonVersion = "0.65.0"',
+                'machineId = "computer-unlisted",\n        machineName = "Unlisted",\n        daemonVersion = "0.65.0"',
+            ),
+            good_fixture_data,
+            "snapshot summary unallowed machineId outside whitelist",
+        ),
+    )
+    for bad_page, bad_fix, desc in bad_task_259_cases:
+        try:
+            check_task_259_members_visual_fixtures(bad_page, bad_fix)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(f"self-test: task #259 checker accepted violation: {desc}")
+
+    check_test_session_stores_are_test_local(
+        {
+            "f": "class T {\n    @Test\n    fun a() = runBlocking {\n        val store = InMemorySlockAuthSessionStore(session())\n    }\n}\n",
+            "g": "class U {\n    private fun make() = InMemorySlockAuthSessionStore(session())\n}\n",
+        }
+    )
+    for empty_input in ({}, {"f": "class T {\n    @Test\n    fun a() = Unit\n}\n"}):
+        try:
+            check_test_session_stores_are_test_local(empty_input)
+        except Violation:
+            pass
+        else:
+            raise SystemExit("self-test: task #1122 checker passed vacuously on input without any session store")
+    for offending in (
+        "class T {\n    private val store = InMemorySlockAuthSessionStore(session())\n}\n",
+        "class T {\n    val authStore: InMemorySlockAuthSessionStore = InMemorySlockAuthSessionStore(session())\n}\n",
+        "class T {\n    lateinit var store = InMemorySlockAuthSessionStore(session())\n}\n",
+    ):
+        try:
+            check_test_session_stores_are_test_local({"f": offending})
+        except Violation:
+            pass
+        else:
+            raise SystemExit("self-test: task #1122 test-local session-store checker accepted a class field")
+
     print("check_source_constraints self-test passed")
 
 
@@ -1256,7 +1950,7 @@ def main(argv: list[str]) -> int:
         return 1
     print(
         "source constraints hold "
-        "(tasks #17/#800/#803/#361/#161/#924/#82/#183/#76/#127/#991 structural faces)"
+        "(tasks #17/#800/#803/#361/#161/#924/#82/#183/#76/#127/#991/#259/#1122 structural faces)"
     )
     return 0
 

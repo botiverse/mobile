@@ -1,10 +1,13 @@
 import { KuiklyNativeManager } from '@kuikly-open/render';
 import Napi from 'libentry.so';
+import { SlockOhosDiagnostics } from './SlockOhosDiagnostics';
 
 class MyNativeManager extends KuiklyNativeManager {
   protected loadNative(): number {
     // 调用Napi接口，初始化 Kuikly Native
-    return Napi.initKuikly();
+    return Napi.initKuikly((message: string, failed: boolean): void => {
+      SlockOhosDiagnostics.recordAsync('SlockImageFlight', message, Date.now(), failed ? 'warn' : 'info');
+    });
   }
 }
 

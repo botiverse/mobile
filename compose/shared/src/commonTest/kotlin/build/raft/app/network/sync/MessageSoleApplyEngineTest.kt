@@ -310,7 +310,7 @@ class MessageSoleApplyEngineTest {
         val lane = MessageSoleApplyLane.createIfEligible(
             perScopeControl = true,
             scopeKey = SyncScopeKey(
-                partition = DurablePartitionKey("s", "p", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID),
+                partition = DurablePartitionKey("s", "p", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID, "env-test"),
                 scopeId = "c",
                 scopeKind = "channel",
             ),

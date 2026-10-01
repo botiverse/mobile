@@ -46,9 +46,110 @@ data class InboxItem(
     val taskNumber: Int? = null,
     val taskStatus: TaskStatus? = null,
     val taskClaimedByName: String? = null,
+    /**
+     * Server-owned follow state for thread Activity rows. Older payloads that
+     * predate this projection remain unknown; only an explicit server `false`
+     * is Unfollowed. We deliberately do not model a separate history source
+     * on Mobile.
+     */
+    val isFollowing: Boolean? = null,
     val mentionActionId: String? = null,
     val pendingMentionActions: List<PendingMentionAction> = emptyList()
 )
+
+/** True only for an explicitly server-projected, unfollowed thread row. */
+internal val InboxItem.isUnfollowedActivityThread: Boolean
+    get() = kind == InboxItemKind.Thread && isFollowing == false
+
+/** Legacy payloads omit the optional field; keep their existing followed-row controls. */
+internal val InboxItem.isFollowedActivityThread: Boolean
+    get() = kind == InboxItemKind.Thread && isFollowing != false
+
+/**
+ * Activity attention is derived from the follow-state projection.  A stale or
+ * over-eager server/client payload must not make an Unfollowed row re-enter
+ * ordinary unread/mention attention.
+ */
+internal fun InboxItem.withActivityFollowStateProjection(): InboxItem =
+    if (isUnfollowedActivityThread) {
+        copy(
+            unreadCount = 0,
+            firstUnreadMessageId = null,
+            hasMention = false
+        )
+    } else {
+        this
+    }
+
+/**
+ * The Activity All projection may retain unfollowed rows, while attention
+ * filters must never surface them.  Keep this rule next to the model so every
+ * repository/fixture consumer applies the same membership contract.
+ */
+internal fun InboxSnapshot.projectActivityFilter(filter: InboxFilter): InboxSnapshot {
+    val rawUnread = items.sumOf(InboxItem::unreadCount)
+    val normalizedItems = items.map { item -> item.withActivityFollowStateProjection() }
+    val normalizedUnread = normalizedItems.sumOf(InboxItem::unreadCount)
+    val suppressedUnfollowedUnread = (rawUnread - normalizedUnread).coerceAtLeast(0)
+    val projectedTotalUnread =
+        if (totalUnreadCount >= rawUnread) {
+            (totalUnreadCount - suppressedUnfollowedUnread).coerceAtLeast(0)
+        } else {
+            maxOf(totalUnreadCount, normalizedUnread)
+        }
+    val visibleItems =
+        if (filter == InboxFilter.All) {
+            normalizedItems
+        } else {
+            normalizedItems.filterNot { item -> item.isUnfollowedActivityThread }
+        }
+    val removedCount = normalizedItems.size - visibleItems.size
+    if (removedCount == 0 && normalizedItems == items && projectedTotalUnread == totalUnreadCount) return this
+    return copy(
+        items = visibleItems,
+        totalCount = (totalCount - removedCount).coerceAtLeast(0),
+        totalUnreadCount = projectedTotalUnread
+    )
+}
+
+/**
+ * Applies the local, reversible projection for a Follow/Unfollow mutation.
+ * The network mutation remains authoritative; this helper only makes the
+ * visible row respond immediately while preserving the server aggregate and
+ * the All-vs-attention-filter membership contract.
+ */
+internal fun InboxSnapshot.projectActivityFollowMutation(
+    itemKey: String,
+    following: Boolean,
+    filter: InboxFilter
+): InboxSnapshot {
+    val previousItem = items.firstOrNull { item -> item.key == itemKey }
+    val mutated = items.map { item ->
+        if (item.key != itemKey) {
+            item
+        } else {
+            item.copy(
+                isFollowing = following,
+                unreadCount = 0,
+                firstUnreadMessageId = null,
+                hasMention = false
+            )
+        }
+    }
+    val projected =
+        copy(
+            items = mutated,
+            totalUnreadCount =
+                (totalUnreadCount - (previousItem?.unreadCount ?: 0)).coerceAtLeast(0)
+        ).projectActivityFilter(filter)
+    if (filter == InboxFilter.All) return projected
+    val targetPresent = projected.items.any { it.key == itemKey }
+    if (!targetPresent) return projected
+    return projected.copy(
+        items = projected.items.filterNot { it.key == itemKey },
+        totalCount = (projected.totalCount - 1).coerceAtLeast(0)
+    )
+}
 
 internal fun InboxItem.hasUnopenableInternalJointParentSource(): Boolean =
     kind == InboxItemKind.Thread &&
@@ -90,8 +191,18 @@ sealed interface HomeConversationRow {
     val jointPeerServerName: String?
     val jointPeerServerSlug: String?
     val jointPeerStatus: String?
+    val jointBillingLocked: Boolean?
+    val jointOverLimitGraceEndsAt: String?
+    /** task #396: external bridge provider (e.g. "slack"); only channels carry one. */
+    val bridgeProvider: String?
+        get() = null
     val activityNotificationPreference: ChannelActivityNotificationPreference
     val permissions: ConversationPermissions
+    /**
+     * Server-resolved channel-level capabilities (see [ConversationSummary.channelCapabilities]).
+     * `null` on DMs and on payloads that pre-date the field.
+     */
+    val channelCapabilities: ChannelCapabilities?
 
     val activityMuted: Boolean
         get() = activityNotificationPreference.activityMuted
@@ -136,9 +247,13 @@ data class HomeChannelRow(
     override val jointPeerServerName: String? = null,
     override val jointPeerServerSlug: String? = null,
     override val jointPeerStatus: String? = null,
+    override val jointBillingLocked: Boolean? = null,
+    override val jointOverLimitGraceEndsAt: String? = null,
+    override val bridgeProvider: String? = null,
     override val activityNotificationPreference: ChannelActivityNotificationPreference =
         ChannelActivityNotificationPreference.Unsupported,
-    override val permissions: ConversationPermissions = ConversationPermissions()
+    override val permissions: ConversationPermissions = ConversationPermissions(),
+    override val channelCapabilities: ChannelCapabilities? = null
 ) : HomeConversationRow
 
 @Serializable
@@ -176,9 +291,12 @@ data class HomeDirectMessageRow(
     override val jointPeerServerName: String? = null,
     override val jointPeerServerSlug: String? = null,
     override val jointPeerStatus: String? = null,
+    override val jointBillingLocked: Boolean? = null,
+    override val jointOverLimitGraceEndsAt: String? = null,
     override val activityNotificationPreference: ChannelActivityNotificationPreference =
         ChannelActivityNotificationPreference.Unsupported,
-    override val permissions: ConversationPermissions = ConversationPermissions()
+    override val permissions: ConversationPermissions = ConversationPermissions(),
+    override val channelCapabilities: ChannelCapabilities? = null
 ) : HomeConversationRow
 
 fun HomeConversationRow.toConversationSummary(): ConversationSummary =
@@ -215,8 +333,12 @@ fun HomeConversationRow.toConversationSummary(): ConversationSummary =
         jointPeerServerName = jointPeerServerName,
         jointPeerServerSlug = jointPeerServerSlug,
         jointPeerStatus = jointPeerStatus,
+        jointBillingLocked = jointBillingLocked,
+        jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
+        bridgeProvider = bridgeProvider,
         activityNotificationPreference = activityNotificationPreference,
-        permissions = permissions
+        permissions = permissions,
+        channelCapabilities = channelCapabilities
     )
 
 fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
@@ -253,8 +375,12 @@ fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
         jointPeerServerName = jointPeerServerName,
         jointPeerServerSlug = jointPeerServerSlug,
         jointPeerStatus = jointPeerStatus,
+        jointBillingLocked = jointBillingLocked,
+        jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
+        bridgeProvider = bridgeProvider,
         activityNotificationPreference = activityNotificationPreference,
-        permissions = permissions
+        permissions = permissions,
+        channelCapabilities = channelCapabilities
     )
 
 fun ConversationSummary.toHomeDirectMessageRow(): HomeDirectMessageRow =
@@ -286,7 +412,8 @@ fun ConversationSummary.toHomeDirectMessageRow(): HomeDirectMessageRow =
         archived = archived,
         memberCount = memberCount,
         activityNotificationPreference = activityNotificationPreference,
-        permissions = permissions
+        permissions = permissions,
+        channelCapabilities = channelCapabilities
     )
 
 @Serializable
@@ -434,7 +561,66 @@ data class AttachmentUploadResult(
 }
 
 data class AttachmentUploadCapabilities(
-    val maxBytes: Long
+    val maxBytes: Long,
+    /** Server-authoritative direct-session availability.  Never infer this from the route. */
+    val directUploadEnabled: Boolean = false,
+    /** Optional threshold advertised by the server; null means no threshold contract. */
+    val directUploadThresholdBytes: Long? = null,
+    /** Optional session lifetime hint, in seconds. */
+    val sessionExpiresInSeconds: Int? = null,
+)
+
+/** Input for the authenticated direct attachment-session create operation. */
+data class AttachmentUploadSessionCreateRequest(
+    val channelId: ChannelId,
+    val filename: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val clientRequestId: String,
+)
+
+/** Presigned PUT instructions returned by the server.  [url] is never persisted or logged. */
+data class AttachmentUploadSessionPut(
+    val method: String,
+    val url: String,
+    val headers: Map<String, String>,
+)
+
+data class AttachmentUploadSessionCreateResult(
+    val uploadId: String,
+    val attachmentId: AttachmentId,
+    val state: String,
+    val expiresAt: String,
+    val upload: AttachmentUploadSessionPut,
+)
+
+data class AttachmentUploadSessionView(
+    val uploadId: String,
+    val state: String,
+    val expiresAt: String,
+    val attachment: Attachment? = null,
+    val terminalReason: String? = null,
+    val reservationState: String? = null,
+)
+
+data class AttachmentUploadSessionCompleteResult(
+    val uploadId: String,
+    val state: String,
+    val attachment: Attachment,
+)
+
+/** One completed direct upload kept private until the enclosing Gallery batch commits. */
+data class DirectAttachmentUpload(
+    val localId: String,
+    val uploadId: String,
+    val attachment: Attachment,
+)
+
+internal data class DirectAttachmentUploadBatch(
+    val uploads: List<DirectAttachmentUpload>,
+    val sessionIds: List<String>,
+    /** Process-local compensation handle; never persisted or sent over the wire. */
+    internal val compensationHandle: DirectAttachmentUploadCompensationHandle? = null,
 )
 
 data class AttachmentOpenTarget(
@@ -483,7 +669,38 @@ data class AgentDetailSnapshot(
     val reminders: List<AgentReminderSummary>,
     val activity: List<AgentActivityEntry>,
     val skills: AgentSkillsSnapshot = AgentSkillsSnapshot(agentId = agentId),
-    val appLogins: AgentAppLoginSnapshot = AgentAppLoginSnapshot(agentId = agentId)
+    val appLogins: AgentAppLoginSnapshot = AgentAppLoginSnapshot(agentId = agentId),
+    /**
+     * `GET /agents/{id}/external-status` for external agents (React
+     * AgentDetailPanel parity). Null means *not provided*: the agent is not
+     * external, the caller lacks `editAgents`/creator authority (403), or the
+     * request failed. Consumers must not read null as "waiting for login".
+     */
+    val externalStatus: ExternalAgentStatusSnapshot? = null
+)
+
+/** Wire `setupState` of `GET /agents/{id}/external-status`. */
+enum class ExternalAgentSetupState {
+    WaitingForLogin,
+    CredentialMinted,
+    Connected,
+    Unknown;
+
+    companion object {
+        fun fromWireValue(value: String?): ExternalAgentSetupState =
+            when (value?.trim()?.lowercase()) {
+                "waiting_for_login" -> WaitingForLogin
+                "credential_minted" -> CredentialMinted
+                "connected" -> Connected
+                else -> Unknown
+            }
+    }
+}
+
+data class ExternalAgentStatusSnapshot(
+    val setupState: ExternalAgentSetupState,
+    val credentialLastUsedAt: String? = null,
+    val lastActivityAt: String? = null
 )
 
 data class AgentDetailSummary(
@@ -494,6 +711,7 @@ data class AgentDetailSummary(
     val serverRole: String? = null,
     val status: String? = null,
     val runtime: String? = null,
+    val isExternal: Boolean = false,
     val model: String? = null,
     val runtimeModelKind: String? = null,
     val runtimeProvider: build.raft.app.model.RuntimeProviderConfig? = null,
@@ -512,7 +730,9 @@ data class AgentDetailSummary(
     val createdAgents: List<AgentCreatedSummary> = emptyList(),
     val activity: String? = null,
     val activityDetail: String? = null,
-    val deletedAt: String? = null
+    val deletedAt: String? = null,
+    /** External agents only: `lastSeenAt` — credential last-use; realtime `agent:seen` advances it (task #410). */
+    val lastSeenAt: String? = null
 )
 
 data class AgentCreatorSummary(
@@ -529,7 +749,9 @@ data class AgentCreatedSummary(
     val displayName: String? = null,
     val avatarUrl: String? = null,
     val runtime: String? = null,
-    val status: String? = null
+    val status: String? = null,
+    /** Required: producers must fold both sources via isExternalAgent(external, runtime). */
+    val isExternal: Boolean
 )
 
 data class AgentDmSnapshot(
@@ -702,7 +924,11 @@ data class AgentActivityEntry(
 data class ChannelMemberSnapshot(
     val channelId: ChannelId,
     val members: List<MemberProfile>,
-    val canAddMembers: Boolean = true
+    val canAddMembers: Boolean = false,
+    val canRemoveMembers: Boolean = false,
+    /** Slack-bridge (or other provider) participants — display-only roster rows
+     *  (web `channelExternalMembers`). Never selectable/removable. */
+    val externalMembers: List<ChannelExternalMemberProfile> = emptyList()
 )
 
 data class AgentSnapshot(
@@ -1334,6 +1560,13 @@ data class SettingsMobileSnapshot(
             available = true,
             statusLabel = "Off",
             detail = "Use the new multi-server left drawer on Home. When off, keep the current server switcher popover."
+        ),
+    val desktopModeOnLargeScreen: SettingsMobileToggleSnapshot =
+        SettingsMobileToggleSnapshot(
+            enabled = true,
+            available = true,
+            statusLabel = "Enabled",
+            detail = "On large screens, show the left rail with the list and detail side by side. Turn off to keep the single-pane mobile layout with the bottom tab bar."
         ),
     val newDesignSettings: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(

@@ -127,11 +127,11 @@ class LocalPreferencesTest {
         val snapshot = repository.getChatLayoutPreference()
 
         assertEquals(MyMessageAlignmentPreference.Left, snapshot.myMessageAlignment)
-        assertEquals(LargeScreenNavigationPreference.LeftRail, snapshot.largeScreenNavigation)
+        assertEquals(true, snapshot.desktopModeOnLargeScreen)
         assertEquals(true, snapshot.compactConsecutiveMessages)
         assertEquals(false, snapshot.longMessageCollapseEnabled)
         assertEquals(false, snapshot.singleTapOpensThreadEnabled)
-        assertEquals(true, snapshot.threadUnreadJumpEnabled)
+        assertEquals(false, snapshot.threadUnreadJumpEnabled)
         assertEquals(false, snapshot.newMessageMenuEnabled)
         assertEquals(false, snapshot.conversationForwardGestureEnabled)
         assertEquals(false, snapshot.foregroundMessageBannersEnabled)
@@ -140,29 +140,51 @@ class LocalPreferencesTest {
         assertEquals(false, snapshot.composerSendKeyEnabled)
         assertEquals(false, snapshot.multiShellHostEnabled)
         assertEquals(false, snapshot.serverDrawerEnabled)
-        assertEquals(false, snapshot.newDesignSettingsEnabled)
+        assertEquals(true, snapshot.newDesignSettingsEnabled)
         assertEquals(false, snapshot.homeServerAvatarEnabled)
         assertEquals(TranslationModePreference.Manual, snapshot.translationMode)
         assertEquals(TranslationTargetLanguages.Browser, snapshot.translationTargetLanguage)
         assertTrue(snapshot.supportedAlignments.contains(MyMessageAlignmentPreference.Right))
-        assertTrue(
-            snapshot.supportedLargeScreenNavigation.contains(
-                LargeScreenNavigationPreference.FloatingDock
-            )
-        )
     }
 
     @Test
-    fun threadUnreadJumpDefaultsOnButPreservesExplicitOff() = runBlocking {
+    fun threadUnreadJumpDefaultsOffButPreservesExplicitOn() = runBlocking {
         val store = InMemorySlockKeyValueStore()
         val repository = PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(store))
 
-        // Task #232 frozen contract: the ↓ x new pill is on by default.
-        assertEquals(true, repository.getChatLayoutPreference().threadUnreadJumpEnabled)
-
-        repository.setThreadUnreadJumpEnabled(false)
-
         assertEquals(false, repository.getChatLayoutPreference().threadUnreadJumpEnabled)
+
+        repository.setThreadUnreadJumpEnabled(true)
+
+        assertEquals(true, repository.getChatLayoutPreference().threadUnreadJumpEnabled)
+    }
+
+    @Test
+    fun desktopModeDefaultsOnAndPreservesExplicitOff() = runBlocking {
+        val store = InMemorySlockKeyValueStore()
+        val repository = PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(store))
+
+        assertEquals(true, repository.getChatLayoutPreference().desktopModeOnLargeScreen)
+
+        repository.setDesktopModeOnLargeScreen(false)
+
+        assertEquals(false, repository.getChatLayoutPreference().desktopModeOnLargeScreen)
+        assertEquals(false, KeyValueChatLayoutPreferenceStore(store).readDesktopModeOnLargeScreenSync())
+
+        repository.setDesktopModeOnLargeScreen(true)
+
+        assertEquals(true, repository.getChatLayoutPreference().desktopModeOnLargeScreen)
+    }
+
+    @Test
+    fun desktopModeLegacyInstallsWithoutValueStillDefaultsOn() = runBlocking {
+        val store = InMemorySlockKeyValueStore()
+        // Simulate a pre-#45 install: other layout prefs exist but the new key is absent.
+        KeyValueChatLayoutPreferenceStore(store).saveCompactConsecutiveMessages(false)
+
+        val repository = PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(store))
+
+        assertEquals(true, repository.getChatLayoutPreference().desktopModeOnLargeScreen)
     }
 
     @Test
@@ -290,8 +312,7 @@ class LocalPreferencesTest {
         )
 
         val alignment = repository.selectMyMessageAlignment(MyMessageAlignmentPreference.Right)
-        val navigation =
-            repository.selectLargeScreenNavigation(LargeScreenNavigationPreference.FloatingDock)
+        val navigation = repository.setDesktopModeOnLargeScreen(false)
         val compact = repository.setCompactConsecutiveMessages(true)
         val longMessageCollapse = repository.setLongMessageCollapseEnabled(true)
         val singleTapOpensThread = repository.setSingleTapOpensThreadEnabled(true)
@@ -316,7 +337,7 @@ class LocalPreferencesTest {
         val restoredDisabledCompact = repository.getChatLayoutPreference()
 
         assertEquals(MyMessageAlignmentPreference.Right, alignment.myMessageAlignment)
-        assertEquals(LargeScreenNavigationPreference.FloatingDock, navigation.largeScreenNavigation)
+        assertEquals(false, navigation.desktopModeOnLargeScreen)
         assertEquals(true, compact.compactConsecutiveMessages)
         assertEquals(true, longMessageCollapse.longMessageCollapseEnabled)
         assertEquals(true, singleTapOpensThread.singleTapOpensThreadEnabled)
@@ -334,7 +355,7 @@ class LocalPreferencesTest {
         assertEquals(TranslationModePreference.Manual, translationMode.translationMode)
         assertEquals("zh-cn", translationTarget.translationTargetLanguage)
         assertEquals(MyMessageAlignmentPreference.Right, restored.myMessageAlignment)
-        assertEquals(LargeScreenNavigationPreference.FloatingDock, restored.largeScreenNavigation)
+        assertEquals(false, restored.desktopModeOnLargeScreen)
         assertEquals(true, restored.compactConsecutiveMessages)
         assertEquals(true, restored.longMessageCollapseEnabled)
         assertEquals(true, restored.singleTapOpensThreadEnabled)

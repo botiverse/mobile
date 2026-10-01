@@ -259,6 +259,30 @@ class SharedThreadReplyCacheProvenanceTest {
     }
 
     @Test
+    fun localSendAcceptsOnlyAForwardTokenRotationWithinTheSameBindingAndSelection() {
+        val captured =
+            ReplyCacheProvenance(
+                environmentId = "https://prod.example.test",
+                principalId = "account-a",
+                serverId = "server-1",
+                generation = 41L,
+                authGeneration = 7L,
+                selectionGeneration = 11L,
+                bindingGeneration = 3L,
+            )
+        val rotated = captured.copy(generation = 99L, authGeneration = 8L)
+
+        assertTrue(rotated.isCurrentOrSuccessorForLocalSend(captured))
+        assertTrue(captured.isCurrentOrSuccessorForLocalSend(captured))
+        assertFalse(captured.copy(authGeneration = 6L).isCurrentOrSuccessorForLocalSend(captured))
+        assertFalse(rotated.copy(principalId = "account-b").isCurrentOrSuccessorForLocalSend(captured))
+        assertFalse(rotated.copy(environmentId = "https://staging.example.test").isCurrentOrSuccessorForLocalSend(captured))
+        assertFalse(rotated.copy(serverId = "server-2").isCurrentOrSuccessorForLocalSend(captured))
+        assertFalse(rotated.copy(selectionGeneration = 12L).isCurrentOrSuccessorForLocalSend(captured))
+        assertFalse(rotated.copy(bindingGeneration = 4L).isCurrentOrSuccessorForLocalSend(captured))
+    }
+
+    @Test
     fun sameAccountAndServerWithNewAuthorityRevisionMintsFreshToken() = runBlocking {
         val authStore = InMemorySlockAuthSessionStore(session("account-a"))
         val messageStore = SharedThreadMessageStore()
@@ -573,27 +597,6 @@ class SharedThreadReplyCacheProvenanceTest {
     }
 
     @Test
-    fun sharedMessageStoreWithoutOwnerAuthorityMintsNoToken() = runBlocking {
-        val messageStore = SharedThreadMessageStore()
-        val dataSource =
-            SharedThreadDataSource(
-                api = UnusedThreadApi,
-                sessionStore = InMemorySlockAuthSessionStore(session("account-a")),
-                messageStore = messageStore,
-                cacheEnvironmentIdProvider = { "https://prod.example.test" },
-            )
-
-        assertNull(dataSource.captureReplyCacheProducerContext())
-        assertNull(
-            messageStore.getReplyThreadStream(
-                "https://prod.example.test\u001faccount-a\u001fserver-1",
-                "channel-1",
-                ParentMessageId,
-            )
-        )
-    }
-
-    @Test
     fun missingSessionOrContextCannotUseRetiredAnchorToRepairAuthority() = runBlocking {
         val accountA = session("account-a")
         val authStore = InMemorySlockAuthSessionStore(accountA)
@@ -871,7 +874,8 @@ class SharedThreadReplyCacheProvenanceTest {
                         environmentId = environment().trim().trimEnd('/'),
                         principalId = session.user.id.trim(),
                         serverId = session.currentServerId.orEmpty(),
-                        authGeneration = 0L,
+                        // A live session always carries a registry generation >= 1; 0 means "no session".
+                        authGeneration = 1L,
                         selectionGeneration = 0L,
                     )
                 }

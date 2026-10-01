@@ -4,6 +4,11 @@ Author: @Pi-Worker1 (task #4 follow-up)
 Trigger: owner @artin in #Perf 2026-06-26 msg `a552c47f` — "总结一个需求，intent 直接 deep-link，我来帮忙发给别人实现".
 Status: spec only. No code committed. Owner will dispatch implementation to another lane.
 
+> **Update (2026-09-29):** the recomposition profiler was removed per artin,
+> together with `scripts/slock-recomposition-profiler.ts`. The deep link now
+> only opens Diagnostics (plus optional `auto_close_ms`); the `enable_profiler`,
+> `reset_scene`, and `export_report` extras described below are no longer read.
+
 ## 1. Problem
 
 Today the only way to open the Slock Diagnostics screen and toggle the

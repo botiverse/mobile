@@ -29,7 +29,6 @@ adb shell am instrument -w -r -e class <FQCN> build.raft.app.connectedtest.test/
 | SlockAttachmentCommentInputFocusTest | File-preview comment input focus (#573) | Synthetic pointer/key injection |
 | SlockMarkdownRerenderConnectedTest | Markdown inline chips in lazy rows | Needs visual fixtures; chips regressed repeatedly — repro harness for that lane |
 | SlockRealThreadMarkdownConnectedTest | Mention-chip styling on real data | Opt-in only: `-e slockRealThreadMarkdown true` + real-thread page data and a logged-in session; auto-skips otherwise |
-| KuiklyProfilerRuntimeSmokeTest | Recomposition profiler plumbing | Dev tooling smoke (start/reset/stop/export produce report + frames files) |
 | BaselineProfileGeneratorTest | Startup / cold-start path, `src/main/baseline-prof.txt` | task #25. Regenerates the baseline-profile seed by driving the thread first-open fixture (`-PslockVisualFixtures=true`). Standard Macrobenchmark flow; on OEM Android 16 its GrantPermissionRule may fail — equivalent seed can be captured via `am start --start-profiler --sampling 1000` (sampling reaches the Kuikly render context-queue thread; full method tracing does not). Profile only packs into non-debuggable variants (`assets/dexopt/`). |
 | visual/KmpHomeScrollBoundsConnectedTest | kuikly-ui pin bumps (scroll bounds) | 23 injected swipes; rerun on fork scroll changes rather than gating CI |
 

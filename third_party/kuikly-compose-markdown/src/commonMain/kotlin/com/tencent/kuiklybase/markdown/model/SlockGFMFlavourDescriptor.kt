@@ -1,10 +1,13 @@
 package com.tencent.kuiklybase.markdown.model
 
+import com.tencent.kuiklybase.markdown.utils.CJK_URL_BOUNDARY_PUNCTUATION
+import com.tencent.kuiklybase.markdown.utils.isCjkTextOrWhitespace
 import org.intellij.markdown.IElementType
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.flavours.gfm.GFMConstraints
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.flavours.gfm.GFMMarkerProcessor
+import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.flavours.gfm.lexer._GFMLexer
 import org.intellij.markdown.flavours.gfm.table.GitHubTableMarkerBlock
 import org.intellij.markdown.flavours.gfm.table.GitHubTableMarkerProvider
@@ -190,7 +193,9 @@ private class SlockRaftMarkdownLexer : GeneratedLexer {
                 add(SlockLexerSegment(delegate.tokenStart, delegate.tokenEnd, type))
             }
         }
-        segments = baseSegments.withRaftReferenceTokens(buffer.toString(), start, end)
+        segments = baseSegments
+            .withResolvedAutolinkBoundaries(buffer.toString(), start, end)
+            .withRaftReferenceTokens(buffer.toString(), start, end)
         segmentIndex = 0
         currentStart = start
         currentEnd = start
@@ -202,6 +207,290 @@ private class SlockRaftMarkdownLexer : GeneratedLexer {
         currentEnd = segment.endExclusive
         return segment.type
     }
+}
+
+private fun List<SlockLexerSegment>.withResolvedAutolinkBoundaries(
+    content: String,
+    start: Int,
+    end: Int,
+): List<SlockLexerSegment> {
+    if (isEmpty() || none { it.type == GFMTokenTypes.GFM_AUTOLINK }) return this
+
+    val scanner = SlockRecursiveDescentInlineScanner(content, start, end)
+    val validAutolinks = scanner.scan()
+    if (validAutolinks.isEmpty()) return this
+
+    val validByStart = validAutolinks.associateBy { it.first }
+
+    return buildList {
+        for (segment in this@withResolvedAutolinkBoundaries) {
+            if (segment.type != GFMTokenTypes.GFM_AUTOLINK) {
+                add(segment)
+                continue
+            }
+
+            val validRange = validByStart[segment.start]
+            if (validRange == null || validRange.second >= segment.endExclusive) {
+                add(segment)
+                continue
+            }
+
+            val realEnd = validRange.second
+            add(SlockLexerSegment(segment.start, realEnd, GFMTokenTypes.GFM_AUTOLINK))
+
+            val tailSegments = buildList {
+                val tailLexer = _GFMLexer()
+                tailLexer.reset(content, realEnd, segment.endExclusive, 0)
+                while (true) {
+                    val tailType = tailLexer.advance() ?: break
+                    add(SlockLexerSegment(tailLexer.tokenStart, tailLexer.tokenEnd, tailType))
+                }
+            }
+            addAll(tailSegments.withResolvedAutolinkBoundaries(content, realEnd, segment.endExclusive))
+        }
+    }
+}
+
+private enum class SlockInlineDelimiterKind(val openDelimiter: String, val closeDelimiter: String) {
+    StrongStar("**", "**"),
+    StrongUnderscore("__", "__"),
+    EmphStar("*", "*"),
+    EmphUnderscore("_", "_"),
+    Strikethrough("~~", "~~"),
+    Bracket("[", "]"),
+}
+
+private const val MAX_SCANNER_RECURSION_DEPTH: Int = 32
+
+private class SlockRecursiveDescentInlineScanner(
+    private val content: String,
+    private val start: Int,
+    private val end: Int,
+) {
+    private var pos = start
+    private val autolinks = mutableListOf<Pair<Int, Int>>()
+
+    fun scan(): List<Pair<Int, Int>> {
+        parseInlines(openScopes = emptyList(), depth = 0)
+        return autolinks
+    }
+
+    private fun parseInlines(openScopes: List<SlockInlineDelimiterKind>, depth: Int) {
+        while (pos < end) {
+            val closer = openScopes.firstOrNull { scope -> isClosingDelimiterAt(pos, scope) }
+            if (closer != null) {
+                return
+            }
+
+            if (content[pos] == '`') {
+                val runLen = content.backtickRunLength(pos, end)
+                val closePos = content.indexOfBacktickRun(pos + runLen, end, runLen)
+                if (closePos >= 0) {
+                    pos = closePos + runLen
+                } else {
+                    pos += runLen
+                }
+                continue
+            }
+
+            if (isOpeningDelimiterAt(pos, SlockInlineDelimiterKind.StrongStar)) {
+                if (depth < MAX_SCANNER_RECURSION_DEPTH) {
+                    pos += 2
+                    parseInlines(listOf(SlockInlineDelimiterKind.StrongStar) + openScopes, depth + 1)
+                    if (pos + 2 <= end && content.startsWith("**", pos)) {
+                        pos += 2
+                    }
+                } else {
+                    pos += 2
+                }
+                continue
+            }
+
+            if (isOpeningDelimiterAt(pos, SlockInlineDelimiterKind.Strikethrough)) {
+                if (depth < MAX_SCANNER_RECURSION_DEPTH) {
+                    pos += 2
+                    parseInlines(listOf(SlockInlineDelimiterKind.Strikethrough) + openScopes, depth + 1)
+                    if (pos + 2 <= end && content.startsWith("~~", pos)) {
+                        pos += 2
+                    }
+                } else {
+                    pos += 2
+                }
+                continue
+            }
+
+            if (isOpeningDelimiterAt(pos, SlockInlineDelimiterKind.StrongUnderscore)) {
+                if (depth < MAX_SCANNER_RECURSION_DEPTH) {
+                    pos += 2
+                    parseInlines(listOf(SlockInlineDelimiterKind.StrongUnderscore) + openScopes, depth + 1)
+                    if (pos + 2 <= end && content.startsWith("__", pos)) {
+                        pos += 2
+                    }
+                } else {
+                    pos += 2
+                }
+                continue
+            }
+
+            if (isOpeningDelimiterAt(pos, SlockInlineDelimiterKind.EmphStar)) {
+                if (depth < MAX_SCANNER_RECURSION_DEPTH) {
+                    pos += 1
+                    parseInlines(listOf(SlockInlineDelimiterKind.EmphStar) + openScopes, depth + 1)
+                    if (pos < end && content[pos] == '*' && !content.startsWith("**", pos)) {
+                        pos += 1
+                    }
+                } else {
+                    pos += 1
+                }
+                continue
+            }
+
+            if (isOpeningDelimiterAt(pos, SlockInlineDelimiterKind.EmphUnderscore)) {
+                if (depth < MAX_SCANNER_RECURSION_DEPTH) {
+                    pos += 1
+                    parseInlines(listOf(SlockInlineDelimiterKind.EmphUnderscore) + openScopes, depth + 1)
+                    if (pos < end && content[pos] == '_' && !content.startsWith("__", pos)) {
+                        pos += 1
+                    }
+                } else {
+                    pos += 1
+                }
+                continue
+            }
+
+            if (content[pos] == '[') {
+                if (depth < MAX_SCANNER_RECURSION_DEPTH) {
+                    pos += 1
+                    parseInlines(listOf(SlockInlineDelimiterKind.Bracket) + openScopes, depth + 1)
+                    if (pos < end && content[pos] == ']') {
+                        pos += 1
+                    }
+                } else {
+                    pos += 1
+                }
+                continue
+            }
+
+            val schemeLen = content.matchUrlPrefix(pos, end)
+            if (schemeLen > 0) {
+                val urlStart = pos
+                val urlEnd = scanAutolinkEnd(urlStart + schemeLen, openScopes)
+                if (urlEnd > urlStart) {
+                    autolinks.add(urlStart to urlEnd)
+                }
+                pos = urlEnd
+                continue
+            }
+
+            pos++
+        }
+    }
+
+    private fun scanAutolinkEnd(startPath: Int, openScopes: List<SlockInlineDelimiterKind>): Int {
+        var cursor = startPath
+        var roundDepth = 0
+        while (cursor < end) {
+            val c = content[cursor]
+            if (c.isWhitespace() || c == '<' || c == '>' || c in CJK_URL_BOUNDARY_PUNCTUATION) break
+
+            if (c == ',' && cursor + 1 < end && content[cursor + 1].isCjkTextOrWhitespace()) break
+
+            if (c == '(') {
+                roundDepth++
+                cursor++
+                continue
+            }
+            if (c == ')') {
+                if (roundDepth > 0) {
+                    roundDepth--
+                    cursor++
+                    continue
+                } else {
+                    break
+                }
+            }
+
+            if (roundDepth == 0) {
+                val closer = openScopes.firstOrNull { scope -> isClosingDelimiterAt(cursor, scope) }
+                if (closer != null) {
+                    break
+                }
+            }
+            cursor++
+        }
+
+        while (cursor > startPath && (content[cursor - 1] in ".,:;!?\"'*_~]" || content[cursor - 1] in CJK_URL_BOUNDARY_PUNCTUATION)) {
+            cursor--
+        }
+        return cursor
+    }
+
+    private fun isOpeningDelimiterAt(index: Int, kind: SlockInlineDelimiterKind): Boolean {
+        if (!content.startsWith(kind.openDelimiter, index)) return false
+        val len = kind.openDelimiter.length
+        if (len == 1) {
+            val char = kind.openDelimiter[0]
+            if (index + 1 < end && content[index + 1] == char) return false
+            if (index > start && content[index - 1] == char) return false
+        }
+        val prevChar = if (index > start) content[index - 1] else ' '
+        val nextChar = if (index + len < end) content[index + len] else ' '
+        // CommonMark intra-word underscore cannot open emphasis
+        if ((kind == SlockInlineDelimiterKind.EmphUnderscore || kind == SlockInlineDelimiterKind.StrongUnderscore) &&
+            prevChar.isLetterOrDigit()
+        ) {
+            return false
+        }
+        return isLeftFlanking(prevChar, nextChar)
+    }
+
+    private fun isClosingDelimiterAt(index: Int, kind: SlockInlineDelimiterKind): Boolean {
+        if (kind == SlockInlineDelimiterKind.Bracket) {
+            return content.startsWith("]", index)
+        }
+        if (!content.startsWith(kind.closeDelimiter, index)) return false
+        val len = kind.closeDelimiter.length
+        if (len == 1) {
+            val char = kind.closeDelimiter[0]
+            if (index + 1 < end && content[index + 1] == char) return false
+            if (index > start && content[index - 1] == char) return false
+        }
+        val prevChar = if (index > start) content[index - 1] else ' '
+        val nextChar = if (index + len < end) content[index + len] else ' '
+        // CommonMark intra-word underscore cannot close emphasis
+        if ((kind == SlockInlineDelimiterKind.EmphUnderscore || kind == SlockInlineDelimiterKind.StrongUnderscore) &&
+            nextChar.isLetterOrDigit()
+        ) {
+            return false
+        }
+        return isRightFlanking(prevChar, nextChar)
+    }
+
+    private fun isLeftFlanking(prevChar: Char, nextChar: Char): Boolean {
+        if (nextChar.isWhitespace()) return false
+        if (!isPunctuation(nextChar)) return true
+        return prevChar.isWhitespace() || isPunctuation(prevChar)
+    }
+
+    private fun isRightFlanking(prevChar: Char, nextChar: Char): Boolean {
+        if (prevChar.isWhitespace()) return false
+        if (!isPunctuation(prevChar)) return true
+        return nextChar.isWhitespace() || isPunctuation(nextChar)
+    }
+
+    private fun isPunctuation(c: Char): Boolean =
+        c in "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~" || c in CJK_URL_BOUNDARY_PUNCTUATION
+}
+
+private val AUTOLINK_PREFIXES = listOf("https://", "http://", "ftp://", "file://", "www.")
+
+private fun CharSequence.matchUrlPrefix(pos: Int, end: Int): Int {
+    for (prefix in AUTOLINK_PREFIXES) {
+        if (pos + prefix.length <= end && startsWith(prefix, pos)) {
+            return prefix.length
+        }
+    }
+    return 0
 }
 
 private data class SlockLexerSegment(
@@ -262,6 +551,10 @@ private val RaftReferenceSourceTokenTypes: Set<IElementType> =
         // emphasis delimiter, but within a complete ref it belongs to the ref
         // token and must not reach the emphasis parser independently.
         MarkdownTokenTypes.EMPH,
+        // `~` separates a DM peer from its kind (`dm:@name~agent:short`). GFM
+        // lexes it as a strikethrough delimiter; inside a complete ref it is
+        // part of the ref token, never an independent strikethrough run.
+        GFMTokenTypes.TILDE,
     )
 
 private class SlockCodeSpanShieldingLexer : GeneratedLexer {

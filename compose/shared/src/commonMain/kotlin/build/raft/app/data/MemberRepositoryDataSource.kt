@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.data.runtimeform.v2.runtimeFormV2ServerError
+import build.raft.app.data.runtimeform.v2.withRuntimeFormV2
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -32,6 +34,17 @@ private val memberRepositoryJson = Json {
     encodeDefaults = true
 }
 
+// task #152: the PATCH `runtimeConfig` object must match the web/create wire shape —
+// absent optional fields are OMITTED, never serialized as explicit `null`. The server
+// validates any non-undefined value (e.g. `loadLocalPlugins !== undefined` must be a
+// boolean on builtin and is rejected on every other runtime), so `"loadLocalPlugins":null`
+// 400'd every non-Built-in runtime save. Mirrors AgentsApi's create-body encoder.
+private val agentRuntimeConfigUpdateJson = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+    explicitNulls = false
+}
+
 private fun PlatformFile.toAgentAvatarMultipartFile(): MultipartFile =
     MultipartFile(
         name = "avatar",
@@ -60,6 +73,55 @@ interface SlockNetworkClient {
         bodyText: String? = null
     ): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
+
+    /** Server-authoritative direct attachment-session operations. */
+    suspend fun createAttachmentUploadSession(
+        priority: DataRequestPriority,
+        request: AttachmentUploadSessionCreateRequest,
+        serverIdOverride: ServerId? = null,
+    ): HomeNetworkResponse = authorityBindingRequiredResponse()
+
+    suspend fun completeAttachmentUploadSession(
+        priority: DataRequestPriority,
+        uploadId: String,
+        serverIdOverride: ServerId? = null,
+    ): HomeNetworkResponse = authorityBindingRequiredResponse()
+
+    suspend fun cancelAttachmentUploadSession(
+        priority: DataRequestPriority,
+        uploadId: String,
+        serverIdOverride: ServerId? = null,
+    ): HomeNetworkResponse = authorityBindingRequiredResponse()
+
+    suspend fun statusAttachmentUploadSession(
+        priority: DataRequestPriority,
+        uploadId: String,
+        serverIdOverride: ServerId? = null,
+    ): HomeNetworkResponse = authorityBindingRequiredResponse()
+
+    suspend fun putAttachmentUploadBytes(
+        priority: DataRequestPriority,
+        upload: AttachmentUploadSessionPut,
+        bytes: ByteArray,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
+    ): HomeNetworkResponse = authorityBindingRequiredResponse()
+
+    suspend fun putAttachmentUploadFile(
+        priority: DataRequestPriority,
+        upload: AttachmentUploadSessionPut,
+        file: PlatformFile,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
+    ): HomeNetworkResponse = authorityBindingRequiredResponse()
+
+    /**
+     * Resolve the authoritative local length before a direct-session create request.  This is a
+     * local platform operation, but it remains on the same bound network-client seam so a route
+     * or account transition cannot race file admission.
+     */
+    suspend fun prepareAttachmentUploadFile(
+        file: PlatformFile,
+    ): SlockPlatformFilePreparationResult =
+        SlockPlatformFilePreparationResult.Rejected("auth_authority_binding_required")
 
     suspend fun uploadAttachments(
         priority: DataRequestPriority,
@@ -115,6 +177,53 @@ internal interface AuthorityBoundSlockNetworkClient {
         files: List<MultipartFile>,
         expectedAuthority: SlockExpectedAuthBinding
     ): HomeNetworkResponse
+
+    suspend fun createAttachmentUploadSessionBound(
+        priority: DataRequestPriority,
+        request: AttachmentUploadSessionCreateRequest,
+        expectedAuthority: SlockExpectedAuthBinding,
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+
+    suspend fun completeAttachmentUploadSessionBound(
+        priority: DataRequestPriority,
+        uploadId: String,
+        expectedAuthority: SlockExpectedAuthBinding,
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+
+    suspend fun cancelAttachmentUploadSessionBound(
+        priority: DataRequestPriority,
+        uploadId: String,
+        expectedAuthority: SlockExpectedAuthBinding,
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+
+    suspend fun statusAttachmentUploadSessionBound(
+        priority: DataRequestPriority,
+        uploadId: String,
+        expectedAuthority: SlockExpectedAuthBinding,
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+
+    /** Presigned PUTs carry no bearer token, but are still fenced to the captured route authority. */
+    suspend fun putAttachmentUploadBytesBound(
+        priority: DataRequestPriority,
+        upload: AttachmentUploadSessionPut,
+        bytes: ByteArray,
+        expectedAuthority: SlockExpectedAuthBinding,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+
+    suspend fun putAttachmentUploadFileBound(
+        priority: DataRequestPriority,
+        upload: AttachmentUploadSessionPut,
+        file: PlatformFile,
+        expectedAuthority: SlockExpectedAuthBinding,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+
+    suspend fun prepareAttachmentUploadFileBound(
+        file: PlatformFile,
+        expectedAuthority: SlockExpectedAuthBinding,
+    ): SlockPlatformFilePreparationResult =
+        SlockPlatformFilePreparationResult.Rejected("auth_authority_binding_unsupported")
 }
 
 /**
@@ -154,14 +263,79 @@ internal fun SlockNetworkClient.boundTo(expectedAuthority: SlockExpectedAuthBind
                 files = files,
                 expectedAuthority = expectedAuthority
             ) ?: authorityBindingUnsupportedResponse()
+
+        override suspend fun createAttachmentUploadSession(
+            priority: DataRequestPriority,
+            request: AttachmentUploadSessionCreateRequest,
+            serverIdOverride: ServerId?,
+        ): HomeNetworkResponse =
+            bound?.createAttachmentUploadSessionBound(priority, request, expectedAuthority)
+                ?: authorityBindingUnsupportedResponse()
+
+        override suspend fun completeAttachmentUploadSession(
+            priority: DataRequestPriority,
+            uploadId: String,
+            serverIdOverride: ServerId?,
+        ): HomeNetworkResponse =
+            bound?.completeAttachmentUploadSessionBound(priority, uploadId, expectedAuthority)
+                ?: authorityBindingUnsupportedResponse()
+
+        override suspend fun cancelAttachmentUploadSession(
+            priority: DataRequestPriority,
+            uploadId: String,
+            serverIdOverride: ServerId?,
+        ): HomeNetworkResponse =
+            bound?.cancelAttachmentUploadSessionBound(priority, uploadId, expectedAuthority)
+                ?: authorityBindingUnsupportedResponse()
+
+        override suspend fun statusAttachmentUploadSession(
+            priority: DataRequestPriority,
+            uploadId: String,
+            serverIdOverride: ServerId?,
+        ): HomeNetworkResponse =
+            bound?.statusAttachmentUploadSessionBound(priority, uploadId, expectedAuthority)
+                ?: authorityBindingUnsupportedResponse()
+
+        override suspend fun putAttachmentUploadBytes(
+            priority: DataRequestPriority,
+            upload: AttachmentUploadSessionPut,
+            bytes: ByteArray,
+            onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
+        ): HomeNetworkResponse =
+            bound?.putAttachmentUploadBytesBound(priority, upload, bytes, expectedAuthority, onUploadProgress)
+                ?: authorityBindingUnsupportedResponse()
+
+        override suspend fun putAttachmentUploadFile(
+            priority: DataRequestPriority,
+            upload: AttachmentUploadSessionPut,
+            file: PlatformFile,
+            onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
+        ): HomeNetworkResponse =
+            bound?.putAttachmentUploadFileBound(priority, upload, file, expectedAuthority, onUploadProgress)
+                ?: authorityBindingUnsupportedResponse()
+
+        override suspend fun prepareAttachmentUploadFile(
+            file: PlatformFile,
+        ): SlockPlatformFilePreparationResult =
+            bound?.prepareAttachmentUploadFileBound(file, expectedAuthority)
+                ?: SlockPlatformFilePreparationResult.Rejected("auth_authority_binding_unsupported")
     }
 }
 
-private fun authorityBindingUnsupportedResponse(): HomeNetworkResponse =
+internal fun authorityBindingUnsupportedResponse(): HomeNetworkResponse =
     HomeNetworkResponse(
         code = 409,
         bodyText = null,
         errorBodyText = """{"error":"auth_authority_binding_unsupported"}"""
+    )
+
+/** Direct upload sessions are reservation-bearing mutations and must never use a live route
+ * selector without the captured account/server/environment witness. */
+internal fun authorityBindingRequiredResponse(): HomeNetworkResponse =
+    HomeNetworkResponse(
+        code = 409,
+        bodyText = null,
+        errorBodyText = """{"error":"auth_authority_binding_required"}"""
     )
 
 private suspend fun SlockNetworkClient.serverMembers(priority: DataRequestPriority, serverId: ServerId): HomeNetworkResponse =
@@ -243,6 +417,13 @@ private suspend fun SlockNetworkClient.addChannelMember(
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "channels/${channelId.value}/members", method = "POST", bodyText = bodyText)
+
+private suspend fun SlockNetworkClient.addChannelMembersBatch(
+    priority: DataRequestPriority,
+    channelId: ChannelId,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "channels/${channelId.value}/members/batch", method = "POST", bodyText = bodyText)
 
 private suspend fun SlockNetworkClient.removeChannelMember(
     priority: DataRequestPriority,
@@ -411,6 +592,14 @@ class RealMemberRepository(
         }
 
         val summary = summaryRequest.await()
+        // React AgentDetailPanel parity: external setup/activity status is a
+        // separate, per-agent, permission-gated request. Only external agents
+        // are asked; 400/403/failure collapse to null (= not provided), never
+        // to a "waiting for login" reading.
+        val externalStatus =
+            summary.contentOrNull()
+                ?.takeIf { it.isExternal }
+                ?.let { agentsApiClient.agentExternalStatus(agentId).contentOrNull() }
         val directMessages = directMessagesRequest.await()
         val channels = channelsRequest.await()
         val reminders = remindersRequest.await()
@@ -432,7 +621,8 @@ class RealMemberRepository(
                         reminders = reminders.contentOrNull()?.reminders.orEmpty(),
                         activity = activity.contentOrNull()?.activity.orEmpty(),
                         skills = skills.contentOrNull() ?: AgentSkillsSnapshot(agentId = agentId),
-                        appLogins = appLogins
+                        appLogins = appLogins,
+                        externalStatus = externalStatus
                     )
                 )
             summary is DataResult.NoPermission -> summary
@@ -771,7 +961,24 @@ class RealMemberRepository(
                 }
             )
         result.logChannelMemberCounts(source = "channel_members", channelId = channelId.value, logger = logger)
-        return result
+        if (result !is DataResult.Content) return result
+        // Member capabilities belong to the channel response, never the roster.
+        // Missing/failed detail keeps the readable roster and denies mutations.
+        val detail = executeMember(
+            emptyReason = EmptyReason.NoMembers,
+            block = { networkClient.request(priority, "channels/${channelId.value}") },
+            source = "channel_member_capabilities",
+            mapper = { body -> parseSlockChannelDetail(body)
+                ?: throw IllegalStateException("Channel detail missing") },
+        )
+        val channel = (detail as? DataResult.Content)?.data
+            ?.takeIf { it.channelId == channelId }
+        val mutable = channel != null && !channel.archived &&
+            !(channel.channelType == "channel" && channel.name.removePrefix("#") == "all")
+        return DataResult.Content(result.data.copy(
+            canAddMembers = mutable && channel?.channelCapabilities?.addChannelMembers == true,
+            canRemoveMembers = mutable && channel?.channelCapabilities?.removeChannelMembers == true,
+        ))
     }
 
     override suspend fun addChannelMember(
@@ -786,6 +993,25 @@ class RealMemberRepository(
             mapper = { bodyText ->
                 parseSharedChannelMemberActionResult(bodyText, request.channelId, request.memberId, added = true)
                     ?: throw IllegalStateException("Channel member add response missing ok")
+            }
+        )
+    }
+
+    override suspend fun addChannelMembersBatch(
+        priority: DataRequestPriority,
+        request: AddChannelMembersBatchRequest
+    ): DataResult<AddChannelMembersBatchResult> {
+        currentContext() ?: return authRequired()
+        if (request.userIds.isEmpty() && request.agentIds.isEmpty()) {
+            return DataResult.Error(ScreenError(code = "empty_member_batch", retryable = false))
+        }
+        return executeMember(
+            emptyReason = EmptyReason.NoMembers,
+            block = { networkClient.addChannelMembersBatch(priority, request.channelId, request.toBodyText()) },
+            source = "channel_member_batch_add",
+            mapper = { bodyText ->
+                parseSharedChannelMembersBatchResult(bodyText)
+                    ?: throw IllegalStateException("Channel member batch response missing ok")
             }
         )
     }
@@ -968,11 +1194,20 @@ fun buildSharedAgentProfileUpdateBody(request: AgentProfileUpdateRequest): Strin
                     } else {
                         put("envVars", memberRepositoryJson.encodeToJsonElement(envVars))
                     }
+                    // kimi-sdk (task #275): top-level exact form ref, mirroring
+                    // the create wire. Never emitted without a runtimeConfig.
+                    request.formDefinitionRef?.let { ref ->
+                        put("formDefinitionRef", memberRepositoryJson.encodeToJsonElement(ref))
+                    }
                 }
+                request.runtimeResetMode?.let { put("restartMode", it.wireValue) }
+            } else if (request.runtimeFormV2 != null) {
                 request.runtimeResetMode?.let { put("restartMode", it.wireValue) }
             }
         }
-    return body.toString()
+    // Runtime form v2 edit: the server assembles the runtimeConfig from field
+    // values, so only the ref and formValues travel (never runtimeConfig).
+    return request.runtimeFormV2?.let { body.withRuntimeFormV2(it) }?.toString() ?: body.toString()
 }
 
 private fun RuntimeModelConfig.toAgentModelWireValue(): String =
@@ -984,7 +1219,7 @@ private fun RuntimeModelConfig.toAgentModelWireValue(): String =
 private fun build.raft.app.model.RuntimeConfig.toAgentUpdateJson(
     retainOmittedBuiltInProviderSecret: Boolean
 ): JsonElement {
-    val encoded = memberRepositoryJson.encodeToJsonElement(this).jsonObject
+    val encoded = agentRuntimeConfigUpdateJson.encodeToJsonElement(this).jsonObject
     if (!retainOmittedBuiltInProviderSecret || runtime != "builtin") return encoded
     val provider = encoded["provider"] as? JsonObject ?: return encoded
     val providerWithoutSecret =
@@ -1006,11 +1241,58 @@ data class AddAgentChannelMemberRequestBody(val agentId: String)
 @Serializable
 data class AddUserChannelMemberRequestBody(val userId: String)
 
+private fun AddChannelMembersBatchRequest.toBodyText(): String =
+    memberRepositoryJson.encodeToString(
+        AddChannelMembersBatchRequestBody(
+            userIds = userIds.map { it.value },
+            agentIds = agentIds.map { it.value }
+        )
+    )
+
+/**
+ * Parse the atomic batch-add response. Returns null only when the envelope is
+ * malformed (missing `ok`), mirroring [parseSharedChannelMemberActionResult].
+ * The server dedupes and is idempotent, so `alreadyMembers`-only is a success.
+ */
+internal fun parseSharedChannelMembersBatchResult(bodyText: String): AddChannelMembersBatchResult? {
+    val body = runCatching { memberRepositoryJson.decodeFromString<AddChannelMembersBatchResponseBody>(bodyText) }
+        .getOrNull()
+        ?: return null
+    if (!body.ok) return null
+    return AddChannelMembersBatchResult(
+        addedUserIds = body.added?.userIds.orEmpty(),
+        addedAgentIds = body.added?.agentIds.orEmpty(),
+        alreadyMemberUserIds = body.alreadyMembers?.userIds.orEmpty(),
+        alreadyMemberAgentIds = body.alreadyMembers?.agentIds.orEmpty()
+    )
+}
+
+@Serializable
+private data class AddChannelMembersBatchRequestBody(
+    val userIds: List<String>,
+    val agentIds: List<String>
+)
+
+@Serializable
+private data class AddChannelMembersBatchResponseBody(
+    val ok: Boolean = false,
+    val added: AddChannelMembersBatchIds? = null,
+    val alreadyMembers: AddChannelMembersBatchIds? = null
+)
+
+@Serializable
+private data class AddChannelMembersBatchIds(
+    val userIds: List<String> = emptyList(),
+    val agentIds: List<String> = emptyList()
+)
+
 private fun AddChannelMemberRequest.toBodyText(): String =
     when (kind) {
         MemberKind.Agent -> memberRepositoryJson.encodeToString(AddAgentChannelMemberRequestBody(memberId.value))
         MemberKind.Human -> memberRepositoryJson.encodeToString(AddUserChannelMemberRequestBody(memberId.value))
         MemberKind.System -> memberRepositoryJson.encodeToString(AddUserChannelMemberRequestBody(memberId.value))
+        // Unreachable: external projections can never be added as channel members.
+        MemberKind.External -> memberRepositoryJson.encodeToString(AddUserChannelMemberRequestBody(memberId.value))
     }
 
 private data class SharedNetworkServerContext(val session: StoredAuthSession, val server: ServerSummary)
@@ -1020,7 +1302,10 @@ private data class MemberErrorBody(val error: String? = null)
 
 private fun StoredAuthSession.toNetworkServerContext(serverId: ServerId): SharedNetworkServerContext? {
     val requestedId = serverId.value.trim().takeIf { it.isNotBlank() } ?: return null
-    val server = servers.firstOrNull { it.id == requestedId }?.toServerSummary() ?: return null
+    val server = servers.firstOrNull { it.id.trim() == requestedId }
+        ?.toServerSummary()
+        ?.let { summary -> summary.copy(id = ServerId(summary.id.value.trim())) }
+        ?: return null
     return SharedNetworkServerContext(session = this, server = server)
 }
 
@@ -1055,7 +1340,8 @@ private fun <T> HomeNetworkResponse.toDataError(): DataResult<T> {
                 ScreenError(
                     code = "http_$code",
                     retryable = code != 404,
-                    serverMessage = serverMessage
+                    serverMessage = serverMessage,
+                    formFieldKeys = runtimeFormV2ServerError(bodyText ?: errorBodyText)?.fieldKeys.orEmpty()
                 )
             )
     }
@@ -1116,20 +1402,15 @@ private fun List<MemberProfile>.resolveComputerLabels(machineNames: Map<String, 
     map { it.resolveComputerLabel(machineNames) }
 
 private fun MemberProfile.resolveComputerLabel(machineNames: Map<String, String>): MemberProfile {
-    val badgesWithoutIds = permissionBadges.filterNot { it.startsWith(MemberComputerIdBadgePrefix) }
     val currentComputerLabel = permissionBadges.firstNotNullOfOrNull { it.memberComputerLabelOrNull() }
-    if (!currentComputerLabel.isNullOrBlank()) {
-        return if (badgesWithoutIds == permissionBadges) this else copy(permissionBadges = badgesWithoutIds)
-    }
+    if (!currentComputerLabel.isNullOrBlank()) return this
     val machineId = permissionBadges.firstNotNullOfOrNull { it.memberComputerIdOrNull() } ?: return this
-    val resolvedName = machineNames[machineId]?.takeIf { it.isNotBlank() }
-    return if (resolvedName != null) {
-        copy(permissionBadges = badgesWithoutIds + resolvedName.toMemberComputerBadge())
-    } else if (badgesWithoutIds == permissionBadges) {
-        this
-    } else {
-        copy(permissionBadges = badgesWithoutIds)
-    }
+    val resolvedName = machineNames[machineId]?.takeIf { it.isNotBlank() } ?: return this
+    // Task #409: keep the `computer-id:` badge — the members page uses it as
+    // the collapse-persistence key, stable across machine renames (same reason
+    // web keys agent-machine groups by machineId). Before this fix the badge
+    // was stripped on merge and the id never reached the list.
+    return copy(permissionBadges = permissionBadges + resolvedName.toMemberComputerBadge())
 }
 
 private val MemberProfile.memberKey: String
@@ -1141,6 +1422,7 @@ private val MemberKind.channelMemberPathSegment: String
             MemberKind.Agent -> "agent"
             MemberKind.Human -> "user"
             MemberKind.System -> "system"
+            MemberKind.External -> "external"
         }
 
 private fun DataResult<MemberSnapshot>.logMemberCounts(

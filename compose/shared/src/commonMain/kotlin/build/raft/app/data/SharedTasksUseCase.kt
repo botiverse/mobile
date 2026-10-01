@@ -32,6 +32,18 @@ class SharedTasksUseCase(
     suspend fun currentServerId(): ServerId? =
         selectedServerIdOrError()
 
+    /** One page of server Tasks (task #345); null server → typed error. */
+    suspend fun loadServerTasksPage(
+        limit: Int,
+        cursor: String?,
+        priority: DataRequestPriority = DataRequestPriority.Visible,
+        status: String? = null
+    ): TasksPageResult {
+        val serverId = selectedServerIdOrError()
+            ?: return TasksPageResult.Error(code = "selected_server_missing")
+        return repository.loadServerTasksPage(serverId, limit, cursor, priority, status)
+    }
+
     suspend fun updateTaskStatus(request: TasksStatusUpdateRequest): DataResult<TaskActionResult> {
         val serverId = selectedServerIdOrError() ?: return selectedServerMissing()
         return updateTaskStatus(serverId, request)

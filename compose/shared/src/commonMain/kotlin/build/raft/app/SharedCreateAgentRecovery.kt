@@ -82,7 +82,8 @@ internal suspend fun <T> DataResult<T>.recoverRejectedCreateAgentFormOrRetry(
     submit: SharedCreateAgentDialogSubmit,
     retry: suspend (SharedCreateAgentDialogSubmit) -> DataResult<T>
 ): DataResult<T> =
-    recoverRejectedCreateAgentFormOrRetryCore(
+    // Runtime form v2 carries no pinned schemaVersion, so there is no v1 form to refresh.
+    if (submit.runtimeFormV2 != null) this else recoverRejectedCreateAgentFormOrRetryCore(
         refreshForm = { cleanServerId, cleanMachineId ->
             formStore?.loadSupportedBuiltInForm(cleanServerId, cleanMachineId, force = true)
         },

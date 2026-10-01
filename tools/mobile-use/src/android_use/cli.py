@@ -90,9 +90,6 @@ def build_parser() -> argparse.ArgumentParser:
     diagnostics = add(sub, "open-diagnostics", cmd_open_diagnostics, "Open diagnostics deep link", aliases=["open_diagnostics"])
     diagnostics.add_argument("--component", default=DEFAULT_DIAGNOSTICS_COMPONENT)
     diagnostics.add_argument("--action", default=DEFAULT_DIAGNOSTICS_ACTION)
-    diagnostics.add_argument("--enable-profiler", action="store_true")
-    diagnostics.add_argument("--reset-scene", action="store_true")
-    diagnostics.add_argument("--export-report", action="store_true")
     diagnostics.add_argument("--auto-close-ms", type=int, default=0)
     diagnostics.add_argument("--wait", action=argparse.BooleanOptionalAction, default=True)
 
@@ -131,11 +128,6 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("path")
     analyze.add_argument("--trim-last-start", action="store_true", help="Analyze only from the last detected app launch")
     analyze.add_argument("--trim-out", default=None, help="Write the last-start log window to this path")
-
-    profiler = add(sub, "pull-profiler", cmd_pull_profiler, "Pull Kuikly profiler files via run-as", aliases=["pull_profiler"])
-    add_artifact_args(profiler)
-    profiler.add_argument("--package", default=None)
-    profiler.add_argument("--allow-missing", action="store_true")
     return parser
 
 
@@ -231,9 +223,6 @@ def cmd_open_diagnostics(args: argparse.Namespace, config: AndroidConfig) -> dic
     result = AndroidDevice(config).open_diagnostics(
         component=args.component,
         action=args.action,
-        enable_profiler=args.enable_profiler,
-        reset_scene=args.reset_scene,
-        export_report=args.export_report,
         auto_close_ms=args.auto_close_ms,
         wait=args.wait,
     )
@@ -291,14 +280,6 @@ def cmd_analyze_log(args: argparse.Namespace, config: AndroidConfig) -> dict[str
         package=config.package,
         trim_last_start=args.trim_last_start,
         trim_out=Path(args.trim_out).expanduser() if args.trim_out else None,
-    )
-
-
-def cmd_pull_profiler(args: argparse.Namespace, config: AndroidConfig) -> dict[str, object]:
-    return AndroidDevice(config).pull_profiler(
-        out=Path(args.out).expanduser(),
-        package=args.package,
-        allow_missing=args.allow_missing,
     )
 
 

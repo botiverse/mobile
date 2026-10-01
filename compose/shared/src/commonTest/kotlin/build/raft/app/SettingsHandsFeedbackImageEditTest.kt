@@ -19,6 +19,163 @@ import kotlinx.coroutines.runBlocking
 
 class SettingsHandsFeedbackImageEditTest {
     @Test
+    fun settingsEventRequiresTheOwningPreviewSessionAndPageInstance() {
+        val ownerA = SettingsHandsFeedbackImageEditSessionTracker()
+        val ownerB = SettingsHandsFeedbackImageEditSessionTracker()
+        val sessionA = session(expectedCount = 1).copy(previewSessionId = "preview-a")
+        val sessionB = session(expectedCount = 1).copy(previewSessionId = "preview-b")
+
+        ownerA.track("preview-a")
+        ownerB.track("preview-b")
+
+        assertTrue(
+            settingsHandsFeedbackImageEditEventMatchesSession(
+                session = sessionA,
+                tracker = ownerA,
+                eventSessionId = "preview-a",
+                eventThreadKey = sessionA.threadKey
+            )
+        )
+        assertFalse(
+            settingsHandsFeedbackImageEditEventMatchesSession(
+                session = sessionA,
+                tracker = ownerB,
+                eventSessionId = "preview-a",
+                eventThreadKey = sessionA.threadKey
+            )
+        )
+        assertFalse(
+            settingsHandsFeedbackImageEditEventMatchesSession(
+                session = sessionA,
+                tracker = ownerA,
+                eventSessionId = sessionB.previewSessionId,
+                eventThreadKey = sessionA.threadKey
+            )
+        )
+        assertFalse(
+            settingsHandsFeedbackImageEditEventMatchesSession(
+                session = null,
+                tracker = ownerA,
+                eventSessionId = "preview-a",
+                eventThreadKey = sessionA.threadKey
+            )
+        )
+
+        val closed = ownerA.closeAndSnapshot()
+        assertEquals(setOf("preview-a"), closed.abortSessionIds)
+        assertTrue(closed.inFlightSessionIds.isEmpty())
+        assertFalse(
+            settingsHandsFeedbackImageEditEventMatchesSession(
+                session = sessionA,
+                tracker = ownerA,
+                eventSessionId = "preview-a",
+                eventThreadKey = sessionA.threadKey
+            )
+        )
+    }
+
+    @Test
+    fun settingsDisposeAbortsClaimedAndPartialSessionsAndRetiresRefs() {
+        val registry = SlockFilePreviewEphemeralActionRegistry()
+        val ledger = SlockFilePreviewEphemeralCleanupLedger(InMemorySlockKeyValueStore())
+        val tracker = SettingsHandsFeedbackImageEditSessionTracker()
+        val sessionId = "settings-preview-a"
+        val threadKey = "feedback-group-a"
+        val refs =
+            mapOf(
+                "action-0" to "file:///cache/settings-zero.jpg",
+                "action-1" to "file:///cache/settings-one.jpg"
+            )
+
+        registry.register(
+            sessionId = sessionId,
+            threadKey = threadKey,
+            actionIds = refs.keys,
+            ownedTemporaryFileRefs = refs.values.toSet()
+        )
+        val pending = requireNotNull(
+            registry.prepareDeliveryBatch(
+                sessionId = sessionId,
+                threadKey = threadKey,
+                fileRefByActionId = refs
+            )
+        )
+        ledger.replace(sessionId, pending.pendingFileRefs)
+        assertIs<SlockFilePreviewEphemeralActionClaim.Accepted>(
+            registry.claim(sessionId, threadKey, "action-0", refs.getValue("action-0"))
+        )
+        tracker.track(sessionId)
+
+        val retired = mutableMapOf<String, Set<String>>()
+        val ownedAtDispose = tracker.closeAndSnapshot()
+        assertEquals(setOf(sessionId), ownedAtDispose.abortSessionIds)
+        assertTrue(ownedAtDispose.inFlightSessionIds.isEmpty())
+        assertTrue(tracker.isDisposed())
+        abortSettingsHandsFeedbackImageEditSessions(
+            sessionIds = ownedAtDispose.abortSessionIds + ownedAtDispose.inFlightSessionIds,
+            registry = registry,
+            cleanupLedger = ledger,
+            retire = { id, fileRefs -> retired[id] = fileRefs }
+        )
+
+        assertEquals(refs.values.toSet(), retired.getValue(sessionId))
+        assertTrue(registry.activeSessionIds().isEmpty())
+        assertTrue(ledger.take(sessionId).isEmpty())
+        assertFalse(tracker.owns(sessionId))
+    }
+
+    @Test
+    fun settingsHandoffIsDeferredUntilEventJobFinally() {
+        val tracker = SettingsHandsFeedbackImageEditSessionTracker()
+        assertTrue(tracker.track("in-flight"))
+        assertTrue(tracker.markHandoffStarted("in-flight"))
+        val closed = tracker.closeAndSnapshot()
+        assertTrue(closed.abortSessionIds.isEmpty())
+        assertEquals(setOf("in-flight"), closed.inFlightSessionIds)
+        assertFalse(tracker.owns("in-flight"))
+        assertTrue(tracker.isHandoffStarted("in-flight"))
+        tracker.release("in-flight")
+        assertFalse(tracker.isHandoffStarted("in-flight"))
+    }
+
+    @Test
+    fun replacingPickerRevokesPartialWitnessBeforeRegistryRetirement() {
+        val tracker = SettingsHandsFeedbackImageEditSessionTracker()
+        assertTrue(tracker.track("partial"))
+        assertEquals(setOf("partial"), tracker.takePartialSessionIds())
+        assertFalse(tracker.owns("partial"))
+        // A callback which raced the revocation cannot promote the session into an in-flight
+        // handoff after its refs have been scheduled for retirement.
+        assertFalse(tracker.markHandoffStarted("partial"))
+
+        assertTrue(tracker.track("in-flight"))
+        assertTrue(tracker.markHandoffStarted("in-flight"))
+        assertTrue(tracker.takePartialSessionIds().isEmpty())
+        assertTrue(tracker.isHandoffStarted("in-flight"))
+    }
+
+    @Test
+    fun settingsEventJobsCloseAdmissionAndExposeActiveJobsForJoin() = runPortableCoroutineTest {
+        val tracker = SettingsHandsFeedbackImageEditEventJobTracker()
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val job =
+            requireNotNull(
+                tracker.launch(this) {
+                    started.complete(Unit)
+                    release.await()
+                }
+            )
+        started.await()
+        val snapshot = tracker.closeAndSnapshot()
+        assertTrue(job in snapshot)
+        assertNull(tracker.launch(this) {})
+        release.complete(Unit)
+        job.join()
+        assertTrue(job.isCompleted)
+    }
+
+    @Test
     fun durableEditedImageBuildsPreviewableLocalFilePayload() {
         val payload =
             PlatformFile(
@@ -68,6 +225,8 @@ class SettingsHandsFeedbackImageEditTest {
         assertEquals("feedback-group-a", request.previewPayload.composerImageThreadKey)
         assertEquals("feedback-image-group-a", request.previewPayload.composerImageActionId)
         assertEquals("group-a", request.previewPayload.composerImageGroupId)
+        assertTrue(request.previewPayload.composerImageCompressAfterEdit)
+        assertFalse(request.previewPayload.showsComposerOriginalImageOption())
         assertEquals("file:///picked/zero.png", request.previewPayload.composerImageFileRef)
         assertEquals(
             listOf("file:///picked/zero.png", "file:///picked/one.png"),
@@ -191,6 +350,10 @@ class SettingsHandsFeedbackImageEditTest {
         val session = session(expectedCount = 1)
         val parsed = parseSettingsHandsFeedbackImageEditEvent(eventJson(index = 0, total = 1))!!
 
+        assertEquals(SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE, parsed.source)
+        assertFalse(parsed.compressed)
+        assertEquals("settings_feedback_draft", parsed.file.source)
+
         val result =
             foldSettingsHandsFeedbackImageEditEvent(
                 session = session,
@@ -201,6 +364,24 @@ class SettingsHandsFeedbackImageEditTest {
 
         val complete = assertIs<SettingsHandsFeedbackImageEditFoldResult.Complete>(result)
         assertEquals(listOf("file:///edited/0.png"), complete.files.map { it.fileRef })
+    }
+
+    @Test
+    fun compressedWireMetadataIsRetainedWhileSettingsOwnsDurableSource() {
+        val parsed =
+            parseSettingsHandsFeedbackImageEditEvent(
+                eventJson().apply {
+                    put("fileName", "edited-0.jpg")
+                    put("mimeType", "image/jpeg")
+                    put("source", SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE)
+                    put("compressed", true)
+                }
+            )!!
+
+        assertEquals(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE, parsed.source)
+        assertTrue(parsed.compressed)
+        assertEquals("image/jpeg", parsed.file.mimeType)
+        assertEquals("settings_feedback_draft", parsed.file.source)
     }
 
     @Test
@@ -309,12 +490,40 @@ class SettingsHandsFeedbackImageEditTest {
         assertNull(parseSettingsHandsFeedbackImageEditEvent(eventJson().put("groupId", "")))
         assertNull(parseSettingsHandsFeedbackImageEditEvent(eventJson().put("fileRef", "")))
 
-        val invalidTotal = parseSettingsHandsFeedbackImageEditEvent(eventJson(total = 0))!!
-        val failed =
-            assertIs<SettingsHandsFeedbackImageEditFoldResult.Failed>(
-                fold(session(expectedCount = 1), invalidTotal)
+        // Finalization metadata is a strict wire contract. Missing, non-Boolean, unknown, and
+        // source/MIME-mismatched markers must never be normalized into a promotable PNG/JPEG.
+        assertNull(
+            parseSettingsHandsFeedbackImageEditEvent(
+                eventJson(includeSource = false)
             )
-        assertEquals(SlockImageEditGroupReconcile.REJECT_TOTAL_MISMATCH, failed.reason)
+        )
+        assertNull(
+            parseSettingsHandsFeedbackImageEditEvent(
+                eventJson(includeCompressed = false)
+            )
+        )
+        assertNull(
+            parseSettingsHandsFeedbackImageEditEvent(
+                eventJson().apply { put("compressed", "false") }
+            )
+        )
+        assertNull(
+            parseSettingsHandsFeedbackImageEditEvent(
+                eventJson().apply { put("source", "unknown-editor") }
+            )
+        )
+        assertNull(
+            parseSettingsHandsFeedbackImageEditEvent(
+                eventJson().apply {
+                    put("source", SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE)
+                    put("compressed", true)
+                }
+            )
+        )
+
+        // The shared parser owns group bounds now; malformed totals are rejected before the
+        // Settings fold/reconciliation layer can observe them.
+        assertNull(parseSettingsHandsFeedbackImageEditEvent(eventJson(total = 0)))
     }
 
     @Test
@@ -417,14 +626,6 @@ class SettingsHandsFeedbackImageEditTest {
 
         assertEquals("opaque-id.jpg", normalized.single().fileName)
         assertTrue(slockComposerImagePickerFilesAreStrictImages(normalized))
-        assertEquals(
-            ThreadPickedAttachmentComposerAction.OpenImageAnnotation,
-            resolveThreadPickedAttachmentComposerAction(
-                action = "attachImage",
-                fileCount = normalized.size,
-                allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(normalized)
-            )
-        )
         val video = opaque.copy(fileName = "opaque-video", mimeType = "video/mp4")
         assertEquals("opaque-video", normalizeSettingsHandsFeedbackPickerFiles(listOf(video), true).single().fileName)
         assertFalse(slockComposerImagePickerFilesAreStrictImages(listOf(video)))
@@ -859,6 +1060,222 @@ class SettingsHandsFeedbackImageEditTest {
         )
     }
 
+    @Test
+    fun feedbackImagePickerMountsDirectlyWithoutAnnotationDetour() {
+        // task #300: feedback image picks must mount like attachFile — the merge helper is the
+        // only post-pick path, regardless of what the thread resolver would say about images.
+        val picked =
+            listOf(
+                image("photo-1", "file:///picked/1.jpg"),
+                image("photo-2", "file:///picked/2.jpg")
+            )
+        assertEquals(
+            ThreadPickedAttachmentComposerAction.OpenImageAnnotation,
+            resolveThreadPickedAttachmentComposerAction(
+                action = "attachImage",
+                fileCount = picked.size,
+                allFilesAreImages = true
+            )
+        )
+        val merge =
+            settingsHandsFeedbackMergedAttachments(
+                existing = emptyList(),
+                picked = picked,
+                attachmentMaxBytes = 1_000,
+                attachmentLimit = 3
+            )
+        assertEquals(picked.map { it.fileRef }, merge.attachments.map { it.fileRef })
+        assertEquals(0, merge.rejectedCount)
+        assertFalse(merge.limitTrimmed)
+    }
+
+    @Test
+    fun feedbackAttachmentMergeFiltersOversizeAndTrimsToLimit() {
+        val ok = image("ok", "file:///picked/ok.jpg").copy(sizeBytes = 100L)
+        val tooBig = image("big", "file:///picked/big.jpg").copy(sizeBytes = 2_000L)
+        val merge =
+            settingsHandsFeedbackMergedAttachments(
+                existing = emptyList(),
+                picked = listOf(ok, tooBig),
+                attachmentMaxBytes = 1_000,
+                attachmentLimit = 3
+            )
+        assertEquals(listOf("file:///picked/ok.jpg"), merge.attachments.map { it.fileRef })
+        assertEquals(1, merge.rejectedCount)
+        assertFalse(merge.limitTrimmed)
+
+        val existing = image("existing", "file:///draft/existing.jpg")
+        val trimmed =
+            settingsHandsFeedbackMergedAttachments(
+                existing = listOf(existing),
+                picked = (1..4).map { image("p$it", "file:///picked/$it.jpg") },
+                attachmentMaxBytes = 1_000,
+                attachmentLimit = 3
+            )
+        assertEquals(3, trimmed.attachments.size)
+        assertEquals("file:///draft/existing.jpg", trimmed.attachments.first().fileRef)
+        assertTrue(trimmed.limitTrimmed)
+
+        val dup = existing.copy(id = "different-id")
+        val deduped =
+            settingsHandsFeedbackMergedAttachments(
+                existing = listOf(existing),
+                picked = listOf(dup, image("new", "file:///picked/new.jpg")),
+                attachmentMaxBytes = 1_000,
+                attachmentLimit = 3
+            )
+        assertEquals(
+            listOf("file:///draft/existing.jpg", "file:///picked/new.jpg"),
+            deduped.attachments.map { it.fileRef }
+        )
+        assertFalse(deduped.limitTrimmed)
+    }
+
+    @Test
+    fun previewEditRequestBuildsReplaceBoundEditablePayload() {
+        val sourceStoreScope = SlockShellStoreScope.create("legacy", "server-a")
+        val file =
+            PlatformFile(
+                id = "att-1",
+                fileName = "shot.png",
+                mimeType = "image/png",
+                sizeBytes = 512L,
+                previewUri = "file:///draft/shot-preview.png",
+                fileRef = "file:///draft/shot.png",
+                source = "settings_feedback_draft"
+            )
+
+        val request =
+            requireNotNull(
+                settingsHandsFeedbackImageEditPreviewRequest(
+                    accountId = "account-a",
+                    pageGeneration = "page-a",
+                    file = file,
+                    sourceStoreScope = sourceStoreScope,
+                    groupId = "edit-group"
+                )
+            )
+
+        assertEquals(1, request.session.expectedCount)
+        assertEquals("feedback-edit-group", request.session.threadKey)
+        assertTrue(request.previewPayload.composerImageCanEdit)
+        assertTrue(request.previewPayload.composerImageCanComplete)
+        assertEquals("edit-group", request.previewPayload.composerImageGroupId)
+        val galleryImage = request.previewPayload.imageGallery.single()
+        assertEquals("file:///draft/shot.png", galleryImage.composerImageFileRef)
+        assertEquals(
+            file.fileRef,
+            galleryImage.composerImageReplaceAttachmentId
+        )
+    }
+
+    @Test
+    fun previewEditRequestRejectsBlankRefs() {
+        val file =
+            PlatformFile(
+                id = "att-1",
+                fileName = "shot.png",
+                mimeType = "image/png",
+                fileRef = null
+            )
+        assertNull(
+            settingsHandsFeedbackImageEditPreviewRequest(
+                accountId = "account-a",
+                pageGeneration = "page-a",
+                file = file,
+                sourceStoreScope = SlockShellStoreScope.create("legacy", "server-a"),
+                groupId = "edit-group"
+            )
+        )
+    }
+
+    @Test
+    fun replaceEventParsesAndFoldsToSingleComplete() {
+        val session = session(expectedCount = 1)
+        val parsed =
+            parseSettingsHandsFeedbackImageEditEvent(
+                eventJson(index = 0, total = 1).apply {
+                    put("action", "replace")
+                    put("replaceAttachmentId", "file:///draft/original.png")
+                }
+            )!!
+
+        assertEquals("replace", parsed.action)
+        assertEquals("file:///draft/original.png", parsed.replaceAttachmentId)
+
+        val result =
+            foldSettingsHandsFeedbackImageEditEvent(
+                session = session,
+                event = parsed,
+                currentAccountId = session.accountId,
+                currentPageGeneration = session.pageGeneration
+            )
+
+        val complete = assertIs<SettingsHandsFeedbackImageEditFoldResult.Complete>(result)
+        assertEquals("file:///draft/original.png", complete.replaceAttachmentId)
+        assertEquals(listOf("file:///edited/0.png"), complete.files.map { it.fileRef })
+    }
+
+    @Test
+    fun replaceCommitSwapsTargetInPlaceAndKeepsOrder() = runBlocking {
+        val before = image("before", "file:///draft/before.png")
+        val target = image("target", "file:///draft/target.png")
+        val after = image("after", "file:///draft/after.png")
+        val edited =
+            image("edited", "file:///editor-temp/edited.png")
+                .copy(source = "settings_feedback_draft")
+        var currentAttachments = listOf(before, target, after)
+        var persisted = emptyList<PlatformFile>()
+
+        val result =
+            commitSettingsHandsFeedbackEditedGroup(
+                existing = currentAttachments,
+                edited = listOf(edited),
+                attachmentMaxBytes = 1_000,
+                attachmentLimit = 3,
+                replaceAttachmentId = "file:///draft/target.png",
+                isCurrent = { true },
+                promote = { files -> DataResult.Content(files.map { it.copy(source = "settings_feedback_draft") }) },
+                persist = { persisted = it },
+                currentExisting = { currentAttachments }
+            )
+
+        val committed = assertIs<SettingsHandsFeedbackEditedGroupCommitResult.Committed>(result)
+        assertEquals(
+            listOf("file:///draft/before.png", "file:///editor-temp/edited.png", "file:///draft/after.png"),
+            committed.promotion.attachments.map { it.fileRef }
+        )
+        assertEquals(committed.promotion.attachments, persisted)
+    }
+
+    @Test
+    fun replaceCommitFallsBackToAppendWhenTargetWasRemoved() = runBlocking {
+        val kept = image("kept", "file:///draft/kept.png")
+        val edited =
+            image("edited", "file:///editor-temp/edited.png")
+                .copy(source = "settings_feedback_draft")
+        var currentAttachments = listOf(kept)
+
+        val result =
+            commitSettingsHandsFeedbackEditedGroup(
+                existing = currentAttachments,
+                edited = listOf(edited),
+                attachmentMaxBytes = 1_000,
+                attachmentLimit = 3,
+                replaceAttachmentId = "file:///draft/gone.png",
+                isCurrent = { true },
+                promote = { files -> DataResult.Content(files.map { it.copy(source = "settings_feedback_draft") }) },
+                persist = {},
+                currentExisting = { currentAttachments }
+            )
+
+        val committed = assertIs<SettingsHandsFeedbackEditedGroupCommitResult.Committed>(result)
+        assertEquals(
+            listOf("file:///draft/kept.png", "file:///editor-temp/edited.png"),
+            committed.promotion.attachments.map { it.fileRef }
+        )
+    }
+
     private fun session(expectedCount: Int): SettingsHandsFeedbackImageEditSession =
         SettingsHandsFeedbackImageEditSession(
             groupId = "group-a",
@@ -878,14 +1295,19 @@ class SettingsHandsFeedbackImageEditTest {
             groupId = "group-a",
             index = index,
             total = total,
+            source = SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE,
+            compressed = false,
             file = image("edited-$index", "file:///edited/$index.png")
         )
 
     private fun eventJson(
         index: Int = 0,
-        total: Int = 1
+        total: Int = 1,
+        includeSource: Boolean = true,
+        includeCompressed: Boolean = true
     ): JSONObject =
         JSONObject().apply {
+            put("previewSessionId", "feedback-preview-group-a")
             put("threadKey", "feedback-group-a")
             put("actionId", "action-$index")
             put("action", "complete")
@@ -897,6 +1319,8 @@ class SettingsHandsFeedbackImageEditTest {
             put("mimeType", "image/png")
             put("sizeBytes", 100L)
             put("previewUri", "file:///edited/$index-preview.png")
+            if (includeSource) put("source", SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE)
+            if (includeCompressed) put("compressed", false)
         }
 
     private fun fold(
@@ -927,6 +1351,6 @@ class SettingsHandsFeedbackImageEditTest {
             sizeBytes = sizeBytes,
             previewUri = "$fileRef-preview",
             fileRef = fileRef,
-            source = "image_annotation"
+            source = SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE
         )
 }

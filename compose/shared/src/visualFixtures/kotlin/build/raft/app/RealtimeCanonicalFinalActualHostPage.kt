@@ -25,9 +25,11 @@ import build.raft.app.data.RealtimeCanonicalFinalSinkIntegrationSeam
 import build.raft.app.data.RealtimeCanonicalFinalSinkLazyRouter
 import build.raft.app.data.RealtimeCanonicalFinalSinkDeliveryLedgerKey
 import build.raft.app.data.RealtimeCanonicalFinalSinkSurfaceKey
+import build.raft.app.data.durablePartition
 import build.raft.app.data.RealtimeCanonicalFinalOwnerEntry
 import build.raft.app.data.RealtimeScopeAuthority
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedAuthGateIntent
 import build.raft.app.data.SharedAuthGateViewModel
 import build.raft.app.data.SharedComputersStore
@@ -70,7 +72,6 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
 import build.raft.app.network.sync.CurrentGrantMessageShadowCommitOutcome
-import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
@@ -405,6 +406,14 @@ private fun RealtimeCanonicalFinalActualHostContent(run: ActualHostRun) {
             }
             val probeAgentStore = provider.agentDetailStore(sharedScope)
             val probeAgentId = MemberId("actual-host-agent-${run.nonce}")
+            // #308 / canonical-final fixture: ApplyAgentActivityUpdate is now
+            // gated on the currently-selected agent — the probe MUST bind the
+            // identity through the real SelectMember intent or every agent
+            // projection assertion below stays null-fenced.
+            probeAgentStore.dispatch(SharedAgentDetailIntent.SelectMember(memberId = probeAgentId))
+            waitUntil("probe agent selected") {
+                probeAgentStore.state.value.agentId == probeAgentId
+            }
             val initialAgentSeq = probeAgentStore.state.value.agentActivitySeq[probeAgentId]
             val initialBackgroundUnread = probeHomeStore.state.value.serverUnreadCounts[ActualHostServerB] ?: 0
 
@@ -1130,6 +1139,8 @@ private fun createActualThreadHost(
             conversationRepository = null,
             channelRepository = channelRepository,
             messageStore = provider.threadMessageStore,
+            // Same environment source as the production ThreadPage wiring (provider-owned store).
+            cacheEnvironmentIdProvider = { provider.apiEnvironmentStore.current().apiBaseUrl },
             replyCacheIdentityAuthority = {
                 provider.captureThreadReplyCacheIdentity(scope)
             },
@@ -1353,12 +1364,7 @@ private class ActualHostRun(
                 envelope = {
                     RealtimeCanonicalFinalSinkEnvelope(
                         grant = grant,
-                        partition =
-                            DurablePartitionKey(
-                                serverId = grant.serverId,
-                                principalId = grant.principalId,
-                                consumerId = SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID,
-                            ),
+                        partition = grant.durablePartition(SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID),
                         eventKey = eventKey,
                         event = event,
                         source = "actual_host_delegate_oracle",
@@ -1383,12 +1389,7 @@ private class ActualHostRun(
             val grant = authority?.grant(serverId) ?: return 0
             return sidecar?.deliveredLedgerSizes?.get(
                 RealtimeCanonicalFinalSinkDeliveryLedgerKey(
-                    partition =
-                        DurablePartitionKey(
-                            serverId = grant.serverId,
-                            principalId = grant.principalId,
-                            consumerId = SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID,
-                        ),
+                    partition = grant.durablePartition(SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID),
                     surfaceKey = surfaceKey,
                 ),
             ) ?: 0

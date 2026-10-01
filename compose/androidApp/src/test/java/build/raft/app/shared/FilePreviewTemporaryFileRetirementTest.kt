@@ -73,4 +73,47 @@ class FilePreviewTemporaryFileRetirementTest {
         outside.delete()
         root.delete()
     }
+
+    @Test
+    fun quarantineVacatesOriginalBeforeAReplacementCanBeCreated() {
+        val root = Files.createTempDirectory("file-preview-cache-aba").toFile()
+        val target = File(root, "image.jpg").apply { writeText("old") }
+        val result =
+            quarantineFilePreviewTemporaryFiles(
+                cacheRoots = listOf(root),
+                fileRefs = listOf(target.toURI().toString())
+            )
+
+        assertEquals(1, result.requestedCount)
+        assertEquals(1, result.admittedCount)
+        assertEquals(1, result.quarantinedCount)
+        assertFalse(target.exists())
+        assertEquals(1, result.quarantineFiles.size)
+        val replacement = File(root, "image.jpg").apply { writeText("new-owner") }
+        result.quarantineFiles.forEach { tombstone -> assertTrue(tombstone.delete()) }
+        assertTrue(replacement.isFile)
+        assertEquals("new-owner", replacement.readText())
+        replacement.delete()
+        root.delete()
+    }
+
+    @Test
+    fun failedQuarantineMoveNeverDeletesOriginal() {
+        val root = Files.createTempDirectory("file-preview-cache-rename-failure").toFile()
+        val target = File(root, "image.jpg").apply { writeText("keep") }
+        val result =
+            quarantineFilePreviewTemporaryFiles(
+                cacheRoots = listOf(root),
+                fileRefs = listOf(target.absolutePath),
+                moveToQuarantine = { null }
+            )
+
+        assertEquals(1, result.requestedCount)
+        assertEquals(1, result.admittedCount)
+        assertEquals(0, result.quarantinedCount)
+        assertTrue(target.isFile)
+        assertEquals("keep", target.readText())
+        target.delete()
+        root.delete()
+    }
 }

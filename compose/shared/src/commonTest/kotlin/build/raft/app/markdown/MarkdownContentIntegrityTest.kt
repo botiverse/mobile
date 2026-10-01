@@ -108,6 +108,218 @@ class MarkdownContentIntegrityTest {
     }
 
     @Test
+    fun boldAndEmphasisBoundariesTakePrecedenceOverAutolink() {
+        data class BoldAutolinkCase(
+            val source: String,
+            val expectedText: String,
+            val expectedUrl: String,
+            val urlStart: Int,
+            val urlEnd: Int,
+            val assertBold: Boolean = false,
+            val assertItalic: Boolean = false,
+            val assertStrikethrough: Boolean = false,
+        )
+
+        val testCases =
+            listOf(
+                BoldAutolinkCase(
+                    source = "**https://xxxx.com**(x)",
+                    expectedText = "https://xxxx.com(x)",
+                    expectedUrl = "https://xxxx.com",
+                    urlStart = 0,
+                    urlEnd = 16,
+                    assertBold = true,
+                ),
+                BoldAutolinkCase(
+                    source = "**https://xxxx.com/**(x)",
+                    expectedText = "https://xxxx.com/(x)",
+                    expectedUrl = "https://xxxx.com/",
+                    urlStart = 0,
+                    urlEnd = 17,
+                    assertBold = true,
+                ),
+                BoldAutolinkCase(
+                    source = "**https://xxxx.com/path**(x)",
+                    expectedText = "https://xxxx.com/path(x)",
+                    expectedUrl = "https://xxxx.com/path",
+                    urlStart = 0,
+                    urlEnd = 21,
+                    assertBold = true,
+                ),
+                BoldAutolinkCase(
+                    source = "**https://xxxx.com/path?a=1&b=2**(x)",
+                    expectedText = "https://xxxx.com/path?a=1&b=2(x)",
+                    expectedUrl = "https://xxxx.com/path?a=1&b=2",
+                    urlStart = 0,
+                    urlEnd = 29,
+                    assertBold = true,
+                ),
+                BoldAutolinkCase(
+                    source = "**https://xxxx.com:8080/foo**(x)",
+                    expectedText = "https://xxxx.com:8080/foo(x)",
+                    expectedUrl = "https://xxxx.com:8080/foo",
+                    urlStart = 0,
+                    urlEnd = 25,
+                    assertBold = true,
+                ),
+                BoldAutolinkCase(
+                    source = "**https://xxxx.com/path#hash**(x)",
+                    expectedText = "https://xxxx.com/path#hash(x)",
+                    expectedUrl = "https://xxxx.com/path#hash",
+                    urlStart = 0,
+                    urlEnd = 26,
+                    assertBold = true,
+                ),
+                BoldAutolinkCase(
+                    source = "前缀**https://xxxx.com/path**(x)后缀",
+                    expectedText = "前缀https://xxxx.com/path(x)后缀",
+                    expectedUrl = "https://xxxx.com/path",
+                    urlStart = 2,
+                    urlEnd = 23,
+                    assertBold = true,
+                ),
+                BoldAutolinkCase(
+                    source = "*https://xxxx.com/path*(x)",
+                    expectedText = "https://xxxx.com/path(x)",
+                    expectedUrl = "https://xxxx.com/path",
+                    urlStart = 0,
+                    urlEnd = 21,
+                    assertItalic = true,
+                ),
+                BoldAutolinkCase(
+                    source = "~~https://xxxx.com/path~~(x)",
+                    expectedText = "https://xxxx.com/path(x)",
+                    expectedUrl = "https://xxxx.com/path",
+                    urlStart = 0,
+                    urlEnd = 21,
+                    assertStrikethrough = true,
+                ),
+                BoldAutolinkCase(
+                    source = "**https://en.wikipedia.org/wiki/Foo_(bar)**(x)",
+                    expectedText = "https://en.wikipedia.org/wiki/Foo_(bar)(x)",
+                    expectedUrl = "https://en.wikipedia.org/wiki/Foo_(bar)",
+                    urlStart = 0,
+                    urlEnd = 39,
+                    assertBold = true,
+                ),
+            )
+
+        testCases.forEach { case ->
+            val parserContent = MarkdownParserContent.from(case.source).parserContent
+            val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+            val paragraphs = mutableListOf<org.intellij.markdown.ast.ASTNode>()
+            fun collect(node: org.intellij.markdown.ast.ASTNode) {
+                if (node.type == MarkdownElementTypes.PARAGRAPH) paragraphs += node
+                node.children.forEach(::collect)
+            }
+            collect(tree)
+
+            val settings =
+                DefaultAnnotatorSettings(
+                    linkTextSpanStyle = TextLinkStyles(style = SpanStyle()),
+                    codeSpanStyle = SpanStyle(),
+                    annotator = slockMarkdownAnnotator(parserContent),
+                )
+            val annotated =
+                buildAnnotatedString {
+                    paragraphs.forEach { p ->
+                        buildMarkdownAnnotatedString(parserContent, p, settings)
+                    }
+                }
+
+            // 1. Visible text conservation
+            assertEquals(
+                case.expectedText,
+                annotated.text,
+                "Rendered text mismatch for ${case.source}",
+            )
+
+            // 2. Link annotation target and bounds
+            val links = annotated.getLinkAnnotations(0, annotated.length)
+            assertEquals(
+                1,
+                links.size,
+                "Expected exactly 1 link for ${case.source}; got: $links",
+            )
+            val link = links.single()
+            assertEquals(
+                case.expectedUrl,
+                (link.item as LinkAnnotation.Url).url,
+                "Link destination mismatch for ${case.source}",
+            )
+            assertEquals(case.urlStart, link.start, "Link start mismatch for ${case.source}")
+            assertEquals(case.urlEnd, link.end, "Link end mismatch for ${case.source}")
+
+            // 3. SpanStyle checks
+            if (case.assertBold) {
+                assertTrue(
+                    annotated.spanStyles.any {
+                        it.item.fontWeight == com.tencent.kuikly.compose.ui.text.font.FontWeight.Bold &&
+                            it.start == case.urlStart && it.end == case.urlEnd
+                    },
+                    "Bold SpanStyle missing or bounded incorrectly for ${case.source}; spans=${annotated.spanStyles}",
+                )
+            }
+            if (case.assertItalic) {
+                assertTrue(
+                    annotated.spanStyles.any {
+                        it.item.fontStyle == com.tencent.kuikly.compose.ui.text.font.FontStyle.Italic &&
+                            it.start == case.urlStart && it.end == case.urlEnd
+                    },
+                    "Italic SpanStyle missing for ${case.source}; spans=${annotated.spanStyles}",
+                )
+            }
+            if (case.assertStrikethrough) {
+                assertTrue(
+                    annotated.spanStyles.any {
+                        it.item.textDecoration == com.tencent.kuikly.compose.ui.text.style.TextDecoration.LineThrough &&
+                            it.start == case.urlStart && it.end == case.urlEnd
+                    },
+                    "Strikethrough SpanStyle missing for ${case.source}; spans=${annotated.spanStyles}",
+                )
+            }
+
+            // 4. AST node structural check: Container element must be present in AST
+            val allNodes = buildList {
+                fun collectAll(node: org.intellij.markdown.ast.ASTNode) {
+                    add(node)
+                    node.children.forEach(::collectAll)
+                }
+                collectAll(tree)
+            }
+            if (case.assertBold) {
+                assertTrue(
+                    allNodes.any { it.type == MarkdownElementTypes.STRONG },
+                    "AST must contain STRONG element for ${case.source}",
+                )
+            }
+            if (case.assertItalic) {
+                assertTrue(
+                    allNodes.any { it.type == MarkdownElementTypes.EMPH },
+                    "AST must contain EMPH element for ${case.source}",
+                )
+            }
+            if (case.assertStrikethrough) {
+                assertTrue(
+                    allNodes.any { it.type == org.intellij.markdown.flavours.gfm.GFMElementTypes.STRIKETHROUGH },
+                    "AST must contain STRIKETHROUGH element for ${case.source}",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun deeplyNestedBracketsDoNotThrowStackOverflow() {
+        val depth = 200
+        val source = "[".repeat(depth) + "https://xxxx.com/path" + "]".repeat(depth)
+        val rendered = renderTopParagraphsWithLinks(source).single()
+        assertTrue(
+            rendered.text.contains("https://xxxx.com/path"),
+            "URL text must survive deeply nested brackets without StackOverflowError",
+        )
+    }
+
+    @Test
     fun generatedUrlBoundariesConserveTextAndExactLinkTarget() {
         generatedUrlBoundaryCases().forEach { case ->
             val rendered = renderTopParagraphsWithLinks(case.source).single()
@@ -189,6 +401,44 @@ class MarkdownContentIntegrityTest {
         assertEquals(source, rendered.text)
         assertEquals(listOf(url), rendered.urls)
     }
+
+    @Test
+    fun cjkPunctuationAdjacentBareUrlDoesNotAbsorbPunctuation() {
+        val cases =
+            listOf(
+                "task #286 收尾：PR https://github.com/botiverse/slock/pull/8499（base staging）已开，@archer 审。" to
+                    listOf("https://github.com/botiverse/slock/pull/8499"),
+                "slock 深度用户 https://x.com/Trader_Pheneck，给了些反馈，在" to
+                    listOf("https://x.com/Trader_Pheneck"),
+                "来源：（https://www.facebook.com/business/help/407323696966570）、教程" to
+                    listOf("https://www.facebook.com/business/help/407323696966570"),
+                "read https://example.com/foo_(bar)、then" to
+                    listOf("https://example.com/foo_(bar)"),
+                "https://cua.ai, 稍后输出机会评分卡。" to
+                    listOf("https://cua.ai"),
+                "https://cua.ai,稍后输出机会评分卡。" to
+                    listOf("https://cua.ai"),
+                "see https://example.com/a,b?x=1&y=2，后续" to
+                    listOf("https://example.com/a,b?x=1&y=2"),
+                "【链接】https://example.com/foo【重要】" to
+                    listOf("https://example.com/foo"),
+            )
+
+        for ((source, expectedUrls) in cases) {
+            val rendered = renderTopParagraphsWithLinks(source).single()
+            assertEquals(
+                source,
+                rendered.text,
+                "Rendered text must preserve all source characters verbatim; source=$source",
+            )
+            assertEquals(
+                expectedUrls,
+                rendered.urls,
+                "URL boundary detection failed; source=$source",
+            )
+        }
+    }
+
 
     private fun renderTopParagraphs(content: String): List<String> {
         // Uses the PRODUCTION annotator (slockMarkdownAnnotator) so app-side

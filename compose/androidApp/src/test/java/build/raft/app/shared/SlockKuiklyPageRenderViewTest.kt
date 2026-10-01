@@ -86,6 +86,38 @@ class SlockKuiklyPageRenderViewTest {
     }
 
     @Test
+    fun startupHoldOnlyCoversAnActiveUnresolvedChild() {
+        assertTrue(
+            slockKuiklyChildStartupHoldVisible(
+                childActive = true,
+                childLoadFinished = false,
+                pageName = "compose_app_shell_child_tab"
+            )
+        )
+        assertFalse(
+            slockKuiklyChildStartupHoldVisible(
+                childActive = false,
+                childLoadFinished = false,
+                pageName = "compose_app_shell_child_tab"
+            )
+        )
+        assertFalse(
+            slockKuiklyChildStartupHoldVisible(
+                childActive = true,
+                childLoadFinished = true,
+                pageName = "compose_app_shell_child_tab"
+            )
+        )
+        assertFalse(
+            slockKuiklyChildStartupHoldVisible(
+                childActive = true,
+                childLoadFinished = false,
+                pageName = ""
+            )
+        )
+    }
+
+    @Test
     fun childInitCanBeScheduledAfterDetachedResetWithoutWaitingForAnotherLayout() {
         assertTrue(
             shouldScheduleSlockKuiklyChildInit(
@@ -143,6 +175,14 @@ class SlockKuiklyPageRenderViewTest {
                 childAttached = true,
                 viewDidAppear = false,
                 pageDidAppear = true
+            )
+        )
+        assertFalse(
+            slockKuiklyChildLifecycleVisible(
+                childActive = true,
+                childAttached = true,
+                viewDidAppear = true,
+                pageDidAppear = false
             )
         )
     }

@@ -474,6 +474,7 @@ class RealtimeCanonicalFinalSinkSidecarRedTest {
                     serverId = grant.serverId,
                     principalId = grant.principalId,
                     consumerId = SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID,
+                    environmentId = grant.environmentId,
                 ),
             surfaceKey = surface,
         )
@@ -1406,6 +1407,7 @@ class RealtimeCanonicalFinalSinkSidecarRedTest {
             RealtimeGrantRecord(
                 slotKey = RealtimeSlotKey(scopeLeaseId = leaseId, serverId = serverId),
                 principalId = principalId,
+                environmentId = "env-test",
                 authGeneration = generation,
                 connectionFamilyId = familyId,
                 connectionEpochId = epochId,
@@ -1434,6 +1436,7 @@ class RealtimeCanonicalFinalSinkSidecarRedTest {
                         serverId = grant.serverId,
                         principalId = grant.principalId,
                         consumerId = SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID,
+                        environmentId = grant.environmentId,
                     ),
                 eventKey = eventKey,
                 event = event,
@@ -1446,6 +1449,7 @@ class RealtimeCanonicalFinalSinkSidecarRedTest {
                 serverId = grant.serverId,
                 principalId = grant.principalId,
                 consumerId = SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID,
+                environmentId = grant.environmentId,
             )
 
         fun messageEvent(body: String, seq: Long): MessageNew =

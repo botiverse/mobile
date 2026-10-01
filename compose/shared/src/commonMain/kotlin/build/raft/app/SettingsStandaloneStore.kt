@@ -8,11 +8,9 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.KeyValueLinkOpenPreferenceStore
 import build.raft.app.data.KeyValueLocalePreferenceStore
-import build.raft.app.data.KeyValueRecompositionProfilerPreferenceStore
 import build.raft.app.data.PersistentChatLayoutPreferenceRepository
 import build.raft.app.data.PersistentLinkOpenPreferenceRepository
 import build.raft.app.data.PersistentLocaleRepository
-import build.raft.app.data.PersistentRecompositionProfilerPreferenceRepository
 import build.raft.app.data.NotificationPreferenceRepository
 import build.raft.app.data.RealSettingsRepository
 import build.raft.app.data.ScreenError
@@ -152,10 +150,6 @@ internal fun rememberStandaloneSettingsEnvironment(
                 chatLayoutPreferenceRepository = chatLayoutPreferenceRepository,
                 linkOpenPreferenceRepository =
                     PersistentLinkOpenPreferenceRepository(KeyValueLinkOpenPreferenceStore(sharedPreferenceStore)),
-                recompositionProfilerPreferenceRepository =
-                    PersistentRecompositionProfilerPreferenceRepository(
-                        KeyValueRecompositionProfilerPreferenceStore(sharedPreferenceStore)
-                ),
                 apiEnvironmentStore = sharedStores.apiEnvironmentStore,
                 platformCapabilities = settingsCapabilities,
                 diagnosticsLogger = { message -> bridge.log("settings_standalone $message") }

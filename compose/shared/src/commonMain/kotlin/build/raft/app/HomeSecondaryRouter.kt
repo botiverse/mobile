@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -14,7 +15,10 @@ import build.raft.app.base.Utils
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
+import build.raft.app.data.DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
+import build.raft.app.data.KuiklyChatLayoutPreferenceEvents
+import build.raft.app.data.KuiklyRealtimeEvents
 import build.raft.app.data.MyMessageAlignmentPreference
 import build.raft.app.data.NetworkSlockAnnouncementsRemindersApi
 import build.raft.app.data.NetworkSlockHomeApi
@@ -25,6 +29,7 @@ import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.RealSavedRepository
 import build.raft.app.data.RealSearchRepository
 import build.raft.app.data.SearchTimeRange
+import build.raft.app.data.SharedAdaptiveWorkspaceStore
 import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.SharedConversationDirectoryState
@@ -57,8 +62,21 @@ import build.raft.app.data.typedPinnedOrLegacy
 import build.raft.app.model.ServerId
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.resources.MR
+import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.Spacer
+import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
+import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
+import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
+import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.ui.Alignment
+import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import com.tencent.tmm.kmmresource.compose.stringResource
@@ -90,16 +108,32 @@ private data class HomeSecondaryRouteEnvironment(
     val activitySenderAvatarsEnabled: Boolean,
     val storeScope: SlockShellStoreScope,
     val hasExplicitShellScope: Boolean,
+    val adaptivePane: SlockAdaptivePaneState,
     val shellScope: SlockAppShellScope,
     val conversationIdentityProvider: SharedConversationIdentityProvider?,
     val sharedHomeStore: SharedHomeStore?,
     val readReceiptCoordinator: ReadReceiptCoordinator,
-    val readReceiptOwnerFactory: (String, String) -> ReadReceiptOwner
+    val readReceiptOwnerFactory: (String, String) -> ReadReceiptOwner,
+    // Shell-scoped workspace (resolves to the AppShell's store under the shared scope)
+    // so standalone opens while desktop mode is OFF can park the current selection.
+    val sharedWorkspaceStore: SharedAdaptiveWorkspaceStore,
+    // task #13 three-pane: when the destination is embedded inside the AppShell middle pane
+    // (wide LeftRail), conversation/entity opens must route to the shell's adaptive workspace
+    // OpenDetail instead of pushing a standalone page (which would cover the rail).
+    // Null = legacy standalone behavior (push).
+    val inlineOpenRequest: ((HomeMessageOpenRequest, String) -> Unit)? = null,
+    val inlineOpenEntity: ((SearchEntityResult) -> Boolean)? = null,
+    // When embedded inline there is no pushed page to pop — "close" returns to the host tab.
+    val inlineOnClose: (() -> Unit)? = null,
 )
 
 @Composable
 private fun rememberHomeSecondaryRouteEnvironment(
-    routeVisibleTick: Int = 0
+    routeVisibleTick: Int = 0,
+    adaptivePane: SlockAdaptivePaneState = SlockAdaptivePaneState(),
+    inlineOpenRequest: ((HomeMessageOpenRequest, String) -> Unit)? = null,
+    inlineOpenEntity: ((SearchEntityResult) -> Boolean)? = null,
+    inlineOnClose: (() -> Unit)? = null,
 ): HomeSecondaryRouteEnvironment {
     RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager() as Pager
@@ -163,7 +197,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
                 )
             }
         }
-    val shellScope = rememberSlockAppShellScope()
+    val shellScope = rememberSlockAppShellScope(adaptivePane)
     return remember(
         pager,
         bridge,
@@ -183,7 +217,11 @@ private fun rememberHomeSecondaryRouteEnvironment(
         activitySenderAvatarsEnabled,
         storeScope,
         hasExplicitShellScope,
-        shellScope
+        adaptivePane,
+        shellScope,
+        inlineOpenRequest,
+        inlineOpenEntity,
+        inlineOnClose,
     ) {
         HomeSecondaryRouteEnvironment(
             pager = pager,
@@ -204,11 +242,16 @@ private fun rememberHomeSecondaryRouteEnvironment(
             activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
             storeScope = storeScope,
             hasExplicitShellScope = hasExplicitShellScope,
+            adaptivePane = adaptivePane,
             shellScope = shellScope,
             conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope),
             sharedHomeStore = sharedStores.sharedHomeStore(storeScope),
             readReceiptCoordinator = sharedStores.processReadReceiptCoordinator(),
-            readReceiptOwnerFactory = sharedStores::readReceiptOwner
+            readReceiptOwnerFactory = sharedStores::readReceiptOwner,
+            sharedWorkspaceStore = sharedStores.adaptiveWorkspaceStore(storeScope),
+            inlineOpenRequest = inlineOpenRequest,
+            inlineOpenEntity = inlineOpenEntity,
+            inlineOnClose = inlineOnClose,
         )
     }
 }
@@ -219,9 +262,19 @@ internal fun HomeSecondaryRouterContent(
     routeVisibleTick: Int = 0,
     initialSearchChannelId: String? = null,
     initialSearchOpenFilterId: String? = null,
-    initialSearchFocusInput: Boolean = false
+    initialSearchFocusInput: Boolean = false,
+    adaptivePane: SlockAdaptivePaneState = SlockAdaptivePaneState(),
+    inlineOpenRequest: ((HomeMessageOpenRequest, String) -> Unit)? = null,
+    inlineOpenEntity: ((SearchEntityResult) -> Boolean)? = null,
+    inlineOnClose: (() -> Unit)? = null,
 ) {
-    val environment = rememberHomeSecondaryRouteEnvironment(routeVisibleTick)
+    val environment = rememberHomeSecondaryRouteEnvironment(
+        routeVisibleTick,
+        adaptivePane,
+        inlineOpenRequest,
+        inlineOpenEntity,
+        inlineOnClose,
+    )
     val retainedDestination = retainedHomeSecondaryDestination(destination)
     PerformanceSceneEffect(
         bridge = environment.bridge,
@@ -250,33 +303,413 @@ private fun HomeActivityRouterContent(
     environment: HomeSecondaryRouteEnvironment,
     routeVisibleTick: Int = 0
 ) {
-    val listState = rememberLazyListState()
-    val scrollScope = rememberCoroutineScope()
-    SharedHomeActivityScreen(
-        bridge = environment.bridge,
-        authStore = environment.authStore,
-        routeVisibleTick = routeVisibleTick,
-        onOpenMessage = { request ->
-            environment.pager.openStandaloneHomeMessageRequest(
-                bridge = environment.bridge,
-                request = request,
-                source = "home_activity",
-                timeContext = environment.timeContext,
-                alignOwnMessagesRight = environment.alignOwnMessagesRight,
-                compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                    storeScope = environment.storeScope
+    // task #13: surface-owned adaptive workspace. The pushed Activity page gets its own
+    // SharedAdaptiveWorkspaceStore instance — never the shell-scoped singleton — so its
+    // selection/detail/lease lifecycle is fully independent of the Home surface it covers.
+    // Canonical product state (messages, drafts, permissions) still flows through the
+    // existing shared stores; only the surface's selection ownership is private.
+    val sharedStores = remember(environment.bridge) { SlockSharedStoreRegistry.get(environment.bridge) }
+    val activityWorkspaceStore = remember { SharedAdaptiveWorkspaceStore() }
+    // Lease keeps the detail's realtime rooms subscribed while this surface owns the
+    // selection; released when the workspace resets or the page disposes. Registry +
+    // events are the same shell-scoped shared instances Home uses — the OWNER record is
+    // what is surface-private (consumerId names this surface).
+    val activityRealtimeEvents = remember(sharedStores) { KuiklyRealtimeEvents(sharedStores.eventBus) }
+    val activityRoomLeaseRegistry =
+        remember(sharedStores, environment.storeScope) {
+            sharedStores.realtimeRoomLeaseRegistry(environment.storeScope)
+        }
+    val activityWorkspaceSession by activityWorkspaceStore.state.collectAsState()
+    val activityWorkspace = activityWorkspaceSession.workspace
+    // The page-level pane state (fed by SlockAdaptivePanePagerEvent on the pushed page's own
+    // BasePager) — this is what lets DualPane resolve on a secondary surface; the default
+    // shellScope construction never receives those events and would stay compact forever.
+    val adaptivePane = environment.adaptivePane
+    var activityServerId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(environment.authStore) {
+        activityServerId =
+            environment.authStore
+                .readSession()
+                ?.currentServerId
+                ?.trim()
+                ?.takeIf(String::isNotBlank)
+    }
+    // task #45: same user gate the Home shell uses — the persisted "desktop mode on
+    // large screens" setting (default ON), no pageData param anymore.
+    var activityAdaptiveEnabled by remember {
+        mutableStateOf(DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN)
+    }
+    val chatLayoutPreferenceEvents =
+        remember(sharedStores.eventBus) { KuiklyChatLayoutPreferenceEvents(sharedStores.eventBus) }
+    DisposableEffect(chatLayoutPreferenceEvents) {
+        val subscription =
+            chatLayoutPreferenceEvents.addPreferenceListener { chatLayout ->
+                activityAdaptiveEnabled = chatLayout.desktopModeOnLargeScreen
+            }
+        onDispose { subscription.close() }
+    }
+    val activityChatLayoutPreferenceStore =
+        remember { KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore()) }
+    LaunchedEffect(activityChatLayoutPreferenceStore) {
+        activityAdaptiveEnabled =
+            activityChatLayoutPreferenceStore.readDesktopModeOnLargeScreen()
+    }
+    LaunchedEffect(activityWorkspaceStore, activityServerId, adaptivePane, activityAdaptiveEnabled) {
+        if (!activityAdaptiveEnabled) return@LaunchedEffect
+        val serverId = activityServerId ?: return@LaunchedEffect
+        activityWorkspaceStore.update { current ->
+            var next =
+                current.workspace
+                    ?: SlockAdaptiveWorkspaceState(
+                        shellInstanceId = environment.storeScope.shellInstanceId + ":activity",
+                        serverId = serverId,
+                    )
+            if (next.serverId != serverId) {
+                next = reduceSlockAdaptiveWorkspace(next, SlockAdaptiveWorkspaceIntent.AuthorityChanged(serverId))
+            }
+            next = reduceSlockAdaptiveWorkspace(next, SlockAdaptiveWorkspaceIntent.WindowChanged(adaptivePane))
+            current.copy(workspace = next)
+        }
+    }
+    val activityListPane: @Composable (Boolean) -> Unit = { listActive ->
+        SharedHomeActivityScreen(
+            bridge = environment.bridge,
+            authStore = environment.authStore,
+            routeVisibleTick = routeVisibleTick,
+            active = listActive,
+            onOpenMessage = { request ->
+                val handled =
+                    if (activityAdaptiveEnabled) {
+                        openActivityAdaptiveMessageRequest(
+                            environment = environment,
+                            workspaceStore = activityWorkspaceStore,
+                            workspace = activityWorkspace,
+                            request = request,
+                            serverId = activityServerId,
+                            realtimeEvents = activityRealtimeEvents,
+                            roomLeaseRegistry = activityRoomLeaseRegistry,
+                        )
+                    } else {
+                        false
+                    }
+                if (!handled) {
+                    // task #45: OFF keeps the workspace parked, but the standalone open is
+                    // the user's current selection — record it so a later ON restores this
+                    // conversation instead of a stale pre-OFF one.
+                    parkStandaloneSelection(
+                        environment = environment,
+                        workspaceStore = activityWorkspaceStore,
+                        request = request,
+                        serverId = activityServerId,
+                    )
+                }
+                if (!handled) {
+                    environment.pager.openStandaloneHomeMessageRequest(
+                        bridge = environment.bridge,
+                        request = request,
+                        source = "home_activity",
+                        timeContext = environment.timeContext,
+                        alignOwnMessagesRight = environment.alignOwnMessagesRight,
+                        compactConsecutiveMessages = environment.compactConsecutiveMessages,
+                            storeScope = environment.storeScope
+                    )
+                }
+            },
+            onClose = { environment.inlineOnClose?.invoke() ?: environment.pager.closeHomeSecondaryPage() },
+            bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
+            timeContext = environment.timeContext,
+            shellScope = environment.shellScope,
+            activityTaskStatusBadgesEnabled = environment.activityTaskStatusBadgesEnabled,
+            activitySenderAvatarsEnabled = environment.activitySenderAvatarsEnabled,
+            refreshOnAppLifecycleResume = true,
+            externalSelectedThreadId = activityWorkspace?.selection?.identity?.threadId,
+            storeScope = environment.storeScope
+        )
+    }
+    val workspace = activityWorkspace
+    val selection = workspace?.selection
+    val detailPayload = activityWorkspaceSession.launchPayload
+    val dualPane = activityAdaptiveEnabled && workspace?.pane?.layout == SlockAdaptivePaneLayout.DualPane
+    val detailPageData =
+        remember(
+            detailPayload,
+            selection,
+            environment.storeScope.shellInstanceId,
+        ) {
+            if (detailPayload == null || selection == null || workspace == null) {
+                null
+            } else {
+                threadLaunchPageData(detailPayload)
+                    .withSlockShellStoreScope(environment.storeScope)
+                    .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, workspace.shellInstanceId)
+                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, selection.identity.key)
+                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, selection.generation)
+            }
+        }
+    // CloseDetail: the embedded thread's own Back posts SLOCK_ADAPTIVE_DETAIL_CLOSE_EVENT
+    // carrying this surface's namespaced shell id; only this page reduces it (Home's
+    // observer filters on the un-suffixed shell id, so events can't cross).
+    DisposableEffect(activityWorkspaceStore, environment.storeScope.shellInstanceId) {
+        val activityShellId = environment.storeScope.shellInstanceId + ":activity"
+        val subscription =
+            sharedStores.eventBus.observe(
+                eventName = SLOCK_ADAPTIVE_DETAIL_CLOSE_EVENT,
+                crossProcess = true,
+            ) { eventData ->
+                val request = eventData?.toSlockAdaptiveDetailCloseRequestOrNull()
+                    ?: return@observe
+                if (request.shellInstanceId != activityShellId) return@observe
+                val current = activityWorkspaceStore.snapshot().workspace ?: return@observe
+                val next =
+                    reduceSlockAdaptiveWorkspace(
+                        current,
+                        SlockAdaptiveWorkspaceIntent.CloseDetail(
+                            identityKey = request.identityKey,
+                            generation = request.generation,
+                        ),
+                    )
+                if (current.selection != null && next.selection == null) {
+                    releaseActivityAdaptiveLease(
+                        environment,
+                        activityWorkspaceStore,
+                        activityRealtimeEvents,
+                        activityRoomLeaseRegistry,
+                        request.generation,
+                    )
+                }
+                activityWorkspaceStore.update { session ->
+                    session.copy(
+                        workspace = next,
+                        launchPayload =
+                            if (current.selection != null && next.selection == null) {
+                                null
+                            } else {
+                                session.launchPayload
+                            },
+                    )
+                }
+            }
+        onDispose { subscription.close() }
+    }
+    // Explicit teardown: remember state being dropped is not a resource release — the
+    // lease (a shared-registry room subscription) must be returned here so a covered Home
+    // never sees Activity's rooms linger.
+    DisposableEffect(activityWorkspaceStore) {
+        onDispose {
+            releaseActivityAdaptiveLease(
+                environment,
+                activityWorkspaceStore,
+                activityRealtimeEvents,
+                activityRoomLeaseRegistry,
             )
-        },
-        onClose = { environment.pager.closeHomeSecondaryPage() },
-        bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
-        timeContext = environment.timeContext,
-        shellScope = environment.shellScope,
-        listState = listState,
-        activityTaskStatusBadgesEnabled = environment.activityTaskStatusBadgesEnabled,
-        activitySenderAvatarsEnabled = environment.activitySenderAvatarsEnabled,
-        storeScope = environment.storeScope,
-        onTitleClick = { scrollScope.launch { listState.animateScrollToTopExpressive() } }
+        }
+    }
+    // Back ordering (task #13): with a mounted detail the first Back dismisses the detail
+    // only; the Activity list/page stays until a second Back. Release this surface's own
+    // lease — never the covered Home's.
+    // Consume Back whenever a detail is mounted on this surface — DualPane split OR
+    // compact DetailOnly (narrowed with a selection). Narrowing must not strand the
+    // selection behind the list.
+    // task #45: while the desktop-mode setting is OFF the surface must behave as a
+    // plain mobile page — a retained workspace selection (kept for the OFF->ON round
+    // trip) must neither steal Back nor render the detail slot.
+    SlockBackHandler(enabled = activityAdaptiveEnabled && selection != null) {
+        val current = activityWorkspaceStore.snapshot().workspace ?: return@SlockBackHandler
+        val dismissed =
+            reduceSlockAdaptiveWorkspace(current, SlockAdaptiveWorkspaceIntent.DismissDetail)
+        val releasedGeneration = current.selection?.generation
+        activityWorkspaceStore.update { session ->
+            session.copy(workspace = dismissed, launchPayload = null)
+        }
+        releasedGeneration?.let { generation ->
+            releaseActivityAdaptiveLease(
+                environment,
+                activityWorkspaceStore,
+                activityRealtimeEvents,
+                activityRoomLeaseRegistry,
+                generation,
+            )
+        }
+    }
+    // Compact + selection = DetailOnly (same contract as Home): the detail takes the whole
+    // surface; the list is retained in the workspace, not remounted. Compact without a
+    // selection stays the plain list.
+    // Compact + selection = DetailOnly only while desktop mode is ON. With the setting
+    // OFF the workspace state is parked, not rendered — the list stays the only surface.
+    val detailOnly =
+        activityAdaptiveEnabled &&
+            !dualPane &&
+            selection != null &&
+            workspace?.presentation == SlockAdaptiveWorkspacePresentation.DetailOnly
+    if (dualPane) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .width(360.dp)
+                    .fillMaxHeight(),
+            ) {
+                activityListPane(true)
+            }
+            Spacer(
+                modifier = Modifier
+                    .width(1.dp)
+                    .fillMaxHeight()
+                    .background(Color.Black),
+            )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            ) {
+                if (detailPageData != null && selection != null) {
+                    SlockKuiklyChildPage(
+                        pageName = THREAD_PAGE,
+                        pageData = detailPageData,
+                        modifier = Modifier.fillMaxSize(),
+                        active = true,
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = stringResource(MR.strings.home_adaptive_select_conversation),
+                            color = SlockColor.TextMutedGray,
+                            fontSize = 15.sp,
+                        )
+                    }
+                }
+            }
+        }
+    } else if (detailOnly && detailPageData != null) {
+        // Compact + live selection = DetailOnly (Home's presentation contract): the detail
+        // takes the whole surface; the list stays parked in the workspace, not remounted.
+        SlockKuiklyChildPage(
+            pageName = THREAD_PAGE,
+            pageData = detailPageData,
+            modifier = Modifier.fillMaxSize(),
+            active = true,
+        )
+    } else {
+        activityListPane(true)
+    }
+}
+
+
+
+private fun parkStandaloneSelection(
+    environment: HomeSecondaryRouteEnvironment,
+    workspaceStore: SharedAdaptiveWorkspaceStore,
+    request: HomeMessageOpenRequest,
+    serverId: String?,
+) {
+    // Only park while desktop mode is OFF: ON + compact standalone pushes are normal
+    // navigation and must not overwrite the live selection shown on the next wide tick.
+    if (KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+            .readDesktopModeOnLargeScreenSync()
+    ) {
+        return
+    }
+    val readyServerId = serverId?.trim()?.takeIf(String::isNotBlank) ?: return
+    val launchPayload =
+        buildStandaloneConversationThreadLaunchPayload(
+            conversation = request.conversationIdentity,
+            timeContext = environment.timeContext,
+            alignOwnMessagesRight = environment.alignOwnMessagesRight,
+            compactConsecutiveMessages = environment.compactConsecutiveMessages,
+            anchorMessageId = request.anchorMessageId,
+            originFallback = request.originFallback,
+            onWarn = { environment.bridge.logWarn(it) },
+        ) ?: return
+    val identity = launchPayload.toSlockAdaptiveDetailIdentity(readyServerId) ?: return
+    workspaceStore.update { session ->
+        val workspace = session.workspace ?: return@update session
+        if (workspace.serverId != identity.serverId) return@update session
+        val next =
+            reduceSlockAdaptiveWorkspace(
+                workspace,
+                SlockAdaptiveWorkspaceIntent.ParkSelection(identity),
+            )
+        session.copy(
+            workspace = next,
+            launchPayload =
+                if (next.selection?.identity == identity) launchPayload else session.launchPayload,
+        )
+    }
+}
+
+private fun releaseActivityAdaptiveLease(
+    environment: HomeSecondaryRouteEnvironment,
+    workspaceStore: SharedAdaptiveWorkspaceStore,
+    realtimeEvents: KuiklyRealtimeEvents,
+    roomLeaseRegistry: build.raft.app.data.SharedRealtimeRoomLeaseRegistry,
+    expectedGeneration: Long? = null,
+) {
+    val owner = workspaceStore.snapshot().handoffRoomLeaseOwner ?: return
+    if (expectedGeneration != null && owner.generation != expectedGeneration) return
+    realtimeEvents.applyRoomTransitions(roomLeaseRegistry.release(owner))
+    workspaceStore.update { current ->
+        if (current.handoffRoomLeaseOwner == owner) {
+            current.copy(handoffRoomLeaseOwner = null)
+        } else {
+            current
+        }
+    }
+}
+
+private fun openActivityAdaptiveMessageRequest(
+    environment: HomeSecondaryRouteEnvironment,
+    workspaceStore: SharedAdaptiveWorkspaceStore,
+    workspace: SlockAdaptiveWorkspaceState?,
+    request: HomeMessageOpenRequest,
+    serverId: String?,
+    realtimeEvents: KuiklyRealtimeEvents,
+    roomLeaseRegistry: build.raft.app.data.SharedRealtimeRoomLeaseRegistry,
+): Boolean {
+    val current = workspace ?: return false
+    if (current.pane.layout != SlockAdaptivePaneLayout.DualPane) return false
+    val readyServerId = serverId ?: return false
+    val launchPayload =
+        buildStandaloneConversationThreadLaunchPayload(
+            conversation = request.conversationIdentity,
+            timeContext = environment.timeContext,
+            alignOwnMessagesRight = environment.alignOwnMessagesRight,
+            compactConsecutiveMessages = environment.compactConsecutiveMessages,
+            anchorMessageId = request.anchorMessageId,
+            originFallback = request.originFallback,
+            onWarn = { environment.bridge.logWarn(it) },
+        ) ?: return false
+    val identity = launchPayload.toSlockAdaptiveDetailIdentity(readyServerId) ?: return false
+    val next = reduceSlockAdaptiveWorkspace(current, SlockAdaptiveWorkspaceIntent.OpenDetail(identity))
+    if (next.selection?.identity != identity) return false
+    val nextSelection = next.selection ?: return false
+    // Lease the detail's realtime rooms under an owner tagged to this surface so the
+    // covered Home never acquires/releases on Activity's behalf (and vice versa).
+    val owner =
+        build.raft.app.data.RealtimeRoomLeaseOwner(
+            shellInstanceId = environment.storeScope.shellInstanceId,
+            serverId = nextSelection.identity.serverId,
+            consumerId = "activity-surface-detail",
+            generation = nextSelection.generation,
+        )
+    val roomIds =
+        launchPayload
+            .toInitialPayloadOrNull(launchPayload.instanceId)
+            ?.activeRealtimeRoomIds()
+            .orEmpty()
+    realtimeEvents.applyRoomTransitions(roomLeaseRegistry.acquire(owner, roomIds))
+    val previousOwner = workspaceStore.snapshot().handoffRoomLeaseOwner
+    workspaceStore.update { state ->
+        state.copy(workspace = next, launchPayload = launchPayload, handoffRoomLeaseOwner = owner)
+    }
+    if (previousOwner != null && previousOwner != owner) {
+        realtimeEvents.applyRoomTransitions(roomLeaseRegistry.release(previousOwner))
+    }
+    environment.bridge.log(
+        "activity_adaptive_open threadId=${identity.threadId} key=${identity.key}"
     )
+    return true
 }
 
 @Composable
@@ -431,7 +864,7 @@ private fun HomeSearchRouterContent(
         computerDirectory = computerDirectory,
         draftProjection = draftProjection,
         onIntent = searchSavedViewModel::dispatch,
-        onClose = { environment.pager.closeHomeSecondaryPage() },
+        onClose = { environment.inlineOnClose?.invoke() ?: environment.pager.closeHomeSecondaryPage() },
         onOpenItem = { item ->
             when (
                 val resolution =
@@ -441,15 +874,29 @@ private fun HomeSearchRouterContent(
                     )
             ) {
                 is ConversationOpenResolution.Resolved -> {
-                    val opened = environment.pager.openStandaloneHomeMessageRequest(
-                        bridge = environment.bridge,
-                        request = resolution.request,
-                        source = "home_search",
-                        timeContext = environment.timeContext,
-                        alignOwnMessagesRight = environment.alignOwnMessagesRight,
-                        compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                        storeScope = environment.storeScope
-                    )
+                    val opened =
+                        environment.inlineOpenRequest?.let { open ->
+                            open(resolution.request, "home_search")
+                            true
+                        } ?: run {
+                            // task #45: OFF standalone opens through Search still park the
+                            // current selection so re-enabling restores this conversation.
+                            parkStandaloneSelection(
+                                environment = environment,
+                                workspaceStore = environment.sharedWorkspaceStore,
+                                request = resolution.request,
+                                serverId = searchServerId,
+                            )
+                            environment.pager.openStandaloneHomeMessageRequest(
+                            bridge = environment.bridge,
+                            request = resolution.request,
+                            source = "home_search",
+                            timeContext = environment.timeContext,
+                            alignOwnMessagesRight = environment.alignOwnMessagesRight,
+                            compactConsecutiveMessages = environment.compactConsecutiveMessages,
+                            storeScope = environment.storeScope
+                            )
+                        }
                     if (opened) {
                         val entityKey =
                             resolution.request.conversationIdentity.searchPersonalizationEntityKeyOrNull()
@@ -471,14 +918,34 @@ private fun HomeSearchRouterContent(
             }
         },
         onOpenEntity = { entity ->
-            val opened = environment.pager.openHomeSearchEntity(
-                bridge = environment.bridge,
-                entity = entity,
-                timeContext = environment.timeContext,
-                alignOwnMessagesRight = environment.alignOwnMessagesRight,
-                compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                storeScope = environment.storeScope
-            )
+            val opened =
+                environment.inlineOpenEntity?.invoke(entity)
+                    ?: run {
+                        // task #45: OFF standalone entity opens (channel/DM search results)
+                        // park the current selection so re-enabling restores this
+                        // conversation — same contract as the message-open fallback above.
+                        (entity.destinationOrNull() as? HomeSearchEntityDestination.Conversation)
+                            ?.let { destination ->
+                                parkStandaloneSelection(
+                                    environment = environment,
+                                    workspaceStore = environment.sharedWorkspaceStore,
+                                    request =
+                                        HomeMessageOpenRequest(
+                                            conversationIdentity = destination.identity,
+                                            anchorMessageId = null,
+                                        ),
+                                    serverId = searchServerId,
+                                )
+                            }
+                        environment.pager.openHomeSearchEntity(
+                            bridge = environment.bridge,
+                            entity = entity,
+                            timeContext = environment.timeContext,
+                            alignOwnMessagesRight = environment.alignOwnMessagesRight,
+                            compactConsecutiveMessages = environment.compactConsecutiveMessages,
+                            storeScope = environment.storeScope
+                        )
+                    }
             if (opened) {
                 val entityKey = entity.searchPersonalizationEntityKeyOrNull()
                 searchSavedViewModel.dispatch(
@@ -598,7 +1065,7 @@ private fun HomeSavedRouterContent(
         memberAvatarResolver = memberAvatarResolver,
         draftProjection = draftProjection,
         onIntent = searchSavedViewModel::dispatch,
-        onClose = { environment.pager.closeHomeSecondaryPage() },
+        onClose = { environment.inlineOnClose?.invoke() ?: environment.pager.closeHomeSecondaryPage() },
         onOpenItem = { item ->
             when (
                 val resolution =
@@ -607,7 +1074,13 @@ private fun HomeSavedRouterContent(
                         conversationDirectory = openConversationDirectory
                     )
             ) {
-                is ConversationOpenResolution.Resolved ->
+                is ConversationOpenResolution.Resolved -> {
+                    parkStandaloneSelection(
+                        environment = environment,
+                        workspaceStore = environment.sharedWorkspaceStore,
+                        request = resolution.request,
+                        serverId = savedServerId,
+                    )
                     environment.pager.openStandaloneHomeMessageRequest(
                         bridge = environment.bridge,
                         request = resolution.request,
@@ -617,6 +1090,7 @@ private fun HomeSavedRouterContent(
                         compactConsecutiveMessages = environment.compactConsecutiveMessages,
                                     storeScope = environment.storeScope
                     )
+                }
                 is ConversationOpenResolution.Pending -> {
                     environment.bridge.logWarn(
                         "saved_open_request_pending reason=${resolution.reason} itemKey=${item.key}"

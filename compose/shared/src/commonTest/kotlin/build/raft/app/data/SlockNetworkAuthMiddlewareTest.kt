@@ -129,6 +129,27 @@ class SlockNetworkAuthMiddlewareTest {
     }
 
     @Test
+    fun expectedAuthorityKeepsSuccessfulResponseWhenTokensRotateDuringTransport() = runBlocking {
+        val original = sampleSession(accessToken = "access-a", refreshToken = "refresh-a")
+        val store = InMemorySlockAuthSessionStore(original)
+        val middleware = SlockNetworkAuthMiddleware(store, FakeAuthApi(refreshResult = null))
+
+        val response =
+            middleware.request(
+                serverIdOverride = ServerId("server-1"),
+                expectedAuthority = original.expectedBinding(),
+            ) {
+                store.saveSession(
+                    original.copy(accessToken = "rotated-access", refreshToken = "rotated-refresh")
+                )
+                HomeNetworkResponse(code = 200, bodyText = "{}")
+            }
+
+        assertEquals(200, response.code)
+        assertEquals("{}", response.bodyText)
+    }
+
+    @Test
     fun expectedAuthoritySkipsRefreshWhenAccountChangesDuringFailedTransport() = runBlocking {
         val original = sampleSession(accessToken = "access-a", refreshToken = "refresh-a")
         val store = InMemorySlockAuthSessionStore(original)

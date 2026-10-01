@@ -18,6 +18,8 @@ export function parseDumpNodes(dump) {
         line,
         label,
         normalizedLabel: normalizeLabel(label),
+        isInput: line.includes("[INPUT]"),
+        isBtn: line.includes("[BTN]"),
         x1,
         y1,
         x2,
@@ -105,14 +107,38 @@ export function findAllChannelTarget(dump, { channelBandPx = 360, rowTolerancePx
 // does not, derive the first (image) square from the composer bounds rather
 // than hard-coding a device coordinate. The image action is the leftmost icon
 // in the composer's bottom row; the paperclip is immediately to its right.
+export function findComposerNode(dump) {
+  const nodes = parseDumpNodes(dump);
+  const named = nodes.filter((node) => /^Message #/.test(node.label.trim()));
+  if (named.length === 1) return named[0];
+  if (named.length > 1) {
+    throw new Error(`expected exactly one Message # composer, found ${named.length}`);
+  }
+  const maxY = Math.max(0, ...nodes.map((node) => node.y2));
+  const inputs = nodes.filter((node) => (
+    node.isInput
+    && (node.y2 - node.y1) >= 120
+    && (node.x2 - node.x1) >= 600
+    && node.y1 >= maxY * 0.55
+  ));
+  if (inputs.length !== 1) {
+    throw new Error(`expected exactly one bottom [INPUT] composer, found ${inputs.length}`);
+  }
+  return inputs[0];
+}
+
+export function dumpShowsComposer(dump) {
+  try {
+    findComposerNode(dump);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function findComposerImageTarget(dump) {
   const nodes = parseDumpNodes(dump);
-  const composers = nodes.filter((node) => node.label.trim() === "Message #all");
-  if (composers.length !== 1) {
-    throw new Error(`expected exactly one Message #all composer, found ${composers.length}`);
-  }
-
-  const composer = composers[0];
+  const composer = findComposerNode(dump);
   const width = composer.x2 - composer.x1;
   const height = composer.y2 - composer.y1;
   if (width < 600 || height < 120) {

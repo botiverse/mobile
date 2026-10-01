@@ -24,9 +24,10 @@ class SharedThreadRealtimeTimestampTest {
         val storeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         try {
             val dataSource =
-                SharedThreadDataSource(
+                testSharedThreadDataSource(
                     networkApi = SharedThreadStoreTest.FakeThreadApi(bodyText = canonicalMessagesResponse()),
-                    sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1"))
+                    sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                    cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
                 )
             val store = SharedThreadStore(dataSource = dataSource, scope = storeScope)
             store.accept(

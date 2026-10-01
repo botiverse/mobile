@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.StoredAuthSession
 import com.tencent.kuikly.core.pager.Pager
 
@@ -11,7 +10,6 @@ internal fun Pager.openSettingsMarketplacePage(storeScope: build.raft.app.data.S
 internal val settingsMarketplaceWebViewSpec =
     StandaloneSettingsWebViewSpec(
         surface = SettingsWebViewSurface.Marketplace,
-        destination = SharedSettingsDestination.Developer,
         buildWebUrl = { webBaseUrl, session, _ -> settingsMarketplaceWebViewUrl(webBaseUrl, session) },
     )
 

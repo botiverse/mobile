@@ -25,6 +25,7 @@ class RealtimeCanonicalFinalProductionFactoryTest {
                     ),
                 authStore = auth,
                 authEvents = auth,
+                currentEnvironmentId = { "env-test" },
             )
         assertNull(provider.canonicalFinalRegistrationDirectoryOrNull())
         assertNull(provider.canonicalFinalOwnerGatewayOrNull())

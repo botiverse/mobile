@@ -1,6 +1,10 @@
 package build.raft.app.data
 
+import build.raft.app.model.isExternalAgent
 import build.raft.app.model.MemberId
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
+import build.raft.app.data.runtimeform.v2.runtimeFormV2ServerError
+import build.raft.app.data.runtimeform.v2.withRuntimeFormV2
 import build.raft.app.model.RuntimeProviderConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.KSerializer
@@ -12,6 +16,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
 
 private val agentsApiJson = Json {
     ignoreUnknownKeys = true
@@ -45,6 +50,8 @@ internal interface SlockAgentsApi {
     suspend fun agentWorkspaceFiles(agentId: MemberId, dirPath: String? = null): HomeNetworkResponse
     suspend fun readAgentWorkspaceFile(agentId: MemberId, path: String): HomeNetworkResponse
     suspend fun agentSkills(agentId: MemberId): HomeNetworkResponse
+    /** `GET /agents/:id/external-status` — external agents only (400 otherwise), permission-gated (403). */
+    suspend fun agentExternalStatus(agentId: MemberId): HomeNetworkResponse
     // #89 React parity: agent permissions (scope grants) per React
     // `AgentScopesPanel.tsx`. Mirrors `GET / PUT /api/agents/:id/scopes`.
     // `updateAgentScopes` body is `{ scopes: AgentGrantableScope[] }`;
@@ -54,6 +61,9 @@ internal interface SlockAgentsApi {
     suspend fun updateAgentScopes(agentId: MemberId, body: String): HomeNetworkResponse
     suspend fun resetAgentScopes(agentId: MemberId): HomeNetworkResponse
     suspend fun issueBootstrapToken(agentId: MemberId, body: String): HomeNetworkResponse
+    /** Runtime form protocol v2 for editing: `GET /agents/:id/runtime-form`, the create form plus `values`. */
+    suspend fun agentRuntimeFormV2(agentId: MemberId): HomeNetworkResponse =
+        error("agentRuntimeFormV2 is not implemented")
 }
 
 internal class SlockAgentsNetworkApi(
@@ -151,10 +161,22 @@ internal class SlockAgentsNetworkApi(
             query = listOf("path" to path)
         )
 
+    override suspend fun agentRuntimeFormV2(agentId: MemberId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/runtime-form"
+        )
+
     override suspend fun agentSkills(agentId: MemberId): HomeNetworkResponse =
         networkClient.request(
             priority = DataRequestPriority.Visible,
             path = "agents/${agentId.value}/skills"
+        )
+
+    override suspend fun agentExternalStatus(agentId: MemberId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "agents/${agentId.value}/external-status"
         )
 
     // #89 React parity: agent scope grants endpoints.
@@ -316,6 +338,24 @@ internal class SlockAgentsApiClient(
             diagnosticsLogger = diagnosticsLogger
         ) { AgentSkillsSummary(globalCount = it.global.size, workspaceCount = it.workspace.size) }
 
+    /**
+     * React AgentDetailPanel parity (`fetchExternalAgentStatus`). Non-external
+     * agents answer 400 and callers without `editAgents`/creator authority
+     * answer 403; both surface as non-Content results, never as a status.
+     */
+    suspend fun agentExternalStatus(agentId: MemberId): DataResult<ExternalAgentStatusSnapshot> =
+        transport.agentExternalStatus(agentId).mapAgentsBody(
+            "agent_external_status_contract_mismatch",
+            ExternalAgentStatusWireDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
+        ) { wire ->
+            ExternalAgentStatusSnapshot(
+                setupState = ExternalAgentSetupState.fromWireValue(wire.setupState),
+                credentialLastUsedAt = wire.credentialLastUsedAt?.takeIf { it.isNotBlank() },
+                lastActivityAt = wire.lastActivityAt?.takeIf { it.isNotBlank() }
+            )
+        }
+
     suspend fun issueBootstrapToken(agentId: MemberId, body: String): DataResult<AgentBootstrapTokenSummary> =
         transport.issueBootstrapToken(agentId, body).mapAgentsBody(
             "agent_bootstrap_token_contract_mismatch",
@@ -363,7 +403,11 @@ internal data class AgentSummary(
     val createdAgents: List<AgentCreatedSummary>,
     val activity: String?,
     val activityDetail: String?,
-    val deletedAt: String?
+    val deletedAt: String?,
+    /** Web parity: `agent.external === true || runtime === "external"`. */
+    val isExternal: Boolean = false,
+    /** External agents only: `lastSeenAt` from `GET /agents*` (`agent:seen` updates it in the store). */
+    val lastSeenAt: String? = null
 )
 
 internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
@@ -375,6 +419,7 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         serverRole = serverRole,
         status = status,
         runtime = runtime,
+        isExternal = isExternal,
         model = model,
         runtimeModelKind = runtimeModelKind,
         runtimeProvider = runtimeProvider,
@@ -393,7 +438,8 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         createdAgents = createdAgents,
         activity = activity,
         activityDetail = activityDetail,
-        deletedAt = deletedAt
+        deletedAt = deletedAt,
+        lastSeenAt = lastSeenAt
     )
 internal data class AgentCommandResult(val ok: Boolean)
 internal data class AgentDmPage(val itemCount: Int)
@@ -472,7 +518,8 @@ private fun <T> HomeNetworkResponse.toAgentsDataError(): DataResult<T> {
                 ScreenError(
                     code = runtimeFormIssueCodeOrNull() ?: agentNameConflictCodeOrNull() ?: "http_$code",
                     retryable = code != 404,
-                    serverMessage = serverMessage
+                    serverMessage = serverMessage,
+                    formFieldKeys = runtimeFormV2ServerError(bodyText ?: errorBodyText)?.fieldKeys.orEmpty()
                 )
             )
     }
@@ -560,6 +607,7 @@ private data class AgentWireDto(
     val status: String? = null,
     val model: String? = null,
     val runtime: String? = null,
+    val external: Boolean? = null,
     val runtimeConfig: AgentRuntimeConfigWireDto? = null,
     val reasoningEffort: String? = null,
     val executionMode: String? = null,
@@ -575,6 +623,11 @@ private data class AgentWireDto(
     val activity: String? = null,
     val activityDetail: String? = null,
     val deletedAt: String? = null,
+    /**
+     * External agents only: ISO-8601 `lastSeenAt` from `GET /agents*` — last
+     * credential use; presence derives from it (`agent:seen` supersedes).
+     */
+    val lastSeenAt: String? = null,
     val runtimeProfile: AgentRuntimeProfileDto? = null,
 )
 
@@ -602,6 +655,11 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         runtimeModelKind = runtimeConfig?.model?.normalizedKindOrNull(),
         runtimeProvider = runtimeConfig?.provider?.toReadProjection(runtimeConfig.runtime),
         runtime = runtimeConfig?.runtime?.takeIf { it.isNotBlank() } ?: runtime ?: currentProfile?.runtime,
+        isExternal =
+            isExternalAgent(
+                external = external,
+                runtime = runtimeConfig?.runtime?.takeIf { it.isNotBlank() } ?: runtime ?: currentProfile?.runtime
+            ),
         reasoning = reasoningEffort ?: currentProfile?.reasoningEffort,
         executionMode = executionMode ?: currentProfile?.executionMode,
         machineId = machineId ?: currentProfile?.machineId,
@@ -617,9 +675,17 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         createdAgents = createdAgents.mapNotNull { it.toDomain() },
         activity = activity,
         activityDetail = activityDetail,
-        deletedAt = deletedAt
+        deletedAt = deletedAt,
+        lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() }
     )
 }
+
+@Serializable
+private data class ExternalAgentStatusWireDto(
+    val setupState: String? = null,
+    val credentialLastUsedAt: String? = null,
+    val lastActivityAt: String? = null
+)
 
 @Serializable
 private data class AgentRuntimeConfigWireDto(
@@ -719,6 +785,7 @@ private data class AgentCreatedWireDto(
     val displayName: String? = null,
     val avatarUrl: String? = null,
     val runtime: String? = null,
+    val external: Boolean? = null,
     val status: String? = null
 ) {
     fun toDomain(): AgentCreatedSummary? {
@@ -730,7 +797,8 @@ private data class AgentCreatedWireDto(
             displayName = displayName,
             avatarUrl = avatarUrl,
             runtime = runtime,
-            status = status
+            status = status,
+            isExternal = isExternalAgent(external, runtime)
         )
     }
 }
@@ -889,6 +957,13 @@ private val agentsApiCreateBodyJson = Json {
 }
 
 internal fun buildCreateAgentBody(body: CreateAgentBody): String = agentsApiCreateBodyJson.encodeToString(body)
+
+/** Runtime form v2 create: the create body plus `formDefinitionRef {protocolVersion:2}` and `formValues`. */
+internal fun buildCreateAgentV2Body(body: CreateAgentBody, submit: RuntimeFormV2SubmitBody): String =
+    agentsApiCreateBodyJson.encodeToJsonElement(CreateAgentBody.serializer(), body.copy(runtimeConfig = null, formDefinitionRef = null))
+        .jsonObject
+        .withRuntimeFormV2(submit)
+        .toString()
 internal fun buildUpdateAgentBody(body: UpdateAgentBody): String = agentsApiJson.encodeToString(body)
 internal fun buildResetAgentBody(mode: String): String = agentsApiJson.encodeToString(ResetAgentBody(mode))
 internal fun buildAssignAgentMachineBody(machineId: String?): String =

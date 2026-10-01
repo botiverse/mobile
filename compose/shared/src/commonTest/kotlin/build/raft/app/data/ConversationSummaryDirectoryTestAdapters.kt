@@ -60,7 +60,8 @@ internal fun ConversationSummary.toSharedConversationDirectoryProjection(
         parentMessageId = if (kind == ConversationKind.Thread) thread?.parentMessageId?.value else null,
         joined = joined && permissions.canRead,
         archived = archived,
-        permissions = permissions
+        permissions = permissions,
+        bridgeProvider = if (kind == ConversationKind.Thread) null else bridgeProvider
     )
 }
 

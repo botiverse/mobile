@@ -17,15 +17,8 @@ DEFAULT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CASE_DIR = DEFAULT_ROOT / "docs" / "qa-acceptance" / "cases"
 MANIFEST_NAME = "release-1.7.0-android.json"
 
-# "Raft Android" is the production Raft SERVER (artin, 2026-08-30: QA runs may
-# only use test/qa servers) — the name collides with the Android app's own
-# title, which is why this ban applies to case sources, not to prose docs.
-# Case text never needs to mention production: the runtime prohibition is
-# injected by scripts/qa/server_guard.mjs at the agent-preamble choke point,
-# so ANY occurrence here is either a leftover instruction from the July
-# incident era or a future edit that should be a conscious decision, not a
-# silent one (task #171).
-PRODUCTION_SERVER_NAME = "Raft Android"
+# (2026-08-31, artin: the production-server special case was removed from this
+# contract — the name is no longer referenced here at all.)
 # The login case is the entry gate every automated run passes through; its
 # server-picker branch must keep naming the QA server explicitly so a picker
 # never leaves the choice to the model.
@@ -179,16 +172,12 @@ def load_contract(case_dir: Path = DEFAULT_CASE_DIR) -> ReleaseAcceptanceContrac
             raise ContractError(f"{path.name}: missing non-empty top-level id")
         if case_id in sources:
             raise ContractError(f"duplicate case id {case_id}: {sources[case_id][0].name}, {path.name}")
-        # Polarity pair, absence half: no case source may reference the
-        # production server at all — raw text, so goals, hints, notes, and
-        # any future field are all covered.
+        # ⚠️ 2026-08-31, artin: the "no case source may name the production
+        # server" check was REMOVED here. His line: don't special-case that
+        # name ("按我的口径哦，不用特别判断不能出现 Raft Android"). The
+        # positive half below still stands — a case that drives server
+        # selection must name an allowed QA server.
         raw_text = path.read_text(encoding="utf-8")
-        if PRODUCTION_SERVER_NAME.lower() in raw_text.lower():
-            raise ContractError(
-                f"{path.name}: references the production server "
-                f"{PRODUCTION_SERVER_NAME!r}; QA case sources may only name "
-                f"test/qa servers (the runtime ban lives in server_guard.mjs)",
-            )
         selection_goal = next((g for g in _iter_goals(source) if SELECTION_GOAL_RE.search(g)), None)
         if selection_goal is not None and not any(n in raw_text for n in ALLOWED_QA_SERVER_NAMES):
             raise ContractError(

@@ -6,6 +6,7 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
+import build.raft.app.model.resolveAvatarSlot
 import build.raft.app.network.sync.ReplyPreview
 
 /**
@@ -22,7 +23,13 @@ internal fun KuiklyThreadMessageItem.toThreadAuthorProfileCandidate(
         ?.takeIf { it == MemberKind.Human || it == MemberKind.Agent }
         ?: return null
     val displayName = authorName.trim().takeIf { it.isNotBlank() } ?: memberId
-    val avatarCandidate = resolvedThreadAvatarWireValue()
+    // Only concrete identity facts belong in the member SSOT: the resolved
+    // display value (explicit avatar, or a real gravatar hash projection). The
+    // pixel fallback is a render-time default, not member data — seeding it
+    // would let `avatar ?: seed.avatar` fill a cached profile's empty avatar
+    // slot with `pixel:robot` and then outrank its real `avatarUrl` (Agent
+    // `explicitAvatarWireValue` prefers `avatar.wireValue` over `avatarUrl`).
+    val avatarCandidate = threadAuthorSeedAvatarWireValue()
     return MemberProfile(
         id = MemberId(memberId),
         displayName = displayName,
@@ -98,6 +105,23 @@ private fun ReplyPreview.toThreadAuthorProfileCandidate(serverId: ServerId): Mem
         avatarLabel = projectedDisplayName.take(1).uppercase(),
         avatarWireValue = senderAvatarUrl
     ).toThreadAuthorProfileCandidate(serverId)
+}
+
+/**
+ * The seed lane mirrors a message author's *displayed* avatar only when it is
+ * a real identity fact. `resolvedThreadAvatarWireValue` adds render fallbacks
+ * (`pixel:robot` for avatar-less agents); those must never reach the member
+ * profile SSOT.
+ */
+internal fun KuiklyThreadMessageItem.threadAuthorSeedAvatarWireValue(): String? {
+    if (threadAuthorBadgeLabel() != null) return null
+    val authorMemberKind = authorKind.projectedMemberKindOrNull() ?: return null
+    val resolution = resolveAvatarSlot(
+        kind = authorMemberKind,
+        id = authorId.ifBlank { authorName },
+        avatarWireValue = avatarWireValue
+    )
+    return resolution.displayAvatarWireValue
 }
 
 internal fun KuiklyThreadScreenPayload.threadAuthorProfileCandidates(): List<KuiklyThreadMessageItem> =

@@ -64,6 +64,7 @@ object VisualFixtureData {
             const val AVATAR_LABEL: String = "CI"
             const val DESCRIPTION: String = "Keeps visual testing release notes aligned."
             const val STATUS: String = "active"
+            const val SERVER_ROLE: String = "member"
             const val ACTIVITY: String = "working"
             const val ACTIVITY_DETAIL: String = "Capturing visual testing baselines"
             const val MODEL: String = "gpt-5-codex"
@@ -77,10 +78,11 @@ object VisualFixtureData {
             const val ID: String = "agent-product-ux"
             const val NAME: String = "Product-UX-Designer"
             const val DISPLAY_NAME: String = "Product UX Designer"
-            const val AVATAR: String = "pixel:paint"
+            const val AVATAR: String = "pixel:robot"
             const val AVATAR_LABEL: String = "PU"
             const val DESCRIPTION: String = "Turns product feedback, screenshots, and release notes into actionable UX specs."
             const val STATUS: String = "active"
+            const val SERVER_ROLE: String = "member"
             const val ACTIVITY: String = "working"
             const val ACTIVITY_DETAIL: String = "Capturing deterministic Activity tab state"
             const val MODEL: String = "gpt-5-codex"
@@ -107,6 +109,7 @@ object VisualFixtureData {
             const val AVATAR_LABEL: String = "AD"
             const val DESCRIPTION: String = "Implements shared Android/KMP UI fixes."
             const val STATUS: String = "active"
+            const val SERVER_ROLE: String = "member"
             const val ACTIVITY: String = "working"
             const val ACTIVITY_DETAIL: String = "Running Android visual captures"
             const val MODEL: String = "gpt-5-codex"
@@ -124,6 +127,7 @@ object VisualFixtureData {
             const val AVATAR_LABEL: String = "B"
             const val DESCRIPTION: String = "File and repo automation"
             const val STATUS: String = "active"
+            const val SERVER_ROLE: String = "member"
             const val ACTIVITY: String = "working"
             const val ACTIVITY_DETAIL: String = "Automating file workflows"
             const val MODEL: String = "gpt-5-codex"
@@ -141,6 +145,7 @@ object VisualFixtureData {
             const val AVATAR_LABEL: String = "KM"
             const val DESCRIPTION: String = "Shared KMP architecture and runtime adaptation."
             const val STATUS: String = "active"
+            const val SERVER_ROLE: String = "member"
             const val ACTIVITY: String = "online"
             const val ACTIVITY_DETAIL: String = "Reviewing shared state"
             const val MODEL: String = "gpt-5-codex"
@@ -158,6 +163,7 @@ object VisualFixtureData {
             const val AVATAR_LABEL: String = "CW"
             const val DESCRIPTION: String = "Visual testing analysis and fixes."
             const val STATUS: String = "active"
+            const val SERVER_ROLE: String = "member"
             const val ACTIVITY: String = "working"
             const val ACTIVITY_DETAIL: String = "Analyzing visual parity"
             const val MODEL: String = "claude-sonnet-5"
@@ -166,6 +172,131 @@ object VisualFixtureData {
             const val EXECUTION_MODE: String = "byoc"
             const val SESSION_ID: String = "session-cc-wow"
             const val MACHINE_KEY: String = "primary"
+        }
+        object ComputerOffline {
+            const val ID: String = "agent-computer-offline"
+            const val NAME: String = "Computer-Offline-Probe"
+            const val DISPLAY_NAME: String = "Computer Offline Probe"
+            const val AVATAR: String = "pixel:robot"
+            const val AVATAR_LABEL: String = "CO"
+            const val DESCRIPTION: String = "Bound to a computer the store knows and reports offline: web shows a gray dot and Offline."
+            const val STATUS: String = "active"
+            const val SERVER_ROLE: String = "member"
+            const val ACTIVITY: String = "working"
+            const val ACTIVITY_DETAIL: String = "Holding a fixed Computer-row state for the visual oracle"
+            const val MODEL: String = "gpt-5-codex"
+            const val RUNTIME: String = "codex"
+            const val REASONING_EFFORT: String = "medium"
+            const val EXECUTION_MODE: String = "byoc"
+            const val SESSION_ID: String = "session-computer-offline"
+            const val MACHINE_KEY: String = "studio"
+            val ENV_VAR_NAMES: List<String> = listOf("RAFT_PROFILE", "SLOCK_VISUAL_PROVIDER")
+            const val CREATED_AT_ISO: String = "2026-06-01T09:15:00.000Z"
+            val CREATED_AGENTS: List<String> = listOf()
+        }
+        object ComputerMissing {
+            const val ID: String = "agent-computer-missing"
+            const val NAME: String = "Computer-Missing-Probe"
+            const val DISPLAY_NAME: String = "Computer Missing Probe"
+            const val AVATAR: String = "pixel:robot"
+            const val AVATAR_LABEL: String = "CM"
+            const val DESCRIPTION: String = "machineId points at a computer the store has never seen: web shows No computer assigned, no dot."
+            const val STATUS: String = "active"
+            const val SERVER_ROLE: String = "member"
+            const val ACTIVITY: String = "working"
+            const val ACTIVITY_DETAIL: String = "Holding a fixed Computer-row state for the visual oracle"
+            const val MODEL: String = "gpt-5-codex"
+            const val RUNTIME: String = "codex"
+            const val REASONING_EFFORT: String = "medium"
+            const val EXECUTION_MODE: String = "byoc"
+            const val SESSION_ID: String = "session-computer-missing"
+            const val MACHINE_KEY: String = "missing"
+            val ENV_VAR_NAMES: List<String> = listOf("RAFT_PROFILE", "SLOCK_VISUAL_PROVIDER")
+            const val CREATED_AT_ISO: String = "2026-06-01T09:15:00.000Z"
+            val CREATED_AGENTS: List<String> = listOf()
+        }
+        object NoComputer {
+            const val ID: String = "agent-no-computer"
+            const val NAME: String = "No-Computer-Probe"
+            const val DISPLAY_NAME: String = "No Computer Probe"
+            const val AVATAR: String = "pixel:robot"
+            const val AVATAR_LABEL: String = "NC"
+            const val DESCRIPTION: String = "No machineId at all: web shows No computer assigned, no dot."
+            const val STATUS: String = "active"
+            const val SERVER_ROLE: String = "member"
+            const val ACTIVITY: String = "working"
+            const val ACTIVITY_DETAIL: String = "Holding a fixed Computer-row state for the visual oracle"
+            const val MODEL: String = "gpt-5-codex"
+            const val RUNTIME: String = "codex"
+            const val REASONING_EFFORT: String = "medium"
+            const val EXECUTION_MODE: String = "byoc"
+            const val SESSION_ID: String = "session-no-computer"
+            val MACHINE_KEY: String? = null
+            val ENV_VAR_NAMES: List<String> = listOf("RAFT_PROFILE", "SLOCK_VISUAL_PROVIDER")
+            const val CREATED_AT_ISO: String = "2026-06-01T09:15:00.000Z"
+            val CREATED_AGENTS: List<String> = listOf()
+        }
+        object LongMachine {
+            const val ID: String = "agent-long-machine"
+            const val NAME: String = "Long-Machine-Name-Probe"
+            const val DISPLAY_NAME: String = "Long Machine Name Probe"
+            const val AVATAR: String = "pixel:robot"
+            const val AVATAR_LABEL: String = "LM"
+            const val DESCRIPTION: String = "Bound to a computer whose name cannot fit one 390dp line, so wrap vs truncate is observable."
+            const val STATUS: String = "active"
+            const val SERVER_ROLE: String = "admin"
+            const val ACTIVITY: String = "working"
+            const val ACTIVITY_DETAIL: String = "Holding a fixed Computer-row state for the visual oracle"
+            const val MODEL: String = "gpt-5-codex"
+            const val RUNTIME: String = "codex"
+            const val REASONING_EFFORT: String = "medium"
+            const val EXECUTION_MODE: String = "byoc"
+            const val SESSION_ID: String = "session-long-machine"
+            const val MACHINE_KEY: String = "longName"
+            val ENV_VAR_NAMES: List<String> = listOf("RAFT_PROFILE", "SLOCK_VISUAL_PROVIDER")
+            const val CREATED_AT_ISO: String = "2026-06-01T09:15:00.000Z"
+            val CREATED_AGENTS: List<String> = listOf()
+        }
+        object DaemonOnly {
+            const val ID: String = "agent-daemon-only"
+            const val NAME: String = "Daemon-Only-Probe"
+            const val DISPLAY_NAME: String = "Daemon Only Probe"
+            const val AVATAR: String = "pixel:robot"
+            const val AVATAR_LABEL: String = "DO"
+            const val DESCRIPTION: String = "Bound to a bare daemon (not a managed Computer): web shows Connected · daemon vX, never a computer version."
+            const val STATUS: String = "active"
+            const val SERVER_ROLE: String = "member"
+            const val ACTIVITY: String = "working"
+            const val ACTIVITY_DETAIL: String = "Holding a fixed Computer-row state for the visual oracle"
+            const val MODEL: String = "gpt-5-codex"
+            const val RUNTIME: String = "codex"
+            const val REASONING_EFFORT: String = "medium"
+            const val EXECUTION_MODE: String = "byoc"
+            const val SESSION_ID: String = "session-daemon-only"
+            const val MACHINE_KEY: String = "daemonOnly"
+            val ENV_VAR_NAMES: List<String> = listOf("RAFT_PROFILE", "SLOCK_VISUAL_PROVIDER")
+            const val CREATED_AT_ISO: String = "2026-06-01T09:15:00.000Z"
+            val CREATED_AGENTS: List<String> = listOf()
+        }
+        object NoMembership {
+            const val ID: String = "agent-no-membership"
+            const val NAME: String = "No-Membership-Probe"
+            const val DISPLAY_NAME: String = "No Membership Probe"
+            const val AVATAR: String = "pixel:robot"
+            const val AVATAR_LABEL: String = "NM"
+            const val DESCRIPTION: String = "Has no server membership row, so the wire omits serverRole (artin 2026-09-03 16:54: hide the role chip)."
+            const val STATUS: String = "active"
+            const val ACTIVITY: String = "working"
+            const val ACTIVITY_DETAIL: String = "Holding a fixed Computer-row state for the visual oracle"
+            const val MODEL: String = "gpt-5-codex"
+            const val RUNTIME: String = "codex"
+            const val REASONING_EFFORT: String = "medium"
+            const val EXECUTION_MODE: String = "byoc"
+            const val SESSION_ID: String = "session-no-membership"
+            const val MACHINE_KEY: String = "primary"
+            val ENV_VAR_NAMES: List<String> = listOf("RAFT_PROFILE", "SLOCK_VISUAL_PROVIDER")
+            const val CREATED_AT_ISO: String = "2026-06-01T09:15:00.000Z"
+            val CREATED_AGENTS: List<String> = listOf()
         }
     }
 
@@ -198,6 +329,36 @@ object VisualFixtureData {
             const val COMPUTER_VERSION: String = "0.0.50"
             const val IS_COMPUTER: Boolean = true
             val LAST_HEARTBEAT_ISO: String? = null
+            const val CREATED_AT_ISO: String = "2026-06-18T00:00:00.000Z"
+        }
+        object LongName {
+            const val ID: String = "computer-long-name"
+            const val NAME: String = "ci-visual-capture-runner-us-west-2b_node17_macbookpro_m4max_buildhost_2026"
+            const val HOSTNAME: String = "ci-visual-capture-runner-us-west-2b.internal"
+            const val OS: String = "darwin"
+            const val STATUS: String = "online"
+            const val STATUS_VERSION: Int = 1
+            const val API_KEY_PREFIX: String = "slk_lng"
+            val RUNTIMES: List<String> = listOf("codex")
+            const val DAEMON_VERSION: String = "0.65.0"
+            const val COMPUTER_VERSION: String = "0.0.48"
+            const val IS_COMPUTER: Boolean = true
+            const val LAST_HEARTBEAT_ISO: String = "2026-06-19T12:28:00.000Z"
+            const val CREATED_AT_ISO: String = "2026-06-18T00:00:00.000Z"
+        }
+        object DaemonOnly {
+            const val ID: String = "computer-daemon-only"
+            const val NAME: String = "build-box-bare-daemon"
+            const val HOSTNAME: String = "build-box.local"
+            const val OS: String = "linux"
+            const val STATUS: String = "online"
+            const val STATUS_VERSION: Int = 1
+            const val API_KEY_PREFIX: String = "slk_dmn"
+            val RUNTIMES: List<String> = listOf("codex")
+            const val DAEMON_VERSION: String = "0.65.0"
+            val COMPUTER_VERSION: String? = null
+            const val IS_COMPUTER: Boolean = false
+            const val LAST_HEARTBEAT_ISO: String = "2026-06-19T12:28:00.000Z"
             const val CREATED_AT_ISO: String = "2026-06-18T00:00:00.000Z"
         }
     }

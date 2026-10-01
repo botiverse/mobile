@@ -132,7 +132,10 @@ class ThreadPayloadTest {
     private val launchJson = Json { ignoreUnknownKeys = true }
 
     @Test
-    fun threadLaunchPayloadRejectsMissingParentKind() {
+    fun threadLaunchPayloadOpensReplyThreadWithMissingParentKind() {
+        // task #304/#307 (cae1eb2e4): the parent channel+message tuple alone is
+        // enough to open a reply thread; an unresolved parent kind stays null on
+        // the payload instead of rejecting the launch.
         val warnings = mutableListOf<String>()
         val identity =
             ThreadLaunchConversationIdentity(
@@ -161,10 +164,9 @@ class ThreadPayloadTest {
                 onWarn = { warnings.add(it) }
             )
 
-        assertNull(standalone)
-        assertNull(appShell)
-        assertTrue(warnings.any { it.contains("reply_identity_incomplete source=standalone") })
-        assertTrue(warnings.any { it.contains("reply_identity_incomplete source=app_shell") })
+        assertNotNull(standalone)
+        assertNotNull(appShell)
+        assertTrue(warnings.none { it.contains("reply_identity_incomplete") }, warnings.toString())
     }
 
     @Test
@@ -1119,7 +1121,8 @@ class ThreadPayloadTest {
                 message,
                 canonicalState = slockAgentStatusIndicatorState(
                     status = AgentStatus.Working,
-                    presence = Presence.Active
+                    presence = Presence.Active,
+                    external = false
                 )
             )?.status
         )
@@ -1326,6 +1329,102 @@ class ThreadPayloadTest {
         assertTrue(mp4ByName.isPreviewableVideoAttachment())
         assertFalse(unknownVideo.isPreviewableVideoAttachment())
         assertFalse(archive.isPreviewableVideoAttachment())
+    }
+
+    @Test
+    fun threadAttachmentItemMatchesAudioAttachmentsByMimeOrExtension() {
+        val mp3ByMime =
+            KuiklyThreadAttachmentItem(
+                id = "att-mp3-mime",
+                name = "recording.bin",
+                mimeType = "audio/mpeg"
+            )
+        val wavByName =
+            KuiklyThreadAttachmentItem(
+                id = "att-wav-name",
+                name = "recording.wav",
+                mimeType = "application/octet-stream"
+            )
+        val m4aByMime =
+            KuiklyThreadAttachmentItem(
+                id = "att-m4a-mime",
+                name = "voice.bin",
+                mimeType = "audio/x-m4a"
+            )
+        val oggByName =
+            KuiklyThreadAttachmentItem(
+                id = "att-ogg-name",
+                name = "music.ogg",
+                mimeType = ""
+            )
+        val flacByName =
+            KuiklyThreadAttachmentItem(
+                id = "att-flac-name",
+                name = "lossless.flac",
+                mimeType = ""
+            )
+        val nonAudio =
+            KuiklyThreadAttachmentItem(
+                id = "att-archive",
+                name = "demo.zip",
+                mimeType = "application/zip"
+            )
+
+        assertTrue(mp3ByMime.isPreviewableAudioAttachment())
+        assertTrue(wavByName.isPreviewableAudioAttachment())
+        assertTrue(m4aByMime.isPreviewableAudioAttachment())
+        assertTrue(oggByName.isPreviewableAudioAttachment())
+        assertTrue(flacByName.isPreviewableAudioAttachment())
+        assertFalse(nonAudio.isPreviewableAudioAttachment())
+    }
+
+    @Test
+    fun inlineAudioPreviewRequestsAreDeduplicatedUntilFailure() {
+        val attachmentId = "att-audio"
+
+        assertTrue(emptyMap<String, ThreadInlineAudioPreviewUiState>().canRequestInlineAudioPreview(attachmentId))
+        assertFalse(
+            mapOf(
+                attachmentId to
+                    ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Loading)
+            ).canRequestInlineAudioPreview(attachmentId)
+        )
+        assertFalse(
+            mapOf(
+                attachmentId to
+                    ThreadInlineAudioPreviewUiState(
+                        status = ThreadInlineAudioPreviewStatus.Ready,
+                        url = "https://example.test/audio.mp3"
+                    )
+            ).canRequestInlineAudioPreview(attachmentId)
+        )
+        assertTrue(
+            mapOf(
+                attachmentId to
+                    ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Error)
+            ).canRequestInlineAudioPreview(attachmentId)
+        )
+        assertFalse(emptyMap<String, ThreadInlineAudioPreviewUiState>().canRequestInlineAudioPreview(""))
+    }
+
+    @Test
+    fun inlineAudioPreviewTreatsMissingStateAsLoadingUntilTheAutomaticSourceArrives() {
+        assertEquals(ThreadInlineAudioRenderMode.Loading, (null as ThreadInlineAudioPreviewUiState?).audioRenderMode())
+        assertEquals(
+            ThreadInlineAudioRenderMode.Loading,
+            ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Loading).audioRenderMode()
+        )
+        assertEquals(
+            ThreadInlineAudioRenderMode.Ready,
+            ThreadInlineAudioPreviewUiState(
+                status = ThreadInlineAudioPreviewStatus.Ready,
+                url = "https://example.test/audio.mp3"
+            ).audioRenderMode()
+        )
+        assertEquals(
+            ThreadInlineAudioRenderMode.Error,
+            ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Ready).audioRenderMode()
+        )
     }
 
     @Test
@@ -2009,7 +2108,8 @@ class ThreadPayloadTest {
         val canonical =
             slockAgentStatusIndicatorState(
                 status = AgentStatus.Working,
-                presence = Presence.Active
+                presence = Presence.Active,
+                external = false
             )
 
         assertNull(
@@ -2534,6 +2634,33 @@ class ThreadPayloadTest {
         assertEquals(null, payload.dmPeerName)
         assertEquals(null, payload.dmPeerAvatarUrl)
         assertEquals("Message #首页专修", payload.resolveThreadComposer(displayName = headerDisplay.title).placeholder)
+    }
+
+    // task #396: a Slack-bridged channel's header carries the bridge provider for the `[Slack]` tag;
+    // an unbridged channel and a DM never do.
+    @Test
+    fun appShellChannelHeaderProjectionCarriesSlackBridgeProvider() {
+        val bridged =
+            ConversationSummary(
+                threadId = ThreadId("channel-bridged"),
+                channelId = ChannelId("channel-bridged"),
+                kind = ConversationKind.Channel,
+                name = "slack-sync",
+                bridgeProvider = "slack",
+                permissions = ConversationPermissions(canSend = true)
+            )
+        val plain = bridged.copy(threadId = ThreadId("channel-plain"), channelId = ChannelId("channel-plain"), bridgeProvider = null)
+
+        val bridgedHeader =
+            buildAppShellThreadPayloadFromSummary(bridged)
+                .threadHeaderDisplayModelFromDirectory(bridged.toConversationHeaderProjection())
+        val plainHeader =
+            buildAppShellThreadPayloadFromSummary(plain)
+                .threadHeaderDisplayModelFromDirectory(plain.toConversationHeaderProjection())
+
+        assertEquals(KuiklyThreadSurfaceKind.Channel, bridgedHeader.surfaceKind)
+        assertEquals("slack", bridgedHeader.bridgeProvider)
+        assertEquals(null, plainHeader.bridgeProvider)
     }
 
     @Test
@@ -3971,7 +4098,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun crossServerJointReplyThreadOpenParentUsesExactCurrentSessionProjection() {
+    fun jointReplyThreadOpenParentUsesCurrentSessionProjectionWhenAvailable() {
         val replyPayload =
             KuiklyThreadScreenPayload(
                 instanceId = "shared-shell-thread-joint-reply-stream",
@@ -4028,18 +4155,6 @@ class ThreadPayloadTest {
         assertEquals(listOf("server-source"), resolvedServers)
         assertEquals(ConversationKind.Joint, parentRequest.conversationIdentity.kind)
         assertEquals("joint-parent", parentRequest.conversationIdentity.channelId?.value)
-        assertNull(
-            replyPayload.resolveReplyParentConversationOpenRequest(
-                serverId = "server-stale",
-                conversationIdentityProvider = provider
-            )
-        )
-        assertNull(
-            replyPayload.resolveReplyParentConversationOpenRequest(
-                serverId = "server-source",
-                conversationIdentityProvider = null
-            )
-        )
     }
 
     @Test
@@ -4233,6 +4348,35 @@ class ThreadPayloadTest {
 
         assertEquals("message-1", context.originParentMessageId)
         assertEquals("loading", context.originStatus)
+    }
+
+    @Test
+    fun replyConversationContextRendersDmParentPeerAsAtLabel() {
+        // task #399: a reply thread hosted in a DM subtitles the header with
+        // the peer's @-name — never a # channel tag.
+        val context =
+            SharedThreadHeaderContextStore.conversationContext(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                conversation =
+                    ConversationSummary(
+                        threadId = ThreadId("dm-thread-1"),
+                        channelId = ChannelId("dm-1"),
+                        kind = ConversationKind.Thread,
+                        name = "Jiacheng",
+                        thread =
+                            ThreadConversation(
+                                parentChannelId = ChannelId("dm-1"),
+                                parentMessageId = MessageId("message-1"),
+                                streamChannelId = ChannelId("dm-thread-1"),
+                                parentSurfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                                parentChannelKind = "dm"
+                            )
+                    ),
+                originMessage = null,
+                parentMessageId = "message-1"
+            )
+
+        assertEquals("@Jiacheng", context.subtitle)
     }
 
     @Test

@@ -204,6 +204,80 @@ class ThreadPendingSendStoreIntegrationTest {
     }
 
     @Test
+    fun tokenRotationKeepsSuccessTerminalAndRehomesDefiniteFailure() = runTest {
+        withDatabase { path ->
+            val api = FakeThreadApi()
+            val initial = identity().copy(bindingGeneration = 3L)
+            var currentIdentity = initial
+            val opened =
+                openWithIdentityProvider(
+                    path = path,
+                    api = api,
+                    identityProvider = { currentIdentity },
+                )
+            opened.store.accept(SharedThreadIntent.Start(basePayload()))
+            val oldProvenance = requireNotNull(opened.dataSource.currentReplyCacheProvenance())
+            val route = opened.store.state.value.payload.resolveThreadRouteIdentity()
+
+            val success = pendingMessage("local-send-rotated-success", "random-rotated-success")
+            assertTrue(opened.store.admitLocalSend(success, oldProvenance, route))
+            currentIdentity = initial.copy(authGeneration = initial.authGeneration + 1L)
+            val successorProvenance =
+                requireNotNull(opened.dataSource.captureReplyCacheProducerContext()).provenance
+            assertTrue(
+                opened.dataSource.isCurrentReplyCacheProvenanceForLocalSend(oldProvenance)
+            )
+            assertFalse(opened.dataSource.isCurrentReplyCacheProvenance(oldProvenance))
+            assertTrue(
+                opened.journal.clearForAuthRevision(
+                    environmentId = oldProvenance.environmentId,
+                    principalId = oldProvenance.principalId,
+                    authGeneration = oldProvenance.authGeneration,
+                )
+            )
+            opened.store.accept(
+                SharedThreadIntent.ReplaceLocalSendWithSentPage(
+                    messageId = success.id,
+                    page = sentPage(success.pendingSendContext!!.randomId!!),
+                    expectedProvenance = oldProvenance,
+                    expectedRoute = route,
+                )
+            )
+            assertTrue(opened.store.state.value.payload.messages.any { it.id == "server-random-rotated-success" })
+            assertTrue(opened.store.state.value.payload.messages.none { it.id == success.id })
+            assertTrue(opened.journal.restore(successorProvenance, route).isEmpty())
+
+            val failure = pendingMessage("local-send-rotated-failure", "random-rotated-failure")
+            assertTrue(opened.store.admitLocalSend(failure, successorProvenance, route))
+            currentIdentity = initial.copy(authGeneration = initial.authGeneration + 2L)
+            val terminalProvenance =
+                requireNotNull(opened.dataSource.captureReplyCacheProducerContext()).provenance
+            assertTrue(
+                opened.journal.clearForAuthRevision(
+                    environmentId = successorProvenance.environmentId,
+                    principalId = successorProvenance.principalId,
+                    authGeneration = successorProvenance.authGeneration,
+                )
+            )
+            opened.store.accept(
+                SharedThreadIntent.ApplyLocalSendFailure(
+                    messageId = failure.id,
+                    errorCode = "http_400",
+                    errorMessage = "bad request",
+                    expectedProvenance = successorProvenance,
+                    expectedRoute = route,
+                )
+            )
+            val failed = opened.journal.restore(terminalProvenance, route).single { it.id == failure.id }
+            assertEquals(ThreadMessageDeliveryFailed, failed.deliveryState)
+            assertEquals("http_400", failed.pendingSendErrorCode)
+
+            opened.scope.cancel()
+            opened.driver.close()
+        }
+    }
+
+    @Test
     fun emptyJournalIsSafeAndRowsRestoreInCreatedOrder() = runTest {
         withDatabase { path ->
             val api = FakeThreadApi()
@@ -239,6 +313,19 @@ class ThreadPendingSendStoreIntegrationTest {
         api: FakeThreadApi,
         identity: ThreadReplyCacheIdentitySnapshot,
         failureInjector: ThreadPendingSendJournalFailureInjector? = null,
+    ): Opened =
+        openWithIdentityProvider(
+            path = path,
+            api = api,
+            identityProvider = { identity },
+            failureInjector = failureInjector,
+        )
+
+    private fun openWithIdentityProvider(
+        path: java.nio.file.Path,
+        api: FakeThreadApi,
+        identityProvider: () -> ThreadReplyCacheIdentitySnapshot,
+        failureInjector: ThreadPendingSendJournalFailureInjector? = null,
     ): Opened {
         val driver = JdbcSqliteDriver(url(path))
         val journal =
@@ -247,13 +334,14 @@ class ThreadPendingSendStoreIntegrationTest {
                 nowMillis = { 100L },
                 failureInjector = failureInjector,
             )
-        val sessionStore = InMemorySlockAuthSessionStore(identity.session)
+        val sessionStore = InMemorySlockAuthSessionStore(identityProvider().session)
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = sessionStore,
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 pendingSendJournal = journal,
-                replyCacheIdentityAuthority = { identity },
+                replyCacheIdentityAuthority = identityProvider,
             )
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         return Opened(

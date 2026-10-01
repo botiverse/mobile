@@ -439,10 +439,77 @@ class ForwardMessageTargetRepositoryTest {
                 )
             )
 
-        assertIs<DataResult.Content<Unit>>(result)
+        assertIs<DataResult.Content<ForwardMessageSendResult>>(result)
         val forwardCall = network.calls.single { it.path == "messages/forward" }
         assertEquals(ServerId("server-source"), forwardCall.serverId)
         assertTrue(forwardCall.body.orEmpty().contains("joint-source-projection"))
+    }
+
+    @Test
+    fun singleForwardParsesReturnedCanonicalMessage() = runBlocking {
+        val network = RecordingForwardNetworkClient()
+        network.forwardResponseBody = canonicalMessageBody(channelId = "channel-selected", content = "forward note")
+        val repository = realRepository(network)
+
+        val result = repository.forwardMessages(
+            ForwardMessageExecuteRequest(
+                sourceServerId = serverId,
+                sourceChannelId = ChannelId("source"),
+                destination = ForwardMessageDestination(
+                    serverId = serverId,
+                    channelId = ChannelId("channel-selected"),
+                    channelKind = ConversationKind.Channel
+                ),
+                messageIds = listOf("11111111-1111-4111-8111-111111111111"),
+                mode = ForwardMessageSendMode.Merged,
+                note = "forward note"
+            )
+        )
+
+        val message = assertIs<DataResult.Content<ForwardMessageSendResult>>(result).data.message
+        assertEquals(ChannelId("channel-selected"), message?.channelId)
+        assertEquals("forward note", message?.body)
+    }
+
+    @Test
+    fun batchForwardSendsDedupedDestinationsAndParsesPerDestinationResults() = runBlocking {
+        val network = RecordingForwardNetworkClient()
+        network.forwardResponseBody = """
+            {
+              "results": [
+                {"destinationChannelId":"channel-a","status":"success","message":${canonicalMessageBody(channelId = "channel-a", content = "batch note")}},
+                {"destinationChannelId":"channel-b","status":"failed","code":"destination_unavailable"}
+              ]
+            }
+        """.trimIndent()
+        val repository = realRepository(network)
+        val destinations = listOf(
+            ForwardMessageDestination(serverId, ChannelId("channel-a"), ConversationKind.Channel),
+            ForwardMessageDestination(serverId, ChannelId("channel-b"), ConversationKind.Channel),
+            ForwardMessageDestination(serverId, ChannelId("channel-a"), ConversationKind.Channel)
+        )
+
+        val result = repository.forwardMessagesBatch(
+            ForwardMessageBatchExecuteRequest(
+                sourceServerId = serverId,
+                sourceChannelId = ChannelId("source"),
+                destinations = destinations,
+                messageIds = listOf("11111111-1111-4111-8111-111111111111"),
+                mode = ForwardMessageSendMode.Merged,
+                note = " batch note ",
+                requestId = "11111111-2222-4333-8444-555555555555"
+            )
+        )
+
+        val batch = assertIs<DataResult.Content<ForwardMessageBatchResult>>(result).data
+        assertEquals(listOf(ChannelId("channel-a")), batch.deliveries.map { it.destination.channelId })
+        assertEquals(listOf("destination_unavailable"), batch.failures.map { it.code })
+        val call = network.calls.single { it.path == "messages/forward" }
+        assertTrue(call.body.orEmpty().contains("destinationChannelIds"))
+        assertTrue(call.body.orEmpty().contains("channel-a"))
+        assertTrue(call.body.orEmpty().contains("channel-b"))
+        assertTrue(call.body.orEmpty().contains("11111111-2222-4333-8444-555555555555"))
+        assertTrue(call.body.orEmpty().contains("batch note"))
     }
 
     @Test
@@ -494,6 +561,22 @@ class ForwardMessageTargetRepositoryTest {
         )
         assertTrue(network.calls.isEmpty())
     }
+
+    private fun canonicalMessageBody(channelId: String, content: String): String =
+        """
+            {
+              "id":"message-forwarded",
+              "channelId":"$channelId",
+              "senderType":"user",
+              "senderId":"user-1",
+              "senderName":"User",
+              "messageType":"chat",
+              "content":"$content",
+              "createdAt":"2026-09-02T00:00:00.000Z",
+              "updatedAt":"2026-09-02T00:00:00.000Z",
+              "actionMetadata":{"kind":"forwarded-bundle","version":1,"forwardedItems":[]}
+            }
+        """.trimIndent()
 
     private fun realRepository(
         network: RecordingForwardNetworkClient,
@@ -565,6 +648,21 @@ private class RecordingForwardNetworkClient : SlockNetworkClient {
     var peerChannelsBody: String =
         """[{"id":"joint-peer-projection","name":"joint-room","type":"joint","joined":true,"jointChannelId":"joint-root","jointRole":"participant","jointPeerServerId":"server-source"}]"""
     var peerChannelsCode: Int = 200
+    var forwardResponseBody: String =
+        """
+            {
+              "id":"message-forwarded",
+              "channelId":"joint-source-projection",
+              "senderType":"user",
+              "senderId":"user-1",
+              "senderName":"User",
+              "messageType":"chat",
+              "content":"Forwarded 1 message",
+              "createdAt":"2026-09-02T00:00:00.000Z",
+              "updatedAt":"2026-09-02T00:00:00.000Z",
+              "actionMetadata":{"kind":"forwarded-bundle","version":1,"forwardedItems":[]}
+            }
+        """.trimIndent()
 
     override suspend fun request(
         priority: DataRequestPriority,
@@ -593,7 +691,7 @@ private class RecordingForwardNetworkClient : SlockNetworkClient {
             path == "agents" -> HomeNetworkResponse(code = 200, bodyText = "[]")
             path == "servers/${serverIdOverride?.value}/machines" ->
                 HomeNetworkResponse(code = 200, bodyText = "[]")
-            path == "messages/forward" -> HomeNetworkResponse(code = 200, bodyText = "{}")
+            path == "messages/forward" -> HomeNetworkResponse(code = 200, bodyText = forwardResponseBody)
             else -> HomeNetworkResponse(code = 404, bodyText = null, errorBodyText = "not found")
         }
     }

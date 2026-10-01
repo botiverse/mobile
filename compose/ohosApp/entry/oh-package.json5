@@ -6,8 +6,8 @@
   "author": "",
   "license": "",
   "dependencies": {
-    "@botiverse/hands": "0.3.3",
-    "@kuikly-open/render": "file:../../build/kuikly/core-render-ohos-2.24.0-raft.1-2.0.21-ohos.har",
+    "@botiverse/hands": "0.3.5",
+    "@kuikly-open/render": "file:../../build/kuikly/core-render-ohos-2.24.0-raft.8-2.0.21-ohos.har",
     "@ohos/apng": "^1.0.0-rc.8",
     "@kuiklybase/knoi": "0.0.4",
     "@tencent/mmkv": "2.1.0",

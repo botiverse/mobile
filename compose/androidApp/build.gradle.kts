@@ -51,7 +51,8 @@ val handsAndroidSdkModule = "$handsAndroidSdkGroup:$handsAndroidSdkArtifact"
 val handsAndroidSdkCoordinate = "$handsAndroidSdkModule:$handsAndroidSdkVersion"
 val handsAndroidSdkSourceRepo = handsAndroidSdkMetadataString("sourceRepo")
 val handsAndroidSdkSourceCommit = handsAndroidSdkMetadataString("sourceCommit")
-val handsAndroidSdkSourceTag = handsAndroidSdkMetadataString("sourceTag")
+// Workflow-dispatched releases are pinned by sourceCommit + publishRunId without a tag.
+val handsAndroidSdkSourceTag = handsAndroidSdkMetadata["sourceTag"]?.toString()?.trim().orEmpty()
 val handsAndroidSdkPublishRunId = handsAndroidSdkMetadataString("publishRunId")
 val handsAndroidSdkNativeSymbolsArtifactId = handsAndroidSdkMetadataString("nativeSymbolsArtifactId")
 val handsAndroidSdkAarSha256 = handsAndroidSdkMetadataString("aarSha256")
@@ -141,7 +142,9 @@ if (handsAndroidSdkSourceRepo != "https://github.com/botiverse/hands") {
 if (!handsAndroidSdkSourceCommit.matches(Regex("[0-9a-f]{40}"))) {
     throw GradleException("Hands Android SDK sourceCommit must be a full lowercase Git SHA")
 }
-if (handsAndroidSdkSourceTag != "android-sdk-v$handsAndroidSdkVersion") {
+if (handsAndroidSdkSourceTag.isNotEmpty() &&
+    handsAndroidSdkSourceTag != "android-sdk-v$handsAndroidSdkVersion"
+) {
     throw GradleException(
         "Hands Android SDK sourceTag must match version: " +
             "expected=android-sdk-v$handsAndroidSdkVersion actual=$handsAndroidSdkSourceTag"
@@ -255,11 +258,24 @@ val googleServicesConfigFiles =
         file("google-services.json"),
         file("src/debug/google-services.json"),
         file("src/connectedTest/google-services.json"),
-        file("src/release/google-services.json")
+        file("src/release/google-services.json"),
+        file("src/alpha/google-services.json")
     )
+
+val releaseBuildRequested = gradle.startParameter.taskNames.any { taskName ->
+    taskName.substringAfterLast(":").contains("release", ignoreCase = true)
+}
+if (releaseBuildRequested && !file("src/release/google-services.json").isFile) {
+    throw GradleException(
+        "Firebase google-services.json is required for release builds; provide androidApp/src/release/google-services.json"
+    )
+}
 
 if (googleServicesConfigFiles.any { it.isFile }) {
     pluginManager.apply("com.google.gms.google-services")
+    tasks.configureEach {
+        if (name == "processConnectedTestGoogleServices") enabled = false
+    }
 } else {
     logger.lifecycle("Firebase google-services.json not found; skipping Google Services Gradle plugin for this local build.")
 }
@@ -298,16 +314,23 @@ fun slockBuildConfigInt(name: String, fallback: Int, vararg aliases: String): In
 fun slockBuildConfigBoolean(name: String, fallback: Boolean): Boolean =
     slockBuildConfigRawString(name)?.lowercase()?.toBooleanStrictOrNull() ?: fallback
 
+fun slockComputeAndroidVersionCode(major: Int, minor: Int, patch: Int, build: Int): Int =
+    // Mirrors scripts/ci/version_code.sh (task #321): major*10M + minor*100k + patch*1k + build.
+    // Kept as a Kotlin-level formula so no shell invocation is needed during the build.
+    major * 10_000_000 + minor * 100_000 + patch * 1_000 + build
+
 val slockAndroidVersionMajor = slockBuildConfigInt("versionX", 1, "SLOCK_ANDROID_VERSION_MAJOR")
 val slockAndroidVersionMinor = slockBuildConfigInt("versionY", 0, "SLOCK_ANDROID_VERSION_MINOR")
 val slockAndroidVersionPatch = slockBuildConfigInt("versionZ", 0, "SLOCK_ANDROID_VERSION_PATCH")
 val slockAndroidVersionBuild = slockBuildConfigInt("versionBuild", 0, "SLOCK_ANDROID_VERSION_BUILD")
 val slockAndroidVersionCode =
     slockBuildConfigRawString("versionCode", "SLOCK_ANDROID_VERSION_CODE")?.toIntOrNull()
-        ?: (slockAndroidVersionMajor * 1_000_000 +
-            slockAndroidVersionMinor * 10_000 +
-            slockAndroidVersionPatch * 100 +
-            slockAndroidVersionBuild)
+        ?: slockComputeAndroidVersionCode(
+            slockAndroidVersionMajor,
+            slockAndroidVersionMinor,
+            slockAndroidVersionPatch,
+            slockAndroidVersionBuild
+        )
 val slockAndroidVersionSuffix = slockBuildConfigRawString("versionSuffix", "SLOCK_ANDROID_VERSION_SUFFIX")
 val slockAndroidVersionName =
     slockBuildConfigRawString("versionName", "SLOCK_ANDROID_VERSION_NAME")
@@ -318,6 +341,8 @@ val slockAndroidVersionName =
             append(".")
             append(slockAndroidVersionPatch)
             slockAndroidVersionSuffix?.let { append("-").append(it) }
+            if (slockAndroidVersionSuffix != null) append("+").append(slockGitCommit())
+            if (slockWorkingTreeDirty()) append("-dirty")
         }
 
 fun slockBuildTime(): String {
@@ -337,6 +362,19 @@ fun slockGitCommit(): String =
         if (process.exitValue() == 0 && output.isNotBlank()) output else "unknown"
     } catch (_: Throwable) {
         "unknown"
+    }
+
+fun slockWorkingTreeDirty(): Boolean =
+    try {
+        val process = ProcessBuilder("git", "status", "--porcelain")
+            .directory(rootProject.projectDir)
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().readText().trim()
+        process.waitFor(5, TimeUnit.SECONDS)
+        process.exitValue() == 0 && output.isNotBlank()
+    } catch (_: Throwable) {
+        false
     }
 
 data class OssLicenseOverride(
@@ -634,13 +672,6 @@ android {
                 "proguard-rules.pro"
             )
         }
-        create("beta") {
-            initWith(getByName("release"))
-            applicationIdSuffix = ".beta"
-            buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "true")
-            buildConfigField("String", "HANDS_CHANNEL", "\"debug\"")
-            matchingFallbacks += listOf("release")
-        }
         configureEach {
             val callbackScheme = if (name == "release") "raft" else "raft-${name.lowercase()}"
             buildConfigField("String", "OAUTH_CALLBACK_SCHEME", "\"$callbackScheme\"")
@@ -765,7 +796,7 @@ dependencies {
 
     // Kuikly Compose shared module
     implementation(project(":shared"))
-    runtimeOnly("com.tencent.kuiklybase:network-android-curl-runtime:0.1.0-raft.35")
+    runtimeOnly("com.tencent.kuiklybase:network-android-curl-runtime:0.1.0-raft.39")
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.media3.exoplayer)

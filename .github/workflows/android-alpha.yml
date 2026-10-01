@@ -79,6 +79,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Install Android SDK packages
         shell: bash
@@ -104,8 +106,8 @@ jobs:
             echo "version_patch must be an integer from 0 to 99" >&2
             exit 1
           fi
-          if ! [[ "${ALPHA_VERSION_BUILD}" =~ ^[0-9]{1,2}$ ]]; then
-            echo "version_build must be an integer from 0 to 99" >&2
+          if ! [[ "${ALPHA_VERSION_BUILD}" =~ ^[0-9]{1,3}$ ]]; then
+            echo "version_build must be an integer from 0 to 999" >&2
             exit 1
           fi
           ./gradlew \
@@ -114,6 +116,7 @@ jobs:
             :androidApp:copyHandsNativeSymbols \
             "-PversionZ=${ALPHA_VERSION_PATCH}" \
             "-PversionBuild=${ALPHA_VERSION_BUILD}" \
+            "-PversionCode=$(scripts/ci/version_code.sh 1 0 "${ALPHA_VERSION_PATCH}" "${ALPHA_VERSION_BUILD}")" \
             -PversionSuffix=alpha \
             --no-daemon --max-workers=${{ env.GRADLE_MAX_WORKERS }} --console=plain --stacktrace
 
@@ -206,7 +209,7 @@ jobs:
           "${BT}/aapt" dump badging "$APK" | tee aapt-badging.log
           grep -q "package: name='build.raft.app.alpha'" aapt-badging.log
           grep -q "application-label:'Raft Alpha'" aapt-badging.log
-          grep -q "versionName='[^']*-alpha'" aapt-badging.log
+          grep -q "versionName='[^']*-alpha[^']*'" aapt-badging.log
           SOURCE_SHA="${{ steps.source.outputs.sha }}"
           EXPECTED_MIN_SDK=29
           # The approved 1.7.0 QA source predates the API 29 floor. Keep this

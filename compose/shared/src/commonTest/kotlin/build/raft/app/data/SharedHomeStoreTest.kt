@@ -33,6 +33,7 @@ import build.raft.app.network.sync.ReadStateV1Fact
 import build.raft.app.network.sync.ReadStateV1ProductionCanary
 import build.raft.app.network.sync.ReadStateV1ProductionOwner
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -376,18 +377,26 @@ class SharedHomeStoreTest {
     @Test
     fun cachedStoreRefreshesRuntimeScopeBeforeDispatch() = runBlocking {
         val storeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val originalLogs = mutableListOf<String>()
-        val refreshedLogs = mutableListOf<String>()
+        // task #1131: the store keeps logging from its Unconfined coroutines on whatever
+        // thread resumed them, so a plain MutableList appended by the logger races the
+        // assertions below (ConcurrentModificationException while iterating). Record
+        // through an unbounded Channel -- trySend is thread-safe and non-suspending on
+        // every target -- and drain a snapshot on the test thread once the awaited state
+        // has been observed. Both asserted entries are emitted before that state
+        // (`home_runtime_integrations_updated` synchronously, `home_dispatch_launch_load`
+        // before the load runs), so the verdict is unchanged.
+        val originalLogs = Channel<String>(Channel.UNLIMITED)
+        val refreshedLogs = Channel<String>(Channel.UNLIMITED)
         val store = SharedHomeStore(
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-old"))),
             scope = storeScope,
-            diagnosticsLogger = originalLogs::add
+            diagnosticsLogger = { originalLogs.trySend(it) }
         )
 
         store.updateRuntimeIntegrations(
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-new"))),
-            diagnosticsLogger = refreshedLogs::add
+            diagnosticsLogger = { refreshedLogs.trySend(it) }
         )
         store.dispatch(SharedHomeIntent.Start)
         // #471: await the launched load deterministically instead of busy-spinning
@@ -409,11 +418,24 @@ class SharedHomeStoreTest {
         val content = store.state.value.content
         assertTrue(content is SharedHomeContentState.Content)
         assertEquals("server-new", content.snapshot.server.id.value)
-        assertContains(refreshedLogs, "home_runtime_integrations_updated")
-        assertTrue(refreshedLogs.any { it.startsWith("home_dispatch_launch_load intent=hydrate:start") })
-        assertEquals(emptyList(), originalLogs)
+        // Stop the store before draining so late diagnostics cannot make the snapshot
+        // drift with timing; everything asserted below was recorded before the awaited state.
         storeScope.cancel()
+        val refreshed = refreshedLogs.drainRecorded()
+        val original = originalLogs.drainRecorded()
+        assertContains(refreshed, "home_runtime_integrations_updated")
+        assertTrue(refreshed.any { it.startsWith("home_dispatch_launch_load intent=hydrate:start") })
+        assertEquals(emptyList(), original)
     }
+
+    /** Snapshot every entry recorded so far without suspending; see task #1131. */
+    private fun Channel<String>.drainRecorded(): List<String> =
+        buildList {
+            while (true) {
+                val next = tryReceive().getOrNull() ?: break
+                add(next)
+            }
+        }
 
     @Test
     fun startHydratesConversationIdentityProviderFromHomeSnapshot() = runBlocking {
@@ -1183,6 +1205,144 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun hydrateCachedHomeDoesNotStartNetworkLoad() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val storage = InMemorySlockKeyValueStore()
+        val persistSlice =
+            createSharedHomeIdentityPersistSlice(
+                storage = SharedPreferencePersistStorage(storage)
+            )
+        val warmStore =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1"))),
+                scope = scope,
+                persistSlices = listOf(persistSlice)
+            )
+        warmStore.accept(SharedHomeIntent.Start)
+
+        val api = RecordingHomeApi()
+        val coldStore =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = source(api = api),
+                scope = scope,
+                persistSlices =
+                    listOf(
+                        createSharedHomeIdentityPersistSlice(
+                            storage = SharedPreferencePersistStorage(storage)
+                        )
+                    )
+            )
+
+        assertTrue(coldStore.hydrateCachedHome(ServerId("server-1")))
+        val content = coldStore.state.value.content
+        assertTrue(content is SharedHomeContentState.Content)
+        assertTrue(content.isDurableIdentityCache)
+        assertTrue(content.needsNetworkRefresh)
+        assertEquals(emptyList(), api.calls)
+        coldStore.accept(SharedHomeIntent.Start)
+        assertFalse((coldStore.state.value.content as SharedHomeContentState.Content).needsNetworkRefresh)
+        scope.cancel()
+    }
+
+    @Test
+    fun hydrateCachedHomeRejectsSnapshotWithMismatchedMemberIdentity() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val storage = InMemorySlockKeyValueStore()
+        val persistSlice =
+            createSharedHomeIdentityPersistSlice(
+                storage = SharedPreferencePersistStorage(storage)
+            )
+        val mismatched =
+            sampleHome(ServerId("server-1")).copy(
+                currentMember = sampleMember().copy(id = MemberId("different-user"))
+            )
+        val warmStore =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(mismatched),
+                scope = scope,
+                persistSlices = listOf(persistSlice)
+            )
+        warmStore.accept(SharedHomeIntent.Start)
+
+        val coldStore =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = source(api = RecordingHomeApi()),
+                scope = scope,
+                persistSlices =
+                    listOf(
+                        createSharedHomeIdentityPersistSlice(
+                            storage = SharedPreferencePersistStorage(storage)
+                        )
+                    )
+            )
+
+        assertFalse(coldStore.hydrateCachedHome(ServerId("server-1")))
+        assertFalse(coldStore.state.value.content is SharedHomeContentState.Content)
+        scope.cancel()
+    }
+
+    @Test
+    fun resetRetiresPublishedHomeProjectionButKeepsDurableIdentitySnapshot() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val storage = InMemorySlockKeyValueStore()
+        val persistSlice =
+            createSharedHomeIdentityPersistSlice(
+                storage = SharedPreferencePersistStorage(storage)
+            )
+        val session = InMemorySlockAuthSessionStore(sampleSession())
+        val store =
+            SharedHomeStore(
+                authStore = session,
+                dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1"))),
+                scope = scope,
+                persistSlices = listOf(persistSlice)
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        assertTrue(store.state.value.content is SharedHomeContentState.Content)
+
+        store.reset()
+
+        assertEquals(SharedHomeState(), store.state.value)
+        val restored =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = source(api = RecordingHomeApi()),
+                scope = scope,
+                persistSlices = listOf(createSharedHomeIdentityPersistSlice(SharedPreferencePersistStorage(storage)))
+            )
+        assertTrue(restored.hydrateCachedHome(ServerId("server-1")))
+        assertTrue(restored.state.value.content is SharedHomeContentState.Content)
+        scope.cancel()
+    }
+
+    @Test
+    fun resetFencesLateNetworkPublicationFromThePriorSession() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = RecordingHomeApi()
+        val blocked = api.blockNextChannels()
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), api = api),
+                scope = scope
+            )
+        val load = launch { store.accept(SharedHomeIntent.Start) }
+        blocked.awaitStarted()
+
+        store.reset()
+        blocked.release()
+        load.join()
+
+        assertEquals(SharedHomeState(), store.state.value)
+        scope.cancel()
+    }
+
+    @Test
     fun selectServerLoadsUnreadSummaryForSelectedServerOnly() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
@@ -1400,6 +1560,64 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun realtimeMessageIncrementsUnreadAfterLeavingSelectedConversation() = runBlocking {
+        // task #299: after opening a conversation and leaving it, a new
+        // realtime message must accrue unread again — the clear path has to
+        // reach the home store's selectedConversationId.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1"))),
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+        val otherMember = sampleMember().copy(
+            id = MemberId("member-2"),
+            displayName = "Cindy",
+            handle = "cindy@slock.ai"
+        )
+        fun liveMessage(id: String, seq: Long, body: String) =
+            MessageNew(
+                Message(
+                    id = MessageId(id),
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    seq = seq,
+                    author = otherMember,
+                    timestampLabel = "12:01",
+                    body = body
+                )
+            )
+
+        // While the conversation is selected, realtime messages only update
+        // the preview — no unread increment.
+        store.accept(SharedHomeIntent.SelectConversation("channel-1"))
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event = liveMessage("message-2", 2, "while open")
+            )
+        )
+        var content = store.state.value.content
+        assertTrue(content is SharedHomeContentState.Content)
+        assertEquals(0, content.snapshot.channels.single().unreadCount)
+
+        // After leaving the conversation the same stream must accrue unread.
+        store.accept(SharedHomeIntent.ClearSelectedConversation)
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event = liveMessage("message-3", 3, "after leave")
+            )
+        )
+        content = store.state.value.content
+        assertTrue(content is SharedHomeContentState.Content)
+        assertEquals(1, content.snapshot.channels.single().unreadCount)
+        assertEquals(1, content.snapshot.unreadTotal)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeMessageUpdateOnlyReplacesMatchingHomeRow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
@@ -1443,6 +1661,103 @@ class SharedHomeStoreTest {
         assertTrue(before[1] === after[1])
         assertEquals("live update", after[0].lastMessagePreview)
         assertEquals("random", after[1].name)
+        scope.cancel()
+    }
+
+    @Test
+    fun directMessageRealtimePreviewPreservedAcrossNetworkRefresh() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val home =
+            sampleHome(ServerId("server-1")).copy(
+                directMessages =
+                    listOf(
+                        directMessage("dm-1", "Alice", "member-2", Presence.Active)
+                    )
+            )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(home),
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+        val initialDm = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages.single()
+        assertNull(initialDm.lastMessagePreview)
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    MessageNew(
+                        Message(
+                            id = MessageId("msg-dm-1"),
+                            threadId = ThreadId("dm-1"),
+                            channelId = ChannelId("dm-1"),
+                            seq = 1,
+                            author = sampleMember().copy(id = MemberId("member-2"), displayName = "Alice"),
+                            timestampLabel = "12:05",
+                            body = "Hello via DM!"
+                        )
+                    )
+            )
+        )
+
+        val afterRealtime = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages.single()
+        assertEquals("Hello via DM!", afterRealtime.lastMessagePreview)
+
+        // Trigger a network refresh where the server returns the original snapshot without preview
+        store.accept(SharedHomeIntent.Refresh)
+
+        val afterRefresh = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages.single()
+        assertEquals("Hello via DM!", afterRefresh.lastMessagePreview)
+        assertEquals("Alice", afterRefresh.lastMessageSenderName)
+        assertEquals(MessageId("msg-dm-1"), afterRefresh.lastMessageId)
+        scope.cancel()
+    }
+
+    @Test
+    fun serverSwitchDoesNotLeakDirectMessagePreviewAcrossServersWithIdenticalRowKey() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val api = RecordingHomeApi()
+        val server1Home =
+            sampleHome(ServerId("server-1")).copy(
+                directMessages = listOf(
+                    directMessage("shared-dm", "Alice", "member-2", Presence.Active).copy(
+                        lastMessagePreview = "Secret preview on server 1"
+                    )
+                )
+            )
+        val server2Home =
+            sampleHome(ServerId("server-2")).copy(
+                directMessages = listOf(
+                    directMessage("shared-dm", "Alice", "member-2", Presence.Active).copy(
+                        lastMessagePreview = null
+                    )
+                )
+            )
+        val dataSource = SharedHomeDataSource(
+            sessionStore = sessionStore,
+            api = api,
+            parseHome = { payload, _ ->
+                val snapshot = if (payload.serverId.value == "server-2") server2Home else server1Home
+                DataResult.Content(snapshot)
+            }
+        )
+        val store = SharedHomeStore(
+            authStore = sessionStore,
+            dataSource = dataSource,
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+        val initialDm = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages.single()
+        assertEquals("Secret preview on server 1", initialDm.lastMessagePreview)
+
+        store.accept(SharedHomeIntent.SelectServer("server-2"))
+
+        val content = store.state.value.content as SharedHomeContentState.Content
+        assertEquals("server-2", content.snapshot.server.id.value)
+        val server2Dm = content.snapshot.directMessages.single()
+        assertNull(server2Dm.lastMessagePreview)
         scope.cancel()
     }
 
@@ -4228,6 +4543,148 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun firstHomePaintCarriesConcurrentSidebarOrderWhenFetchIsFast() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sidebarOrder = SettingsServerSidebarOrderSnapshot(channelOrder = listOf("channel-pinned"))
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = source(api = RecordingHomeApi()),
+                scope = scope,
+                loadSidebarOrder = { _ -> DataResult.Content(sidebarOrder) }
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        val content = store.state.value.content as SharedHomeContentState.Content
+        assertEquals(
+            listOf("channel-pinned"),
+            content.snapshot.sidebarOrder?.channelOrder,
+            "a fast sidebar-order fetch must land in the first home paint, not append after it"
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun sidebarOrderFetchLateStillMergesFromSameRequestWithoutRefetch() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        var loadCalls = 0
+        val gate = CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>()
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = source(api = RecordingHomeApi()),
+                scope = scope,
+                loadSidebarOrder = { _ ->
+                    loadCalls += 1
+                    gate.await()
+                }
+            )
+
+        val startJob = scope.launch { store.accept(SharedHomeIntent.Start) }
+        // The 300ms first-paint cap elapses: home publishes channels alone.
+        awaitCondition {
+            (store.state.value.content as? SharedHomeContentState.Content)?.snapshot != null
+        }
+        assertNull((store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder)
+
+        // When the in-flight request resolves, the deferred result merges under the
+        // sidebarOrderMutex — same request, no second fetch.
+        gate.complete(DataResult.Content(SettingsServerSidebarOrderSnapshot(channelOrder = listOf("late-pinned"))))
+        startJob.join()
+        awaitCondition {
+            (store.state.value.content as? SharedHomeContentState.Content)
+                ?.snapshot?.sidebarOrder?.channelOrder == listOf("late-pinned")
+        }
+        assertEquals(1, loadCalls, "the late-arriving sidebar must reuse the in-flight request, not refetch")
+        scope.cancel()
+    }
+
+    @Test
+    fun pinDuringConcurrentSidebarOrderFetchDiscardsTheLateStaleResult() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        var loadCalls = 0
+        // First call = the concurrent first-paint fetch; it stays blocked past the
+        // 300ms cap so home publishes channels alone. Later calls (the Pin's own
+        // ensureSidebarOrderLoaded fetch while the deferred is still in flight)
+        // return an empty base synchronously — no suspension inside sidebarOrderMutex.
+        val firstPaintGate = CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>()
+        val pinBase = SettingsServerSidebarOrderSnapshot(pinnedChannelIds = emptyList())
+        val pinnedSnapshot = pinBase.copy(pinnedChannelIds = listOf("channel-1"), pinnedOrder = listOf("channel-1"))
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = source(api = RecordingHomeApi()),
+                scope = scope,
+                loadSidebarOrder = { _ ->
+                    loadCalls += 1
+                    if (loadCalls == 1) firstPaintGate.await() else DataResult.Content(pinBase)
+                },
+                updateSidebarOrder = { _ -> DataResult.Content(pinnedSnapshot) }
+            )
+
+        val startJob = scope.launch { store.accept(SharedHomeIntent.Start) }
+        // The 300ms first-paint cap elapses: home publishes channels alone.
+        awaitCondition {
+            (store.state.value.content as? SharedHomeContentState.Content)?.snapshot != null &&
+                (store.state.value.content as? SharedHomeContentState.Content)
+                    ?.snapshot?.sidebarOrder == null
+        }
+        assertNull(
+            (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        )
+
+        // The Pin lands while the deferred is still in flight: ensureSidebarOrderLoaded
+        // finds no cached order, fetches the empty base under sidebarOrderMutex, then
+        // the optimistic apply bumps sidebarPinChangeVersion and writes the pin.
+        store.accept(SharedHomeIntent.TogglePinned("channel-1"))
+        awaitCondition {
+            (store.state.value.content as? SharedHomeContentState.Content)
+                ?.snapshot?.sidebarOrder?.pinnedChannelIds == listOf("channel-1")
+        }
+
+        // The late-arriving first-paint result does NOT contain the pin (it was
+        // fetched before the mutation). It must be dropped inside sidebarOrderMutex
+        // because sidebarPinChangeVersion changed — not clobber the pin.
+        firstPaintGate.complete(DataResult.Content(SettingsServerSidebarOrderSnapshot(pinnedChannelIds = emptyList())))
+        startJob.join()
+        awaitCondition { loadCalls >= 2 }
+        // Give the spawned late-merge coroutine a beat to run under the mutex, then
+        // assert the pin survived and the stale result was discarded.
+        delay(50)
+        val after =
+            (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(
+            listOf("channel-1"),
+            after?.pinnedChannelIds,
+            "a pin dispatched while the deferred was in flight must survive the late stale merge"
+        )
+        assertEquals(
+            listOf("channel-1"),
+            after?.pinnedOrder,
+            "the pin must not be clobbered by the pre-mutation sidebar-order result"
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun persistedHomeSnapshotKeepsSidebarOrderForColdStartPaint() {
+        // task #322: artin's "下次启动一次出齐" requirement — the first-paint snapshot that
+        // carries a concurrently-fetched sidebarOrder must keep it through the durable
+        // persist slice, so a cold start reads the pinned section back out with channels.
+        val snapshot =
+            sampleHome(ServerId("server-1")).copy(
+                sidebarOrder =
+                    SettingsServerSidebarOrderSnapshot(
+                        channelOrder = listOf("channel-pinned"),
+                        pinnedChannelIds = listOf("channel-pinned")
+                    )
+            )
+        val pruned = snapshot.pruneForHomeIdentityPersist()
+        assertEquals(listOf("channel-pinned"), pruned.sidebarOrder?.channelOrder)
+        assertEquals(listOf("channel-pinned"), pruned.sidebarOrder?.pinnedChannelIds)
+    }
+
+    @Test
     fun togglePinnedOptimisticallyUpdatesAndPatchesSidebarOrder() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val initial = SettingsServerSidebarOrderSnapshot(
@@ -6759,4 +7216,110 @@ class SharedHomeStoreTest {
         )
 
     // end #211 --------------------------------------------------------------
+
+    @Test
+    fun hydrateDirectMessagePreviewUpdatesEmptyPreviewWithoutModifyingUnreadOrExistingPreview() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val serverId = ServerId("server-1")
+        val dm1 = HomeDirectMessageRow(
+            threadId = ThreadId("dm-1"),
+            channelId = ChannelId("dm-1"),
+            name = "DM 1",
+            unreadCount = 5,
+            lastMessagePreview = null,
+            lastMessageSenderName = null,
+            lastMessageAt = null,
+        )
+        val dm2 = HomeDirectMessageRow(
+            threadId = ThreadId("dm-2"),
+            channelId = ChannelId("dm-2"),
+            name = "DM 2",
+            unreadCount = 2,
+            lastMessagePreview = "Authoritative preview",
+            lastMessageSenderName = "Alice",
+            lastMessageAt = "2026-03-29T09:00:00Z",
+        )
+        val snapshot = sampleHome(serverId).copy(
+            directMessages = listOf(dm1, dm2)
+        )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(snapshot),
+            scope = scope,
+            readReceiptOwnerFactory = { sId, accountId -> ReadReceiptOwner("production", accountId, sId) },
+        )
+        store.accept(SharedHomeIntent.Start)
+
+        // 1. Hydrate dm1 with empty preview -> should update preview and senderName, keeping unread unchanged
+        store.hydrateDirectMessagePreview(
+            SharedHomeIntent.HydrateDirectMessagePreview(
+                serverId = serverId,
+                channelId = ChannelId("dm-1"),
+                preview = "New preview text",
+                senderName = "Bob",
+                lastMessageAt = "2026-03-29T10:00:00Z",
+                lastMessageId = MessageId("msg-1"),
+                accountId = "user-1",
+            )
+        )
+
+        val stateAfter1 = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        val updatedDm1 = stateAfter1.directMessages.first { it.channelId == ChannelId("dm-1") }
+        assertEquals("New preview text", updatedDm1.lastMessagePreview)
+        assertEquals("Bob", updatedDm1.lastMessageSenderName)
+        assertEquals("2026-03-29T10:00:00Z", updatedDm1.lastMessageAt)
+        assertEquals(5, updatedDm1.unreadCount)
+
+        // 2. Hydrate dm2 which already has a preview -> must NOT clobber
+        store.hydrateDirectMessagePreview(
+            SharedHomeIntent.HydrateDirectMessagePreview(
+                serverId = serverId,
+                channelId = ChannelId("dm-2"),
+                preview = "Attempted clobber preview",
+                senderName = "Mallory",
+                lastMessageAt = "2026-03-29T11:00:00Z",
+                lastMessageId = MessageId("msg-2"),
+                accountId = "user-1",
+            )
+        )
+
+        val stateAfter2 = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        val dm2After = stateAfter2.directMessages.first { it.channelId == ChannelId("dm-2") }
+        assertEquals("Authoritative preview", dm2After.lastMessagePreview)
+        assertEquals("Alice", dm2After.lastMessageSenderName)
+        assertEquals("2026-03-29T09:00:00Z", dm2After.lastMessageAt)
+        assertEquals(2, dm2After.unreadCount)
+
+        // 3. Hydrate with mismatched accountId -> must NOT hydrate
+        val dm3 = HomeDirectMessageRow(
+            threadId = ThreadId("dm-3"),
+            channelId = ChannelId("dm-3"),
+            name = "DM 3",
+            lastMessagePreview = null,
+            lastMessageSenderName = null,
+            unreadCount = 1,
+        )
+        val snapshotWithDm3 = stateAfter2.copy(directMessages = stateAfter2.directMessages + dm3)
+        val storeWithDm3 = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(snapshotWithDm3),
+            scope = scope,
+            readReceiptOwnerFactory = { sId, accountId -> ReadReceiptOwner("production", accountId, sId) },
+        )
+        storeWithDm3.accept(SharedHomeIntent.Start)
+        storeWithDm3.hydrateDirectMessagePreview(
+            SharedHomeIntent.HydrateDirectMessagePreview(
+                serverId = serverId,
+                channelId = ChannelId("dm-3"),
+                preview = "Foreign account preview",
+                senderName = "Eve",
+                accountId = "other-account",
+            )
+        )
+        val stateAfter3 = (storeWithDm3.state.value.content as SharedHomeContentState.Content).snapshot
+        val dm3After = stateAfter3.directMessages.first { it.channelId == ChannelId("dm-3") }
+        assertNull(dm3After.lastMessagePreview)
+        scope.cancel()
+    }
 }
+

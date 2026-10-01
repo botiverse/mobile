@@ -10,8 +10,6 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ServerNotificationPreferencesChanged
-import com.tencent.kuikly.compose.profiler.RecompositionProfilerFileOutputResult
-import com.tencent.kuikly.compose.profiler.RecompositionReport
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -2349,11 +2347,7 @@ class SharedSettingsStoreTest {
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                        platformCapabilities = capabilities,
-                        recompositionProfilerController =
-                            SharedSettingsRecompositionProfilerController(
-                                debugGate = FakeProfilerDebugGate(supported = false)
-                            )
+                        platformCapabilities = capabilities
                     ),
                 scope = scope
             )
@@ -2366,7 +2360,6 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Diagnostics))
         val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
         assertEquals(listOf("SlockTest"), diagnostics.entries.map { it.tag })
-        assertEquals(false, diagnostics.profiler.supported)
         // Opening About also fetches the hands update status and the developer
         // snapshot (48631ed3: refresh update notices periodically).
         assertEquals(listOf("about", "handsUpdateStatus", "developer", "about", "diagnostics"), capabilities.calls)
@@ -2412,8 +2405,7 @@ class SharedSettingsStoreTest {
             ),
             store.state.value.actionState,
         )
-        val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
-        assertEquals("Diagnostic feature-flag override updated.", diagnostics.profiler.actionFeedback)
+        assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics)
         scope.cancel()
     }
 
@@ -2781,130 +2773,7 @@ class SharedSettingsStoreTest {
     }
 
     @Test
-    fun profilerActionsStayInSharedStoreAndOnlyReloadHostDiagnostics() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val capabilities = FakeSettingsCapabilities()
-        val preferences = FakeRecompositionProfilerPreferenceRepository()
-        val engine = FakeProfilerEngine()
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                        platformCapabilities = capabilities,
-                        recompositionProfilerPreferenceRepository = preferences,
-                        recompositionProfilerController =
-                            SharedSettingsRecompositionProfilerController(
-                                engine = engine,
-                                debugGate = FakeProfilerDebugGate(supported = true, gateLabel = "Android debug")
-                            )
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Diagnostics))
-        store.accept(SharedSettingsIntent.StartRecompositionProfiler)
-
-        val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
-        assertEquals(true, engine.started)
-        assertEquals("Running", diagnostics.profiler.statusLabel)
-        assertEquals(true, diagnostics.profiler.defaults.enableOverlay)
-        assertEquals(true, engine.enableOverlay)
-        assertEquals(true, engine.enableLog)
-        assertEquals(true, engine.enableFile)
-        assertEquals(true, diagnostics.profiler.enabled)
-        assertEquals(false, preferences.enabled)
-        assertEquals(
-            "Profiler started with file, logcat, and overlay enabled.",
-            diagnostics.profiler.actionFeedback
-        )
-        assertNull(store.state.value.effect)
-        assertEquals(
-            SharedSettingsActionState(DIAGNOSTICS_ACTION_PROFILER_START, inProgress = false),
-            store.state.value.actionState
-        )
-        assertEquals(listOf("about", "diagnostics", "profiler:true", "about", "diagnostics"), capabilities.calls)
-        scope.cancel()
-    }
-
-    @Test
-    fun profilerStartRuntimeFailureDoesNotPersistEnabledPreference() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val capabilities = FakeSettingsCapabilities()
-        val preferences = FakeRecompositionProfilerPreferenceRepository()
-        val engine =
-            FakeProfilerEngine(
-                startFailure = Error("missing CompositionObserverKt.observe")
-            )
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                        platformCapabilities = capabilities,
-                        recompositionProfilerPreferenceRepository = preferences,
-                        recompositionProfilerController =
-                            SharedSettingsRecompositionProfilerController(
-                                engine = engine,
-                                debugGate = FakeProfilerDebugGate(supported = true, gateLabel = "Android debug")
-                            )
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Diagnostics))
-        store.accept(SharedSettingsIntent.StartRecompositionProfiler)
-
-        assertEquals(false, engine.started)
-        assertEquals(false, preferences.enabled)
-        assertEquals(
-            SharedSettingsActionState(
-                DIAGNOSTICS_ACTION_PROFILER_START,
-                inProgress = false,
-                errorCode = "settings_profiler_runtime_incompatible",
-                screenError = ScreenError("settings_profiler_runtime_incompatible", retryable = false)
-            ),
-            store.state.value.actionState
-        )
-        assertEquals(listOf("about", "diagnostics", "profiler:true"), capabilities.calls)
-        scope.cancel()
-    }
-
-    @Test
-    fun persistedProfilerSwitchIsClearedOnDiagnosticsLoad() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val capabilities = FakeSettingsCapabilities()
-        val preferences = FakeRecompositionProfilerPreferenceRepository(enabled = true)
-        val engine = FakeProfilerEngine()
-        val store =
-            SharedSettingsStore(
-                dataSource =
-                    SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                        platformCapabilities = capabilities,
-                        recompositionProfilerPreferenceRepository = preferences,
-                        recompositionProfilerController =
-                            SharedSettingsRecompositionProfilerController(
-                                engine = engine,
-                                debugGate = FakeProfilerDebugGate(supported = true, gateLabel = "Android debug")
-                            )
-                    ),
-                scope = scope
-            )
-
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Diagnostics))
-
-        val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
-        assertEquals(false, engine.started)
-        assertEquals(false, diagnostics.profiler.enabled)
-        assertEquals(false, preferences.enabled)
-        assertEquals("Idle", diagnostics.profiler.statusLabel)
-        assertEquals(listOf("about", "diagnostics"), capabilities.calls)
-        scope.cancel()
-    }
-
-    @Test
-    fun diagnosticsStillExposeSharedProfilerWhenHostDiagnosticsAreUnavailable() = runBlocking {
+    fun diagnosticsStillLoadWhenHostDiagnosticsAreUnavailable() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val capabilities = FakeSettingsCapabilities(diagnosticsResult = DataResult.Empty(EmptyReason.NoSettingsAvailable))
         val store =
@@ -2912,11 +2781,7 @@ class SharedSettingsStoreTest {
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                        platformCapabilities = capabilities,
-                        recompositionProfilerController =
-                            SharedSettingsRecompositionProfilerController(
-                                debugGate = FakeProfilerDebugGate(supported = true)
-                            )
+                        platformCapabilities = capabilities
                     ),
                 scope = scope
             )
@@ -2925,8 +2790,6 @@ class SharedSettingsStoreTest {
 
         val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
         assertEquals(emptyList(), diagnostics.entries)
-        assertEquals(true, diagnostics.profiler.supported)
-        assertEquals("Idle", diagnostics.profiler.statusLabel)
         assertEquals(listOf("about", "diagnostics"), capabilities.calls)
         scope.cancel()
     }
@@ -3828,11 +3691,6 @@ class SharedSettingsStoreTest {
             return DataResult.Content(Unit)
         }
 
-        override suspend fun setRecompositionProfilerEnabled(enabled: Boolean): DataResult<Unit> {
-            calls += "profiler:$enabled"
-            return DataResult.Content(Unit)
-        }
-
         override suspend fun pickAccountAvatarFile(): DataResult<PlatformFile> {
             calls += "pickAccountAvatarFile"
             return avatarFileResult
@@ -4049,12 +3907,10 @@ class SharedSettingsStoreTest {
             )
         }
 
-        override suspend fun selectLargeScreenNavigation(
-            navigation: LargeScreenNavigationPreference
-        ): ChatLayoutPreferenceSnapshot =
+        override suspend fun setDesktopModeOnLargeScreen(enabled: Boolean): ChatLayoutPreferenceSnapshot =
             ChatLayoutPreferenceSnapshot(
                 myMessageAlignment = alignment,
-                largeScreenNavigation = navigation,
+                desktopModeOnLargeScreen = enabled,
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
@@ -4178,67 +4034,6 @@ class SharedSettingsStoreTest {
         }
 
     }
-
-    private class FakeRecompositionProfilerPreferenceRepository(
-        var enabled: Boolean = false
-    ) : RecompositionProfilerPreferenceRepository {
-        override suspend fun getPreference(): RecompositionProfilerPreferenceSnapshot =
-            RecompositionProfilerPreferenceSnapshot(enabled)
-
-        override suspend fun setEnabled(enabled: Boolean): RecompositionProfilerPreferenceSnapshot {
-            this.enabled = enabled
-            return RecompositionProfilerPreferenceSnapshot(enabled)
-        }
-    }
-
-    private class FakeProfilerEngine(
-        private val startFailure: Throwable? = null
-    ) : SharedSettingsRecompositionProfilerEngine {
-        override val isEnabled: Boolean
-            get() = started
-
-        var started: Boolean = false
-        var enableOverlay: Boolean? = null
-        var enableLog: Boolean? = null
-        var enableFile: Boolean? = null
-
-        override fun clearCustomFilters() = Unit
-
-        override fun configure(block: com.tencent.kuikly.compose.profiler.RecompositionConfigBuilder.() -> Unit) {
-            val builder = com.tencent.kuikly.compose.profiler.RecompositionConfigBuilder().apply(block)
-            enableOverlay = builder.enableOverlay
-            enableLog = builder.enableLog
-            enableFile = builder.enableFile
-        }
-
-        override fun start() {
-            startFailure?.let { throw it }
-            started = true
-        }
-
-        override fun stop(completion: (RecompositionProfilerFileOutputResult) -> Unit) {
-            started = false
-            completion(RecompositionProfilerFileOutputResult.Success("fake-profiler-session"))
-        }
-
-        override fun reset() = Unit
-
-        override fun getReportSnapshot(): RecompositionReport =
-            RecompositionReport.EMPTY
-
-        override fun exportReport(
-            completion: (RecompositionProfilerFileOutputResult) -> Unit
-        ): RecompositionReport =
-            RecompositionReport.EMPTY.also {
-                completion(RecompositionProfilerFileOutputResult.Success("fake-profiler-session"))
-            }
-    }
-
-    private class FakeProfilerDebugGate(
-        override val supported: Boolean,
-        override val gateLabel: String = if (supported) "Debug build" else "Debug only",
-        override val unavailableDetail: String = "Recomposition profiler is available only in shared debug builds."
-    ) : SharedSettingsRecompositionProfilerDebugGate
 
     internal fun sampleSession(role: String = "owner"): StoredAuthSession =
         StoredAuthSession(

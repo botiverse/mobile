@@ -122,8 +122,18 @@ data class ConversationSummary(
     val jointPeerServerName: String? = null,
     val jointPeerServerSlug: String? = null,
     val jointPeerStatus: String? = null,
+    val jointBillingLocked: Boolean? = null,
+    val jointOverLimitGraceEndsAt: String? = null,
+    val bridgeProvider: String? = null,
     val activityNotificationPreference: ChannelActivityNotificationPreference = ChannelActivityNotificationPreference.Unsupported,
-    val permissions: ConversationPermissions = ConversationPermissions()
+    val permissions: ConversationPermissions = ConversationPermissions(),
+    /**
+     * Server-resolved channel-level capabilities for the current receiver
+     * (web `channelCapabilities` on the channel record). `null` when the wire
+     * payload never carried the object — consumers must treat that as "unknown"
+     * and hide capability-gated affordances rather than assume permission.
+     */
+    val channelCapabilities: ChannelCapabilities? = null
 ) {
     val activityMuted: Boolean
         get() = activityNotificationPreference.activityMuted
@@ -141,13 +151,59 @@ data class ConversationPermissions(
     val canCreateTask: Boolean = true
 )
 
+/**
+ * Channel-scoped capabilities resolved server-side for the current member
+ * (web parity: `channelCapabilities` consumed by `canUseChannelMemberAction` in
+ * ChannelMembers.tsx). Unlike [ConversationPermissions], every field is
+ * nullable: `null` means the server did not resolve it, which gates the
+ * affordance OFF — the members page only shows add/remove when the value is
+ * explicitly `true`.
+ */
+@Serializable
+data class ChannelCapabilities(
+    val addChannelMembers: Boolean? = null,
+    val removeChannelMembers: Boolean? = null,
+    val changeChannelMemberRoles: Boolean? = null
+)
+
 // Member Models
 @Serializable
 enum class MemberKind {
     Human,
     Agent,
-    System
+    System,
+    /** Slack-bridge / provider external projection: never a Raft member, never
+     *  in member-detail or roster flows; surfaces read [Message.externalAuthor]. */
+    External,
 }
+
+/**
+ * Immutable, human-facing attribution frozen on a `senderType=external_projection`
+ * message (Web parity: `ExternalMessageAuthorProjection` in
+ * `packages/shared/src/externalProjection.ts`). It is display/search data only —
+ * never a Raft principal, member, task assignee, or mention handle.
+ */
+@Serializable
+data class ExternalMessageAuthor(
+    val displayName: String,
+    val provider: String,
+    val actorKind: String,
+    val avatarUrl: String? = null,
+    val avatarDigest: String? = null,
+    val projectionId: String? = null,
+    val externalActorId: String? = null,
+    val externalConversationId: String? = null,
+    val externalMessageId: String? = null,
+    val workspaceId: String? = null,
+    val installId: String? = null,
+    val appRegistrationId: String? = null,
+    val actorProjectionRevision: Long? = null,
+)
+
+/** Provider subtitle label, web parity (`formatProviderLabel` in MessageItem.tsx):
+ *  "slack" renders as "Slack", other providers pass through verbatim. */
+fun ExternalMessageAuthor.providerLabel(): String =
+    provider.trim().let { if (it.equals("slack", ignoreCase = true)) "Slack" else it }
 
 @Serializable
 enum class Presence {
@@ -155,6 +211,16 @@ enum class Presence {
     Away,
     Offline
 }
+
+/** Wire runtime id of external agents (parity with shared `EXTERNAL_AGENT_RUNTIME_ID`). */
+const val ExternalAgentRuntimeId: String = "external"
+
+/** Parity with shared `isExternalAgentRuntime`: exact match, no trimming or casing. */
+fun isExternalAgentRuntime(runtime: String?): Boolean = runtime == ExternalAgentRuntimeId
+
+/** Web keeps the projected boolean and the runtime sentinel as parallel sources. */
+fun isExternalAgent(external: Boolean?, runtime: String?): Boolean =
+    external == true || isExternalAgentRuntime(runtime)
 
 @Serializable
 enum class AgentStatus {
@@ -264,14 +330,83 @@ data class MemberProfile(
     val avatarLabel: String = displayName.take(1).uppercase(),
     val presence: Presence = Presence.Offline,
     val agentStatus: AgentStatus? = null,
+    /**
+     * External agents (runtime `external`) have no managed liveness. Web keeps
+     * `agent.external === true || runtime === "external"` as parallel sources
+     * (agentStore.ts resolveAgentDisplayState); producers fold both via
+     * [isExternalAgent] so a payload missing one key cannot silently demote the
+     * agent to a managed one.
+     *
+     * Defaulted on purpose — boundary (task #1119): every producer whose wire
+     * payload carries `external`/`runtime` sets it explicitly
+     * (MemberAgentParser agent mappers, [AgentProfile.toMemberProfile],
+     * MembersPage static conversions, Settings JSON profiles). The remaining
+     * constructors are identity seeds (message authors, DM peers, task
+     * assignees, auth session user, visual fixtures) whose payloads carry
+     * neither key; they are never a status source — the status dot reads the
+     * roster/detail profile through SharedServerMembersStore, where the flag
+     * is required downstream ([build.raft.app.data.SharedServerMemberStatus]).
+     */
+    val isExternal: Boolean = false,
+    /**
+     * Agent model id (e.g. `claude-sonnet-4-6`). Mirrors Web `agent.model`.
+     * Resolved at render time via the members store (Web `store.agents`
+     * lookup by `senderId`); paired with [roleDescription] (which carries
+     * the runtime) to produce `getModelLabel(runtime, model)`.
+     * `null` on humans, system senders, and identity seeds whose payloads
+     * never carried a model — the header label stays absent, never a raw id.
+     */
+    val model: String? = null,
     val joinedAt: String? = null,
     val membershipStatus: String? = null,
     val agentDeletedAt: String? = null,
+    /**
+     * External agents only: `lastSeenAt` from `GET /agents` — when the agent's
+     * credential was last used (ISO-8601). Presence is derived from it:
+     * online while `now - lastSeenAt < 120s` (web `EXTERNAL_AGENT_ONLINE_WINDOW_MS`),
+     * otherwise "Last active {time}". Realtime `agent:seen` updates it.
+     */
+    val lastSeenAt: String? = null,
     val createdAgents: List<AgentProfile> = emptyList(),
     val permissionBadges: List<String> = emptyList(),
     val serverId: ServerId? = null,
     val serverName: String? = null,
-    val serverSlug: String? = null
+    val serverSlug: String? = null,
+    /**
+     * Channel-membership projection (web `channel_members` join row fields on
+     * `useChannelMembers` results): the role the member effectively has inside
+     * THIS channel after admin-basis resolution. Only populated by channel
+     * member snapshots — server-roster producers leave it null.
+     */
+    val effectiveChannelRole: String? = null,
+    /** Raw `channel_role` the member holds in this channel, before effective-role resolution. */
+    val channelRole: String? = null,
+    /** Why a channel admin is an admin (`server_role` | `channel_role` | `both`); display-only. */
+    val channelAdminBasis: String? = null,
+    /**
+     * Server-resolved "may the current member change THIS member's channel
+     * role" (web `canChangeChannelRole`). Drives the flag-gated role-action UI;
+     * kept as data so the gate can be enabled without another wire change.
+     */
+    val canChangeChannelRole: Boolean? = null
+)
+
+/**
+ * Slack-bridge (or future provider) participant projected into a channel's
+ * member roster (web parity: `externalMembers` in ChannelMembers.tsx).
+ * Display-only rows — never selectable, never removable, never a member-detail
+ * target; [MemberKind.External] remains the message-attribution kind, this is
+ * the roster-side sibling.
+ */
+@Serializable
+data class ChannelExternalMemberProfile(
+    val id: String,
+    val provider: String? = null,
+    val displayName: String,
+    val handles: List<String> = emptyList(),
+    val actorKind: String? = null,
+    val avatarUrl: String? = null,
+    val avatarLabel: String = displayName.take(1).uppercase()
 )
 
 @Serializable
@@ -289,6 +424,7 @@ data class AgentProfile(
     val agentStatus: AgentStatus? = null,
     val statusLabel: String? = null,
     val runtime: String? = null,
+    val isExternal: Boolean = false,
     val model: String? = null,
     val reasoning: String? = null,
     val hasOnlineMachine: Boolean = false,
@@ -339,6 +475,8 @@ data class Message(
     val commentRef: MessageCommentRef? = null,
     val forwardBundle: ForwardMessageBundle? = null,
     val conversationContext: MessageConversationContext? = null,
+    /** Set when `author.kind == MemberKind.External` (senderType=external_projection). */
+    val externalAuthor: ExternalMessageAuthor? = null,
     val randomId: String? = null,
     /** Canonical numeric creation time used for ordering; never derived from localized display text. */
     @Transient val createdAtEpochMillis: Long? = null,
@@ -520,6 +658,9 @@ data class MessageUpdated(
 data class DirectMessageCreated(val channelId: ChannelId) : RealtimeEvent
 
 @Serializable
+data class ThreadFollowersUpdated(val threadChannelId: ChannelId) : RealtimeEvent
+
+@Serializable
 data class ThreadUpdated(
     val parentMessageId: MessageId,
     val threadChannelId: ChannelId,
@@ -575,7 +716,15 @@ data class MemberPresenceUpdated(
     val agentStatus: AgentStatus? = null,
     val statusLabel: String? = null,
     val serverSeq: Long? = null,
-    val activityEntries: List<RealtimeAgentActivityEntry> = emptyList()
+    val activityEntries: List<RealtimeAgentActivityEntry> = emptyList(),
+    /**
+     * `agent:seen` carries the server's `lastSeenAt` (ISO-8601) for an external
+     * agent — the credential-use timestamp that drives the online window.
+     * Seq-less and merged onto the registered presence fact (see
+     * [ProcessMemberPresenceRegistry]): it updates presence to Active and
+     * this field, never displacing a seq-carrying fact.
+     */
+    val lastSeenAt: String? = null
 ) : RealtimeEvent
 
 @Serializable

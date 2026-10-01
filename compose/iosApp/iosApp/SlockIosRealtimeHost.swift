@@ -20,6 +20,18 @@ final class SlockIosRealtimeHost: NSObject {
         let authGeneration: Int64
         let connectionFamilyId: String
         let accessToken: String
+
+        // task #333: identity = the env/account binding (environmentId, socketUrl,
+        // principalId, connectionFamilyId). authGeneration and accessToken rotate on
+        // every silent token refresh on the SAME binding — a credential refresh, not
+        // an identity replacement. Only a real binding swap may disconnect-all with
+        // process_identity_replaced.
+        func sameBinding(as other: ProcessIdentity) -> Bool {
+            environmentId == other.environmentId &&
+                socketUrl == other.socketUrl &&
+                principalId == other.principalId &&
+                connectionFamilyId == other.connectionFamilyId
+        }
     }
 
     private struct ConnectParams: Equatable {
@@ -175,7 +187,11 @@ final class SlockIosRealtimeHost: NSObject {
                 accessToken: cleanToken
             )
             let identityChanged = self.processIdentity != nil && self.processIdentity != nextIdentity
-            if identityChanged {
+            // task #333: only a real binding swap tears the session down
+            // (process_identity_replaced); a same-binding token rotation is a
+            // credential refresh and must not disconnect-all or kick the UI.
+            let bindingReplaced = self.processIdentity != nil && !(self.processIdentity!.sameBinding(as: nextIdentity))
+            if bindingReplaced {
                 self.disconnectAllLocked(reason: "process_identity_replaced")
             }
             self.processIdentity = nextIdentity
@@ -741,6 +757,7 @@ final class SlockIosRealtimeHost: NSObject {
         GeneratedRealtimeContract.SocketEvent.reminderFired,
         GeneratedRealtimeContract.SocketEvent.reminderScheduled,
         GeneratedRealtimeContract.SocketEvent.reminderCanceled,
+        "thread:followers-updated",
         "read_state:updated",
         "read_state:updated_bulk",
         "notification_prefs:updated",

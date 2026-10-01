@@ -12,6 +12,7 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.RowScope
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
@@ -19,6 +20,7 @@ import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
@@ -28,8 +30,16 @@ import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.TextUnit
+import build.raft.app.components.SlockBrutalSearchField
+import build.raft.app.data.TasksUnassignedAssigneeFilterId
+import build.raft.app.data.tasksIdentityFilterId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.avatarWireValueForAvatarSlot
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -223,7 +233,7 @@ private fun slockBaseMenuWidth(items: List<SlockBaseMenuItem>, uppercaseLabels: 
 }
 
 @Composable
-private fun SlockBaseMenuRow(
+internal fun SlockBaseMenuRow(
     item: SlockBaseMenuItem,
     selected: Boolean,
     selectedRowColor: Color,
@@ -276,6 +286,203 @@ private fun SlockBaseMenuRow(
                     Spacer(modifier = Modifier.width(SlockBaseMenuIconSize))
                 }
             }
+        }
+    }
+}
+
+/*
+ * Task #258 successor (artin msg=f65282d2 via Mahua msg=cf4c6b0a): the assignee
+ * selector is a STANDALONE CENTERED modal (SlockUnifiedDialog, same shell family
+ * as the channel add-member dialog), not an anchored expansion. It reuses the
+ * channel add-user interaction verbatim: SlockBrutalSearchField with the Search
+ * leading icon, SlockModalListShell + SlockModalSectionHeader (AGENTS then
+ * HUMANS), and the exact SlockModalCompactMemberRow visuals extracted into
+ * RowScope.SlockModalCompactMemberRowContent. One adaptation: rows are wrapped
+ * in a native Button shell (same disabled/selected/idle background mapping incl.
+ * BrandYellow selection) because plain-`clickable` rows inside a dialog stacked
+ * on the task detail dialog lose to the outer dismiss barrier. Single-select
+ * semantics: tapping a row applies it immediately and closes (matching the
+ * add-member row contract), with the unassigned sentinel kept first.
+ */
+@Composable
+internal fun SlockTaskAssigneeMenuOverlay(
+    open: Boolean,
+    onDismiss: () -> Unit,
+    rows: List<MemberProfile?>,
+    selectedId: String,
+    agentStatusResolver: SlockAgentStatusResolver,
+    searchValue: TextFieldValue,
+    onSearchValueChange: (TextFieldValue) -> Unit,
+    searchPlaceholder: String,
+    modalTitle: String,
+    unassignedLabel: String,
+    humansHeaderLabel: String,
+    agentsHeaderLabel: String,
+    onSelect: (String) -> Unit
+) {
+    if (!open || rows.isEmpty()) return
+    val memberRows = rows.filterNotNull()
+    val agentCount = memberRows.count { it.kind == MemberKind.Agent }
+    val humanCount = memberRows.count { it.kind == MemberKind.Human }
+    // Same list height formula as the channel add-member dialog.
+    val listHeight = threadMemberListHeight(agentCount = agentCount, humanCount = humanCount).dp
+    SlockUnifiedDialog(
+        title = modalTitle,
+        onDismiss = onDismiss,
+        minWidth = 356.dp,
+        maxWidth = 356.dp,
+        contentPadding = 24.dp,
+        titleFontSize = 18,
+        titleLineHeight = 22
+    ) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // Same search field as the channel add-member dialog.
+            SlockBrutalSearchField(
+                value = searchValue,
+                placeholder = searchPlaceholder,
+                leadingIcon = SlockLucideIconName.Search,
+                enabled = true,
+                onValueChange = onSearchValueChange
+            )
+            SlockModalListShell(height = listHeight) {
+                if (memberRows.isEmpty()) {
+                    item(key = "no-match") {
+                        Text(
+                            text = searchPlaceholder,
+                            style = SlockType.Caption,
+                            color = SlockColor.TextMutedGray,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 18.dp)
+                        )
+                    }
+                }
+                rows.forEach { row ->
+                    if (row == null) {
+                        item(key = TasksUnassignedAssigneeFilterId) {
+                            SlockTaskAssigneeMemberButton(
+                                selected = selectedId == TasksUnassignedAssigneeFilterId,
+                                onClick = { onSelect(TasksUnassignedAssigneeFilterId) }
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(26.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    SlockLucideIcon(
+                                        SlockLucideIconName.UserMinus,
+                                        modifier = Modifier.size(15.dp),
+                                        color = "#FF000000"
+                                    )
+                                }
+                                Text(
+                                    text = unassignedLabel,
+                                    style = SlockType.Body.withSlockFontWeight(FontWeight.Medium)
+                                        .copy(fontSize = 14.sp, lineHeight = 18.sp),
+                                    color = SlockColor.TextBlack,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                if (selectedId == TasksUnassignedAssigneeFilterId) {
+                                    SlockLucideIcon(
+                                        SlockLucideIconName.Check,
+                                        modifier = Modifier.size(15.dp),
+                                        color = "#FF000000"
+                                    )
+                                } else {
+                                    Spacer(modifier = Modifier.size(15.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+                var lastKind: MemberKind? = null
+                rows.forEach { row ->
+                    val member = row ?: return@forEach
+                    if (lastKind != member.kind) {
+                        lastKind = member.kind
+                        item(key = "header-${member.kind.name.lowercase()}") {
+                            // Same section header as the channel add-member dialog.
+                            SlockModalSectionHeader(
+                                label = if (member.kind == MemberKind.Human) humansHeaderLabel else agentsHeaderLabel
+                            )
+                        }
+                    }
+                    item(key = member.tasksIdentityFilterId()) {
+                        val selected = member.tasksIdentityFilterId() == selectedId
+                        val statusIndicatorState =
+                            if (member.kind == MemberKind.Agent) {
+                                resolveThreadMemberAgentStatusIndicatorState(
+                                    memberKind = member.kind.name.lowercase(),
+                                    canonicalState = rememberSlockAgentStatusIndicatorState(
+                                        agentStatusResolver,
+                                        member.id.value
+                                    )
+                                )
+                            } else {
+                                null
+                            }
+                        SlockTaskAssigneeMemberButton(
+                            selected = selected,
+                            onClick = { onSelect(member.tasksIdentityFilterId()) }
+                        ) {
+                            SlockModalCompactMemberRowContent(
+                                title = member.displayName,
+                                subtitle = member.roleDescription
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?: "${member.kind.name.lowercase()} · @${member.handle}",
+                                avatarWireValue = member.avatarWireValueForAvatarSlot(),
+                                avatarLabel = member.avatarLabel.ifBlank { member.displayName },
+                                statusColor = statusIndicatorState?.color,
+                                statusPulsing = statusIndicatorState?.pulsing == true,
+                                avatarSize = 26.dp,
+                                sourceBadgeLabel = null,
+                                enabled = true,
+                                selected = selected,
+                                trailingText = "",
+                                trailingIcon = if (selected) SlockLucideIconName.Check else null,
+                                onTrailingClick = null,
+                                cacheSubject = member.slockAvatarCacheSubject(),
+                                cacheServerId = member.serverId?.value
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun SlockTaskAssigneeMemberButton(
+    selected: Boolean,
+    onClick: () -> Unit,
+    // RowScope receiver: the row content reuses SlockModalCompactMemberRowContent,
+    // a RowScope extension whose children rely on Row-scope weight modifiers.
+    content: @Composable RowScope.() -> Unit
+) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite
+            )
+    ) {
+        // Task #258 (artin msg=be381a13): same 12dp horizontal inset as the
+        // channel SlockModalCompactMemberRow shell so member rows indent alike.
+        // Task #269 (artin msg=d04b1d19): and the same 8dp vertical padding -- the
+        // port kept only the horizontal value, so rows sat avatar-to-avatar with no
+        // gap. The native Button shell contributes no padding of its own here.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            content()
         }
     }
 }

@@ -55,7 +55,8 @@ const opts = {
   appPackage: arg("--package", "build.raft.app"),
   playbook: arg("--playbook", process.env.QA_PLAYBOOK || "docs/qa-acceptance-operations.md"),
   // "android" drives adb directly (unchanged); "ios" delegates every device
-  // primitive to scripts/qa/ios_driver.mjs (simctl + XCUITest loop harness).
+  // primitive to scripts/qa/ios_driver.mjs (agent-device by default; qa-loop
+  // keeps the XCUITest file protocol).
   platform: arg("--platform", process.env.QA_PLATFORM || "android"),
   iosIoDir: arg("--ios-io-dir", process.env.QA_LOOP_IO_DIR || ""),
   iosUdid: arg("--ios-udid", process.env.QA_IOS_UDID || "booted"),
@@ -129,7 +130,11 @@ function captureAndroidQaBoundary(imageSha256) {
   const installScript =
     `umask 077; mkdir -p files/qa-bootstrap/inbox; tmp='${relative}.tmp'; ` +
     `cat >\"$tmp\"; chmod 600 \"$tmp\"; mv \"$tmp\" '${relative}'`;
-  adb(adbRunAsShellArgs("exec-in", opts.appPackage, installScript), {
+  // adb shell -T + stdin, not exec-in: canary-15 (CI 34684737549, hosted
+  // emulator) reached READY through the same helper on "shell" and then this
+  // exec-in injection was torn at stdin EOF, so no request file, no App ack
+  // (timed out below). Same channel difference as mobile#2476.
+  adb(adbRunAsShellArgs("shell", opts.appPackage, installScript), {
     input: request,
     encoding: "utf8",
   });
@@ -151,7 +156,21 @@ function captureAndroidQaBoundary(imageSha256) {
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
   }
-  throw new Error("QA capture boundary acknowledgement timed out");
+  // Discriminator on the timeout path (HuaTuo): read the request file back on
+  // the plain shell channel. Absent → the injection did not land (channel);
+  // present with the right sha → the App did not acknowledge (broadcast /
+  // receiver side). Names, mode and digest only; no contents.
+  let landed = "readback failed";
+  try {
+    const seen = adb(["shell", `run-as ${opts.appPackage} sh -c 'ls -laZ files/qa-bootstrap/inbox 2>&1; sha256sum ${relative} 2>&1 | cut -d" " -f1'`], { encoding: "utf8" });
+    const lines = seen.trim().split("\n");
+    const sha = lines[lines.length - 1]?.trim() ?? "";
+    const present = lines.some((line) => line.endsWith(` ${requestId}.capture`));
+    landed = `present=${present} sha_matches=${`sha256:${sha}` === requestDigest} inbox=${JSON.stringify(lines.slice(0, -1).join(" | ")).slice(0, 600)}`;
+  } catch (error) {
+    landed = `readback failed: ${String(error?.message ?? error).slice(0, 200)}`;
+  }
+  throw new Error(`QA capture boundary acknowledgement timed out (request file readback: ${landed})`);
 }
 
 // Structured view of the current uiautomator dump — the single source both
@@ -569,7 +588,7 @@ async function main() {
     if (!opts.iosIoDir) { console.error("--platform ios requires --ios-io-dir / QA_LOOP_IO_DIR"); process.exit(2); }
     const { createIosDriver } = await import("./ios_driver.mjs");
     drv = createIosDriver({ ioDir: opts.iosIoDir, udid: opts.iosUdid, bundle: opts.appPackage });
-    console.error("waiting for the iOS loop harness (xcodebuild test) to launch the app...");
+    console.error(`waiting for the iOS driver (${drv.driver}) to open the app...`);
     await drv.waitReady();
   }
   const stepsPath = path.join(opts.out, "steps.jsonl");

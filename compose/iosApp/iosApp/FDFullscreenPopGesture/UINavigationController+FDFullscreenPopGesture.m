@@ -23,11 +23,13 @@
 #import "UINavigationController+FDFullscreenPopGesture.h"
 #import "KuiklyRenderViewController.h"
 #import "SlockConversationForwardGestureAdmission.h"
+#import "SlockInteractivePopGestureAdmission.h"
 #import <objc/runtime.h>
 
 @interface _FDFullscreenPopGestureRecognizerDelegate : NSObject <UIGestureRecognizerDelegate>
 
 @property (nonatomic, weak) UINavigationController *navigationController;
+@property (nonatomic, assign) BOOL touchBeganInEdgeZone;
 
 @end
 
@@ -119,40 +121,55 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
 
 @implementation _FDFullscreenPopGestureRecognizerDelegate
 
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch
+{
+    // Record at touch-down whether this touch may start a back swipe. Only the leading-edge
+    // strip qualifies, so content-area swipes (pagers, lists) never pop.
+    if (gestureRecognizer.numberOfTouches > 0) {
+        return YES;
+    }
+    UINavigationController *navigationController = self.navigationController;
+    UIViewController *topViewController = navigationController.viewControllers.lastObject;
+    CGPoint location = [touch locationInView:gestureRecognizer.view];
+    SlockInteractivePopTouchAdmission admission = {
+        .navigationStackCount = navigationController.viewControllers.count,
+        .interactivePopDisabled = topViewController.fd_interactivePopDisabled,
+        .transitioning = [[navigationController valueForKey:@"_isTransitioning"] boolValue],
+        .maxAllowedInitialDistance = topViewController.fd_interactivePopMaxAllowedInitialDistanceToLeftEdge,
+        .touchLocationX = location.x,
+        .viewWidth = CGRectGetWidth(gestureRecognizer.view.bounds),
+        .isLeftToRight = [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight,
+    };
+    self.touchBeganInEdgeZone = SlockInteractivePopTouchBeginsInEdgeZone(admission);
+    return YES;
+}
+
 - (BOOL)gestureRecognizerShouldBegin:(UIPanGestureRecognizer *)gestureRecognizer
 {
-    // Ignore when no view controller is pushed into the navigation stack.
-    if (self.navigationController.viewControllers.count <= 1) {
-        return NO;
-    }
-
-    // Ignore when the active view controller doesn't allow interactive pop.
-    UIViewController *topViewController = self.navigationController.viewControllers.lastObject;
-    if (topViewController.fd_interactivePopDisabled) {
-        return NO;
-    }
-
-    // Ignore when the beginning location is beyond max allowed initial distance to left edge.
-    CGPoint beginningLocation = [gestureRecognizer locationInView:gestureRecognizer.view];
-    CGFloat maxAllowedInitialDistance = topViewController.fd_interactivePopMaxAllowedInitialDistanceToLeftEdge;
-    if (maxAllowedInitialDistance > 0 && beginningLocation.x > maxAllowedInitialDistance) {
-        return NO;
-    }
-
-    // Ignore pan gesture when the navigation controller is currently in transition.
-    if ([[self.navigationController valueForKey:@"_isTransitioning"] boolValue]) {
-        return NO;
-    }
-
-    // Prevent calling the handler when the gesture begins in an opposite direction.
     CGPoint translation = [gestureRecognizer translationInView:gestureRecognizer.view];
-    BOOL isLeftToRight = [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight;
-    CGFloat multiplier = isLeftToRight ? 1 : - 1;
-    if ((translation.x * multiplier) <= 0) {
-        return NO;
-    }
+    CGPoint velocity = [gestureRecognizer velocityInView:gestureRecognizer.view];
+    SlockInteractivePopGestureAdmission admission = {
+        .touchBeganInEdgeZone = self.touchBeganInEdgeZone,
+        .transitioning = [[self.navigationController valueForKey:@"_isTransitioning"] boolValue],
+        .translationX = translation.x,
+        .translationY = translation.y,
+        .velocityX = velocity.x,
+        .velocityY = velocity.y,
+        .isLeftToRight = [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight,
+    };
+    return SlockInteractivePopGestureShouldBegin(admission);
+}
 
-    return YES;
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer
+{
+    UIView *rootView = self.navigationController.view;
+    BOOL otherIsContentPan =
+        [otherGestureRecognizer isKindOfClass:UIPanGestureRecognizer.class] &&
+        ![otherGestureRecognizer isKindOfClass:UIScreenEdgePanGestureRecognizer.class] &&
+        otherGestureRecognizer.view != nil &&
+        otherGestureRecognizer.view != gestureRecognizer.view &&
+        [otherGestureRecognizer.view isDescendantOfView:rootView];
+    return SlockInteractivePopShouldBeRequiredToFailBy(self.touchBeganInEdgeZone, otherIsContentPan);
 }
 
 @end

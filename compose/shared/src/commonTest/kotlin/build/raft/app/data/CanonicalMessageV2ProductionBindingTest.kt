@@ -11,13 +11,6 @@ import build.raft.app.network.sync.CanonicalMessageV2CanaryOutcome
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
-import build.raft.app.network.sync.CanonicalMessageV2SnapshotFrame
-import build.raft.app.network.sync.CanonicalMessageV2Store
-import build.raft.app.network.sync.CanonicalMessageV2StoreWriteResult
-import build.raft.app.network.sync.CanonicalMessageV2IncrementalFrame
-import build.raft.app.network.sync.DurablePartitionKey
-import build.raft.app.network.sync.RestoredCanonicalMessageV2Scope
-import build.raft.app.network.sync.SyncScopeKey
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.TopLevelScopeRefV2
 import kotlinx.coroutines.runBlocking
@@ -29,7 +22,7 @@ class CanonicalMessageV2ProductionBindingTest {
     @Test
     fun flagOffDoesNotReadNetworkOrRequireAnAuthSession() = runBlocking {
         val store = RecordingStore()
-        val network = RecordingNetworkClient(page(includeReplyCount = true))
+        val network = RecordingNetworkClient(canonicalV2TestPage())
         val engine = CanonicalMessageV2GenerationEngine(
             coordinator = CanonicalMessageV2BaselineCoordinator(),
             store = store,
@@ -52,11 +45,17 @@ class CanonicalMessageV2ProductionBindingTest {
     @Test
     fun serverPageBecomesFullV2SnapshotBeforeCommit() = runBlocking {
         val store = RecordingStore()
-        val network = RecordingNetworkClient(page(includeReplyCount = true))
+        val network = RecordingNetworkClient(
+            canonicalV2TestThreadParentPage(),
+            threadSummariesBody = canonicalV2TestThreadSummaries(replyCount = 4),
+        )
         val gateway = gateway(store, network)
 
         assertEquals(CanonicalMessageV2CanaryOutcome.Committed, gateway.accept(grant(), input()))
-        assertEquals(listOf("channels/channel-1", "messages/channel/channel-1"), network.paths)
+        assertEquals(
+            listOf("channels/channel-1", "messages/channel/channel-1", "channels/channel-1/threads"),
+            network.paths,
+        )
         assertEquals(1, store.snapshots.size)
         val frame = store.snapshots.single()
         assertEquals(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID, frame.scope.consumerId)
@@ -66,9 +65,12 @@ class CanonicalMessageV2ProductionBindingTest {
     }
 
     @Test
-    fun pageWithoutAuthoritativeReplyCountCannotEnterSoleApply() = runBlocking {
+    fun threadParentWithoutSummaryCannotEnterSoleApply() = runBlocking {
         val store = RecordingStore()
-        val gateway = gateway(store, RecordingNetworkClient(page(includeReplyCount = false)))
+        val gateway = gateway(
+            store,
+            RecordingNetworkClient(canonicalV2TestThreadParentPage(), threadSummariesBody = "{}"),
+        )
 
         assertIs<CanonicalMessageV2CanaryOutcome.Held>(gateway.accept(grant(), input()))
         assertEquals(0, store.snapshots.size)
@@ -113,6 +115,7 @@ class CanonicalMessageV2ProductionBindingTest {
     private fun grant() = RealtimeGrantRecord(
         slotKey = RealtimeSlotKey("scope-1", "server-1"),
         principalId = "user-1",
+        environmentId = "env-test",
         authGeneration = 1L,
         connectionFamilyId = "family-1",
         connectionEpochId = "epoch-1",
@@ -125,50 +128,4 @@ class CanonicalMessageV2ProductionBindingTest {
         selectedServerId = "server-1",
         servers = listOf(StoredAuthServer(id = "server-1", name = "Server", slug = "server")),
     )
-
-    private fun page(includeReplyCount: Boolean): String {
-        val replyCount = if (includeReplyCount) ",\"replyCount\":4" else ""
-        return """{"messages":[{"id":"message-1","seq":7,"channelId":"channel-1","senderType":"user","senderId":"user-1","content":"hello","messageType":"chat","randomId":null,"threadId":null,"createdAt":"2026-07-17T00:00:00.000Z","senderName":"Alice","senderDescription":null,"senderMembershipStatus":null,"mentions":[],"attachments":[],"reactions":[],"commentRef":null,"actionMetadata":null$replyCount}],"historyLimited":false}"""
-    }
-
-    private class RecordingNetworkClient(
-        private val pageBody: String,
-    ) : SlockNetworkClient {
-        val paths = mutableListOf<String>()
-
-        override suspend fun request(
-            priority: DataRequestPriority,
-            path: String,
-            method: String,
-            query: List<Pair<String, String>>,
-            serverIdOverride: build.raft.app.model.ServerId?,
-            bodyText: String?,
-        ): HomeNetworkResponse {
-            paths += path
-            return when {
-                path == "channels/channel-1" -> HomeNetworkResponse(200, """{"id":"channel-1","type":"channel"}""")
-                path == "messages/channel/channel-1" -> HomeNetworkResponse(200, pageBody)
-                else -> HomeNetworkResponse(404, null)
-            }
-        }
-    }
-
-    private class RecordingStore : CanonicalMessageV2Store {
-        val snapshots = mutableListOf<CanonicalMessageV2SnapshotFrame>()
-
-        override suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame): CanonicalMessageV2StoreWriteResult {
-            snapshots += frame
-            return CanonicalMessageV2StoreWriteResult()
-        }
-
-        override suspend fun applyIncremental(frame: CanonicalMessageV2IncrementalFrame) =
-            CanonicalMessageV2StoreWriteResult()
-
-        override suspend fun restore(scope: SyncScopeKey): RestoredCanonicalMessageV2Scope =
-            RestoredCanonicalMessageV2Scope(emptyList(), null)
-
-        override suspend fun clearScope(scope: SyncScopeKey): Set<SyncScopeKey> = setOf(scope)
-
-        override suspend fun clearPartition(partition: DurablePartitionKey) = Unit
-    }
 }

@@ -23,6 +23,7 @@ import build.raft.app.model.threadIdentity
 import build.raft.app.model.topLevelThreadId
 import build.raft.app.network.MultipartFile
 import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -229,12 +230,92 @@ private suspend fun SlockNetworkClient.executePendingMentionActions(
 ): HomeNetworkResponse =
     request(priority, "messages/mention-actions/execute", method = "POST", bodyText = bodyText)
 
-class RealConversationRepository(
+class RealConversationRepository private constructor(
     private val sessionStore: SlockAuthSessionStore,
     private val networkClient: SlockNetworkClient,
     private val routeServerIdProvider: (() -> String?)? = null,
-    private val warningLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
+    private val warningLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
+    private val routeEnvironmentIdProvider: (() -> String?)? = null,
+    /** Non-null only for the repository produced by [boundTo].  Direct upload sessions are
+     * reservation-bearing mutations and must not be reachable through a selector-backed facade. */
+    private val directSessionAuthority: SlockExpectedAuthBinding? = null,
 ) : ConversationRepository, ProgressiveConversationAttachmentUploader {
+    /**
+     * Upper bound the targeted reply-summary join waits for the account-wide followed-thread
+     * list (task #1142). Channel summaries are the authority for reply rows; the followed list
+     * only decorates them with `isThreadFollowed`. On accounts following many threads that list
+     * is multi-megabyte and a slow link never delivered it before the user left, so the join
+     * never ran and an anchored channel page showed no reply rows at all. Tests shrink this.
+     */
+    internal var followedSummariesJoinBudgetMillis: Long = FOLLOWED_SUMMARIES_JOIN_BUDGET_MILLIS
+
+    /** Public compatibility constructor for ordinary selector-backed repositories. */
+    constructor(
+        sessionStore: SlockAuthSessionStore,
+        networkClient: SlockNetworkClient,
+        routeServerIdProvider: (() -> String?)? = null,
+        warningLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
+        routeEnvironmentIdProvider: (() -> String?)? = null,
+    ) : this(
+        sessionStore = sessionStore,
+        networkClient = networkClient,
+        routeServerIdProvider = routeServerIdProvider,
+        warningLogger = warningLogger,
+        routeEnvironmentIdProvider = routeEnvironmentIdProvider,
+        directSessionAuthority = null,
+    )
+
+    /**
+     * Build a repository pinned to one transient route-authority witness.  The returned instance
+     * shares the same auth store but every request (including direct-session compensation) goes
+     * through the bound network-client seam.  Callers must capture this once and reuse it for the
+     * complete operation; constructing a fresh unbound repository for cleanup would reopen the
+     * account/server race this seam is intended to close.
+     */
+    internal fun boundTo(expectedAuthority: SlockExpectedAuthBinding): RealConversationRepository? {
+        if (networkClient !is AuthorityBoundSlockNetworkClient) return null
+        if (
+            expectedAuthority.accountId.trim().isBlank() ||
+            expectedAuthority.accessToken.isBlank() ||
+            expectedAuthority.refreshToken.isBlank() ||
+            expectedAuthority.serverId.trim().isBlank() ||
+            expectedAuthority.environmentId.normalizedEnvironmentId().isBlank()
+        ) {
+            return null
+        }
+        return RealConversationRepository(
+            sessionStore = sessionStore,
+            networkClient = networkClient.boundTo(expectedAuthority),
+            // A bound operation must not re-read a mutable route-server selector.  Pin the
+            // repository context to the witness as well as the network client; otherwise a
+            // remount could make currentContext() validate one server while the transport sends
+            // another.
+            routeServerIdProvider = { expectedAuthority.serverId },
+            routeEnvironmentIdProvider = { expectedAuthority.environmentId },
+            warningLogger = warningLogger,
+            directSessionAuthority = expectedAuthority,
+        )
+    }
+
+    /**
+     * Capture one bound repository/coordinator for the complete Gallery direct-session lifecycle.
+     * Keeping this factory next to [boundTo] makes it difficult for a caller to accidentally use
+     * an unbound repository for capability admission or compensation.
+     */
+    internal fun directAttachmentUploadOperation(
+        expectedAuthority: SlockExpectedAuthBinding,
+        diagnosticsLogger: (String) -> Unit = {},
+    ): DirectAttachmentUploadOperation? =
+        boundTo(expectedAuthority)?.let { boundRepository ->
+            DirectAttachmentUploadOperation(
+                authority = expectedAuthority,
+                coordinator = DirectAttachmentUploadCoordinator(
+                    repository = boundRepository,
+                    diagnosticsLogger = diagnosticsLogger,
+                )
+            )
+        }
+
     override suspend fun getConversationDetail(
         channelId: ChannelId,
         priority: DataRequestPriority,
@@ -257,13 +338,236 @@ class RealConversationRepository(
         )
     }
 
+    override suspend fun getLatestChannelMessage(
+        channelId: ChannelId,
+        priority: DataRequestPriority,
+    ): DataResult<Message> {
+        val context = currentContext() ?: return authRequired()
+        val result =
+            executeConversation(
+                emptyReason = EmptyReason.NoMessages,
+                block = {
+                    networkClient.channelMessages(
+                        priority = priority,
+                        channelId = channelId,
+                        limit = 1,
+                        serverIdOverride = context.server.id,
+                    )
+                },
+                emptyWhen = { it.messages.isEmpty() },
+                source = "messages_channel_latest",
+                mapper = { bodyText ->
+                    parseSharedChannelMessages(
+                        bodyText = bodyText,
+                        fallbackThreadId = ThreadId(channelId.value),
+                        diagnostics = warningLogger,
+                    )
+                }
+            )
+        return when (result) {
+            is DataResult.Content -> {
+                val latest = result.data.messages.firstOrNull()
+                if (latest != null) {
+                    DataResult.Content(latest)
+                } else {
+                    DataResult.Empty(EmptyReason.NoMessages)
+                }
+            }
+            is DataResult.Empty -> result
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
+    }
+
     override suspend fun getAttachmentUploadCapabilities(): DataResult<AttachmentUploadCapabilities> {
         currentContext() ?: return authRequired()
         return executeConversation(
             emptyReason = EmptyReason.NoSettingsAvailable,
             block = { networkClient.attachmentUploadCapabilities(DataRequestPriority.Foreground) },
             source = "attachment_upload_capabilities",
+            bodyEventFields = ::attachmentUploadCapabilitiesBodyTelemetry,
             mapper = ::parseSharedAttachmentUploadCapabilities
+        )
+    }
+
+    override suspend fun createAttachmentUploadSession(
+        request: AttachmentUploadSessionCreateRequest
+    ): DataResult<AttachmentUploadSessionCreateResult> {
+        if (directSessionAuthority == null) return directSessionAuthorityRequired()
+        val context = currentContext() ?: return authRequired()
+        if (request.channelId.value.isBlank() || request.filename.isBlank() || request.mimeType.isBlank() ||
+            request.sizeBytes <= 0L || request.clientRequestId.isBlank()
+        ) {
+            return DataResult.Error(ScreenError("attachment_upload_session_invalid_request", retryable = false))
+        }
+        return executeConversation(
+            emptyReason = EmptyReason.NoMessages,
+            block = {
+                networkClient.createAttachmentUploadSession(
+                    priority = DataRequestPriority.Foreground,
+                    request = request,
+                    serverIdOverride = context.server.id,
+                )
+            },
+            source = "attachment_upload_session_create",
+            mapper = ::parseSharedAttachmentUploadSessionCreate,
+        )
+    }
+
+    override suspend fun putAttachmentUploadBytes(
+        upload: AttachmentUploadSessionPut,
+        bytes: ByteArray,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
+    ): DataResult<Unit> {
+        if (directSessionAuthority == null) return directSessionAuthorityRequired()
+        currentContext() ?: return authRequired()
+        if (bytes.isEmpty()) {
+            return DataResult.Error(ScreenError("attachment_upload_session_empty_body", retryable = false))
+        }
+        return executeAttachmentUploadUnit(
+            source = "attachment_upload_session_put_bytes",
+            block = {
+                networkClient.putAttachmentUploadBytes(
+                    priority = DataRequestPriority.Foreground,
+                    upload = upload,
+                    bytes = bytes,
+                    onUploadProgress = onUploadProgress,
+                )
+            }
+        )
+    }
+
+    override suspend fun putAttachmentUploadFile(
+        upload: AttachmentUploadSessionPut,
+        file: PlatformFile,
+        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
+    ): DataResult<Unit> {
+        if (directSessionAuthority == null) return directSessionAuthorityRequired()
+        currentContext() ?: return authRequired()
+        if (file.fileRef.isNullOrBlank() && file.bytes.isEmpty()) {
+            return DataResult.Error(ScreenError("attachment_upload_session_empty_body", retryable = false))
+        }
+        return executeAttachmentUploadUnit(
+            source = "attachment_upload_session_put_file",
+            block = {
+                networkClient.putAttachmentUploadFile(
+                    priority = DataRequestPriority.Foreground,
+                    upload = upload,
+                    file = file,
+                    onUploadProgress = onUploadProgress,
+                )
+            }
+        )
+    }
+
+    override suspend fun prepareAttachmentUploadFile(
+        file: PlatformFile,
+    ): DataResult<PlatformFile> {
+        if (directSessionAuthority == null) return directSessionAuthorityRequired()
+        currentContext() ?: return authRequired()
+        val normalizedRef = file.fileRef?.trim()?.takeIf { it.isNotBlank() }
+        if (normalizedRef != null && file.bytes.isNotEmpty()) {
+            return DataResult.Error(
+                ScreenError("attachment_file_input_conflict", retryable = false)
+            )
+        }
+        val preparation = networkClient.prepareAttachmentUploadFile(
+            file.copy(fileRef = normalizedRef)
+        )
+        return when (preparation) {
+            is SlockPlatformFilePreparationResult.Ready -> {
+                val size = preparation.sizeBytes
+                if (size <= 0L) {
+                    DataResult.Error(ScreenError("attachment_size_unavailable", retryable = false))
+                } else {
+                    DataResult.Content(
+                        file.copy(
+                            fileRef = normalizedRef,
+                            sizeBytes = size,
+                        )
+                    )
+                }
+            }
+            is SlockPlatformFilePreparationResult.Rejected ->
+                if (preparation.code == "auth_authority_changed") {
+                    DataResult.Error(ScreenError("auth_authority_changed", retryable = true))
+                } else {
+                    DataResult.Error(
+                        ScreenError(
+                            code = preparation.code.ifBlank { "attachment_size_unavailable" },
+                            retryable = preparation.retryable,
+                        )
+                    )
+                }
+        }
+    }
+
+    override suspend fun completeAttachmentUploadSession(
+        uploadId: String
+    ): DataResult<AttachmentUploadSessionCompleteResult> {
+        if (directSessionAuthority == null) return directSessionAuthorityRequired()
+        val context = currentContext() ?: return authRequired()
+        val normalizedId = uploadId.trim()
+        if (normalizedId.isBlank()) {
+            return DataResult.Error(ScreenError("attachment_upload_session_invalid_request", retryable = false))
+        }
+        return executeConversation(
+            emptyReason = EmptyReason.NoMessages,
+            block = {
+                networkClient.completeAttachmentUploadSession(
+                    priority = DataRequestPriority.Foreground,
+                    uploadId = normalizedId,
+                    serverIdOverride = context.server.id,
+                )
+            },
+            source = "attachment_upload_session_complete",
+            mapper = ::parseSharedAttachmentUploadSessionComplete,
+        )
+    }
+
+    override suspend fun cancelAttachmentUploadSession(
+        uploadId: String
+    ): DataResult<AttachmentUploadSessionView> {
+        if (directSessionAuthority == null) return directSessionAuthorityRequired()
+        val context = currentContext() ?: return authRequired()
+        val normalizedId = uploadId.trim()
+        if (normalizedId.isBlank()) {
+            return DataResult.Error(ScreenError("attachment_upload_session_invalid_request", retryable = false))
+        }
+        return executeConversation(
+            emptyReason = EmptyReason.NoMessages,
+            block = {
+                networkClient.cancelAttachmentUploadSession(
+                    priority = DataRequestPriority.Foreground,
+                    uploadId = normalizedId,
+                    serverIdOverride = context.server.id,
+                )
+            },
+            source = "attachment_upload_session_cancel",
+            mapper = ::parseSharedAttachmentUploadSessionView,
+        )
+    }
+
+    override suspend fun statusAttachmentUploadSession(
+        uploadId: String
+    ): DataResult<AttachmentUploadSessionView> {
+        if (directSessionAuthority == null) return directSessionAuthorityRequired()
+        val context = currentContext() ?: return authRequired()
+        val normalizedId = uploadId.trim()
+        if (normalizedId.isBlank()) {
+            return DataResult.Error(ScreenError("attachment_upload_session_invalid_request", retryable = false))
+        }
+        return executeConversation(
+            emptyReason = EmptyReason.NoMessages,
+            block = {
+                networkClient.statusAttachmentUploadSession(
+                    priority = DataRequestPriority.Foreground,
+                    uploadId = normalizedId,
+                    serverIdOverride = context.server.id,
+                )
+            },
+            source = "attachment_upload_session_status",
+            mapper = ::parseSharedAttachmentUploadSessionView,
         )
     }
     override suspend fun getThread(
@@ -340,7 +644,16 @@ class RealConversationRepository(
                 )
             }
         val channelSummaries = channelSummariesDeferred.await()
-        val followedSummaries = followedSummariesDeferred.await()
+        // Task #1142: never let the account-wide followed list gate the channel summaries.
+        val followedSummaries =
+            withTimeoutOrNull(followedSummariesJoinBudgetMillis) { followedSummariesDeferred.await() }
+        if (followedSummaries == null) {
+            followedSummariesDeferred.cancel()
+            warningLogger(
+                "thread_summary_followed_budget_exceeded threadId=${threadId.value} " +
+                    "budgetMs=$followedSummariesJoinBudgetMillis"
+            )
+        }
         val channelThreads =
             (channelSummaries as? DataResult.Content)
                 ?.data
@@ -357,9 +670,10 @@ class RealConversationRepository(
         warningLogger(
             "thread_summary_load_result threadId=${threadId.value} " +
                 "channelSummaries=${channelThreads.size} followedSummaries=${followedForChannel.size} " +
+                "followedList=${if (followedSummaries == null) "budget_exceeded" else "ok"} " +
                 "mergedSummaries=${mergedThreads.size} durationMs=${loadStartedAt.elapsedNow().inWholeMilliseconds}"
         )
-        if (channelSummaries is DataResult.Error && followedSummaries is DataResult.Error) {
+        if (channelSummaries is DataResult.Error && followedSummaries !is DataResult.Content) {
             DataResult.Error(channelSummaries.error)
         } else {
             DataResult.Content(
@@ -696,7 +1010,13 @@ class RealConversationRepository(
         expectedAuthority: SlockExpectedAuthBinding
     ): DataResult<AttachmentUploadResult> {
         val context = currentContext() ?: return authRequired()
-        if (!context.session.matchesExpectedAuthority(expectedAuthority, context.server.id.value)) {
+        if (
+            !context.session.matchesExpectedAuthority(
+                expected = expectedAuthority,
+                effectiveServerId = context.server.id.value,
+                effectiveEnvironmentId = routeEnvironmentIdProvider?.invoke(),
+            )
+        ) {
             return DataResult.Error(ScreenError("external_share_authority_changed", retryable = true))
         }
         if (request.files.isEmpty()) return DataResult.Empty(EmptyReason.NoMessages)
@@ -1214,6 +1534,7 @@ class RealConversationRepository(
         block: suspend () -> HomeNetworkResponse,
         emptyWhen: (T) -> Boolean = { false },
         source: String? = null,
+        bodyEventFields: ((String) -> String)? = null,
         mapper: (String) -> T
     ): DataResult<T> =
         executeConversationWithDiagnostics(
@@ -1222,21 +1543,58 @@ class RealConversationRepository(
             emptyWhen = emptyWhen,
             source = source,
             diagnosticsLogger = warningLogger,
+            bodyEventFields = bodyEventFields,
             mapper = mapper
         )
+
+    /**
+     * Binary presigned PUTs intentionally have no JSON response body.  Treat any HTTP 2xx as
+     * success, while preserving the normal conversation error mapping for every other status.
+     * The signed URL is never included in the diagnostic source or error text.
+     */
+    private suspend fun executeAttachmentUploadUnit(
+        source: String,
+        block: suspend () -> HomeNetworkResponse,
+    ): DataResult<Unit> {
+        return try {
+            val response = block()
+            // If-None-Match:* returns 412 when the object is already present. Treat that as a
+            // successful PUT so the caller can complete the same session instead of creating
+            // another reservation.
+            if (response.isSuccessful || response.code == 412) {
+                warningLogger(
+                    "conversation_binary_result source=$source code=${response.code} " +
+                        "result=content"
+                )
+                DataResult.Content(Unit)
+            } else {
+                response.toConversationDataError()
+            }
+        } catch (cancellation: kotlinx.coroutines.CancellationException) {
+            throw cancellation
+        } catch (exception: Exception) {
+            warningLogger(
+                "conversation_binary_failed source=$source exception=${exception::class.simpleName}"
+            )
+            DataResult.Error(ScreenError(code = "network_request_failed", retryable = true))
+        }
+    }
 
     private suspend fun currentContext(): NetworkServerContext? {
         val session = sessionStore.readSession() ?: return null
         val routeServerId = routeServerIdProvider?.invoke()?.trim()?.takeIf { it.isNotEmpty() }
         val sessionServerId = session.currentServerId?.trim()?.takeIf { it.isNotEmpty() }
         val selectedId = (routeServerId ?: sessionServerId)
-            ?.takeIf { candidate -> session.servers.isEmpty() || session.servers.any { it.id == candidate } }
+            ?.takeIf { candidate ->
+                session.servers.isEmpty() || session.servers.any { it.id.trim() == candidate }
+            }
             ?: return null
         return session.toNetworkServerContext(ServerId(selectedId))
     }
 
     private companion object {
         const val MESSAGE_PAGE_LIMIT = 50
+        const val FOLLOWED_SUMMARIES_JOIN_BUDGET_MILLIS = 1_500L
         const val SYNC_PAGE_LIMIT = 200
     }
 }
@@ -1245,7 +1603,14 @@ private data class NetworkServerContext(val session: StoredAuthSession, val serv
 
 private fun StoredAuthSession.toNetworkServerContext(serverId: ServerId): NetworkServerContext? {
     val requestedId = serverId.value.trim().takeIf { it.isNotBlank() } ?: return null
-    val server = servers.firstOrNull { it.id == requestedId }?.toServerSummary() ?: return null
+    val server = servers.firstOrNull { it.id.trim() == requestedId }
+        ?.toServerSummary()
+        ?.let { summary ->
+            // Keep the context's identity canonical even when a legacy persisted session carried
+            // surrounding whitespace.  Every downstream request and owner key uses this value.
+            summary.copy(id = ServerId(summary.id.value.trim()))
+        }
+        ?: return null
     return NetworkServerContext(session = this, server = server)
 }
 
@@ -1585,12 +1950,23 @@ private fun PlatformFile.toMultipartFile(): MultipartFile =
         sizeBytes = sizeBytes
     )
 
+private fun attachmentUploadCapabilitiesBodyTelemetry(body: String): String =
+    runCatching {
+        val capabilities = parseSharedAttachmentUploadCapabilities(body)
+        " maxBytes=${capabilities.maxBytes} " +
+            "directUploadThresholdBytes=${capabilities.directUploadThresholdBytes ?: "null"} " +
+            "directUploadEnabled=${capabilities.directUploadEnabled}"
+    }.getOrElse {
+        " attachmentUploadCapabilitiesParseError=true"
+    }
+
 private suspend fun <T> executeConversationWithDiagnostics(
     emptyReason: EmptyReason,
     block: suspend () -> HomeNetworkResponse,
     emptyWhen: (T) -> Boolean = { false },
     source: String? = null,
     diagnosticsLogger: (String) -> Unit = {},
+    bodyEventFields: ((String) -> String)? = null,
     mapper: (String) -> T
 ): DataResult<T> {
     var statusCode: Int? = null
@@ -1604,7 +1980,8 @@ private suspend fun <T> executeConversationWithDiagnostics(
         val responseBytes = body.encodeToByteArray().size
         diagnosticsLogger(
             "conversation_network_body_received source=$sourceLabel code=${response.code} " +
-                "responseBytes=$responseBytes hasBody=${response.bodyText != null}"
+                "responseBytes=$responseBytes hasBody=${response.bodyText != null}" +
+                (bodyEventFields?.invoke(body) ?: "")
         )
         val parseStartedAt = TimeSource.Monotonic.markNow()
         diagnosticsLogger(
@@ -1630,14 +2007,33 @@ private suspend fun <T> executeConversationWithDiagnostics(
                 "parse_failed source=$source stage=response_or_mapper status=${statusCode ?: "unknown"} exception=${exception::class.simpleName}"
             )
         }
-        DataResult.Error(ScreenError(code = "network_parse_failed", retryable = true))
+        val recoverySessionIds =
+            (exception as? AttachmentUploadSessionCreateParseException)
+                ?.recoveryUploadId
+                ?.let(::setOf)
+                .orEmpty()
+        DataResult.Error(
+            ScreenError(
+                code = "network_parse_failed",
+                retryable = true,
+                recoverySessionIds = recoverySessionIds,
+            )
+        )
     }
 }
 
 private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
     val serverMessage = conversationRouteErrorTextOrNull()
+    val serverCode = conversationRouteStructuredErrorCodeOrNull()
     return when (code) {
-        0 -> DataResult.Error(ScreenError(code = errorBodyText.toConversationTransportErrorCode(), retryable = true))
+        0 ->
+            DataResult.Error(
+                ScreenError(
+                    code = errorBodyText.toConversationTransportErrorCode(),
+                    retryable = true,
+                    serverCode = serverCode,
+                )
+            )
         401 -> authRequired(serverMessage)
         403 ->
             DataResult.NoPermission(
@@ -1648,17 +2044,32 @@ private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
                 )
             )
         in 500..599 ->
-            DataResult.Error(ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverMessage))
+            DataResult.Error(
+                ScreenError(
+                    code = "server_unavailable",
+                    retryable = true,
+                    serverMessage = serverMessage,
+                    serverCode = serverCode,
+                )
+            )
         413 ->
             DataResult.Error(
                 ScreenError(
                     code = conversationRouteStructuredErrorCodeOrNull() ?: "attachment_too_large",
                     retryable = false,
-                    serverMessage = serverMessage
+                    serverMessage = serverMessage,
+                    serverCode = serverCode,
                 )
             )
         else ->
-            DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404, serverMessage = serverMessage))
+            DataResult.Error(
+                ScreenError(
+                    code = "http_$code",
+                    retryable = code != 404,
+                    serverMessage = serverMessage,
+                    serverCode = serverCode,
+                )
+            )
     }
 }
 
@@ -1715,3 +2126,11 @@ private fun authRequired(): DataResult.NoPermission =
 
 private fun authRequired(serverMessage: String?): DataResult.NoPermission =
     authSessionRequiredResult(serverMessage)
+
+private fun directSessionAuthorityRequired(): DataResult.Error =
+    DataResult.Error(
+        ScreenError(
+            code = "attachment_upload_authority_binding_required",
+            retryable = false,
+        )
+    )

@@ -19,6 +19,10 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 
 class MemberRepositoryDataSourceTest {
     @Test
@@ -26,6 +30,7 @@ class MemberRepositoryDataSourceTest {
         val network =
             FakeMemberNetworkClient().apply {
                 channelMembersResponse = HomeNetworkResponse(200, """{"humans":[],"agents":[]}""")
+                channelDetailResponse = HomeNetworkResponse(200, """{"id":"channel-empty","name":"design","type":"channel","channelCapabilities":{"addChannelMembers":true,"removeChannelMembers":false}}""")
             }
         val repository = RealMemberRepository(sampleStore(), network)
 
@@ -36,6 +41,30 @@ class MemberRepositoryDataSourceTest {
 
         assertEquals(emptyList(), result.data.members)
         assertTrue(result.data.canAddMembers)
+    }
+
+    @Test
+    fun rosterDoesNotGrantMutationsWithoutMatchingChannelCapabilities() = runBlocking {
+        // botiverse/slock 1443178ec2c72422256ea05f7d6fd5e480429e0a:
+        // routes/channels.ts attaches channelCapabilities to GET /:id, not /:id/members.
+        val cases = listOf(
+            HomeNetworkResponse(503, "{}"),
+            HomeNetworkResponse(200, """{"id":"channel-empty","name":"design","type":"channel"}"""),
+            HomeNetworkResponse(200, """{"id":"another","name":"design","type":"channel","channelCapabilities":{"addChannelMembers":true,"removeChannelMembers":true}}"""),
+            HomeNetworkResponse(200, """{"id":"channel-empty","name":"all","type":"channel","channelCapabilities":{"addChannelMembers":true,"removeChannelMembers":true}}"""),
+            HomeNetworkResponse(200, """{"id":"channel-empty","name":"design","type":"channel","archivedAt":"2026-09-30T00:00:00Z","channelCapabilities":{"addChannelMembers":true,"removeChannelMembers":true}}"""),
+        )
+        for (response in cases) {
+            val network = FakeMemberNetworkClient().apply {
+                channelMembersResponse = HomeNetworkResponse(200, """{"humans":[{"id":"user-1","name":"Alex","effectiveChannelRole":"admin"}],"agents":[]}""")
+                channelDetailResponse = response
+            }
+            val result = assertIs<DataResult.Content<ChannelMemberSnapshot>>(
+                RealMemberRepository(sampleStore(), network).getChannelMembers(DataRequestPriority.Visible, ChannelId("channel-empty")))
+            assertEquals("admin", result.data.members.single().effectiveChannelRole)
+            assertFalse(result.data.canAddMembers)
+            assertFalse(result.data.canRemoveMembers)
+        }
     }
 
     @Test
@@ -478,6 +507,53 @@ class MemberRepositoryDataSourceTest {
         assertTrue("\"apiKey\":\"replacement-secret\"" in replacedBody)
     }
 
+    @Test
+    fun nonBuiltInRuntimeUpdateOmitsNullOptionalRuntimeConfigFields() {
+        // task #152: `"loadLocalPlugins":null` (and other explicit nulls) inside runtimeConfig
+        // were rejected by the server's `!== undefined` validation, 400ing every save.
+        val body =
+            buildSharedAgentProfileUpdateBody(
+                AgentProfileUpdateRequest(
+                    agentId = MemberId("agent-1"),
+                    displayName = "Agent One",
+                    description = null,
+                    runtimeConfig = RuntimeConfig(
+                        runtime = "claude",
+                        model = RuntimeModelConfig.Preset("opus")
+                    ),
+                    includeRuntimeConfig = true
+                )
+            )
+        val runtimeConfig = Json.parseToJsonElement(body).jsonObject.getValue("runtimeConfig").jsonObject
+        assertFalse("loadLocalPlugins" in runtimeConfig, body)
+        assertFalse("hostUserState" in runtimeConfig, body)
+        assertFalse("provider" in runtimeConfig, body)
+        assertFalse("command" in runtimeConfig, body)
+        assertFalse(runtimeConfig.values.any { it is JsonNull }, body)
+        assertTrue("\"runtime\":\"claude\"" in body)
+    }
+
+    @Test
+    fun builtInRuntimeUpdateKeepsBooleanLoadLocalPlugins() {
+        val body =
+            buildSharedAgentProfileUpdateBody(
+                AgentProfileUpdateRequest(
+                    agentId = MemberId("agent-1"),
+                    displayName = "Agent One",
+                    description = null,
+                    runtimeConfig = RuntimeConfig(
+                        runtime = "builtin",
+                        provider = RuntimeProviderConfig.Preset("deepseek", "secret"),
+                        model = RuntimeModelConfig.Preset("deepseek/deepseek-v4-pro"),
+                        loadLocalPlugins = false
+                    ),
+                    includeRuntimeConfig = true
+                )
+            )
+        val runtimeConfig = Json.parseToJsonElement(body).jsonObject.getValue("runtimeConfig").jsonObject
+        assertEquals(JsonPrimitive(false), runtimeConfig["loadLocalPlugins"], body)
+    }
+
     private data class RecordedRequest(
         val method: String,
         val path: String,
@@ -521,6 +597,7 @@ class MemberRepositoryDataSourceTest {
         var agentsListActivity: String = "idle"
         var agentsListActivityDetail: String = "Ready"
         var channelMembersResponse: HomeNetworkResponse? = null
+        var channelDetailResponse: HomeNetworkResponse = HomeNetworkResponse(403, "{}")
         var startBlocker: CompletableDeferred<Unit>? = null
 
         override suspend fun request(
@@ -658,6 +735,7 @@ class MemberRepositoryDataSourceTest {
                     calls += "DELETE agents/agent-1"
                     ok("""{"ok":true}""")
                 }
+                normalized == "channels/channel-empty" && method == "GET" -> channelDetailResponse
                 normalized == "channels/channel-empty/members" && method == "GET" ->
                     channelMembersResponse ?: error("Missing channel members response")
                 else -> error("Unhandled request $method $normalized query=$query")

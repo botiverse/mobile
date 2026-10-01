@@ -7,6 +7,8 @@ import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalBadge
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalTone
+import build.raft.app.components.TabPager
+import build.raft.app.components.TabPagerGesturePolicy
 import build.raft.app.data.ActivityReplyThreadPrewarmKey
 import build.raft.app.data.ActivityReplyThreadPrewarmMarker
 import build.raft.app.data.ActivityUnreadSummaryProjection
@@ -14,11 +16,15 @@ import build.raft.app.data.ActivityUpdateTrackingState
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
+import build.raft.app.data.KuiklyRealtimeEvents
 import build.raft.app.data.activityVisibleSummaryCounts
 import build.raft.app.data.hasUnopenableInternalJointParentSource
+import build.raft.app.data.isUnfollowedActivityThread
+import build.raft.app.data.isFollowedActivityThread
 import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealInboxRepository
+import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.RealReadReceiptRepository
 import build.raft.app.data.NetworkSlockThreadApi
@@ -31,6 +37,7 @@ import build.raft.app.data.SharedActivityPresentationStore
 import build.raft.app.data.SharedActivityState
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.mergedSharedConversationDirectoryState
+import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
 import build.raft.app.network.sync.DiagnosticFeatureFlagScope
@@ -62,6 +69,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
@@ -110,6 +118,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.launch
+import kotlin.time.TimeSource
 
 private val ActivitySelectedRowShadowOffset = 2.dp
 
@@ -118,6 +127,7 @@ internal fun SharedHomeActivityScreen(
     bridge: BridgeModule,
     authStore: SlockAuthSessionStore,
     routeVisibleTick: Int = 0,
+    active: Boolean = true,
     onOpenMessage: (HomeMessageOpenRequest) -> Unit,
     onClose: (() -> Unit)? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
@@ -125,10 +135,17 @@ internal fun SharedHomeActivityScreen(
     timeContext: SlockTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     storeScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
-    listState: LazyListState = rememberLazyListState(),
     activityTaskStatusBadgesEnabled: Boolean = false,
     activitySenderAvatarsEnabled: Boolean = false,
-    onTitleClick: (() -> Unit)? = null,
+    // task #383: secondary-route pages (ComposeHomeActivityPage) never see a
+    // Kuikly pageDidAppear on app foreground, so they opt into refreshing on
+    // the app-scope appLifecycle resume/show broadcast. Shell surfaces leave
+    // this off: the app shell owns foreground reconciliation there.
+    refreshOnAppLifecycleResume: Boolean = false,
+    // task #45: when the adaptive workspace drives the detail pane, its
+    // selection identity (threadId) is the source of truth for the row
+    // highlight; a stale checkpoint key must not resurface.
+    externalSelectedThreadId: String? = null,
     modifier: Modifier = Modifier
 ) {
     val pager = LocalActivity.current.getPager() as Pager
@@ -171,6 +188,16 @@ internal fun SharedHomeActivityScreen(
                 warningLogger = { message -> bridge.log("shared_activity_member_warning $message") }
             )
         }
+    // task #399: DM-parent thread rows resolve their peer name through the
+    // Home DM list; this repository feeds the activity store's hydrate.
+    val channelRepository =
+        remember(authStore, networkClient) {
+            RealChannelRepository(
+                sessionStore = authStore,
+                networkClient = networkClient,
+                warningLogger = { message -> bridge.log("shared_activity_channel_warning $message") }
+            )
+        }
     val replyThreadPrewarmDataSource =
         remember(
             authStore,
@@ -192,6 +219,9 @@ internal fun SharedHomeActivityScreen(
                 cacheEnvironmentIdProvider = {
                     sharedStores.apiEnvironmentStore.current().apiBaseUrl
                 },
+                apiEnvironmentIdProvider = {
+                    sharedStores.apiEnvironmentStore.current().apiBaseUrl
+                },
                 replyCacheIdentityAuthority = {
                     sharedStores.captureThreadReplyCacheIdentity(storeScope)
                 },
@@ -199,6 +229,8 @@ internal fun SharedHomeActivityScreen(
                     sharedStores.awaitThreadReplyCacheIdentityTransition(storeScope, transitionAnchor)
                 },
                 payloadStore = sharedStores.threadPayloadStore,
+                durableLastKnownReader = sharedStores.threadDurableLastKnownReader,
+                enteredScopeSnapshotLoader = sharedStores.threadEnteredScopeSnapshotLoader,
                 threadPageSizeProvider = { serverId ->
                     sharedStores.serverFeatureFlags.snapshotFor(serverId).mobileThreadPageSize()
                 },
@@ -224,6 +256,7 @@ internal fun SharedHomeActivityScreen(
             readReceiptRepository,
             conversationRepository,
             memberRepository,
+            channelRepository,
             replyThreadPrewarmDataSource
         ) {
             sharedStores.getOrCreateHomeActivityStore(
@@ -232,6 +265,7 @@ internal fun SharedHomeActivityScreen(
                 readReceiptRepository = readReceiptRepository,
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
+                channelRepository = channelRepository,
                 prewarmReplyThread = replyThreadPrewarmDataSource::prewarmReplyThread,
                 diagnosticsLogger = activityDiagnosticsLogger
             )
@@ -288,8 +322,9 @@ internal fun SharedHomeActivityScreen(
                 ?: flowOf(SharedConversationDirectoryState())
         }
     val conversationDirectory by conversationDirectoryFlow.collectAsState(SharedConversationDirectoryState())
-    val activityConversationDirectory = remember(state.snapshot) {
-        state.snapshot?.toSharedConversationDirectoryState() ?: SharedConversationDirectoryState()
+    val activityConversationDirectory = remember(state.snapshot, state.dmPeerNames) {
+        state.snapshot?.toSharedConversationDirectoryState(dmPeerNames = state.dmPeerNames)
+            ?: SharedConversationDirectoryState()
     }
     val openConversationDirectory = remember(activityConversationDirectory, conversationDirectory) {
         listOf(activityConversationDirectory, conversationDirectory).mergedSharedConversationDirectoryState()
@@ -323,9 +358,9 @@ internal fun SharedHomeActivityScreen(
             )
         }
     }
-    LaunchedEffect(sharedHomeStore, state.snapshot) {
+    LaunchedEffect(sharedHomeStore, state.snapshot, state.dmPeerNames) {
         state.snapshot?.let { snapshot ->
-            sharedHomeStore?.supplementConversationIdentity(snapshot)
+            sharedHomeStore?.supplementConversationIdentity(snapshot, dmPeerNames = state.dmPeerNames)
         }
     }
     LaunchedEffect(routeVisibleTick) {
@@ -333,11 +368,36 @@ internal fun SharedHomeActivityScreen(
             activityStore.dispatch(SharedActivityIntent.Refresh)
         }
     }
+    if (refreshOnAppLifecycleResume) {
+        val realtimeEvents = remember(sharedStores) { KuiklyRealtimeEvents(sharedStores.eventBus) }
+        DisposableEffect(realtimeEvents, activityStore) {
+            val subscription =
+                realtimeEvents.addListener { data ->
+                    if (
+                        activityAppLifecycleResumeShouldRefresh(
+                            action = data.optString(SlockRealtimeNotifyContract.KeyAction),
+                            lifecycleEvent = data.optString(SlockRealtimeNotifyContract.KeyLifecycleEvent)
+                        )
+                    ) {
+                        bridge.log("shared_activity_app_lifecycle_resume_refresh")
+                        activityStore.dispatch(SharedActivityIntent.Refresh)
+                    }
+                }
+            onDispose { realtimeEvents.removeListener(subscription) }
+        }
+    }
+    var wasActive by remember { mutableStateOf(active) }
+    LaunchedEffect(active) {
+        if (active && !wasActive) {
+            activityStore.dispatch(SharedActivityIntent.Refresh)
+        }
+        wasActive = active
+    }
     SharedActivityPanelContent(
         state = safeOpenProjectedState,
         onOpenItem = { item ->
             state.snapshot?.let { snapshot ->
-                sharedHomeStore?.supplementConversationIdentity(snapshot)
+                sharedHomeStore?.supplementConversationIdentity(snapshot, dmPeerNames = state.dmPeerNames)
             }
             when (
                 val resolution =
@@ -362,14 +422,14 @@ internal fun SharedHomeActivityScreen(
         bottomContentPadding = bottomContentPadding,
         topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
         timeContext = timeContext,
-        listState = listState,
         activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
         activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
         draftProjection = draftProjection,
-        onTitleClick = onTitleClick,
         stableOrderEnabled = stableOrderEnabledAtRouteEntry,
         stableOrderDecisionRevision = diagnosticOverrideRevision,
         presentationStore = activityStore.presentationStore,
+        foregroundEpoch = activitySummary.lastForegroundEpoch,
+        externalSelectedThreadId = externalSelectedThreadId,
         modifier = modifier
     )
 }
@@ -394,6 +454,18 @@ internal fun resolveActivityStableOrderEnabled(
 
 internal fun activityPageDidAppearShouldRefresh(routeVisibleTick: Int): Boolean =
     routeVisibleTick > 0
+
+/**
+ * task #383: app-foreground resume arrives as the app-scope appLifecycle
+ * broadcast ("resume" on Android, "show" on iOS) rather than as a Kuikly
+ * pageDidAppear, so secondary-route surfaces match on those two wire values.
+ */
+internal fun activityAppLifecycleResumeShouldRefresh(action: String, lifecycleEvent: String): Boolean =
+    action == SlockRealtimeNotifyContract.ActionAppLifecycle &&
+        (
+            lifecycleEvent == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
+                lifecycleEvent == SlockRealtimeNotifyContract.LifecycleVisibleShow
+            )
 
 internal data class ActivityRefreshPresentation(
     val headerRefreshing: Boolean,
@@ -530,15 +602,15 @@ internal fun SharedHomeActivityScreen(
     includeTopSafeArea: Boolean = true,
     timeContext: SlockTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
-    listState: LazyListState = rememberLazyListState(),
     activityTaskStatusBadgesEnabled: Boolean = false,
     activitySenderAvatarsEnabled: Boolean = false,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
-    onTitleClick: (() -> Unit)? = null,
     stableOrderEnabled: Boolean = true,
     stableOrderDecisionRevision: Long = 0L,
     presentationStore: SharedActivityPresentationStore = remember { SharedActivityPresentationStore() },
-    modifier: Modifier = Modifier
+    foregroundEpoch: Long,
+    modifier: Modifier = Modifier,
+    externalSelectedThreadId: String? = null
 ) {
     SharedActivityPanelContent(
         state = state,
@@ -548,14 +620,14 @@ internal fun SharedHomeActivityScreen(
         bottomContentPadding = bottomContentPadding,
         topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
         timeContext = timeContext,
-        listState = listState,
         activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
         activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
         draftProjection = draftProjection,
-        onTitleClick = onTitleClick,
         stableOrderEnabled = stableOrderEnabled,
         stableOrderDecisionRevision = stableOrderDecisionRevision,
         presentationStore = presentationStore,
+        foregroundEpoch = 0L,
+        externalSelectedThreadId = externalSelectedThreadId,
         modifier = modifier
     )
 }
@@ -571,15 +643,15 @@ internal fun SharedHomeActivityPanel(
     pullRefreshing: Boolean = false,
     timeContext: SlockTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
-    listState: LazyListState = rememberLazyListState(),
     activityTaskStatusBadgesEnabled: Boolean = false,
     activitySenderAvatarsEnabled: Boolean = false,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
-    onTitleClick: (() -> Unit)? = null,
     stableOrderEnabled: Boolean = true,
     stableOrderDecisionRevision: Long = 0L,
     presentationStore: SharedActivityPresentationStore = remember { SharedActivityPresentationStore() },
-    modifier: Modifier = Modifier
+    foregroundEpoch: Long,
+    modifier: Modifier = Modifier,
+    externalSelectedThreadId: String? = null
 ) {
     // #192 trace scope extension: wrap the Inbox panel render. The Inbox is
     // recomposed on every state snapshot change; this marker tells us how much
@@ -600,17 +672,31 @@ internal fun SharedHomeActivityPanel(
             bottomContentPadding = bottomContentPadding,
             topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
             timeContext = timeContext,
-            listState = listState,
             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
             activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
             draftProjection = draftProjection,
-            onTitleClick = onTitleClick,
             stableOrderEnabled = stableOrderEnabled,
             stableOrderDecisionRevision = stableOrderDecisionRevision,
             presentationStore = presentationStore,
+            foregroundEpoch = foregroundEpoch,
+            externalSelectedThreadId = externalSelectedThreadId,
             modifier = modifier
         )
     }
+}
+
+internal fun projectActivityStateForFilterPage(
+    state: SharedActivityState,
+    pageFilter: InboxFilter
+): SharedActivityState {
+    if (state.selectedFilter == pageFilter) return state
+    val cachedSnapshot = state.filterSnapshots[pageFilter]
+    return state.copy(
+        selectedFilter = pageFilter,
+        snapshot = cachedSnapshot,
+        loaded = cachedSnapshot != null,
+        loading = cachedSnapshot == null
+    )
 }
 
 @Composable
@@ -622,17 +708,34 @@ private fun SharedActivityPanelContent(
     bottomContentPadding: Dp,
     topSafeAreaPadding: Dp,
     timeContext: SlockTimeContext?,
-    listState: LazyListState,
     activityTaskStatusBadgesEnabled: Boolean,
     activitySenderAvatarsEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection,
-    onTitleClick: (() -> Unit)?,
     stableOrderEnabled: Boolean,
     stableOrderDecisionRevision: Long,
     presentationStore: SharedActivityPresentationStore,
-    modifier: Modifier = Modifier
+    foregroundEpoch: Long,
+    modifier: Modifier = Modifier,
+    externalSelectedThreadId: String? = null
 ) {
     val refreshPresentation = activityRefreshPresentation(state.refreshing, state.pullRefreshing)
+    // task #232 (#2224 review blocker 1): the panel owns per-page scroll
+    // states, so it must also own title-tap scroll-to-top — a caller-held
+    // LazyListState attaches to no list here and dies silently (the parameter
+    // was removed so that wiring cannot come back). The title tap targets the
+    // SAME state object the selected filter's page renders with, via
+    // [activityScrollToTopTarget] (mapping unit-tested).
+    val filters = InboxFilter.entries
+    // One retained scroll state per filter page. Explicit calls (not a
+    // loop over the experimental LazyListState constructor): the filter
+    // set is a closed enum of three, and this list is index-aligned with
+    // `filters` (All/Unread/Mentions entry order).
+    val pageListStates = listOf(
+        rememberLazyListState(),
+        rememberLazyListState(),
+        rememberLazyListState(),
+    )
+    val scrollToTopScope = rememberCoroutineScope()
     Column(
         modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
     ) {
@@ -642,36 +745,92 @@ private fun SharedActivityPanelContent(
             onClose = onClose,
             topSafeAreaPadding = topSafeAreaPadding,
             refreshing = refreshPresentation.headerRefreshing,
-            onTitleClick = onTitleClick
+            onTitleClick = {
+                scrollToTopScope.launch {
+                    activityScrollToTopTarget(state.selectedFilter, pageListStates)
+                        .animateScrollToTopExpressive()
+                }
+            }
         )
         SlockAppShellBodyTopBanner()
-        SharedActivityFilterBar(
-            selectedFilter = state.selectedFilter,
-            totalUnreadCount = state.totalUnreadCount,
-            onFilterSelected = { onIntent(SharedActivityIntent.SetFilter(it)) },
-            onMarkAllRead = { onIntent(SharedActivityIntent.MarkAllRead) }
-        )
-        SharedActivityBodyContent(
-            state = state,
-            onOpenItem = onOpenItem,
-            onIntent = onIntent,
-            bottomContentPadding = bottomContentPadding,
-            timeContext = timeContext,
-            listState = listState,
-            activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
-            activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
-            draftProjection = draftProjection,
-            presentationAccountId = state.ownerUserId.orEmpty(),
-            stableOrderEnabled = stableOrderEnabled,
-            stableOrderDecisionRevision = stableOrderDecisionRevision,
-            presentationStore = presentationStore,
+        // task #232: filter tabs are a TabPager — the filter bar stays the tap
+        // surface (its SetFilter flows back in as selectedIndex and animates
+        // the pager); a horizontal swipe settling on a page dispatches the
+        // same SetFilter. The store keeps ONE snapshot (the selected
+        // filter's), so only the active page renders real content; a
+        // neighbor glimpsed mid-drag shows that filter's loading skeleton
+        // until the settle re-targets the store. keepItemAlive keeps hidden
+        // pages composed, so the page body gates its shared-state effects on
+        // the pager's `active` flag.
+        TabPager(
+            selectedIndex = filters.indexOf(state.selectedFilter).coerceAtLeast(0),
+            onSelectedIndexChange = { index -> onIntent(SharedActivityIntent.SetFilter(filters[index])) },
+            pageCount = filters.size,
+            gesturePolicy = TabPagerGesturePolicy(
+                startEdgeInset = slockPlatformTabPagerStartEdgeInsetDp().dp,
+            ),
+            keepItemAlive = true,
+            tabBar = {
+                SharedActivityFilterBar(
+                    selectedFilter = state.selectedFilter,
+                    totalUnreadCount = state.totalUnreadCount,
+                    onFilterSelected = { onIntent(SharedActivityIntent.SetFilter(it)) },
+                    onMarkAllRead = { onIntent(SharedActivityIntent.MarkAllRead) }
+                )
+            },
             modifier = Modifier.weight(1f).fillMaxWidth()
-        )
+        ) { page, active ->
+            val pageFilter = filters[page]
+            val pageState = projectActivityStateForFilterPage(state, pageFilter)
+            if (pageState.snapshot != null) {
+                SharedActivityBodyContent(
+                    active = active,
+                    state = pageState,
+                    onOpenItem = onOpenItem,
+                    onIntent = onIntent,
+                    bottomContentPadding = bottomContentPadding,
+                    timeContext = timeContext,
+                    listState = pageListStates[page],
+                    activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                    activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
+                    draftProjection = draftProjection,
+                    presentationAccountId = state.ownerUserId.orEmpty(),
+                    stableOrderEnabled = stableOrderEnabled,
+                    stableOrderDecisionRevision = stableOrderDecisionRevision,
+                    presentationStore = presentationStore,
+                    foregroundEpoch = foregroundEpoch,
+                    externalSelectedThreadId = externalSelectedThreadId,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                SharedActivityStateBody(
+                    title = stringResource(MR.strings.common_loading),
+                    detail = "",
+                    loading = true,
+                    bottomContentPadding = bottomContentPadding
+                )
+            }
+        }
     }
 }
 
+/**
+ * The list the Activity title tap must scroll: the one the selected filter's
+ * page renders with. Index-aligned with [InboxFilter.entries] exactly like the
+ * pager's `selectedIndex` and its per-page `pageListStates` list — this seam
+ * exists so a unit test ([ActivityScrollToTopTargetTest]) pins the mapping;
+ * the tap→scroll wiring itself lives ten lines from the states it targets and
+ * cannot be re-cut from a call site (#2224 review blocker 1: the previous
+ * design had callers hand in a LazyListState that attached to nothing).
+ */
+internal fun <T> activityScrollToTopTarget(
+    selectedFilter: InboxFilter,
+    pageStates: List<T>,
+): T = pageStates[InboxFilter.entries.indexOf(selectedFilter).coerceAtLeast(0)]
+
 @Composable
 private fun SharedActivityBodyContent(
+    active: Boolean,
     state: SharedActivityState,
     onOpenItem: (InboxItem) -> Unit,
     onIntent: (SharedActivityIntent) -> Unit,
@@ -685,6 +844,8 @@ private fun SharedActivityBodyContent(
     stableOrderEnabled: Boolean,
     stableOrderDecisionRevision: Long,
     presentationStore: SharedActivityPresentationStore,
+    foregroundEpoch: Long,
+    externalSelectedThreadId: String? = null,
     modifier: Modifier = Modifier
 ) {
     val snapshot = state.snapshot
@@ -739,11 +900,13 @@ private fun SharedActivityBodyContent(
                 )
             else ->
                 SharedActivityList(
+                    active = active,
                     snapshot = remember(snapshot, draftProjection) {
                         snapshot.withComposerDraftProjection(draftProjection)
                     },
                     selectedFilter = state.selectedFilter,
                     senderProfiles = state.senderProfiles,
+                    dmPeerNames = state.dmPeerNames,
                     refreshing = state.refreshing,
                     pullRefreshing = state.pullRefreshing,
                     loadingMore = state.loadingMore,
@@ -758,7 +921,9 @@ private fun SharedActivityBodyContent(
                     presentationAccountId = presentationAccountId,
                     stableOrderEnabled = stableOrderEnabled,
                     stableOrderDecisionRevision = stableOrderDecisionRevision,
-                    presentationStore = presentationStore
+                    presentationStore = presentationStore,
+                    foregroundEpoch = foregroundEpoch,
+                    externalSelectedThreadId = externalSelectedThreadId
                 )
         }
     }
@@ -841,9 +1006,11 @@ private fun SharedActivityFilterBar(
 
 @Composable
 private fun SharedActivityList(
+    active: Boolean,
     snapshot: InboxSnapshot,
     selectedFilter: InboxFilter,
     senderProfiles: Map<String, SharedActivitySenderProfile>,
+    dmPeerNames: Map<String, String> = emptyMap(),
     refreshing: Boolean,
     pullRefreshing: Boolean,
     loadingMore: Boolean,
@@ -858,9 +1025,15 @@ private fun SharedActivityList(
     presentationAccountId: String,
     stableOrderEnabled: Boolean,
     stableOrderDecisionRevision: Long,
-    presentationStore: SharedActivityPresentationStore
+    presentationStore: SharedActivityPresentationStore,
+    foregroundEpoch: Long,
+    externalSelectedThreadId: String? = null
 ) {
     val presentationServerId = snapshot.server.id.value
+    val panelFirstRenderMark = remember { TimeSource.Monotonic.markNow() }
+    var firstRenderLogged by remember { mutableStateOf(false) }
+    val resumeFirstRenderMark = remember(foregroundEpoch) { TimeSource.Monotonic.markNow() }
+    var resumeFirstRenderLogged by remember(foregroundEpoch) { mutableStateOf(false) }
     val restoredPresentation =
         remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
             if (stableOrderEnabled) {
@@ -880,7 +1053,9 @@ private fun SharedActivityList(
         }
     var activeMenuItem by remember { mutableStateOf<InboxItem?>(null) }
     var menuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
-    var selectedItemKey by remember { mutableStateOf<String?>(null) }
+    var selectedItemKey by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
+        mutableStateOf(restoredPresentation.selectedItemKey)
+    }
     var updateTracking by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
         mutableStateOf(restoredPresentation.updateTracking)
     }
@@ -913,14 +1088,29 @@ private fun SharedActivityList(
                     presentedItems = presentedItems,
                     updateTracking = updateTracking,
                     presentationGeneration = presentationGeneration,
-                    pullRefreshInFlight = pullRefreshInFlight
+                    pullRefreshInFlight = pullRefreshInFlight,
+                    selectedItemKey = selectedItemKey
                 )
         )
     }
     val latestOnIntent by rememberUpdatedState(onIntent)
     val refreshPresentation = activityRefreshPresentation(refreshing, pullRefreshing)
     val pullToRefreshState = rememberPullToRefreshState(refreshPresentation.pullRefreshing)
-    LaunchedEffect(presentedItems) {
+    // Viewport recovery (#997) is only armed right after the panel becomes
+    // active again (returning from read navigation) or the app returns to the
+    // foreground, and disarms as soon as the reader starts scrolling. A data
+    // change that arrives mid-scroll must never move the viewport (task #436).
+    var viewportRecoveryArmed by remember { mutableStateOf(active) }
+    LaunchedEffect(active, foregroundEpoch) {
+        if (active) viewportRecoveryArmed = true
+    }
+    LaunchedEffect(listState, active) {
+        if (!active) return@LaunchedEffect
+        snapshotFlow { listState.isScrollInProgress }
+            .collect { scrolling -> if (scrolling) viewportRecoveryArmed = false }
+    }
+    LaunchedEffect(presentedItems, active, viewportRecoveryArmed) {
+        if (!active || !viewportRecoveryArmed || listState.isScrollInProgress) return@LaunchedEffect
         val visibleItemKeys =
             listState.layoutInfo.visibleItemsInfo.mapNotNull { itemInfo ->
                 itemInfo.key as? String
@@ -932,16 +1122,38 @@ private fun SharedActivityList(
                 currentItemKeys = presentedItems.map(InboxItem::key)
             )
         ) {
+            viewportRecoveryArmed = false
             updateTracking = updateTracking.consumePending()
             savePresentation()
             listState.scrollToItem(0)
         }
     }
-    LaunchedEffect(presentedItems) {
+    LaunchedEffect(presentedItems, active) {
+        if (!active) return@LaunchedEffect
         val selected = selectedItemKey
         if (selected != null && presentedItems.none { it.key == selected }) {
             selectedItemKey = null
         }
+    }
+    // task #45: when the adaptive workspace owns a selection, the row highlight
+    // must track THAT conversation (e.g. Search opened a different session while
+    // this panel was covered) instead of reviving a stale checkpoint key.
+    LaunchedEffect(presentedItems, externalSelectedThreadId, active) {
+        if (!active || externalSelectedThreadId == null) return@LaunchedEffect
+        val match =
+            presentedItems.firstOrNull { item ->
+                item.toConversationSummary().threadId.value == externalSelectedThreadId
+            }
+        val nextKey = match?.key
+        if (selectedItemKey != nextKey) {
+            selectedItemKey = nextKey
+        }
+    }
+    // task #45: persist the selected row key with the presentation checkpoint so
+    // remounting the panel (e.g. an inline rail destination covering it) keeps
+    // the highlight instead of resetting to unselected.
+    LaunchedEffect(selectedItemKey) {
+        savePresentation()
     }
     LaunchedEffect(
         selectedFilter,
@@ -950,7 +1162,9 @@ private fun SharedActivityList(
         pullRefreshing,
         stableOrderEnabled,
         stableOrderDecisionRevision,
+        active,
     ) {
+        if (!active) return@LaunchedEffect
         val nextStableOrderDecision =
             ActivityStableOrderDecisionVersion(stableOrderEnabled, stableOrderDecisionRevision)
         if (appliedStableOrderDecision != nextStableOrderDecision) {
@@ -1037,7 +1251,8 @@ private fun SharedActivityList(
             listState.animateScrollToTopExpressive()
         }
     }
-    LaunchedEffect(listState, selectedFilter, snapshot.server.id, presentedItems) {
+    LaunchedEffect(listState, selectedFilter, snapshot.server.id, presentedItems, active) {
+        if (!active) return@LaunchedEffect
         val activityItemsByKey = presentedItems.associateBy(InboxItem::key)
         snapshotFlow {
             listState.layoutInfo.visibleItemsInfo
@@ -1079,6 +1294,24 @@ private fun SharedActivityList(
     val renderedItems = presentedItems.filterNot { item -> item.hasUnopenableInternalJointParentSource() }
     val renderedPresentationGeneration = presentationGeneration
     val renderedPresentationOwnerIdentity = presentationOwnerIdentity
+    LaunchedEffect(renderedItems.isNotEmpty()) {
+        if (!firstRenderLogged && renderedItems.isNotEmpty()) {
+            firstRenderLogged = true
+            slockLogInfo(
+                "SlockForegroundPerf",
+                "first_render elapsedMs=${panelFirstRenderMark.elapsedNow().inWholeMilliseconds} serverId=$presentationServerId items=${renderedItems.size} basis=per_cold_start"
+            )
+        }
+    }
+    LaunchedEffect(renderedItems.isNotEmpty(), foregroundEpoch) {
+        if (foregroundEpoch != 0L && !resumeFirstRenderLogged && renderedItems.isNotEmpty()) {
+            resumeFirstRenderLogged = true
+            slockLogInfo(
+                "SlockForegroundPerf",
+                "resume_first_render elapsedMs=${resumeFirstRenderMark.elapsedNow().inWholeMilliseconds} epoch=$foregroundEpoch serverId=$presentationServerId items=${renderedItems.size} basis=per_resume"
+            )
+        }
+    }
     // The pointerInput coroutine deliberately keeps the callback from its DOWN generation. Read
     // the backing MutableState objects at commit time so the old callback sees an order change
     // immediately, even before the next recomposition updates or cancels its pointerInput node.
@@ -1099,6 +1332,7 @@ private fun SharedActivityList(
                 SharedActivityRow(
                     item = item,
                     senderProfiles = senderProfiles,
+                    dmPeerNames = dmPeerNames,
                     selected = selectedItemKey == item.key,
                     modifier = Modifier.padding(horizontal = 16.dp),
                     timeContext = timeContext,
@@ -1158,7 +1392,7 @@ private fun SharedActivityList(
                 )
             }
             if (showLoadMoreFooter) {
-                item(key = "activity_load_more") {
+                item(key = ACTIVITY_LOAD_MORE_ROW_KEY) {
                     val shouldRequest = activityShouldRequestLoadMore(
                         hasMore = snapshot.hasMore,
                         refreshing = refreshing,
@@ -1221,20 +1455,40 @@ private fun SharedActivityList(
             val resolvedMenuAnchor = menuAnchor ?: return@let
             SlockBaseMenuOverlay(
                 anchor = resolvedMenuAnchor,
-                items =
-                    listOf(
-                        SlockBaseMenuItem(
-                            id = "toggle-read",
-                            label =
-                                if (item.unreadCount > 0) {
-                                    stringResource(MR.strings.home_action_mark_as_read)
-                                } else {
-                                    stringResource(MR.strings.home_action_mark_as_unread)
-                                },
-                            icon = SlockLucideIconName.Mail
-                        ),
-                        SlockBaseMenuItem(id = "done", label = stringResource(MR.strings.common_done), icon = SlockLucideIconName.Check)
-                    ),
+                items = activityContextMenuActionIds(item).map { actionId ->
+                    when (actionId) {
+                        "toggle-read" ->
+                            SlockBaseMenuItem(
+                                id = actionId,
+                                label =
+                                    if (item.unreadCount > 0) {
+                                        stringResource(MR.strings.home_action_mark_as_read)
+                                    } else {
+                                        stringResource(MR.strings.home_action_mark_as_unread)
+                                    },
+                                icon = SlockLucideIconName.Mail
+                            )
+                        "done" ->
+                            SlockBaseMenuItem(
+                                id = actionId,
+                                label = stringResource(MR.strings.common_done),
+                                icon = SlockLucideIconName.Check
+                            )
+                        "follow-thread" ->
+                            SlockBaseMenuItem(
+                                id = actionId,
+                                label = stringResource(MR.strings.thread_action_follow_thread),
+                                icon = SlockLucideIconName.Bell
+                            )
+                        "unfollow-thread" ->
+                            SlockBaseMenuItem(
+                                id = actionId,
+                                label = stringResource(MR.strings.thread_action_unfollow_thread),
+                                icon = SlockLucideIconName.BellOff
+                            )
+                        else -> error("unknown Activity menu action: $actionId")
+                    }
+                },
                 selectedId = "",
                 uppercaseLabels = false,
                 onDismiss = { activeMenuItem = null },
@@ -1247,6 +1501,8 @@ private fun SharedActivityList(
                                 onIntent(SharedActivityIntent.MarkUnread(item))
                             }
                         "done" -> onIntent(SharedActivityIntent.MarkDone(item))
+                        "follow-thread" -> onIntent(SharedActivityIntent.FollowThread(item))
+                        "unfollow-thread" -> onIntent(SharedActivityIntent.UnfollowThread(item))
                     }
                     activeMenuItem = null
                 }
@@ -1305,6 +1561,25 @@ internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? {
     return null
 }
 
+/**
+ * Menu membership is a pure projection of the row's server-owned follow
+ * state. Keeping this list as the production input to the Composable makes
+ * the follow/unfollow and attention gates directly executable in tests.
+ */
+internal fun activityContextMenuActionIds(item: InboxItem): List<String> =
+    buildList {
+        if (item.isUnfollowedActivityThread) {
+            // An unfollowed terminal row is historical context. It has no
+            // read/unread or Done affordance; the only valid action is an
+            // explicit Follow, which clears the server tombstone.
+            if (item.kind == InboxItemKind.Thread) add("follow-thread")
+            return@buildList
+        }
+        add("toggle-read")
+        add("done")
+        if (item.isFollowedActivityThread) add("unfollow-thread")
+    }
+
 internal fun InboxItem.toReplyThreadPrewarmMarker(serverId: String): ActivityReplyThreadPrewarmMarker? {
     if (kind != InboxItemKind.Thread || unreadCount <= 0) return null
     val normalizedServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return null
@@ -1349,7 +1624,7 @@ private fun SharedActivitySelectedRowSurface(
                 .background(SlockColor.SurfaceWhite)
                 .border(
                     SlockStroke.Default,
-                    if (selected) SlockColor.BorderBlack else SlockColor.TextBlack.copy(alpha = 0.3f)
+                    if (selected) SlockColor.BorderBlack else Color.Transparent
                 )
         )
     }
@@ -1359,6 +1634,7 @@ private fun SharedActivitySelectedRowSurface(
 private fun SharedActivityRow(
     item: InboxItem,
     senderProfiles: Map<String, SharedActivitySenderProfile>,
+    dmPeerNames: Map<String, String> = emptyMap(),
     selected: Boolean,
     modifier: Modifier = Modifier,
     timeContext: SlockTimeContext?,
@@ -1438,7 +1714,7 @@ private fun SharedActivityRow(
                     // right edge (artin #1171, 2026-07-17): timestamp right-aligned
                     // on the tag row; the title and the rows below do not move.
                     Text(
-                        text = item.channelLabel(),
+                        text = item.channelLabel(dmPeerNames),
                         style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.52f),
                         maxLines = 1,
@@ -1471,6 +1747,7 @@ private fun SharedActivityRow(
                     }
                     val primaryPreview = item.primaryActivityPreviewText(
                         senderProfiles = senderProfiles,
+                        dmPeerNames = dmPeerNames,
                         threadFallback = threadFallback,
                         actionFallback = actionFallback,
                         conversationFallback = conversationFallback
@@ -1511,19 +1788,21 @@ private fun SharedActivityRow(
                     activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled
                 )
                 }
-                Row(
-                    modifier = Modifier.padding(top = 12.dp, end = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    SharedActivitySmallIconButton(
-                        iconName = SlockLucideIconName.Check,
-                        clickIdentity =
-                            item.activityDoneClickIdentity(
-                                presentationGeneration = presentationGeneration,
-                                presentationOwnerIdentity = presentationOwnerIdentity,
-                            ),
-                        onClick = onDone
-                    )
+                if (item.activityShowsDoneAction()) {
+                    Row(
+                        modifier = Modifier.padding(top = 12.dp, end = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        SharedActivitySmallIconButton(
+                            iconName = SlockLucideIconName.Check,
+                            clickIdentity =
+                                item.activityDoneClickIdentity(
+                                    presentationGeneration = presentationGeneration,
+                                    presentationOwnerIdentity = presentationOwnerIdentity,
+                                ),
+                            onClick = onDone
+                        )
+                    }
                 }
             }
             // This padding is visually part of the card, so keep it in the
@@ -1628,7 +1907,10 @@ private fun SharedActivitySenderAvatar(
     ) {
         when (identity.senderKind) {
             MemberKind.Agent,
-            MemberKind.Human ->
+            MemberKind.Human,
+            // External senders render their wire avatar; the cache subject stays
+            // null because external ids are never member-cache identities.
+            MemberKind.External ->
                 SlockAvatar(
                     avatarWireValue = identity.avatarWireValue,
                     label = identity.label,
@@ -1668,6 +1950,8 @@ internal fun InboxItem.activityDoneClickIdentity(
     presentationGeneration: Int = 0,
     presentationOwnerIdentity: String = "",
 ): String = "activity-done:$key|owner:$presentationOwnerIdentity|presentation:$presentationGeneration"
+
+internal fun InboxItem.activityShowsDoneAction(): Boolean = !isUnfollowedActivityThread
 
 @Composable
 private fun Modifier.activityRowGestures(
@@ -1783,6 +2067,12 @@ private fun SharedActivityFooter(
                 SharedActivityFooterSlot.New ->
                     SharedActivityFooterBadge(
                         label = stringResource(MR.strings.activity_new_count, item.unreadCount),
+                        slot = slot,
+                        modifier = Modifier.align(Alignment.CenterVertically)
+                    )
+                SharedActivityFooterSlot.Unfollowed ->
+                    SharedActivityFooterBadge(
+                        label = stringResource(MR.strings.thread_row_unfollowed),
                         slot = slot,
                         modifier = Modifier.align(Alignment.CenterVertically)
                     )
@@ -2010,16 +2300,26 @@ private fun InboxFilter.localizedEmptyCopy(): String =
         }
     )
 
-private fun InboxItem.displayTitle(): String =
+internal fun InboxItem.displayTitle(dmPeerNames: Map<String, String> = emptyMap()): String =
     when (kind) {
-        InboxItemKind.Thread -> parentChannelName ?: channelName
+        InboxItemKind.Thread ->
+            if (parentChannelKind == ConversationKind.DirectMessage) {
+                dmPeerLabelOrFallback(dmPeerNames)
+            } else {
+                parentChannelName ?: channelName
+            }
         InboxItemKind.DirectMessage, InboxItemKind.Channel, InboxItemKind.MentionAction, InboxItemKind.System -> channelName
     }.ifBlank { channelId.value }
 
-private fun InboxItem.channelLabel(): String =
+internal fun InboxItem.channelLabel(dmPeerNames: Map<String, String> = emptyMap()): String =
     when (kind) {
         InboxItemKind.DirectMessage -> "@${channelName.ifBlank { channelId.value }}"
-        InboxItemKind.Thread -> "#${(parentChannelName ?: channelName).ifBlank { channelId.value }}"
+        InboxItemKind.Thread ->
+            if (parentChannelKind == ConversationKind.DirectMessage) {
+                "@${dmPeerLabelOrFallback(dmPeerNames)}"
+            } else {
+                "#${(parentChannelName ?: channelName).ifBlank { channelId.value }}"
+            }
         InboxItemKind.MentionAction ->
             if (channelKind == ConversationKind.DirectMessage) {
                 "@${channelName.ifBlank { channelId.value }}"
@@ -2028,6 +2328,16 @@ private fun InboxItem.channelLabel(): String =
             }
         InboxItemKind.Channel, InboxItemKind.System -> "#${channelName.ifBlank { channelId.value }}"
     }
+
+/**
+ * task #399: peer name for a DM-parent thread row. `parentChannelName` is the
+ * raw channel name and is not a reliable peer projection for DMs, so the Home
+ * DM list name wins; the raw name is only a fail-soft fallback.
+ */
+internal fun InboxItem.dmPeerLabelOrFallback(dmPeerNames: Map<String, String>): String =
+    parentChannelId?.let { dmPeerNames[it.value] }?.takeIf { it.isNotBlank() }
+        ?: parentChannelName
+        ?: channelName.ifBlank { channelId.value }
 
 private fun InboxItem.senderDisplayName(
     senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
@@ -2104,12 +2414,23 @@ internal data class ActivityPreviewText(
 
 internal fun InboxItem.primaryActivityPreviewText(
     senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap(),
+    dmPeerNames: Map<String, String> = emptyMap(),
     threadFallback: String = "Thread update",
     actionFallback: String = "Action required",
     conversationFallback: String = "Conversation update"
 ): ActivityPreviewText =
     ActivityPreviewText(
-        senderName = if (kind == InboxItemKind.Thread || kind == InboxItemKind.MentionAction) null else senderDisplayName(senderProfiles),
+        senderName =
+            when {
+                // task #399 飞书 shape: a DM-parent thread's first line is
+                // "@peer: root preview" — the peer identity prefixes the root
+                // preview instead of the latest-activity sender.
+                kind == InboxItemKind.Thread &&
+                    parentChannelKind == ConversationKind.DirectMessage ->
+                    "@${dmPeerLabelOrFallback(dmPeerNames)}"
+                kind == InboxItemKind.Thread || kind == InboxItemKind.MentionAction -> null
+                else -> senderDisplayName(senderProfiles)
+            },
         body = previewText(threadFallback, actionFallback, conversationFallback)
     )
 
@@ -2133,6 +2454,7 @@ internal enum class SharedActivityFooterSlot {
     Replies,
     Mention,
     New,
+    Unfollowed,
     Draft
 }
 
@@ -2164,6 +2486,8 @@ internal fun SharedActivityFooterSlot.badgeVisual(taskStatus: TaskStatus? = null
         SharedActivityFooterSlot.Replies -> SharedActivityFooterBadgeVisual(SlockBrutalTone.White)
         SharedActivityFooterSlot.Mention -> SharedActivityFooterBadgeVisual(SlockBrutalTone.Yellow, SlockLucideIconName.AtSign)
         SharedActivityFooterSlot.New -> SharedActivityFooterBadgeVisual(SlockBrutalTone.Pink)
+        SharedActivityFooterSlot.Unfollowed ->
+            SharedActivityFooterBadgeVisual(SlockBrutalTone.Stone, SlockLucideIconName.BellOff)
         SharedActivityFooterSlot.Draft -> SharedActivityFooterBadgeVisual(SlockBrutalTone.White, SlockLucideIconName.Pencil)
     }
 
@@ -2177,11 +2501,14 @@ internal fun InboxItem.activityFooterSlots(
     if (kind == InboxItemKind.Thread) {
         slots += SharedActivityFooterSlot.Replies
     }
-    if (hasMention && unreadCount > 0) {
+    if (!isUnfollowedActivityThread && hasMention && unreadCount > 0) {
         slots += SharedActivityFooterSlot.Mention
     }
-    if (unreadCount > 0) {
+    if (!isUnfollowedActivityThread && unreadCount > 0) {
         slots += SharedActivityFooterSlot.New
+    }
+    if (isUnfollowedActivityThread) {
+        slots += SharedActivityFooterSlot.Unfollowed
     }
     if (hasDraft) {
         slots += SharedActivityFooterSlot.Draft
@@ -2212,14 +2539,24 @@ internal fun activityLoadMoreFooterMode(
         else -> ActivityLoadMoreFooterMode.Sentinel
     }
 
+internal const val ACTIVITY_LOAD_MORE_ROW_KEY = "activity_load_more"
+
+/**
+ * True only when at least one activity row is visible and none of the visible
+ * rows still exists. The load-more footer is not an activity row, and an empty
+ * visible set is a transient layout state; neither is evidence that the rows
+ * the reader was looking at were removed.
+ */
 internal fun activityListShouldRecoverVisibleContent(
     firstVisibleItemIndex: Int,
     visibleItemKeys: List<String>,
     currentItemKeys: List<String>
 ): Boolean {
     if (firstVisibleItemIndex <= 0 || currentItemKeys.isEmpty()) return false
+    val visibleRowKeys = visibleItemKeys.filter { it != ACTIVITY_LOAD_MORE_ROW_KEY }
+    if (visibleRowKeys.isEmpty()) return false
     val currentKeys = currentItemKeys.toSet()
-    return visibleItemKeys.none(currentKeys::contains)
+    return visibleRowKeys.none(currentKeys::contains)
 }
 
 internal fun activityItemsPreservingPresentedOrder(
@@ -2295,7 +2632,9 @@ internal fun activityNextPresentationGeneration(
         currentGeneration + 1
     }
 
-internal fun InboxItem.toConversationSummary(): ConversationSummary {
+internal fun InboxItem.toConversationSummary(
+    dmPeerNames: Map<String, String> = emptyMap()
+): ConversationSummary {
     val streamChannelId = resolveInboxStreamChannelId()
     val parentId = parentMessageId
     val parentChannel = parentChannelId
@@ -2322,7 +2661,7 @@ internal fun InboxItem.toConversationSummary(): ConversationSummary {
             },
         kind =
             launchConversationKind(),
-        name = displayTitle(),
+        name = displayTitle(dmPeerNames),
         subtitle = parentMessagePreview ?: lastMessagePreview ?: latestActivityPreview ?: stableThreadIdentity?.value,
         unreadCount = unreadCount,
         unreadCountKnown = true,

@@ -330,6 +330,12 @@ class SharedSettingsAvatarCacheTest {
         var clearAllCalls = 0
         var failClearAll = false
 
+        override suspend fun readCommittedForOwner(
+            owner: SlockAvatarCacheOwner,
+            nowMs: Long,
+            limit: Long
+        ): List<SlockAvatarCacheMetadata> = emptyList()
+
         override suspend fun read(key: SlockAvatarCacheKey): SlockAvatarCacheStoredState =
             SlockAvatarCacheStoredState(null, null)
 

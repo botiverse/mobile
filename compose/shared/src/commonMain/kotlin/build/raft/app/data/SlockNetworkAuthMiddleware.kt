@@ -16,7 +16,8 @@ internal class SlockNetworkAuthMiddleware(
     logger: (String) -> Unit = {},
     warningLogger: (String) -> Unit = {},
     criticalLogger: (String) -> Unit = warningLogger,
-    private val terminalAuthLossReporter: suspend (StoredAuthSession, String) -> Unit = { _, _ -> }
+    private val terminalAuthLossReporter: suspend (StoredAuthSession, String) -> Unit = { _, _ -> },
+    private val environmentIdProvider: () -> String = { "" },
 ) {
     private val refreshCoordinator =
         SharedAuthRefreshCoordinator(
@@ -37,7 +38,14 @@ internal class SlockNetworkAuthMiddleware(
         val session = sessionStore.readSession()
             ?: return sessionExpiredResponse()
         val serverId = (serverIdOverride?.value ?: session.currentServerId).orEmpty()
-        if (expectedAuthority != null && !session.matchesExpectedAuthority(expectedAuthority, serverId)) {
+        if (
+            expectedAuthority != null &&
+                !session.matchesExpectedAuthority(
+                    expectedAuthority,
+                    serverId,
+                    environmentIdProvider(),
+                )
+        ) {
             return authorityChangedResponse()
         }
         if (session.accessToken.isBlank() || serverId.isBlank()) {
@@ -78,7 +86,14 @@ internal class SlockNetworkAuthMiddleware(
             return first.asSessionExpired()
         }
         val retryServerId = (serverIdOverride?.value ?: refreshed.currentServerId).orEmpty()
-        if (expectedAuthority != null && !refreshed.matchesExpectedAuthority(expectedAuthority, retryServerId)) {
+        if (
+            expectedAuthority != null &&
+                !refreshed.matchesExpectedAuthority(
+                    expectedAuthority,
+                    retryServerId,
+                    environmentIdProvider(),
+                )
+        ) {
             return authorityChangedResponse()
         }
         if (refreshed.accessToken.isBlank() || retryServerId.isBlank()) {
@@ -123,7 +138,7 @@ internal class SlockNetworkAuthMiddleware(
     ): Boolean {
         val current = sessionStore.readSession() ?: return false
         val currentServerId = (serverIdOverride?.value ?: current.currentServerId).orEmpty()
-        return current.matchesExpectedAuthority(this, currentServerId)
+        return current.matchesExpectedAuthorityIdentity(this, currentServerId, environmentIdProvider())
     }
 
 }
@@ -140,18 +155,64 @@ internal data class SlockExpectedAuthBinding(
     val accessToken: String,
     val refreshToken: String,
     val serverId: String,
-    val environmentId: String? = null,
+    /**
+     * The API environment captured with the session witness.  The empty default is retained only
+     * for old non-route unit fixtures; production capture/bound transport rejects it.  A bound
+     * operation must always carry a normalized, non-blank environment id.
+     */
+    val environmentId: String = "",
 )
 
 internal fun StoredAuthSession.matchesExpectedAuthority(
     expected: SlockExpectedAuthBinding,
-    effectiveServerId: String
+    effectiveServerId: String,
+    effectiveEnvironmentId: String? = null,
 ): Boolean =
-    user.id == expected.accountId &&
+    user.id.trim() == expected.accountId.trim() &&
         accessToken == expected.accessToken &&
         refreshToken == expected.refreshToken &&
-        currentServerId == expected.serverId &&
-        effectiveServerId == expected.serverId
+        currentServerId?.trim() == expected.serverId.trim() &&
+        effectiveServerId.trim() == expected.serverId.trim() &&
+        expected.environmentId.normalizedEnvironmentId().let { expectedEnvironment ->
+            val effectiveEnvironment = effectiveEnvironmentId?.normalizedEnvironmentId().orEmpty()
+            // A production/bound witness must carry an environment and must be compared against
+            // one at every request boundary.  The blank/blank arm is retained solely for legacy
+            // unbound unit fixtures which predate environment-aware authority; a missing live
+            // environment never satisfies a non-blank witness.
+            if (expectedEnvironment.isBlank()) {
+                effectiveEnvironment.isBlank()
+            } else {
+                effectiveEnvironment == expectedEnvironment
+            }
+        }
+
+/**
+ * Post-request re-check of a successful transport: guard on identity (account + server +
+ * environment), not the access/refresh token. A 401 inside the request block triggers a token
+ * rotation through [SharedAuthRefreshCoordinator] and the retry already returns fresh data;
+ * comparing tokens here would discard that successful result as auth_authority_changed — the same
+ * failure shape task #302 fixed in SharedActivityStore.requestSessionStillCurrent.
+ *
+ * Only the two post-transport re-checks in [SlockNetworkAuthMiddleware.request] use this; the
+ * pre-request and post-refresh gates still run the full [matchesExpectedAuthority] witness so a
+ * refreshed session can never replay an old bound mutation.
+ */
+internal fun StoredAuthSession.matchesExpectedAuthorityIdentity(
+    expected: SlockExpectedAuthBinding,
+    effectiveServerId: String,
+    effectiveEnvironmentId: String? = null,
+): Boolean =
+    user.id.trim() == expected.accountId.trim() &&
+        currentServerId?.trim() == expected.serverId.trim() &&
+        effectiveServerId.trim() == expected.serverId.trim() &&
+        expected.environmentId.normalizedEnvironmentId().let { expectedEnvironment ->
+            val effectiveEnvironment = effectiveEnvironmentId?.normalizedEnvironmentId().orEmpty()
+            if (expectedEnvironment.isBlank()) {
+                effectiveEnvironment.isBlank()
+            } else {
+                effectiveEnvironment == expectedEnvironment
+            }
+        }
 
 private const val SESSION_EXPIRED_ERROR = """{"error":"session_expired"}"""
 private const val AUTHORITY_CHANGED_ERROR = """{"error":"auth_authority_changed"}"""

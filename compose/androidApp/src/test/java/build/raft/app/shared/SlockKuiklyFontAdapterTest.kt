@@ -1,9 +1,18 @@
 package build.raft.app.shared
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SlockKuiklyFontAdapterTest {
+    @Test
+    fun spaceMonoUsesOneResourceBackedTypefaceInsteadOfPerGlyphSystemFallback() {
+        assertTrue(SlockKuiklyFontAdapter.useResourceTypefaceFor("SpaceMono-Regular"))
+        assertTrue(SlockKuiklyFontAdapter.useResourceTypefaceFor("space_mono_bold, sans-serif"))
+        assertFalse(SlockKuiklyFontAdapter.useResourceTypefaceFor("SpaceGrotesk-Regular"))
+    }
+
     @Test
     fun hostDisplayDensityKeepsPhoneWidthDesignDensity() {
         val density =

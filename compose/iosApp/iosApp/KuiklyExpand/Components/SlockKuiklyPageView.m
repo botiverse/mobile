@@ -53,6 +53,10 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
 @property (nonatomic, assign) BOOL pageDidAppear;
 @property (nonatomic, assign) BOOL childActive;
 @property (nonatomic, assign) BOOL childVisible;
+@property (nonatomic, assign) BOOL appWantsSnapshot;
+@property (nonatomic, assign) BOOL adaptivePreparationScheduled;
+
+- (void)scheduleAdaptivePreparation;
 
 @end
 
@@ -66,6 +70,9 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
         _pageDataText = @"{}";
         _glassStyle = @"";
         _childActive = YES;
+        _appWantsSnapshot = UIApplication.sharedApplication.applicationState != UIApplicationStateActive;
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applicationWillResignActive:) name:UIApplicationWillResignActiveNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applicationDidBecomeActive:) name:UIApplicationDidBecomeActiveNotification object:nil];
         self.backgroundColor = UIColor.clearColor;
         _contentContainerView = [[UIView alloc] initWithFrame:CGRectZero];
         _contentContainerView.backgroundColor = UIColor.clearColor;
@@ -74,6 +81,20 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
         [self addSubview:_contentContainerView];
     }
     return self;
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)applicationWillResignActive:(NSNotification *)notification {
+    self.appWantsSnapshot = YES;
+    [self syncChildVisibility];
+}
+
+- (void)applicationDidBecomeActive:(NSNotification *)notification {
+    self.appWantsSnapshot = NO;
+    [self syncChildVisibility];
 }
 
 - (void)hrv_setPropWithKey:(NSString *)propKey propValue:(id)propValue {
@@ -99,6 +120,44 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
     if ([method isEqualToString:SlockKuiklyPageViewSendEventMethod]) {
         [self sendEventWithParams:params ?: @"{}"];
     }
+}
+
+- (void)setFrame:(CGRect)frame {
+    [super setFrame:frame];
+    [self scheduleAdaptivePreparation];
+}
+
+// A covered navigation host is detached from UIWindow: it receives a frame but
+// UIKit need not run its pending layout. Prepare only the adaptive destination,
+// after the current prop batch, without manufacturing appearance or activation.
+- (void)scheduleAdaptivePreparation {
+    if (self.adaptivePreparationScheduled || ![self.pageName isEqualToString:@"compose_thread"]) return;
+    self.adaptivePreparationScheduled = YES;
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self) return;
+        self.adaptivePreparationScheduled = NO;
+        // Read live ownership/props after the asynchronous boundary. A removed
+        // host or one rebound to an ordinary page must not create a child.
+        if (!self.superview || ![self.pageName isEqualToString:@"compose_thread"] ||
+            CGRectGetWidth(self.bounds) <= 0 || CGRectGetHeight(self.bounds) <= 0) return;
+        NSData *json = [self.pageDataText dataUsingEncoding:NSUTF8StringEncoding];
+        id value = json ? [NSJSONSerialization JSONObjectWithData:json options:0 error:nil] : nil;
+        if (![value isKindOfClass:NSDictionary.class]) return;
+        NSDictionary *data = value;
+        id generation = data[@"slockAdaptiveDetailGeneration"];
+        id shell = data[@"slockAdaptiveDetailShellId"];
+        if (![generation isKindOfClass:NSNumber.class] || [generation longLongValue] <= 0 ||
+            ![shell isKindOfClass:NSString.class] || [shell length] == 0) return;
+        [self setNeedsLayout];
+        [self layoutIfNeeded];
+    });
+}
+
+- (void)didMoveToSuperview {
+    [super didMoveToSuperview];
+    if (self.superview) [self scheduleAdaptivePreparation];
 }
 
 - (void)layoutSubviews {
@@ -154,6 +213,7 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
     }
     self.pageName = pageName;
     [self resetChildIfAttached];
+    [self scheduleAdaptivePreparation];
 }
 
 - (void)updatePageDataText:(NSString *)pageDataText {
@@ -162,6 +222,7 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
     }
     self.pageDataText = pageDataText.length > 0 ? pageDataText : @"{}";
     [self resetChildIfAttached];
+    [self scheduleAdaptivePreparation];
 }
 
 - (void)updateGlassStyle:(NSString *)glassStyle {
@@ -344,9 +405,13 @@ static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *
 - (void)syncChildVisibility {
     BOOL shouldBeRendered = self.childActive && self.childView != nil;
     BOOL shouldBeLifecycleVisible = shouldBeRendered && self.viewDidAppear && self.pageDidAppear;
-    self.contentContainerView.hidden = !shouldBeRendered;
+    // Keep only the active child's pixels for the system snapshot. Unhiding every
+    // mounted tab paints a later one (Settings) over Home while the tab bar still
+    // says Home.
+    BOOL shouldKeepSnapshotContent = shouldBeRendered;
+    self.contentContainerView.hidden = !shouldKeepSnapshotContent;
     self.userInteractionEnabled = shouldBeRendered;
-    self.childView.hidden = !shouldBeRendered;
+    self.childView.hidden = !shouldKeepSnapshotContent;
     if (self.childVisible == shouldBeLifecycleVisible) {
         return;
     }

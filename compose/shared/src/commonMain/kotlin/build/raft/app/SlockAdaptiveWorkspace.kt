@@ -6,7 +6,12 @@ internal const val SLOCK_ADAPTIVE_DETAIL_CLOSE_EVENT = "slockAdaptiveDetailClose
 internal const val SLOCK_ADAPTIVE_DETAIL_SHELL_ID = "slockAdaptiveDetailShellId"
 internal const val SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY = "slockAdaptiveDetailIdentityKey"
 internal const val SLOCK_ADAPTIVE_DETAIL_GENERATION = "slockAdaptiveDetailGeneration"
-internal const val SLOCK_ADAPTIVE_HOME_WORKSPACE_ENABLED = "slockAdaptiveHomeWorkspaceEnabled"
+/**
+ * A4 source-side initiation gate (task #18): the standalone thread page only runs a
+ * prepare→open→commit adoption when this flag is set on its pageData. Off by default —
+ * the native guarded commit lands behind it so an in-flight protocol can merge inert.
+ */
+internal const val SLOCK_ADAPTIVE_INITIATION_ENABLED = "slockAdaptiveInitiationEnabled"
 
 /**
  * Identity and intent for one adaptive conversation detail.
@@ -182,6 +187,22 @@ internal sealed interface SlockAdaptiveWorkspaceIntent {
     data class AuthorityChanged(val serverId: String) : SlockAdaptiveWorkspaceIntent
 
     data object TerminalReset : SlockAdaptiveWorkspaceIntent
+
+    /**
+     * Single-pane Back on the detail root: dismiss the selection so Home shows its list again.
+     * Unlike [CloseDetail] this needs no key/generation proof (the parent itself is authoritative)
+     * and bumps the generation so late detail-side callbacks can no longer match the old slot.
+     */
+    data object DismissDetail : SlockAdaptiveWorkspaceIntent
+
+    /**
+     * task #45: records which conversation the user opened through the standalone
+     * (single-column) stack while desktop mode is OFF. The workspace keeps rendering
+     * gated OFF, but the parked selection is overwritten so a later ON restores the
+     * *current* conversation instead of a stale pre-OFF one. Unlike [OpenDetail] this
+     * does not require DualPane — the parked pane fact is preserved untouched.
+     */
+    data class ParkSelection(val identity: SlockAdaptiveDetailIdentity) : SlockAdaptiveWorkspaceIntent
 }
 
 internal fun reduceSlockAdaptiveWorkspace(
@@ -243,6 +264,30 @@ internal fun reduceSlockAdaptiveWorkspace(
                 selection = null,
                 generationCursor = state.generationCursor.nextAdaptiveGeneration(),
             )
+
+        SlockAdaptiveWorkspaceIntent.DismissDetail ->
+            if (state.selection == null) {
+                state
+            } else {
+                state.copy(
+                    selection = null,
+                    generationCursor = state.generationCursor.nextAdaptiveGeneration(),
+                )
+            }
+
+        is SlockAdaptiveWorkspaceIntent.ParkSelection -> {
+            if (intent.identity.serverId != state.serverId) {
+                state
+            } else if (state.selection?.identity == intent.identity) {
+                state
+            } else {
+                val nextGeneration = state.generationCursor.nextAdaptiveGeneration()
+                state.copy(
+                    selection = SlockAdaptiveDetailSelection(intent.identity, nextGeneration),
+                    generationCursor = nextGeneration,
+                )
+            }
+        }
     }
 
 internal fun SlockAdaptiveWorkspaceState.acceptsDetailCallback(

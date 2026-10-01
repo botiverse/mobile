@@ -21,8 +21,8 @@ layout dumps, and HiLog capture/analysis.
 
 `android-use` packages the older `scripts/slock_android_adb.py` workflow into a
 library/CLI: ADB device discovery, install/launch/intent helpers, Kuikly
-page open, diagnostics deep links, screenshots, uiautomator XML, input, logcat,
-and Kuikly profiler pulls. The old script remains as a compatibility wrapper.
+page open, diagnostics deep links, screenshots, uiautomator XML, input, and
+logcat. The old script remains as a compatibility wrapper.
 
 `ios-use` covers the repeatable Xcode/simulator operations that do not require
 extra dependencies: simctl device discovery, boot/shutdown, xcodebuild build,
@@ -158,7 +158,7 @@ Open Slock/KMP surfaces:
 
 ```bash
 android-use open-page compose_thread --page-data '{"channelId":"..."}' --pretty
-android-use open-diagnostics --enable-profiler --reset-scene --pretty
+android-use open-diagnostics --auto-close-ms 15000 --pretty
 android-use start-intent -a build.raft.app.diagnostics.OPEN -n build.raft.app/.core.diagnostics.DiagnosticsDeepLinkActivity --pretty
 ```
 
@@ -171,13 +171,12 @@ android-use swipe --direction up
 android-use key BACK
 ```
 
-Capture/analyze logs and profiler artifacts:
+Capture/analyze logs:
 
 ```bash
 android-use logcat --duration 10 --filter-regex 'Slock|Kuikly|AndroidRuntime' --out /tmp/android-use --pretty
 android-use analyze-log /tmp/android-use/state-logcat.txt --pretty
 android-use analyze-log /tmp/android-use/state-logcat.txt --trim-last-start --trim-out /tmp/android-use/last-start-logcat.txt --pretty
-android-use pull-profiler --out /tmp/android-use --allow-missing --pretty
 ```
 
 `analyze-log` counts app launches from ActivityTaskManager/ActivityManager
@@ -220,26 +219,24 @@ ios-use open-url buildraft://diagnostics --pretty
 ios-use screenshot --out /tmp/ios-use --pretty
 ```
 
-Drive UI interactions through the checked-in `iosAppUITests` XCUITest harness:
+Drive UI interactions through `agent-device` by default (no XCTest loop, no
+workspace required). Product-log verdicts stay in the caller:
 
 ```bash
-ios-use tap-text Home --workspace compose/iosApp/iosApp.xcworkspace --pretty
-ios-use tap 0.5 0.9 --workspace compose/iosApp/iosApp.xcworkspace --pretty
-ios-use swipe --direction up --workspace compose/iosApp/iosApp.xcworkspace --pretty
-ios-use interact --workspace compose/iosApp/iosApp.xcworkspace --actions '[{"type":"tapText","text":"Tasks"},{"type":"tapText","text":"Home","waitAfter":1}]' --pretty
+ios-use doctor --pretty
+ios-use tap-text Home --pretty
+ios-use tap 0.5 0.9 --pretty
+ios-use swipe --direction up --pretty
+ios-use interact --actions '[{"type":"tapText","text":"Tasks"},{"type":"tapText","text":"Home","waitAfter":1}]' --pretty
 ```
 
-`tap` uses normalized XCTest coordinates (`0.0` to `1.0`). `interact` accepts
-an action array with `tapText`, `tap`, `swipe`, `text`, `key`, and `wait` entries; pass
-`--actions-file` for longer sequences. A swipe may use a semantic `direction`,
-or explicit `x/y/x2/y2` endpoints with `coordinateSpace` set to `normalized`
-or `points`. The command builds the UI-test bundle for testing, patches the
-generated `.xctestrun` with the action JSON, then runs only the bounded
-`IosUseInteractionTests` method through `test-without-building`. If the app is
-already running, the test activates that process instead of relaunching it so
-sequential invocations preserve app state. `text` and `key` (`enter`, `del`,
-or `esc`) tap the software keyboard through XCUITest; there is no host-key
-fallback.
+`agent-device` must be on `PATH` (or set `AGENT_DEVICE_BIN`). The old
+`QaAcceptanceLoopTests` file protocol remains as `--driver qa-loop` and still
+needs `--workspace`. `tap` uses normalized coordinates (`0.0` to `1.0`).
+`interact` accepts `tapText`, `tap`, `swipe`, `text`, `key`, and `wait`. A
+swipe may use `direction`, or `x/y/x2/y2` with `coordinateSpace` `normalized`
+or `points`. iOS interactive-pop is a coordinate swipe, not
+`gesture swipe left-edge`.
 
 Capture/analyze logs:
 

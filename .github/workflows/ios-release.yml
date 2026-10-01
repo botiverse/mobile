@@ -19,7 +19,7 @@ on:
         type: string
         default: "0"
       version_build:
-        description: "versionCode build (x*1_000_000 + y*10_000 + z*100 + build)"
+        description: "versionCode build (x*10_000_000 + y*100_000 + z*1_000 + build, 0-999)"
         required: true
         type: string
         default: "0"
@@ -89,6 +89,11 @@ jobs:
       export_method: ${{ steps.p.outputs.export_method }}
       release_mode: ${{ steps.p.outputs.release_mode }}
     steps:
+      - name: Checkout version formula
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts/ci
+          sparse-checkout-cone-mode: false
       - id: p
         shell: bash
         run: |
@@ -103,7 +108,7 @@ jobs:
             echo "release_notes_version must be an X.Y.Z version" >&2
             exit 1
           fi
-          VERSION_CODE=$((MAJOR * 1000000 + MINOR * 10000 + PATCH * 100 + BUILD))
+          VERSION_CODE="$(scripts/ci/version_code.sh "$MAJOR" "$MINOR" "$PATCH" "$BUILD")"
           if [ -n "$SUFFIX" ]; then
             VERSION_NAME="${MAJOR}.${MINOR}.${PATCH}-${SUFFIX}"
           else
@@ -250,6 +255,10 @@ jobs:
       - name: Test diagnostics path admission
         shell: bash
         run: compose/iosApp/scripts/test_diagnostics_path_admission.sh
+
+      - name: Test diagnostics environment rows
+        shell: bash
+        run: compose/iosApp/scripts/test_diagnostics_environment_rows.sh
 
       - name: Archive app
         working-directory: compose/iosApp

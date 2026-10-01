@@ -14,6 +14,10 @@ import util from '@ohos.util';
 import fs from '@ohos.file.fs';
 import deviceInfo from '@ohos.deviceInfo';
 import { SlockOhosAppDiagnostics } from '../../entryability/SlockOhosAppDiagnostics';
+import {
+  isSlockOhosThreadComposerTemporaryFileRefAuthorityAllowed,
+  SlockOhosThreadComposerTemporaryFileRetirementProvider,
+} from '../../entryability/SlockOhosThreadComposerTemporaryFileRetirement';
 import { HandsFeedbackClient } from '@botiverse/hands';
 import slockOhosMotionBridge from '../SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
@@ -75,6 +79,96 @@ interface OhosPickedThreadAttachmentPayload {
   source: string;
 }
 
+interface OhosPickedThreadAttachmentReadResult {
+  files: Array<OhosPickedThreadAttachment>;
+  errors: Array<Record<string, Object>>;
+}
+
+interface SlockOhosCachedPickedAttachmentLike {
+  fileName: string;
+  mimeType: string;
+  previewUri: string;
+  fileRef: string;
+  sizeBytes: number;
+}
+
+const SLOCK_THREAD_ATTACHMENT_IMAGE_MAX_EDGE = 2048;
+const SLOCK_THREAD_ATTACHMENT_IMAGE_JPEG_QUALITY = 82;
+const SLOCK_THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR = 'attachment_image_compression_failed';
+
+class SlockThreadAttachmentImageCompressionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = SLOCK_THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR;
+  }
+}
+
+class SlockThreadImageCompressionCancelledError extends Error {
+  constructor() {
+    super('cancelled');
+    this.name = 'thread_image_compression_cancelled';
+  }
+}
+
+const SLOCK_THREAD_IMAGE_COMPRESSION_CACHE_DIR_NAME = 'slock-picked-thread-attachments';
+const SLOCK_THREAD_IMAGE_COMPRESSION_SOURCE = 'composer_image_compressor';
+const SLOCK_THREAD_IMAGE_COMPRESSION_MAX_REQUEST_ID_LENGTH = 128;
+const SLOCK_THREAD_IMAGE_COMPRESSION_MAX_FILE_NAME_LENGTH = 256;
+
+enum SlockThreadImageCompressionOperationState {
+  ACTIVE = 0,
+  PENDING = 1,
+  DELIVERED = 2,
+  CANCELLED = 3,
+}
+
+class SlockThreadImageCompressionOperation {
+  readonly requestId: string;
+  readonly callback: KuiklyRenderCallback;
+  readonly outputPath: string;
+  readonly partPath: string;
+  state: SlockThreadImageCompressionOperationState = SlockThreadImageCompressionOperationState.ACTIVE;
+
+  constructor(requestId: string, callback: KuiklyRenderCallback, outputPath: string) {
+    this.requestId = requestId;
+    this.callback = callback;
+    this.outputPath = outputPath;
+    this.partPath = `${outputPath}.part`;
+  }
+
+  isCancelled(): boolean {
+    return this.state === SlockThreadImageCompressionOperationState.CANCELLED;
+  }
+
+  markPending(): boolean {
+    if (this.state !== SlockThreadImageCompressionOperationState.ACTIVE) return false;
+    this.state = SlockThreadImageCompressionOperationState.PENDING;
+    return true;
+  }
+
+  markDelivered(): boolean {
+    if (this.state !== SlockThreadImageCompressionOperationState.PENDING) return false;
+    this.state = SlockThreadImageCompressionOperationState.DELIVERED;
+    return true;
+  }
+
+  cancel(force: boolean = false): boolean {
+    if (this.state === SlockThreadImageCompressionOperationState.CANCELLED ||
+      (this.state === SlockThreadImageCompressionOperationState.DELIVERED && !force)) {
+      return false;
+    }
+    this.state = SlockThreadImageCompressionOperationState.CANCELLED;
+    return true;
+  }
+
+  async removeOutputs(): Promise<void> {
+    try { await fs.unlink(this.partPath); } catch (_) {
+    }
+    try { await fs.unlink(this.outputPath); } catch (_) {
+    }
+  }
+}
+
 interface OhosDiagnosticEntryPayload {
   timestampLabel: string;
   tag: string;
@@ -128,6 +222,9 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly MOTION_CAPABILITY = "motionCapability";
   static readonly SETTINGS_CAPABILITY = "settingsCapability";
   static readonly THREAD_ATTACHMENT_UPLOAD = "threadAttachmentUpload";
+  static readonly COMPRESS_THREAD_IMAGE = "compressThreadImage";
+  static readonly CANCEL_COMPRESS_THREAD_IMAGE = "cancelCompressThreadImage";
+  static readonly APP_BADGE = "appBadge";
   static readonly ATTACHMENT_CACHE_MAX_FILES = 80;
   static readonly ATTACHMENT_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
   static readonly HANDS_FEEDBACK_MAX_ATTACHMENTS = 3;
@@ -138,6 +235,8 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   private nextPhotoExportGeneration: number = 0;
   private activePrivateDownloadId: string = "";
   private privateExportActive: boolean = false;
+  private threadImageCompressionOperations: Map<string, SlockThreadImageCompressionOperation> = new Map();
+  private threadImageCompressionDestroyed: boolean = false;
 
   syncMode(): boolean {
     return false;
@@ -186,8 +285,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         break;
       }
       case KRBridgeModule.RETIRE_FILE_PREVIEW_TEMPORARY_FILES: {
-        this.retireFilePreviewTemporaryFiles(params);
-        break;
+        return this.retireFilePreviewTemporaryFiles(params);
       }
       case KRBridgeModule.EXPORT_DOWNLOADED_ATTACHMENT: {
         this.exportDownloadedAttachment(params, callback);
@@ -272,15 +370,52 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         this.threadAttachmentUpload(params, callback);
         break;
       }
-      default: {
-        callback({
-          "code": -1,
-          "message": "Method not implemented"
+      case KRBridgeModule.COMPRESS_THREAD_IMAGE: {
+        this.compressThreadImage(params, callback).catch((): void => {
+          // The async method owns its terminal response.  An unexpected setup/release
+          // rejection is deliberately swallowed here so the dispatcher cannot race a failure
+          // callback with the worker's already-delivered success/failure response.
         });
+        break;
+      }
+      case KRBridgeModule.CANCEL_COMPRESS_THREAD_IMAGE: {
+        this.cancelCompressThreadImage(params);
+        break;
+      }
+      case KRBridgeModule.APP_BADGE: {
+        this.appBadge(params);
+        break;
+      }
+      default: {
+        SlockOhosDiagnostics.record(
+          "HRBridgeModule",
+          `unsupported bridge method dropped: ${method}`,
+          Date.now(),
+          "warn"
+        );
+        if (callback !== undefined && callback !== null) {
+          callback({
+            "code": -1,
+            "message": "Method not implemented"
+          });
+        }
         break;
       }
     }
     return null;
+  }
+
+  onDestroy(): void {
+    this.threadImageCompressionDestroyed = true;
+    this.threadImageCompressionOperations.forEach((operation: SlockThreadImageCompressionOperation): void => {
+      // Destruction is stronger than an ordinary caller cancellation: even a callback that has
+      // just crossed the renderer boundary must not leave this module-owned cache object behind.
+      operation.cancel(true);
+      operation.removeOutputs().catch((): void => {
+      });
+    });
+    this.threadImageCompressionOperations.clear();
+    super.onDestroy();
   }
 
   private showAlert(params: KRAny, callback: KuiklyRenderCallback) {
@@ -329,10 +464,48 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const context = getContext(this) as common.UIAbilityContext;
     context.startAbility({
       action: 'ohos.want.action.viewData',
+      entities: ['entity.system.browsable'],
       uri: url,
       type: payload['mimeType']
     }).catch((error: BusinessError) => {
       console.error(`KuiklyRender openUrl failed ${error.code}: ${error.message}`);
+      SlockOhosDiagnostics.record(
+        "HRBridgeModule",
+        `openUrl startAbility failed code=${error.code} message=${error.message} url_len=${url.length} -> in-app browser fallback`,
+        Date.now(),
+        "warn"
+      );
+      // Fall back to the Kuikly in-app browser page so the user still sees the link
+      // instead of a silent no-op. Mirrors the Android #2700 fallback to
+      // compose_in_app_browser. RouterAdapter.openPage pushes
+      // params={ pageName, pageData } where pageData itself carries `pageName`
+      // plus the page args — here `url` (SLOCK_IN_APP_BROWSER_URL_KEY,
+      // SlockLinkNavigation.kt:136).
+      // Fallback only applies to http/https — mailto/tel/etc have no in-app
+      // browser representation and stay a silent failure.
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        return;
+      }
+      const inAppPageData: Record<string, Object> = {
+        'pageName': 'compose_in_app_browser',
+        'url': url
+      };
+      try {
+        router.pushUrl({
+          url: 'pages/Index',
+          params: {
+            pageName: 'compose_in_app_browser',
+            pageData: inAppPageData
+          }
+        });
+      } catch (routerError) {
+        SlockOhosDiagnostics.record(
+          "HRBridgeModule",
+          `openUrl in-app browser push failed: ${JSON.stringify(routerError)}`,
+          Date.now(),
+          "error"
+        );
+      }
     });
   }
 
@@ -506,7 +679,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           trackProgress ? callback : undefined
         );
         if (downloadResult["status"] !== "complete") {
-          callback(downloadResult);
+          callback(this.slockAttachmentSaveFailurePayload(downloadResult));
           return;
         }
       }
@@ -534,6 +707,22 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     } finally {
       if (this.activePrivateDownloadId === downloadId) this.activePrivateDownloadId = "";
     }
+  }
+
+  private slockAttachmentSaveFailurePayload(downloadResult: Record<string, Object>): Record<string, Object> {
+    const status = downloadResult["status"] as string | undefined;
+    if (status === "cancelled") {
+      return downloadResult;
+    }
+    const errorKind = (downloadResult["errorKind"] as string | undefined) ?? "";
+    const storageFailure = errorKind === "storage_write" ||
+      errorKind === "storage_prepare" ||
+      errorKind === "storage_publish";
+    return {
+      "status": storageFailure ? "storage_failed" : "download_failed",
+      "message": (downloadResult["message"] as string | undefined) ?? "Unable to download attachment",
+      "errorKind": errorKind
+    };
   }
 
   private attachmentCacheStatus(params: KRAny, callback: KuiklyRenderCallback) {
@@ -617,7 +806,12 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     }
   }
 
-  private retireFilePreviewTemporaryFiles(params: KRAny) {
+  /**
+   * Compatibility entry point for older renderer callers.  New shared callers use the common
+   * registry directly; this path deliberately reuses the same physical provider so a legacy
+   * call cannot regress to cache-only unlink or an asynchronous delete of the original ref.
+   */
+  private retireFilePreviewTemporaryFiles(params: KRAny): Record<string, Object> {
     const records = this.parseRecord(params);
     const rawRefs = records["fileRefs"];
     const refs: Array<string> = [];
@@ -626,40 +820,19 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         if (typeof value === 'string' && value.trim().length > 0) refs.push(value.trim());
       });
     }
+    const sessionId = ((records["sessionId"] as string | undefined) ?? '').trim();
     const context = getContext(this) as common.UIAbilityContext;
-    const cacheRoot = this.normalizeOhosTemporaryPath(context.cacheDir);
-    let admitted = 0;
-    let deleted = 0;
-    const seen = new Set<string>();
-    refs.forEach((fileRef: string): void => {
-      if (seen.has(fileRef)) return;
-      seen.add(fileRef);
-      let path = '';
-      try {
-        path = fileRef.startsWith('/')
-          ? fileRef
-          : fileRef.startsWith('file://')
-            ? new fileUri.FileUri(fileRef).path
-            : '';
-      } catch (_) {
-      }
-      const normalized = this.normalizeOhosTemporaryPath(path);
-      if (!this.isOhosCacheOwnedRegularFile(cacheRoot, normalized)) return;
-      try {
-        admitted += 1;
-        fs.unlinkSync(normalized);
-        try {
-          fs.statSync(normalized);
-        } catch (_) {
-          deleted += 1;
-        }
-      } catch (_) {
-      }
-    });
+    const result = new SlockOhosThreadComposerTemporaryFileRetirementProvider(context)
+      .retire(sessionId, refs);
     SlockOhosDiagnostics.record(
       "SlockFilePreviewCleanup",
-      `requested=${seen.size} admitted=${admitted} deleted=${deleted} rejected=${seen.size - admitted}`
+      `session=${result['sessionId']} requested=${(result['requested'] as Array<string>).length} ` +
+        `admitted=${(result['admitted'] as Array<string>).length} ` +
+        `quarantined=${(result['quarantined'] as Array<string>).length} ` +
+        `rejected=${(result['rejected'] as Array<string>).length} ` +
+        `failed=${(result['failed'] as Array<string>).length}`
     );
+    return result;
   }
 
   private isOhosCacheOwnedRegularFile(cacheRoot: string, targetPath: string): boolean {
@@ -1050,6 +1223,31 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   private reportDT(params: KRAny) {
   }
 
+  private appBadge(params: KRAny) {
+    const records = this.parseRecord(params);
+    const countValue = records["count"];
+    const count = typeof countValue === 'number' ? Math.max(0, Math.floor(countValue)) : 0;
+    const source = typeof records["source"] === 'string' ? records["source"] as string : "unknown";
+    const isStale = records["isStale"] === true;
+    // notificationManager.setBadgeNumber never prompts the user; notification authorization
+    // only gates notification posting, not the launcher badge surface itself.
+    notificationManager.setBadgeNumber(count).then((): void => {
+      SlockOhosDiagnostics.record(
+        "HRBridgeModule",
+        `appBadge count=${count} source=${source} stale=${isStale}`,
+        Date.now(),
+        "info"
+      );
+    }).catch((err: BusinessError): void => {
+      SlockOhosDiagnostics.record(
+        "HRBridgeModule",
+        `appBadge setBadgeNumber failed code=${err.code} message=${err.message}`,
+        Date.now(),
+        "warn"
+      );
+    });
+  }
+
   private performanceScene(params: KRAny) {
     if (params == null) {
       return;
@@ -1239,13 +1437,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         }
         case "loadDiagnostics": {
           callback(this.loadDiagnosticsCapability());
-          return;
-        }
-        case "setRecompositionProfilerEnabled": {
-          const rawEnabled = records["enabled"];
-          const enabled = rawEnabled === true || rawEnabled === "true";
-          SlockOhosDiagnostics.record("Settings", `recomposition_profiler_enabled=${enabled}`);
-          callback({ "status": "ok", "enabled": enabled });
           return;
         }
         case "copyDiagnostics": {
@@ -1774,9 +1965,12 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const imageOnly = imageOnlyValue === true || imageOnlyValue === "true";
       const captureValue = records["capture"];
       const capture = captureValue === true || captureValue === "true";
+      const compressImagesValue = records["compressImages"];
+      const compressImages = compressImagesValue === true || compressImagesValue === "true";
       SlockOhosDiagnostics.record(
         "ThreadAttachmentUpload",
-        `start imageOnly=${imageOnly} capture=${capture} channelIdPresent=${channelId.length > 0}`
+        `start imageOnly=${imageOnly} capture=${capture} compressImages=${compressImages} ` +
+          `channelIdPresent=${channelId.length > 0}`
       );
 
       if (channelId.length === 0) {
@@ -1797,15 +1991,27 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         return;
       }
 
-      const files = this.readPickedThreadAttachments(uris, imageOnly);
+      const readResult = await this.readPickedThreadAttachments(uris, imageOnly, compressImages);
+      const files = readResult.files;
+      const errors = readResult.errors;
       const byteCount = files.reduce((sum: number, file: OhosPickedThreadAttachment) => sum + file.sizeBytes, 0);
-      SlockOhosDiagnostics.record("ThreadAttachmentUpload", `picked_file_refs count=${files.length} bytes=${byteCount}`);
+      SlockOhosDiagnostics.record(
+        "ThreadAttachmentUpload",
+        `picked_file_refs count=${files.length} errors=${errors.length} bytes=${byteCount}`
+      );
       if (files.length === 0) {
-        callback(this.threadAttachmentError(400, "attachment_read_failed", "No readable attachments"));
+        const compressionFailed = errors.some(
+          (entry: Record<string, Object>) => entry["errorCode"] === SLOCK_THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR
+        );
+        callback(this.threadAttachmentError(
+          400,
+          compressionFailed ? SLOCK_THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR : "attachment_read_failed",
+          compressionFailed ? "Unable to compress image attachment" : "No readable attachments"
+        ));
         return;
       }
 
-      callback(this.threadPickedAttachmentFiles(files, capture));
+      callback(this.threadPickedAttachmentFiles(files, capture, errors));
     } catch (error) {
       const businessError = error as BusinessError;
       const message = businessError.message ?? `${error}`;
@@ -1816,10 +2022,373 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       );
       callback(this.threadAttachmentError(
         0,
-        pickerUnavailable ? "attachment_picker_unavailable" : "attachment_upload_failed",
+        pickerUnavailable
+          ? "attachment_picker_unavailable"
+          : error instanceof SlockThreadAttachmentImageCompressionError
+            ? SLOCK_THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR
+            : "attachment_upload_failed",
         message
       ));
     }
+  }
+
+  private async compressThreadImage(params: KRAny, callback: KuiklyRenderCallback): Promise<void> {
+    // Reserve the operation before the first suspension.  The shared bridge installs its
+    // cancellation hook immediately after invoking native; if the coroutine is cancelled in
+    // that tiny window, a pre-suspension reservation lets cancelCompressThreadImage see and fence
+    // this request instead of allowing a stale worker/output to escape.
+    let operation: SlockThreadImageCompressionOperation | undefined = undefined;
+    let preflightTerminal = false;
+    const failPreflight = (): void => {
+      if (preflightTerminal || this.threadImageCompressionDestroyed) return;
+      preflightTerminal = true;
+      try {
+        callback(this.threadImageCompressionFailure());
+      } catch (_) {
+        // Renderer teardown/callback removal must not turn a terminal native response into an
+        // uncaught exception on the bridge dispatch turn.
+      }
+    };
+    try {
+      const records = this.parseRecord(params);
+      const requestId = this.threadImageCompressionString(records["requestId"]);
+      const fileRef = this.threadImageCompressionString(records["fileRef"]);
+      const fileName = this.threadImageCompressionString(records["fileName"]);
+      const mimeType = this.threadImageCompressionString(records["mimeType"])
+        .split(';')[0].trim().toLowerCase();
+      if (this.threadImageCompressionDestroyed || !this.isValidThreadImageCompressionRequestId(requestId) ||
+        !this.isValidThreadImageCompressionFileName(fileName) || !mimeType.startsWith('image/') ||
+        !this.isValidThreadImageCompressionFileRef(fileRef)) {
+        failPreflight();
+        return;
+      }
+      if (this.threadImageCompressionOperations.has(requestId)) {
+        failPreflight();
+        return;
+      }
+      const context = getContext(this) as common.UIAbilityContext;
+      const outputDirectory = `${context.cacheDir}/${SLOCK_THREAD_IMAGE_COMPRESSION_CACHE_DIR_NAME}`;
+      // UUID-backed names avoid collisions across remounted renderers and make every output an
+      // operation-owned cache object.  Encoding first targets the sibling .part; a same-directory
+      // rename publishes the final .jpg atomically.
+      const outputPath = `${outputDirectory}/composer-image-${util.generateRandomUUID()}.jpg`;
+      operation = new SlockThreadImageCompressionOperation(requestId, callback, outputPath);
+      this.threadImageCompressionOperations.set(requestId, operation);
+      const ownedOperation = operation;
+      // Yield only after admission.  No filesystem/image work occurs before this point; the
+      // worker below owns all blocking/decoder operations.
+      await Promise.resolve();
+      if (this.threadImageCompressionDestroyed || ownedOperation.isCancelled() ||
+        this.threadImageCompressionOperations.get(requestId) !== ownedOperation) {
+        ownedOperation.removeOutputs().catch((): void => {
+        });
+        if (this.threadImageCompressionOperations.get(requestId) === ownedOperation) {
+          this.threadImageCompressionOperations.delete(requestId);
+        }
+        return;
+      }
+      this.runThreadImageCompression(ownedOperation, fileRef, fileName, mimeType).catch((): void => {
+        // runThreadImageCompression owns normal terminal responses.  If an unexpected setup or
+        // release rejection escapes it, route one guarded failure through the same operation gate
+        // instead of racing a second callback from the dispatcher.
+        if (this.threadImageCompressionOperations.get(requestId) === ownedOperation) {
+          this.deliverThreadImageCompression(ownedOperation, this.threadImageCompressionFailure());
+          this.threadImageCompressionOperations.delete(requestId);
+        }
+        if (ownedOperation.state !== SlockThreadImageCompressionOperationState.DELIVERED ||
+          this.threadImageCompressionDestroyed) {
+          ownedOperation.removeOutputs().catch((): void => {
+          });
+        }
+      });
+    } catch (_) {
+      if (operation === undefined) {
+        failPreflight();
+      } else if (this.threadImageCompressionOperations.get(operation.requestId) === operation) {
+        this.deliverThreadImageCompression(operation, this.threadImageCompressionFailure());
+        this.threadImageCompressionOperations.delete(operation.requestId);
+        operation.removeOutputs().catch((): void => {
+        });
+      }
+    }
+  }
+
+  private cancelCompressThreadImage(params: KRAny): void {
+    let records: Record<string, Object>;
+    try {
+      records = this.parseRecord(params);
+    } catch (_) {
+      return;
+    }
+    const requestId = this.threadImageCompressionString(records["requestId"]);
+    if (requestId.length === 0) return;
+    const operation = this.threadImageCompressionOperations.get(requestId);
+    if (operation === undefined) return;
+    // Ordinary caller cancellation may stop work that is still ACTIVE/PENDING.  Once the
+    // callback has been delivered, the consumer owns the generated JPEG; do not revoke that
+    // terminal operation or delete its output here.  Module destruction is the only force-cancel
+    // path (see onDestroy), where no consumer can adopt the result.  The JS event loop serializes
+    // this transition with delivery.
+    if (operation.cancel()) {
+      operation.removeOutputs().catch((): void => {
+      });
+      if (this.threadImageCompressionOperations.get(requestId) === operation) {
+        this.threadImageCompressionOperations.delete(requestId);
+      }
+    }
+  }
+
+  private async runThreadImageCompression(
+    operation: SlockThreadImageCompressionOperation,
+    fileRef: string,
+    fileName: string,
+    mimeType: string
+  ): Promise<void> {
+    let deliveredSuccess = false;
+    let sourceFile: fs.File | undefined = undefined;
+    try {
+      this.checkThreadImageCompressionCancelled(operation);
+      const context = getContext(this) as common.UIAbilityContext;
+      const sourcePath = await this.resolveThreadImageCompressionSourcePath(
+        fileRef,
+        [context.cacheDir, context.tempDir],
+        (): void => this.checkThreadImageCompressionCancelled(operation)
+      );
+      if (sourcePath.length === 0 || !(await this.isThreadImageCompressionInput(
+        fileName,
+        mimeType,
+        sourcePath,
+        (): void => this.checkThreadImageCompressionCancelled(operation)
+      ))) {
+        throw new SlockThreadAttachmentImageCompressionError('Unable to decode image attachment');
+      }
+      this.checkThreadImageCompressionCancelled(operation);
+      sourceFile = await fs.open(sourcePath, fs.OpenMode.READ_ONLY);
+      this.checkThreadImageCompressionCancelled(operation);
+      const sourceStat = await fs.stat(sourceFile.fd);
+      this.checkThreadImageCompressionCancelled(operation);
+      if (!sourceStat.isFile() || sourceStat.size <= 0) {
+        throw new SlockThreadAttachmentImageCompressionError('Unable to decode image attachment');
+      }
+      const cached = await this.cacheCompressedPickedThreadImage(
+        sourceFile.fd,
+        operation.outputPath,
+        fileName,
+        (): boolean => operation.isCancelled()
+      );
+      this.checkThreadImageCompressionCancelled(operation);
+      const file: Record<string, Object> = {
+        "fileRef": cached.fileRef,
+        "fileName": this.threadImageCompressionOutputName(fileName),
+        "mimeType": "image/jpeg",
+        "previewUri": cached.previewUri,
+        "sizeBytes": cached.sizeBytes,
+        "source": SLOCK_THREAD_IMAGE_COMPRESSION_SOURCE
+      };
+      const payload: Record<string, Object> = {
+        "code": 200,
+        "bodyText": JSON.stringify({ "files": [file] })
+      };
+      deliveredSuccess = this.deliverThreadImageCompression(operation, payload);
+    } catch (error) {
+      if (!(error instanceof SlockThreadImageCompressionCancelledError)) {
+        this.deliverThreadImageCompression(operation, this.threadImageCompressionFailure());
+      }
+    } finally {
+      if (sourceFile !== undefined) {
+        try { await fs.close(sourceFile); } catch (_) {
+        }
+      }
+      if (!deliveredSuccess || operation.isCancelled()) {
+        await operation.removeOutputs();
+      }
+      if (this.threadImageCompressionOperations.get(operation.requestId) === operation) {
+        this.threadImageCompressionOperations.delete(operation.requestId);
+      }
+    }
+  }
+
+  private deliverThreadImageCompression(
+    operation: SlockThreadImageCompressionOperation,
+    payload: Record<string, Object>
+  ): boolean {
+    if (this.threadImageCompressionDestroyed ||
+      this.threadImageCompressionOperations.get(operation.requestId) !== operation ||
+      operation.state !== SlockThreadImageCompressionOperationState.ACTIVE) {
+      return false;
+    }
+    if (!operation.markPending() || !operation.markDelivered()) return false;
+    if (this.threadImageCompressionDestroyed) {
+      operation.cancel();
+      operation.removeOutputs().catch((): void => {
+      });
+      return false;
+    }
+    try {
+      operation.callback(payload);
+    } catch (_) {
+      // Callback removal/page teardown is a renderer concern; the operation remains terminal.
+      operation.removeOutputs().catch((): void => {
+      });
+    }
+    return true;
+  }
+
+  private checkThreadImageCompressionCancelled(operation: SlockThreadImageCompressionOperation): void {
+    if (this.threadImageCompressionDestroyed || operation.isCancelled() ||
+      this.threadImageCompressionOperations.get(operation.requestId) !== operation) {
+      throw new SlockThreadImageCompressionCancelledError();
+    }
+  }
+
+  private threadImageCompressionFailure(): Record<string, Object> {
+    return {
+      "code": 400,
+      "errorCode": SLOCK_THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR,
+      "errorBodyText": "Unable to compress image attachment"
+    };
+  }
+
+  private threadImageCompressionString(value: Object | undefined): string {
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
+  private hasThreadImageCompressionControlCharacter(value: string): boolean {
+    for (let index = 0; index < value.length; index += 1) {
+      const code = value.charCodeAt(index);
+      if (code < 0x20 || code === 0x7f) return true;
+    }
+    return false;
+  }
+
+  private isValidThreadImageCompressionRequestId(value: string): boolean {
+    return value.length > 0 && value.length <= SLOCK_THREAD_IMAGE_COMPRESSION_MAX_REQUEST_ID_LENGTH &&
+      !this.hasThreadImageCompressionControlCharacter(value);
+  }
+
+  private isValidThreadImageCompressionFileName(value: string): boolean {
+    return value.length > 0 && value.length <= SLOCK_THREAD_IMAGE_COMPRESSION_MAX_FILE_NAME_LENGTH &&
+      !value.includes('/') && !value.includes('\\') && !value.includes('..') &&
+      !this.hasThreadImageCompressionControlCharacter(value);
+  }
+
+  private isValidThreadImageCompressionFileRef(value: string): boolean {
+    if (value.length === 0 || this.hasThreadImageCompressionControlCharacter(value) ||
+      value.includes('?') || value.includes('#')) return false;
+    return value.startsWith('/') || value.toLowerCase().startsWith('file://');
+  }
+
+  private async resolveThreadImageCompressionSourcePath(
+    fileRef: string,
+    roots: Array<string>,
+    checkCancelled: () => void = (): void => {
+    }
+  ): Promise<string> {
+    let sourcePath = '';
+    const context = getContext(this) as common.UIAbilityContext;
+    if (!isSlockOhosThreadComposerTemporaryFileRefAuthorityAllowed(
+      fileRef,
+      context.abilityInfo.bundleName,
+    )) {
+      return '';
+    }
+    try {
+      sourcePath = fileRef.startsWith('/') ? fileRef : new fileUri.FileUri(fileRef).path;
+    } catch (_) {
+      return '';
+    }
+    const normalizedSource = this.normalizeOhosTemporaryPath(sourcePath);
+    if (normalizedSource.length === 0) return '';
+    for (let index = 0; index < roots.length; index += 1) {
+      const root = this.normalizeOhosTemporaryPath(roots[index]);
+      if (await this.isOhosCacheOwnedRegularFileAsync(root, normalizedSource, checkCancelled)) {
+        checkCancelled();
+        try {
+          const sourceStat = await fs.stat(normalizedSource);
+          checkCancelled();
+          if (sourceStat.isFile() && sourceStat.size > 0) return normalizedSource;
+        } catch (error) {
+          if (error instanceof SlockThreadImageCompressionCancelledError) throw error;
+          return '';
+        }
+      }
+    }
+    return '';
+  }
+
+  private async isOhosCacheOwnedRegularFileAsync(
+    cacheRoot: string,
+    targetPath: string,
+    checkCancelled: () => void = (): void => {
+    }
+  ): Promise<boolean> {
+    if (cacheRoot.length === 0 || targetPath.length === 0 ||
+      !targetPath.startsWith(`${cacheRoot}/`)) return false;
+    try {
+      const rootStat = await fs.lstat(cacheRoot);
+      checkCancelled();
+      if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) return false;
+      const relativeSegments = targetPath.substring(cacheRoot.length + 1).split('/');
+      let candidate = cacheRoot;
+      for (let index = 0; index < relativeSegments.length; index += 1) {
+        const segment = relativeSegments[index];
+        if (segment.length === 0) return false;
+        candidate = `${candidate}/${segment}`;
+        const stat = await fs.lstat(candidate);
+        checkCancelled();
+        const isLast = index === relativeSegments.length - 1;
+        if (stat.isSymbolicLink() || (isLast ? !stat.isFile() : !stat.isDirectory())) return false;
+      }
+      return relativeSegments.length > 0;
+    } catch (error) {
+      if (error instanceof SlockThreadImageCompressionCancelledError) throw error;
+      return false;
+    }
+  }
+
+  private async isThreadImageCompressionInput(
+    fileName: string,
+    mimeType: string,
+    sourcePath: string,
+    checkCancelled: () => void = (): void => {
+    }
+  ): Promise<boolean> {
+    const normalizedMimeType = mimeType.split(';')[0].trim().toLowerCase();
+    if (!normalizedMimeType.startsWith('image/')) return false;
+    const extension = fileName.split('.').pop()?.toLowerCase() ?? '';
+    if (['3gp', 'avi', 'flv', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'webm', 'wmv'].includes(extension)) {
+      return false;
+    }
+    // The display name can disagree with the provider's real path.  Reject a known movie
+    // extension from the admitted source path as well, before ImageKit opens the bytes.
+    const normalizedSourcePath = sourcePath.toLowerCase().split('?')[0].split('#')[0];
+    if (/\.(3gp|avi|flv|m4v|mkv|mov|mp4|mpeg|mpg|webm|wmv)$/.test(normalizedSourcePath)) {
+      return false;
+    }
+    try {
+      const sourceStat = await fs.stat(sourcePath);
+      checkCancelled();
+      return sourceStat.isFile() && sourceStat.size > 0;
+    } catch (error) {
+      if (error instanceof SlockThreadImageCompressionCancelledError) throw error;
+      return false;
+    }
+  }
+
+  private threadImageCompressionOutputName(fileName: string): string {
+    const leaf = fileName.split('/').pop()?.split('\\').pop() ?? 'image';
+    const stem = leaf.replace(/\.[^.]*$/, '') || 'image';
+    let safeStem = '';
+    for (let index = 0; index < stem.length; index += 1) {
+      const character = stem.charAt(index);
+      const allowed = (character >= 'a' && character <= 'z') ||
+        (character >= 'A' && character <= 'Z') ||
+        (character >= '0' && character <= '9') ||
+        character === '.' || character === '-' || character === '_' || character === ' ';
+      safeStem += allowed ? character : '_';
+    }
+    safeStem = safeStem.trim().slice(0, SLOCK_THREAD_IMAGE_COMPRESSION_MAX_FILE_NAME_LENGTH - 4) || 'image';
+    return `${safeStem}.jpg`;
   }
 
   private async pickThreadAttachmentUris(imageOnly: boolean, capture: boolean): Promise<Array<string>> {
@@ -1847,54 +2416,89 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     return await new picker.DocumentViewPicker(getContext(this) as common.UIAbilityContext).select(options);
   }
 
-  private readPickedThreadAttachments(uris: Array<string>, imageOnly: boolean): Array<OhosPickedThreadAttachment> {
+  private async readPickedThreadAttachments(
+    uris: Array<string>,
+    imageOnly: boolean,
+    compressImages: boolean
+  ): Promise<OhosPickedThreadAttachmentReadResult> {
     const files: Array<OhosPickedThreadAttachment> = [];
+    const errors: Array<Record<string, Object>> = [];
     const context = getContext(this) as common.UIAbilityContext;
     const cacheDir = `${context.cacheDir}/slock-attachments`;
-    ensureSlockOhosAttachmentCacheDirectory(cacheDir);
+    if (compressImages) {
+      await this.ensureThreadImageCompressionCacheDirectory(cacheDir);
+    } else {
+      ensureSlockOhosAttachmentCacheDirectory(cacheDir);
+    }
     this.cleanupAttachmentCache(cacheDir);
     const pickedAt = Date.now();
-    uris.forEach((uri: string, index: number) => {
-      const file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+    for (let index = 0; index < uris.length; index++) {
+      const uri = uris[index];
       try {
-        const stat = fs.statSync(file.fd);
-        const mimeType = this.mimeTypeFromName(uri, imageOnly);
-        const fileName = normalizeSlockOhosImagePickerFileName(
-          this.fileNameFromUri(uri, index, imageOnly),
-          mimeType,
-          imageOnly,
-        );
-        const targetPath = `${cacheDir}/${this.safeAttachmentCacheFileName(
-          `picked-${pickedAt}-${index}`,
-          fileName,
-          mimeType
-        )}`;
-        const cached = cacheSlockOhosPickedAttachment(
-          file.fd,
-          targetPath,
-          fileName,
-          mimeType,
-          stat.size
-        );
-        files.push({
-          fileName: cached.fileName,
-          mimeType: cached.mimeType,
-          previewUri: cached.previewUri,
-          fileRef: cached.fileRef,
-          sizeBytes: cached.sizeBytes
+        const file = await fs.open(uri, fs.OpenMode.READ_ONLY);
+        try {
+          const stat = await fs.stat(file.fd);
+          const sourceFileName = this.fileNameFromUri(uri, index, imageOnly);
+          const sourceMimeType = this.mimeTypeFromName(uri, imageOnly);
+          const fileName = normalizeSlockOhosImagePickerFileName(
+            sourceFileName,
+            sourceMimeType,
+            imageOnly,
+          );
+          const shouldCompress = compressImages && this.isOhosImageAttachment(uri, sourceMimeType, imageOnly);
+          const cached = shouldCompress
+            ? await this.cacheCompressedPickedThreadImage(
+                file.fd,
+                `${cacheDir}/${this.safeAttachmentCacheFileName(
+                  `picked-${pickedAt}-${index}`,
+                  this.compressedImageFileName(fileName),
+                  'image/jpeg'
+                )}`,
+                fileName
+              )
+            : cacheSlockOhosPickedAttachment(
+                file.fd,
+                `${cacheDir}/${this.safeAttachmentCacheFileName(
+                  `picked-${pickedAt}-${index}`,
+                  fileName,
+                  sourceMimeType
+                )}`,
+                fileName,
+                sourceMimeType,
+                stat.size
+              );
+          files.push({
+            fileName: shouldCompress ? this.compressedImageFileName(fileName) : cached.fileName,
+            mimeType: shouldCompress ? 'image/jpeg' : cached.mimeType,
+            previewUri: cached.previewUri,
+            fileRef: cached.fileRef,
+            sizeBytes: cached.sizeBytes
+          });
+        } finally {
+          try { await fs.close(file); } catch (_) {
+          }
+        }
+      } catch (error) {
+        const compressionFailed = error instanceof SlockThreadAttachmentImageCompressionError;
+        errors.push({
+          "index": index,
+          "errorCode": compressionFailed ? SLOCK_THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR : "attachment_read_failed",
+          "message": (error as Error).message ?? `${error}`
         });
-      } finally {
-        fs.closeSync(file);
       }
-    });
-    return files;
+    }
+    return { files: files, errors: errors };
   }
 
   private threadPickedAttachmentFiles(
     files: Array<OhosPickedThreadAttachment>,
-    capture: boolean
+    capture: boolean,
+    errors: Array<Record<string, Object>> = []
   ): Record<string, Object> {
-    return {
+    const compressionFailed = errors.some(
+      (entry: Record<string, Object>) => entry["errorCode"] === SLOCK_THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR
+    );
+    const result: Record<string, Object> = {
       "code": 200,
       "bodyText": "",
       "files": files.map((file: OhosPickedThreadAttachment, index: number): OhosPickedThreadAttachmentPayload => {
@@ -1909,6 +2513,253 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         };
       })
     };
+    if (errors.length > 0) {
+      result["code"] = 206;
+      result["errors"] = errors;
+      result["skippedCount"] = errors.length;
+      result["errorCode"] = compressionFailed
+        ? SLOCK_THREAD_ATTACHMENT_IMAGE_COMPRESSION_ERROR
+        : "attachment_read_partial";
+      result["errorBodyText"] = `${errors.length} attachment(s) could not be read`;
+    }
+    return result;
+  }
+
+  private compressedImageFileName(fileName: string): string {
+    const leaf = fileName.split('/').pop()?.split('\\').pop() ?? 'image';
+    const stem = leaf.replace(/\.[^.]*$/, '') || 'image';
+    return `${stem}.jpg`;
+  }
+
+  private isOhosImageAttachment(uri: string, mimeType: string, imageOnly: boolean): boolean {
+    const normalizedMimeType = mimeType.split(';')[0].trim().toLowerCase();
+    if (normalizedMimeType.startsWith('video/')) return false;
+    const lowerUri = uri.toLowerCase().split('?')[0];
+    // Providers occasionally report application/octet-stream for a picked movie.  Reject the
+    // extension before accepting a generic image-only MIME so a video cannot enter ImageKit.
+    if (/\.(3gp|avi|flv|m4v|mkv|mov|mp4|mpeg|mpg|webm|wmv)$/.test(lowerUri)) return false;
+    if (normalizedMimeType.startsWith('image/')) return true;
+    if (/\.(avif|bmp|gif|heic|heif|jpe?g|png|webp|tiff?)$/.test(lowerUri)) return true;
+    return imageOnly && normalizedMimeType === 'application/octet-stream';
+  }
+
+  private async cacheCompressedPickedThreadImage(
+    sourceFd: number,
+    targetPath: string,
+    sourceFileName: string,
+    isCancelled: () => boolean = (): boolean => false
+  ): Promise<SlockOhosCachedPickedAttachmentLike> {
+    let imageSource: image.ImageSource | undefined = undefined;
+    let pixelMap: image.PixelMap | undefined = undefined;
+    let packer: image.ImagePacker | undefined = undefined;
+    let outputFile: fs.File | undefined = undefined;
+    let complete = false;
+    const partPath = `${targetPath}.part`;
+    const checkCancelled = (): void => {
+      if (isCancelled()) {
+        throw new SlockThreadImageCompressionCancelledError();
+      }
+    };
+    try {
+      checkCancelled();
+      imageSource = image.createImageSource(sourceFd);
+      if (imageSource === undefined) {
+        throw new SlockThreadAttachmentImageCompressionError('Unable to decode image attachment');
+      }
+      const imageInfo = await imageSource.getImageInfo();
+      checkCancelled();
+      const sourceWidth = imageInfo.size.width;
+      const sourceHeight = imageInfo.size.height;
+      if (sourceWidth <= 0 || sourceHeight <= 0) {
+        throw new SlockThreadAttachmentImageCompressionError('Unable to decode image attachment');
+      }
+      const scale = Math.min(
+        1,
+        SLOCK_THREAD_ATTACHMENT_IMAGE_MAX_EDGE / Math.max(sourceWidth, sourceHeight)
+      );
+      const desiredSize: image.Size = {
+        width: Math.max(1, Math.round(sourceWidth * scale)),
+        height: Math.max(1, Math.round(sourceHeight * scale))
+      };
+      pixelMap = await imageSource.createPixelMap({ desiredSize: desiredSize });
+      checkCancelled();
+      if (pixelMap === undefined) {
+        throw new SlockThreadAttachmentImageCompressionError('Unable to decode image attachment');
+      }
+      await this.applyOhosImageOrientation(imageSource, pixelMap, checkCancelled);
+      checkCancelled();
+      await this.ensureThreadImageCompressionCacheDirectory(
+        targetPath.substring(0, targetPath.lastIndexOf('/'))
+      );
+      // Never open the final path for encoding.  A sibling part file remains invisible to
+      // consumers until the same-directory rename below commits a complete JPEG.
+      try { await fs.unlink(partPath); } catch (_) {
+      }
+      checkCancelled();
+      outputFile = await fs.open(
+        partPath,
+        fs.OpenMode.CREATE | fs.OpenMode.TRUNC | fs.OpenMode.WRITE_ONLY
+      );
+      checkCancelled();
+      packer = image.createImagePacker();
+      await packer.packToFile(
+        pixelMap,
+        outputFile.fd,
+        {
+          format: 'image/jpeg',
+          quality: SLOCK_THREAD_ATTACHMENT_IMAGE_JPEG_QUALITY
+        }
+      );
+      checkCancelled();
+      await fs.close(outputFile);
+      outputFile = undefined;
+      const partStat = await fs.stat(partPath);
+      checkCancelled();
+      if (!partStat.isFile() || partStat.size <= 0) {
+        throw new SlockThreadAttachmentImageCompressionError('Unable to encode image attachment');
+      }
+      checkCancelled();
+      // Both paths are in the app cache directory, so same-directory rename is an atomic
+      // publication boundary on OHOS file systems.  No reader can observe a partially encoded
+      // final file.
+      await fs.rename(partPath, targetPath);
+      checkCancelled();
+      const outputStat = await fs.stat(targetPath);
+      checkCancelled();
+      if (!outputStat.isFile() || outputStat.size <= 0) {
+        throw new SlockThreadAttachmentImageCompressionError('Unable to encode image attachment');
+      }
+      const cachedFileRef = fileUri.getUriFromPath(targetPath);
+      const cachedPreviewUri = `file://${targetPath}`;
+      if (!cachedFileRef.startsWith('file://')) {
+        throw new SlockThreadAttachmentImageCompressionError('Attachment cache URI is unavailable');
+      }
+      complete = true;
+      return {
+        fileName: this.compressedImageFileName(sourceFileName),
+        mimeType: 'image/jpeg',
+        previewUri: cachedPreviewUri,
+        fileRef: cachedFileRef,
+        sizeBytes: outputStat.size
+      };
+    } catch (error) {
+      if (error instanceof SlockThreadImageCompressionCancelledError) throw error;
+      if (error instanceof SlockThreadAttachmentImageCompressionError) throw error;
+      throw new SlockThreadAttachmentImageCompressionError(
+        (error as Error).message ?? 'Unable to compress image attachment'
+      );
+    } finally {
+      if (outputFile !== undefined) {
+        try { await fs.close(outputFile); } catch (_) {
+        }
+      }
+      if (packer !== undefined) {
+        try { await packer.release(); } catch (_) {
+        }
+      }
+      if (pixelMap !== undefined) {
+        try { await pixelMap.release(); } catch (_) {
+        }
+      }
+      if (imageSource !== undefined) {
+        try { await imageSource.release(); } catch (_) {
+        }
+      }
+      if (!complete || isCancelled()) {
+        try { await fs.unlink(partPath); } catch (_) {
+        }
+        try { await fs.unlink(targetPath); } catch (_) {
+        }
+      }
+    }
+  }
+
+  private async ensureThreadImageCompressionCacheDirectory(path: string): Promise<void> {
+    if (path.length === 0 || !path.startsWith('/')) {
+      throw new SlockThreadAttachmentImageCompressionError('Attachment cache unavailable');
+    }
+    try {
+      const existing = await fs.lstat(path);
+      if (existing.isDirectory() && !existing.isSymbolicLink()) return;
+      throw new SlockThreadAttachmentImageCompressionError('Attachment cache unavailable');
+    } catch (error) {
+      // A missing directory is the normal path.  Recursive async mkdir is safe to race with
+      // another request; after an EEXIST-style rejection, re-stat and accept only a real,
+      // non-symlink directory.
+      try {
+        await fs.mkdir(path, true);
+        return;
+      } catch (mkdirError) {
+        try {
+          const after = await fs.lstat(path);
+          if (after.isDirectory() && !after.isSymbolicLink()) return;
+        } catch (_) {
+        }
+        if (error instanceof SlockThreadAttachmentImageCompressionError) throw error;
+        // ArkTS does not allow throwing an arbitrary catch value.  Preserve the
+        // fail-closed compression contract with a typed domain error instead of
+        // leaking a platform-specific mkdir rejection across the bridge.
+        throw new SlockThreadAttachmentImageCompressionError('Attachment cache unavailable');
+      }
+    }
+  }
+
+  private async applyOhosImageOrientation(
+    imageSource: image.ImageSource,
+    pixelMap: image.PixelMap,
+    checkCancelled: () => void = (): void => {
+    }
+  ): Promise<void> {
+    let orientation = '';
+    try {
+      orientation = (await imageSource.getImageProperty(image.PropertyKey.ORIENTATION)).toString();
+    } catch (_) {
+      return;
+    }
+    checkCancelled();
+    switch (orientation) {
+      case '2':
+      case 'Top-right':
+        await pixelMap.flip(true, false);
+        checkCancelled();
+        break;
+      case '3':
+      case 'Bottom-right':
+        await pixelMap.rotate(180);
+        checkCancelled();
+        break;
+      case '4':
+      case 'Bottom-left':
+        await pixelMap.flip(false, true);
+        checkCancelled();
+        break;
+      case '5':
+      case 'Left-top':
+        await pixelMap.flip(true, false);
+        checkCancelled();
+        await pixelMap.rotate(270);
+        checkCancelled();
+        break;
+      case '6':
+      case 'Right-top':
+        await pixelMap.rotate(90);
+        checkCancelled();
+        break;
+      case '7':
+      case 'Right-bottom':
+        await pixelMap.flip(true, false);
+        checkCancelled();
+        await pixelMap.rotate(90);
+        checkCancelled();
+        break;
+      case '8':
+      case 'Left-bottom':
+        await pixelMap.rotate(270);
+        checkCancelled();
+        break;
+      default:
+        break;
+    }
   }
 
   private fileNameFromUri(uri: string, index: number, imageOnly: boolean): string {
@@ -1931,6 +2782,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     if (lower.endsWith(".gif")) return "image/gif";
     if (lower.endsWith(".webp")) return "image/webp";
     if (lower.endsWith(".jpg") || lower.endsWith(".jpeg") || imageOnly) return "image/jpeg";
+    if (lower.endsWith(".mp4")) return "video/mp4";
+    if (lower.endsWith(".mov")) return "video/quicktime";
+    if (lower.endsWith(".m4v")) return "video/x-m4v";
+    if (lower.endsWith(".webm")) return "video/webm";
     if (lower.endsWith(".pdf")) return "application/pdf";
     if (lower.endsWith(".txt")) return "text/plain";
     return "application/octet-stream";

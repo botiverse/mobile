@@ -419,7 +419,17 @@ internal fun ThreadMessageVisualScreenContent() {
             payload.toKnownMarkdownMentionNameSet()
         }
     val knownMarkdownDirectMessagePeerNames =
-        remember(payload.knownMarkdownDirectMessagePeerNames) {
+        remember(
+            payload.knownMarkdownDirectMessagePeerNames,
+            payload.dmPeerName,
+            payload.dmPeerIdentity,
+            payload.surfaceKind,
+            payload.parentSurfaceKind,
+            payload.channelKind,
+            payload.parentChannelKind,
+            payload.members,
+            payload.memberCandidates
+        ) {
             payload.toKnownMarkdownDirectMessagePeerNameSet()
         }
     val knownMarkdownTaskNumbers =
@@ -484,6 +494,7 @@ internal fun ThreadMessageVisualScreenContent() {
                         selectedForShare = true,
                         onToggleShareSelection = {},
                         alignOwnMessageRight = payload.alignOwnMessagesRight && selectedMessage.isOwn,
+                        messageAlignmentModeEnabled = payload.alignOwnMessagesRight,
                         showReplyAction = payload.showReplyActions,
                         taskOpenEnabled = payload.showTaskOpenActions,
                         taskStatusActionsEnabled = payload.showTaskStatusActions,
@@ -827,6 +838,7 @@ internal fun ThreadMessageVisualScreenContent() {
                     inlineReplyParticipantsById = payload.members.associateBy(KuiklyThreadMemberItem::id),
                     hasReplyDraft = visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES,
                     alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
+                    messageAlignmentModeEnabled = payload.alignOwnMessagesRight,
                     showReplyAction = payload.showReplyActions,
                     singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                     resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(
@@ -1091,7 +1103,8 @@ private fun threadMessageVisualAgentStatusResolver(
     val cindyState =
         slockAgentStatusIndicatorState(
             status = cindyStatus,
-            presence = cindyStatus.presence
+            presence = cindyStatus.presence,
+            external = false
         )
     return { memberId ->
         flowOf(cindyState.takeIf { memberId?.trim() == "agent-cindy" })

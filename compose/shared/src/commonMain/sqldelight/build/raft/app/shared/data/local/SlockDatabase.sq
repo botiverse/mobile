@@ -826,6 +826,33 @@ WHERE environmentId = ?
   AND subjectId = ?
   AND memberKind = ?;
 
+-- task #343: cold-start prewarm. Only exact committed rows whose resource is not currently
+-- suppressed by an unexpired failure; newest validation first, bounded by the caller.
+selectCommittedAvatarCacheMetadataForOwner:
+SELECT avatarCacheMetadataEntity.*
+FROM avatarCacheMetadataEntity
+WHERE avatarCacheMetadataEntity.environmentId = :environmentId
+  AND avatarCacheMetadataEntity.accountId = :accountId
+  AND avatarCacheMetadataEntity.serverId = :serverId
+  AND avatarCacheMetadataEntity.commitGeneration IS NOT NULL
+  AND avatarCacheMetadataEntity.commitNonce IS NOT NULL
+  AND avatarCacheMetadataEntity.modelRevision IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM avatarCacheFailureEntity
+    WHERE avatarCacheFailureEntity.environmentId = avatarCacheMetadataEntity.environmentId
+      AND avatarCacheFailureEntity.accountId = avatarCacheMetadataEntity.accountId
+      AND avatarCacheFailureEntity.serverId = avatarCacheMetadataEntity.serverId
+      AND avatarCacheFailureEntity.subjectKind = avatarCacheMetadataEntity.subjectKind
+      AND avatarCacheFailureEntity.subjectId = avatarCacheMetadataEntity.subjectId
+      AND avatarCacheFailureEntity.memberKind = avatarCacheMetadataEntity.memberKind
+      AND avatarCacheFailureEntity.contentKind = avatarCacheMetadataEntity.contentKind
+      AND avatarCacheFailureEntity.contentFingerprint = avatarCacheMetadataEntity.contentFingerprint
+      AND avatarCacheFailureEntity.retryAtMs > :nowMs
+  )
+ORDER BY avatarCacheMetadataEntity.validatedAtMs DESC
+LIMIT :limit;
+
 upsertAvatarCacheMetadata:
 INSERT OR REPLACE INTO avatarCacheMetadataEntity(
   environmentId, accountId, serverId,
@@ -979,6 +1006,19 @@ WHERE serverId = ?
   AND consumerId = ?
   AND scopeKind = ?
   AND scopeId = ?;
+
+-- Offline read entry (task #1123): a thread screen enters by channel id alone and must resolve the
+-- persisted scopeKind before it can restore the scope. Only a committed cursor row proves a baseline
+-- exists; a scope with facts but no cursor is poisoned, not readable.
+selectSyncCursorScopeKindsForScopeId:
+SELECT scopeKind
+FROM syncCursorEntity
+WHERE environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND scopeId = ?
+ORDER BY scopeKind;
 
 -- #491 P1 warm-start restore: canonical server-backed timeline read. Only server-backed rows
 -- (seq IS NOT NULL) in (seq, id) tie-break order — NOT selectMessagesForChannel, which sorts by
@@ -1219,11 +1259,63 @@ WHERE environmentId = ?
   AND routeInstanceKey = ?
   AND randomId = ?;
 
+-- Drain-path visibility: durable rows belong to a stable identity (environment,
+-- account, server). Generation/scope columns only fence in-process concurrent
+-- writes, never whether a journaled orphan can be seen and adopted.
+selectThreadPendingSendForStableIdentity:
+SELECT *
+FROM threadPendingSendEntity
+WHERE environmentId = ?
+  AND principalId = ?
+  AND serverId = ?
+ORDER BY createdAtMs, localId;
+
+updateThreadPendingSendFailureForStableIdentity:
+UPDATE threadPendingSendEntity
+SET status = 'failed', lastErrorCode = ?, lastErrorMessage = ?
+WHERE environmentId = ?
+  AND principalId = ?
+  AND serverId = ?
+  AND routeInstanceKey = ?
+  AND localId = ?;
+
+deleteThreadPendingSendByRandomIdForStableIdentity:
+DELETE FROM threadPendingSendEntity
+WHERE environmentId = ?
+  AND principalId = ?
+  AND serverId = ?
+  AND routeInstanceKey = ?
+  AND randomId = ?;
+
 deleteThreadPendingSendsForAuthRevision:
 DELETE FROM threadPendingSendEntity
 WHERE environmentId = ?
   AND principalId = ?
   AND authGeneration = ?;
+
+selectThreadPendingSendsForAuthRevision:
+SELECT *
+FROM threadPendingSendEntity
+WHERE environmentId = ?
+  AND principalId = ?
+  AND authGeneration = ?;
+
+-- Same-binding token rotation: move rows into the successor auth revision instead of
+-- deleting them, so a journaled pending send stays reachable after a 401 refresh.
+-- ownerScopeId embeds authGeneration, so both columns must move together; the per-row
+-- selectionGeneration component is recomputed by the caller from the row itself.
+rehomeThreadPendingSendAuthRevision:
+UPDATE threadPendingSendEntity
+SET authGeneration = :newAuthGeneration,
+    ownerScopeId = :newOwnerScopeId
+WHERE environmentId = :environmentId
+  AND principalId = :principalId
+  AND serverId = :serverId
+  AND ownerScopeId = :oldOwnerScopeId
+  AND authGeneration = :oldAuthGeneration
+  AND selectionGeneration = :selectionGeneration
+  AND routeInstanceKey = :routeInstanceKey
+  AND localId = :localId;
 
 deleteThreadPendingSendsForPrincipalBeforeAuthRevision:
 DELETE FROM threadPendingSendEntity

@@ -2,9 +2,13 @@ package build.raft.app
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
+import build.raft.app.data.ForwardMessageBatchDelivery
+import build.raft.app.data.ForwardMessageBatchExecuteRequest
+import build.raft.app.data.ForwardMessageBatchResult
 import build.raft.app.data.ForwardMessageDestination
 import build.raft.app.data.ForwardMessageExecuteRequest
 import build.raft.app.data.ForwardMessageSendMode
+import build.raft.app.data.ForwardMessageSendResult
 import build.raft.app.data.ForwardMessageTarget
 import build.raft.app.data.ForwardMessageTargetKind
 import build.raft.app.data.ForwardMessageTargetRepository
@@ -13,7 +17,14 @@ import build.raft.app.data.ScreenError
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.Message
+import build.raft.app.model.MessageId
+import build.raft.app.model.MessageType
+import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
+import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.runBlocking
@@ -70,6 +81,157 @@ class ThreadForwardFlowTest {
         assertEquals(listOf("message-1", "message-2"), request.messageIds)
         assertEquals(ForwardMessageSendMode.Merged, request.mode)
         assertEquals("Selected note", request.note)
+    }
+
+    @Test
+    fun multiTargetForwardResolvesAllReceiptsAndSendsOneBatch() = runBlocking {
+        val first = target("first", ForwardMessageTargetKind.RecentChannel, ChannelId("channel-first"))
+        val second = target("second", ForwardMessageTargetKind.RecentDirectMessage, ChannelId("channel-second"))
+        val repository = RecordingForwardRepository()
+
+        val outcome = executeThreadForwardBatch(
+            repository = repository,
+            liveSourceServerId = sourceServerId,
+            sourceChannelId = ChannelId("source"),
+            receipts = listOf(first.receiptAt(4), second.receiptAt(4)),
+            currentDirectoryGeneration = 4,
+            messageIds = listOf("message-1", "message-2"),
+            mode = ForwardMessageSendMode.Merged,
+            note = "Batch note",
+            requestId = "11111111-2222-4333-8444-555555555555"
+        )
+
+        assertEquals(null, outcome.failureCode)
+        assertEquals(2, repository.resolveCalls)
+        assertEquals(1, repository.batchRequests.size)
+        val request = repository.batchRequests.single()
+        assertEquals(listOf(ChannelId("channel-first"), ChannelId("channel-second")), request.destinations.map { it.channelId })
+        assertEquals(listOf("message-1", "message-2"), request.messageIds)
+        assertEquals("Batch note", request.note)
+    }
+
+    @Test
+    fun targetSetChangeClearsForwardRequestId() {
+        assertEquals("request-r", forwardRequestIdAfterSelectionChange(setOf("a"), setOf("a"), "request-r"))
+        assertEquals(null, forwardRequestIdAfterSelectionChange(setOf("a"), setOf("a", "b"), "request-r"))
+        assertEquals(null, forwardRequestIdAfterSelectionChange(setOf("a", "b"), setOf("a"), "request-r"))
+    }
+
+    @Test
+    fun forwardNoteBodySuppressesOnlyTheGeneratedPlaceholder() {
+        assertEquals("see this", threadForwardNoteBody(" see this ", 3))
+        assertEquals(null, threadForwardNoteBody("Forwarded 3 messages", 3))
+        assertEquals(null, threadForwardNoteBody("Forwarded 1 message", 1))
+        assertEquals("Forwarded 1 message", threadForwardNoteBody("Forwarded 1 message", 2))
+        assertEquals("Forwarded 3 messages", threadForwardNoteBody("Forwarded 3 messages", 1))
+        assertEquals(null, threadForwardNoteBody("   ", 2))
+    }
+
+    @Test
+    fun singleForwardSuccessUsesTargetLabelAndCanonicalConversationIdentity() {
+        val target = target("wg-forward-message", ForwardMessageTargetKind.RecentChannel, ChannelId("channel-target"))
+            .copy(title = "#wg-forward-message", channelType = "public")
+
+        assertEquals("#wg-forward-message", target.forwardSuccessDisplayTitle())
+        val identity =
+            ThreadForwardSuccessBanner(
+                target = target,
+                destination = ForwardMessageDestination(sourceServerId, ChannelId("channel-target"), ConversationKind.Channel),
+                messageId = MessageId("forwarded")
+            ).forwardSuccessConversationIdentity()
+        assertEquals(ConversationKind.Channel, identity?.kind)
+        assertEquals(ChannelId("channel-target"), identity?.channelId)
+        assertEquals("public", identity?.channelType)
+    }
+
+    @Test
+    fun directMessageForwardSuccessUsesDirectMessageIdentity() {
+        val target = target("dm-target", ForwardMessageTargetKind.RecentDirectMessage, ChannelId("dm-target"))
+            .copy(channelKind = ConversationKind.DirectMessage, channelType = "dm", memberId = MemberId("member-target"))
+
+        assertEquals("dm-target", target.forwardSuccessDisplayTitle())
+        assertEquals(
+            ConversationKind.DirectMessage,
+            ThreadForwardSuccessBanner(
+                target = target,
+                destination = ForwardMessageDestination(sourceServerId, ChannelId("dm-target"), ConversationKind.DirectMessage),
+                messageId = MessageId("forwarded")
+            ).forwardSuccessConversationIdentity()?.kind
+        )
+    }
+
+    @Test
+    fun directMessageBannerFailsClosedWithoutMemberIdentity() {
+        val target = target("dm-target", ForwardMessageTargetKind.RecentDirectMessage, ChannelId("dm-target"))
+            .copy(channelKind = ConversationKind.DirectMessage, channelType = "dm", memberId = null)
+        val banner =
+            ThreadForwardSuccessBanner(
+                target = target,
+                destination = ForwardMessageDestination(sourceServerId, ChannelId("dm-target"), ConversationKind.DirectMessage),
+                messageId = MessageId("forwarded")
+            )
+        assertEquals(null, banner.forwardSuccessConversationIdentity())
+    }
+
+    @Test
+    fun returnedDeliveriesPopulateScopedMessageStoreAndRefreshHome() {
+        val messageStore = SharedThreadMessageStore()
+        var refreshCount = 0
+        val destination = ForwardMessageDestination(
+            serverId = sourceServerId,
+            channelId = ChannelId("channel-target"),
+            channelKind = ConversationKind.Channel
+        )
+        val message = Message(
+            id = MessageId("forwarded-message"),
+            threadId = ThreadId("channel-target"),
+            channelId = destination.channelId,
+            author = MemberProfile(
+                id = MemberId("user-1"),
+                displayName = "User",
+                handle = "user-1",
+                kind = MemberKind.Human,
+                presence = Presence.Offline
+            ),
+            timestampLabel = "2026-09-02T00:00:00.000Z",
+            body = "forwarded note",
+            messageType = MessageType.Chat
+        )
+
+        applyForwardMessageDeliveries(
+            result = ForwardMessageBatchResult(
+                deliveries = listOf(ForwardMessageBatchDelivery(destination, message)),
+                failures = emptyList()
+            ),
+            messageStore = messageStore,
+            onHomeRefresh = { refreshCount += 1 }
+        )
+
+        assertEquals(message, messageStore.get(sourceServerId, destination.channelId, message.id))
+        assertEquals(1, refreshCount)
+    }
+
+    @Test
+    fun multiTargetForwardFailsClosedBeforeBatchWhenAnyReceiptDrifts() = runBlocking {
+        val first = target("first", ForwardMessageTargetKind.RecentChannel, ChannelId("channel-first"))
+        val second = target("second", ForwardMessageTargetKind.RecentChannel, ChannelId("channel-second"))
+        val repository = RecordingForwardRepository()
+
+        val outcome = executeThreadForwardBatch(
+            repository = repository,
+            liveSourceServerId = sourceServerId,
+            sourceChannelId = ChannelId("source"),
+            receipts = listOf(first.receiptAt(4), second.receiptAt(3)),
+            currentDirectoryGeneration = 4,
+            messageIds = listOf("message-1"),
+            mode = ForwardMessageSendMode.Merged,
+            note = "",
+            requestId = "11111111-2222-4333-8444-555555555555"
+        )
+
+        assertEquals("forward_directory_refreshed", outcome.failureCode)
+        assertEquals(0, repository.resolveCalls)
+        assertEquals(emptyList(), repository.batchRequests)
     }
 
     @Test
@@ -536,9 +698,10 @@ class ThreadForwardFlowTest {
 private class RecordingForwardRepository(
     private val resolvedChannels: Map<String, ChannelId> = emptyMap(),
     private val resolvedDestinations: Map<String, ForwardMessageDestination> = emptyMap(),
-    private val forwardResults: Map<ChannelId, DataResult<Unit>> = emptyMap()
+    private val forwardResults: Map<ChannelId, DataResult<ForwardMessageSendResult>> = emptyMap()
 ) : ForwardMessageTargetRepository {
     val requests = mutableListOf<ForwardMessageExecuteRequest>()
+    val batchRequests = mutableListOf<ForwardMessageBatchExecuteRequest>()
     var resolveCalls = 0
 
     override suspend fun recentTargets(serverId: ServerId, limit: Int): DataResult<List<ForwardMessageTarget>> =
@@ -583,8 +746,13 @@ private class RecordingForwardRepository(
             ?: DataResult.Error(ScreenError(code = "missing_channel", retryable = false))
     }
 
-    override suspend fun forwardMessages(request: ForwardMessageExecuteRequest): DataResult<Unit> {
+    override suspend fun forwardMessages(request: ForwardMessageExecuteRequest): DataResult<ForwardMessageSendResult> {
         requests += request
-        return forwardResults[request.targetChannelId] ?: DataResult.Content(Unit)
+        return forwardResults[request.targetChannelId] ?: DataResult.Content(ForwardMessageSendResult(message = null))
+    }
+
+    override suspend fun forwardMessagesBatch(request: ForwardMessageBatchExecuteRequest): DataResult<ForwardMessageBatchResult> {
+        batchRequests += request
+        return DataResult.Content(ForwardMessageBatchResult(deliveries = emptyList(), failures = emptyList()))
     }
 }

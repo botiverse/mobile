@@ -280,6 +280,27 @@ class ThreadMessageLongPressSurfaceTest {
     }
 
     @Test
+    fun pendingResumeLatchedWhileHiddenStaysObservableUntilDrained() {
+        val gate = ThreadVisibleResumeGate()
+
+        assertFalse(gate.pendingVisibleResume)
+        // The lifecycle listener can latch pending from a stale routeActive
+        // snapshot after the route already became active; the drain effect
+        // keys on this flag so the pending write alone re-triggers it.
+        assertNull(gate.onLifecycleVisibleResume(routeActive = false))
+        assertTrue(gate.pendingVisibleResume)
+
+        assertEquals(
+            ThreadVisibleResumePlan(
+                refreshVisibleConversation = true,
+                rejoinVisibleRooms = true
+            ),
+            gate.onRouteBecameVisible()
+        )
+        assertFalse(gate.pendingVisibleResume)
+    }
+
+    @Test
     fun firstVisibleLifecycleResumeRefreshesWithoutWaitingForScrollOrAppearance() {
         val gate = ThreadVisibleResumeGate()
 
@@ -290,6 +311,7 @@ class ThreadMessageLongPressSurfaceTest {
             ),
             gate.onLifecycleVisibleResume(routeActive = true)
         )
+        assertFalse(gate.pendingVisibleResume)
         assertNull(gate.onRouteBecameVisible())
     }
 }

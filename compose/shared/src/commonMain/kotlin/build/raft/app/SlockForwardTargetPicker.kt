@@ -56,6 +56,7 @@ data class SlockForwardPickerFlowState(
     val step: SlockForwardPickerStep = SlockForwardPickerStep.Closed,
     val query: String = "",
     val selectedKey: String? = null,
+    val selectedKeys: Set<String> = emptySet(),
     val loadState: SlockForwardPickerLoadState = SlockForwardPickerLoadState.Idle,
     val errorCode: String? = null,
     val requestGeneration: Int = 0,
@@ -80,6 +81,8 @@ sealed interface SlockForwardPickerFlowEvent {
         val stableKey: String,
         val renderGeneration: Int
     ) : SlockForwardPickerFlowEvent
+    data object Continue : SlockForwardPickerFlowEvent
+    data class ClearSelected(val stableKeys: Set<String>) : SlockForwardPickerFlowEvent
     data object NoteBack : SlockForwardPickerFlowEvent
     data object Dismiss : SlockForwardPickerFlowEvent
 }
@@ -98,6 +101,7 @@ internal fun SlockForwardPickerFlowState.reduce(event: SlockForwardPickerFlowEve
                 step = SlockForwardPickerStep.Targets,
                 query = "",
                 selectedKey = null,
+                selectedKeys = emptySet(),
                 loadState = SlockForwardPickerLoadState.Loading,
                 errorCode = null,
                 requestGeneration = requestGeneration + 1,
@@ -145,16 +149,34 @@ internal fun SlockForwardPickerFlowState.reduce(event: SlockForwardPickerFlowEve
                 loadState == SlockForwardPickerLoadState.Loaded &&
                 event.renderGeneration == requestGeneration
             ) {
-                copy(step = SlockForwardPickerStep.Note, selectedKey = event.stableKey)
+                val nextSelectedKeys = selectedKeys.toMutableSet().apply {
+                    if (!add(event.stableKey)) remove(event.stableKey)
+                }
+                copy(
+                    selectedKey = nextSelectedKeys.firstOrNull(),
+                    selectedKeys = nextSelectedKeys
+                )
             } else {
                 this
             }
+        SlockForwardPickerFlowEvent.Continue ->
+            if (step == SlockForwardPickerStep.Targets && selectedKeys.isNotEmpty()) {
+                copy(step = SlockForwardPickerStep.Note)
+            } else {
+                this
+            }
+        is SlockForwardPickerFlowEvent.ClearSelected ->
+            copy(
+                selectedKeys = selectedKeys - event.stableKeys,
+                selectedKey = selectedKeys.firstOrNull { it !in event.stableKeys }
+            )
         SlockForwardPickerFlowEvent.NoteBack -> copy(step = SlockForwardPickerStep.Targets)
         SlockForwardPickerFlowEvent.Dismiss ->
             copy(
                 sessionKey = null,
                 step = SlockForwardPickerStep.Closed,
                 selectedKey = null,
+                selectedKeys = emptySet(),
                 loadState = SlockForwardPickerLoadState.Idle,
                 errorCode = null,
                 requestGeneration = requestGeneration + 1,

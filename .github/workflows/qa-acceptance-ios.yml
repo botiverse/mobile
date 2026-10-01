@@ -1,9 +1,9 @@
 name: QA Acceptance iOS (agent-in-CI)
 
 # iOS leg of the acceptance executor (#proj-quality): same goal-in/verdict-out
-# contract as qa-acceptance.yml, driven through the QaAcceptanceLoopTests
-# XCUITest harness (ONE test invocation keeps the app alive for the whole run;
-# actions flow over a cmd/res file protocol) plus `simctl io screenshot`.
+# contract as qa-acceptance.yml. Inspect/act defaults to agent-device; screenshots
+# stay on `simctl io screenshot`. IOS_QA_DRIVER=qa-loop keeps the
+# QaAcceptanceLoopTests file protocol. Product-log verdicts stay outside the driver.
 # Build/boot recipe is the proven visual-testing ios-capture one.
 
 on:
@@ -39,9 +39,17 @@ on:
       # drive (ios_deterministic_repro.mjs) for precise crash-repro where agent
       # navigation keeps getting lost.
       mode:
-        description: "Execution mode: agent (M3) or deterministic (scripted, no model)"
+        description: "Execution mode: agent (M3) | deterministic (#1096) | tabpager-probe (#232/#233)"
         required: false
         default: "agent"
+      fixture_page:
+        description: "Launch this @Page route directly instead of logging in (e.g. compose_tab_pager_probe)"
+        required: false
+        default: ""
+      probe_groups:
+        description: "Which gesture groups to run for tabpager-probe (e.g. 1,2)"
+        required: false
+        default: "1,2"
       app_run_id:
         description: "Download ios-simulator-app-<run> and replace the app product after building the UITest runner"
         required: false
@@ -78,8 +86,7 @@ env:
   DEFAULT_GOAL: >-
     Log into the app with the provided test account: if a login/welcome screen shows,
     enter the email and password and submit. If a server picker appears choose 'OranixSlockTest'.
-    If a server named 'Raft Android' appears, do NOT choose it under any circumstances -- it is
-    the production server. If 'OranixSlockTest' is not present, fail and report it; never
+    If 'OranixSlockTest' is not present, fail and report it; never
     substitute the closest-looking name.
     Declare pass once the home channel list is visible with at least one channel row,
     fail otherwise. Do not open any channel.
@@ -92,6 +99,8 @@ jobs:
     env:
       # iPhone 14: 390x844pt @3x — same geometry as the android/react baselines.
       SIM_DEVICE: iPhone 14
+      # Default inspect/act path. qa-loop keeps QaAcceptanceLoopTests.
+      IOS_QA_DRIVER: agent-device
     steps:
       # Blacksmith macOS starts its local Actions-results proxy with the job.
       # Give it a bounded readiness window before any action can use artifact
@@ -343,6 +352,14 @@ jobs:
             "$EXPECTED_SHA256" "$EXPECTED_SOURCE_COMMIT" "$EXPECTED_PACKAGE_ID" \
             "$EXPECTED_VERSION" "$EXPECTED_VERSION_CODE"
 
+      - name: Set agent-device state dir
+        if: ${{ env.IOS_QA_DRIVER == 'agent-device' }}
+        run: echo "AGENT_DEVICE_STATE_DIR=$RUNNER_TEMP/agent-device" >> "$GITHUB_ENV"
+
+      - name: Install agent-device
+        if: ${{ env.IOS_QA_DRIVER == 'agent-device' }}
+        run: npm install -g agent-device@0.20.10
+
       - name: Install app
         run: |
           app=$(find compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' ! -name '*Runner*' | head -1)
@@ -363,6 +380,13 @@ jobs:
           printf '{\n "platform": "ios",\n "source_commit": "%s",\n "branch": "%s",\n "build_run_id": "%s",\n "app_version": "%s",\n "version_code": "%s",\n "artifact_sha256": "%s",\n "binary_sha256": "%s",\n "bundle_id": "%s"\n}\n' \
             "$source_commit" "$GITHUB_REF_NAME" "$build_run_id" "$version" "$buildnum" "$artifact_hash" "$binhash" "$bundle_id" > "$GITHUB_WORKSPACE/build-info-ios.json"
           cat "$GITHUB_WORKSPACE/build-info-ios.json"
+
+      - name: Prepare agent-device iOS runner
+        if: ${{ env.IOS_QA_DRIVER == 'agent-device' }}
+        run: |
+          mkdir -p "$AGENT_DEVICE_STATE_DIR"
+          agent-device --version
+          agent-device prepare ios-runner --platform ios --udid "$UDID" --timeout 180000
 
       - name: Install M3 SDK (pi-ai)
         working-directory: ${{ runner.temp }}
@@ -478,15 +502,28 @@ jobs:
           QA_TEST_EMAIL: ${{ env.QA_TEST_EMAIL }}
         run: bash scripts/qa/stamp_report.sh credential-receipt
 
-      - name: Start loop harness (background)
-        working-directory: compose/iosApp
+      - name: Prepare iOS driver I/O dir
         run: |
           mkdir -p "$RUNNER_TEMP/qa-loop"
           echo "QA_LOOP_IO_DIR=$RUNNER_TEMP/qa-loop" >> "$GITHUB_ENV"
+          echo "QA_LOOP_FIXTURE_PAGE=${{ inputs.fixture_page }}" >> "$GITHUB_ENV"
+
+      - name: Start loop harness (background)
+        if: ${{ env.IOS_QA_DRIVER == 'qa-loop' }}
+        working-directory: compose/iosApp
+        run: |
           # TEST_RUNNER_* env vars are forwarded into the XCUITest runner.
+          # ⚠️ The env has to be set HERE, on the xcodebuild that starts the runner.
+          # Run 33155331720 failed because I set QA_LOOP_FIXTURE_PAGE on the probe
+          # step instead — that step runs AFTER this background harness has already
+          # launched the app, so the variable arrived too late and the app came up on
+          # the normal login screen. Same process-boundary mistake I had just fixed
+          # one layer down (SIMCTL_CHILD_* not reaching the app), made again on the
+          # step boundary. TEST_RUNNER_* is the only channel into the XCUITest runner.
           TEST_RUNNER_QA_LOOP_IO_DIR="$RUNNER_TEMP/qa-loop" \
           TEST_RUNNER_QA_LOOP_BUNDLE="$BUNDLE_ID" \
           TEST_RUNNER_QA_LOOP_IDLE_TIMEOUT="300" \
+          TEST_RUNNER_QA_LOOP_FIXTURE_PAGE="${{ inputs.fixture_page }}" \
             xcodebuild \
               -workspace iosApp.xcworkspace \
               -scheme iosAppUITests \
@@ -499,7 +536,7 @@ jobs:
           echo "loop harness started (pid $!)"
 
       - name: Run acceptance agent
-        if: ${{ inputs.mode != 'deterministic' }}
+        if: ${{ inputs.mode == 'agent' || inputs.mode == '' }}
         env:
           PI_API_KEY: ${{ secrets.PI_API_KEY }}
           SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
@@ -533,6 +570,36 @@ jobs:
       - name: Test deterministic navigation matcher
         if: ${{ inputs.mode == 'deterministic' }}
         run: node --test scripts/qa/ios_navigation_matcher.test.mjs
+
+      # task #232/#233 — TabPager probe. Launches the @Page route DIRECTLY via
+      # QA_LOOP_FIXTURE_PAGE (QaAcceptanceLoopTests forwards it into the app's
+      # launchEnvironment), so it never touches login and is unaffected by the
+      # auth-restore blocker in task #1101.
+      - name: Run TabPager probe (task #232/#233)
+        if: ${{ inputs.mode == 'tabpager-probe' }}
+        run: |
+          mkdir -p qa-evidence
+          cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true
+          date -u +"%Y-%m-%d %H:%M:%S" > qa-evidence/run-start.txt
+          node --check scripts/qa/ios_tabpager_probe.mjs
+          # Record the whole sequence. @Jony asked for simctl recordVideo; it runs in
+          # the background and is stopped with SIGINT so the .mp4 is finalised —
+          # SIGKILL leaves an unplayable file.
+          xcrun simctl io "$UDID" recordVideo --codec h264 --force qa-evidence/tabpager-probe.mp4 &
+          REC_PID=$!
+          echo "recording pid=$REC_PID"
+          set +e
+          node scripts/qa/ios_tabpager_probe.mjs \
+            --ios-io-dir "$QA_LOOP_IO_DIR" --ios-udid "$UDID" --package "$BUNDLE_ID" \
+            --out qa-evidence --groups "${{ inputs.probe_groups }}"
+          rc=$?
+          set -e
+          sleep 2
+          kill -INT "$REC_PID" 2>/dev/null || true
+          wait "$REC_PID" 2>/dev/null || true
+          ls -la qa-evidence/tabpager-probe.mp4 2>/dev/null || echo "::warning::no video file produced"
+          echo "$rc" > qa-evidence/agent-rc.txt
+          echo "tabpager probe exit code $rc"
 
       - name: Run deterministic repro
         if: ${{ inputs.mode == 'deterministic' }}

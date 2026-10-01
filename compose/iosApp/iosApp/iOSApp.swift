@@ -255,6 +255,22 @@ private enum SlockIosPushHost {
         }
     }
 
+    static func targetsVisibleConversation(userInfo: [AnyHashable: Any]) -> Bool {
+        func stringValue(_ key: String) -> String? {
+            userInfo[key] as? String
+        }
+        return SlockVisibleConversationRegistryKt.slockSystemNotificationTargetsVisibleConversation(
+            serverId: stringValue("serverId"),
+            kind: stringValue("kind"),
+            channelId: stringValue("channelId"),
+            threadId: stringValue("threadId"),
+            parentChannelId: stringValue("parentChannelId"),
+            parentMessageId: stringValue("parentMessageId"),
+            messageId: stringValue("messageId"),
+            category: (userInfo["aps"] as? [AnyHashable: Any])?["category"] as? String
+        )
+    }
+
     private static func sanitizedSystemNotificationOpenPayload(
         userInfo: [AnyHashable: Any],
         categoryIdentifier: String?
@@ -411,6 +427,12 @@ final class SlockIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        if SlockIosPushHost.targetsVisibleConversation(userInfo: notification.request.content.userInfo) {
+            // The user is already looking at this conversation: no banner or sound, same as the in-app banner.
+            SlockIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_suppressed reason=visible_conversation")
+            completionHandler([.badge])
+            return
+        }
         SlockIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_will_present")
         completionHandler([.banner, .list, .sound, .badge])
     }
@@ -480,6 +502,9 @@ struct iOSApp: App {
     @UIApplicationDelegateAdaptor(SlockIosAppDelegate.self) private var appDelegate
 
     init() {
+        // Capture failures in the startup work below, including the first
+        // Kotlin call, storage setup and network transport initialization.
+        SlockIosInstallHandsReporting()
         // task #423: point the kmmresource loader at the "shared" pod bundle so
         // MR.* (reaction atlas + all MR.strings) resolves on iOS. Must run before
         // any page renders / touches MR.
@@ -491,13 +516,13 @@ struct iOSApp: App {
         SDImageCodersManager.shared.addCoder(SDImageSVGCoder.shared)
         SlockIosAvatarCacheHost.shared.install()
         SlockIosAppScopeMMKV.install()
+        SlockIosInstallThreadComposerTemporaryFileRetirement()
         let curlCaPath = slockCurlCaBundlePath()
         let curlBootstrap = SlockIosNetworkTransportBootstrapKt
             .installIosSlockNetworkTransportAtStartup(caBundlePath: curlCaPath)
         SlockIosDiagnosticsRecord("info", "SlockNetworkKmm", curlBootstrap)
         SlockIosPushHost.install()
         SlockIosSharedLogBridge.install()
-        SlockIosInstallHandsReporting()
         SlockIosDiagnosticsRecord("info", "SlockIosDiagnostics", "ios_diagnostics_initialized backend=jsonl")
     }
 

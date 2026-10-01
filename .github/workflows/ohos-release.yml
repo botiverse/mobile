@@ -13,6 +13,16 @@ on:
       - "change-logs/**/ohos/*.md"
   workflow_dispatch:
     inputs:
+      source_sha:
+        description: "Exact application SHA for artifact-only validation (empty uses workflow ref)"
+        required: false
+        type: string
+        default: ""
+      publish_to_hands:
+        description: "Publish a Hands draft; disable for validation artifacts only"
+        required: true
+        type: boolean
+        default: true
       version_major:
         description: "versionName major (X)"
         required: true
@@ -29,7 +39,7 @@ on:
         type: string
         default: "0"
       version_build:
-        description: "versionCode build (0-99)"
+        description: "versionCode build (0-999)"
         required: true
         type: string
         default: "0"
@@ -85,9 +95,29 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
       version_name: ${{ steps.parameters.outputs.version_name }}
       version_code: ${{ steps.parameters.outputs.version_code }}
     steps:
+      - name: Checkout version formula
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts/ci
+          sparse-checkout-cone-mode: false
+      - name: Resolve exact application source
+        id: source
+        env:
+          REQUESTED_SHA: ${{ inputs.source_sha }}
+          PUBLISH_TO_HANDS: ${{ inputs.publish_to_hands }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$REQUESTED_SHA" ]]; then
+            [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::source_sha must be a full SHA"; exit 1; }
+            [[ "$PUBLISH_TO_HANDS" == false ]] || { echo "::error::Custom source is artifact-only"; exit 1; }
+          fi
+          echo "sha=${REQUESTED_SHA:-$GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
       - name: Validate and resolve version
         id: parameters
         shell: bash
@@ -102,13 +132,12 @@ jobs:
           for value in "$MAJOR" "$MINOR" "$PATCH" "$BUILD"; do
             [[ "$value" =~ ^[0-9]+$ ]] || { echo "::error::Version components must be non-negative integers"; exit 1; }
           done
-          (( BUILD <= 99 )) || { echo "::error::version_build must be between 0 and 99"; exit 1; }
           [[ -z "$SUFFIX" || "$SUFFIX" =~ ^[0-9A-Za-z.-]+$ ]] || {
             echo "::error::version_suffix may contain only letters, digits, dots, and hyphens"
             exit 1
           }
 
-          VERSION_CODE=$((10#$MAJOR * 1000000 + 10#$MINOR * 10000 + 10#$PATCH * 100 + 10#$BUILD))
+          VERSION_CODE="$(scripts/ci/version_code.sh "$MAJOR" "$MINOR" "$PATCH" "$BUILD")"
           (( VERSION_CODE > 0 && VERSION_CODE <= 2147483647 )) || {
             echo "::error::Computed versionCode is outside the supported 32-bit positive range"
             exit 1
@@ -133,25 +162,30 @@ jobs:
       KEY_ALIAS: ${{ secrets.SLOCK_OHOS_KEY_ALIAS }}
       KEY_PASSWORD: ${{ secrets.SLOCK_OHOS_KEY_PASSWORD }}
       KEYSTORE_PASSWORD: ${{ secrets.SLOCK_OHOS_KEYSTORE_PASSWORD }}
-      HANDS_OHOS_BEARER_TOKEN: ${{ secrets.HANDS_OHOS_BEARER_TOKEN }}
+      HANDS_OHOS_BEARER_TOKEN: ${{ inputs.publish_to_hands && secrets.HANDS_OHOS_BEARER_TOKEN || '' }}
+      PUBLISH_TO_HANDS: ${{ inputs.publish_to_hands }}
     steps:
       - name: Require complete release signing configuration
         shell: bash
         run: |
           set -euo pipefail
           missing=0
-          for name in SIGNING_CERT SIGNING_PROFILE SIGNING_KEY KEY_ALIAS KEY_PASSWORD KEYSTORE_PASSWORD HANDS_OHOS_BEARER_TOKEN; do
+          for name in SIGNING_CERT SIGNING_PROFILE SIGNING_KEY KEY_ALIAS KEY_PASSWORD KEYSTORE_PASSWORD; do
             if [[ -z "${!name}" ]]; then
               echo "::error::Missing repository secret for $name"
               missing=1
             fi
           done
+          if [[ "$PUBLISH_TO_HANDS" == true && -z "$HANDS_OHOS_BEARER_TOKEN" ]]; then
+            echo "::error::Missing Hands token for draft publication"
+            missing=1
+          fi
           exit "$missing"
 
   kuikly-artifacts:
     name: Kuikly release manifest (Raft)
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    needs: signing-preflight
+    needs: [resolve, signing-preflight]
     timeout-minutes: 20
     steps:
       - name: Free runner disk space
@@ -166,6 +200,8 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
 
       - name: Verify complete immutable Kuikly release
         run: scripts/ci/verify_kuikly_release_manifest.sh
@@ -173,7 +209,7 @@ jobs:
   fork-deps:
     name: Shared OHOS fork dependencies
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    needs: signing-preflight
+    needs: [resolve, signing-preflight]
     timeout-minutes: 60
     outputs:
       forkdeps-key: ${{ steps.keys.outputs.forkdeps }}
@@ -190,6 +226,8 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -348,11 +386,12 @@ jobs:
       KEY_ALIAS: ${{ secrets.SLOCK_OHOS_KEY_ALIAS }}
       KEY_PASSWORD: ${{ secrets.SLOCK_OHOS_KEY_PASSWORD }}
       KEYSTORE_PASSWORD: ${{ secrets.SLOCK_OHOS_KEYSTORE_PASSWORD }}
-      HANDS_BEARER_TOKEN: ${{ secrets.HANDS_OHOS_BEARER_TOKEN }}
+      HANDS_BEARER_TOKEN: ${{ inputs.publish_to_hands && secrets.HANDS_OHOS_BEARER_TOKEN || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
           fetch-depth: 0
 
       - name: Mark workspace safe for git
@@ -559,7 +598,7 @@ jobs:
           SIGN_TOOL="$(find "$DEVECO_SDK_HOME" -path '*/openharmony/toolchains/lib/hap-sign-tool.jar' -print -quit)"
           test -n "$SIGN_TOOL"
           mkdir -p "$RUNNER_TEMP/ohos-release"
-          scripts/validate_ohos_app_pack.sh \
+          GITHUB_SHA="$(git rev-parse HEAD)" scripts/validate_ohos_app_pack.sh \
             --app "${apps[0]}" \
             --bundle build.raft.mobile \
             --version-name "$SLOCK_OHOS_VERSION_NAME" \
@@ -600,6 +639,15 @@ jobs:
           tar -czf "$RUNNER_TEMP/ohos-release/ohos-symbols-${SLOCK_OHOS_VERSION_NAME}-${SLOCK_OHOS_VERSION_CODE}.tar.gz" -T "$list"
           echo "Packaged OHOS native symbols for build-id $symbol_build_id"
 
+      - name: Record validation source identity
+        shell: bash
+        env:
+          APPLICATION_SHA: ${{ needs.resolve.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$APPLICATION_SHA"
+          printf 'workflow_sha=%s\napplication_sha=%s\n' "$GITHUB_SHA" "$APPLICATION_SHA" > "$RUNNER_TEMP/ohos-release/source-identity.txt"
+
       - name: Upload signed OHOS release artifact
         uses: actions/upload-artifact@v6
         with:
@@ -609,6 +657,7 @@ jobs:
           retention-days: 30
 
       - name: Publish OHOS draft to Hands
+        if: inputs.publish_to_hands
         id: hands
         shell: bash
         run: |
@@ -672,6 +721,8 @@ jobs:
         run: |
           {
             echo "## OHOS release artifact"
+            echo "- Workflow SHA: $GITHUB_SHA"
+            echo "- Application SHA: $(git rev-parse HEAD)"
             echo "- Bundle: \`build.raft.mobile\`"
             echo "- Version: \`${SLOCK_OHOS_VERSION_NAME}\` (\`${SLOCK_OHOS_VERSION_CODE}\`)"
             echo "- SHA-256: \`${{ steps.validate.outputs.app_sha256 }}\`"

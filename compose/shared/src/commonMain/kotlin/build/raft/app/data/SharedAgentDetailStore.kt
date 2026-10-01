@@ -11,6 +11,7 @@ import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.RuntimeModeConfig
 import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.ServerId
+import build.raft.app.model.preferredAvatarWireValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -561,13 +562,23 @@ private fun SharedAgentDetailState.applyAgentActivityUpdate(
 ): SharedAgentDetailState {
     if (event.kind != MemberKind.Agent) return this
     val agentId = event.memberId
-    if (!event.shouldApplyAfter(agentActivitySeq[agentId])) return this
-    val nextActivityLog = agentActivityLogs[agentId].orEmpty().withRealtimeAgentActivity(event, observedAtMillis)
+    if (this.agentId != agentId) return this
+    // agent:seen is a seq-less presence fact: it updates only lastSeenAt on
+    // the detail summary and must never enter the activity logs or advance
+    // the managed-activity sequence.
+    val isSeenEvent = event.serverSeq == null && event.lastSeenAt != null
+    if (!isSeenEvent && !event.shouldApplyAfter(agentActivitySeq[agentId])) return this
+    val nextActivityLog =
+        if (isSeenEvent) agentActivityLogs[agentId].orEmpty()
+        else agentActivityLogs[agentId].orEmpty().withRealtimeAgentActivity(event, observedAtMillis)
     val nextRealtimeActivityLog =
-        agentRealtimeActivityLogs[agentId].orEmpty().withRealtimeAgentActivity(event, observedAtMillis)
+        if (isSeenEvent) agentRealtimeActivityLogs[agentId].orEmpty()
+        else agentRealtimeActivityLogs[agentId].orEmpty().withRealtimeAgentActivity(event, observedAtMillis)
     val nextDetail =
         if (this.agentId == agentId) {
-            detail?.withAgentActivity(event, observedAtMillis)?.copy(activity = nextActivityLog)
+            detail?.withAgentActivity(event, observedAtMillis)?.let { d ->
+                if (isSeenEvent) d else d.copy(activity = nextActivityLog)
+            }
         } else {
             detail
         }
@@ -659,7 +670,7 @@ private fun MemberProfile.toAgentDetailSeed(activity: List<AgentActivityEntry>):
             name = fallbackName,
             displayName = display,
             runtime = roleDescription,
-            avatarUrl = avatar?.wireValue ?: avatarUrl,
+            avatarUrl = preferredAvatarWireValue(avatar, avatarUrl),
             activityDetail = description,
             machineName = permissionBadges.firstNotNullOfOrNull { it.memberComputerLabelOrNull() },
             machineId = permissionBadges.firstNotNullOfOrNull { it.memberComputerIdOrNull() }
@@ -772,13 +783,19 @@ private fun AgentDetailSnapshot.withAgentActivity(
 ): AgentDetailSnapshot {
     val currentSummary = summary
     val activityLabel = event.agentStatus?.label
+    // agent:seen is a seq-less presence fact: it carries only presence +
+    // lastSeenAt and must not overwrite the managed activity columns.
+    val isSeenEvent = event.serverSeq == null && event.lastSeenAt != null
     return copy(
         summary = currentSummary?.copy(
-            status = activityLabel ?: currentSummary.status,
-            activity = activityLabel ?: currentSummary.activity,
-            activityDetail = event.statusLabel.nonBlankOrNull() ?: currentSummary.activityDetail
+            status = if (isSeenEvent) currentSummary.status else (activityLabel ?: currentSummary.status),
+            activity = if (isSeenEvent) currentSummary.activity else (activityLabel ?: currentSummary.activity),
+            activityDetail =
+                if (isSeenEvent) currentSummary.activityDetail
+                else event.statusLabel.nonBlankOrNull() ?: currentSummary.activityDetail,
+            lastSeenAt = event.lastSeenAt ?: currentSummary.lastSeenAt
         ),
-        activity = activity.withRealtimeAgentActivity(event, observedAtMillis)
+        activity = if (isSeenEvent) activity else activity.withRealtimeAgentActivity(event, observedAtMillis)
     )
 }
 

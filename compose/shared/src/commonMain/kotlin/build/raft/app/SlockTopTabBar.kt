@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.components.TabPager
+import build.raft.app.components.TabPagerGesturePolicy
 import build.raft.app.markdown.traceMarkdownSection
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
@@ -45,6 +47,24 @@ internal object SlockTopTabBarDefaults {
     val TabWidth = 98.dp
 }
 
+/**
+ * Pager index the [SlockTabbedScaffold] [TabPager] must show for [selectedKey].
+ * Index-aligned with [tabs]: if [selectedKey] is not in [tabs], falls back to 0.
+ */
+internal fun <T> slockTabbedScaffoldPageIndex(
+    tabs: List<SlockTabSpec<T>>,
+    selectedKey: T,
+): Int = tabs.indexOfFirst { it.key == selectedKey }.takeIf { it >= 0 } ?: 0
+
+/**
+ * Tab key for a [TabPager] page index, or `null` if [page] is out of range for
+ * the current [tabs] list.
+ */
+internal fun <T> slockTabbedScaffoldPageKey(
+    tabs: List<SlockTabSpec<T>>,
+    page: Int,
+): T? = tabs.getOrNull(page)?.key
+
 @Composable
 internal fun <T> SlockTabbedScaffold(
     tabs: List<SlockTabSpec<T>>,
@@ -52,26 +72,50 @@ internal fun <T> SlockTabbedScaffold(
     onSelectedKeyChange: (T) -> Unit,
     modifier: Modifier = Modifier,
     itemKeyPrefix: String = "top-tab",
-    content: @Composable (T, Modifier) -> Unit
+    content: @Composable (T, Modifier, Boolean) -> Unit
 ) {
-    Column(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        SlockTopTabBar(
-            items = tabs.map { it.toTopTabBarItem() },
-            selectedKey = selectedKey.toString(),
-            onSelectedKeyChange = { key ->
-                tabs.firstOrNull { it.key.toString() == key }?.let { tab ->
-                    onSelectedKeyChange(tab.key)
-                }
-            },
-            itemKeyPrefix = itemKeyPrefix
-        )
-        content(
-            selectedKey,
-            Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-        )
+    // task #232 PR3: mode tabs in SlockTabbedScaffold (Thread Chat/Tasks/Files)
+    // share TabPager with Activity (PR1, #2224) and Agent Detail (PR2, #2345).
+    // SlockTopTabBar stays the tap surface and selection owner; the body is a
+    // HorizontalPager sharing the same selected index with keepItemAlive = true
+    // so the 2-3 thread mode tabs render real content during swipe transitions
+    // and stay alive across back-and-forth swipes without reload or loading
+    // placeholder flicker. Platform edge-back avoidance is injected via
+    // slockPlatformTabPagerStartEdgeInsetDp (iOS 24dp).
+    TabPager(
+        selectedIndex = slockTabbedScaffoldPageIndex(tabs, selectedKey),
+        onSelectedIndexChange = { index ->
+            slockTabbedScaffoldPageKey(tabs, index)?.let(onSelectedKeyChange)
+        },
+        pageCount = tabs.size.coerceAtLeast(1),
+        gesturePolicy = TabPagerGesturePolicy(
+            startEdgeInset = slockPlatformTabPagerStartEdgeInsetDp().dp,
+        ),
+        keepItemAlive = true,
+        tabBar = {
+            SlockTopTabBar(
+                items = tabs.map { it.toTopTabBarItem() },
+                selectedKey = selectedKey.toString(),
+                onSelectedKeyChange = { key ->
+                    tabs.firstOrNull { it.key.toString() == key }?.let { tab ->
+                        onSelectedKeyChange(tab.key)
+                    }
+                },
+                itemKeyPrefix = itemKeyPrefix
+            )
+        },
+        modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
+    ) { page, active ->
+        val pageKey = slockTabbedScaffoldPageKey(tabs, page)
+        if (pageKey != null) {
+            content(
+                pageKey,
+                Modifier
+                    .fillMaxSize()
+                    .background(SlockColor.SurfaceWhite),
+                active
+            )
+        }
     }
 }
 

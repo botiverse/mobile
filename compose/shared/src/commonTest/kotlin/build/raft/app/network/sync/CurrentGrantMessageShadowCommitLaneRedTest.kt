@@ -23,7 +23,7 @@ class CurrentGrantMessageShadowCommitLaneRedTest {
         server: String = "server-1",
         principal: String = "principal-1",
         consumer: String = SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID,
-    ) = DurablePartitionKey(server, principal, consumer)
+    ) = DurablePartitionKey(server, principal, consumer, "env-test")
 
     private fun scope(partition: DurablePartitionKey = partition(), channel: String = "channel-1") =
         SyncScopeKey(partition = partition, scopeId = channel, scopeKind = "channel")

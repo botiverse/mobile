@@ -583,6 +583,45 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
+    fun getThreadReplySummariesReturnsChannelSummariesWhenFollowedListIsSlow() = runBlocking {
+        // Task #1142: the account-wide followed list (multi-MB on busy accounts) must never gate
+        // the channel summaries that draw reply rows. Hold that request forever and expect the
+        // channel summaries back within the join budget, with no followed decoration.
+        val holdFollowed = CompletableDeferred<Unit>()
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        // The endpoint is a record keyed by parent message id (see
+                        // parseChannelThreadSummaryRecordElement); a {"threads":[...]} list is rejected.
+                        "GET channels/channel-1/threads" to
+                            """{"parent-1":{"threadChannelId":"thread-1","replyCount":4,"latestReplies":[]}}""",
+                    ),
+                requestRelease = mapOf("GET channels/threads/followed" to holdFollowed),
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+        repository.followedSummariesJoinBudgetMillis = 50L
+
+        val result =
+            withTimeout(2_000L) {
+                repository.getThreadReplySummaries(
+                    threadId = ThreadId("channel-1"),
+                    parentMessageIds = listOf(MessageId("parent-1"))
+                )
+            }
+
+        // Release the held request only after the result is in hand; the block must end in
+        // an assertion so the JUnit4 method stays void (runBlocking returns its last value).
+        holdFollowed.complete(Unit)
+        val summaries =
+            assertIs<DataResult.Content<ThreadReplySummariesSnapshot>>(result, "unexpected result: $result").data
+        assertEquals(1, summaries.threads.size)
+        assertEquals("parent-1", summaries.threads.single().parentMessageId?.value)
+        assertEquals(4, summaries.threads.single().replyCount)
+        assertTrue(summaries.followedThreadKeys.isEmpty())
+    }
+
+    @Test
     fun getThreadReplySummariesDoesNotRefetchMessages() = runBlocking {
         val network =
             FakeConversationNetworkClient(
@@ -954,6 +993,96 @@ class ConversationRepositoryDataSourceTest {
 
         assertEquals(143654912L, capability.maxBytes)
         assertEquals("attachments/upload-capabilities", network.requests.single().path)
+    }
+
+    @Test
+    fun attachmentUploadCapabilitiesAdmitFreePlanDirectThresholdAboveMaxBytes() = runBlocking {
+        val body =
+            """{"directUploadEnabled":true,"directUploadThresholdBytes":94371840,"maxBytes":52428800,"sessionExpiresInSeconds":900}"""
+        assertEquals(116, body.encodeToByteArray().size)
+        val network =
+            FakeConversationNetworkClient(
+                responses = mapOf("GET attachments/upload-capabilities" to body)
+            )
+
+        val capability = assertIs<DataResult.Content<AttachmentUploadCapabilities>>(
+            RealConversationRepository(sampleStore(), network).getAttachmentUploadCapabilities()
+        ).data
+
+        assertEquals(52_428_800L, capability.maxBytes)
+        assertEquals(true, capability.directUploadEnabled)
+        assertEquals(94_371_840L, capability.directUploadThresholdBytes)
+        assertEquals(900, capability.sessionExpiresInSeconds)
+    }
+
+    @Test
+    fun attachmentUploadCapabilitiesBodyEventIncludesRoutingFields() = runBlocking {
+        val body =
+            """{"directUploadEnabled":true,"directUploadThresholdBytes":94371840,"maxBytes":52428800,"sessionExpiresInSeconds":900}"""
+        val logs = mutableListOf<String>()
+        val network =
+            FakeConversationNetworkClient(
+                responses = mapOf("GET attachments/upload-capabilities" to body)
+            )
+
+        RealConversationRepository(sampleStore(), network, warningLogger = logs::add)
+            .getAttachmentUploadCapabilities()
+
+        assertTrue(
+            logs.any { line ->
+                line.contains("conversation_network_body_received source=attachment_upload_capabilities") &&
+                    line.contains("maxBytes=52428800") &&
+                    line.contains("directUploadThresholdBytes=94371840") &&
+                    line.contains("directUploadEnabled=true")
+            }
+        )
+    }
+
+    @Test
+    fun attachmentUploadCapabilitiesBodyEventMarksParseFailure() = runBlocking {
+        val body = """{"maxBytes":"""
+        val logs = mutableListOf<String>()
+        val network =
+            FakeConversationNetworkClient(
+                responses = mapOf("GET attachments/upload-capabilities" to body)
+            )
+
+        val result =
+            RealConversationRepository(sampleStore(), network, warningLogger = logs::add)
+                .getAttachmentUploadCapabilities()
+
+        assertIs<DataResult.Error>(result)
+        assertTrue(
+            logs.any { line ->
+                line.contains("conversation_network_body_received source=attachment_upload_capabilities") &&
+                    line.contains("attachmentUploadCapabilitiesParseError=true")
+            }
+        )
+    }
+
+    @Test
+    fun attachmentUploadCapabilitiesRejectThresholdAboveContractLimit() = runBlocking {
+        val logs = mutableListOf<String>()
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET attachments/upload-capabilities" to
+                            """{"directUploadEnabled":true,"directUploadThresholdBytes":209715201,"maxBytes":52428800,"sessionExpiresInSeconds":900}"""
+                    )
+            )
+
+        val result =
+            RealConversationRepository(sampleStore(), network, warningLogger = logs::add)
+                .getAttachmentUploadCapabilities()
+
+        assertEquals("network_parse_failed", assertIs<DataResult.Error>(result).error.code)
+        assertTrue(
+            logs.any { line ->
+                line.contains("conversation_network_body_received source=attachment_upload_capabilities") &&
+                    line.contains("attachmentUploadCapabilitiesParseError=true")
+            }
+        )
     }
 
     @Test

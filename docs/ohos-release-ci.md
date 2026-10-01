@@ -57,11 +57,19 @@ The existing GitHub Packages secrets are also used:
 
 Open **Actions -> OHOS Release -> Run workflow**, choose the source ref, and
 enter the semantic version components. `version_build` must be between 0 and
-99. The workflow computes the integer version code as:
+99. If this is the first platform draft of the train, schedule the Raft
+10-minute interval reminder on the release thread before leaving the dispatch.
+The workflow computes the integer version code as:
 
 ```text
-major * 1,000,000 + minor * 10,000 + patch * 100 + build
+major * 10,000,000 + minor * 100,000 + patch * 1,000 + build
 ```
+
+`compose/ohosApp/AppScope/app.json5` may still contain placeholder
+`versionName: "1.0.0"` / `versionCode: 1000000`. That is expected. CI rewrites
+those fields with `scripts/set_ohos_app_version.mjs` at dispatch; do not treat
+the source placeholders as a preflight blocker, and do not rewrite them into
+the frozen tree.
 
 Before upload, CI verifies all of the following:
 

@@ -151,23 +151,61 @@ class MembersAgentServerRoleTest {
         assertNull(null.toMembersAgentServerRoleOrNull())
     }
 
+    // Replaces displayRoleDefaultsMissingAgentServerRoleToMember. Its name stated its premise
+    // -- "missing defaults to Member" -- and that premise is false: an absent serverRole means
+    // there is no server-membership row, not that the agent is a member whose role went
+    // unset. server_agent_members.role is NOT NULL with a default under a (serverId, agentId)
+    // primary key, so "member without a role" is unrepresentable, and the server counts the
+    // rowless case as an anomaly. Verified against slock-source@01d0064d9 (LiBai, task #261).
+    // Changing this assertion is part of the fix, not incidental churn.
     @Test
-    fun displayRoleDefaultsMissingAgentServerRoleToMember() {
-        assertEquals(MembersAgentServerRole.Member, membersAgentDisplayServerRole(null, null))
-        assertEquals(MembersAgentServerRole.Member, membersAgentDisplayServerRole("", " "))
+    fun displayRoleHidesTheChipWhenThereIsNoMembershipRow() {
+        assertEquals(MembersAgentServerRoleDisplay.Hidden, membersAgentDisplayServerRole(null, null))
+        assertEquals(MembersAgentServerRoleDisplay.Hidden, membersAgentDisplayServerRole("", " "))
+    }
+
+    // A deleted agent reaches this from a wholly ordinary state, and the "with a role" case is
+    // reachable in client state even though the wire never sends it: SharedServerMembersStore
+    // merges serverRole fill-only, so a role cached before deletion is never overwritten --
+    // not even by the authoritative path, which starts by calling that same merge. Without the
+    // deleted check such an agent still shows an Admin chip (LiBai, task #261).
+    //
+    // Both hide today, but they are asserted separately: if either ever gains its own wording,
+    // wording written for the anomaly would be wrong on a deleted agent.
+    @Test
+    fun displayRoleHidesTheChipForADeletedAgentEvenWithARole() {
+        assertEquals(
+            MembersAgentServerRoleDisplay.Hidden,
+            membersAgentDisplayServerRole("admin", null, deleted = true)
+        )
+        assertEquals(
+            MembersAgentServerRoleDisplay.Hidden,
+            membersAgentDisplayServerRole(null, null, deleted = true)
+        )
     }
 
     @Test
     fun displayRolePrefersMemberRoleOverSummaryRole() {
         assertEquals(
-            MembersAgentServerRole.Admin,
+            MembersAgentServerRoleDisplay.Known(MembersAgentServerRole.Admin),
             membersAgentDisplayServerRole("admin", "member")
         )
     }
 
+    // Was displayRoleRejectsUnknownNonBlankRole, which asserted null -> the chip read
+    // "No role" for a role the server had explicitly named. Denying a role we were told about
+    // is a false statement independent of any wire-semantics question, so this half of #261
+    // stood on its own. @artin: show the name that was sent.
     @Test
-    fun displayRoleRejectsUnknownNonBlankRole() {
-        assertNull(membersAgentDisplayServerRole("owner", null))
+    fun displayRoleSurfacesARoleNameItDoesNotRecognise() {
+        assertEquals(
+            MembersAgentServerRoleDisplay.Unrecognized("owner"),
+            membersAgentDisplayServerRole("owner", null)
+        )
+        assertEquals(
+            MembersAgentServerRoleDisplay.Unrecognized("moderator"),
+            membersAgentDisplayServerRole(null, "moderator")
+        )
     }
 
     @Test
