@@ -695,6 +695,52 @@ class MemberDetailScrollTrackerTest {
     }
 
     @Test
+    fun `target landing retires the issued request and fires the hook`() {
+        // Every retirement — not only gesture supersede — must cancel the
+        // watchdog's parked re-issue: a clamped landing or the achieved
+        // landing also ends the request the parked job is still carrying.
+        val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        var retired = 0
+        t.onPendingRestoreRetired = { retired += 1 }
+        val frame = frameOf(t, saved)
+        frame(0, 0, 40, false) { _, _ -> } // request issued
+        assertEquals(true, t.hasPendingRestoreRequest)
+        frame(0, 489, 40, true) { _, _ -> }
+        frame(0, 489, 40, false) { _, _ -> } // lands at target
+        assertEquals(1, retired)
+        assertEquals(false, t.hasPendingRestoreRequest)
+    }
+
+    @Test
+    fun `post-achieved clamp re-issue retires the stale parked request first`() {
+        // The settle landing at the clamp clears the issued flag and — via
+        // the hook — cancels any watchdog job still parked on the old
+        // request, before flagging the fresh re-issue.
+        val t = MemberDetailScrollTracker(MemberDetailScrollPosition(0, 489))
+        val saved = mutableListOf<MemberDetailScrollPosition>()
+        var retired = 0
+        t.onPendingRestoreRetired = { retired += 1 }
+        val requests = mutableListOf<Pair<Int, Int>>()
+        val frame = frameOf(t, saved)
+        frame(0, 489, 40, false) { _, _ -> } // seed at target, no request
+        frame(0, 489, 40, false) { _, _ -> } // achieved
+        assertEquals(0, retired)
+        // Clamped post-achieved landing: the OLD request is retired through
+        // the hook (a parked watchdog job on it is cancelled) before the
+        // fresh re-issue is flagged.
+        frame(0, 237, 40, false) { i, o -> requests += i to o } // re-issue
+        assertEquals(listOf(0 to 489), requests)
+        assertEquals(1, retired)
+        assertEquals(true, t.hasPendingRestoreRequest)
+        // Another non-target landing retires this request too and re-issues
+        // once more (bounded by MaxPostSettleReissues = 2).
+        frame(0, 100, 40, false) { i, o -> requests += i to o }
+        assertEquals(2, retired)
+        assertEquals(listOf(0 to 489, 0 to 489), requests)
+    }
+
+    @Test
     fun `watchdog cancels an in-flight stale re-issue when the user supersedes`() =
         runBlocking {
             // Production-shaped interleave: the watchdog tick selects 489

@@ -14285,6 +14285,21 @@ internal class MemberDetailScrollTracker(internal class MemberDetailScrollTracke
     // over (LiBai's interleave: tick picks 489 -> suspend -> user 237 ->
     // tick resumes and snaps 489 anyway).
     var onPendingRestoreRetired: (() -> Unit)? = null
+
+    /** Clear the issued-request flag and notify the composition to cancel
+     * any watchdog-launched re-issue still parked behind the scroll mutex.
+     * Every retirement path (gesture supersede, target landing, post-achieve
+     * re-issue cap, user landing in settle) MUST go through here — clearing
+     * the flag without the hook leaves a stale scrollToItem able to land
+     * after the request it served is already dead.
+     */
+    private fun retireIssuedRestoreRequest() {
+        if (issuedRestoreRequest) {
+            issuedRestoreRequest = false
+            onPendingRestoreRetired?.invoke()
+        }
+    }
+
     // Real gesture evidence: set by the composition feeding the tracker
     // through [onUserScrollStarted] when the list's interactionSource emits
     // DragInteraction.Start. Position/distance can never prove intent — a
@@ -14326,10 +14341,7 @@ internal class MemberDetailScrollTracker(internal class MemberDetailScrollTracke
         userScrollActive = true
         if (restoreSettlePending) {
             sawUserScrollInSettle = true
-            if (issuedRestoreRequest) {
-                issuedRestoreRequest = false
-                onPendingRestoreRetired?.invoke()
-            }
+            retireIssuedRestoreRequest()
         }
         if (pendingRestore && !scrollInFlight && measured != null) {
             requestScroll(
@@ -14481,7 +14493,7 @@ internal class MemberDetailScrollTracker(internal class MemberDetailScrollTracke
                 // signal (DragInteraction.Start) has fired.
                 if (userScrollActive) {
                     sawUserScrollInSettle = true
-                    issuedRestoreRequest = false
+                    retireIssuedRestoreRequest()
                     // Track the live position so an immediate exit during the
                     // drag still saves where the user actually is, not the
                     // stale restore target.
@@ -14512,7 +14524,7 @@ internal class MemberDetailScrollTracker(internal class MemberDetailScrollTracke
                 // restore request is now finished, so any later in-flight
                 // scroll can only be the user's — clear the request flag so
                 // their landing is not mistaken for ours and suppressed.
-                issuedRestoreRequest = false
+                retireIssuedRestoreRequest()
             } else if (sawUserScrollInSettle) {
                 // The user's own scroll landing is a real position — publish.
                 restoreSettlePending = false
@@ -14534,6 +14546,10 @@ internal class MemberDetailScrollTracker(internal class MemberDetailScrollTracke
                 // later user drag marks sawUserScrollInSettle on its first
                 // in-flight frame and lands on the user branch unambiguously.
                 if (restoreAchieved && postSettleReissues < MaxPostSettleReissues) {
+                    // The parked re-issue (if any) serves the same target —
+                    // retire it before flagging a fresh request so a stale
+                    // job can never be the one that lands.
+                    retireIssuedRestoreRequest()
                     postSettleReissues += 1
                     issuedRestoreRequest = true
                     requestScroll(
@@ -14541,7 +14557,7 @@ internal class MemberDetailScrollTracker(internal class MemberDetailScrollTracke
                         restoreTo.firstVisibleItemScrollOffset
                     )
                 } else {
-                    issuedRestoreRequest = false
+                    retireIssuedRestoreRequest()
                 }
                 return
             }
