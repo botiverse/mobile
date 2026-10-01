@@ -39,6 +39,9 @@ jobs:
     name: Build installable Simulator app
     runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 60
+    # Isolated task59 QA carrier; include the long-Human fixture source set.
+    env:
+      SLOCK_VISUAL_FIXTURES: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
