@@ -2,11 +2,16 @@ package build.raft.app.shared
 
 import android.content.Intent
 import android.os.SystemClock
+import android.util.Log
 import android.view.MotionEvent
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import build.raft.app.MemberDetailRemovalFixtureBridge
 import build.raft.app.MemberDetailScrollRegistryFixtureBridge
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import org.json.JSONObject
 import org.junit.Assert.fail
 import org.junit.Test
@@ -25,25 +30,27 @@ import org.junit.Test
  * this is NOT a native Activity-exit/lifecycle sample (that remains
  * separately uncovered).
  *
- * Gates (all hard-fail):
- *  - visit 1 establishes a non-zero accepted save, then a paced held-press
- *    drag produces user_frames while the press stays down;
- *  - BEFORE removal is requested, the last in-interval user_frame position
- *    must have NO same-key/gen/epoch accepted registry_save — otherwise the
- *    interleave was missed and the test fails as such;
- *  - after removal completes (dispose_save logged), the WHOLE old visit
- *    interval is re-audited: no accepted periodic write at the dispose
- *    position may appear between the interval start and the dispose line,
- *    and the dispose position must equal the last user_frame strictly
- *    before dispose in that interval;
- *  - re-add must mint a strictly newer tracker epoch and both target AND
- *    measurably land at the dispose position.
+ * Sequence (the production state machine requires it): `user_frame` is only
+ * emitted inside `restoreSettlePending && scrollInProgress && userScrollActive`,
+ * which needs `wantsRestore=true` — i.e. a visit seeded from a NON-ZERO saved
+ * position. So the case is:
+ *   V1: fresh seed (0:0), baseline drag, non-zero accepted save;
+ *   V2 (remove → re-add): new epoch seeded at the baseline, wantsRestore=true,
+ *       then a paced held-press drag during the settle window produces
+ *       user_frames; the last measured position must have NO same-key/gen/epoch
+ *       accepted periodic save (admission check), and after the actual
+ *       dispose_save the full V2 interval is re-audited for that write being
+ *       the FIRST accepted persist of the dispose position;
+ *   V3 (re-add): strictly newer epoch, restore targeted AND measured at the
+ *       dispose position.
  *
- * The removal control is bound to a unique run token (passed via the
- * `slockVisualDisposeProbe` payload field), registered before launch,
- * toggled through the fixture bridge, and unregistered in finally — a stale
- * command can never reach a later host. The registry is never touched
- * between remove and re-add.
+ * Removal control is bound to a unique run token (`slockVisualDisposeProbe`
+ * payload field), registered before launch, toggled through the fixture
+ * bridge, and unregistered in finally — a stale command can never reach a
+ * later host. The registry/generation/key is never touched between remove
+ * and re-add. The held gesture keeps ownership until real dispose receipts
+ * on the success path; every failure path still retires it with a checked
+ * terminal event.
  */
 class MemberDetailComposeRemovalConnectedTest {
 
@@ -86,11 +93,10 @@ class MemberDetailComposeRemovalConnectedTest {
             MemberDetailScrollRegistryFixtureBridge.clearForTest()
             MemberDetailRemovalFixtureBridge.register(runToken)
 
-            // ---- Visit 1: non-zero baseline, then a held drag whose last
-            // frame is measured but NOT yet periodically saved ----
+            // ---- V1: fresh seed, baseline drag, non-zero accepted save ----
             scenario = launchMemberDetailHost(runToken)
             val visit1 = waitForVisitSeed(startCursor, afterEpoch = 0)
-            waitForLine(startCursor, after = visit1.seedLine, "restore_first_items") { line ->
+            waitForLine(startCursor, after = visit1.seedLine, "v1 restore_first_items") { line ->
                 line.contains("restore_first_items") && line.contains(ScrollLabel)
             }
             MemberDetailScrollTestSupport.injectDragToScrollBlocking(
@@ -105,68 +111,111 @@ class MemberDetailComposeRemovalConnectedTest {
                 )
             recordEvidence("CR_BASELINE", "epoch=${visit1.epoch} position=$baseline")
 
-            // Held press: paced MOVEs still streaming, no UP. The gesture
-            // keeps producing user_frames while we request removal.
+            // ---- V2: composition remove → re-add (new epoch seeded at
+            // baseline, wantsRestore=true opens the settle window) ----
+            MemberDetailRemovalFixtureBridge.setRemoved(runToken, true)
+            waitForLine(startCursor, after = visit1.seedLine, "v1 dispose_save") { line ->
+                line.contains("dispose_save") && line.contains(ScrollLabel)
+            }
+            MemberDetailRemovalFixtureBridge.setRemoved(runToken, false)
+            val visit2 = waitForVisitSeed(startCursor, afterEpoch = visit1.epoch)
+            require(visit2.epoch > visit1.epoch) {
+                "re-add did not mint a newer write epoch (${visit1.epoch} -> ${visit2.epoch})"
+            }
+            val firstItems2 =
+                waitForLine(startCursor, after = visit2.seedLine, "v2 restore_first_items") { line ->
+                    line.contains("restore_first_items") && line.contains(ScrollLabel)
+                }
+            // The V2 seed must both target the saved baseline and actually
+            // open the settle window (wantsRestore=true) — without it no
+            // user_frame can be produced and the interleave is unreach­able.
+            require(
+                firstItems2.contains("target=${baseline.index}:${baseline.offset}") &&
+                    firstItems2.contains("wantsRestore=true")
+            ) {
+                "v2 restore_first_items missing baseline target or wantsRestore: $firstItems2"
+            }
+            val seedLandedAtBaseline =
+                Regex("current=(\\d+):(\\d+)").find(firstItems2)?.let { m ->
+                    m.groupValues[1].toInt() == baseline.index &&
+                        m.groupValues[2].toInt() == baseline.offset
+                } == true
+            if (!seedLandedAtBaseline) {
+                waitForLine(startCursor, after = visit2.seedLine, "v2 baseline settle") { line ->
+                    line.contains("restore_settled") &&
+                        line.contains(ScrollLabel) &&
+                        line.contains("position=${baseline.index}:${baseline.offset}")
+                }
+            }
+            recordEvidence("CR_V2_LANDED", "epoch=${visit2.epoch} $firstItems2")
+
+            // Held press inside the settle window: paced MOVEs, no UP. The
+            // gesture keeps producing user_frames while removal is requested.
             var dragGesture: MemberDetailScrollTestSupport.HeldDrag? = null
             try {
                 dragGesture = MemberDetailScrollTestSupport.injectDragPaced(TestLogTag)
                 val lastFrame =
-                    waitForLine(startCursor, after = visit1.seedLine, "user_frame") { line ->
+                    waitForLine(startCursor, after = visit2.seedLine, "v2 user_frame") { line ->
                         line.contains("user_frame") && line.contains(ScrollLabel)
                     }
                 val lastFramePos =
                     requireNotNull(parsePositionFrom(lastFrame)) {
                         "user_frame carried no position: $lastFrame"
                     }
-                recordEvidence("CR_LAST_FRAME", "epoch=${visit1.epoch} $lastFrame")
+                recordEvidence("CR_LAST_FRAME", "epoch=${visit2.epoch} $lastFrame")
 
-                // Admission check only: the last measured position must not
-                // already be persisted — otherwise the interleave is missed.
-                // The authoritative re-audit runs AFTER dispose_save below.
+                // Admission check: the last measured position must not
+                // already be persisted in V2 — otherwise the interleave is
+                // missed and removal is pointless. The authoritative audit
+                // runs after the actual dispose_save below.
                 val alreadySaved =
-                    linesAfter(startCursor, visit1.seedLine).any {
+                    linesAfter(startCursor, visit2.seedLine).any {
                         it.contains("registry_save") &&
                             it.contains("kind=humanList") &&
                             it.contains("decision=accept") &&
                             it.contains("keyHash=$KeyHash") &&
-                            it.contains("gen=${visit1.generation}/") &&
-                            Regex("epoch=${visit1.epoch}/${visit1.epoch}\\b").containsMatchIn(it) &&
+                            it.contains("gen=${visit2.generation}/") &&
+                            Regex("epoch=${visit2.epoch}/${visit2.epoch}\\b").containsMatchIn(it) &&
                             it.contains("position=${lastFramePos.index}:${lastFramePos.offset}")
                     }
                 if (alreadySaved) {
                     fail(
                         "interleave not hit: a periodic registry_save already " +
-                            "wrote $lastFramePos before removal under epoch=${visit1.epoch}"
+                            "wrote $lastFramePos before removal under epoch=${visit2.epoch}"
                     )
                 }
 
-                // Request removal through the fixture controller. The flip
-                // goes through the real recomposition scheduler — the proof
-                // of removal is the dispose_save line, not this call.
+                // Request removal; keep the gesture OWNED — terminal CANCEL
+                // only runs after the actual dispose_save is observed (or on
+                // the failure path), so a settled periodic save cannot sneak
+                // in between the flip and recomposition.
                 MemberDetailRemovalFixtureBridge.setRemoved(runToken, true)
-            } finally {
-                // Retire the held press before removal can complete: a stuck
-                // pointer must not reach a re-added subtree. Terminal event
-                // delivery is hard-checked inside finish().
+            } catch (t: Throwable) {
+                // Failure path: retire the press now; a stuck pointer must
+                // never survive. Delivery failure is hard-checked.
                 dragGesture?.finish(action = MotionEvent.ACTION_CANCEL)
                 dragGesture = null
+                throw t
             }
 
-            // ---- Removal evidence: dispose_save at the LAST user_frame,
-            // with no same-position periodic accept anywhere before it ----
             val disposeLine =
-                waitForLine(startCursor, after = visit1.seedLine, "dispose_save") { line ->
+                waitForLine(startCursor, after = visit2.seedLine, "v2 dispose_save") { line ->
                     line.contains("dispose_save") && line.contains(ScrollLabel)
                 }
             val disposePosition =
                 requireNotNull(parsePositionFrom(disposeLine)) {
                     "dispose_save carried no position: $disposeLine"
                 }
-            recordEvidence("CR_DISPOSE", "epoch=${visit1.epoch} $disposeLine")
+            recordEvidence("CR_DISPOSE", "epoch=${visit2.epoch} $disposeLine")
 
-            val intervalLines = linesAfter(startCursor, visit1.seedLine)
+            // Dispose observed — now retire the held press (real removal
+            // happened; the pointer must be gone before re-add).
+            dragGesture?.finish(action = MotionEvent.ACTION_CANCEL)
+            dragGesture = null
+
+            val intervalLines = linesAfter(startCursor, visit2.seedLine)
             val disposeIdx = intervalLines.indexOf(disposeLine)
-            require(disposeIdx >= 0) { "dispose_save not located in visit-1 interval" }
+            require(disposeIdx >= 0) { "dispose_save not located in v2 interval" }
             val throughDispose = intervalLines.take(disposeIdx + 1)
 
             // (a) dispose wrote the last user frame of this visit.
@@ -197,62 +246,76 @@ class MemberDetailComposeRemovalConnectedTest {
                     }
             require(savesBeforeDispose.isEmpty()) {
                 "interleave not hit: a periodic registry_save already wrote " +
-                    "$disposePosition before dispose under epoch=${visit1.epoch}"
+                    "$disposePosition before dispose under epoch=${visit2.epoch}"
             }
             // (c) the dispose write landed: an accepted save at this visit's
             // gen+epoch carrying the dispose position, strictly after the
             // dispose line.
-            waitForLine(startCursor, after = disposeLine, "accepted dispose write") { line ->
+            waitForLine(startCursor, after = disposeLine, "v2 accepted dispose write") { line ->
                 line.contains("registry_save") &&
                     line.contains("kind=humanList") &&
                     line.contains("decision=accept") &&
                     line.contains("keyHash=$KeyHash") &&
-                    Regex("epoch=${visit1.epoch}/${visit1.epoch}\\b").containsMatchIn(line) &&
+                    Regex("epoch=${visit2.epoch}/${visit2.epoch}\\b").containsMatchIn(line) &&
                     line.contains("position=${disposePosition.index}:${disposePosition.offset}") &&
-                    line.contains("gen=${visit1.generation}/")
-            }.let { recordEvidence("CR_DISPOSE_WRITE", "epoch=${visit1.epoch} $it") }
+                    line.contains("gen=${visit2.generation}/")
+            }.let { recordEvidence("CR_DISPOSE_WRITE", "epoch=${visit2.epoch} $it") }
 
-            // ---- Visit 2 (re-add through composition, same host): new
+            // ---- V3 (re-add through composition, same host): strictly newer
             // epoch, restore targeted AND measured at the dispose position ----
             MemberDetailRemovalFixtureBridge.setRemoved(runToken, false)
-            val visit2 = waitForVisitSeed(startCursor, afterEpoch = visit1.epoch)
-            require(visit2.epoch > visit1.epoch) {
-                "re-add did not mint a newer write epoch (${visit1.epoch} -> ${visit2.epoch})"
+            val visit3 = waitForVisitSeed(startCursor, afterEpoch = visit2.epoch)
+            require(visit3.epoch > visit2.epoch) {
+                "re-add did not mint a newer write epoch (${visit2.epoch} -> ${visit3.epoch})"
             }
-            val firstItems2 =
-                waitForLine(startCursor, after = visit2.seedLine, "v2 restore_first_items") { line ->
+            val firstItems3 =
+                waitForLine(startCursor, after = visit3.seedLine, "v3 restore_first_items") { line ->
                     line.contains("restore_first_items") && line.contains(ScrollLabel)
                 }
             require(
-                firstItems2.contains("target=${disposePosition.index}:${disposePosition.offset}")
+                firstItems3.contains("target=${disposePosition.index}:${disposePosition.offset}")
             ) {
-                "v2 restore_first_items does not target dispose position $disposePosition: $firstItems2"
+                "v3 restore_first_items does not target dispose position $disposePosition: $firstItems3"
             }
             val revisitMeasured =
-                Regex("current=(\\d+):(\\d+)").find(firstItems2)?.let { m ->
+                Regex("current=(\\d+):(\\d+)").find(firstItems3)?.let { m ->
                     m.groupValues[1].toInt() == disposePosition.index &&
                         m.groupValues[2].toInt() == disposePosition.offset
                 } == true
             if (!revisitMeasured) {
-                waitForLine(startCursor, after = visit2.seedLine, "v2 measured landing") { line ->
+                waitForLine(startCursor, after = visit3.seedLine, "v3 measured landing") { line ->
                     line.contains("restore_settled") &&
                         line.contains(ScrollLabel) &&
                         line.contains("position=${disposePosition.index}:${disposePosition.offset}")
                 }
             }
-            recordEvidence("CR_REVISIT", "epoch=${visit2.epoch} $firstItems2")
+            recordEvidence("CR_REVISIT", "epoch=${visit3.epoch} $firstItems3")
         } catch (t: Throwable) {
             closeFailure = t
             throw t
         } finally {
-            // Cleanup failures surface: a PASS cannot coexist with a live
-            // controller, a live host, or a dirty registry. Registered first,
-            // so unregister runs even when launch itself failed.
+            // Bounded host cleanup: scenario.close() can stall in
+            // waitForIdleSync, so the host is destroyed via finish() + the
+            // specific instance's DESTROYED receipt. Controller unregistration
+            // and registry clear run regardless (nested), and any cleanup
+            // failure surfaces — a PASS cannot coexist with a live host, a
+            // registered controller, or a dirty registry.
             var cleanupFailure: Throwable? = null
-            try {
-                scenario?.close()
-            } catch (e: Throwable) {
-                cleanupFailure = e
+            scenario?.let { sc ->
+                val host =
+                    try {
+                        closeHostOrFail(sc)
+                    } catch (e: Throwable) {
+                        cleanupFailure = e
+                        null
+                    }
+                if (host != null) {
+                    try {
+                        awaitHostDestroyed(host)
+                    } catch (e: Throwable) {
+                        if (cleanupFailure == null) cleanupFailure = e else cleanupFailure!!.addSuppressed(e)
+                    }
+                }
             }
             try {
                 MemberDetailRemovalFixtureBridge.unregister(runToken)
@@ -301,6 +364,94 @@ class MemberDetailComposeRemovalConnectedTest {
                 .putExtra(SlockKuiklyActivity.KEY_PAGE_DATA, pageData.toString())
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
         return ActivityScenario.launch(intent)
+    }
+
+    /**
+     * Bounded host teardown for cleanup: `finish()` on a worker under a
+     * latch, never `scenario.close()` (whose waitForIdleSync can outlast any
+     * test bound). Returns the specific host instance for the DESTROYED
+     * proof.
+     */
+    private fun closeHostOrFail(
+        scenario: ActivityScenario<SlockKuiklyActivity>
+    ): SlockKuiklyActivity {
+        val finished = CountDownLatch(1)
+        val failure = arrayOfNulls<Throwable>(1)
+        val hostRef = arrayOfNulls<SlockKuiklyActivity>(1)
+        val issuer =
+            Thread {
+                try {
+                    scenario.onActivity { activity ->
+                        hostRef[0] = activity
+                        activity.finish()
+                    }
+                } catch (t: Throwable) {
+                    failure[0] = t
+                } finally {
+                    finished.countDown()
+                }
+            }
+        issuer.isDaemon = true
+        issuer.start()
+        if (!finished.await(MemberDetailScrollTestSupport.ScenarioCloseTimeoutMs, TimeUnit.MILLISECONDS)) {
+            issuer.interrupt()
+            fail("activity.finish() could not be delivered within ${MemberDetailScrollTestSupport.ScenarioCloseTimeoutMs}ms")
+        }
+        failure[0]?.let { throw AssertionError("activity.finish() threw: ${it.message}", it) }
+        return requireNotNull(hostRef[0]) { "onActivity ran but captured no host" }
+    }
+
+    /**
+     * The specific host instance must reach Stage.DESTROYED in the lifecycle
+     * monitor; queries run on the main thread (posted, not runOnMainSync, so
+     * a jammed looper cannot outlast the latch).
+     */
+    private fun awaitHostDestroyed(host: SlockKuiklyActivity) {
+        val monitor = ActivityLifecycleMonitorRegistry.getInstance()
+        val deadline = SystemClock.uptimeMillis() + MemberDetailScrollTestSupport.ScenarioCloseTimeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            val destroyed = queryStageOnMain(monitor, Stage.DESTROYED).contains(host)
+            if (destroyed) {
+                Log.i(TestLogTag, "host_destroyed proof=lifecycle stage=DESTROYED")
+                return
+            }
+            SystemClock.sleep(MemberDetailScrollTestSupport.LogPollMs)
+        }
+        val stage = currentStageOnMain(monitor, host)
+        fail("SlockKuiklyActivity never reached DESTROYED within ${MemberDetailScrollTestSupport.ScenarioCloseTimeoutMs}ms (stage=$stage)")
+    }
+
+    private fun queryStageOnMain(
+        monitor: androidx.test.runner.lifecycle.ActivityLifecycleMonitor,
+        stage: Stage
+    ): Set<android.app.Activity> {
+        val result = arrayOfNulls<Set<android.app.Activity>>(1)
+        val queryFailure = arrayOfNulls<Throwable>(1)
+        val latch = CountDownLatch(1)
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            try {
+                result[0] = monitor.getActivitiesInStage(stage).toSet()
+            } catch (t: Throwable) {
+                queryFailure[0] = t
+            } finally {
+                latch.countDown()
+            }
+        }
+        if (!latch.await(MemberDetailScrollTestSupport.ScenarioCloseTimeoutMs, TimeUnit.MILLISECONDS)) {
+            fail("lifecycle monitor query for $stage did not run on main within ${MemberDetailScrollTestSupport.ScenarioCloseTimeoutMs}ms")
+        }
+        queryFailure[0]?.let { throw AssertionError("lifecycle monitor query for $stage threw: ${it.message}", it) }
+        return result[0] ?: emptySet()
+    }
+
+    private fun currentStageOnMain(
+        monitor: androidx.test.runner.lifecycle.ActivityLifecycleMonitor,
+        host: android.app.Activity
+    ): String {
+        for (stage in Stage.values()) {
+            if (queryStageOnMain(monitor, stage).contains(host)) return stage.name
+        }
+        return "UNTRACKED"
     }
 
     private companion object {
