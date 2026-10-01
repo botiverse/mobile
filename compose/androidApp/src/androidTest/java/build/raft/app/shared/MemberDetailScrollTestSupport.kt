@@ -28,7 +28,14 @@ internal object MemberDetailScrollTestSupport {
     internal const val DragStepDelayMs = 36L
     internal const val DragRetryDelayMs = 400L
     internal const val ProbeHitWaitMs = 4_000L
-    private const val PROBE_HIT_SKEW_MS = 2_000L
+    // A probe_hit carrying an emission timestamp before this attempt's
+    // dispatch belongs to an earlier press — no tolerance is applied
+    // beyond sub-50ms timestamp quantization.
+    private const val PROBE_HIT_SKEW_MS = 50L
+    // Post-CANCEL drain: no new lines for the scroll label during this
+    // quiet window is the receipt that the retired gesture stopped
+    // producing effects before the next attempt dispatches.
+    private const val DrainQuietMs = 1_500L
 
     private const val MemberKey = "visual-owner:visual-server:human:visual-human-long"
     internal val KeyHash = MemberKey.hashCode().toString(16)
@@ -453,23 +460,20 @@ internal object MemberDetailScrollTestSupport {
                 }
                 if (hit != null) {
                     val hitMs = logcatTimestampMillis(hit)
-                    // Wall-clock binding: a hit emitted before this attempt's
-                    // dispatch (beyond clock/queue skew) belongs to an
-                    // earlier press and cannot prove this attempt.
                     val delta = hitMs?.let { it - dispatchWallMs }
-                    val staleByTime = delta != null && delta < -PROBE_HIT_SKEW_MS
-                    if (staleByTime) {
+                    // Binding is mandatory: an unparseable timestamp or an
+                    // emission before this attempt's dispatch (beyond
+                    // sub-tick quantization) means the hit cannot be
+                    // proven to belong to THIS press — reject it and let
+                    // the attempt retire/retry.
+                    val unbound = hitMs == null || delta!! < -PROBE_HIT_SKEW_MS
+                    if (unbound) {
                         Log.i(
                             logTag,
-                            "held_drag_stale_probe attempt=$attempt " +
+                            "held_drag_unbound_probe attempt=$attempt " +
                                 "hitMs=$hitMs dispatchMs=$dispatchWallMs line=$hit"
                         )
                         hit = null
-                    } else if (hitMs == null) {
-                        // Unparseable timestamp: keep the hit but mark the
-                        // evidence so a reviewer can see the time-binding
-                        // was not applied to this line.
-                        Log.w(logTag, "held_drag_probe_untimed attempt=$attempt line=$hit")
                     }
                 }
             } catch (t: Throwable) {
@@ -506,6 +510,35 @@ internal object MemberDetailScrollTestSupport {
                         primaryFailure?.addSuppressed(cancelFailure)
                             ?: run { primaryFailure = cancelFailure }
                     }
+                    // Drain receipt: after the terminal CANCEL, require a
+                    // quiet window with no new user_frame/probe_hit lines
+                    // for the label — residual output still arriving means
+                    // the retired gesture is not yet drained, so the quiet
+                    // window restarts. Bounded by the shared deadline; the
+                    // next dispatch only starts once drained.
+                    var lastActivityAt = SystemClock.uptimeMillis()
+                    var linesSeen = linesAfter(startCursor, after, logTag).size
+                    while (
+                        SystemClock.uptimeMillis() - lastActivityAt < DrainQuietMs &&
+                            SystemClock.uptimeMillis() < deadline
+                    ) {
+                        val now = linesAfter(startCursor, after, logTag)
+                        if (
+                            now.drop(linesSeen).any {
+                                it.contains(ScrollLabel) &&
+                                    (it.contains("user_frame") || it.contains("probe_hit"))
+                            }
+                        ) {
+                            lastActivityAt = SystemClock.uptimeMillis()
+                        }
+                        linesSeen = now.size
+                        SystemClock.sleep(LogPollMs)
+                    }
+                    Log.i(
+                        logTag,
+                        "held_drag_drained attempt=$attempt at=${SystemClock.uptimeMillis()} " +
+                            "quietFor=${SystemClock.uptimeMillis() - lastActivityAt}ms"
+                    )
                 }
             }
             primaryFailure?.let { throw it }
