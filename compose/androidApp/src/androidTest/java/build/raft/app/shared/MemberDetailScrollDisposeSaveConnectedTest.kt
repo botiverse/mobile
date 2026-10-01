@@ -77,14 +77,17 @@ class MemberDetailScrollDisposeSaveConnectedTest {
                     requireNonZero = true
                 )
             recordEvidence("B1_BASELINE", "epoch=${visit1.epoch} position=$baseline")
-            closeHostOrFail(scenario)
-            // Host death has three independent proofs, all required:
-            //   (a) the Activity left every live stage (== destroyed),
-            //   (b) the composition's onDispose ran (`dispose_save` intent),
-            //   (c) an accepted registry write at this visit's gen+epoch
-            //       carried the position (dispose wrote THROUGH). Proof (c)
-            //       is the baseline wait already passed above.
-            awaitHostDestroyed()
+            val host1 = closeHostOrFail(scenario)
+            // Host death has two required proofs at this point:
+            //   (a) the specific host instance reached DESTROYED in the
+            //       lifecycle monitor (finish() returning does NOT prove
+            //       destruction);
+            //   (b) the composition's onDispose ran (`dispose_save` intent)
+            //       within this visit's interval.
+            // The baseline `waitForSave` above only proves the PRE-close
+            // periodic save persisted — it is NOT the dispose write's
+            // accepted-receipt proof (visit 2 carries that gate).
+            awaitHostDestroyed(host1)
             scenario = null
             val v1Dispose =
                 waitForLine(startCursor, after = visit1.seedLine, "v1 dispose_save") { line ->
@@ -142,10 +145,11 @@ class MemberDetailScrollDisposeSaveConnectedTest {
                 recordEvidence("B1_USER_FRAME", "epoch=${visit2.epoch} $lastUserFrameBeforeDestroy")
                 // Destroy now — the press is still down and the list still
                 // scrolling while the host tears down.
-                closeHostOrFail(scenario)
-                // Same three-part death proof as visit 1: lifecycle
-                // destroyed here, dispose_save + accepted write below.
-                awaitHostDestroyed()
+                val host2 = closeHostOrFail(scenario)
+                // Same proof (a) as visit 1: this specific host instance
+                // must reach DESTROYED. dispose_save + accepted write gates
+                // follow below.
+                awaitHostDestroyed(host2)
                 scenario = null
             } finally {
                 // On the success path the host is dead, so the terminal UP
@@ -253,16 +257,32 @@ class MemberDetailScrollDisposeSaveConnectedTest {
             // If a live host survived a failed close it may still write under
             // its epoch, but the generation bump from clear() retires those
             // writes by contract.
+            // Cleanup failure is NOT swallowed: if the case already failed we
+            // attach it as suppressed; otherwise a surviving host fails the
+            // test on its own — a PASS must never coexist with a live host.
             scenario?.let {
-                runCatching { closeHostOrFail(it) }
-                    .onFailure { e -> Log.w(TestLogTag, "finally close failed: ${e.message}") }
-                // finally must wait for the real cleanup, not just fire
-                // finish() — otherwise a still-dying host leaks into the
-                // next visit's input/lifecycle stream.
-                runCatching { awaitHostDestroyed() }
-                    .onFailure { e ->
-                        Log.w(TestLogTag, "finally destroy wait failed: ${e.message}")
+                var cleanupFailure: Throwable? = null
+                val host =
+                    try {
+                        closeHostOrFail(it)
+                    } catch (e: Throwable) {
+                        cleanupFailure = e
+                        null
                     }
+                if (host != null) {
+                    try {
+                        awaitHostDestroyed(host)
+                    } catch (e: Throwable) {
+                        if (cleanupFailure == null) cleanupFailure = e else cleanupFailure!!.addSuppressed(e)
+                    }
+                }
+                cleanupFailure?.let { e ->
+                    if (closeFailure != null) {
+                        closeFailure!!.addSuppressed(e)
+                    } else {
+                        throw AssertionError("host cleanup failed: ${e.message}", e)
+                    }
+                }
             }
             MemberDetailScrollRegistryFixtureBridge.clearForTest()
         }
@@ -299,19 +319,27 @@ class MemberDetailScrollDisposeSaveConnectedTest {
     /**
      * Destroy the host via `Activity.finish()` instead of
      * `ActivityScenario.close()`: `close()` blocks in
-     * `Instrumentation.waitForIdleSync()` before issuing the destroy, and
-     * this page holds long-running composition work (the restore-stall
-     * watchdog ticks while a request is pending) that can keep the main
-     * looper busy past any close timeout — the exact hang the first
-     * instrumentation run hit. `finish()` queues the real lifecycle destroy
-     * without that idle precondition.
+     * `Instrumentation.waitForIdleSync()` before issuing the destroy, and a
+     * page that keeps the main looper busy can stall it past any close
+     * timeout. (Hypothesis for the first instrumentation-run hang — a busy
+     * main looper is consistent with the observed stall but NOT proven as
+     * its root cause.) `finish()` queues the real lifecycle destroy without
+     * that idle precondition.
      *
-     * Destruction is then PROVEN by the visit-scoped `dispose_save` log
-     * line, not by this call returning: callers always follow with the
-     * matching dispose wait, and a host whose composition never disposes
-     * fails that wait.
+     * Destruction is then proven by [awaitHostDestroyed] plus the
+     * visit-scoped `dispose_save` log line, not by this call returning:
+     * callers always follow with the matching dispose wait, and a host
+     * whose composition never disposes fails that wait.
      */
-    private fun closeHostOrFail(scenario: ActivityScenario<SlockKuiklyActivity>) {
+    /**
+     * Issues `finish()` on the scenario's activity and returns the specific
+     * host instance, which the caller must pass to [awaitHostDestroyed] —
+     * the DESTROYED proof is bound to that instance, not to generic stage
+     * emptiness.
+     */
+    private fun closeHostOrFail(
+        scenario: ActivityScenario<SlockKuiklyActivity>
+    ): SlockKuiklyActivity {
         Log.i(
             TestLogTag,
             "close_begin thread=${Thread.currentThread().name}"
@@ -321,10 +349,14 @@ class MemberDetailScrollDisposeSaveConnectedTest {
         // finish() inside it — run the whole onActivity on a worker thread.
         val finished = CountDownLatch(1)
         val failure = arrayOfNulls<Throwable>(1)
+        val hostRef = arrayOfNulls<SlockKuiklyActivity>(1)
         val issuer =
             Thread {
                 try {
-                    scenario.onActivity { activity -> activity.finish() }
+                    scenario.onActivity { activity ->
+                        hostRef[0] = activity
+                        activity.finish()
+                    }
                 } catch (t: Throwable) {
                     failure[0] = t
                 } finally {
@@ -339,31 +371,72 @@ class MemberDetailScrollDisposeSaveConnectedTest {
         }
         failure[0]?.let { throw AssertionError("activity.finish() threw: ${it.message}", it) }
         Log.i(TestLogTag, "close_issued thread=${Thread.currentThread().name}")
+        return requireNotNull(hostRef[0]) { "onActivity ran but captured no host" }
     }
 
     /**
-     * Proof (a) of host death: the Activity must leave every pre-destroy
-     * stage in the lifecycle monitor. `finish()` returning — or even the
-     * onActivity runnable having run — does NOT prove the destroy was
-     * delivered; only the monitor transition does. Fail-closed on timeout.
+     * Proof (a) of host death: the SPECIFIC host Activity instance must be
+     * observed in Stage.DESTROYED by the lifecycle monitor. Absence from a
+     * subset of stages is not a DESTROYED receipt (a STOPPED/RESTARTED host
+     * would otherwise pass), so the exact instance captured at close time
+     * is matched explicitly.
+     *
+     * Monitor queries must run on the main thread, so each poll is
+     * dispatched through `runOnMainSync` and the whole wait stays bounded
+     * by [ScenarioCloseTimeoutMs]. Fail-closed on timeout.
      */
-    private fun awaitHostDestroyed() {
+    private fun awaitHostDestroyed(host: SlockKuiklyActivity) {
         val monitor = ActivityLifecycleMonitorRegistry.getInstance()
-        val liveStages =
-            listOf(Stage.RESUMED, Stage.PAUSED, Stage.STARTED, Stage.CREATED, Stage.PRE_ON_CREATE)
         val deadline = SystemClock.uptimeMillis() + ScenarioCloseTimeoutMs
         while (SystemClock.uptimeMillis() < deadline) {
-            val alive =
-                liveStages
-                    .flatMap { stage -> monitor.getActivitiesInStage(stage) }
-                    .filterIsInstance<SlockKuiklyActivity>()
-            if (alive.isEmpty()) {
-                Log.i(TestLogTag, "host_destroyed proof=lifecycle alive=0")
+            val destroyed = queryStageOnMain(monitor, Stage.DESTROYED).contains(host)
+            if (destroyed) {
+                Log.i(TestLogTag, "host_destroyed proof=lifecycle stage=DESTROYED")
                 return
             }
             SystemClock.sleep(LogPollMs)
         }
-        fail("SlockKuiklyActivity never reached DESTROYED within ${ScenarioCloseTimeoutMs}ms")
+        val stage = currentStageOnMain(monitor, host)
+        fail("SlockKuiklyActivity never reached DESTROYED within ${ScenarioCloseTimeoutMs}ms (stage=$stage)")
+    }
+
+    /**
+     * Runs a monitor stage query on the main thread, as required. Uses
+     * `Handler(Looper.getMainLooper()).post` rather than `runOnMainSync`
+     * so a jammed main looper cannot block the test thread past the latch
+     * bound — the query failing to dispatch is itself a failure.
+     */
+    private fun queryStageOnMain(
+        monitor: androidx.test.runner.lifecycle.ActivityLifecycleMonitor,
+        stage: Stage
+    ): Set<android.app.Activity> {
+        val result = arrayOfNulls<Set<android.app.Activity>>(1)
+        val queryFailure = arrayOfNulls<Throwable>(1)
+        val latch = CountDownLatch(1)
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            try {
+                result[0] = monitor.getActivitiesInStage(stage).toSet()
+            } catch (t: Throwable) {
+                queryFailure[0] = t
+            } finally {
+                latch.countDown()
+            }
+        }
+        if (!latch.await(ScenarioCloseTimeoutMs, TimeUnit.MILLISECONDS)) {
+            fail("lifecycle monitor query for $stage did not run on main within ${ScenarioCloseTimeoutMs}ms")
+        }
+        queryFailure[0]?.let { throw AssertionError("lifecycle monitor query for $stage threw: ${it.message}", it) }
+        return result[0] ?: emptySet()
+    }
+
+    private fun currentStageOnMain(
+        monitor: androidx.test.runner.lifecycle.ActivityLifecycleMonitor,
+        host: android.app.Activity
+    ): String {
+        for (stage in Stage.values()) {
+            if (queryStageOnMain(monitor, stage).contains(host)) return stage.name
+        }
+        return "UNTRACKED"
     }
 
     // -- Input -------------------------------------------------------------------

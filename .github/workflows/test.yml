@@ -894,6 +894,9 @@ jobs:
             durable-partition-migration-instrumentation.txt
             thread-newer-auto-pagination-instrumentation.txt
             thread-open-budget-telemetry.txt
+            member-detail-dispose-save-instrumentation.txt
+            member-detail-dispose-save-logcat.txt
+            member-detail-dispose-save-activity.txt
             *-instrumentation.txt.attempt-*
           if-no-files-found: warn
           retention-days: 7
