@@ -38,10 +38,14 @@ jobs:
   build-app:
     name: Build installable Simulator app
     runs-on: blacksmith-6vcpu-macos-15
-    timeout-minutes: 60
+    timeout-minutes: 120
+    env:
+      RAFT_GIT_COMMIT: b1eef355435d561c477146349a41b58fac61d63c
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: b1eef355435d561c477146349a41b58fac61d63c
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -54,6 +58,16 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
+
+      - name: Configure simulator build memory
+        shell: bash
+        run: |
+          mkdir -p "${GRADLE_USER_HOME:-$HOME/.gradle}"
+          cat >> "${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties" <<'PROPS'
+          org.gradle.jvmargs=-Xmx8g -Xss4m -Dfile.encoding=UTF-8
+          kotlin.daemon.jvmargs=-Xmx8g -Xss4m
+          PROPS
+          test "$(git rev-parse HEAD)" = "$RAFT_GIT_COMMIT"
 
       - name: Verify complete immutable Kuikly release
         run: scripts/ci/verify_kuikly_release_manifest.sh
@@ -150,9 +164,9 @@ jobs:
           staging="$RUNNER_TEMP/ios-simulator-app"
           bash scripts/qa/export_ios_simulator_app.sh \
             "compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator" \
-            "$staging" "$GITHUB_SHA" "$GITHUB_RUN_ID"
+            "$staging" "$RAFT_GIT_COMMIT" "$GITHUB_RUN_ID"
           {
-            echo "source_commit=$GITHUB_SHA"
+            echo "source_commit=$RAFT_GIT_COMMIT"
             echo "ref=$GITHUB_REF_NAME"
             echo "run_id=$GITHUB_RUN_ID"
             echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
