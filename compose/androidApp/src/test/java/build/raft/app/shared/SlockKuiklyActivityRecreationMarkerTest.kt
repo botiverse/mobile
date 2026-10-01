@@ -1,8 +1,8 @@
 package build.raft.app.shared
 
-import kotlin.test.Test
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
 
 /**
  * task #58: the recreate marker must only be injected when this attach
