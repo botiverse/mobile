@@ -34,8 +34,11 @@ import org.junit.Test
  * emitted inside `restoreSettlePending && scrollInProgress && userScrollActive`,
  * which needs `wantsRestore=true` — i.e. a visit seeded from a NON-ZERO saved
  * position. So the case is:
- *   V1: fresh seed (0:0), baseline drag, non-zero accepted save;
- *   V2 (remove → re-add): new epoch seeded at the baseline, wantsRestore=true,
+ *   V1: fresh seed (0:0), baseline drag, non-zero accepted save; removal is
+ *       then requested and the V2 restore expectation is derived from the
+ *       LAST accepted in-interval write before v1 dispose_save (the periodic
+ *       saver may advance past the earlier gate during the async remove);
+ *   V2 (remove → re-add): new epoch seeded at that position, wantsRestore=true,
  *       then a paced held-press drag during the settle window produces
  *       user_frames; the last measured position must have NO same-key/gen/epoch
  *       accepted periodic save (admission check), and after the actual
@@ -48,9 +51,10 @@ import org.junit.Test
  * payload field), registered before launch, toggled through the fixture
  * bridge, and unregistered in finally — a stale command can never reach a
  * later host. The registry/generation/key is never touched between remove
- * and re-add. The held gesture keeps ownership until real dispose receipts
- * on the success path; every failure path still retires it with a checked
- * terminal event.
+ * and re-add. The held gesture keeps ownership through the entire dispose
+ * wait; the finally retires it with a checked CANCEL on every path, and a
+ * CANCEL failure on an already-failing path attaches to the original error
+ * instead of masking it.
  */
 class MemberDetailComposeRemovalConnectedTest {
 
@@ -114,9 +118,38 @@ class MemberDetailComposeRemovalConnectedTest {
             // ---- V2: composition remove → re-add (new epoch seeded at
             // baseline, wantsRestore=true opens the settle window) ----
             MemberDetailRemovalFixtureBridge.setRemoved(runToken, true)
-            waitForLine(startCursor, after = visit1.seedLine, "v1 dispose_save") { line ->
-                line.contains("dispose_save") && line.contains(ScrollLabel)
-            }
+            val v1Dispose =
+                waitForLine(startCursor, after = visit1.seedLine, "v1 dispose_save") { line ->
+                    line.contains("dispose_save") && line.contains(ScrollLabel)
+                }
+            // The expected V2 restore position is the LAST accepted
+            // in-interval write before v1 dispose — the baseline gate value
+            // can be stale because the periodic saver keeps running until
+            // recomposition actually removes the content. Same derivation
+            // as the Activity-lifecycle case; if no such write exists the
+            // expectation is unprovable — hard fail.
+            val v1Interval = linesAfter(startCursor, visit1.seedLine)
+            val v1DisposeIdx = v1Interval.indexOf(v1Dispose)
+            require(v1DisposeIdx >= 0) { "v1 dispose_save not located in v1 interval" }
+            val v1RestoreExpect =
+                requireNotNull(
+                    v1Interval
+                        .take(v1DisposeIdx)
+                        .filter {
+                            it.contains("registry_save") &&
+                                it.contains("kind=humanList") &&
+                                it.contains("decision=accept") &&
+                                it.contains("keyHash=$KeyHash") &&
+                                it.contains("gen=${visit1.generation}/") &&
+                                Regex("epoch=${visit1.epoch}/${visit1.epoch}\\b")
+                                    .containsMatchIn(it)
+                        }
+                        .mapNotNull(::parsePositionFrom)
+                        .lastOrNull()
+                ) {
+                    "no accepted in-interval registry_save precedes v1 dispose_save; restore expectation unprovable"
+                }
+            recordEvidence("CR_V1_RESTORE_EXPECT", "epoch=${visit1.epoch} position=$v1RestoreExpect")
             MemberDetailRemovalFixtureBridge.setRemoved(runToken, false)
             val visit2 = waitForVisitSeed(startCursor, afterEpoch = visit1.epoch)
             require(visit2.epoch > visit1.epoch) {
@@ -130,21 +163,21 @@ class MemberDetailComposeRemovalConnectedTest {
             // open the settle window (wantsRestore=true) — without it no
             // user_frame can be produced and the interleave is unreach­able.
             require(
-                firstItems2.contains("target=${baseline.index}:${baseline.offset}") &&
+                firstItems2.contains("target=${v1RestoreExpect.index}:${v1RestoreExpect.offset}") &&
                     firstItems2.contains("wantsRestore=true")
             ) {
-                "v2 restore_first_items missing baseline target or wantsRestore: $firstItems2"
+                "v2 restore_first_items missing restore target $v1RestoreExpect or wantsRestore: $firstItems2"
             }
-            val seedLandedAtBaseline =
+            val seedLandedAtExpect =
                 Regex("current=(\\d+):(\\d+)").find(firstItems2)?.let { m ->
-                    m.groupValues[1].toInt() == baseline.index &&
-                        m.groupValues[2].toInt() == baseline.offset
+                    m.groupValues[1].toInt() == v1RestoreExpect.index &&
+                        m.groupValues[2].toInt() == v1RestoreExpect.offset
                 } == true
-            if (!seedLandedAtBaseline) {
+            if (!seedLandedAtExpect) {
                 waitForLine(startCursor, after = visit2.seedLine, "v2 baseline settle") { line ->
                     line.contains("restore_settled") &&
                         line.contains(ScrollLabel) &&
-                        line.contains("position=${baseline.index}:${baseline.offset}")
+                        line.contains("position=${v1RestoreExpect.index}:${v1RestoreExpect.offset}")
                 }
             }
             recordEvidence("CR_V2_LANDED", "epoch=${visit2.epoch} $firstItems2")
@@ -152,6 +185,13 @@ class MemberDetailComposeRemovalConnectedTest {
             // Held press inside the settle window: paced MOVEs, no UP. The
             // gesture keeps producing user_frames while removal is requested.
             var dragGesture: MemberDetailScrollTestSupport.HeldDrag? = null
+            // The gesture stays owned through the ENTIRE dispose wait: the
+            // finally retires it with a checked CANCEL whether the interleave
+            // succeeded, removal never happened, or the log line never came.
+            var gestureRetired = false
+            var disposePosition: MemberDetailScrollTestSupport.ScrollPosition? = null
+            var disposeLineForAudit: String? = null
+            var gesturePrimaryFailure: Throwable? = null
             try {
                 dragGesture = MemberDetailScrollTestSupport.injectDragPaced(TestLogTag)
                 val lastFrame =
@@ -190,29 +230,45 @@ class MemberDetailComposeRemovalConnectedTest {
                 // the failure path), so a settled periodic save cannot sneak
                 // in between the flip and recomposition.
                 MemberDetailRemovalFixtureBridge.setRemoved(runToken, true)
+
+                val disposeLine =
+                    waitForLine(startCursor, after = visit2.seedLine, "v2 dispose_save") { line ->
+                        line.contains("dispose_save") && line.contains(ScrollLabel)
+                    }
+                disposePosition =
+                    requireNotNull(parsePositionFrom(disposeLine)) {
+                        "dispose_save carried no position: $disposeLine"
+                    }
+                disposeLineForAudit = disposeLine
+                recordEvidence("CR_DISPOSE", "epoch=${visit2.epoch} $disposeLine")
             } catch (t: Throwable) {
-                // Failure path: retire the press now; a stuck pointer must
-                // never survive. Delivery failure is hard-checked.
-                dragGesture?.finish(action = MotionEvent.ACTION_CANCEL)
-                dragGesture = null
+                gesturePrimaryFailure = t
                 throw t
+            } finally {
+                if (!gestureRetired) {
+                    gestureRetired = true
+                    try {
+                        dragGesture?.finish(action = MotionEvent.ACTION_CANCEL)
+                        dragGesture = null
+                    } catch (cancelFailure: Throwable) {
+                        val primary = gesturePrimaryFailure
+                        if (primary != null) {
+                            // Already failing: the stuck-pointer error rides
+                            // along instead of masking the real failure.
+                            primary.addSuppressed(cancelFailure)
+                        } else {
+                            // Success path: gesture retirement failure is
+                            // itself the failure.
+                            throw cancelFailure
+                        }
+                    }
+                }
             }
 
             val disposeLine =
-                waitForLine(startCursor, after = visit2.seedLine, "v2 dispose_save") { line ->
-                    line.contains("dispose_save") && line.contains(ScrollLabel)
-                }
-            val disposePosition =
-                requireNotNull(parsePositionFrom(disposeLine)) {
-                    "dispose_save carried no position: $disposeLine"
-                }
-            recordEvidence("CR_DISPOSE", "epoch=${visit2.epoch} $disposeLine")
-
-            // Dispose observed — now retire the held press (real removal
-            // happened; the pointer must be gone before re-add).
-            dragGesture?.finish(action = MotionEvent.ACTION_CANCEL)
-            dragGesture = null
-
+                requireNotNull(disposeLineForAudit) { "dispose_save was never observed" }
+            val disposePos =
+                requireNotNull(disposePosition) { "dispose_save carried no position" }
             val intervalLines = linesAfter(startCursor, visit2.seedLine)
             val disposeIdx = intervalLines.indexOf(disposeLine)
             require(disposeIdx >= 0) { "dispose_save not located in v2 interval" }
@@ -225,10 +281,10 @@ class MemberDetailComposeRemovalConnectedTest {
                     .filter { it.contains("user_frame") && it.contains(ScrollLabel) }
                     .mapNotNull(::parsePositionFrom)
                     .lastOrNull()
-            require(disposePosition == lastUserFrameBeforeDispose) {
-                "dispose_save wrote $disposePosition but the last in-interval user frame was $lastUserFrameBeforeDispose"
+            require(disposePos == lastUserFrameBeforeDispose) {
+                "dispose_save wrote $disposePos but the last in-interval user frame was $lastUserFrameBeforeDispose"
             }
-            require(disposePosition.index > 0 || disposePosition.offset > 0) {
+            require(disposePos.index > 0 || disposePos.offset > 0) {
                 "dispose_save wrote the top, not the dragged position: $disposeLine"
             }
             // (b) no periodic write carried that position inside the
@@ -242,11 +298,11 @@ class MemberDetailComposeRemovalConnectedTest {
                             it.contains("kind=humanList") &&
                             it.contains("decision=accept") &&
                             it.contains("keyHash=$KeyHash") &&
-                            it.contains("position=${disposePosition.index}:${disposePosition.offset}")
+                            it.contains("position=${disposePos.index}:${disposePos.offset}")
                     }
             require(savesBeforeDispose.isEmpty()) {
                 "interleave not hit: a periodic registry_save already wrote " +
-                    "$disposePosition before dispose under epoch=${visit2.epoch}"
+                    "$disposePos before dispose under epoch=${visit2.epoch}"
             }
             // (c) the dispose write landed: an accepted save at this visit's
             // gen+epoch carrying the dispose position, strictly after the
@@ -257,7 +313,7 @@ class MemberDetailComposeRemovalConnectedTest {
                     line.contains("decision=accept") &&
                     line.contains("keyHash=$KeyHash") &&
                     Regex("epoch=${visit2.epoch}/${visit2.epoch}\\b").containsMatchIn(line) &&
-                    line.contains("position=${disposePosition.index}:${disposePosition.offset}") &&
+                    line.contains("position=${disposePos.index}:${disposePos.offset}") &&
                     line.contains("gen=${visit2.generation}/")
             }.let { recordEvidence("CR_DISPOSE_WRITE", "epoch=${visit2.epoch} $it") }
 
@@ -273,20 +329,20 @@ class MemberDetailComposeRemovalConnectedTest {
                     line.contains("restore_first_items") && line.contains(ScrollLabel)
                 }
             require(
-                firstItems3.contains("target=${disposePosition.index}:${disposePosition.offset}")
+                firstItems3.contains("target=${disposePos.index}:${disposePos.offset}")
             ) {
-                "v3 restore_first_items does not target dispose position $disposePosition: $firstItems3"
+                "v3 restore_first_items does not target dispose position $disposePos: $firstItems3"
             }
             val revisitMeasured =
                 Regex("current=(\\d+):(\\d+)").find(firstItems3)?.let { m ->
-                    m.groupValues[1].toInt() == disposePosition.index &&
-                        m.groupValues[2].toInt() == disposePosition.offset
+                    m.groupValues[1].toInt() == disposePos.index &&
+                        m.groupValues[2].toInt() == disposePos.offset
                 } == true
             if (!revisitMeasured) {
                 waitForLine(startCursor, after = visit3.seedLine, "v3 measured landing") { line ->
                     line.contains("restore_settled") &&
                         line.contains(ScrollLabel) &&
-                        line.contains("position=${disposePosition.index}:${disposePosition.offset}")
+                        line.contains("position=${disposePos.index}:${disposePos.offset}")
                 }
             }
             recordEvidence("CR_REVISIT", "epoch=${visit3.epoch} $firstItems3")

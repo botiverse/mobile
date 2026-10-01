@@ -1,6 +1,8 @@
 package build.raft.app
 
 import androidx.compose.runtime.mutableStateOf
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 /**
  * task #58 composition-removal case — fixture-side controller for
@@ -19,7 +21,7 @@ import androidx.compose.runtime.mutableStateOf
  *    intact.
  */
 public object MemberDetailRemovalFixtureBridge {
-    private val lock = Any()
+    private val lock = SynchronizedObject()
     private val controllers = mutableMapOf<String, RemovalController>()
 
     public fun register(token: String) {
