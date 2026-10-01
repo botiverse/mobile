@@ -510,12 +510,16 @@ internal object MemberDetailScrollTestSupport {
                         primaryFailure?.addSuppressed(cancelFailure)
                             ?: run { primaryFailure = cancelFailure }
                     }
-                    // Drain receipt: after the terminal CANCEL, require a
-                    // quiet window with no new user_frame/probe_hit lines
-                    // for the label — residual output still arriving means
-                    // the retired gesture is not yet drained, so the quiet
-                    // window restarts. Bounded by the shared deadline; the
-                    // next dispatch only starts once drained.
+                    // Post-CANCEL observation window (NOT a semantic drain
+                    // receipt): a quiet period with no new user_frame /
+                    // probe_hit lines for the label only proves no gesture
+                    // output was still arriving; a swallowed event is silent
+                    // too. It narrows cross-attempt leakage — a press still
+                    // emitting frames resets the window — but does not prove
+                    // the platform finished processing the retired input.
+                    // Per-attempt binding (snapshot + emission timestamp) is
+                    // what makes a stale hit unable to satisfy a later
+                    // attempt regardless.
                     var lastActivityAt = SystemClock.uptimeMillis()
                     var linesSeen = linesAfter(startCursor, after, logTag).size
                     while (
@@ -536,7 +540,7 @@ internal object MemberDetailScrollTestSupport {
                     }
                     Log.i(
                         logTag,
-                        "held_drag_drained attempt=$attempt at=${SystemClock.uptimeMillis()} " +
+                        held_drag_quiet attempt=$attempt at=${SystemClock.uptimeMillis()} " +
                             "quietFor=${SystemClock.uptimeMillis() - lastActivityAt}ms"
                     )
                 }
