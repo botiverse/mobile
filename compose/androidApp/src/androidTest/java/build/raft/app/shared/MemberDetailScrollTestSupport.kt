@@ -440,7 +440,7 @@ internal object MemberDetailScrollTestSupport {
             Log.i(logTag, "held_drag_retired attempt=$attempt cancel at=${SystemClock.uptimeMillis()} reason=no probe_hit")
             SystemClock.sleep(DragRetryDelayMs)
         }
-        fail("held drag produced no probe_hit after $attempt attempt(s)")
+        throw AssertionError("held drag produced no probe_hit after $attempt attempt(s)")
     }
 
     /** A still-held injected gesture. The handle exists BEFORE the DOWN
