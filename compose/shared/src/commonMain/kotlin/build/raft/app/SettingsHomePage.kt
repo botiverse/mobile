@@ -6377,7 +6377,16 @@ private fun SlockAppShellReadyContent(
                             onOpenConversation = { identity ->
                                 openHomeConversation(identity, "dms")
                             },
-                            selectedThreadId = adaptiveWorkspaceState?.selection?.identity?.threadId,
+                            // Only highlight while the detail is actually visible beside the list:
+                            // with desktop mode OFF or a single pane, a parked selection has no
+                            // visible detail and must not mark a row.
+                            selectedThreadId =
+                                adaptiveWorkspaceState
+                                    ?.takeIf {
+                                        desktopModeOnLargeScreen &&
+                                            it.pane.layout == SlockAdaptivePaneLayout.DualPane
+                                    }
+                                    ?.selection?.identity?.threadId,
                             showHeader = true,
                             scrollToTopRequest = tabScrollToTopRequests.dms,
                             bottomContentPadding = appShellBottomContentInset,

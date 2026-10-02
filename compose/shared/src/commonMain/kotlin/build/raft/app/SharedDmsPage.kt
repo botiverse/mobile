@@ -453,13 +453,14 @@ internal fun formatWeChatDmHeaderTitle(baseTitle: String, unreadCount: Int): Str
 internal fun totalWeChatDmUnreadCount(directMessages: List<SlockHomeConversationItem>): Int =
     directMessages.filterNot { it.activityMuted }.sumOf { it.unreadCount.coerceAtLeast(0) }
 
+/** task #33: a DM row is highlighted when its thread is the one open in the wide detail pane. */
+internal fun isWeChatDmRowSelected(rowThreadId: String?, selectedThreadId: String?): Boolean =
+    rowThreadId != null && selectedThreadId != null && rowThreadId == selectedThreadId
+
 /**
  * Resolves a [ThreadLaunchConversationIdentity] from a DM conversation row, guaranteeing
  * [ConversationKind.DirectMessage] surface binding even when the row's kind tag is empty.
  */
-internal fun isWeChatDmRowSelected(rowThreadId: String?, selectedThreadId: String?): Boolean =
-    rowThreadId != null && selectedThreadId != null && rowThreadId == selectedThreadId
-
 internal fun SlockHomeConversationItem.toWeChatDmLaunchIdentity(): ThreadLaunchConversationIdentity? {
     val cleanId = id.takeIf { it.isNotBlank() } ?: return null
     val parsedChannelType = channelType?.takeIf { it.isNotBlank() }
