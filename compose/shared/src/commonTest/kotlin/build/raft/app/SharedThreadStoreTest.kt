@@ -16480,6 +16480,7 @@ class SharedThreadStoreTest {
         val getThreadRequests: MutableList<ThreadId> = mutableListOf()
         val getThreadIncludeFollowedSummaries: MutableList<Boolean> = mutableListOf()
         val getThreadLimits: MutableList<Int> = mutableListOf()
+        val getThreadRequestTraces: MutableList<String?> = mutableListOf()
         val getThreadReplySummariesRequests: MutableList<Pair<ThreadId, List<MessageId>>> = mutableListOf()
         val olderRequests: MutableList<Pair<ThreadId, Long>> = mutableListOf()
         val olderLimits: MutableList<Int> = mutableListOf()
@@ -16505,6 +16506,7 @@ class SharedThreadStoreTest {
             getThreadRequests += threadId
             getThreadIncludeFollowedSummaries += includeFollowedSummaries
             getThreadLimits += limit
+            getThreadRequestTraces += requestTrace
             getThreadStarted?.complete(Unit)
             releaseGetThread?.await()
             if (threadDelayMillis > 0L) {
@@ -20035,10 +20037,34 @@ class SharedThreadStoreTest {
                 tailTerminal["storeSeq"],
                 "gap_tail_fallback terminal must carry the issuing storeSeq",
             )
-            // The tail fallback really fetched the canonical tail via getThread.
+            // Same store and same recovery own both fetches — the armed flag
+            // marks the armed arm, and both segments must bind recoveryId.
+            assertEquals(
+                syncIssued["storeSeq"],
+                tailIssued["storeSeq"],
+                "gap_sync and gap_tail_fallback must share the issuing storeSeq",
+            )
+            assertEquals("false", syncIssued["armed"], "gap_sync issue must record armed=false; got $syncIssued")
+            assertEquals("true", tailIssued["armed"], "gap_tail_fallback issue must record armed=true; got $tailIssued")
+            assertEquals(
+                syncIssued["recoveryId"],
+                tailIssued["recoveryId"],
+                "both segments must bind the same recoveryId; sync=$syncIssued tail=$tailIssued",
+            )
             assertTrue(
-                repository.getThreadRequests.isNotEmpty(),
-                "tail fallback must reach repository.getThread; requests=${repository.getThreadRequests}",
+                syncIssued["recoveryId"] != null,
+                "gap issued must carry a recoveryId; got $syncIssued",
+            )
+            // The tail fallback really fetched the canonical tail via
+            // getThread — proven by an incremental request carrying the tail
+            // fetch's own requestTrace (gap_tail_s<storeSeq>_fs=<fetchSeq>),
+            // not the initial refresh (which carries a different trace or none).
+            val tailTrace =
+                "gap_tail_s${tailIssued["storeSeq"]}_fs=${tailIssued["fetchSeq"]}_rt=${tailIssued["routeToken"]}"
+            assertTrue(
+                repository.getThreadRequestTraces.contains(tailTrace),
+                "a getThread must carry the tail fetch's own requestTrace=$tailTrace; " +
+                    "traces=${repository.getThreadRequestTraces}",
             )
         } finally {
             scope.cancel()

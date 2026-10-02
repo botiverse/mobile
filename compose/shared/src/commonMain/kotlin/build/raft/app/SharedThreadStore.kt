@@ -9132,7 +9132,7 @@ internal class SharedThreadStore(
                 val (fetchSeq, gapFetchToken) =
                     issueFetchSeq(
                         if (tailFallbackArmed) "gap_tail_fallback" else "gap_sync",
-                        "sinceSeq=${nextRequest.sinceSeq} recoveryId=$recoveryId targetSeq=${nextRequest.serverSeq}",
+                        "sinceSeq=${nextRequest.sinceSeq} recoveryId=$recoveryId targetSeq=${nextRequest.serverSeq} armed=$tailFallbackArmed",
                         capturedToken = staleToken,
                     )
                 inFlightGapFetchSeq = fetchSeq
