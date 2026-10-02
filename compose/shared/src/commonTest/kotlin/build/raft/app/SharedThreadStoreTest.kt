@@ -18904,7 +18904,7 @@ class SharedThreadStoreTest {
     private fun parseDiagFields(line: String): Map<String, String> =
         // Parse `key=value` tokens into exact fields — avoids substring
         // false-positives like fetchSeq=1 matching fetchSeq=10.
-        Regex("""(\\w+)=(-?\\w+)""")
+        Regex("""(\w+)=(-?\w+)""")
             .findAll(line)
             .associate { it.groupValues[1] to it.groupValues[2] }
 
@@ -18960,25 +18960,37 @@ class SharedThreadStoreTest {
             val traceFetchSeq = Regex("_fs=(\\d+)").find(trace)!!.groupValues[1]
             val traceToken = Regex("_rt=(\\d+)").find(trace)!!.groupValues[1]
             val issued =
-                logs.single {
+                logs.filter {
                     it.startsWith("thread_fetch_issued") &&
                         parseDiagFields(it)["kind"] == "newer_page" &&
                         parseDiagFields(it)["fetchSeq"] == traceFetchSeq
-                }
+                }.also {
+                    check(it.size == 1) {
+                        "run $runNonce expected 1 newer_page issued for fetchSeq=$traceFetchSeq; logs=$logs"
+                    }
+                }.single()
             val issuedFields = parseDiagFields(issued)
             val terminal =
-                logs.single {
+                logs.filter {
                     it.startsWith("thread_fetch_terminal") &&
                         parseDiagFields(it)["kind"] == "newer_page" &&
                         parseDiagFields(it)["fetchSeq"] == traceFetchSeq
-                }
+                }.also {
+                    check(it.size == 1) {
+                        "run $runNonce expected 1 newer_page terminal for fetchSeq=$traceFetchSeq; logs=$logs"
+                    }
+                }.single()
             val terminalFields = parseDiagFields(terminal)
             val write =
-                logs.single {
+                logs.filter {
                     it.startsWith("thread_payload_messages_write") &&
                         parseDiagFields(it)["tag"] == "newer_page_apply" &&
                         parseDiagFields(it)["fetchSeq"] == traceFetchSeq
-                }
+                }.also {
+                    check(it.size == 1) {
+                        "run $runNonce expected 1 newer_page_apply write for fetchSeq=$traceFetchSeq; logs=$logs"
+                    }
+                }.single()
             val writeFields = parseDiagFields(write)
             return mapOf(
                 "nonce" to runNonce,
@@ -19071,10 +19083,12 @@ class SharedThreadStoreTest {
         // Fetch-side receipt: the newer_page_apply write binds fetchSeq=1 and
         // must report operationSeq=-1 (no local op id on a fetch write).
         val fetchWrite =
-            logs.single {
+            logs.filter {
                 it.startsWith("thread_payload_messages_write") &&
                     parseDiagFields(it)["tag"] == "newer_page_apply"
-            }
+            }.also {
+                check(it.size == 1) { "expected 1 newer_page_apply write; logs=$logs" }
+            }.single()
         val fetchFields = parseDiagFields(fetchWrite)
         assertEquals("1", fetchFields["fetchSeq"], "newer fetch write must bind fetchSeq=1")
         assertEquals(
@@ -19088,17 +19102,21 @@ class SharedThreadStoreTest {
         // own issue line (whichever writer ran first), then find its write
         // receipt by tag and assert the colliding domains keep distinct fields.
         val firstOpIssued =
-            logs.single {
+            logs.filter {
                 it.startsWith("thread_op_issued") &&
                     parseDiagFields(it)["opSeq"] == "1"
-            }
+            }.also {
+                check(it.size == 1) { "expected 1 op_issued opSeq=1; logs=$logs" }
+            }.single()
         val firstOpKind = parseDiagFields(firstOpIssued)["kind"]!!
         val opWrite =
-            logs.single {
+            logs.filter {
                 (it.startsWith("thread_payload_terminal") || it.startsWith("thread_payload_messages_write")) &&
                     parseDiagFields(it)["tag"] == firstOpKind &&
                     parseDiagFields(it)["operationSeq"] == "1"
-            }
+            }.also {
+                check(it.size == 1) { "expected 1 write for op kind=$firstOpKind opSeq=1; logs=$logs" }
+            }.single()
         val opFields = parseDiagFields(opWrite)
         assertEquals("1", opFields["operationSeq"], "$firstOpKind must carry operationSeq=1")
         assertEquals(
@@ -19126,15 +19144,19 @@ class SharedThreadStoreTest {
         api.releaseChannelMessages?.complete(Unit)
         withTimeout(5_000) { refreshJob.await() }
         val refreshLoadingOp =
-            logs.single {
+            logs.filter {
                 it.startsWith("thread_op_issued") &&
                     parseDiagFields(it)["kind"] == "refresh_loading_apply"
-            }
+            }.also {
+                check(it.size == 1) { "expected 1 refresh_loading_apply op; logs=$logs" }
+            }.single()
         val refreshFetch =
-            logs.single {
+            logs.filter {
                 it.startsWith("thread_fetch_issued") &&
                     parseDiagFields(it)["kind"] == "refresh_canonical"
-            }
+            }.also {
+                check(it.size == 1) { "expected 1 refresh_canonical fetch; logs=$logs" }
+            }.single()
         // Both carry the same routeToken — the generation Refresh captured —
         // which is the loading→canonical association key.
         assertEquals(
