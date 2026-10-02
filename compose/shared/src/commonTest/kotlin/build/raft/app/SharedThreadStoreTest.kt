@@ -19886,6 +19886,8 @@ class SharedThreadStoreTest {
                     threadResult =
                         DataResult.Content(
                             threadSnapshot(
+                                threadId = "thread-m1",
+                                conversation = replyConversation(),
                                 body = "tail recovered",
                                 messages =
                                     listOf(
