@@ -326,7 +326,7 @@ generate_summary() {
   local unreached_count=0
 
   for id in "${DECLARED_TEST_IDS[@]}"; do
-    case "${TEST_STATUS[$id]}" in
+    case "${TEST_STATUS[$id]:-not_run}" in
       passed)
         passed_count=$((passed_count + 1))
         executed_count=$((executed_count + 1))
@@ -337,7 +337,7 @@ generate_summary() {
         ;;
       not_run)
         not_run_count=$((not_run_count + 1))
-        if [[ "${TEST_REASON[$id]}" =~ ^skipped: ]]; then
+        if [[ "${TEST_REASON[$id]:-unreached}" =~ ^skipped: ]]; then
           conditional_skipped_count=$((conditional_skipped_count + 1))
         else
           unreached_count=$((unreached_count + 1))
@@ -365,30 +365,30 @@ generate_summary() {
     printf '%s\n' '--------------------------------------------------------------------------------'
     for id in "${DECLARED_TEST_IDS[@]}"; do
       local status_upper
-      status_upper="$(echo "${TEST_STATUS[$id]}" | tr '[:lower:]' '[:upper:]')"
+      status_upper="$(echo "${TEST_STATUS[$id]:-not_run}" | tr '[:lower:]' '[:upper:]')"
       local target_info="${TEST_CLASS[$id]}"
-      if [[ "${TEST_STATUS[$id]}" == "not_run" ]]; then
+      if [[ "${TEST_STATUS[$id]:-not_run}" == "not_run" ]]; then
         target_info="${TEST_CLASS[$id]} (${TEST_REASON[$id]})"
-      elif [[ "${TEST_STATUS[$id]}" == "failed" && "${TEST_REASON[$id]}" != "instrumentation_failed" ]]; then
+      elif [[ "${TEST_STATUS[$id]:-not_run}" == "failed" && "${TEST_REASON[$id]:-unreached}" != "instrumentation_failed" ]]; then
         target_info="${TEST_CLASS[$id]} (${TEST_REASON[$id]})"
       fi
       printf '%-9s %-40s %-5s %-7s %s\n' \
         "$status_upper" \
         "$id" \
-        "${TEST_EXIT_CODE[$id]}" \
-        "${TEST_DURATION[$id]}" \
+        "${TEST_EXIT_CODE[$id]:-}" \
+        "${TEST_DURATION[$id]:-}" \
         "$target_info"
     done
     printf '%s\n' '================================================================================'
     printf '%s\n' '### BEGIN_TRI_STATE_MANIFEST ###'
     for id in "${DECLARED_TEST_IDS[@]}"; do
       printf 'status=%s test=%s rc=%s duration=%s class=%s reason=%s\n' \
-        "${TEST_STATUS[$id]}" \
+        "${TEST_STATUS[$id]:-not_run}" \
         "$id" \
-        "${TEST_EXIT_CODE[$id]}" \
-        "${TEST_DURATION[$id]}" \
+        "${TEST_EXIT_CODE[$id]:-}" \
+        "${TEST_DURATION[$id]:-}" \
         "${TEST_CLASS[$id]}" \
-        "${TEST_REASON[$id]}"
+        "${TEST_REASON[$id]:-unreached}"
     done
     printf '%s\n' '### END_TRI_STATE_MANIFEST ###'
   )
@@ -401,6 +401,10 @@ cleanup() {
   local exit_code=$?
   # A signal/timeout that kills instrumentation mid-flight never reaches
   # run_post_hook; harvest that test's evidence here, before summary+exit.
+  # Ignore further TERM/INT while collecting: a process-group signal hits
+  # every child adb call too, and losing the trap mid-collection is exactly
+  # the gap this harvest exists to close.
+  trap '' TERM INT
   if [[ "$CURRENT_TEST_IN_FLIGHT" == "thread-newer-auto-pagination" ]]; then
     collect_thread_newer_evidence
   fi
@@ -572,10 +576,10 @@ main() {
 
   # Final exit judgment: fail if any test failed or unreached
   for id in "${tests_to_run[@]}"; do
-    if [[ "${TEST_STATUS[$id]}" == "failed" ]]; then
+    if [[ "${TEST_STATUS[$id]:-not_run}" == "failed" ]]; then
       exit 1
     fi
-    if [[ "${TEST_STATUS[$id]}" == "not_run" && "${TEST_CONDITION[$id]}" == "always" ]]; then
+    if [[ "${TEST_STATUS[$id]:-not_run}" == "not_run" && "${TEST_CONDITION[$id]}" == "always" ]]; then
       exit 1
     fi
   done

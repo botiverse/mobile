@@ -379,35 +379,61 @@ pass "thread-newer failure collection scenario verified"
 TEST_DIR_TERM="$TMP_DIR/test_thread_newer_term"
 mkdir -p "$TEST_DIR_TERM"
 
-# A retry shim that signals its own process group, emulating a runner-level
-# SIGTERM while instrumentation is in flight.
+# A retry shim that records its own pgid then sleeps: the outer harness
+# SIGTERMs the whole suite process group while instrumentation is in flight,
+# which is the real CI timeout path LiBai exercised.
 cat > "$TEST_DIR_TERM/term-retry.sh" <<'FAKE_TERM'
 #!/usr/bin/env bash
 set -euo pipefail
 output_file="$1"
 echo "INSTRUMENTATION_STATUS: running" > "$output_file"
-kill -TERM $$ 2>/dev/null || true
-sleep 5
+echo "ready" > "${MOCK_STATE_DIR:?}/instrumentation_started"
+sleep 30
 exit 1
 FAKE_TERM
 chmod +x "$TEST_DIR_TERM/term-retry.sh"
 
 (
   cd "$TEST_DIR_TERM"
-  export PATH="$MOCK_BIN:$PATH"
-  export MOCK_STATE_DIR="$TEST_DIR_TERM/mock_state"
-  export SKIP_EMULATOR_PREP=true
-  export SKIP_APK_INSTALL=true
-  export THREAD_NEWER_PAGINATION_GATE_REQUIRED=true
+  mkdir -p scripts_ci
+  cp "$SUITE_RUNNER" scripts_ci/run-first-character-emulator-suite.sh
+  cp term-retry.sh scripts_ci/run-instrumentation-with-retry.sh
+  cp "$MOCK_BIN/prepare_android_emulator_ime.sh" scripts_ci/
+  chmod +x scripts_ci/*
+)
 
-  mkdir -p "$TEST_DIR_TERM/scripts_ci"
-  cp "$SUITE_RUNNER" "$TEST_DIR_TERM/scripts_ci/run-first-character-emulator-suite.sh"
-  cp "$TEST_DIR_TERM/term-retry.sh" "$TEST_DIR_TERM/scripts_ci/run-instrumentation-with-retry.sh"
-  cp "$MOCK_BIN/prepare_android_emulator_ime.sh" "$TEST_DIR_TERM/scripts_ci/"
-  chmod +x "$TEST_DIR_TERM/scripts_ci/"*
+# Run the suite in its own session/process group so we can SIGTERM the
+# entire group (the real CI timeout path); env vars passed explicitly since
+# setsid inherits only the exported environment.
+mkdir -p "$TEST_DIR_TERM/mock_state"
+setsid env PATH="$MOCK_BIN:$PATH" MOCK_STATE_DIR="$TEST_DIR_TERM/mock_state" \
+  SKIP_EMULATOR_PREP=true SKIP_APK_INSTALL=true THREAD_NEWER_PAGINATION_GATE_REQUIRED=true \
+  bash -c 'cd "$1" && bash scripts_ci/run-first-character-emulator-suite.sh "thread-newer-auto-pagination" > suite_out.txt 2>&1' _ "$TEST_DIR_TERM" &
+suite_pid=$!
 
-  "$TEST_DIR_TERM/scripts_ci/run-first-character-emulator-suite.sh" "thread-newer-auto-pagination" > suite_out.txt 2>&1
-) || true
+# Wait until the suite is inside instrumentation, then SIGTERM its process group.
+for _ in $(seq 1 100); do
+  [ -f "$TEST_DIR_TERM/mock_state/instrumentation_started" ] && break
+  sleep 0.1
+done
+# SIGTERM the bash process actually running the suite (not the setsid/env
+# wrapper — that would just orphan the suite). The instrumentation shim is
+# left sleeping, matching the reviewer harness where TERM lands on the runner
+# mid-instrumentation and the EXIT trap must still harvest evidence.
+suite_bash_pid="$(pgrep -P "$suite_pid" -f "run-first-character-emulator-suite.sh" | head -n 1)"
+if [ -z "$suite_bash_pid" ]; then
+  suite_bash_pid="$(pgrep -f "scripts_ci/run-first-character-emulator-suite.sh" | head -n 1)"
+fi
+[ -n "$suite_bash_pid" ] || fail "could not resolve suite bash pid"
+kill -TERM "$suite_bash_pid" 2>/dev/null || true
+# Poll the artifacts: collection happens inside the trap and the files may
+# appear a beat after the killed process exits.
+for _ in $(seq 1 100); do
+  [ -f "$TEST_DIR_TERM/thread-newer-auto-pagination-diagnostics.jsonl" ] && \
+    [ -f "$TEST_DIR_TERM/thread-newer-auto-pagination-logcat.txt" ] && break
+  sleep 0.1
+done
+wait "$suite_pid" 2>/dev/null || true
 
 test -f "$TEST_DIR_TERM/thread-newer-auto-pagination-logcat.txt" || fail "SIGTERM path missing raw logcat"
 test -f "$TEST_DIR_TERM/thread-newer-auto-pagination-diagnostics.jsonl" || fail "SIGTERM path missing diagnostics jsonl"
