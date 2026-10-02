@@ -66,6 +66,14 @@ class AdaptiveDetailNavigationTest {
             )
         )
         assertSame(compact, compact.withOpenedDetail(replyIdentity, reply))
+        // Compact pane that already retains the SAME identity (e.g. parked after narrowing):
+        // still not an in-pane open, so the caller falls back to the full-page route.
+        val channelIdentity = channel.toSlockAdaptiveDetailIdentity("server")!!
+        assertEquals(channelIdentity, compact.workspace!!.selection!!.identity)
+        assertSame(compact, compact.withOpenedDetail(channelIdentity, channel))
+        // Another server's identity is never opened into this workspace.
+        val foreign = channel.toSlockAdaptiveDetailIdentity("other-server")!!
+        assertSame(live, live.withOpenedDetail(foreign, channel))
     }
 
     @Test fun onlyAnEmbeddedWideDesktopPageInterceptsNativeNavigation() {

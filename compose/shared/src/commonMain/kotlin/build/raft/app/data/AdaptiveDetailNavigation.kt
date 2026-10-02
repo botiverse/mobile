@@ -96,6 +96,11 @@ internal fun SharedAdaptiveWorkspaceSession.withOpenedDetail(
     target: WireThreadLaunchPayload,
 ): SharedAdaptiveWorkspaceSession {
     val current = workspace ?: return this
+    // The wide pane must be able to host the detail. Checked up front: a compact workspace that
+    // already retains this identity would otherwise look "opened" and skip the full-page route.
+    if (current.pane.layout != SlockAdaptivePaneLayout.DualPane || current.serverId != identity.serverId) {
+        return this
+    }
     val next = reduceSlockAdaptiveWorkspace(current, SlockAdaptiveWorkspaceIntent.OpenDetail(identity))
     if (next.selection?.identity != identity) return this
     return copy(workspace = next, launchPayload = target)
